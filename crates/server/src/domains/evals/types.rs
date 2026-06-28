@@ -1,5 +1,6 @@
 pub use crate::api::evals::{
     BulkUpdateEvalResultScoresItem, BulkUpdateEvalRunScoresRequest, CreateEvalCaseRequest,
-    CreateEvalRequest, CreateEvalRunRequest, ExternalScoreStatus, ListEvalsQuery,
-    UpdateEvalCaseRequest, UpdateEvalRequest, UpdateEvalResultScoresRequest,
+    CreateEvalRequest, CreateEvalRunRequest, EvalImportPreflight, ExternalScoreStatus,
+    ImportEvalRunRequest, ListEvalsQuery, UpdateEvalCaseRequest, UpdateEvalRequest,
+    UpdateEvalResultScoresRequest,
 };

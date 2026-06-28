@@ -67,6 +67,7 @@ pub mod sse;
 pub mod task_webhooks;
 pub mod tool_results;
 pub mod user_connections;
+pub mod user_preferences;
 pub mod users;
 pub mod validation;
 pub mod voice;

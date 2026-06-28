@@ -199,6 +199,7 @@ export function AddProviderDialog({
               values={credentials}
               onChange={updateCredential}
               idPrefix="add-provider"
+              allowEmptySubmit={supportsOAuth}
             />
           ) : null}
           {supportsOAuth ? (

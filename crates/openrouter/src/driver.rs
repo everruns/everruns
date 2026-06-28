@@ -13,14 +13,14 @@ use chrono::TimeZone;
 
 use everruns_core::OpenResponsesProtocolChatDriver;
 use everruns_core::credential_schema::CredentialFormSchema;
+use everruns_core::driver_helpers::fetch_models;
 use everruns_core::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
     LlmCallConfig, LlmMessage, LlmResponseStream,
 };
-use everruns_core::error::{AgentLoopError, Result};
+use everruns_core::error::Result;
 use everruns_core::openai_protocol::{
-    apply_models_api_auth, models_api_status_error, models_url_for_api_url, normalize_api_url,
-    url_host_eq,
+    apply_models_api_auth, models_url_for_api_url, normalize_api_url, url_host_eq,
 };
 
 use crate::request_ext::OpenRouterRequestExtension;
@@ -128,41 +128,32 @@ async fn list_openrouter_models(
     api_key: &str,
     models_url: &str,
 ) -> Result<Option<Vec<DiscoveredModel>>> {
-    let response = apply_models_api_auth(client.get(models_url), models_url, api_key)
-        .send()
-        .await
-        .map_err(|e| AgentLoopError::llm(format!("Failed to fetch models: {}", e)))?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let _ = response.bytes().await; // drain body to allow connection reuse
-        return Err(models_api_status_error(status));
-    }
-
-    let models_response: OpenRouterModelsResponse = response
-        .json()
-        .await
-        .map_err(|e| AgentLoopError::llm(format!("Failed to parse models response: {}", e)))?;
-
-    let discovered: Vec<DiscoveredModel> = models_response
-        .data
-        .into_iter()
-        .filter(|m| m.is_chat_model())
-        .map(|m| {
-            let profile = m.to_discovered_profile();
-            DiscoveredModel {
-                created_at: m
-                    .created
-                    .and_then(|ts| chrono::Utc.timestamp_opt(ts, 0).single()),
-                display_name: m.name.clone(),
-                owned_by: m.id.split('/').next().map(str::to_owned),
-                model_id: m.id,
-                discovered_profile: Some(profile),
-            }
-        })
-        .collect();
-
-    Ok(Some(discovered))
+    fetch_models::<OpenRouterModelsResponse, _>(
+        apply_models_api_auth(client.get(models_url), models_url, api_key),
+        "Failed to fetch models",
+        "Failed to parse models response",
+        &[],
+        |models_response| {
+            models_response
+                .data
+                .into_iter()
+                .filter(|m| m.is_chat_model())
+                .map(|m| {
+                    let profile = m.to_discovered_profile();
+                    DiscoveredModel {
+                        created_at: m
+                            .created
+                            .and_then(|ts| chrono::Utc.timestamp_opt(ts, 0).single()),
+                        display_name: m.name.clone(),
+                        owned_by: m.id.split('/').next().map(str::to_owned),
+                        model_id: m.id,
+                        discovered_profile: Some(profile),
+                    }
+                })
+                .collect()
+        },
+    )
+    .await
 }
 
 /// OpenRouter exposes an OpenAI-compatible `/models` endpoint with richer

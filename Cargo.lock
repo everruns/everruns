@@ -2469,6 +2469,7 @@ dependencies = [
  "everruns-openui",
  "fetchkit",
  "futures",
+ "http 1.4.2",
  "include_dir",
  "insta",
  "inventory",
@@ -2816,8 +2817,10 @@ version = "0.17.1"
 dependencies = [
  "async-trait",
  "chrono",
+ "dirs",
  "everruns-core",
  "everruns-runtime",
+ "libc",
  "parking_lot",
  "rusqlite",
  "serde_json",
@@ -2855,6 +2858,24 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+ "wiremock",
+]
+
+[[package]]
+name = "everruns-observability"
+version = "0.17.1"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "insta",
+ "rand 0.9.4",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid 1.23.4",
  "wiremock",
 ]
 
@@ -2977,6 +2998,7 @@ dependencies = [
  "everruns-integrations-sprites",
  "everruns-internal-protocol",
  "everruns-mcp",
+ "everruns-observability",
  "everruns-sdk",
  "everruns-session-sqldb",
  "everruns-turbopuffer",
@@ -4745,9 +4767,9 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 
 [[package]]
 name = "llmsim"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "539672f1cd48a53f2554427acb6c69cf4e2c24a706acb89c22b4681fe0c4b2a0"
+checksum = "a05ca538f4ed6223baae5513aa5c2c248a0c6b7e1ba448b7192068527d19eafd"
 dependencies = [
  "async-stream",
  "futures-core",

@@ -149,6 +149,7 @@ mod tool_output_distillation;
 mod tool_output_persistence;
 mod tool_search;
 pub mod user_hooks;
+mod util;
 #[cfg(feature = "web-fetch")]
 mod web_fetch;
 

@@ -18,7 +18,6 @@ import {
   listTasks,
   getTaskStats,
   enqueueTask,
-  type EnqueueTaskRequest,
   listDlq,
   requeueDlqEntry,
   deleteDlqEntry,
@@ -42,6 +41,7 @@ import type {
   DurableTask,
   DlqEntry,
   CircuitBreaker,
+  EnqueueTaskRequest,
   MetricsPoint,
 } from "@/lib/api/types";
 

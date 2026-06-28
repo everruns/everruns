@@ -3069,7 +3069,7 @@ impl WorkerService for WorkerServiceImpl {
             .map(everruns_internal_protocol::proto_timestamp_to_datetime);
 
         let schedule = store
-            .create_schedule(
+            .create_schedule_enforcing_limits(
                 session_id.into(),
                 req.description,
                 req.cron_expression,
@@ -3077,9 +3077,14 @@ impl WorkerService for WorkerServiceImpl {
                 req.timezone,
             )
             .await
-            .map_err(|e| {
-                tracing::error!("Failed to create schedule: {}", e);
-                Status::internal(format!("Failed to create schedule: {}", e))
+            .map_err(|e| match e {
+                everruns_core::session_schedule::ScheduleLimitError::Rejected(msg) => {
+                    Status::resource_exhausted(msg)
+                }
+                everruns_core::session_schedule::ScheduleLimitError::Store(err) => {
+                    tracing::error!("Failed to create schedule: {}", err);
+                    Status::internal(format!("Failed to create schedule: {}", err))
+                }
             })?;
 
         Ok(Response::new(CreateSessionScheduleResponse {

@@ -76,6 +76,17 @@ pub enum EvalTarget {
         #[cfg_attr(feature = "openapi", schema(value_type = String))]
         app_id: AppId,
     },
+    /// Label-only target for externally-executed runs (e.g. imported from Mira).
+    ///
+    /// Carries provider/model labels and opaque params instead of session setup:
+    /// external runs are ingested already-complete, so everruns never builds a
+    /// session from this. Mirrors a provider-agnostic `(provider, model)` pair.
+    External {
+        provider: String,
+        model: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        params: Option<serde_json::Value>,
+    },
 }
 
 // ============================================
@@ -153,6 +164,43 @@ impl From<&str> for EvalRunStatus {
 }
 
 // ============================================
+// Eval Run Source
+// ============================================
+
+/// Where an eval run came from.
+///
+/// `Internal` runs are executed by everruns (sessions spawned per case).
+/// `External` runs are ingested already-complete from an external eval system
+/// (e.g. Mira) via the import API; everruns hosts and visualizes them but never
+/// executes them. See proposals/mira-results-publishing.md.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum EvalRunSource {
+    #[default]
+    Internal,
+    External,
+}
+
+impl std::fmt::Display for EvalRunSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EvalRunSource::Internal => write!(f, "internal"),
+            EvalRunSource::External => write!(f, "external"),
+        }
+    }
+}
+
+impl From<&str> for EvalRunSource {
+    fn from(s: &str) -> Self {
+        match s {
+            "external" => EvalRunSource::External,
+            _ => EvalRunSource::Internal,
+        }
+    }
+}
+
+// ============================================
 // Case Result Status
 // ============================================
 
@@ -167,6 +215,9 @@ pub enum CaseResultStatus {
     Failed,
     Errored,
     Timeout,
+    /// Case was not executed (e.g. an external system skipped it: model
+    /// unavailable, filtered out). Excluded from pass/fail tallies.
+    Skipped,
 }
 
 impl std::fmt::Display for CaseResultStatus {
@@ -178,6 +229,7 @@ impl std::fmt::Display for CaseResultStatus {
             CaseResultStatus::Failed => write!(f, "failed"),
             CaseResultStatus::Errored => write!(f, "errored"),
             CaseResultStatus::Timeout => write!(f, "timeout"),
+            CaseResultStatus::Skipped => write!(f, "skipped"),
         }
     }
 }
@@ -190,6 +242,7 @@ impl From<&str> for CaseResultStatus {
             "failed" => CaseResultStatus::Failed,
             "errored" => CaseResultStatus::Errored,
             "timeout" => CaseResultStatus::Timeout,
+            "skipped" => CaseResultStatus::Skipped,
             _ => CaseResultStatus::Pending,
         }
     }
@@ -467,6 +520,15 @@ pub struct EvalRun {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filter_tags: Option<Vec<String>>,
     pub status: EvalRunStatus,
+    /// Whether everruns executed this run (`internal`) or it was imported from
+    /// an external eval system (`external`).
+    #[serde(default)]
+    pub source: EvalRunSource,
+    /// Provenance for external runs: which system produced them, version, link
+    /// back, and any environment labels. `None` for internal runs. Open-vocab
+    /// JSON so new attribution fields need no schema change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attribution: Option<serde_json::Value>,
     /// What triggered this run.
     pub triggered_by: String,
     #[serde(skip_serializing_if = "Option::is_none")]

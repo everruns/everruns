@@ -13,15 +13,15 @@ use serde::Deserialize;
 
 use everruns_core::OpenAIProtocolChatDriver;
 use everruns_core::credential_schema::{CredentialFormSchema, FormField};
+use everruns_core::driver_helpers::fetch_models;
 use everruns_core::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverId,
     DriverRegistry, LlmCallConfig, LlmMessage, LlmResponseStream,
 };
-use everruns_core::error::{AgentLoopError, Result};
+use everruns_core::error::Result;
 use everruns_core::model::{Modality, ModelLimits, ModelModalities, ModelProfile};
 use everruns_core::openai_protocol::{
-    apply_models_api_auth, models_api_status_error, models_url_for_api_url, normalize_api_url,
-    url_host_eq,
+    apply_models_api_auth, models_url_for_api_url, normalize_api_url, url_host_eq,
 };
 
 /// Fireworks AI serverless inference endpoint (OpenAI-compatible Chat
@@ -158,43 +158,35 @@ async fn list_fireworks_models(
     api_key: &str,
     models_url: &str,
 ) -> Result<Option<Vec<DiscoveredModel>>> {
-    let response = apply_models_api_auth(client.get(models_url), models_url, api_key)
-        .send()
-        .await
-        .map_err(|e| AgentLoopError::llm(format!("Failed to fetch Fireworks models: {e}")))?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let _ = response.bytes().await; // drain body to allow connection reuse
-        return Err(models_api_status_error(status));
-    }
-
-    let models: FireworksModelsResponse = response.json().await.map_err(|e| {
-        AgentLoopError::llm(format!("Failed to parse Fireworks models response: {e}"))
-    })?;
-
-    let discovered = models
-        .data
-        .into_iter()
-        .filter(FireworksModelInfo::is_chat_model)
-        .map(|m| {
-            // Build the profile (borrows `m`) before moving owned fields out.
-            let discovered_profile = Some(m.to_discovered_profile());
-            let created_at = m
-                .created
-                .and_then(|ts| chrono::Utc.timestamp_opt(ts, 0).single());
-            let display_name = Some(short_model_name(&m.id));
-            DiscoveredModel {
-                created_at,
-                display_name,
-                owned_by: m.owned_by,
-                discovered_profile,
-                model_id: m.id,
-            }
-        })
-        .collect();
-
-    Ok(Some(discovered))
+    fetch_models::<FireworksModelsResponse, _>(
+        apply_models_api_auth(client.get(models_url), models_url, api_key),
+        "Failed to fetch Fireworks models",
+        "Failed to parse Fireworks models response",
+        &[],
+        |models| {
+            models
+                .data
+                .into_iter()
+                .filter(FireworksModelInfo::is_chat_model)
+                .map(|m| {
+                    // Build the profile (borrows `m`) before moving owned fields out.
+                    let discovered_profile = Some(m.to_discovered_profile());
+                    let created_at = m
+                        .created
+                        .and_then(|ts| chrono::Utc.timestamp_opt(ts, 0).single());
+                    let display_name = Some(short_model_name(&m.id));
+                    DiscoveredModel {
+                        created_at,
+                        display_name,
+                        owned_by: m.owned_by,
+                        discovered_profile,
+                        model_id: m.id,
+                    }
+                })
+                .collect()
+        },
+    )
+    .await
 }
 
 /// Bare Fireworks/OpenAI-compatible `/models` list response.

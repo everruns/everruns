@@ -110,17 +110,7 @@ fn terminal_subagent_task_state(
 // Helper: get platform store from context
 // =============================================================================
 
-fn get_platform_store(context: &ToolContext) -> Result<&dyn PlatformStore, ToolExecutionResult> {
-    context
-        .platform_store
-        .as_ref()
-        .map(|s| s.as_ref())
-        .ok_or_else(|| {
-            ToolExecutionResult::tool_error(
-                "Subagent tools require platform_store context (not available in this environment)",
-            )
-        })
-}
+use super::util::{get_platform_store, require_str_nonblank as require_str};
 
 fn get_session_store(
     context: &ToolContext,
@@ -131,15 +121,6 @@ fn get_session_store(
         .map(|s| s.as_ref())
         .ok_or_else(|| {
             ToolExecutionResult::tool_error("Subagent tools require session_store context")
-        })
-}
-
-fn require_str<'a>(args: &'a Value, field: &str) -> Result<&'a str, ToolExecutionResult> {
-    args.get(field)
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| {
-            ToolExecutionResult::tool_error(format!("Missing required parameter: {field}"))
         })
 }
 

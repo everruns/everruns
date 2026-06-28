@@ -44,6 +44,7 @@ mod sessions;
 mod skills;
 pub mod subagent_spawn_handles;
 mod user_connections;
+mod user_preferences;
 mod users;
 mod workspaces;
 
@@ -125,6 +126,8 @@ pub struct InMemoryDatabase {
     session_secrets: RwLock<HashMap<(SessionId, String), SessionSecretRow>>,
     // User connections (external service accounts)
     user_connections: RwLock<HashMap<Uuid, UserConnectionRow>>,
+    // User preferences: (user_id, key) -> row
+    user_preferences: RwLock<HashMap<(Uuid, String), UserPreferenceRow>>,
     // Pinned sessions: (user_id, session_id) -> (org_id, pinned_at)
     pinned_sessions: RwLock<HashMap<(Uuid, SessionId), PinnedSessionData>>,
     // Durable UI notifications
@@ -267,6 +270,7 @@ impl Default for InMemoryDatabase {
             session_key_values: RwLock::new(HashMap::new()),
             session_secrets: RwLock::new(HashMap::new()),
             user_connections: RwLock::new(HashMap::new()),
+            user_preferences: RwLock::new(HashMap::new()),
             pinned_sessions: RwLock::new(HashMap::new()),
             notifications: RwLock::new(HashMap::new()),
             notification_turn_requests: RwLock::new(HashMap::new()),

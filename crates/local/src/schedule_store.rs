@@ -14,7 +14,10 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::session_schedule::SessionSchedule;
+use everruns_core::session_schedule::{
+    MAX_ACTIVE_SCHEDULES_PER_SESSION, ScheduleLimitError, SessionSchedule,
+    max_active_schedules_per_org, validate_cron_min_interval,
+};
 use everruns_core::traits::SessionScheduleStore;
 use everruns_core::typed_id::{PrincipalId, ScheduleId, SessionId};
 use rusqlite::OptionalExtension;
@@ -220,6 +223,83 @@ impl SessionScheduleStore for LocalScheduleStore {
             Value::Object(Default::default()),
         )
         .await
+    }
+
+    async fn create_schedule_enforcing_limits(
+        &self,
+        session_id: SessionId,
+        description: String,
+        cron_expression: Option<String>,
+        scheduled_at: Option<DateTime<Utc>>,
+        timezone: String,
+    ) -> std::result::Result<SessionSchedule, ScheduleLimitError> {
+        if let Some(cron) = cron_expression.as_deref() {
+            validate_cron_min_interval(cron).map_err(ScheduleLimitError::Rejected)?;
+        }
+
+        let schedule = self.build_schedule(
+            session_id,
+            description,
+            cron_expression,
+            scheduled_at,
+            timezone,
+        );
+        let snapshot = serde_json::to_string(&schedule)
+            .map_err(|e| ScheduleLimitError::Store(AgentLoopError::from(LocalError::from(e))))?;
+        let metadata_json = serde_json::to_string(&Value::Object(Default::default()))
+            .map_err(|e| ScheduleLimitError::Store(AgentLoopError::from(LocalError::from(e))))?;
+        let id = schedule.id.to_string();
+        let session = session_id.to_string();
+        let enabled = schedule.enabled as i64;
+        let org_id = self.org_id;
+        let max_per_org = max_active_schedules_per_org();
+
+        let inserted = self
+            .db
+            .with_conn(|conn| {
+                let active_session_count: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM local_schedules
+                     WHERE org_id = ?1 AND session_id = ?2 AND enabled = 1",
+                    rusqlite::params![org_id, session],
+                    |row| row.get(0),
+                )?;
+                let active_org_count: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM local_schedules
+                     WHERE org_id = ?1 AND enabled = 1",
+                    rusqlite::params![org_id],
+                    |row| row.get(0),
+                )?;
+                if active_session_count >= i64::from(MAX_ACTIVE_SCHEDULES_PER_SESSION) {
+                    return Ok(false);
+                }
+                if active_org_count >= max_per_org {
+                    return Ok(false);
+                }
+                conn.execute(
+                    "INSERT INTO local_schedules (id, org_id, session_id, enabled, snapshot, metadata)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    rusqlite::params![id, org_id, session, enabled, snapshot, metadata_json],
+                )?;
+                Ok(true)
+            })
+            .map_err(|e| ScheduleLimitError::Store(AgentLoopError::from(e)))?;
+
+        if inserted {
+            Ok(schedule)
+        } else if self
+            .count_active_schedules(session_id)
+            .await
+            .map_err(ScheduleLimitError::Store)?
+            >= MAX_ACTIVE_SCHEDULES_PER_SESSION
+        {
+            Err(ScheduleLimitError::Rejected(format!(
+                "Maximum {MAX_ACTIVE_SCHEDULES_PER_SESSION} active schedules per session. Cancel an existing schedule first."
+            )))
+        } else {
+            Err(ScheduleLimitError::Rejected(format!(
+                "Maximum {max_per_org} active schedules per org reached. Cancel an existing schedule first."
+            )))
+        }
     }
 
     async fn cancel_schedule(

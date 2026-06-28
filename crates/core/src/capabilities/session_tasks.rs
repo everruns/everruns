@@ -104,15 +104,7 @@ fn require_task_registry(
     })
 }
 
-fn require_str<'a>(args: &'a Value, field: &str) -> Result<&'a str, ToolExecutionResult> {
-    args.get(field)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| {
-            ToolExecutionResult::tool_error(format!("Missing required parameter: {field}"))
-        })
-}
+use super::util::require_str_trimmed as require_str;
 
 async fn load_task(
     context: &ToolContext,

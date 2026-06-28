@@ -122,7 +122,7 @@ inventory.workspace = true
 # tiktoken-rs, clap, tracing-subscriber, crossterm, ratatui) — the driver only
 # uses the in-process library types (generator, latency, openai, script,
 # stream).
-llmsim = { version = "0.5.0", default-features = false, optional = true }
+llmsim = { version = "0.5.1", default-features = false, optional = true }
 
 # OpenUI component definitions and prompt generator
 everruns-openui = { path = "../openui", version = "0.17.1", optional = true }
@@ -172,6 +172,7 @@ llm-tests = []  # LLM integration tests (requires API keys)
 llmsim = ["dep:llmsim"]
 
 [dev-dependencies]
+http = "1"
 tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber.workspace = true
 wiremock = "0.6"
@@ -180,3 +181,18 @@ insta = { version = "1.40", features = ["json", "redactions"] }
 a2a-server.workspace = true
 axum.workspace = true
 tempfile.workspace = true
+
+[[test]]
+name = "mid_turn_reasoning_effort_test"
+path = "tests/mid_turn_reasoning_effort_test.rs"
+required-features = ["llmsim"]
+
+[[test]]
+name = "message_metadata_test"
+path = "tests/message_metadata_test.rs"
+required-features = ["llmsim"]
+
+[[test]]
+name = "reason_atom_test"
+path = "tests/reason_atom_test.rs"
+required-features = ["llmsim"]

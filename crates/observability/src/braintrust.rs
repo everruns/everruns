@@ -40,8 +40,8 @@ use tokio::sync::mpsc;
 use tokio::time::{self, Duration};
 use tracing::{debug, error, info, warn};
 
-use crate::DeploymentGrade;
-use crate::{
+use everruns_core::DeploymentGrade;
+use everruns_core::{
     ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, Event, EventData, EventListener,
     LLM_GENERATION, REASON_COMPLETED, REASON_STARTED, REASON_THINKING_COMPLETED,
     REASON_THINKING_STARTED, ReasonCompletedData, ReasonStartedData, ReasonThinkingCompletedData,
@@ -447,12 +447,15 @@ pub struct BraintrustListener {
 }
 
 impl BraintrustListener {
-    /// Create a new Braintrust listener with the given configuration
-    pub fn new(config: BraintrustConfig) -> Self {
+    /// Create a new Braintrust listener with the given configuration.
+    ///
+    /// Returns `Err` if the HTTP client cannot be constructed (e.g. a
+    /// misconfigured TLS/proxy environment). Telemetry init must never panic
+    /// the host process, so callers should treat this as "Braintrust disabled".
+    pub fn new(config: BraintrustConfig) -> Result<Self, reqwest::Error> {
         let client = Client::builder()
             .timeout(config.delivery.request_timeout)
-            .build()
-            .expect("Failed to create HTTP client");
+            .build()?;
         let (sender, receiver) = mpsc::channel(config.delivery.queue_capacity);
         let state = Arc::new(BraintrustState {
             config,
@@ -473,13 +476,26 @@ impl BraintrustListener {
             );
         }
 
-        Self { state }
+        Ok(Self { state })
     }
 
-    /// Create a new listener from environment configuration
-    /// Returns None if configuration is not available
+    /// Create a new listener from environment configuration.
+    ///
+    /// Returns `None` if configuration is not available OR if the HTTP client
+    /// fails to build. A bad TLS/proxy env var must disable Braintrust, never
+    /// panic the host process during telemetry init.
     pub fn from_env() -> Option<Self> {
-        BraintrustConfig::from_env().map(Self::new)
+        let config = BraintrustConfig::from_env()?;
+        match Self::new(config) {
+            Ok(listener) => Some(listener),
+            Err(err) => {
+                warn!(
+                    error = %err,
+                    "Failed to build Braintrust HTTP client; Braintrust integration disabled"
+                );
+                None
+            }
+        }
     }
 
     fn spawn_delivery_worker(
@@ -791,21 +807,21 @@ impl BraintrustListener {
         }
     }
 
-    fn summarize_content_parts(parts: &[crate::ContentPart]) -> serde_json::Value {
+    fn summarize_content_parts(parts: &[everruns_core::ContentPart]) -> serde_json::Value {
         serde_json::json!({
             "part_count": parts.len(),
             "part_types": parts.iter().map(|part| match part {
-                crate::ContentPart::Text(_) => "text",
-                crate::ContentPart::Image(_) => "image",
-                crate::ContentPart::ImageFile(_) => "image_file",
-                crate::ContentPart::ToolCall(_) => "tool_call",
-                crate::ContentPart::ToolResult(_) => "tool_result",
+                everruns_core::ContentPart::Text(_) => "text",
+                everruns_core::ContentPart::Image(_) => "image",
+                everruns_core::ContentPart::ImageFile(_) => "image_file",
+                everruns_core::ContentPart::ToolCall(_) => "tool_call",
+                everruns_core::ContentPart::ToolResult(_) => "tool_result",
             }).collect::<Vec<_>>(),
-            "text_part_count": parts.iter().filter(|part| matches!(part, crate::ContentPart::Text(_))).count(),
+            "text_part_count": parts.iter().filter(|part| matches!(part, everruns_core::ContentPart::Text(_))).count(),
         })
     }
 
-    fn summarize_messages(messages: &[crate::Message]) -> serde_json::Value {
+    fn summarize_messages(messages: &[everruns_core::Message]) -> serde_json::Value {
         serde_json::json!({
             "message_count": messages.len(),
             "roles": messages.iter().map(|message| message.role.to_string()).collect::<Vec<_>>(),
@@ -855,7 +871,7 @@ impl BraintrustListener {
 
     fn serialize_tool_result(
         &self,
-        result: Option<&Vec<crate::ContentPart>>,
+        result: Option<&Vec<everruns_core::ContentPart>>,
         error: Option<&String>,
     ) -> Option<serde_json::Value> {
         match self.state.config.content.tool_results_mode {
@@ -922,11 +938,14 @@ impl BraintrustListener {
         }
     }
 
-    fn serialize_message_for_llm_input(&self, message: &crate::Message) -> serde_json::Value {
+    fn serialize_message_for_llm_input(
+        &self,
+        message: &everruns_core::Message,
+    ) -> serde_json::Value {
         let mut serialized = message.to_openai_format();
 
         match message.role {
-            crate::MessageRole::Agent if !message.tool_calls().is_empty() => {
+            everruns_core::MessageRole::Agent if !message.tool_calls().is_empty() => {
                 let tool_calls = message
                     .tool_calls()
                     .into_iter()
@@ -940,7 +959,7 @@ impl BraintrustListener {
                     .collect::<Vec<_>>();
                 serialized["tool_calls"] = serde_json::Value::Array(tool_calls);
             }
-            crate::MessageRole::ToolResult => {
+            everruns_core::MessageRole::ToolResult => {
                 if let Some(tool_result) = message.tool_result_content() {
                     serialized["content"] =
                         serde_json::json!(self.serialize_tool_result_message_content(
@@ -955,7 +974,10 @@ impl BraintrustListener {
         serialized
     }
 
-    fn llm_input_payload(&self, data: &crate::LlmGenerationData) -> Option<serde_json::Value> {
+    fn llm_input_payload(
+        &self,
+        data: &everruns_core::LlmGenerationData,
+    ) -> Option<serde_json::Value> {
         if self.state.config.content.record_content {
             let input: Vec<serde_json::Value> = data
                 .messages
@@ -968,7 +990,10 @@ impl BraintrustListener {
         }
     }
 
-    fn llm_output_payload(&self, data: &crate::LlmGenerationData) -> Option<serde_json::Value> {
+    fn llm_output_payload(
+        &self,
+        data: &everruns_core::LlmGenerationData,
+    ) -> Option<serde_json::Value> {
         if self.state.config.content.record_content {
             let tool_calls: Vec<serde_json::Value> = data
                 .output
@@ -1012,7 +1037,7 @@ impl BraintrustListener {
         }
     }
 
-    fn record_turn_started_state(&self, event: &Event, data: &crate::TurnStartedData) {
+    fn record_turn_started_state(&self, event: &Event, data: &everruns_core::TurnStartedData) {
         let turn_id = data.turn_id.to_string();
         self.upsert_turn_state(&turn_id, |turn_state| {
             turn_state.input_message_id = Some(data.input_message_id.to_string());
@@ -1046,7 +1071,7 @@ impl BraintrustListener {
         }
     }
 
-    fn record_llm_state(&self, event: &Event, data: &crate::LlmGenerationData) {
+    fn record_llm_state(&self, event: &Event, data: &everruns_core::LlmGenerationData) {
         if let Some(turn_id) = event.context.turn_id.as_ref().map(ToString::to_string) {
             self.upsert_turn_state(&turn_id, |turn_state| {
                 turn_state.model = Some(data.metadata.model.clone());
@@ -1119,7 +1144,7 @@ impl BraintrustListener {
     fn convert_turn_started(
         &self,
         event: &Event,
-        data: &crate::TurnStartedData,
+        data: &everruns_core::TurnStartedData,
     ) -> BraintrustLogEvent {
         let turn_id = data.turn_id.to_string();
         let mut metadata = serde_json::json!({
@@ -1186,7 +1211,7 @@ impl BraintrustListener {
     fn convert_turn_completed(
         &self,
         event: &Event,
-        data: &crate::TurnCompletedData,
+        data: &everruns_core::TurnCompletedData,
     ) -> BraintrustLogEvent {
         let turn_id = data.turn_id.to_string();
         let mut metadata = serde_json::json!({
@@ -1259,7 +1284,7 @@ impl BraintrustListener {
     fn convert_llm_generation(
         &self,
         event: &Event,
-        data: &crate::LlmGenerationData,
+        data: &everruns_core::LlmGenerationData,
     ) -> BraintrustLogEvent {
         // Build metadata
         let mut metadata = serde_json::json!({
@@ -1351,7 +1376,7 @@ impl BraintrustListener {
     fn convert_tool_call_completed(
         &self,
         event: &Event,
-        data: &crate::ToolCompletedData,
+        data: &everruns_core::ToolCompletedData,
     ) -> BraintrustLogEvent {
         let input = serde_json::json!({
             "tool_call_id": data.tool_call_id,
@@ -2255,14 +2280,14 @@ impl EventListener for BraintrustListener {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::events::{
+    use everruns_core::events::{
         EventContext, EventData, LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput,
         ReasonCompletedData, ReasonStartedData, TokenUsage, ToolCompletedData, ToolStartedData,
         TurnCompletedData, TurnStartedData,
     };
-    use crate::message::Message;
-    use crate::tool_types::ToolCall;
-    use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
+    use everruns_core::message::Message;
+    use everruns_core::tool_types::ToolCall;
+    use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
     use serde_json::json;
     use tokio::time::sleep;
     use uuid::Uuid;
@@ -2286,13 +2311,35 @@ mod tests {
 
     #[test]
     fn test_listener_creation() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         assert_eq!(listener.name(), "BraintrustListener");
+    }
+
+    /// Telemetry init must never panic the host process. `new` returns a
+    /// `Result` so a misconfigured TLS/proxy environment disables Braintrust
+    /// instead of aborting the process. With no env config, `from_env` yields
+    /// `None` (disabled) rather than panicking.
+    #[test]
+    fn test_init_never_panics_and_disables_on_missing_config() {
+        // Valid config builds successfully (Ok, not a panic).
+        assert!(BraintrustListener::new(test_config()).is_ok());
+
+        // `from_env` must not panic; with the API key absent it returns None.
+        // Guard against an ambient key in the environment so the test is
+        // deterministic in any CI/runtime.
+        let key_present = std::env::var("BRAINTRUST_API_KEY").is_ok();
+        let listener = BraintrustListener::from_env();
+        if !key_present {
+            assert!(
+                listener.is_none(),
+                "from_env should disable Braintrust when no API key is configured"
+            );
+        }
     }
 
     #[test]
     fn test_event_types() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let types = listener.event_types().unwrap();
         // 16 event types: 4 turn lifecycle + 4 atom lifecycle + 2 thinking + 1 llm + 2 tool + 3 session lifecycle
         assert_eq!(types.len(), 16);
@@ -2322,7 +2369,7 @@ mod tests {
 
     #[test]
     fn test_convert_turn_started() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
 
         let turn_id = TurnId::new();
         let message_id = MessageId::new();
@@ -2352,7 +2399,7 @@ mod tests {
 
     #[test]
     fn test_convert_llm_generation_with_parent() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
 
         let turn_id = TurnId::new();
 
@@ -2406,7 +2453,7 @@ mod tests {
 
     #[test]
     fn test_convert_turn_completed_with_usage() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
 
         let turn_id = TurnId::new();
 
@@ -2463,7 +2510,7 @@ mod tests {
 
     #[test]
     fn test_turn_events_are_self_referencing_root_spans() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();
         let input_message_id = MessageId::new();
 
@@ -2538,7 +2585,7 @@ mod tests {
 
     #[test]
     fn test_reason_events_have_turn_as_parent() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();
         let reason_span_id = Uuid::now_v7().to_string();
 
@@ -2582,7 +2629,7 @@ mod tests {
 
     #[test]
     fn test_llm_generation_with_span_context_has_reason_as_parent() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();
         let reason_span_id = Uuid::now_v7().to_string();
         let llm_span_id = Uuid::now_v7().to_string();
@@ -2644,9 +2691,9 @@ mod tests {
 
     #[test]
     fn test_act_events_have_turn_as_parent() {
-        use crate::events::ToolCallSummary;
+        use everruns_core::events::ToolCallSummary;
 
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();
         let act_span_id = Uuid::now_v7().to_string();
 
@@ -2702,7 +2749,7 @@ mod tests {
 
     #[test]
     fn test_tool_call_events_have_act_as_parent() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();
         let act_span_id = Uuid::now_v7().to_string();
         let tool_span_id = Uuid::now_v7().to_string();
@@ -2757,7 +2804,7 @@ mod tests {
 
     #[test]
     fn test_started_completed_pairs_share_span_id() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();
         let shared_span_id = Uuid::now_v7().to_string();
 
@@ -2811,9 +2858,9 @@ mod tests {
 
     #[test]
     fn test_all_events_in_trace_share_root_span_id() {
-        use crate::events::ToolCallSummary;
+        use everruns_core::events::ToolCallSummary;
 
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();
         let reason_span_id = Uuid::now_v7().to_string();
         let act_span_id = Uuid::now_v7().to_string();
@@ -2976,7 +3023,7 @@ mod tests {
 
     #[test]
     fn test_is_merge_serialization_started_events() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();
         let input_message_id = MessageId::new();
 
@@ -3010,7 +3057,7 @@ mod tests {
 
     #[test]
     fn test_is_merge_serialization_completed_events() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();
 
         // turn.completed should have is_merge = Some(true)
@@ -3052,7 +3099,7 @@ mod tests {
 
     #[test]
     fn test_is_merge_serialization_reason_events() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();
         let reason_span_id = Uuid::now_v7().to_string();
 
@@ -3107,9 +3154,9 @@ mod tests {
 
     #[test]
     fn test_is_merge_serialization_act_events() {
-        use crate::events::ToolCallSummary;
+        use everruns_core::events::ToolCallSummary;
 
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();
         let act_span_id = Uuid::now_v7().to_string();
 
@@ -3166,9 +3213,9 @@ mod tests {
 
     #[test]
     fn test_is_merge_serialization_tool_events() {
-        use crate::tool_types::ToolCall;
+        use everruns_core::tool_types::ToolCall;
 
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();
         let tool_span_id = Uuid::now_v7().to_string();
         let act_span_id = Uuid::now_v7().to_string();
@@ -3235,7 +3282,7 @@ mod tests {
 
     #[test]
     fn test_convert_reason_thinking_started() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();
         let span_id = Uuid::new_v4().to_string();
 
@@ -3280,7 +3327,7 @@ mod tests {
     fn test_convert_reason_thinking_completed() {
         let mut config = test_config();
         config.content.record_thinking = BraintrustThinkingMode::Full;
-        let listener = BraintrustListener::new(config);
+        let listener = BraintrustListener::new(config).unwrap();
         let turn_id = TurnId::new();
         let span_id = Uuid::new_v4().to_string();
 
@@ -3329,7 +3376,7 @@ mod tests {
 
     #[test]
     fn test_turn_started_metadata_includes_session_grouping_fields() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
         let input_message_id = MessageId::new();
@@ -3373,7 +3420,7 @@ mod tests {
 
     #[test]
     fn test_tool_started_redacts_arguments_when_configured() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();
         let event = Event::new(
             SessionId::new(),
@@ -3414,7 +3461,7 @@ mod tests {
     fn test_tool_started_includes_labels_when_tool_args_full() {
         let mut config = test_config();
         config.content.tool_args_mode = BraintrustPayloadMode::Full;
-        let listener = BraintrustListener::new(config);
+        let listener = BraintrustListener::new(config).unwrap();
         let turn_id = TurnId::new();
         let event = Event::new(
             SessionId::new(),
@@ -3453,7 +3500,7 @@ mod tests {
 
     #[test]
     fn test_turn_started_without_content_recording_omits_input_preview() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();
         let input_message_id = MessageId::new();
         let data = TurnStartedData {
@@ -3476,7 +3523,7 @@ mod tests {
 
     #[test]
     fn test_llm_output_without_content_recording_omits_text_preview() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let data = LlmGenerationData {
             messages: vec![Message::user("Hello")],
             tools: vec![],
@@ -3514,7 +3561,7 @@ mod tests {
     fn test_llm_content_recording_respects_tool_payload_modes() {
         let mut config = test_config();
         config.content.record_content = true;
-        let listener = BraintrustListener::new(config);
+        let listener = BraintrustListener::new(config).unwrap();
         let data = LlmGenerationData {
             messages: vec![
                 Message::assistant_with_tools(
@@ -3578,7 +3625,7 @@ mod tests {
 
     #[test]
     fn test_tool_completed_summary_omits_text_preview() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();
         let data = ToolCompletedData {
             tool_call_id: "call_123".to_string(),
@@ -3588,7 +3635,9 @@ mod tests {
             display_name: None,
             success: true,
             status: "success".to_string(),
-            result: Some(vec![crate::ContentPart::text("sensitive tool output")]),
+            result: Some(vec![everruns_core::ContentPart::text(
+                "sensitive tool output",
+            )]),
             error: None,
             duration_ms: Some(50),
             capability_id: None,
@@ -3616,7 +3665,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_session_idled_prunes_session_state() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
         let input_message_id = MessageId::new();
@@ -3625,7 +3674,7 @@ mod tests {
             .on_event(&Event::new(
                 session_id,
                 EventContext::empty(),
-                EventData::SessionStarted(crate::events::SessionStartedData {
+                EventData::SessionStarted(everruns_core::events::SessionStartedData {
                     harness_id: HarnessId::from_seed(1),
                     agent_id: None,
                     model_id: None,
@@ -3642,7 +3691,7 @@ mod tests {
             .on_event(&Event::new(
                 session_id,
                 EventContext::turn(turn_id, input_message_id),
-                EventData::SessionIdled(crate::events::SessionIdledData {
+                EventData::SessionIdled(everruns_core::events::SessionIdledData {
                     turn_id,
                     iterations: Some(1),
                     usage: None,
@@ -3671,7 +3720,7 @@ mod tests {
         config.api_url = server.uri();
         config.delivery.flush_interval = Duration::from_millis(20);
         config.delivery.max_batch_size = 10;
-        let listener = BraintrustListener::new(config);
+        let listener = BraintrustListener::new(config).unwrap();
 
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
@@ -3734,7 +3783,7 @@ mod tests {
         config.delivery.flush_interval = Duration::from_millis(10);
         config.delivery.base_retry_delay = Duration::from_millis(5);
         config.delivery.max_retry_delay = Duration::from_millis(10);
-        let listener = BraintrustListener::new(config);
+        let listener = BraintrustListener::new(config).unwrap();
 
         let turn_id = TurnId::new();
         let input_message_id = MessageId::new();
@@ -3778,7 +3827,7 @@ mod tests {
         config.delivery.request_timeout = Duration::from_millis(10);
         config.delivery.base_retry_delay = Duration::from_millis(5);
         config.delivery.max_retry_delay = Duration::from_millis(10);
-        let listener = BraintrustListener::new(config);
+        let listener = BraintrustListener::new(config).unwrap();
 
         let session_id = SessionId::new();
         let turn_id = TurnId::new();
@@ -3803,7 +3852,7 @@ mod tests {
 
     #[test]
     fn test_thinking_spans_merge_correctly() {
-        let listener = BraintrustListener::new(test_config());
+        let listener = BraintrustListener::new(test_config()).unwrap();
         let turn_id = TurnId::new();
         let span_id = Uuid::new_v4().to_string();
 

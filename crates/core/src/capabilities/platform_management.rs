@@ -205,31 +205,15 @@ impl Capability for PlatformManagementCapability {
 }
 
 // =============================================================================
-// Helper: extract platform_store from context
+// Helper: argument extraction / typed-ID parsing / store lookup
 // =============================================================================
+//
+// Canonical scaffolding lives in `super::util`. Tool logic lives in `_impl`
+// functions returning `Result<ToolExecutionResult, ToolExecutionResult>` so the
+// helpers compose with `?`; each trait `execute_with_context` calls the `_impl`
+// via `.unwrap_or_else(|e| e)`.
 
-fn get_platform_store(
-    context: &ToolContext,
-) -> Result<&dyn crate::platform_store::PlatformStore, ToolExecutionResult> {
-    match &context.platform_store {
-        Some(store) => Ok(store.as_ref()),
-        None => Err(ToolExecutionResult::tool_error(
-            "Platform management not available in this context. Ensure the platform_management capability is enabled.",
-        )),
-    }
-}
-
-fn get_str<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
-    args.get(key)
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-}
-
-fn require_str<'a>(args: &'a Value, key: &str) -> Result<&'a str, ToolExecutionResult> {
-    get_str(args, key).ok_or_else(|| {
-        ToolExecutionResult::tool_error(format!("Missing required parameter: {key}"))
-    })
-}
+use super::util::{get_platform_store, get_str, parse_id, require_id, require_str};
 
 fn parse_bounded_usize_arg(
     args: &Value,
@@ -365,65 +349,63 @@ impl Tool for ReadHarnessesTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-
-        let base_url = store.base_url();
-
-        if let Some(id_str) = get_str(&arguments, "id") {
-            let id = match id_str.parse::<crate::typed_id::HarnessId>() {
-                Ok(id) => id,
-                Err(_) => {
-                    return ToolExecutionResult::tool_error(format!(
-                        "Invalid harness id: {id_str}"
-                    ));
-                }
-            };
-            match store.get_harness(id).await {
-                Ok(Some(h)) => ToolExecutionResult::success(json!({
-                    "id": h.id.to_string(),
-                    "name": h.name,
-                    "display_name": h.display_name,
-                    "description": h.description,
-                    "system_prompt": h.system_prompt,
-                    "status": format!("{:?}", h.status),
-                    "capabilities": h.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
-                    "tags": h.tags,
-                    "ui_link": format!("{}/harnesses/{}", base_url, h.id),
-                })),
-                Ok(None) => ToolExecutionResult::tool_error(format!("Harness not found: {id_str}")),
-                Err(e) => ToolExecutionResult::tool_error(format!("Failed to get harness: {e}")),
-            }
-        } else {
-            match store.list_harnesses().await {
-                Ok(harnesses) => {
-                    let items: Vec<Value> = harnesses
-                        .iter()
-                        .map(|h| {
-                            json!({
-                                "id": h.id.to_string(),
-                                "name": h.name,
-                                "display_name": h.display_name,
-                                "description": h.description,
-                                "status": format!("{:?}", h.status),
-                                "capabilities": h.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
-                                "tags": h.tags,
-                                "ui_link": format!("{}/harnesses/{}", base_url, h.id),
-                            })
-                        })
-                        .collect();
-                    ToolExecutionResult::success(json!({"harnesses": items, "count": items.len()}))
-                }
-                Err(e) => ToolExecutionResult::tool_error(format!("Failed to list harnesses: {e}")),
-            }
-        }
+        read_harnesses_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn read_harnesses_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let store = get_platform_store(context)?;
+    let base_url = store.base_url();
+
+    if let Some(id_str) = get_str(&arguments, "id") {
+        let id: crate::typed_id::HarnessId = parse_id(id_str, "harness id")?;
+        return Ok(match store.get_harness(id).await {
+            Ok(Some(h)) => ToolExecutionResult::success(json!({
+                "id": h.id.to_string(),
+                "name": h.name,
+                "display_name": h.display_name,
+                "description": h.description,
+                "system_prompt": h.system_prompt,
+                "status": format!("{:?}", h.status),
+                "capabilities": h.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
+                "tags": h.tags,
+                "ui_link": format!("{}/harnesses/{}", base_url, h.id),
+            })),
+            Ok(None) => ToolExecutionResult::tool_error(format!("Harness not found: {id_str}")),
+            Err(e) => ToolExecutionResult::tool_error(format!("Failed to get harness: {e}")),
+        });
+    }
+
+    Ok(match store.list_harnesses().await {
+        Ok(harnesses) => {
+            let items: Vec<Value> = harnesses
+                .iter()
+                .map(|h| {
+                    json!({
+                        "id": h.id.to_string(),
+                        "name": h.name,
+                        "display_name": h.display_name,
+                        "description": h.description,
+                        "status": format!("{:?}", h.status),
+                        "capabilities": h.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
+                        "tags": h.tags,
+                        "ui_link": format!("{}/harnesses/{}", base_url, h.id),
+                    })
+                })
+                .collect();
+            ToolExecutionResult::success(json!({"harnesses": items, "count": items.len()}))
+        }
+        Err(e) => ToolExecutionResult::tool_error(format!("Failed to list harnesses: {e}")),
+    })
 }
 
 // =============================================================================
@@ -505,213 +487,158 @@ impl Tool for ManageHarnessesTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-
-        let operation = match require_str(&arguments, "operation") {
-            Ok(op) => op,
-            Err(e) => return e,
-        };
-
-        let base_url = store.base_url();
-
-        match operation {
-            "create" => {
-                let name = match require_str(&arguments, "name") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let display_name = match require_str(&arguments, "display_name") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                // Optional: when omitted the harness contributes no base prompt.
-                let system_prompt = get_str(&arguments, "system_prompt");
-                let description = get_str(&arguments, "description");
-                let parent_harness_id = match arguments.get("parent_harness_id") {
-                    Some(Value::String(id_str)) => {
-                        match id_str.parse::<crate::typed_id::HarnessId>() {
-                            Ok(id) => Some(id),
-                            Err(_) => {
-                                return ToolExecutionResult::tool_error(format!(
-                                    "Invalid parent_harness_id: {id_str}"
-                                ));
-                            }
-                        }
-                    }
-                    Some(Value::Null) | None => None,
-                    Some(_) => {
-                        return ToolExecutionResult::tool_error(
-                            "parent_harness_id must be a harness ID string or null",
-                        );
-                    }
-                };
-                let capabilities: Vec<String> = arguments
-                    .get("capabilities")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                match store
-                    .create_harness(
-                        name,
-                        Some(display_name),
-                        description,
-                        system_prompt,
-                        parent_harness_id,
-                        &capabilities,
-                    )
-                    .await
-                {
-                    Ok(h) => ToolExecutionResult::success(json!({
-                        "id": h.id.to_string(),
-                        "name": h.name,
-                        "display_name": h.display_name,
-                        "description": h.description,
-                        "parent_harness_id": h.parent_harness_id.map(|id| id.to_string()),
-                        "status": format!("{:?}", h.status),
-                        "ui_link": format!("{}/harnesses/{}", base_url, h.id),
-                        "message": "Harness created successfully"
-                    })),
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to create harness: {e}"))
-                    }
-                }
-            }
-
-            "update" => {
-                let id_str = match require_str(&arguments, "harness_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let id = match id_str.parse::<crate::typed_id::HarnessId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid harness_id: {id_str}"
-                        ));
-                    }
-                };
-                let name = get_str(&arguments, "name");
-                let display_name = get_str(&arguments, "display_name");
-                let description = get_str(&arguments, "description");
-                let system_prompt = get_str(&arguments, "system_prompt");
-                let parent_harness_id = match arguments.get("parent_harness_id") {
-                    Some(Value::String(id_str)) => {
-                        match id_str.parse::<crate::typed_id::HarnessId>() {
-                            Ok(id) => Some(Some(id)),
-                            Err(_) => {
-                                return ToolExecutionResult::tool_error(format!(
-                                    "Invalid parent_harness_id: {id_str}"
-                                ));
-                            }
-                        }
-                    }
-                    Some(Value::Null) => Some(None),
-                    None => None,
-                    Some(_) => {
-                        return ToolExecutionResult::tool_error(
-                            "parent_harness_id must be a harness ID string or null",
-                        );
-                    }
-                };
-                match store
-                    .update_harness(
-                        id,
-                        name,
-                        display_name,
-                        description,
-                        system_prompt,
-                        parent_harness_id,
-                    )
-                    .await
-                {
-                    Ok(h) => ToolExecutionResult::success(json!({
-                        "id": h.id.to_string(),
-                        "name": h.name,
-                        "display_name": h.display_name,
-                        "description": h.description,
-                        "parent_harness_id": h.parent_harness_id.map(|id| id.to_string()),
-                        "status": format!("{:?}", h.status),
-                        "ui_link": format!("{}/harnesses/{}", base_url, h.id),
-                        "message": "Harness updated successfully"
-                    })),
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to update harness: {e}"))
-                    }
-                }
-            }
-
-            "delete" => {
-                let id_str = match require_str(&arguments, "harness_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let id = match id_str.parse::<crate::typed_id::HarnessId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid harness_id: {id_str}"
-                        ));
-                    }
-                };
-                match store.delete_harness(id).await {
-                    Ok(()) => ToolExecutionResult::success(json!({
-                        "harness_id": id_str,
-                        "ui_link": format!("{}/harnesses/{}", base_url, id_str),
-                        "message": "Harness archived successfully"
-                    })),
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to delete harness: {e}"))
-                    }
-                }
-            }
-
-            "copy" => {
-                let id_str = match require_str(&arguments, "harness_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let id = match id_str.parse::<crate::typed_id::HarnessId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid harness_id: {id_str}"
-                        ));
-                    }
-                };
-                let new_name = get_str(&arguments, "new_name");
-                match store.copy_harness(id, new_name).await {
-                    Ok(h) => ToolExecutionResult::success(json!({
-                        "id": h.id.to_string(),
-                        "name": h.name,
-                        "display_name": h.display_name,
-                        "description": h.description,
-                        "status": format!("{:?}", h.status),
-                        "ui_link": format!("{}/harnesses/{}", base_url, h.id),
-                        "source_harness_id": id_str,
-                        "message": "Harness copied successfully"
-                    })),
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to copy harness: {e}"))
-                    }
-                }
-            }
-
-            _ => ToolExecutionResult::tool_error(format!(
-                "Unknown operation: {operation}. Valid: create, update, delete, copy"
-            )),
-        }
+        manage_harnesses_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn manage_harnesses_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let store = get_platform_store(context)?;
+    let operation = require_str(&arguments, "operation")?;
+    let base_url = store.base_url();
+
+    Ok(match operation {
+        "create" => {
+            let name = require_str(&arguments, "name")?;
+            let display_name = require_str(&arguments, "display_name")?;
+            // Optional: when omitted the harness contributes no base prompt.
+            let system_prompt = get_str(&arguments, "system_prompt");
+            let description = get_str(&arguments, "description");
+            let parent_harness_id = match arguments.get("parent_harness_id") {
+                Some(Value::String(id_str)) => Some(parse_id::<crate::typed_id::HarnessId>(
+                    id_str,
+                    "parent_harness_id",
+                )?),
+                Some(Value::Null) | None => None,
+                Some(_) => {
+                    return Ok(ToolExecutionResult::tool_error(
+                        "parent_harness_id must be a harness ID string or null",
+                    ));
+                }
+            };
+            let capabilities: Vec<String> = arguments
+                .get("capabilities")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            match store
+                .create_harness(
+                    name,
+                    Some(display_name),
+                    description,
+                    system_prompt,
+                    parent_harness_id,
+                    &capabilities,
+                )
+                .await
+            {
+                Ok(h) => ToolExecutionResult::success(json!({
+                    "id": h.id.to_string(),
+                    "name": h.name,
+                    "display_name": h.display_name,
+                    "description": h.description,
+                    "parent_harness_id": h.parent_harness_id.map(|id| id.to_string()),
+                    "status": format!("{:?}", h.status),
+                    "ui_link": format!("{}/harnesses/{}", base_url, h.id),
+                    "message": "Harness created successfully"
+                })),
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to create harness: {e}")),
+            }
+        }
+
+        "update" => {
+            let id_str = require_str(&arguments, "harness_id")?;
+            let id: crate::typed_id::HarnessId = parse_id(id_str, "harness_id")?;
+            let name = get_str(&arguments, "name");
+            let display_name = get_str(&arguments, "display_name");
+            let description = get_str(&arguments, "description");
+            let system_prompt = get_str(&arguments, "system_prompt");
+            let parent_harness_id = match arguments.get("parent_harness_id") {
+                Some(Value::String(id_str)) => Some(Some(parse_id::<crate::typed_id::HarnessId>(
+                    id_str,
+                    "parent_harness_id",
+                )?)),
+                Some(Value::Null) => Some(None),
+                None => None,
+                Some(_) => {
+                    return Ok(ToolExecutionResult::tool_error(
+                        "parent_harness_id must be a harness ID string or null",
+                    ));
+                }
+            };
+            match store
+                .update_harness(
+                    id,
+                    name,
+                    display_name,
+                    description,
+                    system_prompt,
+                    parent_harness_id,
+                )
+                .await
+            {
+                Ok(h) => ToolExecutionResult::success(json!({
+                    "id": h.id.to_string(),
+                    "name": h.name,
+                    "display_name": h.display_name,
+                    "description": h.description,
+                    "parent_harness_id": h.parent_harness_id.map(|id| id.to_string()),
+                    "status": format!("{:?}", h.status),
+                    "ui_link": format!("{}/harnesses/{}", base_url, h.id),
+                    "message": "Harness updated successfully"
+                })),
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to update harness: {e}")),
+            }
+        }
+
+        "delete" => {
+            let id_str = require_str(&arguments, "harness_id")?;
+            let id: crate::typed_id::HarnessId = parse_id(id_str, "harness_id")?;
+            match store.delete_harness(id).await {
+                Ok(()) => ToolExecutionResult::success(json!({
+                    "harness_id": id_str,
+                    "ui_link": format!("{}/harnesses/{}", base_url, id_str),
+                    "message": "Harness archived successfully"
+                })),
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to delete harness: {e}")),
+            }
+        }
+
+        "copy" => {
+            let id_str = require_str(&arguments, "harness_id")?;
+            let id: crate::typed_id::HarnessId = parse_id(id_str, "harness_id")?;
+            let new_name = get_str(&arguments, "new_name");
+            match store.copy_harness(id, new_name).await {
+                Ok(h) => ToolExecutionResult::success(json!({
+                    "id": h.id.to_string(),
+                    "name": h.name,
+                    "display_name": h.display_name,
+                    "description": h.description,
+                    "status": format!("{:?}", h.status),
+                    "ui_link": format!("{}/harnesses/{}", base_url, h.id),
+                    "source_harness_id": id_str,
+                    "message": "Harness copied successfully"
+                })),
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to copy harness: {e}")),
+            }
+        }
+
+        _ => ToolExecutionResult::tool_error(format!(
+            "Unknown operation: {operation}. Valid: create, update, delete, copy"
+        )),
+    })
 }
 
 // =============================================================================
@@ -764,63 +691,63 @@ impl Tool for ReadAgentsTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-
-        let base_url = store.base_url();
-
-        if let Some(id_str) = get_str(&arguments, "id") {
-            let id = match id_str.parse::<crate::typed_id::AgentId>() {
-                Ok(id) => id,
-                Err(_) => {
-                    return ToolExecutionResult::tool_error(format!("Invalid agent id: {id_str}"));
-                }
-            };
-            match store.get_agent_by_id(id).await {
-                Ok(Some(a)) => ToolExecutionResult::success(json!({
-                    "id": a.public_id.to_string(),
-                    "name": a.name,
-                    "display_name": a.display_name,
-                    "description": a.description,
-                    "system_prompt": a.system_prompt,
-                    "status": format!("{:?}", a.status),
-                    "capabilities": a.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
-                    "tags": a.tags,
-                    "ui_link": format!("{}/agents/{}", base_url, a.public_id),
-                })),
-                Ok(None) => ToolExecutionResult::tool_error(format!("Agent not found: {id_str}")),
-                Err(e) => ToolExecutionResult::tool_error(format!("Failed to get agent: {e}")),
-            }
-        } else {
-            match store.list_agents().await {
-                Ok(agents) => {
-                    let items: Vec<Value> = agents
-                        .iter()
-                        .map(|a| {
-                            json!({
-                                "id": a.public_id.to_string(),
-                                "name": a.name,
-                                "display_name": a.display_name,
-                                "description": a.description,
-                                "status": format!("{:?}", a.status),
-                                "capabilities": a.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
-                                "tags": a.tags,
-                                "ui_link": format!("{}/agents/{}", base_url, a.public_id),
-                            })
-                        })
-                        .collect();
-                    ToolExecutionResult::success(json!({"agents": items, "count": items.len()}))
-                }
-                Err(e) => ToolExecutionResult::tool_error(format!("Failed to list agents: {e}")),
-            }
-        }
+        read_agents_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn read_agents_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let store = get_platform_store(context)?;
+    let base_url = store.base_url();
+
+    if let Some(id_str) = get_str(&arguments, "id") {
+        let id: crate::typed_id::AgentId = parse_id(id_str, "agent id")?;
+        return Ok(match store.get_agent_by_id(id).await {
+            Ok(Some(a)) => ToolExecutionResult::success(json!({
+                "id": a.public_id.to_string(),
+                "name": a.name,
+                "display_name": a.display_name,
+                "description": a.description,
+                "system_prompt": a.system_prompt,
+                "status": format!("{:?}", a.status),
+                "capabilities": a.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
+                "tags": a.tags,
+                "ui_link": format!("{}/agents/{}", base_url, a.public_id),
+            })),
+            Ok(None) => ToolExecutionResult::tool_error(format!("Agent not found: {id_str}")),
+            Err(e) => ToolExecutionResult::tool_error(format!("Failed to get agent: {e}")),
+        });
+    }
+
+    Ok(match store.list_agents().await {
+        Ok(agents) => {
+            let items: Vec<Value> = agents
+                .iter()
+                .map(|a| {
+                    json!({
+                        "id": a.public_id.to_string(),
+                        "name": a.name,
+                        "display_name": a.display_name,
+                        "description": a.description,
+                        "status": format!("{:?}", a.status),
+                        "capabilities": a.capabilities.iter().map(|c| c.capability_id().to_string()).collect::<Vec<_>>(),
+                        "tags": a.tags,
+                        "ui_link": format!("{}/agents/{}", base_url, a.public_id),
+                    })
+                })
+                .collect();
+            ToolExecutionResult::success(json!({"agents": items, "count": items.len()}))
+        }
+        Err(e) => ToolExecutionResult::tool_error(format!("Failed to list agents: {e}")),
+    })
 }
 
 // =============================================================================
@@ -898,140 +825,116 @@ impl Tool for ManageAgentsTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-
-        let operation = match require_str(&arguments, "operation") {
-            Ok(op) => op,
-            Err(e) => return e,
-        };
-
-        let base_url = store.base_url();
-
-        match operation {
-            "create" => {
-                let name = match require_str(&arguments, "name") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                if let Err(msg) = crate::agent::validate_addressable_name(name) {
-                    return ToolExecutionResult::tool_error(format!("Invalid agent name: {msg}"));
-                }
-                let display_name = get_str(&arguments, "display_name");
-                let system_prompt =
-                    get_str(&arguments, "system_prompt").unwrap_or("You are a helpful assistant.");
-                let description = get_str(&arguments, "description");
-                let capabilities: Vec<String> = arguments
-                    .get("capabilities")
-                    .and_then(|v| v.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                match store
-                    .create_agent(
-                        name,
-                        display_name,
-                        description,
-                        system_prompt,
-                        &capabilities,
-                    )
-                    .await
-                {
-                    Ok(a) => ToolExecutionResult::success(json!({
-                        "id": a.public_id.to_string(),
-                        "name": a.name,
-                        "display_name": a.display_name,
-                        "description": a.description,
-                        "status": format!("{:?}", a.status),
-                        "ui_link": format!("{}/agents/{}", base_url, a.public_id),
-                        "message": "Agent created successfully"
-                    })),
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to create agent: {e}"))
-                    }
-                }
-            }
-
-            "update" => {
-                let id_str = match require_str(&arguments, "agent_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let id = match id_str.parse::<crate::typed_id::AgentId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid agent_id: {id_str}"
-                        ));
-                    }
-                };
-                let name = get_str(&arguments, "name");
-                if let Some(n) = name
-                    && let Err(msg) = crate::agent::validate_addressable_name(n)
-                {
-                    return ToolExecutionResult::tool_error(format!("Invalid agent name: {msg}"));
-                }
-                let display_name = get_str(&arguments, "display_name");
-                let description = get_str(&arguments, "description");
-                let system_prompt = get_str(&arguments, "system_prompt");
-                match store
-                    .update_agent(id, name, display_name, description, system_prompt)
-                    .await
-                {
-                    Ok(a) => ToolExecutionResult::success(json!({
-                        "id": a.public_id.to_string(),
-                        "name": a.name,
-                        "display_name": a.display_name,
-                        "description": a.description,
-                        "status": format!("{:?}", a.status),
-                        "ui_link": format!("{}/agents/{}", base_url, a.public_id),
-                        "message": "Agent updated successfully"
-                    })),
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to update agent: {e}"))
-                    }
-                }
-            }
-
-            "delete" => {
-                let id_str = match require_str(&arguments, "agent_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let id = match id_str.parse::<crate::typed_id::AgentId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid agent_id: {id_str}"
-                        ));
-                    }
-                };
-                match store.delete_agent(id).await {
-                    Ok(()) => ToolExecutionResult::success(json!({
-                        "agent_id": id_str,
-                        "ui_link": format!("{}/agents/{}", base_url, id_str),
-                        "message": "Agent archived successfully"
-                    })),
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to delete agent: {e}"))
-                    }
-                }
-            }
-
-            _ => ToolExecutionResult::tool_error(format!(
-                "Unknown operation: {operation}. Valid: create, update, delete"
-            )),
-        }
+        manage_agents_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn manage_agents_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let store = get_platform_store(context)?;
+    let operation = require_str(&arguments, "operation")?;
+    let base_url = store.base_url();
+
+    Ok(match operation {
+        "create" => {
+            let name = require_str(&arguments, "name")?;
+            if let Err(msg) = crate::agent::validate_addressable_name(name) {
+                return Ok(ToolExecutionResult::tool_error(format!(
+                    "Invalid agent name: {msg}"
+                )));
+            }
+            let display_name = get_str(&arguments, "display_name");
+            let system_prompt =
+                get_str(&arguments, "system_prompt").unwrap_or("You are a helpful assistant.");
+            let description = get_str(&arguments, "description");
+            let capabilities: Vec<String> = arguments
+                .get("capabilities")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            match store
+                .create_agent(
+                    name,
+                    display_name,
+                    description,
+                    system_prompt,
+                    &capabilities,
+                )
+                .await
+            {
+                Ok(a) => ToolExecutionResult::success(json!({
+                    "id": a.public_id.to_string(),
+                    "name": a.name,
+                    "display_name": a.display_name,
+                    "description": a.description,
+                    "status": format!("{:?}", a.status),
+                    "ui_link": format!("{}/agents/{}", base_url, a.public_id),
+                    "message": "Agent created successfully"
+                })),
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to create agent: {e}")),
+            }
+        }
+
+        "update" => {
+            let id_str = require_str(&arguments, "agent_id")?;
+            let id: crate::typed_id::AgentId = parse_id(id_str, "agent_id")?;
+            let name = get_str(&arguments, "name");
+            if let Some(n) = name
+                && let Err(msg) = crate::agent::validate_addressable_name(n)
+            {
+                return Ok(ToolExecutionResult::tool_error(format!(
+                    "Invalid agent name: {msg}"
+                )));
+            }
+            let display_name = get_str(&arguments, "display_name");
+            let description = get_str(&arguments, "description");
+            let system_prompt = get_str(&arguments, "system_prompt");
+            match store
+                .update_agent(id, name, display_name, description, system_prompt)
+                .await
+            {
+                Ok(a) => ToolExecutionResult::success(json!({
+                    "id": a.public_id.to_string(),
+                    "name": a.name,
+                    "display_name": a.display_name,
+                    "description": a.description,
+                    "status": format!("{:?}", a.status),
+                    "ui_link": format!("{}/agents/{}", base_url, a.public_id),
+                    "message": "Agent updated successfully"
+                })),
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to update agent: {e}")),
+            }
+        }
+
+        "delete" => {
+            let id_str = require_str(&arguments, "agent_id")?;
+            let id: crate::typed_id::AgentId = parse_id(id_str, "agent_id")?;
+            match store.delete_agent(id).await {
+                Ok(()) => ToolExecutionResult::success(json!({
+                    "agent_id": id_str,
+                    "ui_link": format!("{}/agents/{}", base_url, id_str),
+                    "message": "Agent archived successfully"
+                })),
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to delete agent: {e}")),
+            }
+        }
+
+        _ => ToolExecutionResult::tool_error(format!(
+            "Unknown operation: {operation}. Valid: create, update, delete"
+        )),
+    })
 }
 
 // =============================================================================
@@ -1092,47 +995,47 @@ impl Tool for ReadAppsTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-
-        let base_url = store.base_url();
-
-        if let Some(id_str) = get_str(&arguments, "id") {
-            let id = match id_str.parse::<crate::typed_id::AppId>() {
-                Ok(id) => id,
-                Err(_) => {
-                    return ToolExecutionResult::tool_error(format!("Invalid app id: {id_str}"));
-                }
-            };
-            match store.get_app(id).await {
-                Ok(Some(app)) => ToolExecutionResult::success(app_json(&app, base_url, true)),
-                Ok(None) => ToolExecutionResult::tool_error(format!("App not found: {id_str}")),
-                Err(e) => ToolExecutionResult::tool_error(format!("Failed to get app: {e}")),
-            }
-        } else {
-            let search = get_str(&arguments, "search");
-            let include_archived = arguments
-                .get("include_archived")
-                .and_then(|value| value.as_bool())
-                .unwrap_or(false);
-            match store.list_apps(search, include_archived).await {
-                Ok(apps) => {
-                    let items = apps
-                        .iter()
-                        .map(|app| app_json(app, base_url, false))
-                        .collect::<Vec<_>>();
-                    ToolExecutionResult::success(json!({"apps": items, "count": items.len()}))
-                }
-                Err(e) => ToolExecutionResult::tool_error(format!("Failed to list apps: {e}")),
-            }
-        }
+        read_apps_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn read_apps_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let store = get_platform_store(context)?;
+    let base_url = store.base_url();
+
+    if let Some(id_str) = get_str(&arguments, "id") {
+        let id: crate::typed_id::AppId = parse_id(id_str, "app id")?;
+        return Ok(match store.get_app(id).await {
+            Ok(Some(app)) => ToolExecutionResult::success(app_json(&app, base_url, true)),
+            Ok(None) => ToolExecutionResult::tool_error(format!("App not found: {id_str}")),
+            Err(e) => ToolExecutionResult::tool_error(format!("Failed to get app: {e}")),
+        });
+    }
+
+    let search = get_str(&arguments, "search");
+    let include_archived = arguments
+        .get("include_archived")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false);
+    Ok(match store.list_apps(search, include_archived).await {
+        Ok(apps) => {
+            let items = apps
+                .iter()
+                .map(|app| app_json(app, base_url, false))
+                .collect::<Vec<_>>();
+            ToolExecutionResult::success(json!({"apps": items, "count": items.len()}))
+        }
+        Err(e) => ToolExecutionResult::tool_error(format!("Failed to list apps: {e}")),
+    })
 }
 
 // =============================================================================
@@ -1218,285 +1121,181 @@ impl Tool for ManageAppsTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-
-        let operation = match require_str(&arguments, "operation") {
-            Ok(op) => op,
-            Err(e) => return e,
-        };
-
-        let base_url = store.base_url();
-
-        match operation {
-            "create" => {
-                let name = match require_str(&arguments, "name") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let harness_id_str = match require_str(&arguments, "harness_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let harness_id = match harness_id_str.parse::<crate::typed_id::HarnessId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid harness_id: {harness_id_str}"
-                        ));
-                    }
-                };
-                let description = get_str(&arguments, "description");
-                let agent_id = match get_str(&arguments, "agent_id") {
-                    Some(value) => match value.parse::<crate::typed_id::AgentId>() {
-                        Ok(id) => Some(id),
-                        Err(_) => {
-                            return ToolExecutionResult::tool_error(format!(
-                                "Invalid agent_id: {value}"
-                            ));
-                        }
-                    },
-                    None => None,
-                };
-                let agent_identity_id = if let Some(value) = arguments.get("agent_identity_id") {
-                    if value.is_null() {
-                        None
-                    } else if let Some(value) = value.as_str() {
-                        match value.parse::<crate::typed_id::AgentIdentityId>() {
-                            Ok(id) => Some(id),
-                            Err(_) => {
-                                return ToolExecutionResult::tool_error(format!(
-                                    "Invalid agent_identity_id: {value}"
-                                ));
-                            }
-                        }
-                    } else {
-                        return ToolExecutionResult::tool_error(
-                            "agent_identity_id must be a string or null",
-                        );
-                    }
-                } else {
-                    None
-                };
-                let channel_type = match get_str(&arguments, "channel_type") {
-                    Some(value) => match parse_channel_type(value, "channel_type") {
-                        Ok(channel_type) => Some(channel_type),
-                        Err(error) => return error,
-                    },
-                    None => None,
-                };
-                let channel_config = arguments.get("channel_config");
-
-                match store
-                    .create_app(
-                        name,
-                        description,
-                        harness_id,
-                        agent_id,
-                        agent_identity_id,
-                        channel_type,
-                        channel_config,
-                    )
-                    .await
-                {
-                    Ok(app) => {
-                        let mut response = app_json(&app, base_url, true);
-                        response["message"] = Value::String("App created successfully".to_string());
-                        ToolExecutionResult::success(response)
-                    }
-                    Err(e) => ToolExecutionResult::tool_error(format!("Failed to create app: {e}")),
-                }
-            }
-
-            "update" => {
-                let app_id_str = match require_str(&arguments, "app_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let app_id = match app_id_str.parse::<crate::typed_id::AppId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid app_id: {app_id_str}"
-                        ));
-                    }
-                };
-                let harness_id = match get_str(&arguments, "harness_id") {
-                    Some(value) => match value.parse::<crate::typed_id::HarnessId>() {
-                        Ok(id) => Some(id),
-                        Err(_) => {
-                            return ToolExecutionResult::tool_error(format!(
-                                "Invalid harness_id: {value}"
-                            ));
-                        }
-                    },
-                    None => None,
-                };
-                let agent_id = match get_str(&arguments, "agent_id") {
-                    Some(value) => match value.parse::<crate::typed_id::AgentId>() {
-                        Ok(id) => Some(id),
-                        Err(_) => {
-                            return ToolExecutionResult::tool_error(format!(
-                                "Invalid agent_id: {value}"
-                            ));
-                        }
-                    },
-                    None => None,
-                };
-                let agent_identity_id = if let Some(value) = arguments.get("agent_identity_id") {
-                    if value.is_null() {
-                        Some(None)
-                    } else if let Some(value) = value.as_str() {
-                        match value.parse::<crate::typed_id::AgentIdentityId>() {
-                            Ok(id) => Some(Some(id)),
-                            Err(_) => {
-                                return ToolExecutionResult::tool_error(format!(
-                                    "Invalid agent_identity_id: {value}"
-                                ));
-                            }
-                        }
-                    } else {
-                        return ToolExecutionResult::tool_error(
-                            "agent_identity_id must be a string or null",
-                        );
-                    }
-                } else {
-                    None
-                };
-
-                match store
-                    .update_app(
-                        app_id,
-                        get_str(&arguments, "name"),
-                        get_str(&arguments, "description"),
-                        harness_id,
-                        agent_id,
-                        agent_identity_id,
-                    )
-                    .await
-                {
-                    Ok(app) => {
-                        let mut response = app_json(&app, base_url, true);
-                        response["message"] = Value::String("App updated successfully".to_string());
-                        ToolExecutionResult::success(response)
-                    }
-                    Err(e) => ToolExecutionResult::tool_error(format!("Failed to update app: {e}")),
-                }
-            }
-
-            "delete" => {
-                let app_id_str = match require_str(&arguments, "app_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let app_id = match app_id_str.parse::<crate::typed_id::AppId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid app_id: {app_id_str}"
-                        ));
-                    }
-                };
-                match store.delete_app(app_id).await {
-                    Ok(()) => ToolExecutionResult::success(json!({
-                        "app_id": app_id_str,
-                        "ui_link": format!("{}/apps/{}", base_url, app_id_str),
-                        "message": "App archived successfully"
-                    })),
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to archive app: {e}"))
-                    }
-                }
-            }
-
-            "destroy" => {
-                let app_id_str = match require_str(&arguments, "app_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let app_id = match app_id_str.parse::<crate::typed_id::AppId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid app_id: {app_id_str}"
-                        ));
-                    }
-                };
-                match store.destroy_app(app_id).await {
-                    Ok(()) => ToolExecutionResult::success(json!({
-                        "app_id": app_id_str,
-                        "ui_link": format!("{}/apps", base_url),
-                        "message": "App destroyed successfully"
-                    })),
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to destroy app: {e}"))
-                    }
-                }
-            }
-
-            "publish" => {
-                let app_id_str = match require_str(&arguments, "app_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let app_id = match app_id_str.parse::<crate::typed_id::AppId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid app_id: {app_id_str}"
-                        ));
-                    }
-                };
-                match store.publish_app(app_id).await {
-                    Ok(app) => {
-                        let mut response = app_json(&app, base_url, true);
-                        response["message"] =
-                            Value::String("App published successfully".to_string());
-                        ToolExecutionResult::success(response)
-                    }
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to publish app: {e}"))
-                    }
-                }
-            }
-
-            "unpublish" => {
-                let app_id_str = match require_str(&arguments, "app_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let app_id = match app_id_str.parse::<crate::typed_id::AppId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid app_id: {app_id_str}"
-                        ));
-                    }
-                };
-                match store.unpublish_app(app_id).await {
-                    Ok(app) => {
-                        let mut response = app_json(&app, base_url, true);
-                        response["message"] =
-                            Value::String("App unpublished successfully".to_string());
-                        ToolExecutionResult::success(response)
-                    }
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to unpublish app: {e}"))
-                    }
-                }
-            }
-
-            _ => ToolExecutionResult::tool_error(format!(
-                "Unknown operation: {operation}. Valid: create, update, delete, destroy, publish, unpublish"
-            )),
-        }
+        manage_apps_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn manage_apps_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let store = get_platform_store(context)?;
+    let operation = require_str(&arguments, "operation")?;
+    let base_url = store.base_url();
+
+    Ok(match operation {
+        "create" => {
+            let name = require_str(&arguments, "name")?;
+            let harness_id_str = require_str(&arguments, "harness_id")?;
+            let harness_id: crate::typed_id::HarnessId = parse_id(harness_id_str, "harness_id")?;
+            let description = get_str(&arguments, "description");
+            let agent_id = match get_str(&arguments, "agent_id") {
+                Some(value) => Some(parse_id::<crate::typed_id::AgentId>(value, "agent_id")?),
+                None => None,
+            };
+            let agent_identity_id = if let Some(value) = arguments.get("agent_identity_id") {
+                if value.is_null() {
+                    None
+                } else if let Some(value) = value.as_str() {
+                    Some(parse_id::<crate::typed_id::AgentIdentityId>(
+                        value,
+                        "agent_identity_id",
+                    )?)
+                } else {
+                    return Ok(ToolExecutionResult::tool_error(
+                        "agent_identity_id must be a string or null",
+                    ));
+                }
+            } else {
+                None
+            };
+            let channel_type = match get_str(&arguments, "channel_type") {
+                Some(value) => Some(parse_channel_type(value, "channel_type")?),
+                None => None,
+            };
+            let channel_config = arguments.get("channel_config");
+
+            match store
+                .create_app(
+                    name,
+                    description,
+                    harness_id,
+                    agent_id,
+                    agent_identity_id,
+                    channel_type,
+                    channel_config,
+                )
+                .await
+            {
+                Ok(app) => {
+                    let mut response = app_json(&app, base_url, true);
+                    response["message"] = Value::String("App created successfully".to_string());
+                    ToolExecutionResult::success(response)
+                }
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to create app: {e}")),
+            }
+        }
+
+        "update" => {
+            let app_id_str = require_str(&arguments, "app_id")?;
+            let app_id: crate::typed_id::AppId = parse_id(app_id_str, "app_id")?;
+            let harness_id = match get_str(&arguments, "harness_id") {
+                Some(value) => Some(parse_id::<crate::typed_id::HarnessId>(value, "harness_id")?),
+                None => None,
+            };
+            let agent_id = match get_str(&arguments, "agent_id") {
+                Some(value) => Some(parse_id::<crate::typed_id::AgentId>(value, "agent_id")?),
+                None => None,
+            };
+            let agent_identity_id = if let Some(value) = arguments.get("agent_identity_id") {
+                if value.is_null() {
+                    Some(None)
+                } else if let Some(value) = value.as_str() {
+                    Some(Some(parse_id::<crate::typed_id::AgentIdentityId>(
+                        value,
+                        "agent_identity_id",
+                    )?))
+                } else {
+                    return Ok(ToolExecutionResult::tool_error(
+                        "agent_identity_id must be a string or null",
+                    ));
+                }
+            } else {
+                None
+            };
+
+            match store
+                .update_app(
+                    app_id,
+                    get_str(&arguments, "name"),
+                    get_str(&arguments, "description"),
+                    harness_id,
+                    agent_id,
+                    agent_identity_id,
+                )
+                .await
+            {
+                Ok(app) => {
+                    let mut response = app_json(&app, base_url, true);
+                    response["message"] = Value::String("App updated successfully".to_string());
+                    ToolExecutionResult::success(response)
+                }
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to update app: {e}")),
+            }
+        }
+
+        "delete" => {
+            let app_id_str = require_str(&arguments, "app_id")?;
+            let app_id: crate::typed_id::AppId = parse_id(app_id_str, "app_id")?;
+            match store.delete_app(app_id).await {
+                Ok(()) => ToolExecutionResult::success(json!({
+                    "app_id": app_id_str,
+                    "ui_link": format!("{}/apps/{}", base_url, app_id_str),
+                    "message": "App archived successfully"
+                })),
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to archive app: {e}")),
+            }
+        }
+
+        "destroy" => {
+            let app_id_str = require_str(&arguments, "app_id")?;
+            let app_id: crate::typed_id::AppId = parse_id(app_id_str, "app_id")?;
+            match store.destroy_app(app_id).await {
+                Ok(()) => ToolExecutionResult::success(json!({
+                    "app_id": app_id_str,
+                    "ui_link": format!("{}/apps", base_url),
+                    "message": "App destroyed successfully"
+                })),
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to destroy app: {e}")),
+            }
+        }
+
+        "publish" => {
+            let app_id_str = require_str(&arguments, "app_id")?;
+            let app_id: crate::typed_id::AppId = parse_id(app_id_str, "app_id")?;
+            match store.publish_app(app_id).await {
+                Ok(app) => {
+                    let mut response = app_json(&app, base_url, true);
+                    response["message"] = Value::String("App published successfully".to_string());
+                    ToolExecutionResult::success(response)
+                }
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to publish app: {e}")),
+            }
+        }
+
+        "unpublish" => {
+            let app_id_str = require_str(&arguments, "app_id")?;
+            let app_id: crate::typed_id::AppId = parse_id(app_id_str, "app_id")?;
+            match store.unpublish_app(app_id).await {
+                Ok(app) => {
+                    let mut response = app_json(&app, base_url, true);
+                    response["message"] = Value::String("App unpublished successfully".to_string());
+                    ToolExecutionResult::success(response)
+                }
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to unpublish app: {e}")),
+            }
+        }
+
+        _ => ToolExecutionResult::tool_error(format!(
+            "Unknown operation: {operation}. Valid: create, update, delete, destroy, publish, unpublish"
+        )),
+    })
 }
 
 // =============================================================================
@@ -1570,129 +1369,93 @@ impl Tool for ManageAppChannelsTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-
-        let operation = match require_str(&arguments, "operation") {
-            Ok(op) => op,
-            Err(e) => return e,
-        };
-
-        let app_id_str = match require_str(&arguments, "app_id") {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-        let app_id = match app_id_str.parse::<crate::typed_id::AppId>() {
-            Ok(id) => id,
-            Err(_) => {
-                return ToolExecutionResult::tool_error(format!("Invalid app_id: {app_id_str}"));
-            }
-        };
-        let base_url = store.base_url();
-
-        match operation {
-            "add" => {
-                let channel_type_str = match require_str(&arguments, "channel_type") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let channel_type = match parse_channel_type(channel_type_str, "channel_type") {
-                    Ok(channel_type) => channel_type,
-                    Err(error) => return error,
-                };
-                let channel_config = arguments.get("channel_config");
-                let enabled = arguments.get("enabled").and_then(|value| value.as_bool());
-                match store
-                    .add_app_channel(app_id, channel_type, channel_config, enabled)
-                    .await
-                {
-                    Ok(channel) => ToolExecutionResult::success(json!({
-                        "app_id": app_id_str,
-                        "channel": channel_json(&channel, true),
-                        "ui_link": format!("{}/apps/{}", base_url, app_id),
-                        "message": "App channel added successfully"
-                    })),
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to add app channel: {e}"))
-                    }
-                }
-            }
-
-            "update" => {
-                let channel_id_str = match require_str(&arguments, "channel_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let channel_id = match channel_id_str.parse::<crate::typed_id::AppChannelId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid channel_id: {channel_id_str}"
-                        ));
-                    }
-                };
-                let channel_type = match get_str(&arguments, "channel_type") {
-                    Some(value) => match parse_channel_type(value, "channel_type") {
-                        Ok(channel_type) => Some(channel_type),
-                        Err(error) => return error,
-                    },
-                    None => None,
-                };
-                let channel_config = arguments.get("channel_config");
-                let enabled = arguments.get("enabled").and_then(|value| value.as_bool());
-                match store
-                    .update_app_channel(app_id, channel_id, channel_type, channel_config, enabled)
-                    .await
-                {
-                    Ok(channel) => ToolExecutionResult::success(json!({
-                        "app_id": app_id_str,
-                        "channel": channel_json(&channel, true),
-                        "ui_link": format!("{}/apps/{}", base_url, app_id),
-                        "message": "App channel updated successfully"
-                    })),
-                    Err(e) => ToolExecutionResult::tool_error(format!(
-                        "Failed to update app channel: {e}"
-                    )),
-                }
-            }
-
-            "delete" => {
-                let channel_id_str = match require_str(&arguments, "channel_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let channel_id = match channel_id_str.parse::<crate::typed_id::AppChannelId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid channel_id: {channel_id_str}"
-                        ));
-                    }
-                };
-                match store.delete_app_channel(app_id, channel_id).await {
-                    Ok(()) => ToolExecutionResult::success(json!({
-                        "app_id": app_id_str,
-                        "channel_id": channel_id_str,
-                        "ui_link": format!("{}/apps/{}", base_url, app_id),
-                        "message": "App channel deleted successfully"
-                    })),
-                    Err(e) => ToolExecutionResult::tool_error(format!(
-                        "Failed to delete app channel: {e}"
-                    )),
-                }
-            }
-
-            _ => ToolExecutionResult::tool_error(format!(
-                "Unknown operation: {operation}. Valid: add, update, delete"
-            )),
-        }
+        manage_app_channels_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn manage_app_channels_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let store = get_platform_store(context)?;
+    let operation = require_str(&arguments, "operation")?;
+    let app_id_str = require_str(&arguments, "app_id")?;
+    let app_id: crate::typed_id::AppId = parse_id(app_id_str, "app_id")?;
+    let base_url = store.base_url();
+
+    Ok(match operation {
+        "add" => {
+            let channel_type_str = require_str(&arguments, "channel_type")?;
+            let channel_type = parse_channel_type(channel_type_str, "channel_type")?;
+            let channel_config = arguments.get("channel_config");
+            let enabled = arguments.get("enabled").and_then(|value| value.as_bool());
+            match store
+                .add_app_channel(app_id, channel_type, channel_config, enabled)
+                .await
+            {
+                Ok(channel) => ToolExecutionResult::success(json!({
+                    "app_id": app_id_str,
+                    "channel": channel_json(&channel, true),
+                    "ui_link": format!("{}/apps/{}", base_url, app_id),
+                    "message": "App channel added successfully"
+                })),
+                Err(e) => {
+                    ToolExecutionResult::tool_error(format!("Failed to add app channel: {e}"))
+                }
+            }
+        }
+
+        "update" => {
+            let channel_id_str = require_str(&arguments, "channel_id")?;
+            let channel_id: crate::typed_id::AppChannelId = parse_id(channel_id_str, "channel_id")?;
+            let channel_type = match get_str(&arguments, "channel_type") {
+                Some(value) => Some(parse_channel_type(value, "channel_type")?),
+                None => None,
+            };
+            let channel_config = arguments.get("channel_config");
+            let enabled = arguments.get("enabled").and_then(|value| value.as_bool());
+            match store
+                .update_app_channel(app_id, channel_id, channel_type, channel_config, enabled)
+                .await
+            {
+                Ok(channel) => ToolExecutionResult::success(json!({
+                    "app_id": app_id_str,
+                    "channel": channel_json(&channel, true),
+                    "ui_link": format!("{}/apps/{}", base_url, app_id),
+                    "message": "App channel updated successfully"
+                })),
+                Err(e) => {
+                    ToolExecutionResult::tool_error(format!("Failed to update app channel: {e}"))
+                }
+            }
+        }
+
+        "delete" => {
+            let channel_id_str = require_str(&arguments, "channel_id")?;
+            let channel_id: crate::typed_id::AppChannelId = parse_id(channel_id_str, "channel_id")?;
+            match store.delete_app_channel(app_id, channel_id).await {
+                Ok(()) => ToolExecutionResult::success(json!({
+                    "app_id": app_id_str,
+                    "channel_id": channel_id_str,
+                    "ui_link": format!("{}/apps/{}", base_url, app_id),
+                    "message": "App channel deleted successfully"
+                })),
+                Err(e) => {
+                    ToolExecutionResult::tool_error(format!("Failed to delete app channel: {e}"))
+                }
+            }
+        }
+
+        _ => ToolExecutionResult::tool_error(format!(
+            "Unknown operation: {operation}. Valid: add, update, delete"
+        )),
+    })
 }
 
 // =============================================================================
@@ -1753,73 +1516,72 @@ impl Tool for ReadSessionsTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-
-        let base_url = store.base_url();
-
-        if let Some(id_str) = get_str(&arguments, "id") {
-            let id = match id_str.parse::<crate::typed_id::SessionId>() {
-                Ok(id) => id,
-                Err(_) => {
-                    return ToolExecutionResult::tool_error(format!(
-                        "Invalid session id: {id_str}"
-                    ));
-                }
-            };
-            match store.get_session_by_id(id).await {
-                Ok(Some(s)) => ToolExecutionResult::success(json!({
-                    "id": s.id.to_string(),
-                    "organization_id": s.organization_id,
-                    "title": s.title,
-                    "status": format!("{:?}", s.status),
-                    "agent_id": s.agent_id.as_ref().map(|a| a.to_string()),
-                    "harness_id": s.harness_id.to_string(),
-                    "created_at": s.created_at.to_rfc3339(),
-                    "preview": s.preview,
-                    "output_preview": s.output_preview,
-                    "ui_link": format!("{}/sessions/{}/chat", base_url, s.id),
-                })),
-                Ok(None) => ToolExecutionResult::tool_error(format!("Session not found: {id_str}")),
-                Err(e) => ToolExecutionResult::tool_error(format!("Failed to get session: {e}")),
-            }
-        } else {
-            let limit = arguments
-                .get("limit")
-                .and_then(|v| v.as_u64())
-                .map(|v| v as usize);
-            let agent_id = get_str(&arguments, "agent_id")
-                .and_then(|s| s.parse::<crate::typed_id::AgentId>().ok());
-            match store.list_sessions(limit, agent_id).await {
-                Ok(sessions) => {
-                    let items: Vec<Value> = sessions
-                        .iter()
-                        .map(|s| {
-                            json!({
-                                "id": s.id.to_string(),
-                                "organization_id": s.organization_id,
-                                "title": s.title,
-                                "status": format!("{:?}", s.status),
-                                "agent_id": s.agent_id.as_ref().map(|a| a.to_string()),
-                                "harness_id": s.harness_id.to_string(),
-                                "created_at": s.created_at.to_rfc3339(),
-                                "preview": s.preview,
-                                "ui_link": format!("{}/sessions/{}/chat", base_url, s.id),
-                            })
-                        })
-                        .collect();
-                    ToolExecutionResult::success(json!({"sessions": items, "count": items.len()}))
-                }
-                Err(e) => ToolExecutionResult::tool_error(format!("Failed to list sessions: {e}")),
-            }
-        }
+        read_sessions_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn read_sessions_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let store = get_platform_store(context)?;
+    let base_url = store.base_url();
+
+    if let Some(id_str) = get_str(&arguments, "id") {
+        let id: crate::typed_id::SessionId = parse_id(id_str, "session id")?;
+        return Ok(match store.get_session_by_id(id).await {
+            Ok(Some(s)) => ToolExecutionResult::success(json!({
+                "id": s.id.to_string(),
+                "organization_id": s.organization_id,
+                "title": s.title,
+                "status": format!("{:?}", s.status),
+                "agent_id": s.agent_id.as_ref().map(|a| a.to_string()),
+                "harness_id": s.harness_id.to_string(),
+                "created_at": s.created_at.to_rfc3339(),
+                "preview": s.preview,
+                "output_preview": s.output_preview,
+                "ui_link": format!("{}/sessions/{}/chat", base_url, s.id),
+            })),
+            Ok(None) => ToolExecutionResult::tool_error(format!("Session not found: {id_str}")),
+            Err(e) => ToolExecutionResult::tool_error(format!("Failed to get session: {e}")),
+        });
+    }
+
+    let limit = arguments
+        .get("limit")
+        .and_then(|v| v.as_u64())
+        .map(|v| v as usize);
+    // Invalid agent_id is silently ignored here (filter is best-effort).
+    let agent_id =
+        get_str(&arguments, "agent_id").and_then(|s| s.parse::<crate::typed_id::AgentId>().ok());
+    Ok(match store.list_sessions(limit, agent_id).await {
+        Ok(sessions) => {
+            let items: Vec<Value> = sessions
+                .iter()
+                .map(|s| {
+                    json!({
+                        "id": s.id.to_string(),
+                        "organization_id": s.organization_id,
+                        "title": s.title,
+                        "status": format!("{:?}", s.status),
+                        "agent_id": s.agent_id.as_ref().map(|a| a.to_string()),
+                        "harness_id": s.harness_id.to_string(),
+                        "created_at": s.created_at.to_rfc3339(),
+                        "preview": s.preview,
+                        "ui_link": format!("{}/sessions/{}/chat", base_url, s.id),
+                    })
+                })
+                .collect();
+            ToolExecutionResult::success(json!({"sessions": items, "count": items.len()}))
+        }
+        Err(e) => ToolExecutionResult::tool_error(format!("Failed to list sessions: {e}")),
+    })
 }
 
 // =============================================================================
@@ -1873,30 +1635,27 @@ impl Tool for SessionContextReportTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-        let id_str = match require_str(&arguments, "session_id") {
-            Ok(value) => value,
-            Err(e) => return e,
-        };
-        let id = match id_str.parse::<crate::typed_id::SessionId>() {
-            Ok(id) => id,
-            Err(_) => {
-                return ToolExecutionResult::tool_error(format!("Invalid session_id: {id_str}"));
-            }
-        };
-
-        match store.get_session_context_report(id).await {
-            Ok(report) => ToolExecutionResult::success(json!(report)),
-            Err(e) => ToolExecutionResult::tool_error(format!("Failed to get context report: {e}")),
-        }
+        session_context_report_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn session_context_report_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let store = get_platform_store(context)?;
+    let id: crate::typed_id::SessionId = require_id(&arguments, "session_id")?;
+
+    Ok(match store.get_session_context_report(id).await {
+        Ok(report) => ToolExecutionResult::success(json!(report)),
+        Err(e) => ToolExecutionResult::tool_error(format!("Failed to get context report: {e}")),
+    })
 }
 
 // =============================================================================
@@ -1969,111 +1728,92 @@ impl Tool for ManageSessionsTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-
-        let operation = match require_str(&arguments, "operation") {
-            Ok(op) => op,
-            Err(e) => return e,
-        };
-
-        let base_url = store.base_url();
-
-        match operation {
-            "create" => {
-                let harness_id = if let Some(harness_id_str) = get_str(&arguments, "harness_id") {
-                    match harness_id_str.parse::<crate::typed_id::HarnessId>() {
-                        Ok(id) => id,
-                        Err(_) => {
-                            return ToolExecutionResult::tool_error(format!(
-                                "Invalid harness_id: {harness_id_str}"
-                            ));
-                        }
-                    }
-                } else {
-                    // Fall back to the org's default (Generic) harness
-                    match store.list_harnesses().await {
-                        Ok(harnesses) => {
-                            match harnesses
-                                .iter()
-                                .find(|h| h.is_built_in && h.name == "Generic")
-                            {
-                                Some(h) => h.id,
-                                None => {
-                                    return ToolExecutionResult::tool_error(
-                                        "No harness_id provided and no default Generic harness found. Please specify a harness_id.",
-                                    );
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            return ToolExecutionResult::tool_error(format!(
-                                "No harness_id provided and failed to resolve default harness: {e}"
-                            ));
-                        }
-                    }
-                };
-                let agent_id = get_str(&arguments, "agent_id")
-                    .and_then(|s| s.parse::<crate::typed_id::AgentId>().ok());
-                let title = get_str(&arguments, "title");
-                let locale = get_str(&arguments, "locale");
-                match store
-                    .create_session(harness_id, agent_id, title, locale, None, None, None)
-                    .await
-                {
-                    Ok(s) => ToolExecutionResult::success(json!({
-                        "id": s.id.to_string(),
-                        "organization_id": s.organization_id,
-                        "title": s.title,
-                        "locale": s.locale,
-                        "status": format!("{:?}", s.status),
-                        "harness_id": s.harness_id.to_string(),
-                        "agent_id": s.agent_id.as_ref().map(|a| a.to_string()),
-                        "ui_link": format!("{}/sessions/{}/chat", base_url, s.id),
-                        "message": "Session created successfully"
-                    })),
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to create session: {e}"))
-                    }
-                }
-            }
-
-            "delete" => {
-                let id_str = match require_str(&arguments, "session_id") {
-                    Ok(s) => s,
-                    Err(e) => return e,
-                };
-                let id = match id_str.parse::<crate::typed_id::SessionId>() {
-                    Ok(id) => id,
-                    Err(_) => {
-                        return ToolExecutionResult::tool_error(format!(
-                            "Invalid session_id: {id_str}"
-                        ));
-                    }
-                };
-                match store.delete_session(id).await {
-                    Ok(()) => ToolExecutionResult::success(json!({
-                        "session_id": id_str,
-                        "ui_link": format!("{}/sessions/{}/chat", base_url, id_str),
-                        "message": "Session archived successfully"
-                    })),
-                    Err(e) => {
-                        ToolExecutionResult::tool_error(format!("Failed to delete session: {e}"))
-                    }
-                }
-            }
-
-            _ => ToolExecutionResult::tool_error(format!(
-                "Unknown operation: {operation}. Valid: create, delete"
-            )),
-        }
+        manage_sessions_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn manage_sessions_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let store = get_platform_store(context)?;
+    let operation = require_str(&arguments, "operation")?;
+    let base_url = store.base_url();
+
+    Ok(match operation {
+        "create" => {
+            let harness_id = if let Some(harness_id_str) = get_str(&arguments, "harness_id") {
+                parse_id::<crate::typed_id::HarnessId>(harness_id_str, "harness_id")?
+            } else {
+                // Fall back to the org's default (Generic) harness
+                match store.list_harnesses().await {
+                    Ok(harnesses) => {
+                        match harnesses
+                            .iter()
+                            .find(|h| h.is_built_in && h.name == "Generic")
+                        {
+                            Some(h) => h.id,
+                            None => {
+                                return Ok(ToolExecutionResult::tool_error(
+                                    "No harness_id provided and no default Generic harness found. Please specify a harness_id.",
+                                ));
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        return Ok(ToolExecutionResult::tool_error(format!(
+                            "No harness_id provided and failed to resolve default harness: {e}"
+                        )));
+                    }
+                }
+            };
+            // Invalid agent_id is silently ignored here (best-effort).
+            let agent_id = get_str(&arguments, "agent_id")
+                .and_then(|s| s.parse::<crate::typed_id::AgentId>().ok());
+            let title = get_str(&arguments, "title");
+            let locale = get_str(&arguments, "locale");
+            match store
+                .create_session(harness_id, agent_id, title, locale, None, None, None)
+                .await
+            {
+                Ok(s) => ToolExecutionResult::success(json!({
+                    "id": s.id.to_string(),
+                    "organization_id": s.organization_id,
+                    "title": s.title,
+                    "locale": s.locale,
+                    "status": format!("{:?}", s.status),
+                    "harness_id": s.harness_id.to_string(),
+                    "agent_id": s.agent_id.as_ref().map(|a| a.to_string()),
+                    "ui_link": format!("{}/sessions/{}/chat", base_url, s.id),
+                    "message": "Session created successfully"
+                })),
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to create session: {e}")),
+            }
+        }
+
+        "delete" => {
+            let id_str = require_str(&arguments, "session_id")?;
+            let id: crate::typed_id::SessionId = parse_id(id_str, "session_id")?;
+            match store.delete_session(id).await {
+                Ok(()) => ToolExecutionResult::success(json!({
+                    "session_id": id_str,
+                    "ui_link": format!("{}/sessions/{}/chat", base_url, id_str),
+                    "message": "Session archived successfully"
+                })),
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to delete session: {e}")),
+            }
+        }
+
+        _ => ToolExecutionResult::tool_error(format!(
+            "Unknown operation: {operation}. Valid: create, delete"
+        )),
+    })
 }
 
 // =============================================================================
@@ -2129,43 +1869,34 @@ impl Tool for SessionSendMessageTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-
-        let session_id_str = match require_str(&arguments, "session_id") {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-        let session_id = match session_id_str.parse::<crate::typed_id::SessionId>() {
-            Ok(id) => id,
-            Err(_) => {
-                return ToolExecutionResult::tool_error(format!(
-                    "Invalid session_id: {session_id_str}"
-                ));
-            }
-        };
-        let content = match require_str(&arguments, "content") {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-
-        let base_url = store.base_url();
-
-        match store.send_message(session_id, content).await {
-            Ok(()) => ToolExecutionResult::success(json!({
-                "session_id": session_id_str,
-                "message": "Message sent successfully. Use session_read_response to wait for the agent response.",
-                "ui_link": format!("{}/sessions/{}/chat", base_url, session_id),
-            })),
-            Err(e) => ToolExecutionResult::tool_error(format!("Failed to send message: {e}")),
-        }
+        session_send_message_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn session_send_message_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let store = get_platform_store(context)?;
+    let session_id_str = require_str(&arguments, "session_id")?;
+    let session_id: crate::typed_id::SessionId = parse_id(session_id_str, "session_id")?;
+    let content = require_str(&arguments, "content")?;
+    let base_url = store.base_url();
+
+    Ok(match store.send_message(session_id, content).await {
+        Ok(()) => ToolExecutionResult::success(json!({
+            "session_id": session_id_str,
+            "message": "Message sent successfully. Use session_read_response to wait for the agent response.",
+            "ui_link": format!("{}/sessions/{}/chat", base_url, session_id),
+        })),
+        Err(e) => ToolExecutionResult::tool_error(format!("Failed to send message: {e}")),
+    })
 }
 
 // =============================================================================
@@ -2233,83 +1964,72 @@ impl Tool for SessionReadMessagesTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-
-        let session_id_str = match require_str(&arguments, "session_id") {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-        let session_id = match session_id_str.parse::<crate::typed_id::SessionId>() {
-            Ok(id) => id,
-            Err(_) => {
-                return ToolExecutionResult::tool_error(format!(
-                    "Invalid session_id: {session_id_str}"
-                ));
-            }
-        };
-
-        let limit = match parse_bounded_usize_arg(
-            &arguments,
-            "limit",
-            SESSION_READ_MESSAGES_DEFAULT_LIMIT,
-            SESSION_READ_MESSAGES_MAX_LIMIT,
-        ) {
-            Ok(value) => value,
-            Err(error) => return error,
-        };
-        let content_limit = match parse_bounded_usize_arg(
-            &arguments,
-            "content_limit",
-            SESSION_READ_MESSAGES_DEFAULT_CONTENT_LIMIT,
-            SESSION_READ_MESSAGES_MAX_CONTENT_LIMIT,
-        ) {
-            Ok(value) => value,
-            Err(error) => return error,
-        };
-
-        let base_url = store.base_url();
-
-        match store.get_messages(session_id, Some(limit)).await {
-            Ok(messages) => {
-                let items: Vec<Value> = messages
-                    .iter()
-                    .map(|m| {
-                        let (content, truncated, total_chars, returned_chars) =
-                            truncate_content_chars(&m.content, content_limit);
-                        json!({
-                            "role": m.role,
-                            "content": content,
-                            "content_truncated": truncated,
-                            "content_total_chars": total_chars,
-                            "content_returned_chars": returned_chars,
-                            "created_at": m.created_at.to_rfc3339(),
-                        })
-                    })
-                    .collect();
-                let truncated_message_count = items
-                    .iter()
-                    .filter(|item| item["content_truncated"].as_bool().unwrap_or(false))
-                    .count();
-                ToolExecutionResult::success(json!({
-                    "messages": items,
-                    "count": items.len(),
-                    "limit": limit,
-                    "content_limit": content_limit,
-                    "truncated_message_count": truncated_message_count,
-                    "session_id": session_id_str,
-                    "ui_link": format!("{}/sessions/{}/chat", base_url, session_id),
-                }))
-            }
-            Err(e) => ToolExecutionResult::tool_error(format!("Failed to get messages: {e}")),
-        }
+        session_read_messages_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn session_read_messages_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let store = get_platform_store(context)?;
+    let session_id_str = require_str(&arguments, "session_id")?;
+    let session_id: crate::typed_id::SessionId = parse_id(session_id_str, "session_id")?;
+
+    let limit = parse_bounded_usize_arg(
+        &arguments,
+        "limit",
+        SESSION_READ_MESSAGES_DEFAULT_LIMIT,
+        SESSION_READ_MESSAGES_MAX_LIMIT,
+    )?;
+    let content_limit = parse_bounded_usize_arg(
+        &arguments,
+        "content_limit",
+        SESSION_READ_MESSAGES_DEFAULT_CONTENT_LIMIT,
+        SESSION_READ_MESSAGES_MAX_CONTENT_LIMIT,
+    )?;
+
+    let base_url = store.base_url();
+
+    Ok(match store.get_messages(session_id, Some(limit)).await {
+        Ok(messages) => {
+            let items: Vec<Value> = messages
+                .iter()
+                .map(|m| {
+                    let (content, truncated, total_chars, returned_chars) =
+                        truncate_content_chars(&m.content, content_limit);
+                    json!({
+                        "role": m.role,
+                        "content": content,
+                        "content_truncated": truncated,
+                        "content_total_chars": total_chars,
+                        "content_returned_chars": returned_chars,
+                        "created_at": m.created_at.to_rfc3339(),
+                    })
+                })
+                .collect();
+            let truncated_message_count = items
+                .iter()
+                .filter(|item| item["content_truncated"].as_bool().unwrap_or(false))
+                .count();
+            ToolExecutionResult::success(json!({
+                "messages": items,
+                "count": items.len(),
+                "limit": limit,
+                "content_limit": content_limit,
+                "truncated_message_count": truncated_message_count,
+                "session_id": session_id_str,
+                "ui_link": format!("{}/sessions/{}/chat", base_url, session_id),
+            }))
+        }
+        Err(e) => ToolExecutionResult::tool_error(format!("Failed to get messages: {e}")),
+    })
 }
 
 // =============================================================================
@@ -2368,40 +2088,35 @@ impl Tool for SessionReadResponseTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-
-        let session_id_str = match require_str(&arguments, "session_id") {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-        let session_id = match session_id_str.parse::<crate::typed_id::SessionId>() {
-            Ok(id) => id,
-            Err(_) => {
-                return ToolExecutionResult::tool_error(format!(
-                    "Invalid session_id: {session_id_str}"
-                ));
-            }
-        };
-
-        let timeout_secs = arguments.get("timeout_secs").and_then(|v| v.as_u64());
-        let base_url = store.base_url();
-
-        match store.wait_for_idle(session_id, timeout_secs).await {
-            Ok(status) => ToolExecutionResult::success(json!({
-                "session_id": session_id_str,
-                "status": status,
-                "ui_link": format!("{}/sessions/{}/chat", base_url, session_id),
-            })),
-            Err(e) => ToolExecutionResult::tool_error(format!("Failed waiting for response: {e}")),
-        }
+        session_read_response_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn session_read_response_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let store = get_platform_store(context)?;
+    let session_id_str = require_str(&arguments, "session_id")?;
+    let session_id: crate::typed_id::SessionId = parse_id(session_id_str, "session_id")?;
+
+    let timeout_secs = arguments.get("timeout_secs").and_then(|v| v.as_u64());
+    let base_url = store.base_url();
+
+    Ok(match store.wait_for_idle(session_id, timeout_secs).await {
+        Ok(status) => ToolExecutionResult::success(json!({
+            "session_id": session_id_str,
+            "status": status,
+            "ui_link": format!("{}/sessions/{}/chat", base_url, session_id),
+        })),
+        Err(e) => ToolExecutionResult::tool_error(format!("Failed waiting for response: {e}")),
+    })
 }
 
 // =============================================================================
@@ -2458,83 +2173,88 @@ impl Tool for ReadCapabilitiesTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-        let base_url = store.base_url();
-
-        let id_filter = get_str(&arguments, "id");
-        let search = get_str(&arguments, "search");
-
-        // If id is given, use it as the search filter to find the specific capability
-        let effective_search = id_filter.or(search);
-
-        match store.list_capabilities(effective_search).await {
-            Ok(capabilities) => {
-                let items: Vec<Value> = capabilities
-                    .iter()
-                    .map(|c| {
-                        let mut item = json!({
-                            "id": c.id.as_str(),
-                            "name": c.name,
-                            "description": c.description,
-                            "status": c.status.to_string(),
-                            "ui_link": format!("{}/capabilities/{}", base_url, c.id.as_str()),
-                        });
-                        if let Some(cat) = &c.category {
-                            item["category"] = json!(cat);
-                        }
-                        if c.is_mcp {
-                            item["type"] = json!("mcp_server");
-                        } else if c.is_skill {
-                            item["type"] = json!("skill");
-                        } else if is_declarative_capability(c.id.as_str()) {
-                            item["type"] = json!("declarative");
-                        } else {
-                            item["type"] = json!("builtin");
-                        }
-                        if !c.tool_definitions.is_empty() {
-                            item["tool_count"] = json!(c.tool_definitions.len());
-                            item["tools"] = json!(
-                                c.tool_definitions
-                                    .iter()
-                                    .map(|t| t.name())
-                                    .collect::<Vec<_>>()
-                            );
-                        }
-                        if !c.dependencies.is_empty() {
-                            item["dependencies"] = json!(c.dependencies);
-                        }
-                        item
-                    })
-                    .collect();
-
-                // When id is provided, return exact match as single item
-                if let Some(target_id) = id_filter {
-                    if let Some(exact) = items.iter().find(|i| i["id"].as_str() == Some(target_id))
-                    {
-                        return ToolExecutionResult::success(exact.clone());
-                    }
-                    return ToolExecutionResult::tool_error(format!(
-                        "Capability not found: {target_id}"
-                    ));
-                }
-
-                let count = items.len();
-                ToolExecutionResult::success(json!({
-                    "capabilities": items,
-                    "count": count,
-                    "hint": "Use capability IDs when creating or updating agents and harnesses via manage_agents or manage_harnesses (capabilities parameter)."
-                }))
-            }
-            Err(e) => ToolExecutionResult::tool_error(format!("Failed to list capabilities: {e}")),
-        }
+        read_capabilities_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn read_capabilities_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let store = get_platform_store(context)?;
+    let base_url = store.base_url();
+
+    let id_filter = get_str(&arguments, "id");
+    let search = get_str(&arguments, "search");
+
+    // If id is given, use it as the search filter to find the specific capability
+    let effective_search = id_filter.or(search);
+
+    Ok(match store.list_capabilities(effective_search).await {
+        Ok(capabilities) => {
+            let items: Vec<Value> = capabilities
+                .iter()
+                .map(|c| {
+                    let mut item = json!({
+                        "id": c.id.as_str(),
+                        "name": c.name,
+                        "description": c.description,
+                        "status": c.status.to_string(),
+                        "ui_link": format!("{}/capabilities/{}", base_url, c.id.as_str()),
+                    });
+                    if let Some(cat) = &c.category {
+                        item["category"] = json!(cat);
+                    }
+                    if c.is_mcp {
+                        item["type"] = json!("mcp_server");
+                    } else if c.is_skill {
+                        item["type"] = json!("skill");
+                    } else if is_declarative_capability(c.id.as_str()) {
+                        item["type"] = json!("declarative");
+                    } else {
+                        item["type"] = json!("builtin");
+                    }
+                    if !c.tool_definitions.is_empty() {
+                        item["tool_count"] = json!(c.tool_definitions.len());
+                        item["tools"] = json!(
+                            c.tool_definitions
+                                .iter()
+                                .map(|t| t.name())
+                                .collect::<Vec<_>>()
+                        );
+                    }
+                    if !c.dependencies.is_empty() {
+                        item["dependencies"] = json!(c.dependencies);
+                    }
+                    item
+                })
+                .collect();
+
+            // When id is provided, return exact match as single item
+            if let Some(target_id) = id_filter {
+                if let Some(exact) = items.iter().find(|i| i["id"].as_str() == Some(target_id)) {
+                    return Ok(ToolExecutionResult::success(exact.clone()));
+                }
+                return Ok(ToolExecutionResult::tool_error(format!(
+                    "Capability not found: {target_id}"
+                )));
+            }
+
+            let count = items.len();
+            ToolExecutionResult::success(json!({
+                "capabilities": items,
+                "count": count,
+                "hint": "Use capability IDs when creating or updating agents and harnesses via manage_agents or manage_harnesses (capabilities parameter)."
+            }))
+        }
+        Err(e) => ToolExecutionResult::tool_error(format!("Failed to list capabilities: {e}")),
+    })
 }
 
 #[cfg(test)]

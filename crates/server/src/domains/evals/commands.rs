@@ -1,7 +1,8 @@
 use super::queries as q;
 use super::types::{
     BulkUpdateEvalRunScoresRequest, CreateEvalCaseRequest, CreateEvalRequest, CreateEvalRunRequest,
-    ListEvalsQuery, UpdateEvalCaseRequest, UpdateEvalRequest, UpdateEvalResultScoresRequest,
+    EvalImportPreflight, ImportEvalRunRequest, ListEvalsQuery, UpdateEvalCaseRequest,
+    UpdateEvalRequest, UpdateEvalResultScoresRequest,
 };
 use crate::domains::common::*;
 use everruns_core::eval::{Eval, EvalCase, EvalCaseResult, EvalRun};
@@ -98,6 +99,76 @@ impl Command for ListEvals {
 }
 
 inventory::submit! { CommandDescriptor::of::<ListEvals>() }
+
+/// Import a full external run group (everruns as host/viewer for external eval
+/// systems). See proposals/mira-results-publishing.md.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ImportEvalRun {
+    #[serde(flatten)]
+    pub req: ImportEvalRunRequest,
+}
+
+impl Command for ImportEvalRun {
+    type Output = Vec<EvalRun>;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "import_eval_run",
+            category: "evals",
+            description: "Import externally-executed eval results.",
+            method: "POST",
+            path: "/v1/evals/import",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_IMPORT)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Vec<EvalRun>, CommandError> {
+        require_evals_enabled(ctx)?;
+        q::service(ctx)
+            .import_run(&ctx.caller, self.req)
+            .await
+            .map_err(classify_anyhow)
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ImportEvalRun>() }
+
+/// Preflight: report whether the caller can import (feature enabled + has the
+/// eval-management permission) without failing. No policy gate so any org
+/// member can probe; the report just returns `false`.
+#[derive(Debug, Default, Deserialize, ToSchema)]
+pub struct EvalImportPreflightCmd {}
+
+impl Command for EvalImportPreflightCmd {
+    type Output = EvalImportPreflight;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "eval_import_preflight",
+            category: "evals",
+            description: "Report whether the caller can import eval results.",
+            method: "GET",
+            path: "/v1/evals/import/preflight",
+        }
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<EvalImportPreflight, CommandError> {
+        let evals_enabled = ctx.feature_flags.evals;
+        let can_import = evals_enabled
+            && ctx
+                .permission_resolver
+                .has_permission(&ctx.caller, &everruns_core::Permission::OrgAgentsManage);
+        Ok(EvalImportPreflight {
+            evals_enabled,
+            can_import,
+        })
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<EvalImportPreflightCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetEval {
@@ -618,17 +689,6 @@ impl Command for ExportEvalRunDataset {
         let retriever = crate::storage::message_store::DbMessageRetriever::new(ctx.db.clone());
         let compaction = CompactionConfig::default();
 
-        // Scorer identities are not persisted on the result (only the ordered
-        // Vec<Score>), so join the case definitions' scorer kinds positionally to
-        // name reward scorers. `list_cases` is org-scoped through the same caller.
-        let scorer_names_by_case: std::collections::HashMap<_, Vec<String>> = q::service(ctx)
-            .list_cases(&ctx.caller, &eval_id.to_string())
-            .await
-            .map_err(classify_anyhow)?
-            .into_iter()
-            .map(|case| (case.public_id, super::dataset::scorer_names(&case.scorers)))
-            .collect();
-
         let mut body = String::new();
         for result in &run.results {
             if !super::dataset::case_passes_filters(result, &self.req.filters) {
@@ -644,17 +704,12 @@ impl Command for ExportEvalRunDataset {
                 CommandError::internal(anyhow::anyhow!("load session messages: {e}"))
             })?;
             let messages = build_model_view_messages(&stored, &compaction, None).messages;
-            let names = scorer_names_by_case
-                .get(&result.eval_case_id)
-                .map(Vec::as_slice)
-                .unwrap_or(&[]);
             let record = super::dataset::build_record(
                 self.req.format,
                 &run,
                 result,
                 &messages,
                 &self.req.redaction,
-                names,
             );
             let line =
                 serde_json::to_string(&record).map_err(|e| CommandError::internal(e.into()))?;

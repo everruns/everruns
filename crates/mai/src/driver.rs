@@ -16,13 +16,14 @@ use serde::Deserialize;
 
 use everruns_core::OpenAIProtocolChatDriver;
 use everruns_core::credential_schema::{CredentialFormSchema, FormField};
+use everruns_core::driver_helpers::fetch_models;
 use everruns_core::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverId,
     DriverRegistry, LlmCallConfig, LlmMessage, LlmResponseStream,
 };
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::openai_protocol::{
-    AuthHeaderProvider, is_azure_openai_api_url, models_api_status_error, models_url_for_api_url,
+    AuthHeaderProvider, is_azure_openai_api_url, models_url_for_api_url,
 };
 
 use crate::auth::{DEFAULT_ENTRA_AUTHORITY, DEFAULT_ENTRA_SCOPE, MaiAuth};
@@ -184,53 +185,38 @@ async fn list_foundry_models(
     models_url: &str,
 ) -> Result<Option<Vec<DiscoveredModel>>> {
     let (header_name, header_value) = auth.auth_header().await?;
-    let response = client
-        .get(models_url)
-        .header(header_name, header_value)
-        .send()
-        .await
-        .map_err(|e| AgentLoopError::llm(format!("Failed to fetch MAI models: {e}")))?;
-
-    let status = response.status();
-    if !status.is_success() {
-        let _ = response.bytes().await; // drain body to allow connection reuse
-        // Project-scoped Azure AI Foundry endpoints expose chat completions but
-        // not a `/models` catalog: such an endpoint returns 404 for
-        // `/openai/v1/models` while `/openai/v1/chat/completions` works. Treat a
-        // missing/unimplemented listing endpoint as "discovery not supported"
-        // (Ok(None)) rather than a hard error, so model sync degrades gracefully
-        // instead of reporting a spurious failure. (Verified live against a
-        // project endpoint.)
-        if matches!(
-            status,
-            reqwest::StatusCode::NOT_FOUND | reqwest::StatusCode::NOT_IMPLEMENTED
-        ) {
-            return Ok(None);
-        }
-        return Err(models_api_status_error(status));
-    }
-
-    let models: FoundryModelsResponse = response
-        .json()
-        .await
-        .map_err(|e| AgentLoopError::llm(format!("Failed to parse MAI models response: {e}")))?;
-
-    let discovered = models
-        .data
-        .into_iter()
-        .filter(FoundryModelInfo::is_chat_model)
-        .map(|m| DiscoveredModel {
-            created_at: m
-                .created
-                .and_then(|ts| chrono::Utc.timestamp_opt(ts, 0).single()),
-            display_name: None,
-            owned_by: m.owned_by,
-            model_id: m.id,
-            discovered_profile: None,
-        })
-        .collect();
-
-    Ok(Some(discovered))
+    // Project-scoped Azure AI Foundry endpoints expose chat completions but not a
+    // `/models` catalog: such an endpoint returns 404 for `/openai/v1/models`
+    // while `/openai/v1/chat/completions` works. Treat a missing/unimplemented
+    // listing endpoint as "discovery not supported" (Ok(None)) rather than a hard
+    // error, so model sync degrades gracefully instead of reporting a spurious
+    // failure. (Verified live against a project endpoint.)
+    fetch_models::<FoundryModelsResponse, _>(
+        client.get(models_url).header(header_name, header_value),
+        "Failed to fetch MAI models",
+        "Failed to parse MAI models response",
+        &[
+            reqwest::StatusCode::NOT_FOUND,
+            reqwest::StatusCode::NOT_IMPLEMENTED,
+        ],
+        |models| {
+            models
+                .data
+                .into_iter()
+                .filter(FoundryModelInfo::is_chat_model)
+                .map(|m| DiscoveredModel {
+                    created_at: m
+                        .created
+                        .and_then(|ts| chrono::Utc.timestamp_opt(ts, 0).single()),
+                    display_name: None,
+                    owned_by: m.owned_by,
+                    model_id: m.id,
+                    discovered_profile: None,
+                })
+                .collect()
+        },
+    )
+    .await
 }
 
 /// Bare Foundry/OpenAI-compatible `/models` list response.

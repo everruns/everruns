@@ -13,6 +13,7 @@
 //! - `stat_file`: Get file metadata
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
+use crate::error::{FileSystemErrorClass, classify_fs_error};
 use crate::session_file::SessionFile;
 use crate::tool_output_sanitizer::build_binary_read_file_result;
 use crate::tool_types::ToolHints;
@@ -951,20 +952,28 @@ impl Tool for WriteFileTool {
                     "content_hash": content_hash
                 }))
             }
-            Err(e) => {
-                // Check if it's a user-facing error (like readonly file)
-                let msg = e.to_string();
-                if msg.contains("readonly") || msg.contains("is a directory") {
-                    ToolExecutionResult::tool_error(msg)
-                } else {
-                    ToolExecutionResult::internal_error(e)
-                }
-            }
+            Err(e) => write_failure_result(e),
         }
     }
 
     fn requires_context(&self) -> bool {
         true
+    }
+}
+
+/// Map a write/edit failure to a tool error (agent-correctable) or an internal
+/// error. Read-only targets and directory-vs-file mismatches are the agent's to
+/// fix; everything else is internal. EVE-645: routed through the typed
+/// [`classify_fs_error`] seam instead of inline `msg.contains(...)`.
+fn write_failure_result<E>(e: E) -> ToolExecutionResult
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    match classify_fs_error(&e) {
+        FileSystemErrorClass::ReadOnly | FileSystemErrorClass::IsADirectory => {
+            ToolExecutionResult::tool_error(e.to_string())
+        }
+        _ => ToolExecutionResult::internal_error(e),
     }
 }
 
@@ -1210,14 +1219,7 @@ impl Tool for EditFileTool {
                     "diff_truncated": diff_truncated
                 }))
             }
-            Err(e) => {
-                let msg = e.to_string();
-                if msg.contains("readonly") || msg.contains("is a directory") {
-                    ToolExecutionResult::tool_error(msg)
-                } else {
-                    ToolExecutionResult::internal_error(e)
-                }
-            }
+            Err(e) => write_failure_result(e),
         }
     }
 
@@ -1384,14 +1386,14 @@ impl Tool for ListDirectoryTool {
                 truncation.attach(&mut result);
                 ToolExecutionResult::success(result)
             }
-            Err(e) => {
-                let msg = e.to_string();
-                if msg.contains("not found") || msg.contains("not a directory") {
-                    ToolExecutionResult::tool_error(msg)
-                } else {
-                    ToolExecutionResult::internal_error(e)
+            Err(e) => match classify_fs_error(&e) {
+                // A missing or non-directory listing target is the agent's to
+                // fix; everything else is internal. EVE-645: typed seam.
+                FileSystemErrorClass::NotFound | FileSystemErrorClass::NotADirectory => {
+                    ToolExecutionResult::tool_error(e.to_string())
                 }
-            }
+                _ => ToolExecutionResult::internal_error(e),
+            },
         }
     }
 
@@ -1684,14 +1686,15 @@ impl Tool for DeleteFileTool {
                     ToolExecutionResult::tool_error(format!("File not found: {}", display_path))
                 }
             }
-            Err(e) => {
-                let msg = e.to_string();
-                if msg.contains("not empty") || msg.contains("recursive") {
-                    ToolExecutionResult::tool_error(msg)
-                } else {
-                    ToolExecutionResult::internal_error(e)
-                }
-            }
+            Err(e) => match classify_fs_error(&e) {
+                // A non-empty directory deleted without `recursive` is the
+                // agent's to fix; everything else is internal. EVE-645: typed
+                // seam. (The legacy `recursive` substring maps to NotEmpty so a
+                // "without recursive flag" / "recursive delete failed" message
+                // keeps surfacing as a tool error.)
+                FileSystemErrorClass::NotEmpty => ToolExecutionResult::tool_error(e.to_string()),
+                _ => ToolExecutionResult::internal_error(e),
+            },
         }
     }
 
