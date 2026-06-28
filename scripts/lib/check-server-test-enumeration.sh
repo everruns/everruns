@@ -62,7 +62,11 @@ for path in "${test_files[@]}"; do
     continue
   fi
   # A test is "run" when CI invokes it as `--test <name>` for everruns-server.
-  if printf '%s' "$ci_contents" | grep -qE -- "--test[[:space:]]+${name}([[:space:]]|\$)"; then
+  # Use a here-string, not `printf | grep -q`: grep -q exits on first match and
+  # closes the pipe, so printf gets SIGPIPE; under `set -o pipefail` that turns a
+  # match into a non-zero pipeline status (a false "missing"). Flaky by ci.yml
+  # size vs the pipe buffer; a here-string avoids the pipe entirely.
+  if grep -qE -- "--test[[:space:]]+${name}([[:space:]]|\$)" <<<"$ci_contents"; then
     continue
   fi
   missing+=("$name")
