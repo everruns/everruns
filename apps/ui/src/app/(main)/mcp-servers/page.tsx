@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
@@ -41,7 +40,7 @@ import {
 } from "@/hooks/use-mcp-servers";
 import { usePolicies } from "@/hooks/use-policies";
 import { usePageTitle } from "@/hooks";
-import { Plus, Plug, Trash2, Key, X } from "lucide-react";
+import { Plus, Trash2, Key, X } from "lucide-react";
 import type {
   McpServer,
   CreateMcpServerRequest,
@@ -65,6 +64,7 @@ import {
   PageMasthead,
   PageControlStrip,
   SectionTabs,
+  EmptyState,
   IconTile,
   PageColumns,
   PageMain,
@@ -849,25 +849,28 @@ export default function McpServersPage() {
               </Table>
             }
             emptyState={
-              <Card className="p-8 text-center">
-                <Plug className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-                <h2 className="mb-2 text-lg font-medium">
-                  {search || statusTab !== "active"
+              <EmptyState
+                icon={<McpIcon />}
+                title={
+                  search || statusTab !== "active"
                     ? "No MCP servers match your filters"
-                    : "No MCP servers configured"}
-                </h2>
-                {!search && statusTab === "active" && (
-                  <>
-                    <p className="mb-4 text-muted-foreground">
-                      Add an MCP server to extend your agents with external tools and resources.
-                    </p>
+                    : "No MCP servers configured"
+                }
+                description={
+                  !search && statusTab === "active"
+                    ? "Add an MCP server to extend your agents with external tools and resources."
+                    : undefined
+                }
+                action={
+                  !search &&
+                  statusTab === "active" && (
                     <Button variant="accent" onClick={() => setAddServerOpen(true)}>
-                      <Plus className="mr-2 h-4 w-4" />
+                      <Plus className="size-4" />
                       Add Server
                     </Button>
-                  </>
-                )}
-              </Card>
+                  )
+                }
+              />
             }
           >
             {(items) => (
