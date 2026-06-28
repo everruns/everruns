@@ -1680,6 +1680,13 @@ export type EvalTarget =
   | {
       type: "app";
       app_id: string;
+    }
+  | {
+      // Label-only target for externally-executed (imported) runs.
+      type: "external";
+      provider: string;
+      model: string;
+      params?: Record<string, unknown>;
     };
 
 export interface Eval {
@@ -1793,8 +1800,22 @@ export type Scorer =
       weight?: number;
     };
 
+// Provenance for an externally-executed (imported) run. Open-vocab; the
+// producing system (e.g. Mira) fills what it has.
+export interface EvalRunAttribution {
+  system?: string;
+  version?: string | null;
+  url?: string | null;
+  run_id?: string;
+  metadata?: Record<string, unknown> | null;
+}
+
 export interface EvalRun {
   id: string;
+  // "internal" = everruns executed it; "external" = imported from another eval
+  // system. Absent on older runs ⇒ treat as internal.
+  source?: "internal" | "external";
+  attribution?: EvalRunAttribution;
   target?: EvalTarget;
   model_override?: string;
   filter_tags?: string[];
@@ -1808,6 +1829,35 @@ export interface EvalRun {
   updated_at: string;
 }
 
+// One named score. Stored as an ordered array (named, attributed) by both the
+// external-score write-back and external imports; `scorer`/`na` are present on
+// imported scores.
+export interface EvalScore {
+  scorer?: string;
+  pass: boolean;
+  value: number;
+  reason?: string;
+  na?: boolean;
+}
+
+// Normalized, provider-agnostic transcript for an externally-executed result.
+// Rendered by the generic transcript view; native runs link a session instead.
+export interface EvalTranscript {
+  input?: string[];
+  final_response?: string;
+  tool_calls?: string[];
+  output?: unknown[];
+  iterations?: number;
+}
+
+// Per-result metadata envelope. External imports stash the transcript and an
+// open-vocab metrics bag here (rather than dedicated columns).
+export interface EvalResultMetadata {
+  transcript?: EvalTranscript;
+  metrics?: Record<string, number>;
+  [key: string]: unknown;
+}
+
 export interface EvalCaseResult {
   id: string;
   eval_case_id: string;
@@ -1815,15 +1865,11 @@ export interface EvalCaseResult {
   session_id?: string;
   target?: EvalTarget;
   target_snapshot?: EvalTarget;
-  status: "pending" | "running" | "passed" | "failed" | "errored" | "timeout";
-  scores?: Record<
-    string,
-    {
-      pass: boolean;
-      value: number;
-      reason: string;
-    }
-  >;
+  status: "pending" | "running" | "passed" | "failed" | "errored" | "timeout" | "skipped";
+  // Array form (named/attributed) is canonical; the legacy keyed-object form is
+  // still accepted for older rows.
+  scores?: EvalScore[] | Record<string, { pass: boolean; value: number; reason: string }>;
+  metadata?: EvalResultMetadata;
   turns?: number;
   latency_ms?: number;
   input_tokens?: number;
