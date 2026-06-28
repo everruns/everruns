@@ -110,7 +110,7 @@ pub fn get_platform_store(
         .map(|store| store.as_ref())
         .ok_or_else(|| {
             ToolExecutionResult::tool_error(
-                "Platform management not available in this context. Ensure the platform_management capability is enabled.",
+                "Platform management not available: platform_store context is missing. Ensure the platform_management capability is enabled.",
             )
         })
 }
