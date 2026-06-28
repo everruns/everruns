@@ -27,6 +27,8 @@ pub struct UserHooksConfig {
 }
 
 pub const USER_HOOKS_CAPABILITY_ID: &str = "user_hooks";
+pub const MAX_USER_HOOKS_CONFIG_BYTES: usize = 256 * 1024;
+pub const MAX_USER_HOOKS: usize = 64;
 
 pub struct UserHooksCapability;
 
@@ -201,8 +203,22 @@ impl Capability for UserHooksCapability {
         if config.is_null() {
             return Ok(());
         }
+        let config_bytes = serde_json::to_vec(config)
+            .map_err(|e| format!("user_hooks config serialization failed: {e}"))?
+            .len();
+        if config_bytes > MAX_USER_HOOKS_CONFIG_BYTES {
+            return Err(format!(
+                "user_hooks config is {config_bytes} bytes; maximum is {MAX_USER_HOOKS_CONFIG_BYTES}"
+            ));
+        }
         let parsed: UserHooksConfig = serde_json::from_value(config.clone())
             .map_err(|e| format!("user_hooks config parse failed: {e}"))?;
+        if parsed.hooks.len() > MAX_USER_HOOKS {
+            return Err(format!(
+                "user_hooks.hooks has {} entries; maximum is {MAX_USER_HOOKS}",
+                parsed.hooks.len()
+            ));
+        }
 
         for (idx, hook) in parsed.hooks.iter().enumerate() {
             hook.validate()
@@ -430,6 +446,45 @@ mod tests {
         });
         let err = cap.validate_config(&config).unwrap_err();
         assert!(err.contains("timeout_ms"), "{}", err);
+    }
+
+    #[test]
+    fn too_many_user_hooks_are_rejected_before_per_hook_validation() {
+        let cap = UserHooksCapability;
+        let hooks = (0..=MAX_USER_HOOKS)
+            .map(|_| {
+                serde_json::json!({
+                    "event": "pre_tool_use",
+                    "matcher": { "match_regex": "[" },
+                    "executor": { "type": "bash", "command": "true" }
+                })
+            })
+            .collect::<Vec<_>>();
+        let config = serde_json::json!({ "hooks": hooks });
+
+        let err = cap.validate_config(&config).unwrap_err();
+        assert!(
+            err.contains("maximum is") && !err.contains("regex"),
+            "{}",
+            err
+        );
+    }
+
+    #[test]
+    fn oversized_user_hooks_config_is_rejected() {
+        let cap = UserHooksCapability;
+        let config = serde_json::json!({
+            "hooks": [
+                {
+                    "event": "pre_tool_use",
+                    "description": "x".repeat(MAX_USER_HOOKS_CONFIG_BYTES),
+                    "executor": { "type": "bash", "command": "true" }
+                }
+            ]
+        });
+
+        let err = cap.validate_config(&config).unwrap_err();
+        assert!(err.contains("maximum is"), "{}", err);
     }
 
     #[test]
