@@ -21,8 +21,8 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::event_listeners::EventListener;
-use crate::events::{
+use everruns_core::event_listeners::EventListener;
+use everruns_core::events::{
     ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, Event, EventData, LLM_GENERATION,
     LlmGenerationData, REASON_COMPLETED, REASON_STARTED, REASON_THINKING_COMPLETED,
     REASON_THINKING_STARTED, ReasonCompletedData, ReasonStartedData, ReasonThinkingCompletedData,
@@ -30,7 +30,7 @@ use crate::events::{
     TURN_FAILED, TURN_STARTED, ToolCompletedData, ToolStartedData, TurnCancelledData,
     TurnCompletedData, TurnFailedData, TurnStartedData,
 };
-use crate::telemetry::gen_ai;
+use everruns_core::telemetry::gen_ai;
 
 // ============================================================================
 // Internal Span Tracking
@@ -881,12 +881,12 @@ impl EventListener for OtelEventListener {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::events::{
+    use everruns_core::events::{
         EventContext, InputMessageData, LlmGenerationMetadata, LlmGenerationOutput, TokenUsage,
     };
-    use crate::message::Message;
-    use crate::tool_types::ToolCall;
-    use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
+    use everruns_core::message::Message;
+    use everruns_core::tool_types::ToolCall;
+    use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
     use serde_json::json;
     use uuid::Uuid;
 
