@@ -3762,6 +3762,17 @@ impl StorageBackend {
         )
     }
 
+    /// Ingest one externally-executed eval run (upsert eval + cases by name,
+    /// replace any prior run sharing `source_run_id`, write a completed external
+    /// run with fully-populated results). See `ImportEvalRunInput`.
+    pub async fn import_eval_run(
+        &self,
+        org_id: i64,
+        input: ImportEvalRunInput,
+    ) -> Result<EvalRunRow> {
+        dispatch!(self, import_eval_run, org_id, input)
+    }
+
     pub async fn list_eval_runs(&self, eval_id: Uuid) -> Result<Vec<EvalRunRow>> {
         dispatch!(self, list_eval_runs, eval_id)
     }

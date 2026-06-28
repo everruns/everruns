@@ -312,7 +312,7 @@ impl Database {
             INSERT INTO eval_runs (eval_id, org_id, public_id, target, model_override, filter_tags, triggered_by)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
-                      triggered_by, started_at, completed_at, summary, created_at, updated_at
+                      triggered_by, started_at, completed_at, summary, source, source_run_id, attribution, created_at, updated_at
             "#,
         )
         .bind(input.eval_id)
@@ -386,7 +386,7 @@ impl Database {
             INSERT INTO eval_runs (eval_id, org_id, public_id, target, model_override, filter_tags, triggered_by)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
-                      triggered_by, started_at, completed_at, summary, created_at, updated_at
+                      triggered_by, started_at, completed_at, summary, source, source_run_id, attribution, created_at, updated_at
             "#,
         )
         .bind(input.eval_id)
@@ -428,11 +428,166 @@ impl Database {
         Ok(row)
     }
 
+    /// Ingest one externally-executed eval run. Upserts the eval and its cases
+    /// by name, replaces any prior run sharing `source_run_id` (idempotent
+    /// re-publish), then writes a completed external run with fully-populated
+    /// results. All in one transaction so a failed import leaves no partial run.
+    pub async fn import_eval_run(
+        &self,
+        org_id: i64,
+        input: ImportEvalRunInput,
+    ) -> Result<EvalRunRow> {
+        let mut tx = self.pool.begin().await?;
+
+        // Serialize concurrent imports for the same (org, eval name) so two
+        // publishes don't both create the eval.
+        sqlx::query(
+            "SELECT pg_advisory_xact_lock(hashtextextended('eval_import:' || $1::text || ':' || $2, 0))",
+        )
+        .bind(org_id)
+        .bind(&input.eval_name)
+        .execute(&mut *tx)
+        .await?;
+
+        // Upsert eval by (org, name), preferring a non-deleted one.
+        let existing_eval: Option<(Uuid,)> = sqlx::query_as(
+            "SELECT id FROM evals WHERE org_id = $1 AND name = $2 AND status != 'deleted' ORDER BY created_at ASC LIMIT 1",
+        )
+        .bind(org_id)
+        .bind(&input.eval_name)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let eval_id = match existing_eval {
+            Some((id,)) => id,
+            None => {
+                let eval_public_id = format!("eval_{:032x}", Uuid::now_v7().as_u128());
+                let row: (Uuid,) = sqlx::query_as(
+                    r#"
+                    INSERT INTO evals (org_id, public_id, name, description, target, model_override, tags)
+                    VALUES ($1, $2, $3, $4, NULL, NULL, $5)
+                    RETURNING id
+                    "#,
+                )
+                .bind(org_id)
+                .bind(&eval_public_id)
+                .bind(&input.eval_name)
+                .bind(&input.eval_description)
+                .bind(&input.eval_tags)
+                .fetch_one(&mut *tx)
+                .await?;
+                row.0
+            }
+        };
+
+        // Idempotency: replace any prior run for this eval sharing source_run_id.
+        // eval_case_results cascade on eval_runs delete (migration 009).
+        sqlx::query(
+            "DELETE FROM eval_runs WHERE org_id = $1 AND eval_id = $2 AND source_run_id = $3",
+        )
+        .bind(org_id)
+        .bind(eval_id)
+        .bind(&input.source_run_id)
+        .execute(&mut *tx)
+        .await?;
+
+        let now = chrono::Utc::now();
+        let run = sqlx::query_as::<_, EvalRunRow>(
+            r#"
+            INSERT INTO eval_runs (eval_id, org_id, public_id, status, triggered_by, started_at, completed_at, summary, source, source_run_id, attribution)
+            VALUES ($1, $2, $3, 'completed', $4, $5, $5, $6, $7, $8, $9)
+            RETURNING id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
+                      triggered_by, started_at, completed_at, summary, source, source_run_id, attribution, created_at, updated_at
+            "#,
+        )
+        .bind(eval_id)
+        .bind(org_id)
+        .bind(&input.run_public_id)
+        .bind(&input.triggered_by)
+        .bind(now)
+        .bind(&input.summary)
+        .bind(&input.source)
+        .bind(&input.source_run_id)
+        .bind(&input.attribution)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        // New cases append after existing ones for stable display order.
+        let mut position =
+            sqlx::query_as::<_, (i64,)>("SELECT COUNT(*) FROM eval_cases WHERE eval_id = $1")
+                .bind(eval_id)
+                .fetch_one(&mut *tx)
+                .await?
+                .0 as i32;
+
+        for case in input.cases {
+            // Upsert case by (eval, name). External cases are identity-only:
+            // empty scorers, conversation kept only for display.
+            let existing_case: Option<(Uuid,)> = sqlx::query_as(
+                "SELECT id FROM eval_cases WHERE eval_id = $1 AND name = $2 LIMIT 1",
+            )
+            .bind(eval_id)
+            .bind(&case.case_name)
+            .fetch_optional(&mut *tx)
+            .await?;
+
+            let case_id = match existing_case {
+                Some((id,)) => id,
+                None => {
+                    let case_public_id = format!("evalcase_{:032x}", Uuid::now_v7().as_u128());
+                    let row: (Uuid,) = sqlx::query_as(
+                        r#"
+                        INSERT INTO eval_cases (eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers, max_turns, timeout_seconds, position)
+                        VALUES ($1, $2, $3, $4, NULL, '{}', $5, NULL, NULL, '[]'::jsonb, NULL, NULL, $6)
+                        RETURNING id
+                        "#,
+                    )
+                    .bind(eval_id)
+                    .bind(&case_public_id)
+                    .bind(&case.case_name)
+                    .bind(&case.case_description)
+                    .bind(&case.conversation)
+                    .bind(position)
+                    .fetch_one(&mut *tx)
+                    .await?;
+                    position += 1;
+                    row.0
+                }
+            };
+
+            let result_public_id = format!("evalresult_{:032x}", Uuid::now_v7().as_u128());
+            sqlx::query(
+                r#"
+                INSERT INTO eval_case_results (eval_run_id, eval_case_id, public_id, target, target_snapshot, status, scores, metadata, turns, latency_ms, input_tokens, output_tokens, error_message, artifacts)
+                VALUES ($1, $2, $3, $4, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+                "#,
+            )
+            .bind(run.id)
+            .bind(case_id)
+            .bind(result_public_id)
+            .bind(&case.target_snapshot)
+            .bind(&case.status)
+            .bind(&case.scores)
+            .bind(&case.metadata)
+            .bind(case.turns)
+            .bind(case.latency_ms)
+            .bind(case.input_tokens)
+            .bind(case.output_tokens)
+            .bind(&case.error_message)
+            .bind(&case.artifacts)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+        Ok(run)
+    }
+
     pub async fn list_eval_runs(&self, eval_id: Uuid) -> Result<Vec<EvalRunRow>> {
         let rows = sqlx::query_as::<_, EvalRunRow>(
             r#"
             SELECT id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
-                   triggered_by, started_at, completed_at, summary, created_at, updated_at
+                   triggered_by, started_at, completed_at, summary, source, source_run_id, attribution, created_at, updated_at
             FROM eval_runs
             WHERE eval_id = $1
             ORDER BY created_at DESC
@@ -452,7 +607,7 @@ impl Database {
         let row = sqlx::query_as::<_, EvalRunRow>(
             r#"
             SELECT id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
-                   triggered_by, started_at, completed_at, summary, created_at, updated_at
+                   triggered_by, started_at, completed_at, summary, source, source_run_id, attribution, created_at, updated_at
             FROM eval_runs
             WHERE org_id = $1 AND public_id = $2
             "#,
@@ -488,7 +643,7 @@ impl Database {
                 updated_at = NOW()
             WHERE id = $1
             RETURNING id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
-                      triggered_by, started_at, completed_at, summary, created_at, updated_at
+                      triggered_by, started_at, completed_at, summary, source, source_run_id, attribution, created_at, updated_at
             "#,
         )
         .bind(id)
@@ -505,7 +660,7 @@ impl Database {
         let row = sqlx::query_as::<_, EvalRunRow>(
             r#"
             SELECT id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
-                   triggered_by, started_at, completed_at, summary, created_at, updated_at
+                   triggered_by, started_at, completed_at, summary, source, source_run_id, attribution, created_at, updated_at
             FROM eval_runs
             WHERE eval_id = $1
             ORDER BY created_at DESC

@@ -370,6 +370,8 @@ mod tests {
             model_override: Some("gpt-test".into()),
             filter_tags: None,
             status: everruns_core::eval::EvalRunStatus::Completed,
+            source: everruns_core::eval::EvalRunSource::Internal,
+            attribution: None,
             triggered_by: "test".into(),
             started_at: None,
             completed_at: None,

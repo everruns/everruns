@@ -1,7 +1,8 @@
 use super::queries as q;
 use super::types::{
     BulkUpdateEvalRunScoresRequest, CreateEvalCaseRequest, CreateEvalRequest, CreateEvalRunRequest,
-    ListEvalsQuery, UpdateEvalCaseRequest, UpdateEvalRequest, UpdateEvalResultScoresRequest,
+    EvalImportPreflight, ImportEvalRunRequest, ListEvalsQuery, UpdateEvalCaseRequest,
+    UpdateEvalRequest, UpdateEvalResultScoresRequest,
 };
 use crate::domains::common::*;
 use everruns_core::eval::{Eval, EvalCase, EvalCaseResult, EvalRun};
@@ -98,6 +99,76 @@ impl Command for ListEvals {
 }
 
 inventory::submit! { CommandDescriptor::of::<ListEvals>() }
+
+/// Import a full external run group (everruns as host/viewer for external eval
+/// systems). See proposals/mira-results-publishing.md.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ImportEvalRun {
+    #[serde(flatten)]
+    pub req: ImportEvalRunRequest,
+}
+
+impl Command for ImportEvalRun {
+    type Output = Vec<EvalRun>;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "import_eval_run",
+            category: "evals",
+            description: "Import externally-executed eval results.",
+            method: "POST",
+            path: "/v1/evals/import",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_IMPORT)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Vec<EvalRun>, CommandError> {
+        require_evals_enabled(ctx)?;
+        q::service(ctx)
+            .import_run(&ctx.caller, self.req)
+            .await
+            .map_err(classify_anyhow)
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ImportEvalRun>() }
+
+/// Preflight: report whether the caller can import (feature enabled + has the
+/// eval-management permission) without failing. No policy gate so any org
+/// member can probe; the report just returns `false`.
+#[derive(Debug, Default, Deserialize, ToSchema)]
+pub struct EvalImportPreflightCmd {}
+
+impl Command for EvalImportPreflightCmd {
+    type Output = EvalImportPreflight;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "eval_import_preflight",
+            category: "evals",
+            description: "Report whether the caller can import eval results.",
+            method: "GET",
+            path: "/v1/evals/import/preflight",
+        }
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<EvalImportPreflight, CommandError> {
+        let evals_enabled = ctx.feature_flags.evals;
+        let can_import = evals_enabled
+            && ctx
+                .permission_resolver
+                .has_permission(&ctx.caller, &everruns_core::Permission::OrgAgentsManage);
+        Ok(EvalImportPreflight {
+            evals_enabled,
+            can_import,
+        })
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<EvalImportPreflightCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetEval {
