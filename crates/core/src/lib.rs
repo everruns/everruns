@@ -194,7 +194,8 @@ pub use config_layer::{
     AgentConfigOverlay, merge_capabilities, merge_initial_files, normalize_initial_file_path,
 };
 pub use error::{
-    AgentLoopError, LlmError, LlmErrorKind, Result, StoreResultExt, from_json, json_val,
+    AgentLoopError, FileSystemError, FileSystemErrorClass, LlmError, LlmErrorKind, Result,
+    StoreResultExt, classify_fs_error, from_json, json_val,
 };
 pub use message::{
     ContentPart, ContentType, Controls, ExternalActor, ImageContentPart, ImageFileContentPart,
