@@ -169,6 +169,13 @@ export const queryKeys = {
     list: () => ["user-connections"] as const,
   },
 
+  // User preference (key/value) queries
+  userPreferences: {
+    all: ["user-preferences"] as const,
+    list: () => ["user-preferences"] as const,
+    detail: (key: string) => ["user-preferences", key] as const,
+  },
+
   payments: {
     all: ["payments"] as const,
     accounts: (params: Record<string, unknown> = {}) => ["payments", "accounts", params] as const,

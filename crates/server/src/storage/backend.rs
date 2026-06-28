@@ -2894,6 +2894,31 @@ impl StorageBackend {
         dispatch!(self, delete_user_connection, user_id, provider)
     }
 
+    pub async fn list_user_preferences(&self, user_id: Uuid) -> Result<Vec<UserPreferenceRow>> {
+        dispatch!(self, list_user_preferences, user_id)
+    }
+
+    pub async fn get_user_preference(
+        &self,
+        user_id: Uuid,
+        key: &str,
+    ) -> Result<Option<UserPreferenceRow>> {
+        dispatch!(self, get_user_preference, user_id, key)
+    }
+
+    pub async fn set_user_preference(
+        &self,
+        user_id: Uuid,
+        key: &str,
+        value: &str,
+    ) -> Result<UserPreferenceRow> {
+        dispatch!(self, set_user_preference, user_id, key, value)
+    }
+
+    pub async fn delete_user_preference(&self, user_id: Uuid, key: &str) -> Result<bool> {
+        dispatch!(self, delete_user_preference, user_id, key)
+    }
+
     pub async fn get_connection_token_for_session(
         &self,
         session_id: SessionId,
