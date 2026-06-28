@@ -172,6 +172,7 @@ llm-tests = []  # LLM integration tests (requires API keys)
 llmsim = ["dep:llmsim"]
 
 [dev-dependencies]
+http = "1"
 tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber.workspace = true
 wiremock = "0.6"

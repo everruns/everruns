@@ -34,8 +34,8 @@ use everruns_core::driver_registry::{
 use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_core::is_provider_quota_message;
 use everruns_core::llm_retry::{
-    LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
-    is_transient_send_error, send_error_message,
+    LlmRetryConfig, RateLimitInfo, RetryDecision, SendOutcome, is_rate_limit_status, retry_request,
+    send_error_message,
 };
 use everruns_core::tool_types::{DeferrablePolicy, ToolCall, ToolDefinition};
 
@@ -571,7 +571,7 @@ impl ChatDriver for AnthropicChatDriver {
             None
         };
 
-        let mut request = AnthropicRequest {
+        let request = AnthropicRequest {
             model: wire_model.to_string(),
             messages: anthropic_messages,
             max_tokens,
@@ -584,200 +584,190 @@ impl ChatDriver for AnthropicChatDriver {
             output_config,
         };
 
-        // Retry loop for rate limit (429) and transient errors
-        let mut retry_metadata = RetryMetadata::default();
-        let mut last_error: Option<String> = None;
-        let mut max_tokens_fallback_attempted = false;
+        // Retry loop for rate limit (429) and transient errors. The shared
+        // executor (everruns_core::llm_retry::retry_request) owns the loop,
+        // backoff, send-error retry, and exhaustion logging. Anthropic-specific
+        // behavior preserved by the closures: per-attempt header rebuild, the
+        // one-shot `max_tokens` fallback (modeled as `RetryDecision::RetryNow`,
+        // which re-sends without counting an attempt), and the exact terminal
+        // error types/messages.
+        //
+        // `request` and `max_tokens_fallback_attempted` are shared between the
+        // send and classify closures (the classify closure mutates the request);
+        // both closures run sequentially, so the mutex is uncontended.
+        let request = Arc::new(Mutex::new(request));
+        let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let max_tokens_fallback_attempted = Arc::new(Mutex::new(false));
+        let beta_logged = Arc::new(Mutex::new(false));
 
-        let response = loop {
-            // Build request with headers (must rebuild each iteration)
-            let mut request_builder = self
-                .client
-                .post(&self.api_url)
-                .header("x-api-key", &self.api_key)
-                .header("anthropic-version", ANTHROPIC_VERSION)
-                .header("Content-Type", "application/json");
+        let (response, retry_metadata) = retry_request(
+            &self.retry_config,
+            "AnthropicDriver",
+            || {
+                let request = Arc::clone(&request);
+                let beta_logged = Arc::clone(&beta_logged);
+                async move {
+                    // Build request with headers (must rebuild each iteration).
+                    let mut request_builder = self
+                        .client
+                        .post(&self.api_url)
+                        .header("x-api-key", &self.api_key)
+                        .header("anthropic-version", ANTHROPIC_VERSION)
+                        .header("Content-Type", "application/json");
 
-            // Anthropic beta features, combined into a single comma-separated
-            // `anthropic-beta` header:
-            //  - interleaved-thinking: required for tool use with budget-based
-            //    extended thinking (adaptive thinking interleaves on its own).
-            //  - context-1m: opts the `[1m]` model ids into the 1M context
-            //    window. It is GA / silently ignored on Opus 4.6+ and Fable 5
-            //    (the only ids we attach it to), so always sending it is safe.
-            let mut beta_features: Vec<&str> = Vec::new();
-            if needs_interleaved_thinking {
-                beta_features.push("interleaved-thinking-2025-05-14");
-            }
-            if wants_million_context {
-                beta_features.push("context-1m-2025-08-07");
-            }
-            if !beta_features.is_empty() {
-                let beta = beta_features.join(",");
-                if retry_metadata.attempts == 0 {
-                    tracing::info!(beta = %beta, "AnthropicDriver: enabling anthropic-beta features");
-                }
-                request_builder = request_builder.header("anthropic-beta", beta);
-            }
-
-            let response = match request_builder.json(&request).send().await {
-                Ok(response) => response,
-                Err(e) => {
-                    // A send failure never produced an HTTP response, so it
-                    // bypasses the status-based retry below. Connection-level
-                    // errors (incl. a stale pooled keep-alive connection,
-                    // EVE-635) are transient — retry them with backoff, matching
-                    // SDK `APIConnectionError` behavior.
-                    if is_transient_send_error(&e)
-                        && retry_metadata.attempts < self.retry_config.max_retries
-                    {
-                        let wait_duration =
-                            self.retry_config.calculate_backoff(retry_metadata.attempts);
-                        tracing::warn!(
-                            error = %e,
-                            attempt = retry_metadata.attempts + 1,
-                            max_retries = self.retry_config.max_retries,
-                            wait_secs = wait_duration.as_secs_f64(),
-                            "AnthropicDriver: transient connection error sending request, retrying"
-                        );
-                        retry_metadata.record_retry(wait_duration, None);
-                        last_error = Some(format!("Failed to send request: {e}"));
-                        tokio::time::sleep(wait_duration).await;
-                        continue;
+                    // Anthropic beta features, combined into a single
+                    // comma-separated `anthropic-beta` header:
+                    //  - interleaved-thinking: required for tool use with
+                    //    budget-based extended thinking (adaptive thinking
+                    //    interleaves on its own).
+                    //  - context-1m: opts the `[1m]` model ids into the 1M
+                    //    context window. It is GA / silently ignored on Opus 4.6+
+                    //    and Fable 5 (the only ids we attach it to), so always
+                    //    sending it is safe.
+                    let mut beta_features: Vec<&str> = Vec::new();
+                    if needs_interleaved_thinking {
+                        beta_features.push("interleaved-thinking-2025-05-14");
                     }
-                    return Err(AgentLoopError::llm(send_error_message(
-                        &e,
-                        retry_metadata.attempts,
-                    )));
+                    if wants_million_context {
+                        beta_features.push("context-1m-2025-08-07");
+                    }
+                    if !beta_features.is_empty() {
+                        let beta = beta_features.join(",");
+                        let mut logged = beta_logged.lock().unwrap();
+                        if !*logged {
+                            tracing::info!(beta = %beta, "AnthropicDriver: enabling anthropic-beta features");
+                            *logged = true;
+                        }
+                        drop(logged);
+                        request_builder = request_builder.header("anthropic-beta", beta);
+                    }
+
+                    // Snapshot the (possibly fallback-mutated) request as JSON
+                    // while holding the lock, then release it before awaiting the
+                    // send so the guard never crosses an `.await` point.
+                    let body = serde_json::to_value(&*request.lock().unwrap())
+                        .map_err(|e| {
+                            SendOutcome::Fatal(AgentLoopError::llm(format!(
+                                "Failed to serialize Anthropic request: {e}"
+                            )))
+                        })?;
+                    request_builder
+                        .json(&body)
+                        .send()
+                        .await
+                        .map_err(SendOutcome::Send)
                 }
-            };
+            },
+            |response, attempts, can_retry| {
+                let request = Arc::clone(&request);
+                let last_error = Arc::clone(&last_error);
+                let max_tokens_fallback_attempted = Arc::clone(&max_tokens_fallback_attempted);
+                let model = config.model.clone();
+                async move {
+                    let status = response.status();
 
-            let status = response.status();
+                    if can_retry {
+                        // Parse rate limit info from headers before consuming body.
+                        let rate_limit_info = if is_rate_limit_status(status) {
+                            Some(RateLimitInfo::from_anthropic_headers(response.headers()))
+                        } else {
+                            None
+                        };
 
-            if status.is_success() {
-                // Success - exit retry loop
-                break response;
-            }
+                        let error_text = response.text().await.unwrap_or_default();
 
-            // Check if this is a retryable error
-            if is_transient_error(status) && retry_metadata.attempts < self.retry_config.max_retries
-            {
-                // Parse rate limit info from headers before consuming response body
-                let rate_limit_info = if is_rate_limit_status(status) {
-                    Some(RateLimitInfo::from_anthropic_headers(response.headers()))
-                } else {
-                    None
-                };
+                        // Don't retry a request-too-large error (not transient).
+                        if is_anthropic_request_too_large(status, &error_text) {
+                            return RetryDecision::Terminal(AgentLoopError::request_too_large(
+                                format!("Anthropic API error ({}): {}", status, error_text),
+                            ));
+                        }
 
-                let error_text = response.text().await.unwrap_or_default();
+                        // Exhausted billing quota is not transient — fail fast.
+                        if is_provider_quota_message(&error_text) {
+                            return RetryDecision::Terminal(AgentLoopError::llm_kind(
+                                LlmErrorKind::QuotaExhausted,
+                                format!("Anthropic API error ({}): {}", status, error_text),
+                            ));
+                        }
 
-                // Don't retry if this is a request-too-large error (not transient)
-                if is_anthropic_request_too_large(status, &error_text) {
-                    return Err(AgentLoopError::request_too_large(format!(
-                        "Anthropic API error ({}): {}",
-                        status, error_text
-                    )));
+                        let wait = rate_limit_info
+                            .as_ref()
+                            .map(|info| info.recommended_wait(&self.retry_config, attempts))
+                            .unwrap_or_else(|| self.retry_config.calculate_backoff(attempts));
+
+                        *last_error.lock().unwrap() = Some(error_text);
+                        return RetryDecision::Retry {
+                            wait,
+                            rate_limit_info,
+                        };
+                    }
+
+                    // Non-retryable error or max retries exceeded
+                    let error_text = response.text().await.unwrap_or_default();
+                    let error_msg = format!("Anthropic API error ({}): {}", status, error_text);
+
+                    // Graceful fallback: if max_tokens derived from profile
+                    // exceeds the model limit (400 error), retry once with a safe
+                    // fallback value instead of failing immediately. Modeled as
+                    // `RetryNow` so it re-sends without counting an attempt or
+                    // sleeping, matching the original `continue`.
+                    {
+                        let mut fallback_attempted = max_tokens_fallback_attempted.lock().unwrap();
+                        if status == reqwest::StatusCode::BAD_REQUEST
+                            && !*fallback_attempted
+                            && max_tokens_from_profile
+                            && (error_text.contains("max_tokens")
+                                || error_text.contains("maximum output tokens"))
+                        {
+                            const FALLBACK_MAX_TOKENS: u32 = 16_384;
+                            let mut req = request.lock().unwrap();
+                            tracing::warn!(
+                                attempted = req.max_tokens,
+                                fallback = FALLBACK_MAX_TOKENS,
+                                model = %model,
+                                "max_tokens exceeds model limit, retrying with fallback. \
+                                 Update model profile for {}.",
+                                model,
+                            );
+                            req.max_tokens = FALLBACK_MAX_TOKENS;
+                            *fallback_attempted = true;
+                            return RetryDecision::RetryNow;
+                        }
+                    }
+
+                    // Check if this is a model-not-found error (404 with not_found_error)
+                    if is_anthropic_model_not_found(status, &error_text) {
+                        return RetryDecision::Terminal(AgentLoopError::model_not_available(model));
+                    }
+
+                    // Check if this is a request-too-large error
+                    if is_anthropic_request_too_large(status, &error_text) {
+                        return RetryDecision::Terminal(AgentLoopError::request_too_large(error_msg));
+                    }
+
+                    // Attach the semantic error kind while the HTTP status and
+                    // body are still available (see LlmErrorKind).
+                    let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
+
+                    if attempts > 0 {
+                        return RetryDecision::Terminal(AgentLoopError::llm_kind(
+                            kind,
+                            format!(
+                                "{} (after {} retries, last error: {})",
+                                error_msg,
+                                attempts,
+                                last_error.lock().unwrap().take().unwrap_or_default()
+                            ),
+                        ));
+                    }
+
+                    RetryDecision::Terminal(AgentLoopError::llm_kind(kind, error_msg))
                 }
-
-                // Exhausted billing quota is not transient — fail fast
-                // instead of burning retries.
-                if is_provider_quota_message(&error_text) {
-                    return Err(AgentLoopError::llm_kind(
-                        LlmErrorKind::QuotaExhausted,
-                        format!("Anthropic API error ({}): {}", status, error_text),
-                    ));
-                }
-
-                // Calculate wait duration
-                let wait_duration = rate_limit_info
-                    .as_ref()
-                    .map(|info| info.recommended_wait(&self.retry_config, retry_metadata.attempts))
-                    .unwrap_or_else(|| {
-                        self.retry_config.calculate_backoff(retry_metadata.attempts)
-                    });
-
-                tracing::warn!(
-                    status = %status,
-                    attempt = retry_metadata.attempts + 1,
-                    max_retries = self.retry_config.max_retries,
-                    wait_secs = wait_duration.as_secs_f64(),
-                    retry_after = ?rate_limit_info.as_ref().and_then(|i| i.retry_after_secs),
-                    "AnthropicDriver: rate limit or transient error, retrying"
-                );
-
-                // Record retry attempt
-                retry_metadata.record_retry(wait_duration, rate_limit_info);
-                last_error = Some(error_text);
-
-                // Wait before retry
-                tokio::time::sleep(wait_duration).await;
-                continue;
-            }
-
-            // Non-retryable error or max retries exceeded
-            let error_text = response.text().await.unwrap_or_default();
-            let error_msg = format!("Anthropic API error ({}): {}", status, error_text);
-
-            // Graceful fallback: if max_tokens derived from profile exceeds model limit (400 error),
-            // retry once with a safe fallback value instead of failing immediately.
-            if status == reqwest::StatusCode::BAD_REQUEST
-                && !max_tokens_fallback_attempted
-                && max_tokens_from_profile
-                && (error_text.contains("max_tokens")
-                    || error_text.contains("maximum output tokens"))
-            {
-                const FALLBACK_MAX_TOKENS: u32 = 16_384;
-                tracing::warn!(
-                    attempted = request.max_tokens,
-                    fallback = FALLBACK_MAX_TOKENS,
-                    model = %config.model,
-                    "max_tokens exceeds model limit, retrying with fallback. \
-                     Update model profile for {}.",
-                    config.model,
-                );
-                request.max_tokens = FALLBACK_MAX_TOKENS;
-                max_tokens_fallback_attempted = true;
-                continue;
-            }
-
-            // Check if this is a model-not-found error (404 with not_found_error)
-            if is_anthropic_model_not_found(status, &error_text) {
-                return Err(AgentLoopError::model_not_available(config.model.clone()));
-            }
-
-            // Check if this is a request-too-large error
-            if is_anthropic_request_too_large(status, &error_text) {
-                return Err(AgentLoopError::request_too_large(error_msg));
-            }
-
-            // Attach the semantic error kind while the HTTP status and body
-            // are still available (see LlmErrorKind).
-            let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
-
-            // If we exhausted retries, include that in the error message
-            if retry_metadata.attempts > 0 {
-                return Err(AgentLoopError::llm_kind(
-                    kind,
-                    format!(
-                        "{} (after {} retries, last error: {})",
-                        error_msg,
-                        retry_metadata.attempts,
-                        last_error.unwrap_or_default()
-                    ),
-                ));
-            }
-
-            return Err(AgentLoopError::llm_kind(kind, error_msg));
-        };
-
-        // Log successful retry recovery
-        if retry_metadata.had_retries() {
-            tracing::info!(
-                attempts = retry_metadata.attempts,
-                total_wait_secs = retry_metadata.total_retry_wait.as_secs_f64(),
-                "AnthropicDriver: request succeeded after retries"
-            );
-        }
+            },
+            |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
+        )
+        .await?;
 
         let byte_stream = response.bytes_stream();
         let event_stream = byte_stream.eventsource();

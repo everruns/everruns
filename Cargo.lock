@@ -2469,6 +2469,7 @@ dependencies = [
  "everruns-openui",
  "fetchkit",
  "futures",
+ "http 1.4.2",
  "include_dir",
  "insta",
  "inventory",

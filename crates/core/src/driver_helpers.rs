@@ -5,7 +5,10 @@
 //
 // See specs/llm-drivers.md for driver requirements.
 
+use crate::driver_registry::DiscoveredModel;
+use crate::error::{AgentLoopError, Result};
 use reqwest::StatusCode;
+use serde::de::DeserializeOwned;
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -200,6 +203,61 @@ pub const ANTHROPIC_NOT_FOUND_PATTERNS: &[&str] = &["not_found_error"];
 /// Gemini-specific model-not-found patterns.
 /// Gemini returns 404 with `"NOT_FOUND"` status or `"model"` in the message.
 pub const GEMINI_NOT_FOUND_PATTERNS: &[&str] = &["not_found", "model"];
+
+// ============================================================================
+// Model Discovery (/models endpoint)
+// ============================================================================
+
+/// Fetch and map a provider's `/models` catalog into [`DiscoveredModel`]s.
+///
+/// Extracts the skeleton shared by the OpenAI-compatible `/models` discovery
+/// implementations (Fireworks, OpenRouter, MAI/Foundry):
+/// 1. send the (already authenticated) request,
+/// 2. on a non-success status, drain the body to allow connection reuse and
+///    return [`models_api_status_error`] — unless the status is in
+///    `none_on_statuses`, in which case discovery is treated as unsupported and
+///    `Ok(None)` is returned,
+/// 3. deserialize the body into the provider-specific response type `T`,
+/// 4. apply the provider's `map` to produce the discovered models.
+///
+/// Error message prefixes are passed in so each provider keeps its exact
+/// user-facing wording.
+///
+/// Note: callers attach auth on `request` themselves (via
+/// [`crate::openai_protocol::apply_models_api_auth`] or an awaited
+/// `AuthHeaderProvider`), so this stays agnostic to the auth scheme.
+pub async fn fetch_models<T, F>(
+    request: reqwest::RequestBuilder,
+    fetch_err_prefix: &str,
+    parse_err_prefix: &str,
+    none_on_statuses: &[StatusCode],
+    map: F,
+) -> Result<Option<Vec<DiscoveredModel>>>
+where
+    T: DeserializeOwned,
+    F: FnOnce(T) -> Vec<DiscoveredModel>,
+{
+    let response = request
+        .send()
+        .await
+        .map_err(|e| AgentLoopError::llm(format!("{fetch_err_prefix}: {e}")))?;
+
+    let status = response.status();
+    if !status.is_success() {
+        let _ = response.bytes().await; // drain body to allow connection reuse
+        if none_on_statuses.contains(&status) {
+            return Ok(None);
+        }
+        return Err(crate::openai_protocol::models_api_status_error(status));
+    }
+
+    let parsed: T = response
+        .json()
+        .await
+        .map_err(|e| AgentLoopError::llm(format!("{parse_err_prefix}: {e}")))?;
+
+    Ok(Some(map(parsed)))
+}
 
 // ============================================================================
 // Thinking Budget Constants
