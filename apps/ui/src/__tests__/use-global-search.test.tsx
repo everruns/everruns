@@ -21,8 +21,9 @@ jest.mock("@/hooks/use-capabilities", () => ({
   useCapabilities: () => ({ data: [] }),
   useDeclarativeCapabilities: () => ({ data: [] }),
 }));
+const mockUseEvals = jest.fn(() => ({ data: [] }));
 jest.mock("@/hooks/use-evals", () => ({
-  useEvals: () => ({ data: [] }),
+  useEvals: (options?: { enabled?: boolean }) => mockUseEvals(options),
 }));
 jest.mock("@/hooks/use-apps", () => ({
   useApps: () => ({ data: [] }),
@@ -30,8 +31,9 @@ jest.mock("@/hooks/use-apps", () => ({
 jest.mock("@/hooks/use-agent-identities", () => ({
   useAgentIdentities: () => ({ data: [] }),
 }));
+let mockEvalsFlag = false;
 jest.mock("@/providers/feature-flags-provider", () => ({
-  useFeatureFlag: () => false,
+  useFeatureFlag: () => mockEvalsFlag,
 }));
 
 const mockSetCurrentOrg = jest.fn();
@@ -59,6 +61,19 @@ jest.mock("@/providers/org-provider", () => ({
 describe("useGlobalSearch", () => {
   beforeEach(() => {
     mockSetCurrentOrg.mockClear();
+    mockUseEvals.mockClear();
+    mockEvalsFlag = false;
+  });
+
+  it("defers the evals fetch when the feature flag is off", () => {
+    renderHook(() => useGlobalSearch(""));
+    expect(mockUseEvals).toHaveBeenCalledWith({ enabled: false });
+  });
+
+  it("enables the evals fetch when the feature flag is on", () => {
+    mockEvalsFlag = true;
+    renderHook(() => useGlobalSearch(""));
+    expect(mockUseEvals).toHaveBeenCalledWith({ enabled: true });
   });
 
   it("finds organizations and switches to the selected organization", () => {
