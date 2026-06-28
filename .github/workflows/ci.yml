@@ -1325,6 +1325,9 @@ jobs:
       - name: Lint
         run: pnpm run lint
 
+      - name: Check generated API types
+        run: pnpm run api-types:check
+
       - name: Type check
         run: pnpm run typecheck
 
