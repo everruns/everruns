@@ -134,4 +134,40 @@ describe("EvalRunDetailPage", () => {
     });
     expect(screen.getByText("the imported answer")).toBeInTheDocument();
   });
+
+  it("defaults a multi-target run to the matrix view", async () => {
+    const mkResult = (id: string, provider: string, model: string, value: number) => ({
+      id,
+      eval_case_id: "evalcase_add",
+      case_name: "add",
+      target_snapshot: { type: "external" as const, provider, model },
+      status: value >= 0.5 ? ("passed" as const) : ("failed" as const),
+      scores: [{ scorer: "contains", value, pass: value >= 0.5, reason: "" }],
+      created_at: "2026-04-19T10:00:00Z",
+      updated_at: "2026-04-19T10:00:00Z",
+    });
+    const matrixRun: EvalRun = {
+      id: "evalrun_matrix",
+      status: "completed",
+      source: "external",
+      attribution: { system: "mira" },
+      triggered_by: "import:mira",
+      results: [mkResult("r1", "anthropic", "opus", 1), mkResult("r2", "openai", "gpt", 0)],
+      created_at: "2026-04-19T10:00:00Z",
+      updated_at: "2026-04-19T10:01:00Z",
+    };
+    mockUseEvalRun.mockReturnValue({ data: matrixRun, isLoading: false });
+
+    await renderWithSuspense({ evalId: "eval_123", runId: "evalrun_matrix" });
+
+    // Matrix column headers are the two distinct targets, and the case is a row.
+    expect(screen.getByText("anthropic/opus")).toBeInTheDocument();
+    expect(screen.getByText("openai/gpt")).toBeInTheDocument();
+    expect(screen.getByText("add")).toBeInTheDocument();
+    // Cell scores render (1.00 for the passing target, 0.00 for the failing one).
+    expect(screen.getByText("1.00")).toBeInTheDocument();
+    expect(screen.getByText("0.00")).toBeInTheDocument();
+    // The view toggle is offered.
+    expect(screen.getByRole("button", { name: "Table" })).toBeInTheDocument();
+  });
 });

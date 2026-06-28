@@ -10,13 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Square, ExternalLink, ChevronRight, ChevronDown } from "lucide-react";
 import { TranscriptView } from "@/components/evals/transcript-view";
-import type {
-  EvalCaseResult,
-  EvalRun,
-  EvalRunStatus,
-  EvalScore,
-  EvalTarget,
-} from "@/lib/api/types";
+import { RunResultsMatrix } from "@/components/evals/run-results-matrix";
+import { normalizeScores, targetLabel } from "@/components/evals/eval-format";
+import type { EvalCaseResult, EvalRun, EvalRunStatus, EvalTarget } from "@/lib/api/types";
 
 function passRateColor(rate: number): string {
   if (rate >= 0.9) return "text-green-600";
@@ -39,29 +35,6 @@ function resultStatusVariant(status: string): "default" | "secondary" | "destruc
     default:
       return "outline";
   }
-}
-
-// Scores persist as a named array (`[{scorer, value, pass, reason}]`) for both
-// external imports and write-back; older rows may use a keyed object. Normalize
-// to one shape so the table renders scorer names either way.
-function normalizeScores(
-  scores: EvalCaseResult["scores"],
-): Array<{ name: string; pass: boolean; value: number; reason?: string }> {
-  if (!scores) return [];
-  if (Array.isArray(scores)) {
-    return scores.map((s: EvalScore, i) => ({
-      name: s.scorer ?? `scorer ${i + 1}`,
-      pass: s.pass,
-      value: s.value,
-      reason: s.reason,
-    }));
-  }
-  return Object.entries(scores).map(([name, s]) => ({
-    name,
-    pass: s.pass,
-    value: s.value,
-    reason: s.reason,
-  }));
 }
 
 function runStatusVariant(
@@ -88,17 +61,9 @@ function formatDuration(ms: number): string {
 
 function TargetBadge({ target }: { target?: EvalTarget }) {
   if (!target) return null;
-  let label: string;
-  if (target.type === "app") {
-    label = `app: ${target.app_id}`;
-  } else if (target.type === "external") {
-    label = target.model ? `${target.provider}/${target.model}` : target.provider;
-  } else {
-    label = "session";
-  }
   return (
     <Badge variant="outline" className="text-xs">
-      {label}
+      {targetLabel(target)}
     </Badge>
   );
 }
@@ -219,6 +184,9 @@ export default function EvalRunDetailPage({
   const { data: run, isLoading: runLoading } = useEvalRun(evalId, runId);
   usePageTitle("Run", ev?.name ?? null, "Eval");
   const cancelRun = useCancelEvalRun(evalId);
+  // null = follow the default (matrix when the run spans multiple targets);
+  // a user choice sticks once made.
+  const [view, setView] = useState<"table" | "matrix" | null>(null);
 
   const handleCancel = useCallback(async () => {
     try {
@@ -251,6 +219,12 @@ export default function EvalRunDetailPage({
   }
 
   const canCancel = run.status === "pending" || run.status === "running";
+
+  // The matrix is the natural view when one run spans several targets (a
+  // published Mira run); otherwise the flat table is clearer.
+  const targetCount = new Set(run.results.map((r) => targetLabel(r.target_snapshot))).size;
+  const multiTarget = targetCount > 1;
+  const effectiveView = view ?? (multiTarget ? "matrix" : "table");
 
   return (
     <div className="container mx-auto p-6">
@@ -334,16 +308,36 @@ export default function EvalRunDetailPage({
         </div>
       )}
 
-      {/* Results table */}
+      {/* Results */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Results ({run.results.length})</CardTitle>
+          {multiTarget && run.results.length > 0 && (
+            <div className="flex gap-1">
+              <Button
+                variant={effectiveView === "matrix" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setView("matrix")}
+              >
+                Matrix
+              </Button>
+              <Button
+                variant={effectiveView === "table" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setView("table")}
+              >
+                Table
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
           {run.results.length === 0 ? (
             <p className="text-center py-8 text-muted-foreground">
               {canCancel ? "Waiting for results..." : "No results"}
             </p>
+          ) : effectiveView === "matrix" ? (
+            <RunResultsMatrix results={run.results} />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
