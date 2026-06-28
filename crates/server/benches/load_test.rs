@@ -38,8 +38,11 @@ use serde::{Deserialize, Serialize};
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
 use tokio::sync::Semaphore;
 
-/// Seed harness ID from seed.rs (DEFAULT_HARNESS = 0x01933b5a_0000_7000_8000_000000000601)
-const DEFAULT_HARNESS_ID: &str = "harness_01933b5a000070008000000000000601";
+/// Built-in harness selected by name. Harnesses are created per-org by
+/// `org_init` with runtime UUIDv7 ids (no deterministic seed id anymore), so the
+/// load test resolves the id at runtime via `GET /v1/harnesses` instead of
+/// hardcoding it. `platform-chat` is the default conversational harness.
+const DEFAULT_HARNESS_NAME: &str = "platform-chat";
 
 /// Seed llmsim-latency model ID from seed.rs (LLMSIM_LATENCY = 0x01933b5a_0000_7000_8000_000000000402)
 /// Uses LatencyProfile::fast() with TTFT and inter-token delays for realistic streaming simulation.
@@ -601,10 +604,51 @@ impl LoadTestRunner {
         }
     }
 
+    /// Enable the configured model so it can be used as an agent's default.
+    ///
+    /// The llmsim seed models ship `enabled: false` (kept out of UI pickers),
+    /// but agent/session creation rejects disabled models with a 404. Enabling
+    /// is idempotent, so this is safe to run before every load test.
+    async fn ensure_model_enabled(&self) -> anyhow::Result<()> {
+        let url = format!("{}/v1/models/{}", self.config.api_url, self.config.model_id);
+        self.http
+            .patch(&url)
+            .json(&serde_json::json!({ "enabled": true }))
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
+    }
+
+    /// Resolve the harness id to use, selecting the built-in `platform-chat`
+    /// harness by name (falling back to the first harness if absent).
+    async fn resolve_harness_id(&self) -> anyhow::Result<String> {
+        let url = format!("{}/v1/harnesses", self.config.api_url);
+        let body: serde_json::Value = self
+            .http
+            .get(&url)
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let harnesses = body
+            .get("data")
+            .and_then(|d| d.as_array())
+            .ok_or_else(|| anyhow::anyhow!("harness list missing `data` array"))?;
+        let pick = harnesses
+            .iter()
+            .find(|h| h.get("name").and_then(|n| n.as_str()) == Some(DEFAULT_HARNESS_NAME))
+            .or_else(|| harnesses.first())
+            .and_then(|h| h.get("id").and_then(|i| i.as_str()))
+            .ok_or_else(|| anyhow::anyhow!("no harnesses available on server"))?;
+        Ok(pick.to_string())
+    }
+
     /// Create agent via SDK
     async fn create_load_test_agent(&self) -> anyhow::Result<String> {
         let req = CreateAgentRequest::new(
-            format!("Load Test Agent {}", chrono::Utc::now().timestamp()),
+            format!("load-test-agent-{}", chrono::Utc::now().timestamp()),
             "You are a helpful assistant for load testing. Respond concisely.",
         )
         .default_model_id(&self.config.model_id);
@@ -614,11 +658,16 @@ impl LoadTestRunner {
     }
 
     /// Create session via raw reqwest (SDK lacks harness_id support)
-    async fn create_session(&self, agent_id: &str, session_num: usize) -> anyhow::Result<String> {
+    async fn create_session(
+        &self,
+        agent_id: &str,
+        harness_id: &str,
+        session_num: usize,
+    ) -> anyhow::Result<String> {
         let url = format!("{}/v1/sessions", self.config.api_url);
 
         let req = CreateSessionRequest {
-            harness_id: DEFAULT_HARNESS_ID.to_string(),
+            harness_id: harness_id.to_string(),
             agent_id: Some(agent_id.to_string()),
             title: Some(format!("Load Test Session {}", session_num)),
             model_id: Some(self.config.model_id.clone()),
@@ -756,9 +805,14 @@ impl LoadTestRunner {
         }
     }
 
-    async fn run_session(&self, agent_id: &str, session_num: usize) -> anyhow::Result<()> {
+    async fn run_session(
+        &self,
+        agent_id: &str,
+        harness_id: &str,
+        session_num: usize,
+    ) -> anyhow::Result<()> {
         // Create session
-        let session_id = match self.create_session(agent_id, session_num).await {
+        let session_id = match self.create_session(agent_id, harness_id, session_num).await {
             Ok(id) => id,
             Err(e) => {
                 self.metrics.sessions_failed.fetch_add(1, Ordering::Relaxed);
@@ -839,6 +893,9 @@ impl LoadTestRunner {
         // Fetch server info before the test
         let server_info = self.fetch_server_info().await;
 
+        // Resolve the harness id at runtime (no deterministic seed id anymore).
+        let harness_id = self.resolve_harness_id().await?;
+
         println!("═══════════════════════════════════════════════════════════");
         println!(
             "              Everruns Load Test [{}]",
@@ -870,8 +927,14 @@ impl LoadTestRunner {
             "  Total messages:       {}",
             self.config.sessions * self.config.messages_per_session
         );
-        println!("  Harness:              {} (default)", DEFAULT_HARNESS_ID);
+        println!(
+            "  Harness:              {} ({})",
+            harness_id, DEFAULT_HARNESS_NAME
+        );
         println!();
+
+        // Enable the llmsim model (seed ships it disabled) before using it.
+        self.ensure_model_enabled().await?;
 
         // Create agent via SDK
         println!("Creating load test agent...");
@@ -914,11 +977,14 @@ impl LoadTestRunner {
             .map(|session_num| {
                 let runner = self.clone();
                 let agent_id = agent_id.clone();
+                let harness_id = harness_id.clone();
                 let semaphore = semaphore.clone();
 
                 async move {
                     let _permit = semaphore.acquire().await.unwrap();
-                    runner.run_session(&agent_id, session_num).await
+                    runner
+                        .run_session(&agent_id, &harness_id, session_num)
+                        .await
                 }
             })
             .collect();
