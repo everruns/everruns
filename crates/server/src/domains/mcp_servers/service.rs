@@ -290,7 +290,8 @@ impl McpServerService {
             anyhow::bail!("stdio MCP servers are not supported for organization MCP servers");
         }
         let existing_row = self.db.get_mcp_server(caller.org_id, id).await?;
-        let existing_row = existing_row.ok_or_else(|| anyhow!("MCP server not found"))?;
+        let existing_row =
+            existing_row.ok_or_else(|| crate::errors::ResourceNotFoundError::new("MCP server"))?;
         let mut settings = Self::settings_from_row(&existing_row);
         if let Some(auth_mode) = req.auth_mode.clone() {
             settings.auth_mode = auth_mode;
@@ -383,7 +384,7 @@ impl McpServerService {
             .db
             .get_mcp_server(caller.org_id, id)
             .await?
-            .ok_or_else(|| anyhow!("MCP server not found"))?;
+            .ok_or_else(|| crate::errors::ResourceNotFoundError::new("MCP server"))?;
         let settings = Self::settings_from_row(&row);
 
         // Get decrypted API key if set
@@ -449,7 +450,7 @@ impl McpServerService {
             .db
             .get_mcp_server(caller.org_id, id)
             .await?
-            .ok_or_else(|| anyhow!("MCP server not found"))?;
+            .ok_or_else(|| crate::errors::ResourceNotFoundError::new("MCP server"))?;
         let headers: HashMap<String, String> =
             serde_json::from_value(row.headers.clone()).unwrap_or_default();
         let tools = fetch_mcp_tools(
@@ -525,7 +526,7 @@ impl McpServerService {
             .db
             .get_mcp_server(caller.org_id, id)
             .await?
-            .ok_or_else(|| anyhow!("MCP server not found"))?;
+            .ok_or_else(|| crate::errors::ResourceNotFoundError::new("MCP server"))?;
 
         if Self::cache_fresh(&row) {
             return Ok(Self::cached_tools(&row));
@@ -662,7 +663,7 @@ impl McpServerService {
             .db
             .get_mcp_server(caller.org_id, id)
             .await?
-            .ok_or_else(|| anyhow!("MCP server not found"))?;
+            .ok_or_else(|| crate::errors::ResourceNotFoundError::new("MCP server"))?;
 
         if !row.api_key_set {
             return Ok(None);
