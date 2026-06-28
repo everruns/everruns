@@ -26,12 +26,13 @@ use async_trait::async_trait;
 use axum::http::{Method, header};
 use axum::{Json, Router, extract::State, routing::get};
 use everruns_core::{
-    BraintrustListener, ErrorReport, ErrorReporter, ErrorScope, EventListener, NoopErrorReporter,
-    OtelEventListener, PlatformDefinition, SharedErrorReporter,
+    ErrorReport, ErrorReporter, ErrorScope, EventListener, NoopErrorReporter, PlatformDefinition,
+    SharedErrorReporter,
 };
 use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
 };
+use everruns_observability::{BraintrustListener, OtelEventListener};
 use everruns_worker::{
     AgentRunner, DurableTaskNotifier, RunnerBackend, TaskWorker, TaskWorkerConfig,
     create_runner_with_backend,

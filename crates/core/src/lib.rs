@@ -64,8 +64,10 @@ pub mod event_listeners;
 // Error reporter (vendor-neutral embedder hook)
 pub mod error_reporter;
 
-// Observation backends (OTel, etc.)
-pub mod observation;
+// Observability exporters (Braintrust, OpenTelemetry) live in the
+// `everruns-observability` crate (EVE-651), depending on core only for the
+// `EventListener` trait + event types. The gen-AI span conventions and OTLP
+// init they build on stay here in `telemetry`.
 
 // Typed ID system (type-safe prefixed identifiers)
 // See specs/id-schema.md for specification
@@ -532,6 +534,3 @@ pub use feature_flags::{
     API_FEATURE_FLAG_DEFINITIONS, FeatureFlagDefinition, FeatureFlagMap, FeatureFlags,
     InternalFeatureFlags,
 };
-
-// Observation backends
-pub use observation::{BraintrustConfig, BraintrustListener, OtelEventListener};
