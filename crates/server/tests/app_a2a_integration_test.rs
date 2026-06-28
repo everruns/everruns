@@ -19,7 +19,7 @@ use everruns_core::tools::ToolExecutionResult;
 use everruns_core::traits::{KeyInfo, SecretInfo, SessionStorageStore, ToolContext};
 use everruns_core::typed_id::SessionId;
 use everruns_server::storage::models::{AuditLogQuery, AuditLogRow};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
 use sha2::Sha256;
 use test_harness::TestServer;

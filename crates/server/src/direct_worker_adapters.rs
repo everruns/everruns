@@ -2196,7 +2196,7 @@ fn build_task_webhook_request(url: &str, body: &[u8], secret: Option<&str>) -> E
         .require_dns_pinning();
 
     if let Some(secret) = secret {
-        use hmac::{Hmac, Mac};
+        use hmac::{Hmac, KeyInit, Mac};
         use sha2::Sha256;
         type HmacSha256 = Hmac<Sha256>;
         let mut mac =

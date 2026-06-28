@@ -208,7 +208,7 @@ fn config_hash(resolved_prompt: &str, tool_listing: &str, model_id: Option<&str>
     hasher.update(tool_listing.as_bytes());
     hasher.update([0u8]);
     hasher.update(model_id.unwrap_or("").as_bytes());
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 fn service(ctx: &Ctx) -> Result<Arc<AgentHealthCheckService>, CommandError> {

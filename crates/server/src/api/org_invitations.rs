@@ -29,7 +29,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::{AuditEvent, EmailError, EmailMessage, EmailSender, ManagementAction, OrgRole};
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;

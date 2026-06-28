@@ -827,7 +827,9 @@ mod engine {
         let counted = Arc::new(AtomicU64::new(0));
         {
             let counted = counted.clone();
-            lua.set_hook(
+            // mlua 0.11 makes `set_hook` fallible; surface a setup failure as an
+            // engine error rather than silently ignoring the result.
+            if let Err(e) = lua.set_hook(
                 HookTriggers::new().every_nth_instruction(HOOK_EVERY),
                 move |_lua, _debug| {
                     if Instant::now() >= deadline {
@@ -838,7 +840,9 @@ mod engine {
                     }
                     Ok(VmState::Continue)
                 },
-            );
+            ) {
+                return LuaOutcome::engine_error(format!("install hook: {e}"));
+            }
         }
 
         let stdout = Arc::new(Mutex::new(String::new()));

@@ -72,7 +72,7 @@ axum-extra = { version = "0.12", features = ["cookie", "multipart", "query"] }
 hyper = { version = "1", features = ["server", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["tokio", "server-auto", "http1", "http2"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "trace", "set-header"] }
+tower-http = { version = "0.7", features = ["cors", "trace", "set-header"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -110,11 +110,11 @@ utoipa = { version = "5.4", features = ["axum_extras", "chrono", "uuid"] }
 
 # Encryption
 aes-gcm = "0.10"
-rand = "0.9"
+rand = "0.10"
 base64 = "0.22"
 
 # Object storage (optional S3-compatible blob backend, specs/object-storage.md)
-object_store = { version = "0.12", features = ["aws"] }
+object_store = { version = "0.14", features = ["aws"] }
 
 # Rate limiting
 governor = "0.10"
@@ -128,8 +128,8 @@ async-nats = "0.49"
 # Authentication
 argon2 = "0.5"
 jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
-sha2 = "0.10"
-hmac = "0.12"
+sha2 = "0.11"
+hmac = "0.13"
 hex = "0.4"
 git2 = "0.21"
 reqwest = { version = "0.13.2", default-features = false, features = ["json", "stream", "rustls", "blocking", "form"] }
@@ -181,7 +181,7 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 
 # Prometheus metrics
 metrics = "0.24"
-metrics-exporter-prometheus = { version = "0.16", default-features = false }
+metrics-exporter-prometheus = { version = "0.18", default-features = false }
 
 # In-process caching
 moka = { version = "0.12", features = ["future", "sync"] }

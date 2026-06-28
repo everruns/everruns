@@ -14,7 +14,7 @@ use axum::{
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use chrono::{Duration, Utc};
 use everruns_core::{DEFAULT_ORG_ID, OrgRole};
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;

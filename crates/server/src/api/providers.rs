@@ -25,8 +25,8 @@ use everruns_core::{
     Caller, DriverId, DriverOAuthFlow, DriverRegistry, Policy, ProviderStatus,
     evaluate_policies_with,
 };
-use hmac::{Hmac, Mac};
-use rand::Rng;
+use hmac::{Hmac, KeyInit, Mac};
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 type HmacSha256 = Hmac<Sha256>;

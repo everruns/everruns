@@ -249,7 +249,7 @@ impl AuthConfig {
         // In AuthMode::Admin or AuthMode::Full, refuse to start without a secret.
         let jwt_secret = std::env::var("AUTH_JWT_SECRET").unwrap_or_else(|_| {
             if mode == AuthMode::None {
-                use rand::Rng;
+                use rand::RngExt;
                 let bytes: [u8; 32] = rand::rng().random();
                 hex::encode(bytes)
             } else {

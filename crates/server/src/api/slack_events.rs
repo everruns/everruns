@@ -33,7 +33,7 @@ use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
 use everruns_core::validate_safe_url;
 use everruns_core::{App, AppStatus, Caller, SessionStrategy, SlackChannelConfig, SlackReplyMode};
 use everruns_worker::AgentRunner;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use moka::sync::Cache;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
