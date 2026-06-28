@@ -36,7 +36,7 @@ futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
-toml = "0.8"
+toml = "1.1"
 
 # UUID and time
 uuid.workspace = true
@@ -44,7 +44,7 @@ chrono.workspace = true
 rand.workspace = true
 
 # Cron parsing for session-schedule minimum-interval enforcement
-cron = "0.15"
+cron = "0.17"
 
 # Tracing. `tracing` instrumentation is unconditional; the `tracing-subscriber`
 # registry/fmt layers are only used by telemetry init, so the dep is optional
@@ -68,7 +68,7 @@ sha2.workspace = true
 regex.workspace = true
 
 # Text diff rendering for edit_file previews
-similar = "2"
+similar = "3"
 
 # URL parsing
 url = "2"
@@ -87,13 +87,13 @@ bashkit = { version = "0.12.0", features = ["jq"] }
 # Sandboxed Lua interpreter for the experimental `lua` capability (vendored Lua
 # 5.4, never LuaJIT). Optional + behind the `lua` cargo feature so the default
 # build does not compile the C sources. See specs/lua-execution.md.
-mlua = { version = "0.10", features = ["lua54", "vendored", "async", "send", "serialize"], optional = true }
+mlua = { version = "0.11", features = ["lua54", "vendored", "async", "send", "serialize"], optional = true }
 
 # Tree-sitter for structural outlines (EVE-248)
-tree-sitter = { version = "0.24", optional = true }
-tree-sitter-rust = { version = "0.23", optional = true }
+tree-sitter = { version = "0.26", optional = true }
+tree-sitter-rust = { version = "0.24", optional = true }
 tree-sitter-typescript = { version = "0.23", optional = true }
-tree-sitter-python = { version = "0.23", optional = true }
+tree-sitter-python = { version = "0.25", optional = true }
 
 # TLS crypto provider (must be installed before any rustls usage)
 rustls.workspace = true
