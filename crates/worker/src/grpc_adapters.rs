@@ -2611,6 +2611,52 @@ impl everruns_core::traits::SessionScheduleStore for GrpcOrgAdapter {
         proto_schedule_to_schema(proto_schedule)
     }
 
+    async fn create_schedule_enforcing_limits(
+        &self,
+        session_id: everruns_core::SessionId,
+        description: String,
+        cron_expression: Option<String>,
+        scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
+        timezone: String,
+    ) -> std::result::Result<
+        everruns_core::session_schedule::SessionSchedule,
+        everruns_core::session_schedule::ScheduleLimitError,
+    > {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::CreateSessionScheduleRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            description,
+            cron_expression,
+            scheduled_at: scheduled_at.map(everruns_internal_protocol::datetime_to_proto_timestamp),
+            timezone,
+            org_id: self.org_id,
+        };
+        let response = client
+            .create_session_schedule(request)
+            .await
+            .map_err(|status| {
+                if matches!(
+                    status.code(),
+                    tonic::Code::ResourceExhausted | tonic::Code::InvalidArgument
+                ) {
+                    everruns_core::session_schedule::ScheduleLimitError::Rejected(
+                        status.message().to_string(),
+                    )
+                } else {
+                    everruns_core::session_schedule::ScheduleLimitError::Store(
+                        grpc_status_to_error(status),
+                    )
+                }
+            })?;
+        let proto_schedule = response.into_inner().schedule.ok_or_else(|| {
+            everruns_core::session_schedule::ScheduleLimitError::Store(grpc_missing_field(
+                "No schedule in response",
+            ))
+        })?;
+        proto_schedule_to_schema(proto_schedule)
+            .map_err(everruns_core::session_schedule::ScheduleLimitError::Store)
+    }
+
     async fn cancel_schedule(
         &self,
         session_id: everruns_core::SessionId,

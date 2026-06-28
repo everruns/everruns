@@ -3043,6 +3043,21 @@ impl StorageBackend {
         dispatch!(self, delete_session_schedule, org_id, schedule_id)
     }
 
+    pub async fn create_session_schedule_with_limits(
+        &self,
+        input: CreateSessionScheduleRow,
+        max_per_session: u32,
+        max_per_org: i64,
+    ) -> Result<Option<SessionScheduleRow>> {
+        dispatch!(
+            self,
+            create_session_schedule_with_limits,
+            input,
+            max_per_session,
+            max_per_org
+        )
+    }
+
     pub async fn count_active_session_schedules(&self, session_id: SessionId) -> Result<u32> {
         dispatch!(self, count_active_session_schedules, session_id)
     }
