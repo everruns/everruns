@@ -7,7 +7,13 @@ import { Archive, GlobeLock, Play, Plus, Rocket } from "lucide-react";
 import { useAgents, usePageTitle } from "@/hooks";
 import { useHarnesses } from "@/hooks/use-harnesses";
 import { usePolicies } from "@/hooks/use-policies";
-import { useApp, useDeleteApp, usePublishApp, useUnpublishApp } from "@/hooks/use-apps";
+import {
+  useApp,
+  useDeleteApp,
+  usePublishApp,
+  useUnpublishApp,
+  useUpdateApp,
+} from "@/hooks/use-apps";
 import { triggerChannel } from "@/lib/api/apps";
 import { queryKeys } from "@/lib/query-keys";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -30,9 +36,11 @@ import {
   PageColumns,
   PageMain,
   PageRail,
+  RailSection,
   PageFooter,
   BackLink,
 } from "@/components/layout";
+import { AgentIdentitySelect } from "@/components/agent-identity/agent-identity-select";
 import type { App, AppChannel } from "@/lib/api/types";
 import {
   getDisplayName,
@@ -82,6 +90,7 @@ export function AppDetail({ appId }: { appId: string }) {
   const deleteAppMutation = useDeleteApp();
   const publishApp = usePublishApp();
   const unpublishApp = useUnpublishApp();
+  const updateApp = useUpdateApp();
   const [expandedChannelId, setExpandedChannelId] = useState<string | null>(null);
 
   usePageTitle(app ? getDisplayName(app) : null, "App");
@@ -287,6 +296,22 @@ export function AppDetail({ appId }: { appId: string }) {
         </PageMain>
 
         <PageRail>
+          <RailSection label="Agent identity">
+            <AgentIdentitySelect
+              value={app.agent_identity_id ?? ""}
+              onValueChange={(identityId) =>
+                updateApp.mutate({
+                  appId: app.id,
+                  data: { agent_identity_id: identityId || null },
+                })
+              }
+              disabled={!canManage || updateApp.isPending}
+              className="w-full"
+            />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Identity this app presents when it runs sessions.
+            </p>
+          </RailSection>
           <LiveActivityRail appId={app.id} />
         </PageRail>
       </PageColumns>
