@@ -22,11 +22,22 @@ Everruns also acts as an **MCP client** (connecting to remote MCP servers). That
 
 JSON-RPC 2.0 over Streamable HTTP (`POST /mcp` with JSON-RPC body).
 
-Everruns supports MCP protocol versions `2025-06-18` and `2025-03-26`.
+Everruns supports MCP protocol versions `2026-07-28`, `2025-06-18`, and `2025-03-26`.
 
-- `initialize` negotiates `protocolVersion` from the request body. When the client omits a version, Everruns falls back to `2025-03-26`.
+- `initialize` negotiates `protocolVersion` from the request body. When the client omits a version, Everruns falls back to `2025-03-26`. An exactly-supported version is echoed back; an unrecognized version negotiates down to the newest supported version that is not newer than the request (a client ahead of Everruns receives `2026-07-28`).
 - All non-`initialize` requests may send `MCP-Protocol-Version`. When omitted, Everruns falls back to `2025-03-26`.
-- Requests that send an unsupported `MCP-Protocol-Version` are rejected with HTTP `400 Bad Request` and a JSON-RPC error payload.
+- Requests that send an unsupported `MCP-Protocol-Version` header are rejected with HTTP `400 Bad Request` and a JSON-RPC error payload.
+
+### Statelessness (MCP 2026-07-28)
+
+The endpoint is stateless request/response per JSON-RPC call — no `Mcp-Session-Id`, no sticky sessions, no server-side per-connection state. This already satisfies the `2026-07-28` stateless model: any request can hit any instance, with PostgreSQL as the shared source of truth. Adopting `2026-07-28` was protocol conformance, not re-architecture. Concretely:
+
+- **`initialize` is optional.** `2026-07-28` removed the `initialize`/`initialized` handshake (SEP-2575). Everruns still accepts `initialize` for older clients because it creates no server state either way, and never requires a prior `initialize` for any method.
+- **Client info rides in `_meta`.** Per-request client identity is read from `params._meta["io.modelcontextprotocol/clientInfo"]` (`{name, version}`) and used for telemetry only; nothing is stored.
+- **Routing headers.** `2026-07-28` Streamable HTTP adds optional `Mcp-Method` and `Mcp-Name` request headers so gateways/load-balancers/rate-limiters can route on the operation without parsing the body. They are optional and the body stays authoritative; when present they must agree with the body (`Mcp-Method` vs the JSON-RPC `method`, and `Mcp-Name` vs `params.name` on `tools/call`), otherwise the request is rejected `400 Bad Request`. See [`specs/production-deployment.md`](production-deployment.md#mcp-endpoint-scaling) for the proxy contract.
+- **The richer tool shape** (`title`, `outputSchema`, `structuredContent`, entity-card tools) introduced in `2025-06-18` applies to `2025-06-18` and every later version, including `2026-07-28`; only the `2025-03-26` fallback omits it.
+
+The Tasks extension (server-directed long-running `tools/call` driven by `tasks/get`/`tasks/update`/`tasks/cancel`) is tracked separately as optional interop alignment for the existing `agent_run` → `session_get_status` poll pattern (Linear EVE-669); it is not yet implemented.
 
 ### Supported Methods
 

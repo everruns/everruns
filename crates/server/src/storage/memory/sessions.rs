@@ -89,6 +89,14 @@ impl InMemoryDatabase {
             blueprint_config: input.blueprint_config,
         };
         self.sessions.write().insert(id, row.clone());
+        self.enqueue_reporting_outbox(
+            row.org_id,
+            "session",
+            &row.id.uuid().to_string(),
+            Some(&row.updated_at.to_rfc3339()),
+            "session_snapshot",
+        )
+        .await?;
         Ok(row)
     }
 

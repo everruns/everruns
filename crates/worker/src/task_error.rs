@@ -3,6 +3,7 @@
 // task metadata and the full anyhow error chain for durable task surfaces.
 
 use anyhow::Error;
+#[cfg(test)]
 use everruns_core::{UserFacingError, UserFacingErrorContext, classify_runtime_error_message};
 use serde_json::Value;
 use uuid::Uuid;
@@ -56,6 +57,7 @@ pub(crate) fn summarize_task_failure(
     }
 }
 
+#[cfg(test)]
 pub(crate) fn user_facing_failure(error: &str) -> UserFacingError {
     let error_chain = error.split("error_chain=").nth(1).unwrap_or(error).trim();
     classify_runtime_error_message(error_chain, &UserFacingErrorContext::default())

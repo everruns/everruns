@@ -4,8 +4,6 @@ use everruns_core::typed_id::SessionId;
 use std::sync::Arc;
 use uuid::Uuid;
 
-const WORKSPACE_PREFIX: &str = "/workspace";
-
 pub fn service(ctx: &Ctx) -> Arc<WorkspaceFileService> {
     ctx.session_file_service
         .clone()
@@ -73,25 +71,13 @@ pub async fn verify_session_for_write(
     Ok(workspace_key)
 }
 
+/// Normalize a control-plane FS path to its canonical session-store key.
+///
+/// Delegates to the single cross-surface normalizer (EVE-670) so the HTTP FS API
+/// and the agent resolve a given path to the same key: collapse repeated
+/// slashes, strip the `/workspace` alias, leading slash, no trailing slash.
 pub fn normalize_path(path: &str) -> String {
-    let path = path.trim_start_matches('/');
-    if path.is_empty() {
-        return "/".to_string();
-    }
-
-    let abs_path = format!("/{}", path);
-
-    if abs_path == WORKSPACE_PREFIX {
-        "/".to_string()
-    } else if let Some(stripped) = abs_path.strip_prefix(WORKSPACE_PREFIX) {
-        if stripped.starts_with('/') {
-            stripped.to_string()
-        } else {
-            abs_path
-        }
-    } else {
-        abs_path
-    }
+    everruns_core::session_path::to_session_path(path)
 }
 
 pub fn is_reserved_path(path: &str) -> bool {
@@ -102,4 +88,23 @@ pub fn is_reserved_path(path: &str) -> bool {
 pub fn classify_storage(error: anyhow::Error) -> CommandError {
     tracing::error!("Session file domain error: {error}");
     CommandError::internal(error)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// EVE-670: the control-plane FS API normalizes to the same canonical key as
+    /// the agent (strips the `/workspace` alias, collapses repeated slashes,
+    /// trims the trailing slash), so a file resolves identically regardless of
+    /// entry point. Full behavior is covered in `everruns_core::session_path`.
+    #[test]
+    fn normalize_path_matches_canonical_session_path() {
+        assert_eq!(normalize_path("/workspace/src/lib.rs"), "/src/lib.rs");
+        assert_eq!(normalize_path("src/lib.rs"), "/src/lib.rs");
+        assert_eq!(normalize_path("/workspace"), "/");
+        assert_eq!(normalize_path("/a//b/"), "/a/b");
+        // A real top-level `workspace/` dir is not the alias.
+        assert_eq!(normalize_path("/workspacefoo"), "/workspacefoo");
+    }
 }

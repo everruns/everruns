@@ -18,8 +18,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
 
-use crate::workspace_paths::WorkspacePaths;
-
 /// Build a map of tool names to definitions for efficient lookup
 fn build_tool_map(tool_defs: &[ToolDefinition]) -> HashMap<&str, &ToolDefinition> {
     tool_defs.iter().map(|def| (def.name(), def)).collect()
@@ -428,33 +426,36 @@ impl ToolExecutor for std::sync::Arc<dyn ToolExecutor> {
 /// - Project files onto real disk or object storage
 #[async_trait]
 pub trait SessionFileSystem: Send + Sync {
-    /// The workspace path model for this filesystem (EVE-660).
-    ///
-    /// This is the single addressing seam: parsing of model/tool input,
-    /// host mapping, and display formatting all go through it. The default is
-    /// the in-memory/DB VFS model (`/workspace` display, no host root);
-    /// host-backed stores override it to expose their root. Capabilities MUST
-    /// use this rather than implementing their own `/workspace` stripping.
-    fn workspace_paths(&self) -> WorkspacePaths {
-        WorkspacePaths::vfs()
-    }
-
     /// Human-facing root path for this filesystem.
     ///
-    /// `/workspace` remains the stable agent namespace, but embedded runtimes
-    /// backed by a host directory can expose the real root here so shared
-    /// capabilities can avoid misleading users about where files live.
+    /// `/workspace` is the stable agent namespace and the default. Embedded
+    /// runtimes backed by a host directory override this to expose the real
+    /// root, so shared capabilities avoid misleading users about where files
+    /// live.
     fn display_root(&self) -> String {
-        self.workspace_paths().display_root()
+        crate::session_path::WORKSPACE_PREFIX.to_string()
     }
 
     /// Convert a canonical session path into a human-facing path.
+    ///
+    /// The default renders the `/workspace` alias; host-backed stores and
+    /// [`MountFs`](crate::mount_fs::MountFs) override it.
     fn display_path(&self, path: &str) -> String {
-        let paths = self.workspace_paths();
-        match paths.parse_input(path) {
-            Ok(rel) => paths.to_display(&rel),
-            Err(_) => path.to_string(),
-        }
+        crate::session_path::to_display_path(path)
+    }
+
+    /// Resolve an input path (any accepted spelling, relative or absolute) to an
+    /// absolute path within this filesystem's namespace. Relative inputs resolve
+    /// against the filesystem's current directory.
+    ///
+    /// This is how a shell seeds its working directory: a resolver like
+    /// [`MountFs`] returns the virtual path (`/workspace/sub`), so the shell and
+    /// the file tools address one namespace without the shell re-implementing
+    /// any `/workspace` handling. The default is the flat VFS session form.
+    ///
+    /// [`MountFs`]: crate::mount_fs::MountFs
+    fn resolve_path(&self, input: &str) -> String {
+        crate::session_path::to_session_path(input)
     }
 
     /// Read a file by path
@@ -626,10 +627,6 @@ impl SessionFileSystem for WorkspaceScopedFileSystem {
         self.inner.seed_initial_file(self.key, file).await
     }
 
-    fn workspace_paths(&self) -> WorkspacePaths {
-        self.inner.workspace_paths()
-    }
-
     fn display_root(&self) -> String {
         self.inner.display_root()
     }
@@ -637,20 +634,24 @@ impl SessionFileSystem for WorkspaceScopedFileSystem {
     fn display_path(&self, path: &str) -> String {
         self.inner.display_path(path)
     }
+
+    fn resolve_path(&self, input: &str) -> String {
+        self.inner.resolve_path(input)
+    }
 }
 
 #[async_trait]
 impl<T: SessionFileSystem + ?Sized> SessionFileSystem for std::sync::Arc<T> {
-    fn workspace_paths(&self) -> WorkspacePaths {
-        (**self).workspace_paths()
-    }
-
     fn display_root(&self) -> String {
         (**self).display_root()
     }
 
     fn display_path(&self, path: &str) -> String {
         (**self).display_path(path)
+    }
+
+    fn resolve_path(&self, input: &str) -> String {
+        (**self).resolve_path(input)
     }
 
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
@@ -1473,20 +1474,6 @@ impl ToolContext {
     /// addresses the workspace's files rather than its own session-id keyspace.
     pub fn workspace_fs_key(&self) -> SessionId {
         SessionId::from_uuid(self.workspace_id.uuid())
-    }
-
-    /// The unified workspace path model for this execution (EVE-660).
-    ///
-    /// Derived from the attached file store so there is a single source of
-    /// truth. Capabilities that accept `path` arguments — including host-path
-    /// tools like the shell — MUST resolve them through this rather than
-    /// re-implementing `/workspace` stripping or containment checks. Falls back
-    /// to the VFS model when no file store is wired.
-    pub fn workspace_paths(&self) -> crate::workspace_paths::WorkspacePaths {
-        self.file_store
-            .as_ref()
-            .map(|store| store.workspace_paths())
-            .unwrap_or_default()
     }
 
     /// Override the attached workspace (default is the 1:1 session-derived id).

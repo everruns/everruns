@@ -789,6 +789,7 @@ message DurableClaimedTask {
     string activity_type = 4;
     google.protobuf.Struct input = 5;
     int32 attempt = 6;
+    int32 max_attempts = 7;
 }
 
 // === Create workflow ===

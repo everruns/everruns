@@ -407,7 +407,7 @@ No backward compatibility is required; data migrates forward once:
   `NULL heartbeat_at` (foreground subagent tasks) are excluded (covered by
   EVE-535 spawn handles). The reconciler now runs on gRPC workers via the
   `ListOrphanedSessionTasks` RPC (added to the internal worker protocol);
-  `session_task_reaper` is included in the gRPC DurableWorker's default
+  `session_task_reaper` is included in the gRPC task worker's default
   activity types. Stale-attempt fencing is built: `SessionTaskUpdate` carries
   an optional `expected_attempt` field; `apply_task_update` silently drops any
   update where `expected_attempt` is set but does not match `task.attempt`.

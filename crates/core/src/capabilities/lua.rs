@@ -6,9 +6,10 @@
 //!
 //! Design (parallels `bashkit_shell`):
 //! - `LuaCapability` is `High` risk and admin-gated, exactly like `bashkit_shell`.
-//! - `LuaVfs` owns the `/workspace` <-> session-store path translation and is the
-//!   single seam to the (already session-scoped) `SessionFileSystem`. Tenant
-//!   isolation falls out of routing every path through that store.
+//! - `LuaVfs` is the single seam to the (already session-scoped)
+//!   `SessionFileSystem`; it delegates path resolution to the store (a `MountFs`
+//!   in production), so `/workspace` is just the default cwd. Tenant isolation
+//!   falls out of routing every path through that session-scoped store.
 //! - The engine is `mlua` (vendored Lua 5.4), behind the `lua` cargo feature so
 //!   the default build doesn't compile the C sources. `LuaLimits` is plain data;
 //!   `engine::run` enforces it (memory limit, instruction+deadline hook, scrubbed
@@ -31,9 +32,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub const LUA_CAPABILITY_ID: &str = "lua";
-
-/// Workspace mount point in the virtual filesystem.
-const WORKSPACE_PREFIX: &str = "/workspace";
 
 const DEFAULT_TIMEOUT_MS: u64 = 30_000;
 const MAX_TIMEOUT_MS: u64 = 60_000;
@@ -180,8 +178,8 @@ impl Tool for LuaTool {
                 },
                 "working_dir": {
                     "type": "string",
-                    "default": WORKSPACE_PREFIX,
-                    "description": "Working directory (informational; paths in `fs.*` are /workspace-rooted)."
+                    "default": crate::session_path::WORKSPACE_PREFIX,
+                    "description": "Working directory (informational; `fs.*` paths default to /workspace and resolve through the session filesystem)."
                 },
                 "timeout_ms": {
                     "type": "integer",
@@ -421,7 +419,7 @@ impl LuaOutcome {
 }
 
 // ============================================================================
-// LuaVfs — the only seam to the session filesystem (TM-LUA-004)
+// LuaVfs — the only seam to the (session-scoped) session filesystem (TM-LUA-004)
 // ============================================================================
 
 /// Entry returned by `fs.list` / `fs.stat`.
@@ -451,38 +449,8 @@ impl LuaVfs {
         Self { session_id, store }
     }
 
-    /// Translate a Lua VFS path into a session-store path.
-    ///
-    /// Rules match `SessionFileSystemAdapter`: absolute, forward-slash,
-    /// `/workspace` stripped; anything outside `/workspace` is rejected so the
-    /// script can never reach another tenant or the host (TM-LUA-004).
-    fn to_session_path(path: &str) -> Option<String> {
-        let abs = if path.starts_with('/') {
-            path.to_string()
-        } else {
-            format!("/{path}")
-        };
-
-        if abs == WORKSPACE_PREFIX {
-            Some("/".to_string())
-        } else if let Some(stripped) = abs.strip_prefix(WORKSPACE_PREFIX) {
-            // Only `/workspace/...` is valid, not `/workspacefoo`.
-            if stripped.starts_with('/') {
-                Some(stripped.to_string())
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-
-    fn map_path(path: &str) -> Result<String, String> {
-        Self::to_session_path(path).ok_or_else(|| format!("path not in /workspace: {path}"))
-    }
-
     pub async fn read(&self, path: &str) -> Result<String, String> {
-        let sp = Self::map_path(path)?;
+        let sp = crate::session_path::to_session_path(path);
         match self.store.read_file(self.session_id, &sp).await {
             Ok(Some(file)) => {
                 let content = file.content.unwrap_or_default();
@@ -496,7 +464,7 @@ impl LuaVfs {
     }
 
     pub async fn write(&self, path: &str, content: &str) -> Result<(), String> {
-        let sp = Self::map_path(path)?;
+        let sp = crate::session_path::to_session_path(path);
         let (encoded, encoding) = SessionFile::encode_content(content.as_bytes());
         self.store
             .write_file(self.session_id, &sp, &encoded, &encoding)
@@ -513,7 +481,7 @@ impl LuaVfs {
     }
 
     pub async fn exists(&self, path: &str) -> Result<bool, String> {
-        let sp = Self::map_path(path)?;
+        let sp = crate::session_path::to_session_path(path);
         if matches!(
             self.store.read_file(self.session_id, &sp).await,
             Ok(Some(_))
@@ -528,7 +496,7 @@ impl LuaVfs {
     }
 
     pub async fn stat(&self, path: &str) -> Result<Option<VfsEntry>, String> {
-        let sp = Self::map_path(path)?;
+        let sp = crate::session_path::to_session_path(path);
         match self.store.stat_file(self.session_id, &sp).await {
             Ok(Some(stat)) => Ok(Some(VfsEntry {
                 name: stat.name,
@@ -541,7 +509,7 @@ impl LuaVfs {
     }
 
     pub async fn list(&self, path: &str) -> Result<Vec<VfsEntry>, String> {
-        let sp = Self::map_path(path)?;
+        let sp = crate::session_path::to_session_path(path);
         self.store
             .list_directory(self.session_id, &sp)
             .await
@@ -559,7 +527,7 @@ impl LuaVfs {
     }
 
     pub async fn remove(&self, path: &str, recursive: bool) -> Result<bool, String> {
-        let sp = Self::map_path(path)?;
+        let sp = crate::session_path::to_session_path(path);
         self.store
             .delete_file(self.session_id, &sp, recursive)
             .await
@@ -567,7 +535,7 @@ impl LuaVfs {
     }
 
     pub async fn mkdir(&self, path: &str) -> Result<(), String> {
-        let sp = Self::map_path(path)?;
+        let sp = crate::session_path::to_session_path(path);
         self.store
             .create_directory(self.session_id, &sp)
             .await
@@ -579,7 +547,7 @@ impl LuaVfs {
         // None path => whole workspace; otherwise translate the scope.
         let scope = match path {
             Some(p) => {
-                let sp = Self::map_path(p)?;
+                let sp = crate::session_path::to_session_path(p);
                 if sp == "/" { None } else { Some(sp) }
             }
             None => None,
@@ -592,7 +560,7 @@ impl LuaVfs {
                     .into_iter()
                     .map(|m| VfsGrepHit {
                         // Re-root to the Lua VFS namespace.
-                        path: format!("{WORKSPACE_PREFIX}{}", m.path),
+                        path: crate::session_path::to_display_path(&m.path),
                         line_number: m.line_number,
                         line: m.line,
                     })
@@ -1273,35 +1241,9 @@ mod tests {
         assert!(schema["properties"].get("script").is_some());
     }
 
-    // Path translation mirrors SessionFileSystemAdapter (TM-LUA-004).
-    #[test]
-    fn path_workspace_root_maps_to_root() {
-        assert_eq!(LuaVfs::to_session_path("/workspace"), Some("/".to_string()));
-    }
-
-    #[test]
-    fn path_workspace_file() {
-        assert_eq!(
-            LuaVfs::to_session_path("/workspace/a/b.txt"),
-            Some("/a/b.txt".to_string())
-        );
-    }
-
-    #[test]
-    fn path_relative_is_normalized() {
-        assert_eq!(
-            LuaVfs::to_session_path("workspace/x.txt"),
-            Some("/x.txt".to_string())
-        );
-    }
-
-    #[test]
-    fn path_outside_workspace_rejected() {
-        assert_eq!(LuaVfs::to_session_path("/etc/passwd"), None);
-        assert_eq!(LuaVfs::to_session_path("/home/agent/x"), None);
-        // /workspacefoo is not under /workspace
-        assert_eq!(LuaVfs::to_session_path("/workspacefoo"), None);
-    }
+    // Path normalization is the shared `session_path::to_session_path` (tested
+    // there); LuaVfs no longer carries its own copy and delegates resolution to
+    // the store (MountFs in production).
 
     #[tokio::test]
     async fn execute_without_context_errors() {
@@ -1720,16 +1662,22 @@ mod tests {
         }
 
         #[tokio::test]
-        async fn fs_rejects_paths_outside_workspace() {
-            // Reaching outside /workspace raises a Lua error -> tool_error.
-            let mut ctx = ToolContext::new(SessionId::new());
-            ctx.file_store = Some(Arc::new(EmptyFileStore));
-            let result = LuaTool
-                .execute_with_context(json!({ "script": "return fs.read('/etc/passwd')" }), &ctx)
-                .await;
-            assert!(
-                matches!(result, ToolExecutionResult::ToolError(msg) if msg.contains("workspace"))
-            );
+        async fn fs_addresses_paths_outside_workspace() {
+            // The store (MountFs) resolves any path into the session-scoped
+            // backend — `/workspace` is just the default cwd, the root mount
+            // makes everything addressable (still contained by the backend; the
+            // session scope is the tenant boundary). A path outside /workspace
+            // round-trips rather than being rejected.
+            let store = Arc::new(MapFileStore::default());
+            let v = run(
+                r#"
+                fs.write("/tmp/note.txt", "hi")
+                return fs.read("/tmp/note.txt")
+                "#,
+                store,
+            )
+            .await;
+            assert_eq!(v["result"], json!("hi"));
         }
 
         #[tokio::test]

@@ -8,6 +8,10 @@
  * This file is the single source of truth for the Everruns design system.
  * Downstream consumers (e.g. SaaS UI) should import this file instead of
  * duplicating CSS variables, theme tokens, utilities, and animations.
+ *
+ * The design intent and tokens are also documented in ../../DESIGN.md
+ * (DESIGN.md format). Keep that file in sync when changing tokens here;
+ * validate with `pnpm run design:lint`.
  */
 
 @layer base {

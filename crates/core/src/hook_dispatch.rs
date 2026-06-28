@@ -54,7 +54,14 @@ pub struct BashkitShellHookDispatcher {
 
 impl BashkitShellHookDispatcher {
     pub fn new(store: Arc<dyn SessionFileSystem>) -> Self {
-        Self { store }
+        // Run the hook's bash over the same MountFs resolver the agent's shell
+        // uses (EVE-660), so the `/workspace/...` path exposed to the script and
+        // the storage path we write the payload to resolve to one backend file.
+        // (Before the resolver this relied on the bashkit adapter stripping
+        // `/workspace`; that stripping now lives in MountFs.)
+        Self {
+            store: crate::mount_fs::MountFs::wrap(store),
+        }
     }
 
     /// Best-effort cleanup of the on-disk payload file. Failures are
@@ -82,10 +89,10 @@ impl BashHookDispatcher for BashkitShellHookDispatcher {
     ) -> Result<BashExecOutput, String> {
         let session_id = payload.session_id;
 
-        // The bashkit adapter strips the `/workspace` prefix before hitting
-        // the session VFS. So we expose the workspace-relative path to the
-        // script ($EVERRUNS_HOOK_PAYLOAD_PATH) and write/delete via the
-        // storage-relative path ourselves.
+        // MountFs resolves both the `/workspace/...` path we expose to the
+        // script ($EVERRUNS_HOOK_PAYLOAD_PATH) and the backend-native storage
+        // path we write/delete ourselves to the same file, so the script reads
+        // exactly the payload we wrote.
         let filename = payload_filename(payload);
         let script_path = format!("{HOOK_PAYLOAD_WORKSPACE_DIR}/{filename}");
         let storage_path = format!("{HOOK_PAYLOAD_DIR}/{filename}");

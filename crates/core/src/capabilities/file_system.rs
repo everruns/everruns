@@ -144,17 +144,6 @@ fn effective_read_defaults(
     }
 }
 
-/// Normalize a file-tool path input to a canonical leading-slash session path.
-///
-/// Delegates to the single workspace path normalizer (EVE-660) so capabilities
-/// no longer hand-roll `/workspace` stripping. Examples:
-/// - `/workspace/foo.txt` -> `/foo.txt`
-/// - `/workspace` -> `/`
-/// - `/foo.txt` -> `/foo.txt` (already normalized)
-fn normalize_path(path: &str) -> String {
-    crate::workspace_paths::to_session_path(path)
-}
-
 fn fs_display_path(file_store: &dyn SessionFileSystem, path: &str) -> String {
     file_store.display_path(path)
 }
@@ -629,7 +618,9 @@ impl Tool for ReadFileTool {
         };
 
         // Normalize path to strip /workspace prefix for storage
-        let normalized_path = normalize_path(path);
+        // The store (MountFs in production) is the sole resolver: hand it the
+        // raw path and it routes `/workspace`, the root mount, and relatives.
+        let normalized_path = path.to_string();
         let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
 
         match file_store
@@ -939,7 +930,9 @@ impl Tool for WriteFileTool {
         };
 
         // Normalize path to strip /workspace prefix for storage
-        let normalized_path = normalize_path(path);
+        // The store (MountFs in production) is the sole resolver: hand it the
+        // raw path and it routes `/workspace`, the root mount, and relatives.
+        let normalized_path = path.to_string();
         let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
 
         match file_store
@@ -1090,7 +1083,9 @@ impl Tool for EditFileTool {
             }
         };
 
-        let normalized_path = normalize_path(path);
+        // The store (MountFs in production) is the sole resolver: hand it the
+        // raw path and it routes `/workspace`, the root mount, and relatives.
+        let normalized_path = path.to_string();
         let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
 
         let existing = match file_store
@@ -1333,7 +1328,9 @@ impl Tool for ListDirectoryTool {
         };
 
         // Normalize path to strip /workspace prefix for storage
-        let normalized_path = normalize_path(path);
+        // The store (MountFs in production) is the sole resolver: hand it the
+        // raw path and it routes `/workspace`, the root mount, and relatives.
+        let normalized_path = path.to_string();
         let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
 
         match file_store
@@ -1668,7 +1665,9 @@ impl Tool for DeleteFileTool {
         };
 
         // Normalize path to strip /workspace prefix for storage
-        let normalized_path = normalize_path(path);
+        // The store (MountFs in production) is the sole resolver: hand it the
+        // raw path and it routes `/workspace`, the root mount, and relatives.
+        let normalized_path = path.to_string();
         let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
 
         match file_store
@@ -1781,7 +1780,9 @@ impl Tool for StatFileTool {
         };
 
         // Normalize path to strip /workspace prefix for storage
-        let normalized_path = normalize_path(path);
+        // The store (MountFs in production) is the sole resolver: hand it the
+        // raw path and it routes `/workspace`, the root mount, and relatives.
+        let normalized_path = path.to_string();
         let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
 
         match file_store
@@ -2207,7 +2208,9 @@ mod tests {
     }
 
     fn make_context(file_store: Arc<MockFileStore>) -> ToolContext {
-        ToolContext::with_file_store(SessionId::new(), file_store)
+        // Wrap in MountFs exactly as production does, so the file tools resolve
+        // `/workspace` and the root mount through the same path they use live.
+        ToolContext::with_file_store(SessionId::new(), crate::mount_fs::MountFs::wrap(file_store))
     }
 
     fn expect_success(result: ToolExecutionResult) -> Value {
@@ -2235,33 +2238,9 @@ mod tests {
             .to_string()
     }
 
-    #[test]
-    fn test_normalize_path_workspace_root() {
-        assert_eq!(normalize_path("/workspace"), "/");
-    }
-
-    #[test]
-    fn test_normalize_path_workspace_file() {
-        assert_eq!(normalize_path("/workspace/test.txt"), "/test.txt");
-    }
-
-    #[test]
-    fn test_normalize_path_workspace_nested() {
-        assert_eq!(
-            normalize_path("/workspace/foo/bar/test.txt"),
-            "/foo/bar/test.txt"
-        );
-    }
-
-    #[test]
-    fn test_normalize_path_already_normalized() {
-        assert_eq!(normalize_path("/test.txt"), "/test.txt");
-    }
-
-    #[test]
-    fn test_normalize_path_invalid_workspace_prefix() {
-        assert_eq!(normalize_path("/workspacefoo"), "/workspacefoo");
-    }
+    // Path normalization now lives in `session_path` (and the resolver
+    // `MountFs`), exercised there; the file tools just hand raw paths to the
+    // store.
 
     #[test]
     fn test_display_path_root_defaults_to_workspace_namespace() {
@@ -2292,6 +2271,10 @@ mod tests {
 
     #[tokio::test]
     async fn read_file_uses_store_display_path() {
+        // The file tool renders via the store's `display_path`. In production the
+        // store is `MountFs`, which presents the stable `/workspace` view even
+        // over a host-display backend (EVE-660) — so the host root never leaks
+        // into model-facing output.
         let store = Arc::new(MockFileStore::with_display_root("/host/repo"));
         store.add_text_file("/notes.txt", "hello");
         let context = make_context(store);
@@ -2301,7 +2284,7 @@ mod tests {
             .await;
         let value = expect_success(result);
 
-        assert_eq!(value["path"], "/host/repo/notes.txt");
+        assert_eq!(value["path"], "/workspace/notes.txt");
     }
 
     #[test]

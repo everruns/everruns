@@ -33,6 +33,7 @@ mod payments;
 mod plugins;
 mod principals;
 mod providers;
+mod reporting;
 mod schedules;
 mod session_files;
 mod session_git;
@@ -85,6 +86,7 @@ pub(crate) fn matches_search_tokens(search: Option<&str>, texts: &[&str]) -> boo
 
 /// Stored data for a pinned session: (org_id, pinned_at)
 type PinnedSessionData = (i64, DateTime<Utc>);
+type ReportingOutboxKey = (i64, String, String, String, String);
 
 /// All data is stored in memory and lost on restart
 pub struct InMemoryDatabase {
@@ -164,6 +166,8 @@ pub struct InMemoryDatabase {
     budgets: RwLock<HashMap<Uuid, BudgetRow>>,
     usage_journal: RwLock<HashMap<Uuid, UsageJournalRow>>,
     usage_ledger: RwLock<Vec<UsageLedgerRow>>,
+    reporting_outbox:
+        RwLock<HashMap<ReportingOutboxKey, crate::storage::reporting::models::ReportingOutboxRow>>,
     payment_accounts: RwLock<HashMap<Uuid, PaymentAccountRow>>,
     payment_policies: RwLock<HashMap<Uuid, PaymentPolicyRow>>,
     payment_attempts: RwLock<HashMap<Uuid, PaymentAttemptRow>>,
@@ -290,6 +294,7 @@ impl Default for InMemoryDatabase {
             budgets: RwLock::new(HashMap::new()),
             usage_journal: RwLock::new(HashMap::new()),
             usage_ledger: RwLock::new(Vec::new()),
+            reporting_outbox: RwLock::new(HashMap::new()),
             payment_accounts: RwLock::new(HashMap::new()),
             payment_policies: RwLock::new(HashMap::new()),
             payment_attempts: RwLock::new(HashMap::new()),

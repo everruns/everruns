@@ -9,6 +9,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.17.1] - 2026-06-27
+
+### Highlights
+
+- **Session Forking** — Sessions can now be forked into independent copies, enabling branched experimentation from any point in a conversation ([#2471](https://github.com/everruns/everruns/pull/2471)).
+- **MCP Stateless Spec** — MCP endpoint now conforms to the 2026-07-28 stateless spec for improved interoperability ([#2484](https://github.com/everruns/everruns/pull/2484)).
+- **Unified UI Layout** — Agents, Harnesses, Sessions, Dashboard, and Settings pages are now unified on a consistent five-zone layout ([#2476](https://github.com/everruns/everruns/pull/2476), [#2477](https://github.com/everruns/everruns/pull/2477), [#2478](https://github.com/everruns/everruns/pull/2478)).
+
+### What's Changed
+
+- test(ci): wire unrun server integration tests + enumeration guard ([#2482](https://github.com/everruns/everruns/pull/2482)) by [@chaliy](https://github.com/chaliy)
+- fix(worker): finish TaskWorker migration by [@chaliy](https://github.com/chaliy)
+- fix(storage): add repository conformance suite by [@chaliy](https://github.com/chaliy)
+- feat(mcp): conform MCP endpoint to 2026-07-28 stateless spec ([#2484](https://github.com/everruns/everruns/pull/2484)) by [@chaliy](https://github.com/chaliy)
+- docs(ui): adopt DESIGN.md for the Slate design system ([#2488](https://github.com/everruns/everruns/pull/2488)) by [@chaliy](https://github.com/chaliy)
+- refactor(core): make MountFs the single workspace path resolver ([#2483](https://github.com/everruns/everruns/pull/2483)) by [@chaliy](https://github.com/chaliy)
+- fix(examples): repair weekend-concierge-host compile against core API drift ([#2481](https://github.com/everruns/everruns/pull/2481)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): drop org from MCP OAuth consent page ([#2480](https://github.com/everruns/everruns/pull/2480)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): bind MCP OAuth consent to session, not a second cookie ([#2479](https://github.com/everruns/everruns/pull/2479)) by [@chaliy](https://github.com/chaliy)
+- feat(core): mount-based workspace path resolver ([#2469](https://github.com/everruns/everruns/pull/2469)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): align Sessions, Dashboard, and Settings with the page language ([#2478](https://github.com/everruns/everruns/pull/2478)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): unify building-block entity pages on the five-zone layout ([#2477](https://github.com/everruns/everruns/pull/2477)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): unify Agents and Harnesses pages on a five-zone layout ([#2476](https://github.com/everruns/everruns/pull/2476)) by [@chaliy](https://github.com/chaliy)
+- ci(security): gate Rust deps on RustSec advisories + fix git2 by [@chaliy](https://github.com/chaliy)
+- refactor(internal-protocol): prefixed_id helper + role logs by [@chaliy](https://github.com/chaliy)
+- fix(internal-protocol): surface conversion data loss instead of dropping silently ([#2470](https://github.com/everruns/everruns/pull/2470)) by [@chaliy](https://github.com/chaliy)
+- perf(server): read-through cache for org feature-flag lookups ([#2468](https://github.com/everruns/everruns/pull/2468)) by [@chaliy](https://github.com/chaliy)
+- feat(sessions): fork a session into an independent copy ([#2471](https://github.com/everruns/everruns/pull/2471)) by [@chaliy](https://github.com/chaliy)
+- feat(core): normalize token usage to disjoint cache buckets ([#2467](https://github.com/everruns/everruns/pull/2467)) by [@chaliy](https://github.com/chaliy)
+- fix(llm): retry transient connection send errors across providers ([#2466](https://github.com/everruns/everruns/pull/2466)) by [@chaliy](https://github.com/chaliy)
+- feat(guardrails): end-of-message output seam + moderation check ([#2465](https://github.com/everruns/everruns/pull/2465)) by [@chaliy](https://github.com/chaliy)
+- feat(voice): per-connection realtime provider binding ([#2460](https://github.com/everruns/everruns/pull/2460)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.0] - 2026-06-25
 
 ### Highlights

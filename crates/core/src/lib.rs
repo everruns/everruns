@@ -108,6 +108,7 @@ pub mod provider;
 pub mod reporting;
 pub mod session;
 pub mod session_file;
+pub mod session_path;
 pub mod session_resource;
 pub mod session_sandbox;
 pub mod session_schedule;
@@ -117,7 +118,6 @@ pub mod skill;
 pub mod system_allowlist;
 pub mod vector_store;
 pub mod workspace;
-pub mod workspace_paths;
 
 // Multi-platform channel abstractions (thread context, delivery, routing)
 pub mod channel;

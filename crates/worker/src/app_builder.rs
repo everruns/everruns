@@ -19,7 +19,7 @@ use tracing::info;
 /// termination.
 const REPORTER_TIMEOUT: Duration = Duration::from_secs(5);
 
-use crate::durable_worker::{DurableWorker, DurableWorkerConfig};
+use crate::{GrpcDurableStore, GrpcWorkerAdapters, TaskWorker, TaskWorkerConfig};
 
 /// Builder for composing worker applications.
 ///
@@ -30,21 +30,21 @@ use crate::durable_worker::{DurableWorker, DurableWorkerConfig};
 ///
 /// ```rust,ignore
 /// use everruns_worker::WorkerAppBuilder;
-/// use everruns_worker::DurableWorkerConfig;
+/// use everruns_worker::TaskWorkerConfig;
 ///
-/// WorkerAppBuilder::new(DurableWorkerConfig::from_env())
+/// WorkerAppBuilder::new(TaskWorkerConfig::from_env())
 ///     .run()
 ///     .await?;
 /// ```
 pub struct WorkerAppBuilder {
-    config: DurableWorkerConfig,
+    config: TaskWorkerConfig,
     platform_definition: Option<PlatformDefinition>,
     error_reporter: Option<Arc<dyn ErrorReporter>>,
 }
 
 impl WorkerAppBuilder {
     /// Create a new worker app builder with the given configuration.
-    pub fn new(config: DurableWorkerConfig) -> Self {
+    pub fn new(config: TaskWorkerConfig) -> Self {
         Self {
             config,
             platform_definition: None,
@@ -80,22 +80,26 @@ impl WorkerAppBuilder {
             grpc_address = %config.grpc_address,
             worker_id = %config.worker_id,
             max_concurrent = config.max_concurrent_tasks,
-            "Starting Durable worker"
+            "Starting task worker"
         );
         if error_reporter.is_some() {
             info!("Embedder error reporter installed");
         }
 
-        let worker = match platform_definition {
-            Some(platform_definition) => {
-                DurableWorker::with_platform_definition(config, platform_definition)
-                    .await
-                    .context("Failed to create Durable worker")?
-            }
-            None => DurableWorker::new(config)
+        let platform_definition =
+            platform_definition.unwrap_or_else(crate::platform::default_platform_definition);
+        let store = Arc::new(
+            GrpcDurableStore::connect_with_timeout(&config.grpc_address, config.connect_timeout)
                 .await
-                .context("Failed to create Durable worker")?,
-        };
+                .context("Failed to connect durable task store")?,
+        );
+        let adapters = GrpcWorkerAdapters::connect_with_platform_definition(
+            &config.grpc_address,
+            platform_definition,
+        )
+        .await
+        .context("Failed to connect worker adapters")?;
+        let mut worker = TaskWorker::new(config, store, adapters);
 
         let shutdown_handle = worker.shutdown_handle();
 
@@ -108,7 +112,7 @@ impl WorkerAppBuilder {
                         // block worker termination / supervisor restart.
                         let report_fut = reporter.report(
                             ErrorReport::fatal("worker.run", e.to_string())
-                                .with_scope(ErrorScope::new().with_component("durable_worker")),
+                                .with_scope(ErrorScope::new().with_component("task_worker")),
                         );
                         if tokio::time::timeout(REPORTER_TIMEOUT, report_fut).await.is_err() {
                             tracing::warn!(
