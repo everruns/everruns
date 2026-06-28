@@ -19,7 +19,7 @@ import { CronInput, CronLabel, isSupportedCronExpression } from "@/components/ap
 import {
   DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
   DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS,
-} from "@/lib/api/types/app-types";
+} from "@/lib/api/types";
 import type {
   AgUiChannelConfig,
   AgUiToolVisibility,
