@@ -649,18 +649,7 @@ async fn list_run_ids(
         .collect()
 }
 
-fn require_str<'a>(
-    args: &'a Value,
-    field: &str,
-) -> std::result::Result<&'a str, ToolExecutionResult> {
-    args.get(field)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| {
-            ToolExecutionResult::tool_error(format!("Missing required parameter: {field}"))
-        })
-}
+use super::util::require_str_trimmed as require_str;
 
 async fn save_run(context: &ToolContext, record: &AgentRunRecord) -> Result<()> {
     mirror_run_to_task(context, record).await;
