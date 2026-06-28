@@ -29,3 +29,4 @@ export * from "./use-memory";
 export * from "./use-knowledge-indexes";
 export * from "./use-reporting";
 export * from "./use-plugins";
+export * from "./use-observers";
