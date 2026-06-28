@@ -198,6 +198,9 @@ pub struct InMemoryDatabase {
     org_task_webhooks: RwLock<Vec<OrgTaskWebhookRow>>,
     // OSS-owned organization invitations (EVE-602)
     org_invitations: RwLock<Vec<OrgInvitationRow>>,
+    // Native-auth account-recovery tokens (hashed, single-use, short-TTL).
+    password_reset_tokens: RwLock<Vec<auth::AccountRecoveryToken>>,
+    email_verification_tokens: RwLock<Vec<auth::AccountRecoveryToken>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -319,6 +322,8 @@ impl Default for InMemoryDatabase {
             plugin_installs: RwLock::new(HashMap::new()),
             org_task_webhooks: RwLock::new(Vec::new()),
             org_invitations: RwLock::new(Vec::new()),
+            password_reset_tokens: RwLock::new(Vec::new()),
+            email_verification_tokens: RwLock::new(Vec::new()),
         }
     }
 }
