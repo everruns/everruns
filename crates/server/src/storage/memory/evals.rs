@@ -285,6 +285,9 @@ impl InMemoryDatabase {
             started_at: None,
             completed_at: None,
             summary: None,
+            source: "internal".to_string(),
+            source_run_id: None,
+            attribution: None,
             created_at: now,
             updated_at: now,
         };
@@ -348,6 +351,9 @@ impl InMemoryDatabase {
             started_at: None,
             completed_at: None,
             summary: None,
+            source: "internal".to_string(),
+            source_run_id: None,
+            attribution: None,
             created_at: now,
             updated_at: now,
         };
@@ -393,6 +399,167 @@ impl InMemoryDatabase {
         }
         runs.insert(row.id, row.clone());
         Ok(row)
+    }
+
+    pub async fn import_eval_run(
+        &self,
+        org_id: i64,
+        input: ImportEvalRunInput,
+    ) -> Result<EvalRunRow> {
+        let now = Self::now();
+
+        // Upsert eval by (org, name), preferring a non-deleted one.
+        let eval_id = {
+            let existing = self
+                .evals
+                .read()
+                .values()
+                .filter(|e| {
+                    e.org_id == org_id && e.name == input.eval_name && e.status != "deleted"
+                })
+                .min_by_key(|e| e.created_at)
+                .map(|e| e.id);
+            match existing {
+                Some(id) => id,
+                None => {
+                    let id = Uuid::now_v7();
+                    let row = EvalRow {
+                        id,
+                        org_id,
+                        public_id: format!("eval_{:032x}", id.as_u128()),
+                        name: input.eval_name.clone(),
+                        description: input.eval_description.clone(),
+                        target: None,
+                        model_override: None,
+                        tags: input.eval_tags.clone(),
+                        status: "active".to_string(),
+                        created_at: now,
+                        updated_at: now,
+                        archived_at: None,
+                        deleted_at: None,
+                    };
+                    self.evals.write().insert(id, row);
+                    id
+                }
+            }
+        };
+
+        // Idempotency: drop any prior run for this eval sharing source_run_id,
+        // and its results (mirrors the FK cascade in Postgres).
+        {
+            let mut runs = self.eval_runs.write();
+            let stale: Vec<Uuid> = runs
+                .values()
+                .filter(|r| {
+                    r.org_id == org_id
+                        && r.eval_id == eval_id
+                        && r.source_run_id.as_deref() == Some(input.source_run_id.as_str())
+                })
+                .map(|r| r.id)
+                .collect();
+            for run_id in &stale {
+                runs.remove(run_id);
+            }
+            if !stale.is_empty() {
+                self.eval_case_results
+                    .write()
+                    .retain(|_, res| !stale.contains(&res.eval_run_id));
+            }
+        }
+
+        let run_id = Uuid::now_v7();
+        let run = EvalRunRow {
+            id: run_id,
+            eval_id,
+            org_id,
+            public_id: input.run_public_id.clone(),
+            target: None,
+            model_override: None,
+            filter_tags: None,
+            status: "completed".to_string(),
+            triggered_by: input.triggered_by.clone(),
+            started_at: Some(now),
+            completed_at: Some(now),
+            summary: input.summary.clone(),
+            source: input.source.clone(),
+            source_run_id: Some(input.source_run_id.clone()),
+            attribution: input.attribution.clone(),
+            created_at: now,
+            updated_at: now,
+        };
+        self.eval_runs.write().insert(run_id, run.clone());
+
+        // New cases append after existing ones for stable display order.
+        let mut position = self
+            .eval_cases
+            .read()
+            .values()
+            .filter(|c| c.eval_id == eval_id)
+            .count() as i32;
+
+        for case in input.cases {
+            // Upsert case by (eval, name); external cases are identity-only.
+            let case_id = {
+                let existing = self
+                    .eval_cases
+                    .read()
+                    .values()
+                    .find(|c| c.eval_id == eval_id && c.name == case.case_name)
+                    .map(|c| c.id);
+                match existing {
+                    Some(id) => id,
+                    None => {
+                        let id = Uuid::now_v7();
+                        let row = EvalCaseRow {
+                            id,
+                            eval_id,
+                            public_id: format!("evalcase_{:032x}", id.as_u128()),
+                            name: case.case_name.clone(),
+                            description: case.case_description.clone(),
+                            target: None,
+                            tags: vec![],
+                            conversation: case.conversation.clone(),
+                            post: None,
+                            artifacts: None,
+                            scorers: serde_json::Value::Array(vec![]),
+                            max_turns: None,
+                            timeout_seconds: None,
+                            position,
+                            created_at: now,
+                            updated_at: now,
+                        };
+                        position += 1;
+                        self.eval_cases.write().insert(id, row);
+                        id
+                    }
+                }
+            };
+
+            let result_id = Uuid::now_v7();
+            let result = EvalCaseResultRow {
+                id: result_id,
+                eval_run_id: run_id,
+                eval_case_id: case_id,
+                public_id: format!("evalresult_{:032x}", result_id.as_u128()),
+                session_id: None,
+                target: case.target_snapshot.clone(),
+                target_snapshot: case.target_snapshot.clone(),
+                status: case.status.clone(),
+                scores: case.scores.clone(),
+                metadata: case.metadata.clone(),
+                turns: case.turns,
+                latency_ms: case.latency_ms,
+                input_tokens: case.input_tokens,
+                output_tokens: case.output_tokens,
+                error_message: case.error_message.clone(),
+                artifacts: case.artifacts.clone(),
+                created_at: now,
+                updated_at: now,
+            };
+            self.eval_case_results.write().insert(result_id, result);
+        }
+
+        Ok(run)
     }
 
     pub async fn list_eval_runs(&self, eval_id: Uuid) -> Result<Vec<EvalRunRow>> {

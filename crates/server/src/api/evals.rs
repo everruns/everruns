@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use serde_json::{Map, Value};
 
@@ -23,8 +23,9 @@ use crate::domains::evals::dataset::ExportEvalRunDatasetRequest;
 use crate::domains::evals::runner::EvalRunContext;
 use crate::domains::evals::{
     BulkUpdateEvalRunScores, CancelEvalRun, CreateEval, CreateEvalCase, CreateEvalRun, DeleteEval,
-    DeleteEvalCase, ExportEvalRunArtifacts, ExportEvalRunDataset, GetEval, GetEvalCase, GetEvalRun,
-    ListEvalCases, ListEvalRuns, ListEvals, UpdateEval, UpdateEvalCase, UpdateEvalResultScores,
+    DeleteEvalCase, EvalImportPreflightCmd, ExportEvalRunArtifacts, ExportEvalRunDataset, GetEval,
+    GetEvalCase, GetEvalRun, ImportEvalRun, ListEvalCases, ListEvalRuns, ListEvals, UpdateEval,
+    UpdateEvalCase, UpdateEvalResultScores,
 };
 use crate::storage::StorageBackend;
 use everruns_core::Caller;
@@ -233,6 +234,135 @@ pub struct BulkUpdateEvalRunScoresRequest {
     pub metadata: Option<serde_json::Value>,
 }
 
+// ============================================
+// Import (external eval results) — everruns as host/viewer.
+// See proposals/mira-results-publishing.md.
+// ============================================
+
+/// A whole external run group: one external run, one entry per eval. Maps to
+/// one everruns EvalRun per eval, all sharing `source.run_id`.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct ImportEvalRunRequest {
+    pub source: ImportEvalSource,
+    pub evals: Vec<ImportEvalGroup>,
+}
+
+/// Attribution for the external system that produced the run.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct ImportEvalSource {
+    /// External system name, e.g. "mira".
+    pub system: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Stable external run id: cross-eval group key + idempotency key.
+    pub run_id: String,
+    /// Optional environment/labels (git commit, host, etc.).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// One eval's worth of results within the run. The eval is upserted by `name`.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct ImportEvalGroup {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub cases: Vec<ImportEvalCaseEntry>,
+}
+
+/// One case result. The case is upserted by `name` (identity-only: everruns
+/// never re-executes it).
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct ImportEvalCaseEntry {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Display-only input turns shown in the UI.
+    #[serde(default)]
+    pub input: Vec<String>,
+    /// Provider/model labels this result was produced against.
+    pub target: ImportEvalTarget,
+    pub status: ImportCaseStatus,
+    /// Named, attributed scores. Stored opaque; everruns does not re-grade.
+    #[serde(default)]
+    pub scores: Vec<ImportScore>,
+    /// Normalized transcript (messages, tool calls, events, parts, files).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transcript: Option<serde_json::Value>,
+    /// Open-vocab metrics bag (cost_usd, cache/reasoning tokens, ttft, ...).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metrics: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turns: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
+
+/// Provider/model labels for an externally-executed result.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct ImportEvalTarget {
+    pub provider: String,
+    pub model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<serde_json::Value>,
+}
+
+/// Verdict for an imported case (trusted as-is; not recomputed).
+#[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ImportCaseStatus {
+    Passed,
+    Failed,
+    Errored,
+    Timeout,
+    Skipped,
+}
+
+impl ImportCaseStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ImportCaseStatus::Passed => "passed",
+            ImportCaseStatus::Failed => "failed",
+            ImportCaseStatus::Errored => "errored",
+            ImportCaseStatus::Timeout => "timeout",
+            ImportCaseStatus::Skipped => "skipped",
+        }
+    }
+}
+
+/// A single named score from an external scorer.
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct ImportScore {
+    pub scorer: String,
+    pub value: f64,
+    pub pass: bool,
+    #[serde(default)]
+    pub reason: String,
+    /// Scorer was not applicable (excluded from aggregate).
+    #[serde(default)]
+    pub na: bool,
+}
+
+/// Preflight capability report so optional-feature clients (e.g. Mira) can
+/// check before publishing instead of failing mid-import.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct EvalImportPreflight {
+    /// Whether the `evals` feature is enabled for this org.
+    pub evals_enabled: bool,
+    /// Whether the caller may import (holds eval-management permission).
+    pub can_import: bool,
+}
+
 /// Query parameters for listing evals
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct ListEvalsQuery {
@@ -247,6 +377,10 @@ pub struct ListEvalsQuery {
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/evals", post(create_eval).get(list_evals))
+        // Import (external eval results). Static segments take priority over
+        // `{eval_id}`, so these never shadow eval-by-id routes.
+        .route("/v1/evals/import", post(import_eval_run))
+        .route("/v1/evals/import/preflight", get(import_preflight))
         .route(
             "/v1/evals/{eval_id}",
             get(get_eval).patch(update_eval).delete(delete_eval),
@@ -281,6 +415,27 @@ pub fn routes(state: AppState) -> Router {
             patch(bulk_update_run_scores),
         )
         .with_state(state)
+}
+
+// ============================================
+// Import handlers
+// ============================================
+
+async fn import_eval_run(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Json(req): Json<ImportEvalRunRequest>,
+) -> ApiResult<ListResponse<EvalRun>> {
+    let runs = ImportEvalRun { req }.run(&state.ctx(&org)).await?;
+    Ok(Json(ListResponse::new(runs)))
+}
+
+async fn import_preflight(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+) -> ApiResult<EvalImportPreflight> {
+    let report = EvalImportPreflightCmd {}.run(&state.ctx(&org)).await?;
+    Ok(Json(report))
 }
 
 // ============================================

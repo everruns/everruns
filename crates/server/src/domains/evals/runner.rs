@@ -277,6 +277,9 @@ async fn execute_case_inner(
         EvalTarget::App { .. } => {
             anyhow::bail!("App targets not yet supported in eval execution");
         }
+        EvalTarget::External { .. } => {
+            anyhow::bail!("External targets are imported results and are not executable");
+        }
     };
 
     // Internal caller bypasses policy checks (eval execution is system-initiated)

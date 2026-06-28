@@ -5,15 +5,16 @@
 
 use crate::api::evals::{
     BulkUpdateEvalRunScoresRequest, CreateEvalCaseRequest, CreateEvalRequest, CreateEvalRunRequest,
-    ExternalScoreStatus, UpdateEvalCaseRequest, UpdateEvalRequest, UpdateEvalResultScoresRequest,
+    ExternalScoreStatus, ImportEvalCaseEntry, ImportEvalRunRequest, UpdateEvalCaseRequest,
+    UpdateEvalRequest, UpdateEvalResultScoresRequest,
 };
 use crate::domains::evals::limits::EvalLimits;
 use crate::domains::evals::runner::{EvalRunContext, spawn_eval_run};
 use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::storage::StorageBackend;
 use crate::storage::models::{
-    CreateEvalCaseRow, CreateEvalRow, CreateEvalRunError, CreateEvalRunRow,
-    UpdateEvalCaseResultRow, UpdateEvalCaseRow, UpdateEvalRow,
+    CreateEvalCaseRow, CreateEvalRow, CreateEvalRunError, CreateEvalRunRow, ImportEvalCaseInput,
+    ImportEvalRunInput, UpdateEvalCaseResultRow, UpdateEvalCaseRow, UpdateEvalRow,
 };
 use anyhow::Result;
 use everruns_core::eval::*;
@@ -59,6 +60,16 @@ pub const DATASET_EXPORT: Policy = Policy {
         Rule::UserHasPermission(Permission::OrgAgentsManage),
         Rule::UserHasPermission(Permission::OrgSessionsManage),
     ],
+};
+
+/// Policy: Import externally-executed eval runs (everruns as host/viewer).
+///
+/// Unlike `EVAL_RUN`, importing creates no sessions — the run is ingested
+/// already-complete — so it requires only eval-management, not session
+/// management. See proposals/mira-results-publishing.md.
+pub const EVAL_IMPORT: Policy = Policy {
+    id: "eval.import",
+    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
 };
 
 pub struct EvalService {
@@ -654,6 +665,128 @@ impl EvalService {
     }
 
     // ============================================
+    // Import (external eval results)
+    // ============================================
+
+    /// Ingest a full external run group (one external run → one EvalRun per
+    /// eval, sharing `source.run_id`). Upserts evals/cases by name and stores
+    /// fully-scored, completed results. Everruns trusts the external verdicts;
+    /// it never re-grades. See proposals/mira-results-publishing.md.
+    pub async fn import_run(
+        &self,
+        caller: &Caller,
+        req: ImportEvalRunRequest,
+    ) -> Result<Vec<EvalRun>> {
+        if req.evals.is_empty() {
+            return Err(BadRequestError::new("import must include at least one eval").into());
+        }
+        if req.source.system.trim().is_empty() {
+            return Err(BadRequestError::new("source.system is required").into());
+        }
+        if req.source.run_id.trim().is_empty() {
+            return Err(BadRequestError::new("source.run_id is required").into());
+        }
+
+        let attribution = serde_json::json!({
+            "system": req.source.system,
+            "version": req.source.version,
+            "url": req.source.url,
+            "run_id": req.source.run_id,
+            "metadata": req.source.metadata,
+        });
+        let triggered_by = format!("import:{}", req.source.system);
+
+        let mut runs = Vec::with_capacity(req.evals.len());
+        for group in req.evals {
+            if group.name.trim().is_empty() {
+                return Err(BadRequestError::new("eval name is required").into());
+            }
+
+            let mut import_cases = Vec::with_capacity(group.cases.len());
+            let mut acc = ImportSummaryAcc::default();
+            for case in group.cases {
+                if case.name.trim().is_empty() {
+                    return Err(BadRequestError::new("case name is required").into());
+                }
+                for score in &case.scores {
+                    if !score.value.is_finite() || !(0.0..=1.0).contains(&score.value) {
+                        return Err(BadRequestError::new(format!(
+                            "score value for scorer '{}' must be between 0.0 and 1.0",
+                            score.scorer
+                        ))
+                        .into());
+                    }
+                }
+
+                let status = case.status.as_str();
+                acc.add(status, &case);
+
+                let target = EvalTarget::External {
+                    provider: case.target.provider.clone(),
+                    model: case.target.model.clone(),
+                    params: case.target.params.clone(),
+                };
+                let conversation = serde_json::to_value(
+                    case.input
+                        .iter()
+                        .map(|content| EvalInputMessage {
+                            content: content.clone(),
+                        })
+                        .collect::<Vec<_>>(),
+                )?;
+                // Per-result transcript + open-vocab metrics ride in the
+                // metadata envelope rather than dedicated columns.
+                let mut envelope = serde_json::Map::new();
+                if let Some(t) = &case.transcript {
+                    envelope.insert("transcript".to_string(), t.clone());
+                }
+                if let Some(m) = &case.metrics {
+                    envelope.insert("metrics".to_string(), m.clone());
+                }
+                let metadata =
+                    (!envelope.is_empty()).then_some(serde_json::Value::Object(envelope));
+                let scores = (!case.scores.is_empty())
+                    .then(|| serde_json::to_value(&case.scores))
+                    .transpose()?;
+
+                import_cases.push(ImportEvalCaseInput {
+                    case_name: case.name,
+                    case_description: case.description,
+                    conversation,
+                    target_snapshot: Some(serde_json::to_value(&target)?),
+                    status: status.to_string(),
+                    scores,
+                    metadata,
+                    turns: case.turns.map(|v| v as i32),
+                    latency_ms: case.latency_ms.map(|v| v as i64),
+                    input_tokens: case.input_tokens.map(|v| v as i64),
+                    output_tokens: case.output_tokens.map(|v| v as i64),
+                    error_message: case.error_message,
+                    artifacts: None,
+                });
+            }
+
+            let input = ImportEvalRunInput {
+                eval_name: group.name,
+                eval_description: group.description,
+                eval_tags: group.tags,
+                run_public_id: EvalRunId::from_uuid(Uuid::now_v7()).to_string(),
+                source: "external".to_string(),
+                source_run_id: req.source.run_id.clone(),
+                attribution: Some(attribution.clone()),
+                triggered_by: triggered_by.clone(),
+                summary: Some(serde_json::to_value(acc.finish())?),
+                cases: import_cases,
+            };
+
+            let run_row = self.db.import_eval_run(caller.org_id, input).await?;
+            runs.push(run_row_to_run(run_row, vec![]));
+        }
+
+        Ok(runs)
+    }
+
+    // ============================================
     // Helpers
     // ============================================
 
@@ -797,6 +930,8 @@ fn run_row_to_run(
         model_override: row.model_override,
         filter_tags: row.filter_tags,
         status: EvalRunStatus::from(row.status.as_str()),
+        source: EvalRunSource::from(row.source.as_str()),
+        attribution: row.attribution,
         triggered_by: row.triggered_by,
         started_at: row.started_at,
         completed_at: row.completed_at,
@@ -932,7 +1067,7 @@ fn build_run_summary(
             CaseResultStatus::Passed => passed += 1,
             CaseResultStatus::Failed => failed += 1,
             CaseResultStatus::Errored | CaseResultStatus::Timeout => errored += 1,
-            CaseResultStatus::Pending | CaseResultStatus::Running => {}
+            CaseResultStatus::Pending | CaseResultStatus::Running | CaseResultStatus::Skipped => {}
         }
 
         if matches!(status, CaseResultStatus::Passed | CaseResultStatus::Failed) {
@@ -975,6 +1110,87 @@ fn build_run_summary(
         total_input_tokens,
         total_output_tokens,
     }
+}
+
+/// Accumulates a `RunSummary` for an imported run. Mirrors `build_run_summary`
+/// but reads the import request directly. `total` counts executed cases
+/// (passed/failed/errored); skipped cases are excluded from all tallies.
+#[derive(Default)]
+struct ImportSummaryAcc {
+    total: u32,
+    passed: u32,
+    failed: u32,
+    errored: u32,
+    total_score: f64,
+    total_turns: f64,
+    total_latency: u64,
+    total_input_tokens: u64,
+    total_output_tokens: u64,
+}
+
+impl ImportSummaryAcc {
+    fn add(&mut self, status: &str, case: &ImportEvalCaseEntry) {
+        match status {
+            "passed" => self.passed += 1,
+            "failed" => self.failed += 1,
+            "errored" | "timeout" => self.errored += 1,
+            _ => return, // skipped / not executed: excluded from tallies
+        }
+        self.total += 1;
+        if matches!(status, "passed" | "failed") {
+            self.total_score += import_case_avg_score(case);
+            self.total_turns += case.turns.unwrap_or_default() as f64;
+            self.total_latency += case.latency_ms.unwrap_or_default();
+            self.total_input_tokens += case.input_tokens.unwrap_or_default();
+            self.total_output_tokens += case.output_tokens.unwrap_or_default();
+        }
+    }
+
+    fn finish(self) -> RunSummary {
+        let total = self.total;
+        RunSummary {
+            total,
+            passed: self.passed,
+            failed: self.failed,
+            errored: self.errored,
+            pass_rate: if total > 0 {
+                self.passed as f64 / total as f64
+            } else {
+                0.0
+            },
+            avg_score: if total > 0 {
+                self.total_score / total as f64
+            } else {
+                0.0
+            },
+            avg_turns: if total > 0 {
+                self.total_turns / total as f64
+            } else {
+                0.0
+            },
+            avg_latency_ms: if total > 0 {
+                self.total_latency / total as u64
+            } else {
+                0
+            },
+            total_input_tokens: self.total_input_tokens,
+            total_output_tokens: self.total_output_tokens,
+        }
+    }
+}
+
+/// Mean of applicable (non-N/A) score values for an imported case.
+fn import_case_avg_score(case: &ImportEvalCaseEntry) -> f64 {
+    let applicable: Vec<f64> = case
+        .scores
+        .iter()
+        .filter(|score| !score.na)
+        .map(|score| score.value)
+        .collect();
+    if applicable.is_empty() {
+        return 0.0;
+    }
+    applicable.iter().sum::<f64>() / applicable.len() as f64
 }
 
 fn case_result_avg_score(
@@ -1140,6 +1356,140 @@ mod tests {
                 .unwrap(),
             2
         );
+    }
+
+    fn import_request(run_id: &str, failed_value: f64) -> ImportEvalRunRequest {
+        use crate::api::evals::{
+            ImportCaseStatus, ImportEvalCaseEntry, ImportEvalGroup, ImportEvalSource,
+            ImportEvalTarget, ImportScore,
+        };
+        let target = ImportEvalTarget {
+            provider: "anthropic".into(),
+            model: "claude".into(),
+            params: None,
+        };
+        ImportEvalRunRequest {
+            source: ImportEvalSource {
+                system: "mira".into(),
+                version: Some("0.1.0".into()),
+                url: None,
+                run_id: run_id.into(),
+                metadata: None,
+            },
+            evals: vec![ImportEvalGroup {
+                name: "coding".into(),
+                description: Some("imported".into()),
+                tags: vec!["ci".into()],
+                cases: vec![
+                    ImportEvalCaseEntry {
+                        name: "case-a".into(),
+                        description: None,
+                        input: vec!["solve it".into()],
+                        target: target.clone(),
+                        status: ImportCaseStatus::Passed,
+                        scores: vec![ImportScore {
+                            scorer: "contains".into(),
+                            value: 1.0,
+                            pass: true,
+                            reason: "ok".into(),
+                            na: false,
+                        }],
+                        transcript: Some(serde_json::json!({"messages": []})),
+                        metrics: Some(serde_json::json!({"cost_usd": 0.01})),
+                        turns: Some(2),
+                        latency_ms: Some(1200),
+                        input_tokens: Some(100),
+                        output_tokens: Some(50),
+                        error_message: None,
+                    },
+                    ImportEvalCaseEntry {
+                        name: "case-b".into(),
+                        description: None,
+                        input: vec!["other".into()],
+                        target,
+                        status: ImportCaseStatus::Failed,
+                        scores: vec![ImportScore {
+                            scorer: "contains".into(),
+                            value: failed_value,
+                            pass: false,
+                            reason: "no".into(),
+                            na: false,
+                        }],
+                        transcript: None,
+                        metrics: None,
+                        turns: Some(1),
+                        latency_ms: Some(800),
+                        input_tokens: Some(80),
+                        output_tokens: Some(20),
+                        error_message: None,
+                    },
+                ],
+            }],
+        }
+    }
+
+    #[tokio::test]
+    async fn import_run_creates_external_run() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let org_id = 7i64;
+        let caller = Caller::internal(org_id);
+        let svc = EvalService::new(db.clone());
+
+        let runs = svc
+            .import_run(&caller, import_request("mira-run-1", 0.0))
+            .await
+            .unwrap();
+
+        assert_eq!(runs.len(), 1);
+        let run = &runs[0];
+        assert_eq!(run.source, EvalRunSource::External);
+        assert_eq!(run.status, EvalRunStatus::Completed);
+        let summary = run.summary.as_ref().expect("summary");
+        assert_eq!(summary.total, 2);
+        assert_eq!(summary.passed, 1);
+        assert_eq!(summary.failed, 1);
+        assert!((summary.pass_rate - 0.5).abs() < 1e-9);
+
+        // Eval auto-provisioned by name.
+        let evals = db.list_evals(org_id, None, false).await.unwrap();
+        assert_eq!(evals.len(), 1);
+        assert_eq!(evals[0].name, "coding");
+
+        // Results stored with transcript/metrics in the metadata envelope.
+        let result_rows = db.list_eval_case_results(run.internal_id).await.unwrap();
+        assert_eq!(result_rows.len(), 2);
+        let passed = result_rows
+            .iter()
+            .find(|r| r.status == "passed")
+            .expect("passed result");
+        let meta = passed.metadata.as_ref().expect("metadata envelope");
+        assert!(meta.get("transcript").is_some());
+        assert_eq!(meta["metrics"]["cost_usd"], 0.01);
+    }
+
+    #[tokio::test]
+    async fn import_run_is_idempotent_on_source_run_id() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let org_id = 8i64;
+        let caller = Caller::internal(org_id);
+        let svc = EvalService::new(db.clone());
+
+        svc.import_run(&caller, import_request("mira-run-1", 0.0))
+            .await
+            .unwrap();
+        // Re-publish the same run id with a different failed score.
+        svc.import_run(&caller, import_request("mira-run-1", 0.4))
+            .await
+            .unwrap();
+
+        // Still one eval and exactly one run (the prior was replaced).
+        let evals = db.list_evals(org_id, None, false).await.unwrap();
+        assert_eq!(evals.len(), 1);
+        let run_rows = db.list_eval_runs(evals[0].id).await.unwrap();
+        assert_eq!(run_rows.len(), 1);
+        // And exactly two results (not four) — old ones were cascaded away.
+        let result_rows = db.list_eval_case_results(run_rows[0].id).await.unwrap();
+        assert_eq!(result_rows.len(), 2);
     }
 
     #[tokio::test]
