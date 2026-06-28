@@ -2177,6 +2177,131 @@ export interface paths {
     patch: operations["update_payment_policy"];
     trace?: never;
   };
+  "/v1/plugin_marketplaces": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/plugin_marketplaces */
+    get: operations["list_plugin_marketplaces"];
+    put?: never;
+    /** POST /v1/plugin_marketplaces */
+    post: operations["create_plugin_marketplace"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/plugin_marketplaces/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/plugin_marketplaces/{id} */
+    get: operations["get_plugin_marketplace"];
+    put?: never;
+    post?: never;
+    /** DELETE /v1/plugin_marketplaces/{id} */
+    delete: operations["delete_plugin_marketplace"];
+    options?: never;
+    head?: never;
+    /** PATCH /v1/plugin_marketplaces/{id} */
+    patch: operations["update_plugin_marketplace"];
+    trace?: never;
+  };
+  "/v1/plugin_marketplaces/{id}/plugins": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/plugin_marketplaces/{id}/plugins */
+    get: operations["get_marketplace_catalog"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/plugin_marketplaces/{id}/sync": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** POST /v1/plugin_marketplaces/{id}/sync */
+    post: operations["sync_plugin_marketplace"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/plugins": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/plugins */
+    get: operations["list_plugins"];
+    put?: never;
+    /** POST /v1/plugins */
+    post: operations["install_plugin"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/plugins/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/plugins/{id} */
+    get: operations["get_plugin"];
+    put?: never;
+    post?: never;
+    /** DELETE /v1/plugins/{id} */
+    delete: operations["uninstall_plugin"];
+    options?: never;
+    head?: never;
+    /** PATCH /v1/plugins/{id} */
+    patch: operations["patch_installed_plugin"];
+    trace?: never;
+  };
+  "/v1/plugins/{id}/update": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** POST /v1/plugins/{id}/update */
+    post: operations["update_plugin"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/providers": {
     parameters: {
       query?: never;
@@ -5528,6 +5653,25 @@ export interface components {
        */
       subject_type: string;
     };
+    /** @description Request body for creating a plugin marketplace. */
+    CreatePluginMarketplaceRequest: {
+      /**
+       * @description Unique name within the org (kebab-case, e.g. `my-org-plugins`).
+       * @example everruns-plugins
+       */
+      name: string;
+      /**
+       * @description Source value. For `github`: `"owner/repo"`. For `url`: full HTTPS URL.
+       *     For `local_path` (dev only): absolute filesystem path.
+       * @example everruns/plugins
+       */
+      source: string;
+      /**
+       * @description Source type: `github`, `url`, or `local_path` (dev/test only).
+       * @example github
+       */
+      source_type: string;
+    };
     /** @description Request to create a new LLM provider */
     CreateProviderRequest: {
       /**
@@ -7551,6 +7695,19 @@ export interface components {
     InputMessageData: {
       /** @description The user message */
       message: components["schemas"]["Message"];
+    };
+    /** @description Request body for installing a plugin from a marketplace catalog entry. */
+    InstallPluginRequest: {
+      /**
+       * @description Public ID of the marketplace to install from.
+       * @example plgmkt_01933b5a000070008000000000000001
+       */
+      marketplace_id: string;
+      /**
+       * @description Name of the plugin entry in the marketplace catalog.
+       * @example microsoft-docs
+       */
+      plugin_name: string;
     };
     /**
      * @description How app-triggered invocations route into sessions.
@@ -14683,6 +14840,11 @@ export interface components {
        */
       tags?: string[] | null;
     };
+    /** @description Request body for updating an installed plugin (status only; use POST .../update for recompile). */
+    UpdateInstalledPluginRequest: {
+      /** @description New lifecycle status: `active` or `disabled`. */
+      status?: string | null;
+    };
     /** @description Request body for the `update_knowledge_base` operation. */
     UpdateKnowledgeBaseRequest: {
       /** @description Human-readable description. Safe to render in user-facing messages. */
@@ -14955,6 +15117,11 @@ export interface components {
        * @description New lifecycle status. Valid values: `active`, `disabled`.
        * @example disabled
        */
+      status?: string | null;
+    };
+    /** @description Request body for updating a plugin marketplace. */
+    UpdatePluginMarketplaceRequest: {
+      name?: string | null;
       status?: string | null;
     };
     /** @description Request to update current user's profile */
@@ -24036,6 +24203,568 @@ export interface operations {
       };
       /** @description Not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_plugin_marketplaces: {
+    parameters: {
+      query?: {
+        /** @description Search by name (case-insensitive substring match). */
+        search?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List of plugin marketplaces */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  create_plugin_marketplace: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreatePluginMarketplaceRequest"];
+      };
+    };
+    responses: {
+      /** @description Marketplace created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid input */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Name already exists */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_plugin_marketplace: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Marketplace ID (plgmkt_...) */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Marketplace found */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  delete_plugin_marketplace: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Marketplace ID (plgmkt_...) */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Marketplace deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  update_plugin_marketplace: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Marketplace ID (plgmkt_...) */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdatePluginMarketplaceRequest"];
+      };
+    };
+    responses: {
+      /** @description Marketplace updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid input */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_marketplace_catalog: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Marketplace ID (plgmkt_...) */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Catalog entries */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Marketplace not yet synced */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  sync_plugin_marketplace: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Marketplace ID (plgmkt_...) */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Marketplace synced */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Sync not supported or source error */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_plugins: {
+    parameters: {
+      query?: {
+        /** @description Search by name (case-insensitive substring match). */
+        search?: string | null;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description List of installed plugins */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  install_plugin: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InstallPluginRequest"];
+      };
+    };
+    responses: {
+      /** @description Plugin installed */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Compilation or source error */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Plugin already installed */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_plugin: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Plugin install ID (plugin_...) */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Installed plugin */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  uninstall_plugin: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Plugin install ID (plugin_...) */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Plugin uninstalled */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  patch_installed_plugin: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Plugin install ID (plugin_...) */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateInstalledPluginRequest"];
+      };
+    };
+    responses: {
+      /** @description Plugin updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Invalid input */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  update_plugin: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Plugin install ID (plugin_...) */
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Plugin updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description No marketplace or source error */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Internal server error */
+      500: {
         headers: {
           [name: string]: unknown;
         };
