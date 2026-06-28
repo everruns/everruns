@@ -6,8 +6,8 @@
 // Credentials are never accepted as tool arguments or config. Required
 // provider connections are resolved server-side before the child session starts.
 
+use super::util::{get_platform_store, require_str_nonblank as require_str};
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext};
-use crate::platform_store::PlatformStore;
 use crate::session::SubagentStatus;
 use crate::session_task::{
     CreateSessionTask, SessionTaskFilter, SessionTaskState, SessionTaskUpdate, TASK_KIND_SUBAGENT,
@@ -349,25 +349,6 @@ impl AgentHandoffMode {
             Self::Wait => "wait",
         }
     }
-}
-
-fn get_platform_store(context: &ToolContext) -> Result<&dyn PlatformStore, ToolExecutionResult> {
-    context
-        .platform_store
-        .as_ref()
-        .map(|store| store.as_ref())
-        .ok_or_else(|| {
-            ToolExecutionResult::tool_error("Agent handoff tools require platform_store context.")
-        })
-}
-
-fn require_str<'a>(args: &'a Value, field: &str) -> Result<&'a str, ToolExecutionResult> {
-    args.get(field)
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| {
-            ToolExecutionResult::tool_error(format!("Missing required parameter: {field}"))
-        })
 }
 
 fn child_task(task: &str, public_context: Option<&Value>) -> String {
