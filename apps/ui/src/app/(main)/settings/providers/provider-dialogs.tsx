@@ -132,6 +132,25 @@ export function AddProviderDialog({
   const updateCredential = (key: string, value: string) =>
     setCredentials((prev) => ({ ...prev, [key]: value }));
 
+  // Create the provider, then hand the browser straight to the driver's OAuth
+  // authorize endpoint. The flow needs a provider id to bind its state cookie
+  // to, so creation has to happen first; doing both in one click is why OAuth is
+  // actionable here instead of a "create first, then connect" hint. The dialog
+  // unmounts on navigation, so local form state needs no reset.
+  const handleCreateAndConnect = async () => {
+    const submitted = nonEmptyCredentials(credentials);
+    const data: CreateProviderRequest = {
+      name,
+      provider_type: providerType,
+      base_url: baseUrl || undefined,
+      credentials: Object.keys(submitted).length > 0 ? submitted : undefined,
+    };
+    const provider = await createProvider.mutateAsync(data);
+    window.location.href = providerOAuthAuthorizeUrl(provider.id);
+  };
+
+  const submitDisabled = createProvider.isPending || !name || (baseUrlRequired && !baseUrl.trim());
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -203,19 +222,26 @@ export function AddProviderDialog({
             />
           ) : null}
           {supportsOAuth ? (
-            <p className="text-sm text-muted-foreground">
-              Prefer not to paste a key? Create the provider without one, then use “Connect with{" "}
-              {getProviderLabel(providerType)}” to authorize a key in your browser.
-            </p>
+            <div className="space-y-2">
+              <Button
+                type="button"
+                className="w-full"
+                onClick={handleCreateAndConnect}
+                disabled={submitDisabled}
+              >
+                Connect with {getProviderLabel(providerType)}
+              </Button>
+              <p className="text-sm text-muted-foreground">
+                Authorize in your browser to set up a key automatically — no copy &amp; paste
+                needed. Or paste a key above and use “Create Provider”.
+              </p>
+            </div>
           ) : null}
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button
-              type="submit"
-              disabled={createProvider.isPending || !name || (baseUrlRequired && !baseUrl.trim())}
-            >
+            <Button type="submit" disabled={submitDisabled}>
               {createProvider.isPending ? "Creating..." : "Create Provider"}
             </Button>
           </DialogFooter>
