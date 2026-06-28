@@ -4745,9 +4745,9 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 
 [[package]]
 name = "llmsim"
-version = "0.5.0"
+version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "539672f1cd48a53f2554427acb6c69cf4e2c24a706acb89c22b4681fe0c4b2a0"
+checksum = "a05ca538f4ed6223baae5513aa5c2c248a0c6b7e1ba448b7192068527d19eafd"
 dependencies = [
  "async-stream",
  "futures-core",
