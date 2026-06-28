@@ -1353,6 +1353,9 @@ impl ServerAppBuilder {
             .merge(api::payments::routes(payments_state))
             .merge(api::reporting::routes(reporting_state))
             .merge(api::user_connections::routes(user_connections_state))
+            .merge(api::user_preferences::routes(
+                api::user_preferences::AppState::new(db.clone(), auth_state.clone()),
+            ))
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::audit_logs::routes(audit_logs_state))
             .merge(api::commands::routes(commands_state))

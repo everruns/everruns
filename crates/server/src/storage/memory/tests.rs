@@ -3463,3 +3463,61 @@ async fn test_export_user_data() {
     let missing = db.export_user_data(uuid::Uuid::now_v7()).await.unwrap();
     assert!(missing.is_none());
 }
+
+#[tokio::test]
+async fn test_user_preferences_crud_and_isolation() {
+    let db = InMemoryDatabase::new();
+    let user_a = uuid::Uuid::now_v7();
+    let user_b = uuid::Uuid::now_v7();
+
+    // Missing key reads as None.
+    assert!(
+        db.get_user_preference(user_a, "theme")
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    // Set creates the row.
+    let created = db
+        .set_user_preference(user_a, "theme", "\"dark\"")
+        .await
+        .unwrap();
+    assert_eq!(created.key, "theme");
+    assert_eq!(created.value, "\"dark\"");
+
+    // Set again upserts (updates value, keeps identity, no duplicate row).
+    let updated = db
+        .set_user_preference(user_a, "theme", "\"light\"")
+        .await
+        .unwrap();
+    assert_eq!(updated.id, created.id, "upsert must reuse the same row");
+    assert_eq!(updated.value, "\"light\"");
+    assert_eq!(db.list_user_preferences(user_a).await.unwrap().len(), 1);
+
+    // Preferences are isolated per user.
+    db.set_user_preference(user_b, "theme", "\"system\"")
+        .await
+        .unwrap();
+    assert_eq!(
+        db.get_user_preference(user_a, "theme")
+            .await
+            .unwrap()
+            .unwrap()
+            .value,
+        "\"light\""
+    );
+    assert_eq!(db.list_user_preferences(user_b).await.unwrap().len(), 1);
+
+    // Delete removes only the targeted key and reports whether a row was hit.
+    assert!(db.delete_user_preference(user_a, "theme").await.unwrap());
+    assert!(!db.delete_user_preference(user_a, "theme").await.unwrap());
+    assert!(
+        db.get_user_preference(user_a, "theme")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    // user_b is unaffected by user_a's delete.
+    assert_eq!(db.list_user_preferences(user_b).await.unwrap().len(), 1);
+}

@@ -53,6 +53,10 @@ jest.mock("@/components/command-palette", () => ({
   CommandPalette: () => <div data-testid="command-palette">Command Palette</div>,
 }));
 
+jest.mock("@/components/layout/early-access-banner", () => ({
+  EarlyAccessBanner: () => <div data-testid="early-access-banner">Early Access Banner</div>,
+}));
+
 jest.mock("@/hooks/use-command-palette", () => ({
   CommandPaletteContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useCommandPaletteState: () => ({}),

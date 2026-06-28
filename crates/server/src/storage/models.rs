@@ -1919,6 +1919,21 @@ pub struct CreateSkillFileRow {
 }
 
 // ============================================
+// User Preference models
+// ============================================
+
+/// User preference (key/value) row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct UserPreferenceRow {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub key: String,
+    pub value: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+// ============================================
 // User Connection models
 // ============================================
 

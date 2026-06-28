@@ -38,6 +38,7 @@ mod session_tasks;
 mod sessions;
 mod skills;
 mod user_connections;
+mod user_preferences;
 mod users;
 mod workspaces;
 
