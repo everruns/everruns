@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+- feat(observers): Observers UI — create/edit observers, scorer catalog, and a per-observer Quality tab by [@chaliy](https://github.com/chaliy)
+- fix(observers): reject `llm_judge` scorers that reference a model the org cannot use by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.1] - 2026-06-27
 
 ### Highlights

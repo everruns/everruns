@@ -37,6 +37,7 @@ import {
   Server,
   Settings,
   Shield,
+  Telescope,
   UserRound,
   Workflow,
   Cog,
@@ -104,6 +105,13 @@ export const defaultBuildingBlocksNavigation: NavigationItem[] = [
   { name: "Plugins", href: "/plugins", icon: Puzzle },
   { name: "Apps", href: "/apps", icon: Rocket },
   { name: "Evals", href: "/evals", icon: ClipboardCheck, flag: "evals", experimental: true },
+  {
+    name: "Observers",
+    href: "/observers",
+    icon: Telescope,
+    flag: "observers",
+    experimental: true,
+  },
 ];
 
 export const defaultBottomNavigation: NavigationItem[] = [

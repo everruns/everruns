@@ -246,6 +246,14 @@ export const queryKeys = {
     runDetail: (evalId: string, runId: string) => ["eval", evalId, "run", runId] as const,
   },
 
+  // Observer queries
+  observers: {
+    all: ["observers"] as const,
+    list: (includeArchived = false) => ["observers", { includeArchived }] as const,
+    detail: (observerId: string) => ["observer", observerId] as const,
+    scores: (observerId: string) => ["observer", observerId, "scores"] as const,
+  },
+
   // Policy queries
   policies: {
     config: (resource: string) => ["policies", resource] as const,
