@@ -23,6 +23,7 @@ use axum::response::IntoResponse;
 use axum::{Router, extract::State, routing::get};
 use everruns_config::{env_bool, env_opt_string};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+use tokio::task::JoinHandle;
 
 /// Configuration for the Prometheus metrics endpoint.
 pub struct PrometheusConfig {
@@ -92,7 +93,7 @@ pub fn route(handle: PrometheusHandle) -> Router {
 /// Used in production to keep metrics on an internal-only port (e.g. 127.0.0.1:9090)
 /// that is not reachable from outside the pod/host. Scrapers access via sidecar,
 /// pod-local networking, or service mesh.
-pub fn spawn_metrics_server(handle: PrometheusHandle, addr: String) {
+pub fn spawn_metrics_server(handle: PrometheusHandle, addr: String) -> JoinHandle<()> {
     tokio::spawn(async move {
         let app = route(handle);
         match tokio::net::TcpListener::bind(&addr).await {
@@ -106,7 +107,7 @@ pub fn spawn_metrics_server(handle: PrometheusHandle, addr: String) {
                 tracing::error!(addr = %addr, error = %e, "Failed to bind metrics server");
             }
         }
-    });
+    })
 }
 
 // ============================================================================

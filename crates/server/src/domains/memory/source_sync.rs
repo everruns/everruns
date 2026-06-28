@@ -8,6 +8,7 @@ use git2::{AutotagOption, Cred, FetchOptions, RemoteCallbacks, build::RepoBuilde
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 use tokio::task;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::domains::memory::types::{
@@ -133,20 +134,20 @@ impl VolumeSourceSyncService {
 pub fn spawn_memory_source_sync_task(
     db: Arc<StorageBackend>,
     connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
-) {
+) -> Option<JoinHandle<()>> {
     if !env_bool("VOLUME_SOURCE_SYNC_ENABLED", true) {
         tracing::info!("Memory source sync background task disabled");
-        return;
+        return None;
     }
 
     let config = VolumeSourceSyncConfig::from_env();
     if config.poll_interval.is_zero() {
         tracing::info!("Memory source sync background task disabled by zero interval");
-        return;
+        return None;
     }
 
     let service = VolumeSourceSyncService::new(db, connection_resolver, config.clone());
-    tokio::spawn(async move {
+    Some(tokio::spawn(async move {
         let mut interval = tokio::time::interval(config.poll_interval);
         tracing::info!(
             interval_secs = config.poll_interval.as_secs(),
@@ -174,7 +175,7 @@ pub fn spawn_memory_source_sync_task(
                 }
             }
         }
-    });
+    }))
 }
 
 async fn snapshot_memory_source(
