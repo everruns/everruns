@@ -21,7 +21,7 @@ jest.mock("@/hooks/use-capabilities", () => ({
   useCapabilities: () => ({ data: [] }),
   useDeclarativeCapabilities: () => ({ data: [] }),
 }));
-const mockUseEvals = jest.fn(() => ({ data: [] }));
+const mockUseEvals = jest.fn((_options?: { enabled?: boolean }) => ({ data: [] }));
 jest.mock("@/hooks/use-evals", () => ({
   useEvals: (options?: { enabled?: boolean }) => mockUseEvals(options),
 }));

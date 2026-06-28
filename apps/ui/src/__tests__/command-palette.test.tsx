@@ -36,7 +36,7 @@ jest.mock("@/hooks/use-command-palette", () => ({
   }),
 }));
 
-const mockUseGlobalSearch = jest.fn(() => [
+const mockUseGlobalSearch = jest.fn((_query: string) => [
   {
     id: "organization:org_second",
     category: "organization",
