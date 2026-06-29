@@ -21,6 +21,7 @@ import {
   PageMasthead,
   PageControlStrip,
   SectionTabs,
+  EmptyState,
   PageColumns,
   PageMain,
   PageRail,
@@ -206,21 +207,25 @@ export default function HarnessesPageClient() {
             data={filteredHarnesses}
             errorMessagePrefix="Failed to load harnesses"
             emptyState={
-              <div className="border border-dashed py-12 text-center">
-                <p className="mb-4 text-muted-foreground">
-                  {search || statusTab !== "active"
+              <EmptyState
+                icon={<Shield />}
+                title={
+                  search || statusTab !== "active"
                     ? "No harnesses match your filters."
-                    : "No harnesses yet"}
-                </p>
-                {!search && statusTab === "active" && (
-                  <Link href="/harnesses/new">
-                    <Button>
-                      <Plus className="size-4" />
-                      Create your first harness
-                    </Button>
-                  </Link>
-                )}
-              </div>
+                    : "No harnesses yet"
+                }
+                action={
+                  !search &&
+                  statusTab === "active" && (
+                    <Link href="/harnesses/new">
+                      <Button variant="accent">
+                        <Plus className="size-4" />
+                        Create your first harness
+                      </Button>
+                    </Link>
+                  )
+                }
+              />
             }
           >
             {(items) => (

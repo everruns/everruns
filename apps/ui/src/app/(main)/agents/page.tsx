@@ -23,6 +23,7 @@ import {
   PageMasthead,
   PageControlStrip,
   SectionTabs,
+  EmptyState,
   PageColumns,
   PageMain,
   PageRail,
@@ -262,21 +263,25 @@ export default function AgentsPage() {
             data={filteredAgents}
             errorMessagePrefix="Failed to load agents"
             emptyState={
-              <div className="border border-dashed py-12 text-center">
-                <p className="mb-4 text-muted-foreground">
-                  {search || statusTab !== "active"
+              <EmptyState
+                icon={<Boxes />}
+                title={
+                  search || statusTab !== "active"
                     ? "No agents match your filters."
-                    : "No agents yet"}
-                </p>
-                {!search && statusTab === "active" && (
-                  <Link href="/agents/new">
-                    <Button>
-                      <Plus className="size-4" />
-                      Create your first agent
-                    </Button>
-                  </Link>
-                )}
-              </div>
+                    : "No agents yet"
+                }
+                action={
+                  !search &&
+                  statusTab === "active" && (
+                    <Link href="/agents/new">
+                      <Button variant="accent">
+                        <Plus className="size-4" />
+                        Create your first agent
+                      </Button>
+                    </Link>
+                  )
+                }
+              />
             }
           >
             {(items) => (
