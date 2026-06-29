@@ -266,221 +266,217 @@ impl Tool for SpawnSubagentTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-        let session_store = match get_session_store(context) {
-            Ok(s) => s,
-            Err(e) => return e,
-        };
-
-        let name = match require_str(&arguments, "name") {
-            Ok(s) => s.trim().to_string(),
-            Err(e) => return e,
-        };
-        let instructions = match require_str(&arguments, "instructions") {
-            Ok(s) => s.to_string(),
-            Err(e) => return e,
-        };
-
-        let blueprint_param = arguments
-            .get("blueprint")
-            .and_then(|v| v.as_str())
-            .filter(|s| !s.trim().is_empty())
-            .map(|s| s.to_string());
-        let config_param = arguments.get("config").filter(|v| !v.is_null()).cloned();
-
-        // Reject config without blueprint
-        if config_param.is_some() && blueprint_param.is_none() {
-            return ToolExecutionResult::tool_error(
-                "The `config` parameter is only valid when `blueprint` is set.",
-            );
-        }
-
-        // Nesting check: reject if current session is already a subagent
-        let parent_session = match session_store.get_session(context.session_id).await {
-            Ok(Some(s)) => s,
-            Ok(None) => return ToolExecutionResult::tool_error("Current session not found"),
-            Err(e) => return ToolExecutionResult::internal_error(e),
-        };
-
-        if parent_session.parent_session_id.is_some() {
-            return ToolExecutionResult::tool_error(
-                "Subagents cannot spawn other subagents (nesting not allowed).",
-            );
-        }
-
-        // Validate blueprint exists and is allowed for this parent session.
-        if let Some(ref bp_id) = blueprint_param {
-            let Some(ref registry) = context.capability_registry else {
-                return ToolExecutionResult::tool_error(
-                    "Blueprint support requires capability_registry context.",
-                );
-            };
-
-            let Some((blueprint_capability_id, blueprint)) =
-                registry.blueprint_with_capability(bp_id)
-            else {
-                return ToolExecutionResult::tool_error(format!(
-                    "Unknown blueprint: \"{bp_id}\". Check available blueprints."
-                ));
-            };
-
-            // Validate config against schema if blueprint has one.
-            if let Some(ref schema) = blueprint.config_schema
-                && config_param.is_none()
-                && schema
-                    .get("required")
-                    .is_some_and(|r| r.as_array().is_some_and(|arr| !arr.is_empty()))
-            {
-                return ToolExecutionResult::tool_error(format!(
-                    "Blueprint \"{bp_id}\" requires config. Schema: {}",
-                    serde_json::to_string_pretty(schema).unwrap_or_default()
-                ));
-            }
-
-            let allowed_capability_ids = if let Some(agent_id) = parent_session.agent_id {
-                match store.get_agent_by_id(agent_id).await {
-                    Ok(Some(agent)) => agent
-                        .capabilities
-                        .iter()
-                        .map(|c| c.capability_id().to_string())
-                        .collect::<Vec<_>>(),
-                    Ok(None) => vec![],
-                    Err(e) => return ToolExecutionResult::internal_error(e),
-                }
-            } else {
-                match store.get_harness(parent_session.harness_id).await {
-                    Ok(Some(harness)) => harness
-                        .capabilities
-                        .iter()
-                        .map(|c| c.capability_id().to_string())
-                        .collect::<Vec<_>>(),
-                    Ok(None) => vec![],
-                    Err(e) => return ToolExecutionResult::internal_error(e),
-                }
-            };
-
-            if !allowed_capability_ids
-                .iter()
-                .any(|capability_id| capability_id == &blueprint_capability_id)
-            {
-                return ToolExecutionResult::tool_error(format!(
-                    "Blueprint \"{bp_id}\" is not enabled for this session."
-                ));
-            }
-        }
-
-        // --- Durable spawn handle claim (EVE-535) ---
-        //
-        // When a spawn store and tool_call_id are available, attempt to claim a
-        // spawn slot before creating the child session.  On reclaim, this lets us
-        // reattach to the existing child instead of spawning a duplicate.
-        if let (Some(spawn_store), Some(tool_call_id)) =
-            (&context.subagent_spawn_store, &context.tool_call_id)
-        {
-            let claim_token = uuid::Uuid::new_v4();
-
-            let claim = match spawn_store
-                .try_claim_spawn(context.session_id, tool_call_id, claim_token)
-                .await
-            {
-                Ok(c) => c,
-                Err(e) => return ToolExecutionResult::internal_error(e),
-            };
-
-            match claim {
-                SpawnClaimResult::AlreadySettled {
-                    child_session_id,
-                    terminal_status,
-                    terminal_result,
-                } => {
-                    // Already settled on a previous execution: return stored result.
-                    let task_id = find_subagent_task(context, child_session_id)
-                        .await
-                        .map(|t| t.id);
-                    return ToolExecutionResult::success(json!({
-                        "subagent_id": child_session_id.to_string(),
-                        "name": name,
-                        "status": terminal_status,
-                        "result": terminal_result,
-                        "task_id": task_id,
-                        "blueprint": blueprint_param,
-                    }));
-                }
-                SpawnClaimResult::AlreadyRunning {
-                    child_session_id,
-                    claim_token: stored_claim_token,
-                } => {
-                    // Child was spawned before but hasn't settled yet — reattach.
-                    // Use the stored claim_token so settle succeeds on this replay.
-                    let task_id = find_subagent_task(context, child_session_id)
-                        .await
-                        .map(|t| t.id);
-                    return run_subagent_wait_and_settle(
-                        store,
-                        context,
-                        child_session_id,
-                        &name,
-                        &instructions,
-                        &blueprint_param,
-                        task_id,
-                        Some((
-                            spawn_store.as_ref(),
-                            tool_call_id.as_str(),
-                            stored_claim_token,
-                        )),
-                    )
-                    .await;
-                }
-                SpawnClaimResult::Claimed {
-                    spawn_handle_id,
-                    claim_token: actual_claim_token,
-                }
-                | SpawnClaimResult::ClaimedPendingChild {
-                    spawn_handle_id,
-                    claim_token: actual_claim_token,
-                } => {
-                    // First claim (or re-claim after crash before register):
-                    // create child and register it durably before waiting.
-                    return spawn_create_and_wait(
-                        store,
-                        context,
-                        &parent_session,
-                        &name,
-                        &instructions,
-                        &blueprint_param,
-                        &config_param,
-                        Some((
-                            spawn_store.as_ref(),
-                            tool_call_id.as_str(),
-                            spawn_handle_id,
-                            actual_claim_token,
-                        )),
-                    )
-                    .await;
-                }
-            }
-        }
-
-        // --- No-spawn-store path (dev / noop) ---
-        spawn_create_and_wait(
-            store,
-            context,
-            &parent_session,
-            &name,
-            &instructions,
-            &blueprint_param,
-            &config_param,
-            None,
-        )
-        .await
+        spawn_subagent_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn spawn_subagent_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let store = get_platform_store(context)?;
+    let session_store = get_session_store(context)?;
+
+    let name = require_str(&arguments, "name")?.trim().to_string();
+    let instructions = require_str(&arguments, "instructions")?.to_string();
+
+    let blueprint_param = arguments
+        .get("blueprint")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string());
+    let config_param = arguments.get("config").filter(|v| !v.is_null()).cloned();
+
+    // Reject config without blueprint
+    if config_param.is_some() && blueprint_param.is_none() {
+        return Ok(ToolExecutionResult::tool_error(
+            "The `config` parameter is only valid when `blueprint` is set.",
+        ));
+    }
+
+    // Nesting check: reject if current session is already a subagent
+    let parent_session = match session_store.get_session(context.session_id).await {
+        Ok(Some(s)) => s,
+        Ok(None) => return Ok(ToolExecutionResult::tool_error("Current session not found")),
+        Err(e) => return Err(ToolExecutionResult::internal_error(e)),
+    };
+
+    if parent_session.parent_session_id.is_some() {
+        return Ok(ToolExecutionResult::tool_error(
+            "Subagents cannot spawn other subagents (nesting not allowed).",
+        ));
+    }
+
+    // Validate blueprint exists and is allowed for this parent session.
+    if let Some(ref bp_id) = blueprint_param {
+        let Some(ref registry) = context.capability_registry else {
+            return Ok(ToolExecutionResult::tool_error(
+                "Blueprint support requires capability_registry context.",
+            ));
+        };
+
+        let Some((blueprint_capability_id, blueprint)) = registry.blueprint_with_capability(bp_id)
+        else {
+            return Ok(ToolExecutionResult::tool_error(format!(
+                "Unknown blueprint: \"{bp_id}\". Check available blueprints."
+            )));
+        };
+
+        // Validate config against schema if blueprint has one.
+        if let Some(ref schema) = blueprint.config_schema
+            && config_param.is_none()
+            && schema
+                .get("required")
+                .is_some_and(|r| r.as_array().is_some_and(|arr| !arr.is_empty()))
+        {
+            return Ok(ToolExecutionResult::tool_error(format!(
+                "Blueprint \"{bp_id}\" requires config. Schema: {}",
+                serde_json::to_string_pretty(schema).unwrap_or_default()
+            )));
+        }
+
+        let allowed_capability_ids = if let Some(agent_id) = parent_session.agent_id {
+            match store.get_agent_by_id(agent_id).await {
+                Ok(Some(agent)) => agent
+                    .capabilities
+                    .iter()
+                    .map(|c| c.capability_id().to_string())
+                    .collect::<Vec<_>>(),
+                Ok(None) => vec![],
+                Err(e) => return Err(ToolExecutionResult::internal_error(e)),
+            }
+        } else {
+            match store.get_harness(parent_session.harness_id).await {
+                Ok(Some(harness)) => harness
+                    .capabilities
+                    .iter()
+                    .map(|c| c.capability_id().to_string())
+                    .collect::<Vec<_>>(),
+                Ok(None) => vec![],
+                Err(e) => return Err(ToolExecutionResult::internal_error(e)),
+            }
+        };
+
+        if !allowed_capability_ids
+            .iter()
+            .any(|capability_id| capability_id == &blueprint_capability_id)
+        {
+            return Ok(ToolExecutionResult::tool_error(format!(
+                "Blueprint \"{bp_id}\" is not enabled for this session."
+            )));
+        }
+    }
+
+    // --- Durable spawn handle claim (EVE-535) ---
+    //
+    // When a spawn store and tool_call_id are available, attempt to claim a
+    // spawn slot before creating the child session.  On reclaim, this lets us
+    // reattach to the existing child instead of spawning a duplicate.
+    if let (Some(spawn_store), Some(tool_call_id)) =
+        (&context.subagent_spawn_store, &context.tool_call_id)
+    {
+        let claim_token = uuid::Uuid::new_v4();
+
+        let claim = match spawn_store
+            .try_claim_spawn(context.session_id, tool_call_id, claim_token)
+            .await
+        {
+            Ok(c) => c,
+            Err(e) => return Err(ToolExecutionResult::internal_error(e)),
+        };
+
+        match claim {
+            SpawnClaimResult::AlreadySettled {
+                child_session_id,
+                terminal_status,
+                terminal_result,
+            } => {
+                // Already settled on a previous execution: return stored result.
+                let task_id = find_subagent_task(context, child_session_id)
+                    .await
+                    .map(|t| t.id);
+                return Ok(ToolExecutionResult::success(json!({
+                    "subagent_id": child_session_id.to_string(),
+                    "name": name,
+                    "status": terminal_status,
+                    "result": terminal_result,
+                    "task_id": task_id,
+                    "blueprint": blueprint_param,
+                })));
+            }
+            SpawnClaimResult::AlreadyRunning {
+                child_session_id,
+                claim_token: stored_claim_token,
+            } => {
+                // Child was spawned before but hasn't settled yet — reattach.
+                // Use the stored claim_token so settle succeeds on this replay.
+                let task_id = find_subagent_task(context, child_session_id)
+                    .await
+                    .map(|t| t.id);
+                return Ok(run_subagent_wait_and_settle(
+                    store,
+                    context,
+                    child_session_id,
+                    &name,
+                    &instructions,
+                    &blueprint_param,
+                    task_id,
+                    Some((
+                        spawn_store.as_ref(),
+                        tool_call_id.as_str(),
+                        stored_claim_token,
+                    )),
+                )
+                .await);
+            }
+            SpawnClaimResult::Claimed {
+                spawn_handle_id,
+                claim_token: actual_claim_token,
+            }
+            | SpawnClaimResult::ClaimedPendingChild {
+                spawn_handle_id,
+                claim_token: actual_claim_token,
+            } => {
+                // First claim (or re-claim after crash before register):
+                // create child and register it durably before waiting.
+                return Ok(spawn_create_and_wait(
+                    store,
+                    context,
+                    &parent_session,
+                    &name,
+                    &instructions,
+                    &blueprint_param,
+                    &config_param,
+                    Some((
+                        spawn_store.as_ref(),
+                        tool_call_id.as_str(),
+                        spawn_handle_id,
+                        actual_claim_token,
+                    )),
+                )
+                .await);
+            }
+        }
+    }
+
+    // --- No-spawn-store path (dev / noop) ---
+    Ok(spawn_create_and_wait(
+        store,
+        context,
+        &parent_session,
+        &name,
+        &instructions,
+        &blueprint_param,
+        &config_param,
+        None,
+    )
+    .await)
 }
 
 // =============================================================================
