@@ -1,4 +1,2 @@
-manifest.json
-*.egg-info/
-__pycache__/
-.venv/
+/target
+/results
