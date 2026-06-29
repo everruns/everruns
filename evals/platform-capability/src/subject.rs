@@ -13,11 +13,13 @@
 //! runner, which only the full server provides. Driving the server exercises the
 //! real tools against real persistence — the thing we actually want to measure.
 
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use mira::subject::summarize_events;
 use mira::{ErrorKind, RunCx, Sample, Subject, Transcript};
 use serde_json::{Value, json};
+use tokio::sync::OnceCell;
 
 /// Default harness that carries the `platform_management` capability.
 const DEFAULT_HARNESS: &str = "platform-chat";
@@ -29,6 +31,9 @@ pub struct EverrunsServerSubject {
     poll_interval: Duration,
     turn_timeout: Duration,
     client: reqwest::Client,
+    /// Lazily-fetched map from friendly model name (`model_id` or display name)
+    /// to the server's prefixed model id (`model_…`).
+    model_cache: OnceCell<HashMap<String, String>>,
 }
 
 impl EverrunsServerSubject {
@@ -56,6 +61,7 @@ impl EverrunsServerSubject {
             poll_interval: Duration::from_millis(750),
             turn_timeout: Duration::from_secs(turn_timeout),
             client: reqwest::Client::new(),
+            model_cache: OnceCell::new(),
         }
     }
 
@@ -96,15 +102,45 @@ impl EverrunsServerSubject {
         serde_json::from_str(&text).map_err(|e| format!("GET {path}: bad JSON: {e}"))
     }
 
-    /// Map the matrix target onto an everruns `model_id`. A `sim`/empty target
-    /// means "use the session's default model" (no override).
-    fn model_id(&self, cx: &RunCx) -> Option<String> {
+    /// Map the matrix target onto the server's prefixed `model_id`. A `sim`/empty
+    /// target means "use the session's default model" (no override). A value that
+    /// already looks like a prefixed id (`model_…`) is used verbatim; anything
+    /// else is resolved against `/v1/models` by `model_id` or display name.
+    async fn resolve_model_id(&self, cx: &RunCx) -> Result<Option<String>, String> {
         let model = cx.target.model.trim();
         if model.is_empty() || cx.target.provider == "sim" || model == "sim" {
-            None
-        } else {
-            Some(model.to_string())
+            return Ok(None);
         }
+        if model.starts_with("model_") {
+            return Ok(Some(model.to_string()));
+        }
+        let map = self.model_map().await?;
+        map.get(model).cloned().map(Some).ok_or_else(|| {
+            format!("unknown model '{model}': not a 'model_' id, model_id, or display name on the server")
+        })
+    }
+
+    async fn model_map(&self) -> Result<&HashMap<String, String>, String> {
+        self.model_cache
+            .get_or_try_init(|| async {
+                let resp = self.get("/v1/models").await?;
+                let mut map = HashMap::new();
+                if let Some(items) = resp.get("data").and_then(|d| d.as_array()) {
+                    for it in items {
+                        let Some(pid) = it.get("id").and_then(|v| v.as_str()) else {
+                            continue;
+                        };
+                        if let Some(mid) = it.get("model_id").and_then(|v| v.as_str()) {
+                            map.insert(mid.to_string(), pid.to_string());
+                        }
+                        if let Some(dn) = it.get("display_name").and_then(|v| v.as_str()) {
+                            map.entry(dn.to_string()).or_insert_with(|| pid.to_string());
+                        }
+                    }
+                }
+                Ok(map)
+            })
+            .await
     }
 
     async fn create_session(&self, sample: &Sample, cx: &RunCx) -> Result<String, String> {
@@ -113,7 +149,7 @@ impl EverrunsServerSubject {
             "title": format!("Mira eval: {}", sample.id),
             "tags": ["mira", "platform-capability"],
         });
-        if let Some(model) = self.model_id(cx) {
+        if let Some(model) = self.resolve_model_id(cx).await? {
             body["model_id"] = Value::String(model);
         }
         let resp = self.post("/v1/sessions", body).await?;
@@ -169,7 +205,7 @@ impl EverrunsServerSubject {
             cur = new_cur;
             if events
                 .iter()
-                .filter_map(|e| e.get("event_type").and_then(|t| t.as_str()))
+                .filter_map(|e| e.get("type").and_then(|t| t.as_str()))
                 .any(|t| TERMINAL.contains(&t))
             {
                 return Ok(cur);
@@ -250,7 +286,7 @@ impl Subject for EverrunsServerSubject {
 fn extract_tool_calls(events: &[Value]) -> Vec<String> {
     events
         .iter()
-        .filter(|e| e.get("event_type").and_then(|t| t.as_str()) == Some("tool.completed"))
+        .filter(|e| e.get("type").and_then(|t| t.as_str()) == Some("tool.completed"))
         .filter_map(|e| {
             e.get("data")
                 .and_then(|d| d.get("tool_name"))
@@ -266,7 +302,7 @@ fn extract_final_response(events: &[Value]) -> Option<String> {
     events
         .iter()
         .filter(|e| {
-            e.get("event_type").and_then(|t| t.as_str()) == Some("output.message.completed")
+            e.get("type").and_then(|t| t.as_str()) == Some("output.message.completed")
         })
         .last()
         .and_then(|e| e.get("data"))
@@ -286,7 +322,7 @@ fn extract_final_response(events: &[Value]) -> Option<String> {
 fn count_turns(events: &[Value]) -> usize {
     events
         .iter()
-        .filter(|e| e.get("event_type").and_then(|t| t.as_str()) == Some("turn.completed"))
+        .filter(|e| e.get("type").and_then(|t| t.as_str()) == Some("turn.completed"))
         .count()
 }
 
