@@ -35,6 +35,56 @@ Supported transport types:
 Future transport types (not yet implemented):
 - `websocket` - WebSocket-based transport
 
+### Multi-era protocol support
+
+Everruns' MCP **client** speaks three protocol eras over one HTTP code path, so
+it interoperates with legacy, current, and 2026-RC servers without operator
+action:
+
+| Era | Version | Connection model |
+|-----|---------|------------------|
+| Legacy | `2025-03-26` | Stateful: `initialize` handshake, `Mcp-Session-Id` echoed on every request, `notifications/initialized` |
+| Current | `2025-06-18` | Stateful (as above) |
+| RC | `2026-07-28` | Stateless: no handshake; protocol version + client info ride in `_meta` per request; routable headers let edge infra route without parsing the body |
+
+On every request the client emits `_meta` (carrying
+`io.modelcontextprotocol/clientInfo`) and the SEP-2243 routable headers
+(`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`). These are additive and
+ignored by pre-RC servers, so the same request shape works across all eras.
+
+#### `protocol_mode`
+
+Each server (org-managed `McpServer` and scoped `ScopedMcpServer`) carries a
+`protocol_mode` policy. It defaults to `auto` and is omitted from serialized
+config when `auto`, so existing configuration is byte-identical.
+
+| Mode | Behavior |
+|------|----------|
+| `auto` (default) | Probe and adapt. Tries the stateless RC path first; on a response that signals the server needs a session (e.g. HTTP 400 mentioning `Mcp-Session-Id`, or a "not initialized" JSON-RPC error), transparently runs the handshake and retries. The verdict (era + session id) is cached per server for a short TTL so a `tools/list` + `tools/call` pair negotiates once. |
+| `legacy` | Pin `2025-03-26`; always handshake first. |
+| `stable` | Pin `2025-06-18`; always handshake first. |
+| `rc` | Pin `2026-07-28`; never handshake. |
+
+Pinning exists to work around a server that mis-signals its era; `auto` is
+correct for essentially all servers. Layering follows the normal
+harness→agent→session last-wins merge, so a session can override an inherited
+pin.
+
+Persistence: for org-managed servers `protocol_mode` lives in the existing
+`settings` JSONB column (no schema migration); for scoped servers it is part of
+the embedded `mcpServers` object and propagates to the worker over gRPC
+(`McpServerInfo.protocol_mode`).
+
+Error codes are normalized across eras: the RC renumbered the legacy MCP-specific
+`-32002` onto the standard JSON-RPC `-32602`, so the client maps `-32002 →
+-32602` before surfacing or classifying an error (`normalize_mcp_error_code`).
+
+The negotiation engine lives in `everruns-mcp` (`protocol.rs` for the pure
+pieces, `http.rs` for the egress-bound orchestration); see
+[runtime-mcp.md](runtime-mcp.md). Server-side adoption of the RC on Everruns'
+own `/mcp` endpoint (accepting `_meta`/session-less requests, emitting
+`ttlMs`/`cacheScope`) is tracked separately in [mcp.md](mcp.md).
+
 ### Scoped `mcpServers`
 
 In addition to organization-managed MCP server records, harnesses, agents, and

@@ -377,6 +377,9 @@ impl GrpcClient {
             api_key: proto_server.api_key,
             headers: proto_server.headers,
             auth_mode,
+            protocol_mode: everruns_core::McpProtocolMode::from(
+                proto_server.protocol_mode.as_str(),
+            ),
             oauth_provider_id: proto_server.oauth_provider_id,
         })
     }

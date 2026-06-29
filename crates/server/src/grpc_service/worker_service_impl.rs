@@ -2227,6 +2227,7 @@ impl WorkerService for WorkerServiceImpl {
                             api_key: r.api_key,
                             headers: r.headers,
                             auth_mode: r.auth_mode.to_string(),
+                            protocol_mode: r.protocol_mode.to_string(),
                             oauth_provider_id: r.oauth_provider_id,
                         }),
                     }));
@@ -2253,6 +2254,7 @@ impl WorkerService for WorkerServiceImpl {
             api_key: r.api_key,
             headers: r.headers,
             auth_mode: r.auth_mode.to_string(),
+            protocol_mode: r.protocol_mode.to_string(),
             oauth_provider_id: r.oauth_provider_id,
         });
 
