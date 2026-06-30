@@ -1450,10 +1450,27 @@ impl WorkerService for WorkerServiceImpl {
             }
         };
 
-        let outcome = store.fail_task(task_id, &req.error).await.map_err(|e| {
-            tracing::error!("Failed to fail task: {}", e);
-            Status::internal("Failed to fail task")
-        })?;
+        let outcome = match store.fail_task(task_id, &req.error).await {
+            Ok(outcome) => outcome,
+            Err(StoreError::TaskNotOwned(_)) => {
+                // EVE-639: fail_task now no-ops if the task is no longer 'claimed'
+                // (a concurrent stale-reclaim already requeued or sealed it). The
+                // failure is absorbed by the reclaimer; report it as a retry
+                // (the task is back in the queue) rather than an internal error.
+                tracing::info!(
+                    %task_id,
+                    "Task failure absorbed: task was already reclaimed"
+                );
+                return Ok(Response::new(FailDurableTaskResponse {
+                    failed: true,
+                    will_retry: true,
+                }));
+            }
+            Err(e) => {
+                tracing::error!("Failed to fail task: {}", e);
+                return Err(Status::internal("Failed to fail task"));
+            }
+        };
 
         // Check if task will be retried
         let will_retry = matches!(outcome, TaskFailureOutcome::WillRetry { .. });
