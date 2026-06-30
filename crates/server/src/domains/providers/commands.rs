@@ -72,8 +72,11 @@ impl Command for CreateProvider {
 
 inventory::submit! { CommandDescriptor::of::<CreateProvider>() }
 
+// Empty-braces (not a unit struct) so serde deserializes the empty `{}` params
+// object the MCP/command dispatcher passes; a unit struct rejects a map with
+// "invalid type: map, expected unit struct ListProviders".
 #[derive(Debug, Default, Deserialize, ToSchema)]
-pub struct ListProviders;
+pub struct ListProviders {}
 
 impl Command for ListProviders {
     type Output = Vec<Provider>;

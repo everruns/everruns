@@ -29,11 +29,7 @@ CI_FILE="$PROJECT_ROOT/.github/workflows/ci.yml"
 allowlist_reason() {
   case "$1" in
     test_harness) echo "shared TestServer helper module, not a standalone test target" ;;
-    mcp_endpoint_test) echo "8 MCP tool/contract tests fail on a fresh DB - see EVE-668" ;;
-    skills_integration_test) echo "12 tests fail on fixed-name collisions (isolation) - see EVE-668" ;;
     openapi_coverage_test) echo "13 plugin handlers missing from ApiDoc - see EVE-667" ;;
-    openapi_descriptions_test) echo "doc/example coverage below MIN_*_PCT floors - see EVE-668" ;;
-    reporting_integration_test) echo "backfill test omits NOT NULL owner_principal_id - see EVE-668" ;;
     *) return 1 ;;
   esac
 }

@@ -251,7 +251,7 @@ pub async fn list_providers(
     org: ResolvedOrg,
     State(state): State<AppState>,
 ) -> ApiResult<ListResponse<WithUrls<Provider>>> {
-    let providers = ListProviders.run(&state.ctx(&org)).await?;
+    let providers = ListProviders {}.run(&state.ctx(&org)).await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(ListResponse::new(providers).with_urls(&builder)))

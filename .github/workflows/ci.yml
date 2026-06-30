@@ -701,13 +701,13 @@ jobs:
             --test session_git_integration_test \
             -- --test-threads=1
 
-      # Previously-unrun server integration tests, now wired in (EVE-664). These
-      # files existed under crates/server/tests/ but were never named in any CI
-      # step, so ~17 files silently never ran. These pass on a fresh migrated DB;
+      # Previously-unrun server integration tests, now wired in (EVE-664, EVE-668).
+      # These files existed under crates/server/tests/ but were never named in any
+      # CI step, so ~17 files silently never ran. These pass on a fresh migrated DB;
       # the still-failing ones are allowlisted in
       # scripts/lib/check-server-test-enumeration.sh with tracking issues
-      # (EVE-667, EVE-668). The Server Test Enumeration job enforces that every
-      # server test file is either run here or explicitly allowlisted.
+      # (EVE-667). The Server Test Enumeration job enforces that every server test
+      # file is either run here or explicitly allowlisted.
       - name: Run previously-unenumerated domain integration tests
         run: |
           cargo test -p everruns-server \
@@ -715,11 +715,15 @@ jobs:
             --test command_policy_enforcement_test \
             --test fcp_integration_test \
             --test guardrails_integration_test \
+            --test mcp_endpoint_test \
             --test migration_history_test \
+            --test openapi_descriptions_test \
             --test org_invitations_test \
             --test plugins_integration_test \
             --test plugins_remote_test \
+            --test reporting_integration_test \
             --test session_workspace_attach_test \
+            --test skills_integration_test \
             --test strict_client_tools \
             --test subagent_spawn_handles_test \
             --test workspace_files_integration_test \
