@@ -510,8 +510,12 @@ async fn test_slack_unpublished_app_rejected() {
         "challenge": "test"
     });
 
+    // EVE-632 / TM-TENANT-002: an unpublished app must be indistinguishable
+    // from an unknown one. Both return a generic 404 (see
+    // `test_slack_nonexistent_app_returns_404`), not a 403 that confirms the
+    // app exists.
     let resp = send_slack_event(&server, &app.public_id, TEST_SIGNING_SECRET, &payload).await;
-    resp.assert_status(StatusCode::FORBIDDEN);
+    resp.assert_status(StatusCode::NOT_FOUND);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

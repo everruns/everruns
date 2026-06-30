@@ -1850,18 +1850,8 @@
               }
             }
           },
-          "403": {
-            "description": "App is not published or channel disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
           "404": {
-            "description": "App or channel not found",
+            "description": "App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2826,18 +2816,8 @@
               }
             }
           },
-          "403": {
-            "description": "App is not published or channel disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
           "404": {
-            "description": "App or channel not found",
+            "description": "App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration)",
             "content": {
               "application/json": {
                 "schema": {

@@ -18567,16 +18567,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App is not published or channel disabled */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App or channel not found */
+      /** @description App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration) */
       404: {
         headers: {
           [name: string]: unknown;
@@ -19339,16 +19330,7 @@ export interface operations {
           "application/json": components["schemas"]["ErrorResponse"];
         };
       };
-      /** @description App is not published or channel disabled */
-      403: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["ErrorResponse"];
-        };
-      };
-      /** @description App or channel not found */
+      /** @description App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration) */
       404: {
         headers: {
           [name: string]: unknown;

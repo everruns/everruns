@@ -169,16 +169,25 @@ async fn authorize_ag_ui_request(
     // private app configurations.
     // Mitigation: Require a published app, an enabled AG-UI channel, and
     // `anonymous=true` before accepting unauthenticated traffic.
+    //
+    // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
+    // "app does not exist" apart from "app exists but is not published / has no
+    // AG-UI channel / is misconfigured". Every such case collapses to a single
+    // generic 404 (matching the FCP channel in `api/fcp.rs`); the real reason is
+    // logged server-side only.
     if app.status != AppStatus::Published {
-        return Err(forbidden("App is not published"));
+        tracing::debug!(app_id = %app.public_id, status = ?app.status, "AG-UI request rejected: app not published");
+        return Err(not_found());
     }
 
-    let channel = app
-        .ag_ui_channel()
-        .ok_or_else(|| bad_request("App does not have an enabled AG-UI channel"))?;
-    let channel_config = channel
-        .ag_ui_config()
-        .ok_or_else(|| bad_request("Invalid AG-UI channel configuration"))?;
+    let Some(channel) = app.ag_ui_channel() else {
+        tracing::debug!(app_id = %app.public_id, "AG-UI request rejected: no enabled AG-UI channel");
+        return Err(not_found());
+    };
+    let Some(channel_config) = channel.ag_ui_config() else {
+        tracing::error!(app_id = %app.public_id, "AG-UI channel config did not deserialize");
+        return Err(not_found());
+    };
     if let Some(auth) = channel_config.auth.as_ref() {
         state
             .auth_verifier
@@ -194,7 +203,11 @@ async fn authorize_ag_ui_request(
             .map_err(ag_ui_auth_error_response)?;
     } else {
         if !channel_config.anonymous {
-            return Err(forbidden("Anonymous AG-UI access is disabled"));
+            // No auth provider configured and anonymous access disabled: the
+            // channel is not reachable. Collapse to a generic 404 rather than a
+            // 403 so callers cannot confirm the app exists (TM-TENANT-002).
+            tracing::debug!(app_id = %app.public_id, "AG-UI request rejected: anonymous access disabled with no auth provider");
+            return Err(not_found());
         }
         if let Some(expected_token) = channel_config.token.as_deref()
             && !expected_token.is_empty()
