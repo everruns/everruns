@@ -7,9 +7,11 @@
 
 use crate::driver_registry::DiscoveredModel;
 use crate::error::{AgentLoopError, Result};
+use crate::url_validation::is_blocked_ip;
 use reqwest::StatusCode;
+use reqwest::dns::{Addrs, Name, Resolve, Resolving};
 use serde::de::DeserializeOwned;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 /// Placeholder text for audio content in providers that don't support audio input.
@@ -34,6 +36,74 @@ const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 /// Idle pooled-connection lifetime, so reused HTTP keep-alive/HTTP-2
 /// connections are eventually recycled.
 const HTTP_POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(90);
+/// DNS resolution is capped so a stuck resolver cannot stall a provider call
+/// past the outbound HTTP timeout. Mirrors `url_validation`'s lookup cap.
+const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// SSRF-guarding DNS resolver for the shared provider HTTP clients (EVE-623).
+///
+/// Provider `base_url`s are org-configurable and validated only at create time,
+/// so a hostname that passed validation can later DNS-rebind to a private or
+/// cloud-metadata address at request time. These streaming/request drivers hold
+/// a `reqwest::Client` directly rather than routing each call through
+/// [`crate::EgressService`], so we enforce the same DNS-pinning contract
+/// (TM-API-013, TM-TOOL-018) inside the client itself: every resolved address is
+/// checked against [`is_blocked_ip`] and the connection is refused if any
+/// resolved IP is private/internal. Combined with redirects disabled, this keeps
+/// these clients from reaching `169.254.169.254`/loopback/RFC1918 regardless of
+/// what the configured URL or a 3xx `Location` later points at.
+struct SsrfGuardResolver;
+
+/// Boxed error type expected by reqwest's [`Resolving`] future. reqwest's own
+/// `BoxError` alias is crate-private, so we spell it out here.
+type DnsBoxError = Box<dyn std::error::Error + Send + Sync>;
+
+impl Resolve for SsrfGuardResolver {
+    fn resolve(&self, name: Name) -> Resolving {
+        let host = name.as_str().to_string();
+        Box::pin(async move {
+            // hyper strips the port before resolving; resolve with port 0 and let
+            // reqwest apply the URL's actual port. We only inspect the IPs here.
+            let lookup = tokio::time::timeout(
+                DNS_LOOKUP_TIMEOUT,
+                tokio::net::lookup_host(format!("{host}:0")),
+            )
+            .await
+            .map_err(|_| -> DnsBoxError {
+                Box::new(std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "DNS lookup timed out",
+                ))
+            })?
+            .map_err(|e| -> DnsBoxError { Box::new(e) })?;
+
+            let addrs: Vec<std::net::SocketAddr> = lookup.collect();
+            for addr in &addrs {
+                if is_blocked_ip(addr.ip()) {
+                    tracing::warn!(
+                        host = %host,
+                        resolved_ip = %addr.ip(),
+                        "Provider HTTP client blocked: hostname resolves to private/internal address"
+                    );
+                    return Err(Box::new(std::io::Error::other(format!(
+                        "host {host} resolves to blocked address {} (private/internal)",
+                        addr.ip()
+                    ))) as DnsBoxError);
+                }
+            }
+            Ok(Box::new(addrs.into_iter()) as Addrs)
+        })
+    }
+}
+
+/// Apply the shared SSRF-hardening to a provider HTTP client builder (EVE-623):
+/// disable redirect following (a 3xx `Location` must never be auto-fetched, since
+/// it can point at an internal address) and install the [`SsrfGuardResolver`].
+fn harden_builder(builder: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
+    builder
+        .redirect(reqwest::redirect::Policy::none())
+        .dns_resolver(Arc::new(SsrfGuardResolver))
+}
 
 /// Process-wide HTTP client shared by all streaming chat drivers.
 ///
@@ -47,12 +117,21 @@ pub fn shared_streaming_http_client() -> reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT
         .get_or_init(|| {
-            reqwest::Client::builder()
-                .connect_timeout(HTTP_CONNECT_TIMEOUT)
-                .read_timeout(HTTP_STREAM_READ_TIMEOUT)
-                .pool_idle_timeout(HTTP_POOL_IDLE_TIMEOUT)
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new())
+            harden_builder(
+                reqwest::Client::builder()
+                    .connect_timeout(HTTP_CONNECT_TIMEOUT)
+                    .read_timeout(HTTP_STREAM_READ_TIMEOUT)
+                    .pool_idle_timeout(HTTP_POOL_IDLE_TIMEOUT),
+            )
+            .build()
+            // Fall back to a minimal but still SSRF-hardened client rather than
+            // a bare `Client::new()`, so a builder failure can never silently
+            // drop the redirect/DNS-pinning guard (EVE-623).
+            .unwrap_or_else(|_| {
+                harden_builder(reqwest::Client::builder())
+                    .build()
+                    .unwrap_or_else(|_| reqwest::Client::new())
+            })
         })
         .clone()
 }
@@ -64,12 +143,21 @@ pub fn shared_request_http_client() -> reqwest::Client {
     static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
     CLIENT
         .get_or_init(|| {
-            reqwest::Client::builder()
-                .connect_timeout(HTTP_CONNECT_TIMEOUT)
-                .timeout(HTTP_REQUEST_TIMEOUT)
-                .pool_idle_timeout(HTTP_POOL_IDLE_TIMEOUT)
-                .build()
-                .unwrap_or_else(|_| reqwest::Client::new())
+            harden_builder(
+                reqwest::Client::builder()
+                    .connect_timeout(HTTP_CONNECT_TIMEOUT)
+                    .timeout(HTTP_REQUEST_TIMEOUT)
+                    .pool_idle_timeout(HTTP_POOL_IDLE_TIMEOUT),
+            )
+            .build()
+            // Fall back to a minimal but still SSRF-hardened client rather than
+            // a bare `Client::new()`, so a builder failure can never silently
+            // drop the redirect/DNS-pinning guard (EVE-623).
+            .unwrap_or_else(|_| {
+                harden_builder(reqwest::Client::builder())
+                    .build()
+                    .unwrap_or_else(|_| reqwest::Client::new())
+            })
         })
         .clone()
 }
@@ -286,6 +374,7 @@ pub mod thinking_budget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn test_parse_data_url_valid() {
@@ -378,6 +467,53 @@ mod tests {
             r#"{"error":{"status":"NOT_FOUND","message":"model foo"}}"#,
             GEMINI_NOT_FOUND_PATTERNS
         ));
+    }
+
+    #[tokio::test]
+    async fn ssrf_resolver_blocks_loopback_literal() {
+        // A literal loopback "hostname" must be refused at resolve time so the
+        // shared provider clients can never connect to 127.0.0.1 (EVE-623).
+        let resolver = SsrfGuardResolver;
+        let name = Name::from_str("127.0.0.1").unwrap();
+        let result = resolver.resolve(name).await;
+        assert!(result.is_err(), "loopback literal should be blocked");
+    }
+
+    #[tokio::test]
+    async fn ssrf_resolver_blocks_link_local_metadata_literal() {
+        // The cloud metadata endpoint is the primary SSRF target.
+        let resolver = SsrfGuardResolver;
+        let name = Name::from_str("169.254.169.254").unwrap();
+        let result = resolver.resolve(name).await;
+        assert!(result.is_err(), "metadata IP should be blocked");
+    }
+
+    #[tokio::test]
+    async fn ssrf_resolver_blocks_private_rfc1918_literal() {
+        let resolver = SsrfGuardResolver;
+        for host in ["10.0.0.1", "192.168.1.1", "172.16.0.1"] {
+            let name = Name::from_str(host).unwrap();
+            assert!(
+                resolver.resolve(name).await.is_err(),
+                "{host} (RFC1918) should be blocked"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn ssrf_resolver_allows_public_literal() {
+        // A public IP literal resolves to itself and must be allowed through.
+        let resolver = SsrfGuardResolver;
+        let name = Name::from_str("1.1.1.1").unwrap();
+        let result = resolver.resolve(name).await;
+        assert!(result.is_ok(), "public IP must be allowed");
+    }
+
+    #[test]
+    fn shared_clients_build_without_panicking() {
+        // Exercises the hardened builders end to end.
+        let _ = shared_streaming_http_client();
+        let _ = shared_request_http_client();
     }
 
     #[test]

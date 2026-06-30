@@ -136,7 +136,11 @@ impl OpenResponsesProtocolChatDriver {
     /// Create a new driver with the given API key
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
-            client: Client::new(),
+            // SSRF-hardened shared client (redirects disabled + DNS-pinned
+            // resolver). The api_url is org-configurable, so a bare
+            // `Client::new()` would leave this provider open to DNS-rebind /
+            // redirect SSRF (TM-API-013, EVE-623).
+            client: crate::driver_helpers::shared_streaming_http_client(),
             api_key: api_key.into(),
             api_url: DEFAULT_API_URL.to_string(),
             provider_type: DriverId::OpenAI,
@@ -149,7 +153,7 @@ impl OpenResponsesProtocolChatDriver {
     /// Create a new driver with a custom API URL
     pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::driver_helpers::shared_streaming_http_client(),
             api_key: api_key.into(),
             api_url: api_url.into(),
             provider_type: DriverId::OpenAI,
