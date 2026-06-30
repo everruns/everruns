@@ -717,6 +717,7 @@ jobs:
             --test guardrails_integration_test \
             --test mcp_endpoint_test \
             --test migration_history_test \
+            --test openapi_coverage_test \
             --test openapi_descriptions_test \
             --test org_invitations_test \
             --test plugins_integration_test \
