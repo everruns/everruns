@@ -7,7 +7,7 @@
 
 use crate::auth::McpCredential;
 use async_trait::async_trait;
-use everruns_core::{McpServerAuthMode, McpToolCallResult, McpToolDefinition};
+use everruns_core::{McpProtocolMode, McpServerAuthMode, McpToolCallResult, McpToolDefinition};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -36,11 +36,13 @@ pub struct McpConnection {
     pub name: String,
     pub endpoint: McpEndpoint,
     pub auth_mode: McpServerAuthMode,
+    /// Protocol-era policy. `Auto` (default) negotiates legacy/current/RC.
+    pub protocol_mode: McpProtocolMode,
     pub oauth_provider_id: Option<String>,
 }
 
 impl McpConnection {
-    /// Convenience constructor for a no-auth HTTP server.
+    /// Convenience constructor for a no-auth HTTP server (protocol `Auto`).
     pub fn http(name: impl Into<String>, url: impl Into<String>) -> Self {
         Self {
             name: name.into(),
@@ -49,8 +51,15 @@ impl McpConnection {
                 headers: HashMap::new(),
             },
             auth_mode: McpServerAuthMode::None,
+            protocol_mode: McpProtocolMode::Auto,
             oauth_provider_id: None,
         }
+    }
+
+    /// Pin the protocol-era policy for this connection (builder-style).
+    pub fn with_protocol_mode(mut self, mode: McpProtocolMode) -> Self {
+        self.protocol_mode = mode;
+        self
     }
 }
 

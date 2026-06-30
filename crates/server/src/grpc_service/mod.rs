@@ -42,6 +42,8 @@ use everruns_internal_protocol::proto::{
     CheckBudgetsForSessionResponse,
     CheckCircuitBreakerRequest,
     CheckCircuitBreakerResponse,
+    CheckOutboundToolRateLimitRequest,
+    CheckOutboundToolRateLimitResponse,
     CircuitBreakerState as ProtoCircuitBreakerState,
     // Connection token resolution
     ClaimDueLeasedResourcesRequest,
@@ -516,6 +518,8 @@ pub struct WorkerServiceImpl {
     presign_secret: Option<String>,
     /// Budget service for check_budget tool
     budget_service: Arc<crate::domains::budgets::BudgetService>,
+    /// Central org rate limiter for gRPC-backed outbound tool calls.
+    org_rate_limiter: Option<Arc<crate::auth::rate_limit::OrgRateLimiter>>,
     /// Active permission resolver for user-scoped command execution over gRPC.
     permission_resolver: Arc<dyn PermissionResolver>,
     /// System utility LLM for sanctioned internal analysis commands.
@@ -654,6 +658,7 @@ impl WorkerServiceImpl {
             api_base_url,
             presign_secret,
             budget_service,
+            org_rate_limiter: None,
             permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
             utility_llm_service,
         }
@@ -662,6 +667,10 @@ impl WorkerServiceImpl {
     /// Set the task notification broadcaster (must be called after async initialization)
     pub fn set_task_broadcaster(&mut self, broadcaster: Arc<TaskBroadcaster>) {
         self.task_broadcaster = Some(broadcaster);
+    }
+
+    pub fn set_org_rate_limiter(&mut self, limiter: Arc<crate::auth::rate_limit::OrgRateLimiter>) {
+        self.org_rate_limiter = Some(limiter);
     }
 
     pub fn set_permission_resolver(&mut self, resolver: Arc<dyn PermissionResolver>) {

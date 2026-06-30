@@ -377,6 +377,9 @@ impl GrpcClient {
             api_key: proto_server.api_key,
             headers: proto_server.headers,
             auth_mode,
+            protocol_mode: everruns_core::McpProtocolMode::from(
+                proto_server.protocol_mode.as_str(),
+            ),
             oauth_provider_id: proto_server.oauth_provider_id,
         })
     }
@@ -3645,6 +3648,42 @@ fn proto_value_to_json(value: prost_types::Value) -> serde_json::Value {
             serde_json::Value::Object(map)
         }
         None => serde_json::Value::Null,
+    }
+}
+
+// ============================================================================
+// OutboundToolRateLimiter — gate tool execution via control-plane limiter
+// ============================================================================
+
+pub struct GrpcOutboundToolRateLimiter {
+    client: GrpcClient,
+}
+
+impl GrpcOutboundToolRateLimiter {
+    pub fn new(client: GrpcClient) -> Self {
+        Self { client }
+    }
+}
+
+#[async_trait]
+impl everruns_core::traits::OutboundToolRateLimiter for GrpcOutboundToolRateLimiter {
+    async fn check_org(&self, org_id: &everruns_core::typed_id::OrgId) -> bool {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::CheckOutboundToolRateLimitRequest {
+            org_key: org_id.to_string(),
+        };
+
+        match client.check_outbound_tool_rate_limit(request).await {
+            Ok(response) => response.into_inner().allowed,
+            Err(error) => {
+                tracing::error!(
+                    %error,
+                    org_id = %org_id,
+                    "gRPC outbound tool rate-limit check failed; denying tool call"
+                );
+                false
+            }
+        }
     }
 }
 

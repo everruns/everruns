@@ -6,6 +6,10 @@ Phase 1 surface: `Observer` entity (org-scoped, embedded match rules + scorers),
 
 Each scorer has a `method`: `rule` (the eval scorer vocabulary) or `llm_judge`. An `llm_judge` scorer carries a `rubric`, an optional `model_id` (defaults to the org's default model), and a `pass_threshold`. The judge call (`crates/server/src/domains/observers/judge.rs`) goes through the **org's own configured model/provider** (resolved via `ProviderResolverService`), returns structured `{value, label, reasoning}`, and stores token/cost accounting on the score. Judge usage is recorded on the `trace_score` row; metering into `usage_journal`/budgets is a follow-up.
 
+A scorer's `model_id` is validated on observer create/update (`ObserverService::validate_model_access`): the model must exist for the org and be enabled, mirroring runtime resolution (`get_model` is org-scoped + enabled-only). Without this an observer could be saved against an inaccessible model and then silently `skip` every score at scoring time. A judge with no `model_id` is always accepted — it resolves the org default at scoring time.
+
+UI: the `observers` feature flag also gates a UI surface (`apps/ui/src/app/(main)/observers/`) — observer list, a create/edit form with a starter scorer catalog and a judge model picker, an "Observe this agent" entry on the agent page, and a per-observer **Quality tab**. The Quality tab aggregates the `/scores` endpoint **client-side** (recent sampled scores → per-scorer pass rate / avg value / daily trend); the durable `fact_trace_score` projection below remains the path to real cross-observer aggregation. Scope is presented as tabs (Answers / Conversations / Tools), but only **Answers (turn)** is wired — `session`/`tool` scopes are shown disabled until the backend implements them.
+
 <!-- Design Decisions (proposed, not yet ratified):
   - Observer is the single user-facing abstraction: create an Observer, configure match rules
     (filters + sampling) and scorers inside it. Scorers/matchers are not standalone entities

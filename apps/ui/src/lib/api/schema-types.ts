@@ -251,6 +251,7 @@ export type OpenApiManualMemorySourceResponse = Schemas["ManualMemorySourceRespo
 export type OpenApiMcpErrorCategory = Schemas["McpErrorCategory"];
 export type OpenApiMcpErrorCode = Schemas["McpErrorCode"];
 export type OpenApiMcpExecuteError = Schemas["McpExecuteError"];
+export type OpenApiMcpProtocolMode = Schemas["McpProtocolMode"];
 export type OpenApiMcpServer = Schemas["McpServer"];
 export type OpenApiMcpServerAuthMode = Schemas["McpServerAuthMode"];
 export type OpenApiMcpServerStatus = Schemas["McpServerStatus"];

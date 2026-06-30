@@ -15209,6 +15209,10 @@
               ],
               "description": "Provider id used to resolve a user-scoped bearer token."
             },
+            "protocol_mode": {
+              "$ref": "#/components/schemas/McpProtocolMode",
+              "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
+            },
             "tool_discovery": {
               "type": "boolean",
               "description": "Whether to discover tool definitions live from this server."
@@ -16944,6 +16948,17 @@
             "type": "string",
             "description": "The name of the MCP server. Must be unique.",
             "example": "atlassian-mcp-server"
+          },
+          "protocol_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/McpProtocolMode",
+                "description": "Protocol-era policy. Defaults to `auto` (negotiates legacy/current/RC)."
+              }
+            ]
           },
           "transport_type": {
             "$ref": "#/components/schemas/McpServerTransportType",
@@ -22904,6 +22919,10 @@
                   ],
                   "description": "Stable provider id used for user-scoped OAuth connections."
                 },
+                "protocol_mode": {
+                  "$ref": "#/components/schemas/McpProtocolMode",
+                  "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
+                },
                 "status": {
                   "$ref": "#/components/schemas/McpServerStatus",
                   "description": "Current lifecycle status of the MCP server."
@@ -23998,6 +24017,10 @@
                         "null"
                       ],
                       "description": "Stable provider id used for user-scoped OAuth connections."
+                    },
+                    "protocol_mode": {
+                      "$ref": "#/components/schemas/McpProtocolMode",
+                      "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
                     },
                     "status": {
                       "$ref": "#/components/schemas/McpServerStatus",
@@ -25480,6 +25503,17 @@
           }
         }
       },
+      "McpProtocolMode": {
+        "type": "string",
+        "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\nRC path first and transparently falls back to the stateful handshake when a\nserver demands it, so a single configuration speaks to legacy, current, and\nRC servers without operator action. The pinned variants skip negotiation\nwhen an operator knows a server's era (or to work around a server that\nmis-signals it).",
+        "enum": [
+          "auto",
+          "legacy",
+          "stable",
+          "rc"
+        ],
+        "example": "auto"
+      },
       "McpServer": {
         "type": "object",
         "description": "MCP Server configuration.\nRepresents a remote MCP server that can provide tools and resources.",
@@ -25557,6 +25591,10 @@
               "null"
             ],
             "description": "Stable provider id used for user-scoped OAuth connections."
+          },
+          "protocol_mode": {
+            "$ref": "#/components/schemas/McpProtocolMode",
+            "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
           },
           "status": {
             "$ref": "#/components/schemas/McpServerStatus",
@@ -33669,6 +33707,17 @@
             "description": "The name of the MCP server.",
             "example": "updated-mcp-server"
           },
+          "protocol_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/McpProtocolMode",
+                "description": "Protocol-era policy (`auto`, `legacy`, `stable`, `rc`)."
+              }
+            ]
+          },
           "status": {
             "oneOf": [
               {
@@ -35873,6 +35922,10 @@
                   "null"
                 ],
                 "description": "Stable provider id used for user-scoped OAuth connections."
+              },
+              "protocol_mode": {
+                "$ref": "#/components/schemas/McpProtocolMode",
+                "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
               },
               "status": {
                 "$ref": "#/components/schemas/McpServerStatus",

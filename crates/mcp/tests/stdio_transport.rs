@@ -4,7 +4,7 @@
 
 #![cfg(feature = "stdio")]
 
-use everruns_core::McpServerAuthMode;
+use everruns_core::{McpProtocolMode, McpServerAuthMode};
 use everruns_mcp::{McpConnection, McpEndpoint, McpTransport, StdioTransport};
 use serde_json::json;
 use std::collections::HashMap;
@@ -18,6 +18,7 @@ fn fixture_connection() -> McpConnection {
             env: HashMap::new(),
         },
         auth_mode: McpServerAuthMode::None,
+        protocol_mode: McpProtocolMode::Auto,
         oauth_provider_id: None,
     }
 }
