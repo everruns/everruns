@@ -8,7 +8,7 @@
 // gRPC adapters; the previous worker-local JSON-RPC executor was removed to
 // avoid duplicating that client (goal: no duplication).
 
-use everruns_core::McpServerAuthMode;
+use everruns_core::{McpProtocolMode, McpServerAuthMode};
 use std::collections::HashMap;
 
 /// MCP server info resolved over gRPC, needed to contact a remote MCP server.
@@ -20,5 +20,7 @@ pub struct McpServerInfo {
     pub api_key: Option<String>,
     pub headers: HashMap<String, String>,
     pub auth_mode: McpServerAuthMode,
+    /// Protocol-era adoption policy (`auto` negotiates legacy/current/RC).
+    pub protocol_mode: McpProtocolMode,
     pub oauth_provider_id: Option<String>,
 }

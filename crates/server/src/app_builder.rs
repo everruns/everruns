@@ -1738,6 +1738,7 @@ impl ServerAppBuilder {
             let grpc_platform_definition = platform_definition.clone();
             let grpc_provider_resolver = provider_resolver.clone();
             let grpc_permission_resolver = auth_state.permission_resolver.clone();
+            let grpc_org_rate_limiter = Arc::new(org_rate_limiter.clone());
 
             let grpc_task_broadcaster = task_broadcaster.clone();
             let grpc_virtual_registry = virtual_registry.clone();
@@ -1765,6 +1766,7 @@ impl ServerAppBuilder {
                     let grpc_platform_definition = grpc_platform_definition.clone();
                     let grpc_provider_resolver = grpc_provider_resolver.clone();
                     let grpc_permission_resolver = grpc_permission_resolver.clone();
+                    let grpc_org_rate_limiter = grpc_org_rate_limiter.clone();
                     let grpc_task_broadcaster = grpc_task_broadcaster.clone();
                     let grpc_virtual_registry = grpc_virtual_registry.clone();
                     let grpc_token = grpc_token.clone();
@@ -1784,6 +1786,7 @@ impl ServerAppBuilder {
                             grpc_svc.set_task_broadcaster(broadcaster);
                         }
                         grpc_svc.set_permission_resolver(grpc_permission_resolver);
+                        grpc_svc.set_org_rate_limiter(grpc_org_rate_limiter);
                         // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
                         // Mitigation: Bearer token auth + optional mTLS validated before spawn.
                         let auth_interceptor =

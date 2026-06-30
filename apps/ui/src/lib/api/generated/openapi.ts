@@ -4316,6 +4316,8 @@ export interface components {
         };
         /** @description Provider id used to resolve a user-scoped bearer token. */
         oauth_provider_id?: string | null;
+        /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
+        protocol_mode?: components["schemas"]["McpProtocolMode"];
         /** @description Whether to discover tool definitions live from this server. */
         tool_discovery?: boolean;
         /** @description MCP transport type. Only remote HTTP is supported today. */
@@ -5291,6 +5293,7 @@ export interface components {
        * @example atlassian-mcp-server
        */
       name: string;
+      protocol_mode?: null | components["schemas"]["McpProtocolMode"];
       /**
        * @description Transport type. Currently only "http" is supported.
        *     Example shape is defined on `McpServerTransportType`.
@@ -8730,6 +8733,8 @@ export interface components {
         name: string;
         /** @description Stable provider id used for user-scoped OAuth connections. */
         oauth_provider_id?: string | null;
+        /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
+        protocol_mode?: components["schemas"]["McpProtocolMode"];
         /** @description Current lifecycle status of the MCP server. */
         status: components["schemas"]["McpServerStatus"];
         /** @description Transport type (currently only HTTP supported). */
@@ -9293,6 +9298,8 @@ export interface components {
         name: string;
         /** @description Stable provider id used for user-scoped OAuth connections. */
         oauth_provider_id?: string | null;
+        /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
+        protocol_mode?: components["schemas"]["McpProtocolMode"];
         /** @description Current lifecycle status of the MCP server. */
         status: components["schemas"]["McpServerStatus"];
         /** @description Transport type (currently only HTTP supported). */
@@ -10071,6 +10078,19 @@ export interface components {
       retryable: boolean;
     };
     /**
+     * @description Per-server policy for which MCP protocol era the client uses.
+     *
+     *     `Auto` (the default) probes the server and adapts — it tries the stateless
+     *     RC path first and transparently falls back to the stateful handshake when a
+     *     server demands it, so a single configuration speaks to legacy, current, and
+     *     RC servers without operator action. The pinned variants skip negotiation
+     *     when an operator knows a server's era (or to work around a server that
+     *     mis-signals it).
+     * @example auto
+     * @enum {string}
+     */
+    McpProtocolMode: "auto" | "legacy" | "stable" | "rc";
+    /**
      * @description MCP Server configuration.
      *     Represents a remote MCP server that can provide tools and resources.
      */
@@ -10118,6 +10138,8 @@ export interface components {
       name: string;
       /** @description Stable provider id used for user-scoped OAuth connections. */
       oauth_provider_id?: string | null;
+      /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
+      protocol_mode?: components["schemas"]["McpProtocolMode"];
       /** @description Current lifecycle status of the MCP server. */
       status: components["schemas"]["McpServerStatus"];
       /** @description Transport type (currently only HTTP supported). */
@@ -14744,6 +14766,7 @@ export interface components {
        * @example updated-mcp-server
        */
       name?: string | null;
+      protocol_mode?: null | components["schemas"]["McpProtocolMode"];
       status?: null | components["schemas"]["McpServerStatus"];
       transport_type?: null | components["schemas"]["McpServerTransportType"];
       /**
@@ -16009,6 +16032,8 @@ export interface components {
       name: string;
       /** @description Stable provider id used for user-scoped OAuth connections. */
       oauth_provider_id?: string | null;
+      /** @description Protocol-era adoption policy for the MCP client (`auto` negotiates). */
+      protocol_mode?: components["schemas"]["McpProtocolMode"];
       /** @description Current lifecycle status of the MCP server. */
       status: components["schemas"]["McpServerStatus"];
       /** @description Transport type (currently only HTTP supported). */

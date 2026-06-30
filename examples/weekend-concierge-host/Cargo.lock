@@ -858,14 +858,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-config"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "everruns-core"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -907,7 +907,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-mcp"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -920,7 +920,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-runtime"
-version = "0.17.0"
+version = "0.17.1"
 dependencies = [
  "async-trait",
  "chrono",

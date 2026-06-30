@@ -1277,6 +1277,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                     api_key: resolved.api_key,
                     headers: resolved.headers,
                     auth_mode: resolved.auth_mode,
+                    protocol_mode: resolved.protocol_mode,
                     oauth_provider_id: resolved.oauth_provider_id,
                 });
             }
@@ -1299,6 +1300,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
             api_key: resolved.api_key,
             headers: resolved.headers,
             auth_mode: resolved.auth_mode,
+            protocol_mode: resolved.protocol_mode,
             oauth_provider_id: resolved.oauth_provider_id,
         })
     }

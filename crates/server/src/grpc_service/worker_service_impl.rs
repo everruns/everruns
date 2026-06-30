@@ -2227,6 +2227,7 @@ impl WorkerService for WorkerServiceImpl {
                             api_key: r.api_key,
                             headers: r.headers,
                             auth_mode: r.auth_mode.to_string(),
+                            protocol_mode: r.protocol_mode.to_string(),
                             oauth_provider_id: r.oauth_provider_id,
                         }),
                     }));
@@ -2253,6 +2254,7 @@ impl WorkerService for WorkerServiceImpl {
             api_key: r.api_key,
             headers: r.headers,
             auth_mode: r.auth_mode.to_string(),
+            protocol_mode: r.protocol_mode.to_string(),
             oauth_provider_id: r.oauth_provider_id,
         });
 
@@ -4210,6 +4212,27 @@ impl WorkerService for WorkerServiceImpl {
             status: overall_status.into(),
             budgets: summaries,
             hint,
+        }))
+    }
+
+    async fn check_outbound_tool_rate_limit(
+        &self,
+        request: Request<CheckOutboundToolRateLimitRequest>,
+    ) -> Result<Response<CheckOutboundToolRateLimitResponse>, Status> {
+        let req = request.into_inner();
+        let allowed = match &self.org_rate_limiter {
+            Some(limiter) => limiter.check_outbound_tool_call(&req.org_key).await.is_ok(),
+            None => {
+                tracing::error!(
+                    org_key = %req.org_key,
+                    "gRPC outbound tool rate limiter is not configured; denying tool call"
+                );
+                false
+            }
+        };
+
+        Ok(Response::new(CheckOutboundToolRateLimitResponse {
+            allowed,
         }))
     }
 

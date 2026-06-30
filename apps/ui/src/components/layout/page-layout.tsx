@@ -275,6 +275,45 @@ export function StatGrid({ children, className }: { children: ReactNode; classNa
   return <div className={cn("grid grid-cols-2 gap-3 lg:grid-cols-4", className)}>{children}</div>;
 }
 
+/* ──────────────────────────────── Empty state ──────────────────────────── */
+
+interface EmptyStateProps {
+  /** Leading glyph, rendered muted and centered above the title. */
+  icon?: ReactNode;
+  /** Headline — the primary message (e.g. "No agents yet"). */
+  title: ReactNode;
+  /** Optional supporting copy under the title. */
+  description?: ReactNode;
+  /** Optional call-to-action cluster, usually one primary button. */
+  action?: ReactNode;
+  className?: string;
+}
+
+/**
+ * The shared empty/zero state for list bodies: a dashed panel with an optional
+ * muted icon, a title, optional supporting copy, and an optional action. Every
+ * list page uses this so empty states read identically across the app.
+ */
+export function EmptyState({ icon, title, description, action, className }: EmptyStateProps) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center border border-dashed px-6 py-12 text-center",
+        className,
+      )}
+    >
+      {icon && (
+        <span className="mb-4 inline-flex text-muted-foreground [&_svg]:size-10">{icon}</span>
+      )}
+      <h3 className="text-base font-semibold text-foreground">{title}</h3>
+      {description && (
+        <p className="mt-1.5 max-w-md text-sm text-muted-foreground">{description}</p>
+      )}
+      {action && <div className="mt-5 flex items-center justify-center gap-2">{action}</div>}
+    </div>
+  );
+}
+
 /* ──────────────────────────────── 4 · Body ─────────────────────────────── */
 
 /**

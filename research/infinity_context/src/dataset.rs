@@ -324,15 +324,12 @@ pub fn make_tool_event(
     result: impl Into<String>,
     sequence: i32,
 ) -> Event {
-    let data = ToolCompletedData {
-        tool_call_id: tool_call_id.into(),
-        tool_name: tool_name.into(),
-        success: true,
-        status: "success".to_string(),
-        result: Some(vec![ContentPart::text(result)]),
-        error: None,
-        duration_ms: None,
-    };
+    let data = ToolCompletedData::success(
+        tool_call_id.into(),
+        tool_name.into(),
+        vec![ContentPart::text(result)],
+        None,
+    );
     Event::new(session_id, EventContext::empty(), data).with_sequence(sequence)
 }
 

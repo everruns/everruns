@@ -38,6 +38,7 @@ import {
   BarChart3,
   GitBranch,
   Rocket,
+  Telescope,
   Terminal,
   Boxes,
 } from "lucide-react";
@@ -84,6 +85,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("overview");
   const agentVersionsEnabled = useFeatureFlag("agent_versions");
+  const observersEnabled = useFeatureFlag("observers");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   usePageTitle(agent ? getDisplayName(agent) : null, "Agent");
   // Fetch only top 10 sessions for the overview
@@ -258,6 +260,14 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                 <Button variant="outline">
                   <Rocket className="size-4" />
                   Create app
+                </Button>
+              </Link>
+            )}
+            {observersEnabled && agent.status === "active" && (
+              <Link href={{ pathname: "/observers/new", query: { agent_id: agentId } }}>
+                <Button variant="outline">
+                  <Telescope className="size-4" />
+                  Observe this agent
                 </Button>
               </Link>
             )}

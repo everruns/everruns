@@ -13,9 +13,9 @@ use crate::scorer::{JudgeConfig, Score, Scorer, aggregate_scores, evaluate_all};
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::Capability;
+use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::events::{EventData, LLM_GENERATION, TOOL_COMPLETED};
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
-use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::provider::DriverId;
 use everruns_core::traits::ResolvedModel;
 use serde::Serialize;
@@ -40,7 +40,11 @@ pub enum Approach {
 
 impl Approach {
     pub fn all() -> Vec<Approach> {
-        vec![Approach::Baseline, Approach::NaiveTrim, Approach::InfinityContext]
+        vec![
+            Approach::Baseline,
+            Approach::NaiveTrim,
+            Approach::InfinityContext,
+        ]
     }
 
     pub fn name(&self) -> &'static str {
@@ -74,7 +78,10 @@ impl std::str::FromStr for Approach {
             "baseline" => Ok(Approach::Baseline),
             "naive_trim" => Ok(Approach::NaiveTrim),
             "infinity_context" => Ok(Approach::InfinityContext),
-            _ => Err(anyhow::anyhow!("Unknown approach: {}. Valid: baseline, naive_trim, infinity_context", s)),
+            _ => Err(anyhow::anyhow!(
+                "Unknown approach: {}. Valid: baseline, naive_trim, infinity_context",
+                s
+            )),
         }
     }
 }
@@ -226,7 +233,9 @@ fn expectations_to_scorers(expectations: &[String]) -> Vec<Scorer> {
     expectations
         .iter()
         .enumerate()
-        .map(|(i, expectation)| Scorer::llm_judge(format!("expectation_{}", i), expectation.clone()))
+        .map(|(i, expectation)| {
+            Scorer::llm_judge(format!("expectation_{}", i), expectation.clone())
+        })
         .collect()
 }
 
@@ -333,10 +342,16 @@ fn create_judge_config() -> Option<JudgeConfig> {
 // ============================================================================
 
 /// Aggregate results for a single approach across all records
-pub fn aggregate_approach_results(approach_name: &str, results: Vec<RecordResult>) -> ApproachResults {
+pub fn aggregate_approach_results(
+    approach_name: &str,
+    results: Vec<RecordResult>,
+) -> ApproachResults {
     let total = results.len();
     let passed = results.iter().filter(|r| r.passed()).count();
-    let context_exceeded = results.iter().filter(|r| r.metrics.context_exceeded).count();
+    let context_exceeded = results
+        .iter()
+        .filter(|r| r.metrics.context_exceeded)
+        .count();
 
     let avg_score = if total > 0 {
         results.iter().map(|r| r.score).sum::<f64>() / total as f64
@@ -345,7 +360,11 @@ pub fn aggregate_approach_results(approach_name: &str, results: Vec<RecordResult
     };
 
     let avg_tokens = if total > 0 {
-        results.iter().map(|r| r.metrics.total_tokens).sum::<usize>() as f64 / total as f64
+        results
+            .iter()
+            .map(|r| r.metrics.total_tokens)
+            .sum::<usize>() as f64
+            / total as f64
     } else {
         0.0
     };
@@ -357,7 +376,11 @@ pub fn aggregate_approach_results(approach_name: &str, results: Vec<RecordResult
     };
 
     let avg_queries = if total > 0 {
-        results.iter().map(|r| r.metrics.history_queries).sum::<usize>() as f64 / total as f64
+        results
+            .iter()
+            .map(|r| r.metrics.history_queries)
+            .sum::<usize>() as f64
+            / total as f64
     } else {
         0.0
     };
@@ -412,14 +435,15 @@ async fn execute_with_agentic_loop(
             provider_metadata: None,
         };
 
-        // Build the agentic loop with seed events
+        // Build the agentic loop. Seed events are not a builder input; they are
+        // converted to conversation messages and seeded into the in-memory
+        // message retriever after build (see seed_messages_from_events below).
         let mut builder = InMemoryAgenticLoop::builder()
             .agent_name("Eval Agent")
             .system_prompt(build_system_prompt(config.approach))
             .model(model)
             .driver_registry(create_driver_registry())
-            .max_iterations(10)
-            .seed_events(record.input.events.clone());
+            .max_iterations(10);
 
         // Add capability based on approach
         match config.approach {
@@ -435,6 +459,14 @@ async fn execute_with_agentic_loop(
         }
 
         let agentic_loop = builder.build().await?;
+
+        // Pre-populate the session's conversation history from the scenario's
+        // seed events. `run_turn` then appends the task on top of this history.
+        let seed_messages = messages_from_events(&record.input.events);
+        agentic_loop
+            .message_retriever()
+            .seed(agentic_loop.session_id(), seed_messages)
+            .await;
 
         // Run the turn with the task as user input
         let result = agentic_loop.run_turn(record.task.as_str()).await?;
@@ -467,10 +499,37 @@ async fn execute_with_agentic_loop(
         }
 
         // Success - extract metrics and return
-        let metrics =
-            extract_metrics_from_events(&agentic_loop, record.input.events.len()).await;
+        let metrics = extract_metrics_from_events(&agentic_loop, record.input.events.len()).await;
         return Ok((result.response, metrics));
     }
+}
+
+/// Convert a scenario's seed events into the conversation messages that make up
+/// the session's prior history. Only the event variants the dataset emits
+/// (`make_input_event`, `make_output_event`, `make_tool_event`) carry messages;
+/// any other event types are ignored.
+fn messages_from_events(events: &[everruns_core::events::Event]) -> Vec<everruns_core::Message> {
+    events
+        .iter()
+        .filter_map(|event| match &event.data {
+            EventData::InputMessage(data) => Some(data.message.clone()),
+            EventData::OutputMessageCompleted(data) => Some(data.message.clone()),
+            EventData::ToolCompleted(data) => Some(everruns_core::Message::tool_result(
+                data.tool_call_id.clone(),
+                data.result.as_ref().map(|parts| {
+                    serde_json::Value::String(
+                        parts
+                            .iter()
+                            .filter_map(|part| part.as_text())
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                    )
+                }),
+                data.error.clone(),
+            )),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Extract evaluation metrics from events emitted during execution.
@@ -547,7 +606,9 @@ fn build_system_prompt(approach: Approach) -> String {
             format!(
                 "{}\n\n{}",
                 base,
-                InfinityContextCapability.system_prompt_addition().unwrap_or("")
+                InfinityContextCapability
+                    .system_prompt_addition()
+                    .unwrap_or("")
             )
         }
     }

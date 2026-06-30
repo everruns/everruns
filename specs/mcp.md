@@ -14,7 +14,9 @@ Routing is intentionally split:
 - OAuth discovery metadata lives at `/.well-known/oauth-authorization-server`
 - Protected-resource metadata lives at `/.well-known/oauth-protected-resource/mcp` (RFC 9728 §3.1 path-derived for the `/mcp` resource)
 
-Everruns also acts as an **MCP client** (connecting to remote MCP servers). That side is covered in [`specs/mcp-servers.md`](mcp-servers.md), with the in-process runtime path (shared `everruns-mcp` crate, HTTP + optional stdio transport, pluggable auth) in [`specs/runtime-mcp.md`](runtime-mcp.md).
+Everruns also acts as an **MCP client** (connecting to remote MCP servers). That side is covered in [`specs/mcp-servers.md`](mcp-servers.md), with the in-process runtime path (shared `everruns-mcp` crate, HTTP + optional stdio transport, pluggable auth) in [`specs/runtime-mcp.md`](runtime-mcp.md). The client speaks the legacy (`2025-03-26`), current (`2025-06-18`), and 2026 stateless RC (`2026-07-28`) eras, auto-negotiated per server — see [`specs/mcp-servers.md`](mcp-servers.md) ("Multi-era protocol support").
+
+> **Server-side RC adoption (follow-up).** This document describes Everruns' own `/mcp` *server* endpoint, which today negotiates `2025-06-18`/`2025-03-26`. Adopting the 2026 stateless RC on the server side — accepting session-less `_meta`-bearing requests, emitting `ttlMs`/`cacheScope` cache directives, and honoring the routable headers — is a separate workstream from the client-side multi-era support already shipped. When taken on, mind the `cacheScope` tenant-isolation requirement (per-user vs shared tool caches) given the per-user OAuth model below.
 
 ## Protocol
 
