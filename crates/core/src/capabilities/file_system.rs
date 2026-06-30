@@ -152,7 +152,7 @@ fn fs_display_path(file_store: &dyn SessionFileSystem, path: &str) -> String {
 fn file_content_hash(content: &str, encoding: &str) -> crate::error::Result<String> {
     let bytes = SessionFile::decode_content(content, encoding)
         .map_err(|error| anyhow::anyhow!("failed to decode file content for hashing: {error}"))?;
-    Ok(format!("sha256:{:x}", Sha256::digest(bytes)))
+    Ok(format!("sha256:{}", hex::encode(Sha256::digest(bytes))))
 }
 
 fn session_file_content_hash(file: &SessionFile) -> crate::error::Result<String> {
@@ -228,8 +228,8 @@ fn first_changed_line(before: &str, after: &str) -> Option<usize> {
 
 fn render_unified_diff(path: &str, before: &str, after: &str) -> String {
     TextDiff::from_lines(
-        &normalize_line_endings(before),
-        &normalize_line_endings(after),
+        normalize_line_endings(before).as_str(),
+        normalize_line_endings(after).as_str(),
     )
     .unified_diff()
     .context_radius(2)

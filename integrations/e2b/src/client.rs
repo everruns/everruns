@@ -275,7 +275,7 @@ impl E2BClient {
             .await
             .map_err(|e| format!("Failed reading sandbox command stream: {e}"))?
         {
-            let Some(event) = message.event.as_option() else {
+            let Some(event) = message.reborrow().event.as_option() else {
                 continue;
             };
             match &event.event {
@@ -363,10 +363,10 @@ impl E2BClient {
             .parse()
             .map_err(|e| format!("Invalid envd URI: {e}"))?;
         let mut config = ClientConfig::new(uri)
-            .protocol(Protocol::Connect)
-            .default_timeout(Duration::from_secs(E2B_DEFAULT_TIMEOUT_SECS));
+            .with_protocol(Protocol::Connect)
+            .with_default_timeout(Duration::from_secs(E2B_DEFAULT_TIMEOUT_SECS));
         for (name, value) in self.envd_headers(state)?.iter() {
-            config = config.default_header(name, value.clone());
+            config = config.with_default_header(name, value.clone());
         }
         Ok(proto::process::ProcessClient::new(http, config))
     }

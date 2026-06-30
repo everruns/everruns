@@ -241,7 +241,7 @@ pub async fn import_harness(
     // Pick a non-colliding name with random suffix retry — same strategy as
     // agent example import. Concurrency-safe enough for a manual UI action.
     let unique_name = {
-        use rand::Rng;
+        use rand::RngExt;
         let base = example.definition.name.as_str();
         let mut selected = None;
 

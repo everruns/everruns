@@ -27,7 +27,7 @@ use everruns_core::{
     Caller, McpServerAuthMode, SessionId, mcp_oauth_provider_id_for_uuid,
     mcp_oauth_session_secret_name, validate_safe_url,
 };
-use rand::Rng;
+use rand::RngExt;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};

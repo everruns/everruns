@@ -549,8 +549,8 @@ mod tests {
 
     #[tokio::test]
     async fn sweep_deletes_old_orphans_keeps_live() {
-        use object_store::ObjectStore;
         use object_store::path::Path as ObjectPath;
+        use object_store::{ObjectStore, ObjectStoreExt};
 
         let inner: Arc<dyn ObjectStore> = Arc::new(object_store::memory::InMemory::new());
         let store: SharedBlobStore =

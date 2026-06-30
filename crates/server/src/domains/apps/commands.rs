@@ -3196,7 +3196,7 @@ inventory::submit! { CommandDescriptor::of::<AddWebhookChannelCmd>() }
 /// is the first 8 hex chars after `evra2a_`, suffixed with `...`, for
 /// non-secret UI display.
 pub fn generate_a2a_api_key() -> (String, String, String) {
-    use rand::RngCore;
+    use rand::Rng;
 
     let mut bytes = [0u8; 32];
     rand::rng().fill_bytes(&mut bytes);
@@ -3427,7 +3427,7 @@ inventory::submit! { CommandDescriptor::of::<RegenerateA2aApiKeyCmd>() }
 /// SHA-256 hex; the prefix is the first 8 hex chars after `evr_app_`, suffixed
 /// with `...`, for non-secret UI display.
 pub fn generate_app_api_key() -> (String, String, String) {
-    use rand::RngCore;
+    use rand::Rng;
 
     let mut bytes = [0u8; 32];
     rand::rng().fill_bytes(&mut bytes);

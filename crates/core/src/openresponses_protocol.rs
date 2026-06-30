@@ -442,7 +442,7 @@ impl OpenResponsesProtocolChatDriver {
             "tools": tools,
         });
         let payload = serde_json::to_vec(&fingerprint).ok()?;
-        let digest = format!("{:x}", Sha256::digest(payload));
+        let digest = hex::encode(Sha256::digest(payload));
         let digest_len = OPENAI_PROMPT_CACHE_KEY_MAX_LEN - PROMPT_CACHE_KEY_PREFIX.len();
         Some(format!(
             "{PROMPT_CACHE_KEY_PREFIX}{}",

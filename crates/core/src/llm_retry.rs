@@ -15,7 +15,7 @@
 // Defaults match official SDKs: 2 retries, 1s initial, 60s max, 2x multiplier.
 
 use crate::error::AgentLoopError;
-use rand::Rng;
+use rand::RngExt;
 use std::future::Future;
 use std::time::Duration;
 

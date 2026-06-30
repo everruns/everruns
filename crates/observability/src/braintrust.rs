@@ -30,7 +30,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use rand::Rng;
+use rand::RngExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

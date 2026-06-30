@@ -70,10 +70,10 @@ async-nats.workspace = true
 parking_lot.workspace = true
 metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
-cron = "0.15"
+cron = "0.17"
 inventory.workspace = true
 moka.workspace = true
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "8", default-features = false, features = ["deflate"] }
 urlencoding = "2"
 git2.workspace = true
 tempfile.workspace = true
@@ -124,8 +124,8 @@ a2a-client.workspace = true
 reqwest = { workspace = true, default-features = false, features = ["json", "stream", "rustls", "blocking", "http2"] }
 futures.workspace = true
 http-body-util = "0.1"
-sysinfo = "0.33"
-serde_html_form = "0.2"  # Same deserializer axum-extra::extract::Query uses
+sysinfo = "0.38"
+serde_html_form = "0.4"  # Same deserializer axum-extra::extract::Query uses
 everruns-sdk.workspace = true
 wiremock = "0.6"
 flate2.workspace = true

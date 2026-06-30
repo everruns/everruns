@@ -74,7 +74,7 @@ fn command_schema_hash(
     if let Some(positional_arg) = positional_arg {
         hasher.update(positional_arg.as_bytes());
     }
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 #[tonic::async_trait]
