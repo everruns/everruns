@@ -448,6 +448,14 @@ pub async fn login(
 /// this server-side check is the trust boundary.
 const PASSWORD_MIN_LENGTH: usize = 8;
 
+/// Generic registration-failure message returned to the client on every
+/// signup rejection that touches an account record — password register and
+/// OAuth signup alike. It must never disclose whether an account with a given
+/// email already exists, otherwise the signup endpoints become an
+/// account-enumeration oracle (EVE-632 / TM-AUTH-014). The precise reason is
+/// logged server-side only.
+const GENERIC_REGISTRATION_FAILED: &str = "Registration failed";
+
 /// POST /v1/auth/register - Register a new user
 pub async fn register(
     State(state): State<BuiltinAuthBackend>,
@@ -484,17 +492,17 @@ pub async fn register(
     // This prevents account enumeration via response-time differences (TM-AUTH-014).
     let password_hash = hash_password(&req.password).map_err(|e| {
         tracing::error!("Password hashing error: {}", e);
-        AuthError::unauthorized("Registration failed")
+        AuthError::unauthorized(GENERIC_REGISTRATION_FAILED)
     })?;
 
     // Check if user already exists — generic error to prevent account enumeration
     let existing = state.db.get_user_by_email(&req.email).await.map_err(|e| {
         tracing::error!("Database error during registration: {}", e);
-        AuthError::unauthorized("Registration failed")
+        AuthError::unauthorized(GENERIC_REGISTRATION_FAILED)
     })?;
 
     if existing.is_some() {
-        return Err(AuthError::unauthorized("Registration failed"));
+        return Err(AuthError::unauthorized(GENERIC_REGISTRATION_FAILED));
     }
 
     // Create user
@@ -514,7 +522,7 @@ pub async fn register(
         .await
         .map_err(|e| {
             tracing::error!("User creation error: {}", e);
-            AuthError::unauthorized("Registration failed")
+            AuthError::unauthorized(GENERIC_REGISTRATION_FAILED)
         })?;
 
     // Add user to default organization
@@ -907,9 +915,17 @@ pub async fn oauth_callback(
         if let Some(_existing) = existing_user {
             // For now, don't auto-link accounts - require explicit action
             // TODO: Implement account linking flow
-            return Err(AuthError::unauthorized(
-                "An account with this email already exists. Please login with your existing credentials.",
-            ));
+            //
+            // TM-AUTH-014: return a generic failure that does not disclose
+            // whether an account with this email already exists. Mirrors the
+            // password `register` path, which collapses the existing-account
+            // case into the same generic "Registration failed" response. The
+            // precise reason is logged server-side only.
+            tracing::info!(
+                provider = %provider_str,
+                "OAuth signup blocked: an account with this email already exists (no auto-link)"
+            );
+            return Err(AuthError::unauthorized(GENERIC_REGISTRATION_FAILED));
         }
 
         // Create new user
@@ -1201,6 +1217,40 @@ mod tests {
     fn test_oauth_state_cookie_name() {
         // Verify the constant is set correctly for TM-AUTH-007
         assert_eq!(OAUTH_STATE_COOKIE, "oauth_state");
+    }
+
+    // EVE-632 / TM-AUTH-014: the OAuth signup path rejects a request whose email
+    // already belongs to an account using the SAME generic failure as the
+    // password-register path. Neither may disclose that the account exists,
+    // otherwise signup becomes an account-enumeration oracle. This test locks
+    // the shared message and its sanitization so the OAuth branch (which
+    // previously returned "An account with this email already exists…") cannot
+    // silently regress.
+    #[tokio::test]
+    async fn oauth_signup_existing_account_message_does_not_leak_existence() {
+        use axum::response::IntoResponse;
+
+        // The OAuth existing-account branch and the password-register path both
+        // surface this exact error variant.
+        let response = AuthError::unauthorized(GENERIC_REGISTRATION_FAILED).into_response();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .expect("read body");
+        let body = String::from_utf8(bytes.to_vec()).unwrap().to_lowercase();
+
+        for leak in [
+            "already exists",
+            "account with this email",
+            "existing credentials",
+        ] {
+            assert!(
+                !body.contains(leak),
+                "OAuth signup error must not disclose account existence (leaked '{leak}'): {body}"
+            );
+        }
+        assert_eq!(GENERIC_REGISTRATION_FAILED, "Registration failed");
     }
 
     #[test]

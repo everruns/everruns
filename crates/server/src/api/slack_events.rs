@@ -365,13 +365,20 @@ async fn handle_slack_event(
     })?
     .ok_or_else(|| ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))?;
 
-    // 2. Verify app is published and has a Slack channel
+    // 2. Verify app is published and has a Slack channel.
+    //
+    // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
+    // "app does not exist" apart from "app exists but is not published / has no
+    // Slack channel". Every such case collapses to the same generic 404
+    // (matching the FCP channel in `api/fcp.rs`); the real reason is logged
+    // server-side only.
     if app.status != AppStatus::Published {
-        return Err(ErrorResponse::new("App is not published").into_response(StatusCode::FORBIDDEN));
+        tracing::debug!(app_id = %app_id, status = ?app.status, "Slack webhook rejected: app not published");
+        return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
     }
     let slack_channel = app.slack_channel().ok_or_else(|| {
-        ErrorResponse::new("App has no enabled Slack channel")
-            .into_response(StatusCode::BAD_REQUEST)
+        tracing::debug!(app_id = %app_id, "Slack webhook rejected: no enabled Slack channel");
+        ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND)
     })?;
 
     // 3. Parse Slack channel config

@@ -102,8 +102,7 @@ pub fn routes(state: AppWebhookState) -> Router {
     responses(
         (status = 202, description = "Webhook accepted", body = WebhookInvocationResponse),
         (status = 401, description = "Invalid or missing webhook token", body = ErrorResponse),
-        (status = 403, description = "App is not published or channel disabled", body = ErrorResponse),
-        (status = 404, description = "App or channel not found", body = ErrorResponse),
+        (status = 404, description = "App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration)", body = ErrorResponse),
         (status = 500, description = "Internal server error", body = ErrorResponse)
     ),
     tag = "apps"
@@ -125,8 +124,14 @@ pub async fn invoke_webhook(
     .map_err(internal_error)?
     .ok_or_else(not_found)?;
 
+    // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
+    // "app does not exist" apart from "app exists but is not published / the
+    // channel is disabled / misconfigured". Every such case collapses to a
+    // single generic 404 (matching the FCP channel in `api/fcp.rs`); the real
+    // reason is logged server-side only.
     if app.status != everruns_core::AppStatus::Published {
-        return Err(forbidden("App is not published"));
+        tracing::debug!(app_id = %app.public_id, status = ?app.status, "Webhook request rejected: app not published");
+        return Err(not_found());
     }
 
     let channel_id_typed = channel_id
@@ -143,11 +148,13 @@ pub async fn invoke_webhook(
     // or disabled app channels, and every request must present the per-channel
     // shared secret before session creation.
     if !channel.enabled {
-        return Err(forbidden("Webhook channel is disabled"));
+        tracing::debug!(app_id = %app.public_id, "Webhook request rejected: channel disabled");
+        return Err(not_found());
     }
-    let config = channel
-        .webhook_config()
-        .ok_or_else(|| bad_request("Invalid webhook channel configuration"))?;
+    let Some(config) = channel.webhook_config() else {
+        tracing::error!(app_id = %app.public_id, "Webhook channel config did not deserialize");
+        return Err(not_found());
+    };
     let provided_token = extract_webhook_token(&headers).ok_or_else(unauthorized)?;
     // EVE-627 (TM-AUTHZ-006 / TM-APIKEY-003): constant-time comparison, matching
     // every sibling channel — a `!=` on the secret leaks a remote timing

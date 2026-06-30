@@ -585,7 +585,8 @@ async fn a2a_rejects_unpublished_or_disabled() {
     }))
     .unwrap();
 
-    // Unpublished: 403.
+    // Unpublished: generic 404 (EVE-632 / TM-TENANT-002). An unauthenticated
+    // caller must not be able to distinguish "unpublished" from "unknown app".
     server
         .request_raw(
             Method::POST,
@@ -597,7 +598,7 @@ async fn a2a_rejects_unpublished_or_disabled() {
             body.clone(),
         )
         .await
-        .assert_status(StatusCode::FORBIDDEN);
+        .assert_status(StatusCode::NOT_FOUND);
 
     publish_app(&server, app_id).await;
 
@@ -609,6 +610,8 @@ async fn a2a_rejects_unpublished_or_disabled() {
         .await
         .assert_status(StatusCode::OK);
 
+    // Disabled channel: also a generic 404, not a 403 that confirms the app
+    // exists and is published (EVE-632 / TM-AUTHZ-006).
     server
         .request_raw(
             Method::POST,
@@ -620,7 +623,7 @@ async fn a2a_rejects_unpublished_or_disabled() {
             body,
         )
         .await
-        .assert_status(StatusCode::FORBIDDEN);
+        .assert_status(StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
