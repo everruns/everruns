@@ -531,8 +531,10 @@ mod tests {
         let descriptor = registry.descriptor(&DriverId::Fireworks).unwrap();
         assert_eq!(descriptor.services, vec![ServiceKind::Chat]);
         assert_eq!(descriptor.display_name, "Fireworks AI");
-        // Credential schema: required api_key + optional base_url.
-        assert_eq!(descriptor.credential_schema.fields.len(), 2);
+        // Credential schema: a single required api_key. The endpoint override is
+        // the provider's first-class `base_url`, not a credential field (see
+        // `fireworks_credential_schema`), so the schema has exactly one field.
+        assert_eq!(descriptor.credential_schema.fields.len(), 1);
         assert_eq!(descriptor.credential_schema.fields[0].name, "api_key");
         assert!(descriptor.credential_schema.fields[0].required);
 
