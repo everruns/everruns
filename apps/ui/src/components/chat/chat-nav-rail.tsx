@@ -34,6 +34,7 @@ export function ChatNavRail({ anchors, currentAnchorId, onJump }: ChatNavRailPro
   return (
     <nav
       aria-label={t("conversation_turns")}
+      aria-keyshortcuts="Alt+ArrowUp Alt+ArrowDown"
       // Offset from the right edge so markers clear the transcript scrollbar.
       className="pointer-events-none absolute inset-y-0 right-0 z-10 hidden flex-col items-end justify-center overflow-y-auto py-6 pr-3 md:flex"
     >

@@ -13,6 +13,7 @@ import {
   useModels,
   useScrollManager,
   useSessionCommands,
+  useTurnKeyboardNavigation,
 } from "@/hooks";
 import { useChatModelSelection } from "@/hooks/use-chat-model-selection";
 import { executeSessionCommand } from "@/lib/api/commands";
@@ -201,6 +202,15 @@ export function ChatPanel() {
     scrollContainerRef,
     navAnchors.length,
   );
+
+  // Keyboard turn stepping (Alt+↑/↓, or j/k outside inputs), built on the same
+  // anchors and scrollToAnchor the rail uses.
+  const navAnchorIds = useMemo(() => navAnchors.map((anchor) => anchor.id), [navAnchors]);
+  useTurnKeyboardNavigation({
+    anchorIds: navAnchorIds,
+    currentAnchorId,
+    onNavigate: scrollToAnchor,
+  });
 
   const { isDraggingOver, dropZoneProps, handlePaste } = useImageDropZone({
     onImageFiles: addFiles,
