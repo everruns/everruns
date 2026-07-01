@@ -513,7 +513,11 @@ export const ChatMessageList = memo(function ChatMessageList({
         }
 
         return (
-          <div key={event.id} className="space-y-2">
+          <div
+            key={event.id}
+            className={`chat-transcript-row space-y-2 ${isUser ? "scroll-mt-4" : ""}`}
+            data-message-anchor={isUser ? event.id : undefined}
+          >
             {(textContent || images.length > 0) && (
               <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
                 {isUser ? (
