@@ -82,6 +82,11 @@ jest.mock("@/hooks", () => ({
     handleScrollUp: jest.fn(),
     scrollToBottom: jest.fn(),
   }),
+  useMessageScrollerVisibility: () => ({
+    currentAnchorId: null,
+    visibleAnchorIds: [],
+    scrollToAnchor: jest.fn(),
+  }),
   useImageDropZone: () => ({
     isDraggingOver: false,
     dropZoneProps: {
