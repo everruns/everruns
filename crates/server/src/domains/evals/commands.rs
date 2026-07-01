@@ -631,12 +631,15 @@ impl Command for ExportEvalRunArtifacts {
 
 inventory::submit! { CommandDescriptor::of::<ExportEvalRunArtifacts>() }
 
-/// Export a completed eval run as a reward-labeled trajectory dataset (NDJSON).
+/// Enqueue an async dataset export for a completed eval run and return a handle.
 ///
-/// One record per case that survives the filters: model-view messages (faithful
-/// to what the model saw, via the compaction model-view masking) joined with the
-/// case reward and efficiency metadata. Gated by `DATASET_EXPORT` and org-scoped
-/// through `get_run` (which resolves only runs owned by the caller's org).
+/// The export runs as a fire-and-forget background job (mirroring the eval
+/// runner): it reconstructs each surviving case's model-view messages (faithful
+/// to what the model saw, via the compaction model-view masking), joins reward +
+/// efficiency metadata, and stores the produced NDJSON on the handle. Fetch the
+/// NDJSON via `GET .../dataset/{dataset_id}` once `status` is `completed`. Gated
+/// by `DATASET_EXPORT` and org-scoped through `get_run` (which resolves only
+/// runs owned by the caller's org).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ExportEvalRunDataset {
     pub eval_id: String,
@@ -645,13 +648,13 @@ pub struct ExportEvalRunDataset {
 }
 
 impl Command for ExportEvalRunDataset {
-    type Output = EvalArtifactExport;
+    type Output = everruns_core::eval::EvalRunDataset;
 
     fn meta() -> CommandMeta {
         CommandMeta {
             name: "export_eval_run_dataset",
             category: "evals",
-            description: "Export a completed eval run as a reward-labeled trajectory dataset (NDJSON).",
+            description: "Enqueue an async reward-labeled trajectory dataset export from a completed eval run.",
             method: "POST",
             path: "/v1/evals/{eval_id}/runs/{run_id}/dataset",
         }
@@ -661,67 +664,69 @@ impl Command for ExportEvalRunDataset {
         Some(&crate::domains::evals::DATASET_EXPORT)
     }
 
-    async fn execute(self, ctx: &Ctx) -> Result<EvalArtifactExport, CommandError> {
-        use everruns_core::capabilities::compaction::{
-            CompactionConfig, build_model_view_messages,
-        };
-        use everruns_core::message_retriever::MessageRetriever;
-
+    async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
         require_evals_enabled(ctx)?;
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         let run_id = q::parse_run_id(&self.run_id)?;
-        let run = q::service(ctx)
-            .get_run(&ctx.caller, &eval_id.to_string(), &run_id.to_string())
+        q::service(ctx)
+            .create_dataset_export(
+                &ctx.caller,
+                &eval_id.to_string(),
+                &run_id.to_string(),
+                self.req,
+            )
             .await
             .map_err(classify_anyhow)?
-            .ok_or_else(|| CommandError::not_found("EvalRun"))?;
-
-        if run.status != everruns_core::eval::EvalRunStatus::Completed {
-            return Err(CommandError::bad_request(
-                "Dataset export requires a completed eval run",
-            ));
-        }
-
-        // Reconstruct each case's conversation from session events, then apply the
-        // compaction model-view masking so the dataset matches what the model saw
-        // (not the lossless durable log). Default config is used here; honoring the
-        // exact per-run compaction config is a documented follow-up.
-        let retriever = crate::storage::message_store::DbMessageRetriever::new(ctx.db.clone());
-        let compaction = CompactionConfig::default();
-
-        let mut body = String::new();
-        for result in &run.results {
-            if !super::dataset::case_passes_filters(result, &self.req.filters) {
-                continue;
-            }
-            // Phase 1 exports eval-run case trajectories, which always have a
-            // session; skip any result without one rather than emitting an empty
-            // trajectory.
-            let Some(session_id) = result.session_id else {
-                continue;
-            };
-            let stored = retriever.load(session_id).await.map_err(|e| {
-                CommandError::internal(anyhow::anyhow!("load session messages: {e}"))
-            })?;
-            let messages = build_model_view_messages(&stored, &compaction, None).messages;
-            let record = super::dataset::build_record(
-                self.req.format,
-                &run,
-                result,
-                &messages,
-                &self.req.redaction,
-            );
-            let line =
-                serde_json::to_string(&record).map_err(|e| CommandError::internal(e.into()))?;
-            body.push_str(&line);
-            body.push('\n');
-        }
-
-        Ok(EvalArtifactExport { body })
+            .ok_or_else(|| CommandError::not_found("EvalRun"))
     }
 }
 
 inventory::submit! { CommandDescriptor::of::<ExportEvalRunDataset>() }
+
+/// Fetch an async dataset-export handle: status plus the produced NDJSON `body`
+/// once the export is `completed`. Org-scoped through `get_dataset`.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct GetEvalRunDataset {
+    pub eval_id: String,
+    pub run_id: String,
+    pub dataset_id: String,
+}
+
+impl Command for GetEvalRunDataset {
+    type Output = everruns_core::eval::EvalRunDataset;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "get_eval_run_dataset",
+            category: "evals",
+            description: "Fetch an eval-run dataset export handle (status + NDJSON body).",
+            method: "GET",
+            path: "/v1/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::DATASET_EXPORT)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
+        require_evals_enabled(ctx)?;
+        let eval_id = q::parse_eval_id(&self.eval_id)?;
+        let run_id = q::parse_run_id(&self.run_id)?;
+        q::service(ctx)
+            .get_dataset(
+                &ctx.caller,
+                &eval_id.to_string(),
+                &run_id.to_string(),
+                &self.dataset_id,
+            )
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("EvalRunDataset"))
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<GetEvalRunDataset>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CancelEvalRun {

@@ -18,7 +18,9 @@ use crate::storage::models::{
 };
 use anyhow::Result;
 use everruns_core::eval::*;
-use everruns_core::typed_id::{EvalCaseId, EvalId, EvalResultId, EvalRunId, SessionId};
+use everruns_core::typed_id::{
+    EvalCaseId, EvalDatasetId, EvalId, EvalResultId, EvalRunId, SessionId,
+};
 use everruns_core::{Caller, Permission, Policy, Rule};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
@@ -485,6 +487,79 @@ impl EvalService {
         Ok(Some(run_row_to_run(run_row, results)))
     }
 
+    /// Enqueue an async dataset export for a completed run. Persists a `pending`
+    /// dataset handle, spawns the background export, and returns the handle.
+    /// Org scope is enforced by `get_run` (resolves only the caller's runs).
+    pub async fn create_dataset_export(
+        &self,
+        caller: &Caller,
+        eval_public_id: &str,
+        run_public_id: &str,
+        req: crate::domains::evals::dataset::ExportEvalRunDatasetRequest,
+    ) -> Result<Option<EvalRunDataset>> {
+        let Some(run) = self.get_run(caller, eval_public_id, run_public_id).await? else {
+            return Ok(None);
+        };
+
+        if run.status != EvalRunStatus::Completed {
+            return Err(
+                BadRequestError::new("Dataset export requires a completed eval run").into(),
+            );
+        }
+
+        let public_id = everruns_core::typed_id::EvalDatasetId::from_uuid(Uuid::now_v7());
+        let request_json = serde_json::to_value(&req)?;
+        let row = self
+            .db
+            .create_eval_run_dataset(
+                caller.org_id,
+                crate::storage::models::CreateEvalRunDatasetRow {
+                    public_id: public_id.to_string(),
+                    eval_run_id: run.internal_id,
+                    request: request_json,
+                },
+            )
+            .await?;
+
+        crate::domains::evals::dataset_export::spawn_dataset_export(
+            self.db.clone(),
+            row.id,
+            run,
+            req,
+        );
+
+        Ok(Some(dataset_row_to_dataset(row, false)))
+    }
+
+    /// Fetch a dataset export handle by id (status + NDJSON body when complete).
+    /// Org-scoped: only datasets owned by the caller's org resolve.
+    pub async fn get_dataset(
+        &self,
+        caller: &Caller,
+        eval_public_id: &str,
+        run_public_id: &str,
+        dataset_public_id: &str,
+    ) -> Result<Option<EvalRunDataset>> {
+        // Resolve the run first so a dataset from another run/org is never
+        // reachable even if its id is guessed.
+        let Some(run) = self.get_run(caller, eval_public_id, run_public_id).await? else {
+            return Ok(None);
+        };
+
+        let Some(row) = self
+            .db
+            .get_eval_run_dataset(caller.org_id, dataset_public_id)
+            .await?
+        else {
+            return Ok(None);
+        };
+        if row.eval_run_id != Some(run.internal_id) {
+            return Ok(None);
+        }
+
+        Ok(Some(dataset_row_to_dataset(row, true)))
+    }
+
     pub async fn cancel_run(
         &self,
         caller: &Caller,
@@ -937,6 +1012,33 @@ fn run_row_to_run(
         completed_at: row.completed_at,
         summary: row.summary.and_then(|s| serde_json::from_value(s).ok()),
         results,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    }
+}
+
+/// Map a dataset row to the API type. `include_body` controls whether the
+/// (potentially large) NDJSON is attached — list/enqueue views omit it, the
+/// detail view includes it.
+fn dataset_row_to_dataset(
+    row: crate::storage::models::EvalRunDatasetRow,
+    include_body: bool,
+) -> EvalRunDataset {
+    EvalRunDataset {
+        public_id: row
+            .public_id
+            .parse()
+            .unwrap_or_else(|_| EvalDatasetId::from_uuid(row.id)),
+        // A dataset always references a run at creation; fall back to the row id
+        // only if the FK was cleared by run deletion (ON DELETE SET NULL).
+        eval_run_id: row
+            .eval_run_id
+            .map(EvalRunId::from_uuid)
+            .unwrap_or_else(|| EvalRunId::from_uuid(row.id)),
+        status: EvalDatasetStatus::from(row.status.as_str()),
+        record_count: row.record_count.map(|c| c.max(0) as u64),
+        error_message: row.error_message,
+        body: if include_body { row.body } else { None },
         created_at: row.created_at,
         updated_at: row.updated_at,
     }

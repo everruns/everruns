@@ -3914,6 +3914,34 @@ impl StorageBackend {
     }
 
     // ============================================
+    // Eval Run Dataset (async export handles — specs/dataset-export.md)
+    // ============================================
+
+    pub async fn create_eval_run_dataset(
+        &self,
+        org_id: i64,
+        input: CreateEvalRunDatasetRow,
+    ) -> Result<EvalRunDatasetRow> {
+        dispatch!(self, create_eval_run_dataset, org_id, input)
+    }
+
+    pub async fn get_eval_run_dataset(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<EvalRunDatasetRow>> {
+        dispatch!(self, get_eval_run_dataset, org_id, public_id)
+    }
+
+    pub async fn update_eval_run_dataset(
+        &self,
+        id: Uuid,
+        input: UpdateEvalRunDatasetRow,
+    ) -> Result<Option<EvalRunDatasetRow>> {
+        dispatch!(self, update_eval_run_dataset, id, input)
+    }
+
+    // ============================================
     // Budget CRUD
     // ============================================
 

@@ -30,7 +30,7 @@ pub enum DatasetFormat {
 /// Selection filters applied per case. `org_id` is never part of this — it is
 /// injected by the command from the authenticated caller, so a filter can never
 /// widen the org scope.
-#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, ToSchema)]
 pub struct DatasetFilters {
     /// Keep only cases whose pass/fail equals this.
     #[serde(default)]
@@ -41,7 +41,7 @@ pub struct DatasetFilters {
 }
 
 /// Redaction controls. Secret scrubbing is always applied regardless of these.
-#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, ToSchema)]
 pub struct RedactionOptions {
     /// When true, replace message text/tool content with a placeholder, keeping
     /// only structure (roles, tool names, ids). Secret scrubbing still runs.
@@ -50,7 +50,7 @@ pub struct RedactionOptions {
 }
 
 /// Request body for `POST /v1/evals/{eval_id}/runs/{run_id}/dataset`.
-#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, ToSchema)]
 pub struct ExportEvalRunDatasetRequest {
     /// Output schema (defaults to `trajectory`).
     #[serde(default)]
