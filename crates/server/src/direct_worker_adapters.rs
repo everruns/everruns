@@ -2320,7 +2320,7 @@ impl DirectPlatformStore {
     }
 
     fn base_url_from_env() -> String {
-        everruns_config::env_string_any(
+        everruns_core::config::env_string_any(
             &["PUBLIC_APP_URL", "FRONTEND_URL", "APP_URL"],
             "http://localhost:9300",
         )

@@ -140,6 +140,7 @@ pub mod atoms;
 pub mod capabilities;
 pub mod command;
 pub mod command_host;
+pub mod config;
 pub mod config_layer;
 pub mod context_report;
 pub mod dependency_blocker;

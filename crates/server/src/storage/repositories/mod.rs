@@ -46,7 +46,7 @@ mod workspaces;
 mod tests;
 
 use anyhow::Result;
-use everruns_config::{env_duration_secs, env_or};
+use everruns_core::config::{env_duration_secs, env_or};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 

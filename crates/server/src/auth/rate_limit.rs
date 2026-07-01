@@ -254,7 +254,7 @@ enum ApiBackend {
 
 impl ApiRateLimiter {
     fn api_rpm() -> u32 {
-        let rpm: u32 = everruns_config::env_or("RATE_LIMIT_API_REQUESTS_PER_MINUTE", 1200);
+        let rpm: u32 = everruns_core::config::env_or("RATE_LIMIT_API_REQUESTS_PER_MINUTE", 1200);
         rpm.max(1)
     }
 
@@ -399,19 +399,19 @@ impl OrgRateLimiter {
     }
 
     pub fn from_env_with_valkey(client: Option<ValkeyClient>) -> Self {
-        let session_rpm: u32 = everruns_config::env_or(
+        let session_rpm: u32 = everruns_core::config::env_or(
             "RATE_LIMIT_ORG_SESSION_CREATE_PER_MINUTE",
             DEFAULT_SESSION_CREATE_RPM,
         );
-        let schedule_rpm: u32 = everruns_config::env_or(
+        let schedule_rpm: u32 = everruns_core::config::env_or(
             "RATE_LIMIT_ORG_SCHEDULE_CREATE_PER_MINUTE",
             DEFAULT_SCHEDULE_CREATE_RPM,
         );
-        let org_rph: u32 = everruns_config::env_or(
+        let org_rph: u32 = everruns_core::config::env_or(
             "RATE_LIMIT_USER_ORG_CREATE_PER_HOUR",
             DEFAULT_ORG_CREATE_RPH,
         );
-        let tool_rpm: u32 = everruns_config::env_or(
+        let tool_rpm: u32 = everruns_core::config::env_or(
             "RATE_LIMIT_ORG_TOOL_CALLS_PER_MINUTE",
             DEFAULT_ORG_TOOL_CALLS_RPM,
         );

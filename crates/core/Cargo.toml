@@ -22,7 +22,6 @@ categories = ["development-tools", "asynchronous"]
 
 [dependencies]
 # Core dependencies
-everruns-config = { path = "../config", version = "0.17.1" }
 anyhow.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true

@@ -21,7 +21,7 @@
 use axum::http::header;
 use axum::response::IntoResponse;
 use axum::{Router, extract::State, routing::get};
-use everruns_config::{env_bool, env_opt_string};
+use everruns_core::config::{env_bool, env_opt_string};
 use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
 use tokio::task::JoinHandle;
 
