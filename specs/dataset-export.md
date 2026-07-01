@@ -69,11 +69,25 @@ Body:
 }
 ```
 
-Returns `application/x-ndjson` — one record per surviving case. The run must be
-`Completed`. This mirrors the synchronous artifacts export
-(`GET …/runs/{run_id}/artifacts`). An async dataset-handle + status API
-(`POST` enqueues, `GET …/dataset/{dataset_id}`) is a deferred follow-up; Phase 1
-returns the NDJSON inline.
+The run must be `Completed`. The export is **async by handle** (Phase 2): the
+`POST` enqueues a background export job (mirroring the fire-and-forget eval
+runner) and returns `202 Accepted` with a dataset handle:
+
+```json
+{ "id": "evaldataset_…", "eval_run_id": "evalrun_…", "status": "pending", "created_at": "…", "updated_at": "…" }
+```
+
+`GET /v1/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}` returns the handle
+with its current `status` (`pending` → `running` → `completed`/`failed`) and,
+once `completed`, the produced NDJSON in `body` plus a `record_count` (one record
+per surviving case). Both endpoints are gated by `DATASET_EXPORT` and org-scoped
+through `get_run`, so a dataset from another org/run is never reachable.
+
+The produced dataset is stored on the handle row, so re-fetching is cheap and the
+export is a durable derived artifact (deleting the underlying run clears the FK
+via `ON DELETE SET NULL`, matching the "datasets are derived artifacts" rule
+below). The sibling artifacts export (`GET …/runs/{run_id}/artifacts`) remains
+synchronous.
 
 ### Output schema
 
@@ -122,8 +136,12 @@ See `specs/threat-model.md` (TM-OBS-008) for the threat review.
 
 ## Follow-ups
 
-- Async dataset-handle API with status + stored dataset artifacts.
 - Honor the exact per-run compaction config for model-view reconstruction.
-- Optional cost (`cost_usd`) via reporting-fact join.
+  Requires resolving the run's session capability chain
+  (harness/agent/session), which the current export path does not plumb; the
+  default `CompactionConfig` is used until then.
+- Optional cost (`cost_usd`) via reporting-fact join. `fact_llm_generation`
+  stores tokens, not a cost column, and is Postgres-only (absent in-memory), so
+  a faithful cost join needs a model-pricing lookup rather than a straight join.
 - Preference-pair / DPO dataset construction.
 - Continuous capture from production sessions (opt-in).

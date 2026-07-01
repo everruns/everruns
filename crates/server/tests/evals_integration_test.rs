@@ -9,7 +9,7 @@ use axum::http::StatusCode;
 use serde_json::json;
 use test_harness::TestServer;
 
-use everruns_core::eval::{Eval, EvalCase};
+use everruns_core::eval::{Eval, EvalCase, EvalDatasetStatus};
 use everruns_core::typed_id::{EvalResultId, EvalRunId};
 use everruns_server::storage::models::{
     CreateEvalCaseResultRow, CreateEvalRunRow, UpdateEvalCaseResultRow,
@@ -496,4 +496,360 @@ async fn run_completed_at(server: &TestServer, run_id: &str) -> String {
         .completed_at
         .expect("completed_at set")
         .to_rfc3339()
+}
+
+// ============================================================================
+// Async dataset export (specs/dataset-export.md, Phase 2)
+// ============================================================================
+
+use everruns_core::Caller;
+use everruns_core::typed_id::{EvalDatasetId, SessionId};
+use everruns_server::domains::evals::EvalService;
+use everruns_server::domains::evals::dataset::ExportEvalRunDatasetRequest;
+use everruns_server::storage::models::{CreateEventRow, CreatePrincipalRow, CreateSessionRow};
+
+/// A secret embedded in the seeded assistant message; the export must scrub it.
+const SEEDED_SECRET: &str = "sk-abcdef0123456789ABCDEF";
+
+/// Seed a completed run whose single passed case has a real session with
+/// `input.message` + `output.message.completed` events, so the async export
+/// reconstructs the model-view trajectory. Returns (eval_id, run_id).
+async fn seed_run_with_session_events(server: &TestServer) -> (String, String) {
+    use uuid::Uuid;
+
+    let eval: Eval = server
+        .post(
+            "/v1/evals",
+            json!({ "name": "dataset export eval", "description": "e2e" }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let case: EvalCase = server
+        .post(
+            &format!("/v1/evals/{}/cases", eval.public_id),
+            json!({
+                "name": "case-one",
+                "conversation": [{"content": "hello"}],
+                "scorers": [{"type": "contains", "text": "ok", "weight": 1.0}]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let eval_row = server
+        .db
+        .get_eval_by_public_id(TEST_ORG_ID, &eval.public_id.to_string())
+        .await
+        .expect("load eval")
+        .expect("eval exists");
+    let case_row = server
+        .db
+        .get_eval_case_by_public_id(eval_row.id, &case.public_id.to_string())
+        .await
+        .expect("load case")
+        .expect("case exists");
+
+    // A principal is required to own the session (FK on Postgres).
+    let principal = server
+        .db
+        .create_principal(CreatePrincipalRow {
+            id: everruns_core::PrincipalId::new(),
+            org_id: TEST_ORG_ID,
+            kind: "system".to_string(),
+            subject_id: Some(Uuid::now_v7()),
+            parent_principal_id: None,
+            resolved_user_id: None,
+            metadata: json!({ "source": "dataset_export_test" }),
+        })
+        .await
+        .expect("create principal");
+
+    let session = server
+        .db
+        .create_session(CreateSessionRow {
+            org_id: TEST_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: principal.id,
+            resolved_owner_user_id: None,
+            title: Some("Eval: case-one".to_string()),
+            locale: None,
+            tags: vec!["eval".to_string()],
+            model_id: None,
+            capabilities: json!([]),
+            tools: json!([]),
+            mcp_servers: json!({}),
+            system_prompt: None,
+            initial_files: json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            workspace_id: None,
+        })
+        .await
+        .expect("create session");
+    let session_id: SessionId = session.id;
+
+    // Seed the conversation the model saw: a user turn and an assistant reply
+    // that also contains a credential the export must scrub. Build real event
+    // payloads so `event_to_message` reconstruction matches production.
+    use everruns_core::events::{InputMessageData, OutputMessageCompletedData};
+    use everruns_core::message::Message;
+    server
+        .db
+        .create_event(CreateEventRow {
+            session_id,
+            event_type: "input.message".to_string(),
+            ts: chrono::Utc::now(),
+            context: json!({}),
+            data: serde_json::to_value(InputMessageData::new(Message::user("hello")))
+                .expect("serialize input event"),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("seed input event");
+    server
+        .db
+        .create_event(CreateEventRow {
+            session_id,
+            event_type: "output.message.completed".to_string(),
+            ts: chrono::Utc::now(),
+            context: json!({}),
+            data: serde_json::to_value(OutputMessageCompletedData::new(Message::assistant(
+                format!("ok, token is {SEEDED_SECRET}"),
+            )))
+            .expect("serialize output event"),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .expect("seed output event");
+
+    let run_public_id = EvalRunId::from_uuid(Uuid::now_v7()).to_string();
+    let run_row = server
+        .db
+        .create_eval_run(
+            TEST_ORG_ID,
+            CreateEvalRunRow {
+                public_id: run_public_id.clone(),
+                eval_id: eval_row.id,
+                target: None,
+                model_override: None,
+                filter_tags: None,
+                triggered_by: "test".to_string(),
+            },
+        )
+        .await
+        .expect("create run");
+
+    let target = json!({ "type": "session", "harness_id": TEST_HARNESS_ID });
+    let result = server
+        .db
+        .create_eval_case_result(CreateEvalCaseResultRow {
+            public_id: EvalResultId::from_uuid(Uuid::now_v7()).to_string(),
+            eval_run_id: run_row.id,
+            eval_case_id: case_row.id,
+            target: Some(target.clone()),
+            target_snapshot: Some(target),
+            artifacts: None,
+        })
+        .await
+        .expect("create result");
+    server
+        .db
+        .update_eval_case_result(
+            result.id,
+            UpdateEvalCaseResultRow {
+                status: Some("passed".to_string()),
+                session_id: Some(session_id.uuid()),
+                scores: Some(json!([{ "pass": true, "value": 1.0, "reason": "has ok" }])),
+                turns: Some(1),
+                latency_ms: Some(100),
+                input_tokens: Some(10),
+                output_tokens: Some(20),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("seed result");
+    server
+        .db
+        .update_eval_run_status(
+            run_row.id,
+            "completed",
+            Some(json!({
+                "total": 1, "passed": 1, "failed": 0, "errored": 0,
+                "pass_rate": 1.0, "avg_score": 1.0, "avg_turns": 1.0,
+                "avg_latency_ms": 100, "total_input_tokens": 10, "total_output_tokens": 20
+            })),
+        )
+        .await
+        .expect("complete run");
+
+    (eval.public_id.to_string(), run_public_id)
+}
+
+/// Poll the dataset handle until it reaches a terminal state or the budget runs
+/// out. The export runs in a background task, so this mirrors a real client.
+async fn await_dataset(
+    service: &EvalService,
+    caller: &Caller,
+    eval_id: &str,
+    run_id: &str,
+    dataset_id: &str,
+) -> everruns_core::eval::EvalRunDataset {
+    for _ in 0..100 {
+        let ds = service
+            .get_dataset(caller, eval_id, run_id, dataset_id)
+            .await
+            .expect("get_dataset")
+            .expect("dataset exists");
+        if matches!(
+            ds.status,
+            EvalDatasetStatus::Completed | EvalDatasetStatus::Failed
+        ) {
+            return ds;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    panic!("dataset export did not finish in time");
+}
+
+#[tokio::test]
+async fn test_dataset_export_async_handle_produces_scrubbed_ndjson() {
+    let server = TestServer::in_memory().await;
+    let (eval_id, run_id) = seed_run_with_session_events(&server).await;
+    let service = EvalService::new(server.db.clone());
+    let caller = Caller::internal(TEST_ORG_ID);
+
+    // POST enqueues: returns a pending handle with no body attached.
+    let handle = service
+        .create_dataset_export(
+            &caller,
+            &eval_id,
+            &run_id,
+            ExportEvalRunDatasetRequest::default(),
+        )
+        .await
+        .expect("enqueue export")
+        .expect("run exists");
+    assert!(matches!(
+        handle.status,
+        EvalDatasetStatus::Pending | EvalDatasetStatus::Running | EvalDatasetStatus::Completed
+    ));
+    assert!(handle.body.is_none(), "enqueue must not attach body");
+
+    // GET polls to completion and returns the NDJSON body.
+    let done = await_dataset(
+        &service,
+        &caller,
+        &eval_id,
+        &run_id,
+        &handle.public_id.to_string(),
+    )
+    .await;
+    assert_eq!(done.status, EvalDatasetStatus::Completed);
+    assert_eq!(done.record_count, Some(1));
+    let body = done.body.expect("completed dataset has body");
+
+    // One NDJSON record for the single passing case.
+    let lines: Vec<&str> = body.lines().filter(|l| !l.is_empty()).collect();
+    assert_eq!(lines.len(), 1, "one record per surviving case");
+    let record: serde_json::Value = serde_json::from_str(lines[0]).expect("valid NDJSON record");
+
+    // Reward joined from the case result.
+    assert_eq!(record["reward"]["pass"], json!(true));
+    assert_eq!(record["reward"]["score"], json!(1.0));
+    // Model-view trajectory reconstructed from the seeded session events.
+    let messages = record["messages"].as_array().expect("messages array");
+    assert!(messages.len() >= 2, "user + assistant messages present");
+    // Always-on secret scrubbing removed the credential from the trajectory.
+    assert!(
+        !body.contains(SEEDED_SECRET),
+        "seeded secret must be scrubbed from the exported dataset"
+    );
+    assert!(body.contains("[REDACTED]"), "scrubbed placeholder present");
+}
+
+#[tokio::test]
+async fn test_dataset_export_cross_org_returns_not_found() {
+    let server = TestServer::in_memory().await;
+    let (eval_id, run_id) = seed_run_with_session_events(&server).await;
+    let service = EvalService::new(server.db.clone());
+
+    // Owner of the run enqueues an export.
+    let owner = Caller::internal(TEST_ORG_ID);
+    let handle = service
+        .create_dataset_export(
+            &owner,
+            &eval_id,
+            &run_id,
+            ExportEvalRunDatasetRequest::default(),
+        )
+        .await
+        .expect("enqueue export")
+        .expect("run exists");
+
+    // "Not reachable" means the caller gets a 404: either the run/eval does not
+    // resolve for their org (`get_run` returns a not-found error), or the query
+    // resolves to `Ok(None)`. Both map to 404 at the command layer.
+    fn assert_not_reachable(
+        result: anyhow::Result<Option<everruns_core::eval::EvalRunDataset>>,
+        what: &str,
+    ) {
+        match result {
+            Ok(None) => {}
+            Ok(Some(_)) => panic!("{what} must not be reachable across org boundary"),
+            Err(e) => assert!(
+                e.downcast_ref::<everruns_server::errors::ResourceNotFoundError>()
+                    .is_some(),
+                "{what} must fail with not-found, got: {e}"
+            ),
+        }
+    }
+
+    // A caller from a different org cannot enqueue against this run: the run is
+    // resolved through `get_run` with the caller's org, so it is not found.
+    let other_org = Caller::internal(TEST_ORG_ID + 424242);
+    assert_not_reachable(
+        service
+            .create_dataset_export(
+                &other_org,
+                &eval_id,
+                &run_id,
+                ExportEvalRunDatasetRequest::default(),
+            )
+            .await,
+        "cross-org export enqueue",
+    );
+
+    // Nor can a foreign org fetch the owner's dataset handle by id.
+    assert_not_reachable(
+        service
+            .get_dataset(&other_org, &eval_id, &run_id, &handle.public_id.to_string())
+            .await,
+        "cross-org dataset fetch",
+    );
+
+    // A completely unknown dataset id for the owner is also not-found.
+    let missing = service
+        .get_dataset(
+            &owner,
+            &eval_id,
+            &run_id,
+            &EvalDatasetId::from_uuid(uuid::Uuid::now_v7()).to_string(),
+        )
+        .await
+        .expect("missing dataset get");
+    assert!(missing.is_none(), "unknown dataset id is not-found");
 }

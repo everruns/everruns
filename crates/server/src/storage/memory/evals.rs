@@ -714,4 +714,78 @@ impl InMemoryDatabase {
         result.updated_at = Self::now();
         Ok(Some(result.clone()))
     }
+
+    // ============================================
+    // Eval Run Dataset (async export handles — specs/dataset-export.md)
+    // ============================================
+
+    pub async fn create_eval_run_dataset(
+        &self,
+        org_id: i64,
+        input: CreateEvalRunDatasetRow,
+    ) -> Result<EvalRunDatasetRow> {
+        let now = Self::now();
+        let row = EvalRunDatasetRow {
+            id: Uuid::now_v7(),
+            org_id,
+            public_id: input.public_id,
+            eval_run_id: Some(input.eval_run_id),
+            request: input.request,
+            status: "pending".to_string(),
+            body: None,
+            record_count: None,
+            error_message: None,
+            started_at: None,
+            completed_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.eval_run_datasets.write().insert(row.id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn get_eval_run_dataset(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<EvalRunDatasetRow>> {
+        Ok(self
+            .eval_run_datasets
+            .read()
+            .values()
+            .find(|r| r.org_id == org_id && r.public_id == public_id)
+            .cloned())
+    }
+
+    pub async fn update_eval_run_dataset(
+        &self,
+        id: Uuid,
+        input: UpdateEvalRunDatasetRow,
+    ) -> Result<Option<EvalRunDatasetRow>> {
+        let now = Self::now();
+        let mut guard = self.eval_run_datasets.write();
+        let Some(row) = guard.get_mut(&id) else {
+            return Ok(None);
+        };
+        if let Some(status) = input.status {
+            if status == "running" && row.started_at.is_none() {
+                row.started_at = Some(now);
+            }
+            if matches!(status.as_str(), "completed" | "failed") && row.completed_at.is_none() {
+                row.completed_at = Some(now);
+            }
+            row.status = status;
+        }
+        if input.body.is_some() {
+            row.body = input.body;
+        }
+        if input.record_count.is_some() {
+            row.record_count = input.record_count;
+        }
+        if input.error_message.is_some() {
+            row.error_message = input.error_message;
+        }
+        row.updated_at = now;
+        Ok(Some(row.clone()))
+    }
 }

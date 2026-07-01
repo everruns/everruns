@@ -768,4 +768,91 @@ impl Database {
         .await?;
         Ok(row)
     }
+
+    // ============================================
+    // Eval Run Dataset (async export handles — specs/dataset-export.md)
+    // ============================================
+
+    pub async fn create_eval_run_dataset(
+        &self,
+        org_id: i64,
+        input: CreateEvalRunDatasetRow,
+    ) -> Result<EvalRunDatasetRow> {
+        let row = sqlx::query_as::<_, EvalRunDatasetRow>(
+            r#"
+            INSERT INTO eval_run_datasets (org_id, public_id, eval_run_id, request)
+            VALUES ($1, $2, $3, $4)
+            RETURNING id, org_id, public_id, eval_run_id, request, status, body, record_count,
+                      error_message, started_at, completed_at, created_at, updated_at
+            "#,
+        )
+        .bind(org_id)
+        .bind(&input.public_id)
+        .bind(input.eval_run_id)
+        .bind(&input.request)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn get_eval_run_dataset(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<EvalRunDatasetRow>> {
+        let row = sqlx::query_as::<_, EvalRunDatasetRow>(
+            r#"
+            SELECT id, org_id, public_id, eval_run_id, request, status, body, record_count,
+                   error_message, started_at, completed_at, created_at, updated_at
+            FROM eval_run_datasets
+            WHERE org_id = $1 AND public_id = $2
+            "#,
+        )
+        .bind(org_id)
+        .bind(public_id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn update_eval_run_dataset(
+        &self,
+        id: Uuid,
+        input: UpdateEvalRunDatasetRow,
+    ) -> Result<Option<EvalRunDatasetRow>> {
+        let now = chrono::Utc::now();
+        let started = match input.status.as_deref() {
+            Some("running") => Some(now),
+            _ => None,
+        };
+        let completed = match input.status.as_deref() {
+            Some("completed") | Some("failed") => Some(now),
+            _ => None,
+        };
+        let row = sqlx::query_as::<_, EvalRunDatasetRow>(
+            r#"
+            UPDATE eval_run_datasets
+            SET status = COALESCE($2, status),
+                body = COALESCE($3, body),
+                record_count = COALESCE($4, record_count),
+                error_message = COALESCE($5, error_message),
+                started_at = COALESCE(started_at, $6),
+                completed_at = COALESCE(completed_at, $7),
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, org_id, public_id, eval_run_id, request, status, body, record_count,
+                      error_message, started_at, completed_at, created_at, updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(&input.status)
+        .bind(&input.body)
+        .bind(input.record_count)
+        .bind(&input.error_message)
+        .bind(started)
+        .bind(completed)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
 }

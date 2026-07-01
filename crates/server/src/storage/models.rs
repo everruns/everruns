@@ -2749,6 +2749,46 @@ pub struct UpdateAgentHealthCheckRunRow {
     pub error_message: Option<String>,
 }
 
+// ============================================================================
+// Eval run dataset models (async dataset export — specs/dataset-export.md)
+// ============================================================================
+
+/// Async dataset-export handle row from database.
+#[derive(Debug, Clone, FromRow)]
+pub struct EvalRunDatasetRow {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub public_id: String,
+    pub eval_run_id: Option<Uuid>,
+    pub request: serde_json::Value,
+    pub status: String,
+    pub body: Option<String>,
+    pub record_count: Option<i64>,
+    pub error_message: Option<String>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating an eval run dataset export handle.
+#[derive(Debug, Clone)]
+pub struct CreateEvalRunDatasetRow {
+    pub public_id: String,
+    pub eval_run_id: Uuid,
+    pub request: serde_json::Value,
+}
+
+/// Input for updating an eval run dataset export handle. `None` fields are left
+/// unchanged; `started_at`/`completed_at` are set from `status` transitions.
+#[derive(Debug, Clone, Default)]
+pub struct UpdateEvalRunDatasetRow {
+    pub status: Option<String>,
+    pub body: Option<String>,
+    pub record_count: Option<i64>,
+    pub error_message: Option<String>,
+}
+
 /// Org-configurable agent check rule (specs/agent-checks.md, phase 4).
 #[derive(Debug, Clone, FromRow)]
 pub struct AgentCheckRuleRow {

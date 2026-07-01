@@ -24,8 +24,8 @@ use crate::domains::evals::runner::EvalRunContext;
 use crate::domains::evals::{
     BulkUpdateEvalRunScores, CancelEvalRun, CreateEval, CreateEvalCase, CreateEvalRun, DeleteEval,
     DeleteEvalCase, EvalImportPreflightCmd, ExportEvalRunArtifacts, ExportEvalRunDataset, GetEval,
-    GetEvalCase, GetEvalRun, ImportEvalRun, ListEvalCases, ListEvalRuns, ListEvals, UpdateEval,
-    UpdateEvalCase, UpdateEvalResultScores,
+    GetEvalCase, GetEvalRun, GetEvalRunDataset, ImportEvalRun, ListEvalCases, ListEvalRuns,
+    ListEvals, UpdateEval, UpdateEvalCase, UpdateEvalResultScores,
 };
 use crate::storage::StorageBackend;
 use everruns_core::Caller;
@@ -405,6 +405,10 @@ pub fn routes(state: AppState) -> Router {
             "/v1/evals/{eval_id}/runs/{run_id}/dataset",
             post(export_run_dataset),
         )
+        .route(
+            "/v1/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}",
+            get(get_run_dataset),
+        )
         .route("/v1/evals/{eval_id}/runs/{run_id}/cancel", post(cancel_run))
         .route(
             "/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores",
@@ -618,29 +622,40 @@ async fn export_run_artifacts(
     ))
 }
 
+/// Enqueue an async dataset export and return the handle (202 Accepted).
+///
+/// The NDJSON is produced by a background job; fetch it once ready via
+/// `GET .../dataset/{dataset_id}`.
 async fn export_run_dataset(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((eval_id, run_id)): Path<(String, String)>,
     Json(req): Json<ExportEvalRunDatasetRequest>,
-) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
-    let export = ExportEvalRunDataset {
+) -> Result<(StatusCode, Json<EvalRunDataset>), (StatusCode, Json<ErrorResponse>)> {
+    let dataset = ExportEvalRunDataset {
         eval_id,
         run_id,
         req,
     }
     .run(&state.ctx(&org))
     .await?;
-    let body = Body::from(Bytes::from(export.body));
+    Ok((StatusCode::ACCEPTED, Json(dataset)))
+}
 
-    Ok((
-        StatusCode::OK,
-        [(
-            axum::http::header::CONTENT_TYPE,
-            "application/x-ndjson".to_string(),
-        )],
-        body,
-    ))
+/// Fetch a dataset-export handle: status, and (once completed) the NDJSON body.
+async fn get_run_dataset(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((eval_id, run_id, dataset_id)): Path<(String, String, String)>,
+) -> ApiResult<EvalRunDataset> {
+    state
+        .dispatcher(&org)
+        .run(GetEvalRunDataset {
+            eval_id,
+            run_id,
+            dataset_id,
+        })
+        .await
 }
 
 async fn cancel_run(

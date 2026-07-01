@@ -17,7 +17,8 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use crate::typed_id::{
-    AgentId, AppId, EvalCaseId, EvalId, EvalResultId, EvalRunId, HarnessId, SessionId,
+    AgentId, AppId, EvalCaseId, EvalDatasetId, EvalId, EvalResultId, EvalRunId, HarnessId,
+    SessionId,
 };
 
 #[cfg(feature = "openapi")]
@@ -541,6 +542,73 @@ pub struct EvalRun {
     /// Case results (populated on detail view).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub results: Vec<EvalCaseResult>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+// ============================================
+// Eval Run Dataset (async dataset export — specs/dataset-export.md)
+// ============================================
+
+/// Status of an async dataset export.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum EvalDatasetStatus {
+    /// Enqueued, export not started yet.
+    Pending,
+    /// Export in progress.
+    Running,
+    /// Export finished; NDJSON `body` is available on the detail view.
+    Completed,
+    /// Export failed; see `error_message`.
+    Failed,
+}
+
+impl std::fmt::Display for EvalDatasetStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EvalDatasetStatus::Pending => write!(f, "pending"),
+            EvalDatasetStatus::Running => write!(f, "running"),
+            EvalDatasetStatus::Completed => write!(f, "completed"),
+            EvalDatasetStatus::Failed => write!(f, "failed"),
+        }
+    }
+}
+
+impl From<&str> for EvalDatasetStatus {
+    fn from(s: &str) -> Self {
+        match s {
+            "running" => EvalDatasetStatus::Running,
+            "completed" => EvalDatasetStatus::Completed,
+            "failed" => EvalDatasetStatus::Failed,
+            _ => EvalDatasetStatus::Pending,
+        }
+    }
+}
+
+/// An async dataset-export handle: the durable result of enqueuing a dataset
+/// export from a completed eval run. The `body` (NDJSON) is only populated on
+/// the `GET .../dataset/{dataset_id}` detail view once `status` is `completed`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct EvalRunDataset {
+    #[serde(rename = "id")]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "evaldataset_01933b5a000070008000000000000001"))]
+    pub public_id: EvalDatasetId,
+    /// The eval run this dataset was exported from.
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    pub eval_run_id: EvalRunId,
+    pub status: EvalDatasetStatus,
+    /// Number of NDJSON records (surviving cases). Set on completion.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub record_count: Option<u64>,
+    /// Failure detail when `status` is `failed`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+    /// The produced NDJSON. Only present on the detail view once completed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
