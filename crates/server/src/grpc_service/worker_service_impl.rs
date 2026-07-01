@@ -2824,8 +2824,11 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<CreateSessionTaskRequest>,
     ) -> Result<Response<SessionTaskResponse>, Status> {
         let req = request.into_inner();
-        let input: everruns_core::CreateSessionTask = serde_json::from_slice(&req.create_json)
-            .map_err(|e| Status::invalid_argument(format!("Invalid task create JSON: {e}")))?;
+        let create = req
+            .create
+            .ok_or_else(|| Status::invalid_argument("Missing create payload"))?;
+        let input = everruns_internal_protocol::proto_to_create_session_task(create)
+            .map_err(|e| Status::invalid_argument(format!("Invalid task create payload: {e}")))?;
 
         let task = self
             .session_task_registry()
@@ -2837,8 +2840,7 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(SessionTaskResponse {
-            task_json: serde_json::to_vec(&task)
-                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+            task: Some(everruns_internal_protocol::session_task_to_proto(&task)),
         }))
     }
 
@@ -2848,8 +2850,10 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<OptionalSessionTaskResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let update: everruns_core::SessionTaskUpdate = serde_json::from_slice(&req.update_json)
-            .map_err(|e| Status::invalid_argument(format!("Invalid task update JSON: {e}")))?;
+        let update_proto = req
+            .update
+            .ok_or_else(|| Status::invalid_argument("Missing update payload"))?;
+        let update = everruns_internal_protocol::proto_to_session_task_update(update_proto);
 
         let task = self
             .session_task_registry()
@@ -2861,10 +2865,9 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(OptionalSessionTaskResponse {
-            task_json: task
-                .map(|t| serde_json::to_vec(&t))
-                .transpose()
-                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+            task: task
+                .as_ref()
+                .map(everruns_internal_protocol::session_task_to_proto),
         }))
     }
 
@@ -2885,10 +2888,9 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(OptionalSessionTaskResponse {
-            task_json: task
-                .map(|t| serde_json::to_vec(&t))
-                .transpose()
-                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+            task: task
+                .as_ref()
+                .map(everruns_internal_protocol::session_task_to_proto),
         }))
     }
 
@@ -2921,11 +2923,10 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(ListSessionTasksResponse {
-            task_json: tasks
+            tasks: tasks
                 .iter()
-                .map(serde_json::to_vec)
-                .collect::<Result<_, _>>()
-                .map_err(|e| Status::internal(format!("Failed to encode tasks: {e}")))?,
+                .map(everruns_internal_protocol::session_task_to_proto)
+                .collect(),
         }))
     }
 
@@ -2946,10 +2947,9 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(OptionalSessionTaskResponse {
-            task_json: task
-                .map(|t| serde_json::to_vec(&t))
-                .transpose()
-                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+            task: task
+                .as_ref()
+                .map(everruns_internal_protocol::session_task_to_proto),
         }))
     }
 
@@ -2959,8 +2959,10 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<SessionTaskMessageResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let message: everruns_core::NewTaskMessage = serde_json::from_slice(&req.message_json)
-            .map_err(|e| Status::invalid_argument(format!("Invalid task message JSON: {e}")))?;
+        let message_proto = req
+            .message
+            .ok_or_else(|| Status::invalid_argument("Missing message payload"))?;
+        let message = everruns_internal_protocol::proto_to_new_task_message(message_proto);
 
         let stored = self
             .session_task_registry()
@@ -2972,8 +2974,7 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(SessionTaskMessageResponse {
-            message_json: serde_json::to_vec(&stored)
-                .map_err(|e| Status::internal(format!("Failed to encode task message: {e}")))?,
+            message: Some(everruns_internal_protocol::task_message_to_proto(&stored)),
         }))
     }
 
@@ -2994,11 +2995,10 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(ListSessionTaskMessagesResponse {
-            message_json: messages
+            messages: messages
                 .iter()
-                .map(serde_json::to_vec)
-                .collect::<Result<_, _>>()
-                .map_err(|e| Status::internal(format!("Failed to encode task messages: {e}")))?,
+                .map(everruns_internal_protocol::task_message_to_proto)
+                .collect(),
         }))
     }
 

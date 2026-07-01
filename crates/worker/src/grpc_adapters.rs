@@ -3802,17 +3802,19 @@ impl everruns_core::traits::PaymentAuthority for GrpcPaymentAuthority {
 // GrpcSessionTaskRegistry - SessionTaskRegistry over gRPC
 // ============================================================================
 //
-// Task and message payloads travel as canonical core JSON (see worker.proto),
-// so lifecycle invariants stay server-side in DbSessionTaskRegistry and the
-// record shape is defined once in everruns-core.
+// Task and message payloads travel as native protobuf messages (EVE-642), so
+// there is no intermediate JSON encode/decode into byte fields. Lifecycle
+// invariants stay server-side in DbSessionTaskRegistry and the record shape is
+// defined once in everruns-core; the proto↔core conversions live in
+// everruns-internal-protocol.
 
-fn decode_task(bytes: &[u8]) -> Result<everruns_core::SessionTask> {
-    serde_json::from_slice(bytes)
+fn decode_task(proto: proto::SessionTaskProto) -> Result<everruns_core::SessionTask> {
+    everruns_internal_protocol::proto_to_session_task(proto)
         .map_err(|e| AgentLoopError::store(format!("Invalid session task payload: {e}")))
 }
 
-fn decode_task_message(bytes: &[u8]) -> Result<everruns_core::TaskMessage> {
-    serde_json::from_slice(bytes)
+fn decode_task_message(proto: proto::TaskMessageProto) -> Result<everruns_core::TaskMessage> {
+    everruns_internal_protocol::proto_to_task_message(proto)
         .map_err(|e| AgentLoopError::store(format!("Invalid task message payload: {e}")))
 }
 
@@ -3822,14 +3824,19 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         &self,
         input: everruns_core::CreateSessionTask,
     ) -> Result<everruns_core::SessionTask> {
-        let create_json = serde_json::to_vec(&input)
-            .map_err(|e| AgentLoopError::store(format!("Failed to encode task create: {e}")))?;
+        let create = everruns_internal_protocol::create_session_task_to_proto(&input);
         let mut client = self.client.inner.lock().await;
         let response = client
-            .create_session_task(proto::CreateSessionTaskRequest { create_json })
+            .create_session_task(proto::CreateSessionTaskRequest {
+                create: Some(create),
+            })
             .await
             .map_err(grpc_status_to_error)?;
-        decode_task(&response.into_inner().task_json)
+        let task = response
+            .into_inner()
+            .task
+            .ok_or_else(|| AgentLoopError::store("Missing task in create response"))?;
+        decode_task(task)
     }
 
     async fn update(
@@ -3838,23 +3845,17 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         task_id: &str,
         update: everruns_core::SessionTaskUpdate,
     ) -> Result<Option<everruns_core::SessionTask>> {
-        let update_json = serde_json::to_vec(&update)
-            .map_err(|e| AgentLoopError::store(format!("Failed to encode task update: {e}")))?;
+        let update = everruns_internal_protocol::session_task_update_to_proto(&update);
         let mut client = self.client.inner.lock().await;
         let response = client
             .update_session_task(proto::UpdateSessionTaskRequest {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
                 task_id: task_id.to_string(),
-                update_json,
+                update: Some(update),
             })
             .await
             .map_err(grpc_status_to_error)?;
-        response
-            .into_inner()
-            .task_json
-            .as_deref()
-            .map(decode_task)
-            .transpose()
+        response.into_inner().task.map(decode_task).transpose()
     }
 
     async fn get(
@@ -3870,12 +3871,7 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
             })
             .await
             .map_err(grpc_status_to_error)?;
-        response
-            .into_inner()
-            .task_json
-            .as_deref()
-            .map(decode_task)
-            .transpose()
+        response.into_inner().task.map(decode_task).transpose()
     }
 
     async fn list(
@@ -3894,9 +3890,9 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
             .map_err(grpc_status_to_error)?;
         response
             .into_inner()
-            .task_json
-            .iter()
-            .map(|bytes| decode_task(bytes))
+            .tasks
+            .into_iter()
+            .map(decode_task)
             .collect()
     }
 
@@ -3913,12 +3909,7 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
             })
             .await
             .map_err(grpc_status_to_error)?;
-        response
-            .into_inner()
-            .task_json
-            .as_deref()
-            .map(decode_task)
-            .transpose()
+        response.into_inner().task.map(decode_task).transpose()
     }
 
     async fn record_message(
@@ -3927,18 +3918,21 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         task_id: &str,
         message: everruns_core::NewTaskMessage,
     ) -> Result<everruns_core::TaskMessage> {
-        let message_json = serde_json::to_vec(&message)
-            .map_err(|e| AgentLoopError::store(format!("Failed to encode task message: {e}")))?;
+        let message = everruns_internal_protocol::new_task_message_to_proto(&message);
         let mut client = self.client.inner.lock().await;
         let response = client
             .record_session_task_message(proto::RecordSessionTaskMessageRequest {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
                 task_id: task_id.to_string(),
-                message_json,
+                message: Some(message),
             })
             .await
             .map_err(grpc_status_to_error)?;
-        decode_task_message(&response.into_inner().message_json)
+        let message = response
+            .into_inner()
+            .message
+            .ok_or_else(|| AgentLoopError::store("Missing message in record response"))?;
+        decode_task_message(message)
     }
 
     async fn list_messages(
@@ -3959,9 +3953,9 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
             .map_err(grpc_status_to_error)?;
         response
             .into_inner()
-            .message_json
-            .iter()
-            .map(|bytes| decode_task_message(bytes))
+            .messages
+            .into_iter()
+            .map(decode_task_message)
             .collect()
     }
 }
