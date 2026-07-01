@@ -105,12 +105,10 @@ export function ZeroOrgOnboarding({
         }}
       >
         <div className="max-w-[420px]">
-          <h1 className="text-[28px] font-semibold tracking-[-0.02em]">
-            Create your organisation
-          </h1>
+          <h1 className="text-[28px] font-semibold tracking-[-0.02em]">Create your organisation</h1>
           <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-            An organisation is your team&rsquo;s shared workspace. Agents,
-            harnesses, sessions, and settings all live here.
+            An organisation is your team&rsquo;s shared workspace. Agents, harnesses, sessions, and
+            settings all live here.
           </p>
 
           <div className="mt-7">
@@ -121,12 +119,8 @@ export function ZeroOrgOnboarding({
             ) : policy.status === "blocked" ? (
               <div className="space-y-4" role="alert">
                 <h2 className="text-base font-semibold">{policy.title}</h2>
-                {policy.body && (
-                  <div className="text-sm text-muted-foreground">{policy.body}</div>
-                )}
-                {policy.actions && (
-                  <div className="flex gap-2">{policy.actions}</div>
-                )}
+                {policy.body && <div className="text-sm text-muted-foreground">{policy.body}</div>}
+                {policy.actions && <div className="flex gap-2">{policy.actions}</div>}
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="space-y-4">

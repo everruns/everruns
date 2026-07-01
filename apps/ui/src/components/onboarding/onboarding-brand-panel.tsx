@@ -42,8 +42,7 @@ const DEFAULT_FOOTER = "Durable Agentic Harness · Unstoppable agents";
 // Gold dot grid on navy. Kept inline because the panel is always gold-on-navy,
 // unlike the theme-aware global `.bg-brand-dots` utility.
 const dotGridStyle: React.CSSProperties = {
-  backgroundImage:
-    "radial-gradient(circle at center, hsl(43 60% 53% / 0.13) 1px, transparent 1px)",
+  backgroundImage: "radial-gradient(circle at center, hsl(43 60% 53% / 0.13) 1px, transparent 1px)",
   backgroundSize: "22px 22px",
 };
 
@@ -56,11 +55,7 @@ export function OnboardingBrandPanel({
   return (
     <div className="relative hidden w-[440px] flex-shrink-0 flex-col justify-between overflow-hidden bg-primary px-9 py-10 text-primary-foreground lg:flex">
       {/* Gold dot grid */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0"
-        style={dotGridStyle}
-      />
+      <div aria-hidden className="pointer-events-none absolute inset-0" style={dotGridStyle} />
       {/* Borromean rings, bleeding off the top-right */}
       <svg
         aria-hidden
@@ -97,9 +92,7 @@ export function OnboardingBrandPanel({
             <li
               key={feature.label}
               className={`flex items-center gap-[11px] text-[13px] ${
-                feature.done
-                  ? "text-primary-foreground/90"
-                  : "text-primary-foreground/55"
+                feature.done ? "text-primary-foreground/90" : "text-primary-foreground/55"
               }`}
             >
               {feature.done ? (

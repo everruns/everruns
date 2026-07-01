@@ -17,14 +17,8 @@
  */
 import type { ReactNode } from "react";
 import Image from "next/image";
-import {
-  OnboardingBrandPanel,
-  type OnboardingBrandPanelProps,
-} from "./onboarding-brand-panel";
-import {
-  OnboardingStepper,
-  type OnboardingStep,
-} from "./onboarding-stepper";
+import { OnboardingBrandPanel, type OnboardingBrandPanelProps } from "./onboarding-brand-panel";
+import { OnboardingStepper, type OnboardingStep } from "./onboarding-stepper";
 
 export interface OnboardingShellProps {
   /** Right-aligned header text, e.g. "Step 2 of 4". */
@@ -52,14 +46,10 @@ export function OnboardingShell({
       <div className="flex h-[60px] flex-shrink-0 items-center justify-between border-b px-6 sm:px-10">
         <div className="flex items-center gap-[10px]">
           <Image src="/logo.svg" alt="Everruns" width={26} height={26} />
-          <span className="text-[15px] font-semibold tracking-[-0.02em]">
-            Everruns
-          </span>
+          <span className="text-[15px] font-semibold tracking-[-0.02em]">Everruns</span>
         </div>
         {stepLabel && (
-          <div className="font-mono text-[11px] text-muted-foreground">
-            {stepLabel}
-          </div>
+          <div className="font-mono text-[11px] text-muted-foreground">{stepLabel}</div>
         )}
       </div>
 

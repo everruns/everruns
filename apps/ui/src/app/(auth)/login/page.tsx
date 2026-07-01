@@ -115,9 +115,7 @@ export default function LoginPage() {
   return (
     <AuthShell headerNote="Secured by Everruns">
       <h2 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">Welcome back</h2>
-      <p className="mt-[10px] text-sm text-muted-foreground">
-        Sign in to your Everruns account
-      </p>
+      <p className="mt-[10px] text-sm text-muted-foreground">Sign in to your Everruns account</p>
 
       <div className="mt-7 space-y-4">
         {/* OAuth Buttons */}
@@ -133,12 +131,7 @@ export default function LoginPage() {
                   onClick={() => handleOAuthLogin(provider)}
                 >
                   {providerInfo?.icon && (
-                    <Image
-                      src={providerInfo.icon}
-                      alt={providerInfo.name}
-                      width={18}
-                      height={18}
-                    />
+                    <Image src={providerInfo.icon} alt={providerInfo.name} width={18} height={18} />
                   )}
                   Continue with {providerInfo?.name ?? provider}
                 </Button>

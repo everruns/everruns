@@ -296,14 +296,13 @@ export default function OrgSetupPage() {
             <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
               {providerConnected ? (
                 <>
-                  {org?.name ?? "Your workspace"} is provisioned and connected to a
-                  model provider. Spin up your first agent that ever runs.
+                  {org?.name ?? "Your workspace"} is provisioned and connected to a model provider.
+                  Spin up your first agent that ever runs.
                 </>
               ) : (
                 <>
-                  {org?.name ?? "Your workspace"} is ready. You can add a model
-                  provider anytime from Settings &mdash; then spin up your first
-                  agent.
+                  {org?.name ?? "Your workspace"} is ready. You can add a model provider anytime
+                  from Settings &mdash; then spin up your first agent.
                 </>
               )}
             </p>
@@ -316,9 +315,7 @@ export default function OrgSetupPage() {
                 <Plus className="icon-sharp h-[18px] w-[18px]" strokeWidth={2} />
               </span>
               <span className="flex-1">
-                <span className="block text-[15px] font-semibold">
-                  Create your first agent
-                </span>
+                <span className="block text-[15px] font-semibold">Create your first agent</span>
                 <span className="block text-xs text-primary-foreground/60">
                   Start from a template or a blank harness
                 </span>
@@ -331,14 +328,20 @@ export default function OrgSetupPage() {
                 href="/agents/examples"
                 className="flex flex-1 flex-col gap-2 border p-3.5 text-foreground transition-colors hover:bg-muted"
               >
-                <LayoutGrid className="icon-sharp h-[18px] w-[18px] text-muted-foreground" strokeWidth={1.8} />
+                <LayoutGrid
+                  className="icon-sharp h-[18px] w-[18px] text-muted-foreground"
+                  strokeWidth={1.8}
+                />
                 <span className="text-[13px] font-medium">Browse templates</span>
               </Link>
               <Link
                 href="/settings/members"
                 className="flex flex-1 flex-col gap-2 border p-3.5 text-foreground transition-colors hover:bg-muted"
               >
-                <Users className="icon-sharp h-[18px] w-[18px] text-muted-foreground" strokeWidth={1.8} />
+                <Users
+                  className="icon-sharp h-[18px] w-[18px] text-muted-foreground"
+                  strokeWidth={1.8}
+                />
                 <span className="text-[13px] font-medium">Invite your team</span>
               </Link>
               <a
@@ -347,7 +350,10 @@ export default function OrgSetupPage() {
                 rel="noreferrer"
                 className="flex flex-1 flex-col gap-2 border p-3.5 text-foreground transition-colors hover:bg-muted"
               >
-                <BookOpen className="icon-sharp h-[18px] w-[18px] text-muted-foreground" strokeWidth={1.8} />
+                <BookOpen
+                  className="icon-sharp h-[18px] w-[18px] text-muted-foreground"
+                  strokeWidth={1.8}
+                />
                 <span className="text-[13px] font-medium">Read the docs</span>
               </a>
             </div>
@@ -375,9 +381,7 @@ export default function OrgSetupPage() {
         }}
       >
         <div className="w-full max-w-[460px]">
-          <h1 className="text-[22px] font-semibold tracking-[-0.02em]">
-            Setting up {org?.name}
-          </h1>
+          <h1 className="text-[22px] font-semibold tracking-[-0.02em]">Setting up {org?.name}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             We&rsquo;re provisioning your durable workspace. One last thing to finish.
           </p>
