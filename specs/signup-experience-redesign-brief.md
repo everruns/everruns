@@ -299,7 +299,16 @@ Open decision — **PropelAuth retirement scope**: (a) fully retire (email+passw
 OAuth + remove dep), vs (b) move email+password to OSS now, keep PropelAuth OAuth/MFA
 during a transition. Pending user confirmation.
 
-## B-migration. Existing-user migration (OPEN DECISION)
+> **RESOLVED (user):** No real production users → clean cutover, **migration DROPPED**
+> (PR 6 removed). No PropelAuth MFA reliance → **no MFA replacement** needed. Build the
+> full two-panel Frame 2 auth screen **as part of** the cutover (PR 5).
+>
+> **Cutover is simpler than expected:** the SaaS server already ships a `DevAuthBackend`
+> that wraps OSS `BuiltinAuthBackend` (today's PROPELAUTH_URL-empty fallback). PR 5 =
+> make that the only path, delete the PropelAuth branch/files, and delete the SaaS
+> `(auth)` overrides so login/register fall through to the OSS two-panel pages (PR 5a).
+
+## B-migration. Existing-user migration (DROPPED — no real users)
 
 Every current SaaS user lives in PropelAuth with no local password. Options:
 1. **Rehash-on-login (bcrypt→Argon2id):** export PropelAuth hashes, store them, verify
