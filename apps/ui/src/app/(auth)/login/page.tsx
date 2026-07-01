@@ -7,15 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { AuthShell } from "@/components/auth/auth-shell";
 import { useAuthConfig, useLogin } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks";
 import { ApiError } from "@/lib/api/client";
@@ -121,34 +113,31 @@ export default function LoginPage() {
   const canSignup = config?.signup_enabled ?? false;
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader className="text-center">
-        <div className="flex justify-center mb-4">
-          <Image src="/logo.svg" alt="Everruns" width={48} height={48} />
-        </div>
-        <CardTitle className="text-2xl">Welcome back</CardTitle>
-        <CardDescription>Sign in to your Everruns account</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <AuthShell headerNote="Secured by Everruns">
+      <h2 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">Welcome back</h2>
+      <p className="mt-[10px] text-sm text-muted-foreground">
+        Sign in to your Everruns account
+      </p>
+
+      <div className="mt-7 space-y-4">
         {/* OAuth Buttons */}
         {hasOAuthProviders && (
-          <div className="space-y-2">
+          <div className="space-y-[10px]">
             {config?.oauth_providers.map((provider) => {
               const providerInfo = oauthProviders[provider];
               return (
                 <Button
                   key={provider}
                   variant="outline"
-                  className="w-full"
+                  className="h-11 w-full justify-start gap-[10px]"
                   onClick={() => handleOAuthLogin(provider)}
                 >
                   {providerInfo?.icon && (
                     <Image
                       src={providerInfo.icon}
                       alt={providerInfo.name}
-                      width={20}
-                      height={20}
-                      className="mr-2"
+                      width={18}
+                      height={18}
                     />
                   )}
                   Continue with {providerInfo?.name ?? provider}
@@ -158,15 +147,12 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* Separator between OAuth and password */}
+        {/* OR divider between OAuth and password */}
         {hasOAuthProviders && hasPasswordAuth && (
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <Separator className="w-full" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">Or continue with</span>
-            </div>
+          <div className="flex items-center gap-[14px]">
+            <span className="h-px flex-1 bg-border" />
+            <span className="font-mono text-[11px] text-muted-foreground">OR</span>
+            <span className="h-px flex-1 bg-border" />
           </div>
         )}
 
@@ -225,22 +211,20 @@ export default function LoginPage() {
             No authentication methods are currently configured.
           </div>
         )}
-      </CardContent>
+      </div>
 
       {/* Sign up link */}
       {canSignup && hasPasswordAuth && (
-        <CardFooter className="flex justify-center">
-          <p className="text-sm text-muted-foreground">
-            Don&apos;t have an account?{" "}
-            <Link
-              href={returnTo ? `/register?return_to=${encodeURIComponent(returnTo)}` : "/register"}
-              className="text-primary hover:underline"
-            >
-              Sign up
-            </Link>
-          </p>
-        </CardFooter>
+        <p className="mt-[18px] text-sm text-muted-foreground">
+          Don&apos;t have an account?{" "}
+          <Link
+            href={returnTo ? `/register?return_to=${encodeURIComponent(returnTo)}` : "/register"}
+            className="font-medium text-primary hover:underline"
+          >
+            Sign up
+          </Link>
+        </p>
       )}
-    </Card>
+    </AuthShell>
   );
 }
