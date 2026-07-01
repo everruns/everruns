@@ -43,3 +43,6 @@ everruns-core = { path = "../core", version = "0.17.1", default-features = false
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
+# wiremock serves the golden streaming SSE fixtures; futures drains the stream.
+wiremock = "0.6"
+futures.workspace = true
