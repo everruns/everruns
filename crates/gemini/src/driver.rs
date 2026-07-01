@@ -32,6 +32,7 @@ use everruns_core::is_provider_quota_message;
 use everruns_core::llm_retry::{
     LlmRetryConfig, RetryDecision, SendOutcome, retry_request, send_error_message,
 };
+use everruns_core::stream_accumulator::StreamToolCallAccumulator;
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
@@ -424,7 +425,7 @@ impl ChatDriver for GeminiChatDriver {
         let prompt_tokens = Arc::new(Mutex::new(0u32));
         let completion_tokens = Arc::new(Mutex::new(0u32));
         let cached_tokens = Arc::new(Mutex::new(Option::<u32>::None));
-        let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
+        let accumulated_tool_calls = Arc::new(Mutex::new(StreamToolCallAccumulator::new()));
         let tool_call_counter = Arc::new(Mutex::new(0u32));
         let shared_retry_metadata = if retry_metadata.had_retries() {
             Some(Arc::new(retry_metadata))
@@ -560,13 +561,11 @@ impl ChatDriver for GeminiChatDriver {
                                                         accumulated_tool_calls
                                                             .lock()
                                                             .unwrap()
-                                                            .push(ToolCall {
-                                                                id: call_id,
-                                                                name: function_call.name.clone(),
-                                                                arguments: function_call
-                                                                    .args
-                                                                    .clone(),
-                                                            });
+                                                            .push_complete(
+                                                                call_id,
+                                                                function_call.name.clone(),
+                                                                function_call.args.clone(),
+                                                            );
                                                     }
                                                     _ => {}
                                                 }
@@ -577,9 +576,10 @@ impl ChatDriver for GeminiChatDriver {
                                         if let Some(reason) = &candidate.finish_reason
                                             && (reason == "STOP" || reason == "MAX_TOKENS")
                                         {
-                                            let tool_calls: Vec<ToolCall> = std::mem::take(
-                                                &mut *accumulated_tool_calls.lock().unwrap(),
-                                            );
+                                            let tool_calls: Vec<ToolCall> = accumulated_tool_calls
+                                                .lock()
+                                                .unwrap()
+                                                .take_finalized();
                                             if !tool_calls.is_empty() {
                                                 let result =
                                                     Ok(LlmStreamEvent::ToolCalls(tool_calls));
@@ -689,7 +689,7 @@ impl ChatDriver for GeminiChatDriver {
                         None => {
                             // Stream ended - emit Done if we haven't already
                             let tool_calls: Vec<ToolCall> =
-                                std::mem::take(&mut *accumulated_tool_calls.lock().unwrap());
+                                accumulated_tool_calls.lock().unwrap().take_finalized();
                             if !tool_calls.is_empty() {
                                 let result = Ok(LlmStreamEvent::ToolCalls(tool_calls));
                                 return Some((
