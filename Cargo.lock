@@ -2443,13 +2443,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "everruns-config"
-version = "0.17.1"
-dependencies = [
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "everruns-container-sandbox"
 version = "0.17.1"
 dependencies = [
@@ -2487,7 +2480,6 @@ dependencies = [
  "ed25519-dalek",
  "eventsource-stream",
  "everruns-a2ui",
- "everruns-config",
  "everruns-openui",
  "fetchkit",
  "futures",
@@ -3003,7 +2995,6 @@ dependencies = [
  "dotenvy",
  "ethers-core",
  "ethers-signers",
- "everruns-config",
  "everruns-container-sandbox",
  "everruns-core",
  "everruns-durable",
@@ -3122,7 +3113,6 @@ dependencies = [
  "chrono",
  "everruns-anthropic",
  "everruns-bedrock",
- "everruns-config",
  "everruns-container-sandbox",
  "everruns-core",
  "everruns-durable",

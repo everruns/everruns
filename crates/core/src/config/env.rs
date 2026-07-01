@@ -6,7 +6,7 @@
 use std::str::FromStr;
 use std::time::Duration;
 
-use crate::ConfigError;
+use super::ConfigError;
 
 /// Read an env var, parse it to `T`, or return `default`.
 ///

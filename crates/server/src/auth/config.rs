@@ -16,7 +16,7 @@
 // before the server starts. See `specs/authentication.md` (External Mode
 // and OAuth Providers).
 
-use everruns_config::env_opt_string_any;
+use everruns_core::config::env_opt_string_any;
 use std::time::Duration;
 
 const DEFAULT_PUBLIC_APP_URL: &str = "http://localhost:9300";

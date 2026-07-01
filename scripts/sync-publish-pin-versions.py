@@ -28,7 +28,6 @@ REPO = Path(__file__).resolve().parent.parent
 # .github/workflows/publish-crates.yml `dependency_versions`.
 INNER_PINS: dict[str, list[str]] = {
     "crates/core/Cargo.toml": [
-        "everruns-config",
         "everruns-openui",
         "everruns-a2ui",
     ],

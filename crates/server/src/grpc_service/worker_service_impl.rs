@@ -4139,7 +4139,7 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         _request: Request<PlatformGetBaseUrlRequest>,
     ) -> Result<Response<PlatformGetBaseUrlResponse>, Status> {
-        let base_url = everruns_config::env_string_any(
+        let base_url = everruns_core::config::env_string_any(
             &["PUBLIC_APP_URL", "FRONTEND_URL", "APP_URL"],
             "http://localhost:9300",
         );

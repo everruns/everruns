@@ -85,7 +85,6 @@ tar.workspace = true
 
 bashkit = { version = "0.12.0", features = ["scripted_tool", "jq"] }
 
-everruns-config = { path = "../config" }
 everruns-core = { path = "../core", features = ["embedded-platform-docs", "openapi", "sqlx", "tree-sitter-outlines", "ui-capabilities"] }
 # Observability exporters (Braintrust, OpenTelemetry event listeners). The OTLP
 # init these rely on stays in core's `telemetry` feature (on by default).

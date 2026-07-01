@@ -20,7 +20,6 @@ members = [
     "crates/local",
     "crates/cli",
     "crates/durable",
-    "crates/config",
     "crates/openui",
     "crates/a2ui",
     "crates/session-sqldb",
