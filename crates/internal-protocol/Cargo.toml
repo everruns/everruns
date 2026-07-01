@@ -47,3 +47,10 @@ tracing.workspace = true
 [build-dependencies]
 tonic-prost-build.workspace = true
 protox = "0.9"
+
+# EVE-642 evidence bench: session-task payload encode/decode, old JSON-in-protobuf
+# path vs new native protobuf path. Custom main (harness = false), matching the
+# durable-crate bench convention.
+[[bench]]
+name = "session_task_encoding"
+harness = false
