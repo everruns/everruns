@@ -3,7 +3,7 @@
 import { useMemo, useRef } from "react";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { ChatNavRail, type ChatNavAnchor } from "@/components/chat/chat-nav-rail";
-import { useMessageScrollerVisibility } from "@/hooks";
+import { useMessageScrollerVisibility, useTurnKeyboardNavigation } from "@/hooks";
 import type { Event, InputMessageData, OutputMessageCompletedData } from "@/lib/api/types";
 import { getEventData, getTextFromContent } from "@/lib/api/types";
 
@@ -107,6 +107,13 @@ export function DevChatNavRailPreview() {
     scrollContainerRef,
     navAnchors.length,
   );
+
+  const navAnchorIds = useMemo(() => navAnchors.map((anchor) => anchor.id), [navAnchors]);
+  useTurnKeyboardNavigation({
+    anchorIds: navAnchorIds,
+    currentAnchorId,
+    onNavigate: scrollToAnchor,
+  });
 
   return (
     <div className="overflow-hidden border border-border/70 bg-background">

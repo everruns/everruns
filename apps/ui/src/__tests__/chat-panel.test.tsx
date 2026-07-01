@@ -87,6 +87,7 @@ jest.mock("@/hooks", () => ({
     visibleAnchorIds: [],
     scrollToAnchor: jest.fn(),
   }),
+  useTurnKeyboardNavigation: () => undefined,
   useImageDropZone: () => ({
     isDraggingOver: false,
     dropZoneProps: {
