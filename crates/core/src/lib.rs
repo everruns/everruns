@@ -162,6 +162,7 @@ pub mod platform_store;
 pub mod resource_ownership;
 pub mod runtime_agent;
 pub mod runtime_context;
+pub mod stream_accumulator;
 pub mod tool_output_sanitizer;
 pub mod tools;
 pub mod traits;

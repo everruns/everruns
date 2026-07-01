@@ -19,7 +19,7 @@ use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::borrow::Cow;
 use std::sync::{Arc, Mutex};
 
@@ -32,7 +32,8 @@ use crate::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryDecision, SendOutcome, is_rate_limit_status, retry_request,
     send_error_message,
 };
-use crate::tool_types::{ToolCall, ToolDefinition};
+use crate::stream_accumulator::StreamToolCallAccumulator;
+use crate::tool_types::ToolDefinition;
 use crate::user_facing_error::is_provider_quota_message;
 
 const DEFAULT_API_URL: &str = "https://api.openai.com/v1/chat/completions";
@@ -545,7 +546,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         // OpenAI-compatible gateways (e.g. OpenRouter) report an authoritative
         // per-request cost in `usage.cost`; direct OpenAI leaves it absent.
         let provider_cost_usd = Arc::new(Mutex::new(Option::<f64>::None));
-        let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
+        let accumulated_tool_calls = Arc::new(Mutex::new(StreamToolCallAccumulator::new()));
         let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
         // Captured from the first streaming chunk that carries an id field.
         // OpenRouter sets this to a "gen-..." identifier on every completion.
@@ -961,20 +962,6 @@ struct OpenAiStreamFunction {
     arguments: Option<String>,
 }
 
-/// Parses each accumulated tool call's argument string (assembled from streamed
-/// fragments) into JSON, falling back to an empty object on parse failure.
-fn finalize_tool_calls(tool_calls: Vec<ToolCall>) -> Vec<ToolCall> {
-    tool_calls
-        .into_iter()
-        .map(|mut tc| {
-            if let Some(args_str) = tc.arguments.as_str() {
-                tc.arguments = serde_json::from_str(args_str).unwrap_or(json!({}));
-            }
-            tc
-        })
-        .collect()
-}
-
 /// Drains tool calls that were accumulated but not yet emitted, returning a
 /// final `ToolCalls` event for the `[DONE]` handler. Returns `None` when nothing
 /// is pending (the common case, since the finish chunk normally drains them).
@@ -982,37 +969,30 @@ fn finalize_tool_calls(tool_calls: Vec<ToolCall>) -> Vec<ToolCall> {
 /// The fallback may only emit calls when the provider omitted a finish reason or
 /// reported `tool_calls`. Non-tool finish reasons such as `length` and
 /// `content_filter` indicate an incomplete or rejected response, so pending
-/// calls are discarded instead of being executed.
+/// calls are discarded instead of being executed. Malformed streamed argument
+/// JSON is likewise dropped (via the accumulator's strict flush) because this
+/// fallback runs without an explicit final tool-call completion chunk.
 fn take_pending_tool_calls(
-    accumulated_tool_calls: &mut Vec<ToolCall>,
+    accumulated_tool_calls: &mut StreamToolCallAccumulator,
     finish_reason: Option<&str>,
 ) -> Option<LlmStreamEvent> {
     if accumulated_tool_calls.is_empty() {
         return None;
     }
 
-    let calls = std::mem::take(accumulated_tool_calls);
+    // A non-tool finish reason means the response was cut/rejected; drain the
+    // accumulator (so a repeated flush cannot re-emit) but do not execute.
     if !matches!(finish_reason, None | Some("tool_calls")) {
+        let _ = accumulated_tool_calls.take_finalized();
         return None;
     }
 
-    finalize_pending_tool_calls(calls).map(LlmStreamEvent::ToolCalls)
-}
-
-/// Finalizes fallback-flushed tool calls. Unlike the normal `tool_calls` finish
-/// path, this rejects malformed streamed argument JSON instead of converting it
-/// to `{}` because fallback flushing happens without an explicit final tool-call
-/// completion chunk.
-fn finalize_pending_tool_calls(tool_calls: Vec<ToolCall>) -> Option<Vec<ToolCall>> {
-    tool_calls
-        .into_iter()
-        .map(|mut tc| {
-            if let Some(args_str) = tc.arguments.as_str() {
-                tc.arguments = serde_json::from_str(args_str).ok()?;
-            }
-            Some(tc)
-        })
-        .collect()
+    let calls = accumulated_tool_calls.take_pending_strict();
+    if calls.is_empty() {
+        None
+    } else {
+        Some(LlmStreamEvent::ToolCalls(calls))
+    }
 }
 
 /// Processes a single chat-completion stream choice, updating the running
@@ -1027,40 +1007,20 @@ fn finalize_pending_tool_calls(tool_calls: Vec<ToolCall>) -> Option<Vec<ToolCall
 fn process_stream_choice(
     choice: &OpenAiStreamChoice,
     total_tokens: &mut u32,
-    accumulated_tool_calls: &mut Vec<ToolCall>,
+    accumulated_tool_calls: &mut StreamToolCallAccumulator,
     finish_reason: &mut Option<String>,
 ) -> LlmStreamEvent {
-    // Accumulate streamed tool-call fragments.
+    // Accumulate streamed tool-call fragments, keyed by the chunk `index`. The
+    // shared accumulator appends argument fragments in place (EVE-636: amortized
+    // O(total)) and parses the JSON once at finalize.
     if let Some(tool_calls) = &choice.delta.tool_calls {
         for tc in tool_calls {
-            let idx = tc.index as usize;
-            while accumulated_tool_calls.len() <= idx {
-                accumulated_tool_calls.push(ToolCall {
-                    id: String::new(),
-                    name: String::new(),
-                    arguments: json!(""),
-                });
-            }
-
-            if let Some(id) = &tc.id {
-                accumulated_tool_calls[idx].id = id.clone();
-            }
-            if let Some(function) = &tc.function {
-                if let Some(name) = &function.name {
-                    accumulated_tool_calls[idx].name = name.clone();
-                }
-                if let Some(args) = &function.arguments {
-                    // EVE-636: accumulate fragments in place via push_str
-                    // (amortized O(total)) instead of re-copying + re-boxing into
-                    // a Value per delta (O(n^2)). `arguments` is kept as a
-                    // Value::String here and parsed once at finish via
-                    // finalize_tool_calls.
-                    if let serde_json::Value::String(s) = &mut accumulated_tool_calls[idx].arguments
-                    {
-                        s.push_str(args);
-                    }
-                }
-            }
+            accumulated_tool_calls.apply_indexed_delta(
+                tc.index,
+                tc.id.as_deref(),
+                tc.function.as_ref().and_then(|f| f.name.as_deref()),
+                tc.function.as_ref().and_then(|f| f.arguments.as_deref()),
+            );
         }
         return LlmStreamEvent::TextDelta(String::new());
     }
@@ -1081,8 +1041,7 @@ fn process_stream_choice(
         *finish_reason = Some(fr.clone());
 
         if fr == "tool_calls" && !accumulated_tool_calls.is_empty() {
-            let calls = std::mem::take(accumulated_tool_calls);
-            return LlmStreamEvent::ToolCalls(finalize_tool_calls(calls));
+            return LlmStreamEvent::ToolCalls(accumulated_tool_calls.take_finalized());
         }
     }
 
@@ -1096,6 +1055,7 @@ fn process_stream_choice(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_convert_message_preserves_multiple_system_messages() {
@@ -1590,7 +1550,7 @@ mod tests {
     #[test]
     fn test_empty_content_finish_chunk_still_emits_tool_calls() {
         let mut total_tokens = 0u32;
-        let mut acc: Vec<ToolCall> = Vec::new();
+        let mut acc = StreamToolCallAccumulator::new();
         let mut finish_reason: Option<String> = None;
 
         // Chunk 2: tool_calls delta opens the call (id + name).
@@ -1652,7 +1612,7 @@ mod tests {
     #[test]
     fn test_non_empty_content_is_emitted() {
         let mut total_tokens = 0u32;
-        let mut acc: Vec<ToolCall> = Vec::new();
+        let mut acc = StreamToolCallAccumulator::new();
         let mut finish_reason: Option<String> = None;
 
         let e = process_stream_choice(
@@ -1671,7 +1631,7 @@ mod tests {
     #[test]
     fn test_tool_call_arguments_accumulate_across_many_chunks() {
         let mut total_tokens = 0u32;
-        let mut acc: Vec<ToolCall> = Vec::new();
+        let mut acc = StreamToolCallAccumulator::new();
         let mut finish_reason: Option<String> = None;
 
         // Open the call (id + name, empty initial arguments).
@@ -1705,8 +1665,9 @@ mod tests {
             expected.push_str(&frag);
         }
 
-        // Mid-stream: accumulated as a raw string, not yet parsed.
-        assert_eq!(acc[0].arguments.as_str(), Some(expected.as_str()));
+        // Mid-stream the shared accumulator holds the fragments as a raw string
+        // (parsed once at finalize); its own unit tests cover that internal, so
+        // here we assert the observable finish-chunk result concatenates exactly.
 
         // Finish chunk: parsed exactly once into the structured value.
         let e = process_stream_choice(
@@ -1733,7 +1694,7 @@ mod tests {
     #[test]
     fn test_finish_chunk_without_content_emits_tool_calls() {
         let mut total_tokens = 0u32;
-        let mut acc: Vec<ToolCall> = Vec::new();
+        let mut acc = StreamToolCallAccumulator::new();
         let mut finish_reason: Option<String> = None;
 
         process_stream_choice(
@@ -1760,16 +1721,21 @@ mod tests {
         }
     }
 
+    /// Seed a single tool-call slot into an accumulator the way the streamed
+    /// chunks would (id + name + raw argument buffer), so the fallback-flush
+    /// tests exercise the real accumulation path.
+    fn seeded_acc(id: &str, name: &str, arguments: &str) -> StreamToolCallAccumulator {
+        let mut acc = StreamToolCallAccumulator::new();
+        acc.apply_indexed_delta(0, Some(id), Some(name), Some(arguments));
+        acc
+    }
+
     /// The [DONE] fallback flushes accumulated-but-unemitted tool calls when no
     /// finish reason was reported and drains the accumulator; once drained it
     /// returns None.
     #[test]
     fn test_take_pending_tool_calls_flushes_then_drains_without_finish_reason() {
-        let mut acc = vec![ToolCall {
-            id: "call_1".to_string(),
-            name: "read_file".to_string(),
-            arguments: json!(r#"{"path":"Cargo.toml"}"#),
-        }];
+        let mut acc = seeded_acc("call_1", "read_file", r#"{"path":"Cargo.toml"}"#);
 
         match take_pending_tool_calls(&mut acc, None) {
             Some(LlmStreamEvent::ToolCalls(calls)) => {
@@ -1785,11 +1751,7 @@ mod tests {
 
     #[test]
     fn test_take_pending_tool_calls_discards_non_tool_finish_reason() {
-        let mut acc = vec![ToolCall {
-            id: "call_cut".to_string(),
-            name: "read_file".to_string(),
-            arguments: json!(r#"{"path":"#),
-        }];
+        let mut acc = seeded_acc("call_cut", "read_file", r#"{"path":"#);
 
         assert!(take_pending_tool_calls(&mut acc, Some("length")).is_none());
         assert!(
@@ -1800,11 +1762,7 @@ mod tests {
 
     #[test]
     fn test_take_pending_tool_calls_rejects_malformed_fallback_arguments() {
-        let mut acc = vec![ToolCall {
-            id: "call_cut".to_string(),
-            name: "read_file".to_string(),
-            arguments: json!(r#"{"path":"#),
-        }];
+        let mut acc = seeded_acc("call_cut", "read_file", r#"{"path":"#);
 
         assert!(take_pending_tool_calls(&mut acc, None).is_none());
         assert!(
@@ -1816,7 +1774,7 @@ mod tests {
     #[test]
     fn test_non_tool_finish_reason_leaves_pending_calls_for_done_discard() {
         let mut total_tokens = 0u32;
-        let mut acc: Vec<ToolCall> = Vec::new();
+        let mut acc = StreamToolCallAccumulator::new();
         let mut finish_reason: Option<String> = None;
 
         process_stream_choice(
@@ -1839,17 +1797,6 @@ mod tests {
         assert_eq!(finish_reason.as_deref(), Some("length"));
         assert!(take_pending_tool_calls(&mut acc, finish_reason.as_deref()).is_none());
         assert!(acc.is_empty());
-    }
-
-    #[test]
-    fn test_finalize_tool_calls_parses_arguments() {
-        let calls = vec![ToolCall {
-            id: "call_1".to_string(),
-            name: "read_file".to_string(),
-            arguments: json!(r#"{"path":"src/main.rs"}"#),
-        }];
-        let finalized = finalize_tool_calls(calls);
-        assert_eq!(finalized[0].arguments, json!({"path": "src/main.rs"}));
     }
 
     #[test]
