@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.17.3] - 2026-07-02
+
+### What's Changed
+
+- fix(ui): restore `pnpm.overrides`/`onlyBuiltDependencies` in `apps/ui/package.json`, accidentally dropped in v0.17.2, which broke the release Docker image build (`pnpm install --frozen-lockfile` lockfile-config mismatch) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.2] - 2026-07-02
 
 ### Highlights
