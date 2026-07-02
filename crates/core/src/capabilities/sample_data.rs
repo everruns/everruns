@@ -165,15 +165,7 @@ mod tests {
     use super::*;
     use crate::capability_types::MountSource;
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = SampleDataCapability;
-        assert_eq!(cap.id(), "sample_data");
-        assert_eq!(cap.name(), "Sample Data");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("database"));
-        assert_eq!(cap.category(), Some("Data"));
-    }
+    // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_capability_has_system_prompt() {
@@ -182,12 +174,6 @@ mod tests {
         assert!(prompt.contains("/samples"));
         assert!(prompt.contains("users.json"));
         assert!(prompt.contains("config.yaml"));
-    }
-
-    #[test]
-    fn test_capability_has_no_tools() {
-        let cap = SampleDataCapability;
-        assert!(cap.tools().is_empty());
     }
 
     #[test]
@@ -228,13 +214,5 @@ mod tests {
         // Just check it's not empty and looks like YAML
         assert!(SampleDataCapability::CONFIG_YAML.contains("application:"));
         assert!(SampleDataCapability::CONFIG_YAML.contains("database:"));
-    }
-
-    #[test]
-    fn test_capability_depends_on_file_system() {
-        let cap = SampleDataCapability;
-        let deps = cap.dependencies();
-        assert_eq!(deps.len(), 1);
-        assert_eq!(deps[0], "session_file_system");
     }
 }

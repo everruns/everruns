@@ -154,15 +154,7 @@ mod tests {
     use super::*;
     use crate::capability_types::MountSource;
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = DataKnowledgeCapability;
-        assert_eq!(cap.id(), "data_knowledge");
-        assert_eq!(cap.name(), "Data Knowledge");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("book-open"));
-        assert_eq!(cap.category(), Some("Data"));
-    }
+    // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_has_system_prompt() {
@@ -172,12 +164,6 @@ mod tests {
         assert!(prompt.contains("ground truth"));
         // Framed as an OKF bundle so agents navigate it accordingly.
         assert!(prompt.contains("Open Knowledge Format"));
-    }
-
-    #[test]
-    fn test_has_no_tools() {
-        let cap = DataKnowledgeCapability;
-        assert!(cap.tools().is_empty());
     }
 
     #[test]
@@ -219,11 +205,5 @@ mod tests {
             }
             _ => panic!("Expected InlineDirectory"),
         }
-    }
-
-    #[test]
-    fn test_depends_on_file_system() {
-        let cap = DataKnowledgeCapability;
-        assert_eq!(cap.dependencies(), vec!["session_file_system"]);
     }
 }

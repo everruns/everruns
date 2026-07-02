@@ -894,24 +894,7 @@ pub(crate) mod tests {
             .unwrap()
     }
 
-    #[test]
-    fn capability_basics() {
-        let cap = SessionTasksCapability;
-        assert_eq!(cap.id(), SESSION_TASKS_CAPABILITY_ID);
-        assert_eq!(cap.category(), Some("Orchestration"));
-        let tools = cap.tools();
-        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert_eq!(
-            names,
-            vec![
-                "list_tasks",
-                "get_task",
-                "message_task",
-                "cancel_task",
-                "wait_task"
-            ]
-        );
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[tokio::test]
     async fn tools_error_without_registry() {

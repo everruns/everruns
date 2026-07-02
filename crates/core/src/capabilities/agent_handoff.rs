@@ -953,14 +953,11 @@ mod tests {
         context
     }
 
-    #[test]
-    fn capability_metadata_and_schema() {
-        let cap = AgentHandoffCapability;
-        assert_eq!(cap.id(), AGENT_HANDOFF_CAPABILITY_ID);
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.risk_level(), RiskLevel::High);
-        assert_eq!(cap.features(), vec!["agent_handoffs"]);
+    // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
+    #[test]
+    fn config_schema_exposes_targets_array() {
+        let cap = AgentHandoffCapability;
         let schema = cap.config_schema().expect("config schema");
         assert_eq!(schema["properties"]["targets"]["type"], "array");
     }

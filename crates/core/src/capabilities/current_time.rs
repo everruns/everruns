@@ -134,41 +134,13 @@ impl Tool for GetCurrentTimeTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capabilities::CapabilityRegistry;
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = CurrentTimeCapability;
-
-        assert_eq!(cap.id(), "current_time");
-        assert_eq!(cap.name(), "Current Time");
-        assert_eq!(cap.icon(), Some("clock"));
-        assert_eq!(cap.category(), Some("Core"));
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-    }
-
-    #[test]
-    fn test_capability_has_tools() {
-        let cap = CurrentTimeCapability;
-        let tools = cap.tools();
-
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "get_current_time");
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_capability_no_system_prompt() {
         let cap = CurrentTimeCapability;
         assert!(cap.system_prompt_addition().is_none());
-    }
-
-    #[test]
-    fn test_capability_in_registry() {
-        let registry = CapabilityRegistry::with_builtins();
-        let cap = registry.get("current_time").unwrap();
-
-        assert_eq!(cap.id(), "current_time");
-        assert_eq!(cap.tools().len(), 1);
     }
 
     #[tokio::test]

@@ -390,13 +390,7 @@ mod tests {
     use super::*;
     use crate::user_hook_types::HookEvent;
 
-    #[test]
-    fn capability_metadata_is_stable() {
-        let cap = UserHooksCapability;
-        assert_eq!(cap.id(), "user_hooks");
-        assert!(matches!(cap.risk_level(), RiskLevel::High));
-        assert!(cap.config_schema().is_some());
-    }
+    // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn empty_config_validates() {

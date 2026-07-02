@@ -700,12 +700,5 @@ mod tests {
         }
     }
 
-    #[test]
-    fn capability_metadata() {
-        let cap = SessionScheduleCapability;
-        assert_eq!(cap.id(), "session_schedule");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert!(cap.system_prompt_addition().is_some());
-        assert_eq!(cap.tools().len(), 3);
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 }

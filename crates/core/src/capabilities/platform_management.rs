@@ -2272,34 +2272,7 @@ mod tests {
         ctx
     }
 
-    #[test]
-    fn capability_id_is_platform_management() {
-        let cap = PlatformManagementCapability;
-        assert_eq!(cap.id(), "platform_management");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-    }
-
-    #[test]
-    fn capability_provides_fourteen_tools() {
-        let cap = PlatformManagementCapability;
-        let tools = cap.tools();
-        assert_eq!(tools.len(), 14);
-        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(names.contains(&"read_capabilities"));
-        assert!(names.contains(&"read_harnesses"));
-        assert!(names.contains(&"manage_harnesses"));
-        assert!(names.contains(&"read_agents"));
-        assert!(names.contains(&"manage_agents"));
-        assert!(names.contains(&"read_apps"));
-        assert!(names.contains(&"manage_apps"));
-        assert!(names.contains(&"manage_app_channels"));
-        assert!(names.contains(&"read_sessions"));
-        assert!(names.contains(&"session_context_report"));
-        assert!(names.contains(&"manage_sessions"));
-        assert!(names.contains(&"session_send_message"));
-        assert!(names.contains(&"session_read_messages"));
-        assert!(names.contains(&"session_read_response"));
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn truncate_content_chars_respects_unicode_boundaries() {

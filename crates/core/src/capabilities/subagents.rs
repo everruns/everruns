@@ -773,21 +773,12 @@ mod tests {
     use super::*;
     use crate::Tool;
 
-    #[test]
-    fn capability_basics() {
-        let cap = SubagentCapability;
-        assert_eq!(cap.id(), "subagents");
-        assert_eq!(cap.tools().len(), 1);
-        assert!(cap.system_prompt_addition().is_some());
-        assert_eq!(cap.features(), vec!["subagents"]);
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
-    fn tool_names() {
+    fn capability_features() {
         let cap = SubagentCapability;
-        let tools = cap.tools();
-        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert_eq!(names, vec!["spawn_subagent"]);
+        assert_eq!(cap.features(), vec!["subagents"]);
     }
 
     #[test]

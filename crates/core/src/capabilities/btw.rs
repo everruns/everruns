@@ -136,15 +136,7 @@ mod tests {
     use crate::user_facing_error::UserFacingErrorContext;
     use std::sync::{Arc, Mutex};
 
-    #[test]
-    fn test_btw_capability_metadata() {
-        let cap = BtwCapability;
-        assert_eq!(cap.id(), BTW_CAPABILITY_ID);
-        assert_eq!(cap.name(), "BTW");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("message-circle"));
-        assert_eq!(cap.category(), Some("System"));
-    }
+    // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_btw_capability_registers_command() {

@@ -138,17 +138,11 @@ impl Capability for AutoToolSearchCapability {
 mod tests {
     use super::*;
     use crate::capabilities::{
-        CLAUDE_TOOL_SEARCH_CAPABILITY_ID, CapabilityRegistry, OPENAI_TOOL_SEARCH_CAPABILITY_ID,
+        CLAUDE_TOOL_SEARCH_CAPABILITY_ID, OPENAI_TOOL_SEARCH_CAPABILITY_ID,
         TOOL_SEARCH_CAPABILITY_ID,
     };
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = AutoToolSearchCapability::new();
-        assert_eq!(cap.id(), AUTO_TOOL_SEARCH_CAPABILITY_ID);
-        assert_eq!(cap.name(), "Auto Tool Search");
-        assert_eq!(cap.category(), Some("Optimization"));
-    }
+    // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_resolves_to_generic_without_model() {
@@ -192,12 +186,5 @@ mod tests {
         // Hosted: no client-side tool or hook contributed.
         assert!(resolved.tools().is_empty());
         assert!(resolved.tool_definition_hooks().is_empty());
-    }
-
-    #[test]
-    fn test_capability_registered_in_builtins() {
-        let registry = CapabilityRegistry::with_builtins();
-        let cap = registry.get(AUTO_TOOL_SEARCH_CAPABILITY_ID).unwrap();
-        assert_eq!(cap.id(), AUTO_TOOL_SEARCH_CAPABILITY_ID);
     }
 }

@@ -110,14 +110,7 @@ impl Capability for OpenAiToolSearchCapability {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = OpenAiToolSearchCapability::new();
-        assert_eq!(cap.id(), OPENAI_TOOL_SEARCH_CAPABILITY_ID);
-        assert_eq!(cap.name(), "OpenAI Tool Search");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert!(cap.tools().is_empty());
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_default_threshold() {
