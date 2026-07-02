@@ -108,7 +108,7 @@ tracing-opentelemetry = "0.33"
 utoipa = { version = "5.4", features = ["axum_extras", "chrono", "uuid"] }
 
 # Encryption
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 rand = "0.10"
 base64 = "0.22"
 
