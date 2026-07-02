@@ -3,6 +3,7 @@
 use super::super::models::*;
 use super::Database;
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 impl Database {
@@ -191,6 +192,86 @@ impl Database {
             .await?;
 
         Ok(result.rows_affected())
+    }
+
+    // ============================================
+    // Password Reset / Email Verification Tokens
+    // ============================================
+
+    pub async fn create_password_reset_token(
+        &self,
+        user_id: Uuid,
+        token_hash: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
+        )
+        .bind(user_id)
+        .bind(token_hash)
+        .bind(expires_at)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Atomic single-use claim: marks the token used and returns its owner only
+    /// if it exists, is unexpired, and was not already used. The UPDATE ...
+    /// WHERE used_at IS NULL ensures concurrent claims cannot both succeed.
+    pub async fn consume_password_reset_token(&self, token_hash: &str) -> Result<Option<Uuid>> {
+        let row: Option<(Uuid,)> = sqlx::query_as(
+            r#"
+            UPDATE password_reset_tokens
+            SET used_at = NOW()
+            WHERE token_hash = $1
+              AND used_at IS NULL
+              AND expires_at > NOW()
+            RETURNING user_id
+            "#,
+        )
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|(user_id,)| user_id))
+    }
+
+    pub async fn create_email_verification_token(
+        &self,
+        user_id: Uuid,
+        token_hash: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<()> {
+        sqlx::query(
+            "INSERT INTO email_verification_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)",
+        )
+        .bind(user_id)
+        .bind(token_hash)
+        .bind(expires_at)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(())
+    }
+
+    /// Atomic single-use claim mirroring `consume_password_reset_token`.
+    pub async fn consume_email_verification_token(&self, token_hash: &str) -> Result<Option<Uuid>> {
+        let row: Option<(Uuid,)> = sqlx::query_as(
+            r#"
+            UPDATE email_verification_tokens
+            SET used_at = NOW()
+            WHERE token_hash = $1
+              AND used_at IS NULL
+              AND expires_at > NOW()
+            RETURNING user_id
+            "#,
+        )
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|(user_id,)| user_id))
     }
 
     // ============================================

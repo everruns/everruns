@@ -769,6 +769,32 @@ export interface TokenResponse {
   refresh_token?: string;
 }
 
+/** Request to begin a password reset (enumeration-safe). */
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+/** Request to complete a password reset using an emailed token. */
+export interface ResetPasswordRequest {
+  token: string;
+  password: string;
+}
+
+/** Request to verify an email address using an emailed token. */
+export interface VerifyEmailRequest {
+  token: string;
+}
+
+/** Request to re-send a verification email (enumeration-safe). */
+export interface ResendVerificationRequest {
+  email: string;
+}
+
+/** Generic success response returned by recovery/verification endpoints. */
+export interface OkResponse {
+  ok: boolean;
+}
+
 /** Organization role */
 export type OrgRole = "owner" | "admin" | "member";
 

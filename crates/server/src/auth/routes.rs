@@ -180,6 +180,40 @@ pub struct RefreshTokenRequest {
     pub refresh_token: String,
 }
 
+/// Request to start a password reset (or resend a verification email).
+/// Only the email is supplied; the response is intentionally identical
+/// regardless of whether the account exists (account-enumeration safety).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct EmailOnlyRequest {
+    pub email: String,
+}
+
+/// Request to complete a password reset with the emailed token.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ResetPasswordRequest {
+    pub token: String,
+    pub password: String,
+}
+
+/// Request to verify an email address with the emailed token.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct VerifyEmailRequest {
+    pub token: String,
+}
+
+/// Generic success body. Account-recovery endpoints return this with no
+/// account-specific detail so callers cannot probe which emails are registered.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct OkResponse {
+    pub ok: bool,
+}
+
+impl OkResponse {
+    fn ok() -> Json<Self> {
+        Json(Self { ok: true })
+    }
+}
+
 /// Cookie name for OAuth CSRF state (TM-AUTH-007)
 const OAUTH_STATE_COOKIE: &str = "oauth_state";
 
@@ -282,6 +316,20 @@ pub fn routes(state: BuiltinAuthBackend) -> Router {
             rate_limit_refresh,
         ));
 
+    // Account-recovery routes. These are reused enumeration-safe email and
+    // token flows. They send email (forgot-password / resend-verification) or
+    // mutate credentials (reset-password / verify-email), so they share the
+    // register rate limiter to throttle abuse per client IP.
+    let recovery_routes = Router::new()
+        .route("/v1/auth/forgot-password", post(forgot_password))
+        .route("/v1/auth/reset-password", post(reset_password))
+        .route("/v1/auth/verify-email", post(verify_email))
+        .route("/v1/auth/resend-verification", post(resend_verification))
+        .route_layer(middleware::from_fn_with_state(
+            state.clone(),
+            rate_limit_register,
+        ));
+
     Router::new()
         // Public routes (no rate limit needed)
         .route("/v1/auth/config", get(get_auth_config))
@@ -295,6 +343,7 @@ pub fn routes(state: BuiltinAuthBackend) -> Router {
         .merge(login_route)
         .merge(register_route)
         .merge(refresh_route)
+        .merge(recovery_routes)
         .with_state(state)
 }
 
@@ -553,6 +602,13 @@ pub async fn register(
     {
         tracing::warn!(error = %e, "Failed to ensure default org harnesses (non-fatal)");
     }
+
+    // Email verification: on successful signup, issue a single-use verification
+    // token and email a confirmation link. Best-effort — a delivery failure or
+    // unconfigured email provider must never fail registration, so the user can
+    // still log in and verify later via /v1/auth/resend-verification. Called
+    // before `user.email` is moved into `auth_user` below.
+    issue_verification_email(&state, user.id, &user.email).await;
 
     let organizations = builtin::fetch_user_organizations(&state.db, user.id)
         .await
@@ -1009,6 +1065,262 @@ pub async fn oauth_callback(
     // Redirect to frontend (different origin in dev)
     let redirect_url = format!("{}/", state.config.frontend_url.trim_end_matches('/'));
     Ok((jar, Redirect::to(&redirect_url)))
+}
+
+// ============================================================================
+// Password reset + email verification (native auth)
+// ============================================================================
+//
+// Token model: each emailed link carries a 32-byte random token (hex). Only its
+// SHA-256 hash is persisted (reusing `hash_invite_token`); the raw token never
+// touches the database. Tokens are single-use and short-lived (claimed via an
+// atomic `consume_*` UPDATE). Both "start" endpoints are enumeration-safe: they
+// always return 200 with a generic body whether or not the email is registered,
+// so an attacker cannot use them to discover accounts. Email delivery is
+// best-effort — a disabled/unconfigured sender or a transport failure is logged
+// but never surfaced, matching the org-invitation delivery contract.
+
+/// Password reset links are valid for one hour: long enough to act on the
+/// email, short enough to bound the value of a leaked link.
+const PASSWORD_RESET_TTL: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+/// Verification links are valid for 24 hours so a new user has ample time.
+const EMAIL_VERIFICATION_TTL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
+/// Token entropy: 32 random bytes, hex-encoded into the link.
+const RECOVERY_TOKEN_BYTES: usize = 32;
+
+/// Generate a fresh recovery token and its storage hash. The raw token is shown
+/// once (embedded in the emailed URL) and never persisted.
+fn generate_recovery_token() -> (String, String) {
+    let mut rng = rand::rng();
+    let bytes: [u8; RECOVERY_TOKEN_BYTES] = rng.random();
+    let token = hex::encode(bytes);
+    let hash = crate::api::org_invitations::hash_invite_token(&token);
+    (token, hash)
+}
+
+/// True when this account authenticates with a local password (vs OAuth-only).
+/// Password reset and verification only make sense for password accounts.
+fn is_local_password_user(user: &crate::storage::models::UserRow) -> bool {
+    user.password_hash.is_some()
+        || user.auth_provider.as_deref() == Some("local")
+        || user.auth_provider.is_none()
+}
+
+/// Best-effort send of the password-reset email. Never errors; delivery
+/// problems are logged so a missing/disabled sender does not break the flow.
+async fn send_password_reset_email(state: &BuiltinAuthBackend, to: &str, raw_token: &str) {
+    let url = format!(
+        "{}/reset-password?token={raw_token}",
+        state.config.frontend_url.trim_end_matches('/')
+    );
+    let subject = "Reset your Everruns password";
+    let text = format!(
+        "We received a request to reset your Everruns password.\n\nReset it here:\n{url}\n\nThis link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email."
+    );
+    let html = format!(
+        "<p>We received a request to reset your Everruns password.</p>\
+         <p><a href=\"{url}\">Reset your password</a></p>\
+         <p>This link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email.</p>"
+    );
+    deliver_account_email(state, to, subject, text, html).await;
+}
+
+/// Best-effort send of the email-verification email.
+async fn send_verification_email(state: &BuiltinAuthBackend, to: &str, raw_token: &str) {
+    let url = format!(
+        "{}/verify-email?token={raw_token}",
+        state.config.frontend_url.trim_end_matches('/')
+    );
+    let subject = "Verify your Everruns email";
+    let text = format!(
+        "Welcome to Everruns!\n\nPlease confirm your email address:\n{url}\n\nIf you didn't create an Everruns account, you can ignore this email."
+    );
+    let html = format!(
+        "<p>Welcome to <strong>Everruns</strong>!</p>\
+         <p>Please confirm your email address:</p>\
+         <p><a href=\"{url}\">Verify your email</a></p>\
+         <p>If you didn't create an Everruns account, you can ignore this email.</p>"
+    );
+    deliver_account_email(state, to, subject, text, html).await;
+}
+
+/// Shared best-effort delivery. The raw token is the only secret in the URL and
+/// is generated server-side (hex), so no user-controlled value is interpolated
+/// into the HTML here — escaping is therefore unnecessary.
+async fn deliver_account_email(
+    state: &BuiltinAuthBackend,
+    to: &str,
+    subject: &str,
+    text: String,
+    html: String,
+) {
+    use everruns_core::{EmailError, EmailMessage};
+    let sender = state.platform_definition.email_sender();
+    let message = EmailMessage::basic(to, subject, text, html);
+    match sender.send_email(message).await {
+        Ok(_) => {}
+        // Disabled/unconfigured sender: expected in OSS without an email
+        // provider. Not an error condition.
+        Err(EmailError::Configuration(_)) => {
+            tracing::debug!("account email not sent: email delivery is not configured");
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "account recovery email delivery failed");
+        }
+    }
+}
+
+/// POST /v1/auth/forgot-password - Begin a password reset.
+///
+/// Enumeration-safe: always returns 200 `{ "ok": true }`. If a local password
+/// account exists for the email, a single-use reset token (1h TTL) is created
+/// and emailed. OAuth-only accounts are skipped silently.
+pub async fn forgot_password(
+    State(state): State<BuiltinAuthBackend>,
+    Json(req): Json<EmailOnlyRequest>,
+) -> Json<OkResponse> {
+    if let Ok(Some(user)) = state.db.get_user_by_email(&req.email).await
+        && is_local_password_user(&user)
+    {
+        let (raw_token, token_hash) = generate_recovery_token();
+        let expires_at = Utc::now()
+            + Duration::from_std(PASSWORD_RESET_TTL).unwrap_or_else(|_| Duration::hours(1));
+        match state
+            .db
+            .create_password_reset_token(user.id, &token_hash, expires_at)
+            .await
+        {
+            Ok(()) => send_password_reset_email(&state, &user.email, &raw_token).await,
+            Err(e) => tracing::error!(error = %e, "failed to create password reset token"),
+        }
+    }
+    // Generic response regardless of outcome — never reveal account existence.
+    OkResponse::ok()
+}
+
+/// POST /v1/auth/reset-password - Complete a password reset.
+///
+/// Consumes the token (atomic single-use), enforces the same password policy as
+/// registration, updates the hash, and revokes all refresh tokens so any
+/// previously stolen sessions are invalidated.
+pub async fn reset_password(
+    State(state): State<BuiltinAuthBackend>,
+    Json(req): Json<ResetPasswordRequest>,
+) -> Result<Json<OkResponse>, AuthError> {
+    // Validate password before consuming the token so a too-short password does
+    // not burn a single-use token.
+    if req.password.chars().count() < PASSWORD_MIN_LENGTH {
+        return Err(AuthError::unprocessable(
+            "Password must be at least 8 characters",
+        ));
+    }
+
+    let token_hash = crate::api::org_invitations::hash_invite_token(&req.token);
+    let user_id = state
+        .db
+        .consume_password_reset_token(&token_hash)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to consume password reset token");
+            AuthError::internal("Password reset failed")
+        })?
+        // Invalid / expired / already-used: generic 400, no detail.
+        .ok_or_else(|| AuthError::bad_request("Invalid or expired reset token"))?;
+
+    let password_hash = hash_password(&req.password).map_err(|e| {
+        tracing::error!(error = %e, "password hashing error during reset");
+        AuthError::internal("Password reset failed")
+    })?;
+
+    state
+        .db
+        .update_user(
+            user_id,
+            crate::storage::models::UpdateUser {
+                password_hash: Some(password_hash),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to update password during reset");
+            AuthError::internal("Password reset failed")
+        })?;
+
+    // Revoke all refresh tokens: a reset implies the account may be compromised,
+    // so existing sessions must not survive it.
+    if let Err(e) = state.db.delete_user_refresh_tokens(user_id).await {
+        tracing::warn!(error = %e, "failed to revoke refresh tokens after password reset");
+    }
+
+    Ok(OkResponse::ok())
+}
+
+/// POST /v1/auth/verify-email - Mark the user's email verified.
+pub async fn verify_email(
+    State(state): State<BuiltinAuthBackend>,
+    Json(req): Json<VerifyEmailRequest>,
+) -> Result<Json<OkResponse>, AuthError> {
+    let token_hash = crate::api::org_invitations::hash_invite_token(&req.token);
+    let user_id = state
+        .db
+        .consume_email_verification_token(&token_hash)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to consume email verification token");
+            AuthError::internal("Email verification failed")
+        })?
+        .ok_or_else(|| AuthError::bad_request("Invalid or expired verification token"))?;
+
+    state
+        .db
+        .update_user(
+            user_id,
+            crate::storage::models::UpdateUser {
+                email_verified: Some(true),
+                ..Default::default()
+            },
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to mark email verified");
+            AuthError::internal("Email verification failed")
+        })?;
+
+    Ok(OkResponse::ok())
+}
+
+/// POST /v1/auth/resend-verification - Re-send a verification email.
+///
+/// Enumeration-safe like `forgot_password`. Only issues a token for an existing
+/// local account whose email is not already verified.
+pub async fn resend_verification(
+    State(state): State<BuiltinAuthBackend>,
+    Json(req): Json<EmailOnlyRequest>,
+) -> Json<OkResponse> {
+    if let Ok(Some(user)) = state.db.get_user_by_email(&req.email).await
+        && is_local_password_user(&user)
+        && !user.email_verified
+    {
+        issue_verification_email(&state, user.id, &user.email).await;
+    }
+    OkResponse::ok()
+}
+
+/// Create + send a verification token for a user. Best-effort; logs on failure.
+/// Shared by `register` (auto-send on signup) and `resend_verification`.
+async fn issue_verification_email(state: &BuiltinAuthBackend, user_id: Uuid, email: &str) {
+    let (raw_token, token_hash) = generate_recovery_token();
+    let expires_at = Utc::now()
+        + Duration::from_std(EMAIL_VERIFICATION_TTL).unwrap_or_else(|_| Duration::hours(24));
+    match state
+        .db
+        .create_email_verification_token(user_id, &token_hash, expires_at)
+        .await
+    {
+        Ok(()) => send_verification_email(state, email, &raw_token).await,
+        Err(e) => tracing::error!(error = %e, "failed to create email verification token"),
+    }
 }
 
 /// Helper: Generate token response with cookies
@@ -1518,5 +1830,244 @@ mod oauth_state_tests {
         let remove_cookie = Cookie::build(OAUTH_STATE_COOKIE).path("/").build();
         assert_eq!(remove_cookie.name(), "oauth_state");
         assert_eq!(remove_cookie.path(), Some("/"));
+    }
+
+    // ========================================================================
+    // Password reset + email verification
+    // ========================================================================
+
+    use crate::auth::config::AuthConfig;
+    use crate::storage::StorageBackend;
+    use crate::storage::models::CreateUserRow;
+    use std::sync::Arc;
+
+    fn test_backend() -> BuiltinAuthBackend {
+        BuiltinAuthBackend::new(
+            AuthConfig::default(),
+            Arc::new(StorageBackend::in_memory()),
+            Arc::new(crate::platform::oss_platform_definition()),
+        )
+    }
+
+    async fn seed_local_user(db: &StorageBackend, email: &str, password: &str) -> Uuid {
+        let user = db
+            .create_user(CreateUserRow {
+                email: email.to_string(),
+                name: "Test User".to_string(),
+                avatar_url: None,
+                roles: vec!["user".to_string()],
+                password_hash: Some(hash_password(password).unwrap()),
+                email_verified: false,
+                auth_provider: Some("local".to_string()),
+                auth_provider_id: None,
+                external_id: None,
+            })
+            .await
+            .expect("create user");
+        user.id
+    }
+
+    #[tokio::test]
+    async fn password_reset_token_create_consume_is_single_use() {
+        let db = StorageBackend::in_memory();
+        let user_id = seed_local_user(&db, "reset@example.com", "password123").await;
+        let (raw, hash) = generate_recovery_token();
+        db.create_password_reset_token(user_id, &hash, Utc::now() + Duration::hours(1))
+            .await
+            .unwrap();
+
+        // Happy path: first consume returns the owner.
+        let hash_again = crate::api::org_invitations::hash_invite_token(&raw);
+        assert_eq!(
+            db.consume_password_reset_token(&hash_again).await.unwrap(),
+            Some(user_id)
+        );
+        // Single-use: second consume returns None.
+        assert_eq!(
+            db.consume_password_reset_token(&hash_again).await.unwrap(),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn password_reset_token_expired_and_unknown_return_none() {
+        let db = StorageBackend::in_memory();
+        let user_id = seed_local_user(&db, "exp@example.com", "password123").await;
+        let (raw, hash) = generate_recovery_token();
+        // Already expired.
+        db.create_password_reset_token(user_id, &hash, Utc::now() - Duration::minutes(1))
+            .await
+            .unwrap();
+        let hash_again = crate::api::org_invitations::hash_invite_token(&raw);
+        assert_eq!(
+            db.consume_password_reset_token(&hash_again).await.unwrap(),
+            None
+        );
+        // Unknown token.
+        assert_eq!(
+            db.consume_password_reset_token("deadbeef").await.unwrap(),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn email_verification_token_create_consume_is_single_use() {
+        let db = StorageBackend::in_memory();
+        let user_id = seed_local_user(&db, "verify@example.com", "password123").await;
+        let (raw, hash) = generate_recovery_token();
+        db.create_email_verification_token(user_id, &hash, Utc::now() + Duration::hours(1))
+            .await
+            .unwrap();
+        let hash_again = crate::api::org_invitations::hash_invite_token(&raw);
+        assert_eq!(
+            db.consume_email_verification_token(&hash_again)
+                .await
+                .unwrap(),
+            Some(user_id)
+        );
+        assert_eq!(
+            db.consume_email_verification_token(&hash_again)
+                .await
+                .unwrap(),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn reset_password_updates_hash_and_revokes_refresh_tokens() {
+        let state = test_backend();
+        let db = state.db.clone();
+        let user_id = seed_local_user(&db, "rp@example.com", "oldpassword").await;
+
+        // A live refresh token that the reset must revoke.
+        db.create_refresh_token(CreateRefreshTokenRow {
+            user_id,
+            token_hash: "some-refresh-hash".to_string(),
+            expires_at: Utc::now() + Duration::days(30),
+        })
+        .await
+        .unwrap();
+
+        let (raw, hash) = generate_recovery_token();
+        db.create_password_reset_token(user_id, &hash, Utc::now() + Duration::hours(1))
+            .await
+            .unwrap();
+
+        let _ = reset_password(
+            State(state.clone()),
+            Json(ResetPasswordRequest {
+                token: raw,
+                password: "newpassword".to_string(),
+            }),
+        )
+        .await
+        .expect("reset should succeed");
+
+        let user = db.get_user(user_id).await.unwrap().unwrap();
+        let stored = user.password_hash.unwrap();
+        // Old password no longer verifies; new one does.
+        assert!(!verify_password("oldpassword", &stored).unwrap());
+        assert!(verify_password("newpassword", &stored).unwrap());
+        // Refresh tokens were revoked.
+        assert_eq!(
+            db.consume_refresh_token_by_hash("some-refresh-hash")
+                .await
+                .unwrap()
+                .map(|t| t.user_id),
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn reset_password_rejects_invalid_token() {
+        let state = test_backend();
+        let err = reset_password(
+            State(state),
+            Json(ResetPasswordRequest {
+                token: "nope".to_string(),
+                password: "newpassword".to_string(),
+            }),
+        )
+        .await
+        .expect_err("invalid token must be rejected");
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn reset_password_rejects_short_password() {
+        let state = test_backend();
+        let err = reset_password(
+            State(state),
+            Json(ResetPasswordRequest {
+                token: "whatever".to_string(),
+                password: "short".to_string(),
+            }),
+        )
+        .await
+        .expect_err("short password must be rejected");
+        assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn verify_email_sets_email_verified() {
+        let state = test_backend();
+        let db = state.db.clone();
+        let user_id = seed_local_user(&db, "ve@example.com", "password123").await;
+        assert!(!db.get_user(user_id).await.unwrap().unwrap().email_verified);
+
+        let (raw, hash) = generate_recovery_token();
+        db.create_email_verification_token(user_id, &hash, Utc::now() + Duration::hours(1))
+            .await
+            .unwrap();
+
+        let _ = verify_email(
+            State(state.clone()),
+            Json(VerifyEmailRequest { token: raw }),
+        )
+        .await
+        .expect("verify should succeed");
+
+        assert!(db.get_user(user_id).await.unwrap().unwrap().email_verified);
+    }
+
+    #[tokio::test]
+    async fn verify_email_rejects_invalid_token() {
+        let state = test_backend();
+        let err = verify_email(
+            State(state),
+            Json(VerifyEmailRequest {
+                token: "bad".to_string(),
+            }),
+        )
+        .await
+        .expect_err("invalid token must be rejected");
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn forgot_password_is_enumeration_safe_for_unknown_email() {
+        let state = test_backend();
+        // No user exists; must still return 200 ok without error.
+        let resp = forgot_password(
+            State(state),
+            Json(EmailOnlyRequest {
+                email: "ghost@example.com".to_string(),
+            }),
+        )
+        .await;
+        assert!(resp.0.ok);
+    }
+
+    #[tokio::test]
+    async fn resend_verification_is_enumeration_safe_for_unknown_email() {
+        let state = test_backend();
+        let resp = resend_verification(
+            State(state),
+            Json(EmailOnlyRequest {
+                email: "ghost@example.com".to_string(),
+            }),
+        )
+        .await;
+        assert!(resp.0.ok);
     }
 }

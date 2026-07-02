@@ -350,6 +350,56 @@ impl StorageBackend {
     }
 
     // ============================================
+    // Password Reset / Email Verification Tokens
+    // ============================================
+    // Hashed, single-use, short-TTL tokens for native-auth account recovery.
+    // The raw token is emailed once and never stored; only its SHA-256 hash is
+    // persisted. `consume_*` is race-safe (single atomic UPDATE) like
+    // `consume_refresh_token_by_hash`.
+
+    pub async fn create_password_reset_token(
+        &self,
+        user_id: Uuid,
+        token_hash: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<()> {
+        dispatch!(
+            self,
+            create_password_reset_token,
+            user_id,
+            token_hash,
+            expires_at
+        )
+    }
+
+    /// Atomically claim a password reset token. Returns the owning `user_id`
+    /// only if a matching, unexpired, not-yet-used token exists; otherwise None.
+    pub async fn consume_password_reset_token(&self, token_hash: &str) -> Result<Option<Uuid>> {
+        dispatch!(self, consume_password_reset_token, token_hash)
+    }
+
+    pub async fn create_email_verification_token(
+        &self,
+        user_id: Uuid,
+        token_hash: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<()> {
+        dispatch!(
+            self,
+            create_email_verification_token,
+            user_id,
+            token_hash,
+            expires_at
+        )
+    }
+
+    /// Atomically claim an email verification token. Returns the owning
+    /// `user_id` only if a matching, unexpired, not-yet-used token exists.
+    pub async fn consume_email_verification_token(&self, token_hash: &str) -> Result<Option<Uuid>> {
+        dispatch!(self, consume_email_verification_token, token_hash)
+    }
+
+    // ============================================
     // OAuth Clients (MCP OAuth 2.1)
     // ============================================
 

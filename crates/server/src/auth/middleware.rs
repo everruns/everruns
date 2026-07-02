@@ -67,6 +67,17 @@ impl AuthError {
         }
     }
 
+    /// Generic 400 for malformed/invalid input that is not an auth failure.
+    /// Used by account-recovery endpoints for invalid/expired/used tokens, where
+    /// a generic message avoids leaking which condition was hit.
+    pub fn bad_request(message: &str) -> Self {
+        Self {
+            error: message.to_string(),
+            status: StatusCode::BAD_REQUEST,
+            code: Some("bad_request"),
+        }
+    }
+
     /// Internal server error. Use for storage/DB or other server-side failures
     /// so clients can distinguish a real auth failure (401) from a transient
     /// server error. The message must stay generic — never leak internals.

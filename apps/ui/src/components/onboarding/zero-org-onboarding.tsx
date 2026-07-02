@@ -1,5 +1,5 @@
 /**
- * OSS-owned zero-organization onboarding surface.
+ * OSS-owned zero-organization onboarding surface (step 1 of the onboarding arc).
  *
  * Decision: SaaS-style wrappers compose this surface through extension points
  * instead of forking the whole page. The OSS component owns the layout, the
@@ -10,18 +10,26 @@
  *    (e.g. "Verify your email"), or still loading.
  *  - `useCreateOrg` overrides the create mutation while keeping the OSS layout,
  *    current-org selection, and setup redirect.
+ *  - `suggestedName` lets a wrapper prefill the org name (SaaS derives this from
+ *    the user's work-email domain). OSS passes nothing — self-host has no email
+ *    domain to derive from. When provided, the input is prefilled and an
+ *    "Auto-filled from …" chip is shown; the field stays fully editable.
+ *
+ * Renders inside `OnboardingShell` (Frame 4 of the onboarding design): explainer
+ * copy, the org-name form, and an informational "invite teammates later" card.
  */
 "use client";
 
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Loader2 } from "lucide-react";
+import { ArrowRight, Check, Loader2, Users } from "lucide-react";
 import { useCreateOrganization } from "@/hooks/use-organizations";
 import { useOrg } from "@/providers/org-provider";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { OnboardingShell } from "./onboarding-shell";
+import { OSS_ONBOARDING_STEPS } from "./steps";
 
 /** State returned by a zero-org policy hook. */
 export type ZeroOrgPolicyState =
@@ -50,17 +58,26 @@ export interface ZeroOrgOnboardingProps {
    * `{ id, name }`.
    */
   useCreateOrg?: typeof useCreateOrganization;
+  /**
+   * Optional pre-fill for the org-name input (e.g. derived from a work-email
+   * domain by a SaaS wrapper). Shows an "Auto-filled from …" chip; still fully
+   * editable. OSS passes nothing.
+   */
+  suggestedName?: string;
 }
 
 export function ZeroOrgOnboarding({
   usePolicy = useReadyZeroOrgPolicy,
   useCreateOrg = useCreateOrganization,
+  suggestedName,
 }: ZeroOrgOnboardingProps = {}) {
   const router = useRouter();
   const { setCurrentOrg } = useOrg();
   const createOrg = useCreateOrg();
   const policy = usePolicy();
-  const [name, setName] = useState("");
+  const [name, setName] = useState(suggestedName ?? "");
+  // Show the auto-filled chip only while the prefilled value is unchanged.
+  const showAutoFill = !!suggestedName && name === suggestedName;
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -78,56 +95,83 @@ export function ZeroOrgOnboarding({
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background bg-brand-dots p-4">
-      <Card className="w-full max-w-md p-8">
-        <div className="flex flex-col items-center gap-2 text-center">
-          <div className="flex h-12 w-12 items-center justify-center bg-primary/10">
-            <Building2 className="h-6 w-6 text-primary" />
-          </div>
-          <h1 className="text-xl font-semibold">Create your organization</h1>
-          <p className="text-sm text-muted-foreground">
-            Organizations own your agents, sessions, and settings. Create one to get started.
+      <OnboardingShell
+        steps={OSS_ONBOARDING_STEPS}
+        currentIndex={0}
+        stepLabel="Step 1 of 3"
+        brand={{
+          eyebrow: "Step 1 / 3",
+          headline: "Your workspace for agents, harnesses, and durable runs.",
+        }}
+      >
+        <div className="max-w-[420px]">
+          <h1 className="text-[28px] font-semibold tracking-[-0.02em]">Create your organisation</h1>
+          <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+            An organisation is your team&rsquo;s shared workspace. Agents, harnesses, sessions, and
+            settings all live here.
           </p>
-        </div>
 
-        <div className="mt-8">
-          {policy.status === "loading" ? (
-            <div className="flex justify-center py-6">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : policy.status === "blocked" ? (
-            <div className="space-y-4 text-center" role="alert">
-              <h2 className="text-base font-semibold">{policy.title}</h2>
-              {policy.body && <div className="text-sm text-muted-foreground">{policy.body}</div>}
-              {policy.actions && <div className="flex justify-center gap-2">{policy.actions}</div>}
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="onboarding-org-name">Organization name</Label>
-                <Input
-                  id="onboarding-org-name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  placeholder="Acme Inc."
-                  required
-                />
+          <div className="mt-7">
+            {policy.status === "loading" ? (
+              <div className="flex justify-center py-6">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
               </div>
-              {createOrg.isError && (
-                <p className="text-sm text-destructive">
-                  Failed to create organization: {createOrg.error.message}
-                </p>
-              )}
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={createOrg.isPending || !name.trim()}
-              >
-                {createOrg.isPending ? "Creating..." : "Create organization"}
-              </Button>
-            </form>
-          )}
+            ) : policy.status === "blocked" ? (
+              <div className="space-y-4" role="alert">
+                <h2 className="text-base font-semibold">{policy.title}</h2>
+                {policy.body && <div className="text-sm text-muted-foreground">{policy.body}</div>}
+                {policy.actions && <div className="flex gap-2">{policy.actions}</div>}
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="onboarding-org-name">Organisation name</Label>
+                  <Input
+                    id="onboarding-org-name"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    placeholder="Acme Inc."
+                    required
+                  />
+                  {showAutoFill && (
+                    <span className="inline-flex items-center gap-1.5 border border-accent/40 bg-accent/[0.12] px-2 py-1 font-mono text-[11px] text-accent-foreground">
+                      <Check className="icon-sharp h-3 w-3" strokeWidth={2.5} />
+                      Auto-filled from {suggestedName}
+                    </span>
+                  )}
+                </div>
+
+                {/* Informational only — invites happen later from Settings. */}
+                <div className="flex items-center gap-3 border p-3.5">
+                  <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center bg-primary text-primary-foreground">
+                    <Users className="icon-sharp h-3 w-3" strokeWidth={2.5} />
+                  </span>
+                  <div>
+                    <div className="text-[13px] font-medium">Invite teammates later</div>
+                    <div className="text-xs text-muted-foreground">
+                      You can add people anytime from Settings.
+                    </div>
+                  </div>
+                </div>
+
+                {createOrg.isError && (
+                  <p className="text-sm text-destructive">
+                    Failed to create organisation: {createOrg.error.message}
+                  </p>
+                )}
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={createOrg.isPending || !name.trim()}
+                >
+                  {createOrg.isPending ? "Creating..." : "Create organisation"}
+                  {!createOrg.isPending && <ArrowRight className="ml-2 h-4 w-4" />}
+                </Button>
+              </form>
+            )}
+          </div>
         </div>
-      </Card>
+      </OnboardingShell>
     </div>
   );
 }
