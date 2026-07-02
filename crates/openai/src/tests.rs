@@ -101,42 +101,12 @@ mod driver_tests {
 
 #[cfg(test)]
 mod provider_tests {
-    use crate::types::{ChatMessage, LlmConfig, MessageRole};
+    use crate::types::{ChatMessage, MessageRole};
 
-    #[test]
-    fn test_message_serialization() {
-        let msg = ChatMessage {
-            role: MessageRole::User,
-            content: "Test message".to_string(),
-            tool_calls: None,
-            tool_call_id: None,
-        };
-
-        let json = serde_json::to_string(&msg).expect("Failed to serialize");
-        assert!(json.contains("user"));
-        assert!(json.contains("Test message"));
-
-        let deserialized: ChatMessage = serde_json::from_str(&json).expect("Failed to deserialize");
-        assert_eq!(deserialized.content, msg.content);
-    }
-
-    #[test]
-    fn test_config_serialization() {
-        let config = LlmConfig {
-            model: "gpt-5.2".to_string(),
-            temperature: Some(0.5),
-            max_tokens: Some(500),
-            system_prompt: None,
-            tools: Vec::new(),
-        };
-
-        let json = serde_json::to_string(&config).expect("Failed to serialize");
-        let deserialized: LlmConfig = serde_json::from_str(&json).expect("Failed to deserialize");
-
-        assert_eq!(deserialized.model, config.model);
-        assert_eq!(deserialized.temperature, config.temperature);
-        assert_eq!(deserialized.max_tokens, config.max_tokens);
-    }
+    // Trivial serde round-trips of derive-only structs (`ChatMessage`,
+    // `LlmConfig`) were removed: they only re-asserted fields set on the line
+    // above and exercised no provider logic. Real request/response shaping is
+    // covered by the conversion and wiremock tests below.
 
     #[test]
     fn test_empty_content_message() {

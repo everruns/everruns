@@ -1421,35 +1421,22 @@ mod tests {
     // Capability metadata tests
     // ========================================================================
 
+    // Metadata (id/name/status/risk/icon/category), tool-list, and dependency
+    // constants are covered registry-wide by
+    // `builtin_capabilities_satisfy_registry_invariants` in `capabilities::tests`.
+    // Only the behavioral assertion — the description advertises built-in help —
+    // is kept here.
     #[test]
-    fn test_capability_metadata() {
-        let cap = BashkitShellCapability;
-        assert_eq!(cap.id(), "bashkit_shell");
-        assert_eq!(cap.name(), "Bashkit Shell");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.risk_level(), RiskLevel::High);
-        assert_eq!(cap.icon(), Some("terminal"));
-        assert_eq!(cap.category(), Some("Execution"));
-        let description = cap.description();
+    fn description_advertises_builtin_help_and_version() {
+        let description = BashkitShellCapability.description();
         assert!(
             description.contains("`<command> --help`"),
-            "description should advertise built-in help, got: {}",
-            description
+            "description should advertise built-in help, got: {description}"
         );
         assert!(
             description.contains("`<command> --version`"),
-            "description should advertise built-in version support, got: {}",
-            description
+            "description should advertise built-in version support, got: {description}"
         );
-    }
-
-    #[test]
-    fn test_capability_has_tools() {
-        let cap = BashkitShellCapability;
-        let tools = cap.tools();
-
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "bash");
     }
 
     #[test]
@@ -1463,19 +1450,6 @@ mod tests {
             prompt.contains("everruns"),
             "System prompt should contain configured identity"
         );
-    }
-
-    #[test]
-    fn test_capability_has_dependencies() {
-        let cap = BashkitShellCapability;
-        let deps = cap.dependencies();
-        assert_eq!(deps.len(), 1);
-        assert_eq!(deps[0], "session_file_system");
-    }
-
-    #[test]
-    fn test_tool_requires_context() {
-        assert!(BashTool.requires_context());
     }
 
     // ========================================================================

@@ -2782,6 +2782,74 @@ mod tests {
         assert_eq!(noop.status(), CapabilityStatus::Available);
     }
 
+    /// Registry-wide invariants for every built-in capability. This replaces the
+    /// per-capability `test_capability_metadata` / `has_tools` / `in_registry`
+    /// boilerplate that only restated hardcoded constants: instead of pinning
+    /// each id/name/tool-list literal, it enforces the properties that actually
+    /// matter across the whole set and would catch a real defect (a blank id, a
+    /// duplicate or dangling dependency, colliding tool names) that constant
+    /// mirrors never could.
+    #[test]
+    fn builtin_capabilities_satisfy_registry_invariants() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        for cap in registry.list() {
+            let id = cap.id();
+            assert!(!id.is_empty(), "capability has an empty id");
+            assert!(
+                !cap.name().trim().is_empty(),
+                "capability `{id}` has an empty name"
+            );
+
+            // The registration key is `id()`, so every capability must resolve
+            // by its own id (guards against an id()/registration mismatch).
+            assert!(
+                registry.get(id).is_some(),
+                "capability `{id}` does not resolve by its own id"
+            );
+
+            // Every declared dependency must resolve to a registered capability
+            // (or alias) in the same registry — a typo or removed dependency
+            // would otherwise silently break dependency resolution at runtime.
+            for dep in cap.dependencies() {
+                assert!(
+                    registry.get(dep).is_some(),
+                    "capability `{id}` depends on `{dep}`, which is not registered"
+                );
+            }
+
+            // Tool names must be non-empty and unique within a capability, so
+            // dispatch by name is unambiguous.
+            let mut seen = std::collections::HashSet::new();
+            for tool in cap.tools() {
+                let name = tool.name().to_string();
+                assert!(
+                    !name.is_empty(),
+                    "capability `{id}` exposes a tool with an empty name"
+                );
+                assert!(
+                    seen.insert(name.clone()),
+                    "capability `{id}` exposes duplicate tool name `{name}`"
+                );
+            }
+
+            // Advertised tool definitions must likewise carry non-empty, unique
+            // names so the tool schema a client sees is unambiguous.
+            let mut def_seen = std::collections::HashSet::new();
+            for def in cap.tool_definitions() {
+                let name = def.name().to_string();
+                assert!(
+                    !name.is_empty(),
+                    "capability `{id}` advertises a tool definition with an empty name"
+                );
+                assert!(
+                    def_seen.insert(name.clone()),
+                    "capability `{id}` advertises duplicate tool definition name `{name}`"
+                );
+            }
+        }
+    }
+
     #[test]
     fn test_capability_registry_blueprint_with_capability() {
         struct BlueprintProviderCapability;
