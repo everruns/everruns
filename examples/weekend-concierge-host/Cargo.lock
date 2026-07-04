@@ -859,7 +859,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.17.2"
+version = "0.17.3"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -901,7 +901,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-mcp"
-version = "0.17.2"
+version = "0.17.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -914,7 +914,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-runtime"
-version = "0.17.2"
+version = "0.17.3"
 dependencies = [
  "async-trait",
  "chrono",
@@ -949,9 +949,9 @@ checksum = "9f1f227452a390804cdb637b74a86990f2a7d7ba4b7d5693aac9b4dd6defd8d6"
 
 [[package]]
 name = "fetchkit"
-version = "0.4.0"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "82150b89249abf4f7a6bce136567c795803faa601fcb041157b7a43f4c1e856b"
+checksum = "0402bf4c57789d00a50f3b9a6ead70eb991c95021669bc68c8b9d7c73af78c34"
 dependencies = [
  "async-trait",
  "base64",
