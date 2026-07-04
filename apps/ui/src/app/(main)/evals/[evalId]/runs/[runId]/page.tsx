@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, Square, ExternalLink, ChevronRight, ChevronDown } from "lucide-react";
 import { TranscriptView } from "@/components/evals/transcript-view";
 import { RunResultsMatrix } from "@/components/evals/run-results-matrix";
+import { ShareRunButton } from "@/components/evals/share-run-button";
 import { normalizeScores, targetLabel } from "@/components/evals/eval-format";
 import type { EvalCaseResult, EvalRun, EvalRunStatus, EvalTarget } from "@/lib/api/types";
 
@@ -255,12 +256,15 @@ export default function EvalRunDetailPage({
             {run.model_override && <span>Model: {run.model_override}</span>}
           </div>
         </div>
-        {canCancel && (
-          <Button variant="destructive" onClick={handleCancel} disabled={cancelRun.isPending}>
-            <Square className="w-4 h-4 mr-2" />
-            {cancelRun.isPending ? "Cancelling..." : "Cancel Run"}
-          </Button>
-        )}
+        <div className="flex items-start gap-3">
+          <ShareRunButton evalId={evalId} runId={runId} />
+          {canCancel && (
+            <Button variant="destructive" onClick={handleCancel} disabled={cancelRun.isPending}>
+              <Square className="w-4 h-4 mr-2" />
+              {cancelRun.isPending ? "Cancelling..." : "Cancel Run"}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Summary cards */}

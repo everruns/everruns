@@ -2599,6 +2599,35 @@ pub struct EvalRunRow {
     pub updated_at: DateTime<Utc>,
 }
 
+/// A read-only share token for an eval run (migration 091). The raw token is
+/// never stored — only its hash. `revoked_at`/`expires_at` disable a link.
+#[derive(Debug, Clone, FromRow)]
+pub struct EvalRunShareTokenRow {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub public_id: String,
+    pub eval_run_id: Uuid,
+    pub token_hash: String,
+    pub token_prefix: String,
+    pub created_by: Option<Uuid>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for minting an eval-run share token.
+#[derive(Debug, Clone)]
+pub struct CreateEvalRunShareTokenRow {
+    pub public_id: String,
+    pub org_id: i64,
+    pub eval_run_id: Uuid,
+    pub token_hash: String,
+    pub token_prefix: String,
+    pub created_by: Option<Uuid>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
 /// Input for creating an eval run
 #[derive(Debug, Clone)]
 pub struct CreateEvalRunRow {

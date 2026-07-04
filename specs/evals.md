@@ -276,6 +276,27 @@ system. See `proposals/mira-results-publishing.md`.
 - Gated by `EVAL_IMPORT` (`OrgAgentsManage` only — no sessions are created, so
   unlike `EVAL_RUN` it does not require `OrgSessionsManage`).
 
+### Share links (read-only public views)
+
+A run can be shared read-only via an unguessable token, so results (matrix,
+transcript, comparison-friendly data) can be shown to people without an org
+seat. General-purpose and OSS-native; no separate public domain is required.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/evals/{eval_id}/runs/{run_id}/share` | Mint a link (returns the raw token once); revokes any prior active link |
+| `GET` | `/v1/evals/{eval_id}/runs/{run_id}/share` | Whether the run has an active link |
+| `DELETE` | `/v1/evals/{eval_id}/runs/{run_id}/share` | Revoke all links for the run |
+| `GET` | `/v1/public/eval-runs/{token}` | **Unauthenticated** read of the shared run (sanitized) |
+
+- Tokens (`evr_share_…`) are stored SHA-256-hashed like PATs — the raw token is
+  surfaced once. `revoked_at`/`expires_at` disable a link without deleting the
+  row (migration 091). At most one active link per run.
+- Mint/revoke require `EVAL_MANAGE`; the public read takes no auth extractor —
+  the token is the authorization (see `specs/public-endpoints.md`). The public
+  DTO is sanitized: no org/internal/session ids, no internal (session/app)
+  targets, no attribution env labels; unknown/revoked/expired ⇒ uniform 404.
+
 #### Run Limits (EVE-509)
 
 `POST /runs` enforces two limits at trigger time, returning HTTP 400 on violation:

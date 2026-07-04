@@ -5,16 +5,19 @@
 
 use crate::api::evals::{
     BulkUpdateEvalRunScoresRequest, CreateEvalCaseRequest, CreateEvalRequest, CreateEvalRunRequest,
-    ExternalScoreStatus, ImportEvalCaseEntry, ImportEvalRunRequest, UpdateEvalCaseRequest,
+    EvalRunShareLink, ExternalScoreStatus, ImportEvalCaseEntry, ImportEvalRunRequest,
+    PublicAttribution, PublicEvalCaseResult, PublicEvalRun, UpdateEvalCaseRequest,
     UpdateEvalRequest, UpdateEvalResultScoresRequest,
 };
+use crate::auth::share_token::{SHARE_PREFIX, generate_share_token, hash_share_token};
 use crate::domains::evals::limits::EvalLimits;
 use crate::domains::evals::runner::{EvalRunContext, spawn_eval_run};
 use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::storage::StorageBackend;
 use crate::storage::models::{
-    CreateEvalCaseRow, CreateEvalRow, CreateEvalRunError, CreateEvalRunRow, ImportEvalCaseInput,
-    ImportEvalRunInput, UpdateEvalCaseResultRow, UpdateEvalCaseRow, UpdateEvalRow,
+    CreateEvalCaseRow, CreateEvalRow, CreateEvalRunError, CreateEvalRunRow,
+    CreateEvalRunShareTokenRow, ImportEvalCaseInput, ImportEvalRunInput, UpdateEvalCaseResultRow,
+    UpdateEvalCaseRow, UpdateEvalRow,
 };
 use anyhow::Result;
 use everruns_core::eval::*;
@@ -862,6 +865,135 @@ impl EvalService {
     }
 
     // ============================================
+    // Share links (read-only public views)
+    // ============================================
+
+    /// Mint a read-only share link for a run. Revokes any prior active link so a
+    /// run has at most one live share. The raw token is returned once and stored
+    /// only hashed. See specs/evals.md, specs/public-endpoints.md.
+    pub async fn create_run_share(
+        &self,
+        caller: &Caller,
+        eval_public_id: &str,
+        run_public_id: &str,
+    ) -> Result<EvalRunShareLink> {
+        let run_row = self
+            .load_run_owned(caller, eval_public_id, run_public_id)
+            .await?;
+
+        // One active link per run: revoke the old before minting the new.
+        self.db
+            .revoke_eval_run_share_tokens(caller.org_id, run_row.id)
+            .await?;
+
+        let generated = generate_share_token();
+        let public_id = format!("evalshare_{:032x}", Uuid::now_v7().as_u128());
+        let row = self
+            .db
+            .create_eval_run_share_token(
+                caller.org_id,
+                CreateEvalRunShareTokenRow {
+                    public_id,
+                    org_id: caller.org_id,
+                    eval_run_id: run_row.id,
+                    token_hash: generated.token_hash,
+                    token_prefix: generated.token_prefix,
+                    created_by: None,
+                    expires_at: None,
+                },
+            )
+            .await?;
+
+        Ok(EvalRunShareLink {
+            token: generated.token,
+            token_prefix: row.token_prefix,
+            created_at: row.created_at,
+        })
+    }
+
+    /// Revoke every active share link for a run. Returns whether any were live.
+    pub async fn revoke_run_share(
+        &self,
+        caller: &Caller,
+        eval_public_id: &str,
+        run_public_id: &str,
+    ) -> Result<bool> {
+        let run_row = self
+            .load_run_owned(caller, eval_public_id, run_public_id)
+            .await?;
+        let revoked = self
+            .db
+            .revoke_eval_run_share_tokens(caller.org_id, run_row.id)
+            .await?;
+        Ok(revoked > 0)
+    }
+
+    /// Whether a run currently has an active share link (for the UI).
+    pub async fn run_has_active_share(
+        &self,
+        caller: &Caller,
+        eval_public_id: &str,
+        run_public_id: &str,
+    ) -> Result<bool> {
+        let run_row = self
+            .load_run_owned(caller, eval_public_id, run_public_id)
+            .await?;
+        self.db
+            .eval_run_has_active_share(caller.org_id, run_row.id)
+            .await
+    }
+
+    /// Resolve a share token to a sanitized, anonymous view of one run. The token
+    /// IS the authorization — no caller/org. Returns `None` for unknown, revoked,
+    /// or expired tokens so the handler answers a uniform 404 (no oracle).
+    pub async fn resolve_public_share(&self, token: &str) -> Result<Option<PublicEvalRun>> {
+        if !token.starts_with(SHARE_PREFIX) {
+            return Ok(None);
+        }
+        let hash = hash_share_token(token);
+        let Some(share) = self.db.get_eval_run_share_token_by_hash(&hash).await? else {
+            return Ok(None);
+        };
+        if share.revoked_at.is_some() {
+            return Ok(None);
+        }
+        if let Some(exp) = share.expires_at
+            && exp <= chrono::Utc::now()
+        {
+            return Ok(None);
+        }
+        let Some(run_row) = self.db.get_eval_run_by_id(share.eval_run_id).await? else {
+            return Ok(None);
+        };
+        let result_rows = self.db.list_eval_case_results(run_row.id).await?;
+        let cases = self.db.list_eval_cases(run_row.eval_id).await?;
+        Ok(Some(build_public_run(run_row, result_rows, &cases)))
+    }
+
+    /// Load a run verifying it belongs to the caller's org and the given eval.
+    async fn load_run_owned(
+        &self,
+        caller: &Caller,
+        eval_public_id: &str,
+        run_public_id: &str,
+    ) -> Result<crate::storage::models::EvalRunRow> {
+        let eval = self
+            .db
+            .get_eval_by_public_id(caller.org_id, eval_public_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("Eval"))?;
+        let run_row = self
+            .db
+            .get_eval_run_by_public_id(caller.org_id, run_public_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("EvalRun"))?;
+        if run_row.eval_id != eval.id {
+            return Err(ResourceNotFoundError::new("EvalRun").into());
+        }
+        Ok(run_row)
+    }
+
+    // ============================================
     // Helpers
     // ============================================
 
@@ -1041,6 +1173,94 @@ fn dataset_row_to_dataset(
         body: if include_body { row.body } else { None },
         created_at: row.created_at,
         updated_at: row.updated_at,
+    }
+}
+
+// ============================================
+// Public (share-link) sanitization
+// ============================================
+
+/// Build the sanitized public view of a run. Strips everything an anonymous
+/// viewer must not see: org/internal ids, session ids, internal (session/app)
+/// targets, and attribution env/labels. Keeps the shared content: statuses,
+/// scores, external target labels, and the normalized transcript/metrics.
+fn build_public_run(
+    run: crate::storage::models::EvalRunRow,
+    result_rows: Vec<crate::storage::models::EvalCaseResultRow>,
+    cases: &[crate::storage::models::EvalCaseRow],
+) -> PublicEvalRun {
+    let results = result_rows
+        .into_iter()
+        .map(|r| {
+            let case_name = cases
+                .iter()
+                .find(|c| c.id == r.eval_case_id)
+                .map(|c| c.name.clone());
+            public_result_row(r, case_name)
+        })
+        .collect();
+
+    PublicEvalRun {
+        id: run.public_id,
+        status: EvalRunStatus::from(run.status.as_str()),
+        source: EvalRunSource::from(run.source.as_str()),
+        attribution: run.attribution.and_then(sanitize_attribution),
+        summary: run.summary.and_then(|s| serde_json::from_value(s).ok()),
+        created_at: run.created_at,
+        completed_at: run.completed_at,
+        results,
+    }
+}
+
+fn public_result_row(
+    row: crate::storage::models::EvalCaseResultRow,
+    case_name: Option<String>,
+) -> PublicEvalCaseResult {
+    // Only expose label-only (External) targets. Session/App targets carry
+    // internal harness/agent/app ids and are dropped for the public view.
+    let target = row
+        .target_snapshot
+        .as_ref()
+        .and_then(|v| serde_json::from_value::<EvalTarget>(v.clone()).ok())
+        .filter(|t| matches!(t, EvalTarget::External { .. }));
+    // Transcript + metrics ride in the metadata envelope; expose only those two
+    // keys, never the raw envelope (which may carry other provenance).
+    let (transcript, metrics) = match &row.metadata {
+        Some(serde_json::Value::Object(m)) => {
+            (m.get("transcript").cloned(), m.get("metrics").cloned())
+        }
+        _ => (None, None),
+    };
+
+    PublicEvalCaseResult {
+        case_name,
+        target,
+        status: CaseResultStatus::from(row.status.as_str()),
+        scores: row.scores,
+        transcript,
+        metrics,
+        turns: row.turns.map(|v| v as u32),
+        latency_ms: row.latency_ms.map(|v| v as u64),
+        input_tokens: row.input_tokens.map(|v| v as u64),
+        output_tokens: row.output_tokens.map(|v| v as u64),
+        error_message: row.error_message,
+    }
+}
+
+/// Keep only the display fields of an external run's attribution (system,
+/// version, url). Drops `run_id` and the `metadata` bag (git/host/env labels).
+fn sanitize_attribution(v: serde_json::Value) -> Option<PublicAttribution> {
+    let obj = v.as_object()?;
+    let str_field = |k: &str| obj.get(k).and_then(|s| s.as_str()).map(String::from);
+    let att = PublicAttribution {
+        system: str_field("system"),
+        version: str_field("version"),
+        url: str_field("url"),
+    };
+    if att.system.is_none() && att.version.is_none() && att.url.is_none() {
+        None
+    } else {
+        Some(att)
     }
 }
 
@@ -1592,6 +1812,94 @@ mod tests {
         // And exactly two results (not four) — old ones were cascaded away.
         let result_rows = db.list_eval_case_results(run_rows[0].id).await.unwrap();
         assert_eq!(result_rows.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn share_link_resolves_sanitized_then_revokes() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let org_id = 9i64;
+        let caller = Caller::internal(org_id);
+        let svc = EvalService::new(db.clone());
+
+        let runs = svc
+            .import_run(&caller, import_request("mira-share-1", 0.0))
+            .await
+            .unwrap();
+        let run_pub = runs[0].public_id.to_string();
+        let evals = db.list_evals(org_id, None, false).await.unwrap();
+        let eval_pub = evals[0].public_id.to_string();
+
+        // Mint a link; the run now reports an active share.
+        let link = svc
+            .create_run_share(&caller, &eval_pub, &run_pub)
+            .await
+            .unwrap();
+        assert!(link.token.starts_with("evr_share_"));
+        assert!(
+            svc.run_has_active_share(&caller, &eval_pub, &run_pub)
+                .await
+                .unwrap()
+        );
+
+        // Public resolve returns the sanitized run.
+        let public = svc
+            .resolve_public_share(&link.token)
+            .await
+            .unwrap()
+            .expect("token resolves");
+        assert_eq!(public.id, run_pub);
+        assert_eq!(public.source, EvalRunSource::External);
+        let passed = public
+            .results
+            .iter()
+            .find(|r| r.status == CaseResultStatus::Passed)
+            .expect("a passed result");
+        // External (label-only) target is exposed and the transcript is present.
+        assert!(matches!(passed.target, Some(EvalTarget::External { .. })));
+        assert!(passed.transcript.is_some());
+
+        // Re-minting revokes the old link (one active link per run).
+        let link2 = svc
+            .create_run_share(&caller, &eval_pub, &run_pub)
+            .await
+            .unwrap();
+        assert!(
+            svc.resolve_public_share(&link.token)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            svc.resolve_public_share(&link2.token)
+                .await
+                .unwrap()
+                .is_some()
+        );
+
+        // Revoke → nothing resolves; unknown tokens are a quiet None (no oracle).
+        assert!(
+            svc.revoke_run_share(&caller, &eval_pub, &run_pub)
+                .await
+                .unwrap()
+        );
+        assert!(
+            svc.resolve_public_share(&link2.token)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            svc.resolve_public_share("evr_share_deadbeef")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            svc.resolve_public_share("not-a-token")
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[tokio::test]

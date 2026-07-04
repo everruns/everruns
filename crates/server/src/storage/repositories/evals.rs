@@ -855,4 +855,112 @@ impl Database {
         .await?;
         Ok(row)
     }
+
+    // ============================================
+    // Eval Run Share Tokens (migration 091)
+    // ============================================
+
+    pub async fn create_eval_run_share_token(
+        &self,
+        org_id: i64,
+        input: CreateEvalRunShareTokenRow,
+    ) -> Result<EvalRunShareTokenRow> {
+        let row = sqlx::query_as::<_, EvalRunShareTokenRow>(
+            r#"
+            INSERT INTO eval_run_share_tokens
+                (org_id, public_id, eval_run_id, token_hash, token_prefix, created_by, expires_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, org_id, public_id, eval_run_id, token_hash, token_prefix, created_by,
+                      expires_at, revoked_at, created_at, updated_at
+            "#,
+        )
+        .bind(org_id)
+        .bind(&input.public_id)
+        .bind(input.eval_run_id)
+        .bind(&input.token_hash)
+        .bind(&input.token_prefix)
+        .bind(input.created_by)
+        .bind(input.expires_at)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Revoke every currently-active share token for a run. Returns how many were
+    /// revoked. Org-scoped so one org can't revoke another's shares.
+    pub async fn revoke_eval_run_share_tokens(
+        &self,
+        org_id: i64,
+        eval_run_id: Uuid,
+    ) -> Result<u64> {
+        let result = sqlx::query(
+            r#"
+            UPDATE eval_run_share_tokens
+            SET revoked_at = NOW(), updated_at = NOW()
+            WHERE org_id = $1 AND eval_run_id = $2 AND revoked_at IS NULL
+            "#,
+        )
+        .bind(org_id)
+        .bind(eval_run_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected())
+    }
+
+    /// Whether a run currently has an active (non-revoked, non-expired) share.
+    pub async fn eval_run_has_active_share(&self, org_id: i64, eval_run_id: Uuid) -> Result<bool> {
+        let row: (bool,) = sqlx::query_as(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM eval_run_share_tokens
+                WHERE org_id = $1 AND eval_run_id = $2
+                  AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at > NOW())
+            )
+            "#,
+        )
+        .bind(org_id)
+        .bind(eval_run_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row.0)
+    }
+
+    /// Resolve a share token by its hash (public path — NOT org-scoped; the org
+    /// is read from the row). Returns the row even if revoked/expired so the
+    /// caller can distinguish and return a uniform 404.
+    pub async fn get_eval_run_share_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<EvalRunShareTokenRow>> {
+        let row = sqlx::query_as::<_, EvalRunShareTokenRow>(
+            r#"
+            SELECT id, org_id, public_id, eval_run_id, token_hash, token_prefix, created_by,
+                   expires_at, revoked_at, created_at, updated_at
+            FROM eval_run_share_tokens
+            WHERE token_hash = $1
+            "#,
+        )
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Load an eval run by internal id (used by the public share resolver, which
+    /// has the run id from the token row, not a public id + org).
+    pub async fn get_eval_run_by_id(&self, id: Uuid) -> Result<Option<EvalRunRow>> {
+        let row = sqlx::query_as::<_, EvalRunRow>(
+            r#"
+            SELECT id, eval_id, org_id, public_id, target, model_override, filter_tags, status,
+                   triggered_by, started_at, completed_at, summary, source, source_run_id, attribution,
+                   created_at, updated_at
+            FROM eval_runs
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
 }
