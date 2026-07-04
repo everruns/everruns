@@ -23941,6 +23941,14 @@
                   "type": "string",
                   "description": "Display name"
                 },
+                "onboarding_completed_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+                },
                 "updated_at": {
                   "type": "string",
                   "format": "date-time",
@@ -27538,6 +27546,14 @@
           "name": {
             "type": "string",
             "description": "Display name"
+          },
+          "onboarding_completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
           },
           "updated_at": {
             "type": "string",

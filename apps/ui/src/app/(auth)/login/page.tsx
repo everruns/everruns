@@ -2,12 +2,12 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AuthShell } from "@/components/auth/auth-shell";
+import { OAuthProviderIcon } from "@/components/auth/oauth-provider-icon";
 import { useAuthConfig, useLogin } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks";
 import { ApiError } from "@/lib/api/client";
@@ -18,10 +18,10 @@ import { Loader2 } from "lucide-react";
 // Session storage key for preserving return_to across OAuth redirects
 const RETURN_TO_KEY = "everruns_return_to";
 
-// OAuth provider icons/names
-const oauthProviders: Record<string, { name: string; icon: string }> = {
-  google: { name: "Google", icon: "/icons/google.svg" },
-  github: { name: "GitHub", icon: "/icons/github.svg" },
+// OAuth provider display names (logos come from OAuthProviderIcon)
+const oauthProviders: Record<string, { name: string }> = {
+  google: { name: "Google" },
+  github: { name: "GitHub" },
 };
 
 export default function LoginPage() {
@@ -130,9 +130,7 @@ export default function LoginPage() {
                   className="h-11 w-full justify-start gap-[10px]"
                   onClick={() => handleOAuthLogin(provider)}
                 >
-                  {providerInfo?.icon && (
-                    <Image src={providerInfo.icon} alt={providerInfo.name} width={18} height={18} />
-                  )}
+                  <OAuthProviderIcon provider={provider} />
                   Continue with {providerInfo?.name ?? provider}
                 </Button>
               );
