@@ -50,5 +50,6 @@ pub async fn build_organization_response(
             .unwrap_or_default(),
         created_at: row.created_at,
         updated_at: row.updated_at,
+        onboarding_completed_at: row.onboarding_completed_at,
     })
 }

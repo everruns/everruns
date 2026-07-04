@@ -219,6 +219,8 @@ impl Default for InMemoryDatabase {
                 updated_at: now,
                 external_id: None,
                 created_by: None,
+                // Default org is pre-provisioned and already onboarded.
+                onboarding_completed_at: Some(now),
             },
         );
 

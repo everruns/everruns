@@ -135,8 +135,37 @@ pub struct LoginRequest {
 pub struct RegisterRequest {
     pub email: String,
     pub password: String,
-    /// Human-readable name. Safe to render in user-facing messages.
-    pub name: String,
+    /// Optional human-readable name. Minimal signup only asks for email +
+    /// password; when omitted (or blank) the display name is derived from the
+    /// email local-part. Safe to render in user-facing messages.
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+/// Derive a friendly display name from an email address when the client does
+/// not supply one (minimal signup flow). Uses the local-part (before `@`),
+/// splits on `.`/`_`/`-`, capitalizes each word, and joins with spaces:
+/// `eli@acme.com` → "Eli", `eli.wong@x.com` → "Eli Wong". Falls back to the
+/// raw email if the local-part yields nothing usable.
+fn display_name_from_email(email: &str) -> String {
+    let local = email.split('@').next().unwrap_or(email);
+    let derived = local
+        .split(['.', '_', '-'])
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    if derived.trim().is_empty() {
+        email.to_string()
+    } else {
+        derived
+    }
 }
 
 /// Token response
@@ -554,12 +583,22 @@ pub async fn register(
         return Err(AuthError::unauthorized(GENERIC_REGISTRATION_FAILED));
     }
 
+    // Minimal signup: name is optional. When absent or blank, derive a display
+    // name from the email local-part so the account still has a friendly name.
+    let name = req
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|n| !n.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| display_name_from_email(&req.email));
+
     // Create user
     let user = state
         .db
         .create_user(CreateUserRow {
             email: req.email.clone(),
-            name: req.name.clone(),
+            name: name.clone(),
             avatar_url: None,
             roles: vec!["user".to_string()],
             password_hash: Some(password_hash),
@@ -1127,9 +1166,13 @@ async fn send_password_reset_email(state: &BuiltinAuthBackend, to: &str, raw_tok
 
 /// Best-effort send of the email-verification email.
 async fn send_verification_email(state: &BuiltinAuthBackend, to: &str, raw_token: &str) {
+    // Carry the (URL-encoded) email so the verify-email page can offer a
+    // one-click "resend" without an active session. The raw token is server-
+    // generated hex; the email is user-controlled, so it must be encoded.
     let url = format!(
-        "{}/verify-email?token={raw_token}",
-        state.config.frontend_url.trim_end_matches('/')
+        "{}/verify-email?token={raw_token}&email={}",
+        state.config.frontend_url.trim_end_matches('/'),
+        urlencoding::encode(to),
     );
     let subject = "Verify your Everruns email";
     let text = format!(
@@ -1793,6 +1836,18 @@ mod tests {
         );
         assert!(ensure_oauth_enabled(&config).is_ok());
     }
+
+    // Minimal signup derives a display name from the email local-part when the
+    // client omits `name`.
+    #[test]
+    fn test_display_name_from_email() {
+        assert_eq!(display_name_from_email("eli@acme.com"), "Eli");
+        assert_eq!(display_name_from_email("eli.wong@x.com"), "Eli Wong");
+        assert_eq!(display_name_from_email("eli_wong@x.com"), "Eli Wong");
+        assert_eq!(display_name_from_email("eli-wong@x.com"), "Eli Wong");
+        // Degenerate local-parts fall back to the raw email rather than "".
+        assert_eq!(display_name_from_email("@x.com"), "@x.com");
+    }
 }
 
 // Additional TM-AUTH-007 validation tests
@@ -1847,6 +1902,73 @@ mod oauth_state_tests {
             Arc::new(StorageBackend::in_memory()),
             Arc::new(crate::platform::oss_platform_definition()),
         )
+    }
+
+    // Full-mode backend so password registration is enabled.
+    fn full_mode_backend() -> BuiltinAuthBackend {
+        let config = AuthConfig {
+            mode: AuthMode::Full,
+            ..Default::default()
+        };
+        BuiltinAuthBackend::new(
+            config,
+            Arc::new(StorageBackend::in_memory()),
+            Arc::new(crate::platform::oss_platform_definition()),
+        )
+    }
+
+    // Minimal signup: registering without a name derives the display name from
+    // the email local-part.
+    #[tokio::test]
+    async fn register_without_name_derives_display_name_from_email() {
+        let state = full_mode_backend();
+        let db = state.db.clone();
+        let (status, _jar, _json) = register(
+            State(state.clone()),
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(RegisterRequest {
+                email: "eli.wong@example.com".to_string(),
+                password: "password123".to_string(),
+                name: None,
+            }),
+        )
+        .await
+        .expect("register should succeed");
+        assert_eq!(status, StatusCode::CREATED);
+
+        let user = db
+            .get_user_by_email("eli.wong@example.com")
+            .await
+            .unwrap()
+            .expect("user created");
+        assert_eq!(user.name, "Eli Wong");
+    }
+
+    // An explicit name is preserved (not overridden by the email derivation).
+    #[tokio::test]
+    async fn register_with_name_keeps_supplied_name() {
+        let state = full_mode_backend();
+        let db = state.db.clone();
+        let _ = register(
+            State(state.clone()),
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(RegisterRequest {
+                email: "someone@example.com".to_string(),
+                password: "password123".to_string(),
+                name: Some("Ada Lovelace".to_string()),
+            }),
+        )
+        .await
+        .expect("register should succeed");
+
+        let user = db
+            .get_user_by_email("someone@example.com")
+            .await
+            .unwrap()
+            .expect("user created");
+        assert_eq!(user.name, "Ada Lovelace");
     }
 
     async fn seed_local_user(db: &StorageBackend, email: &str, password: &str) -> Uuid {

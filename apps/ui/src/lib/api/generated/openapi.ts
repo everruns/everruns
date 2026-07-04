@@ -2086,6 +2086,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/orgs/{org}/onboarding/complete": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * POST /v1/orgs/:org/onboarding/complete - Mark the org's onboarding wizard as
+     *     finished (or skipped). Idempotent: the timestamp is set only when NULL.
+     * @description Authz mirrors the org-scoped mutations above (admin+), but resolves
+     *     membership/role from the DB rather than the auth token — a brand-new org may
+     *     not yet appear in the caller's token, and onboarding completion is exactly
+     *     that just-created case.
+     */
+    post: operations["complete_org_onboarding"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/payments/accounts": {
     parameters: {
       query?: never;
@@ -9073,6 +9097,13 @@ export interface components {
         name: string;
         /**
          * Format: date-time
+         * @description When the org's creator finished or skipped the setup wizard. `null` means
+         *     onboarding is still incomplete, which the UI uses to resume the user at
+         *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
+         */
+        onboarding_completed_at?: string | null;
+        /**
+         * Format: date-time
          * @description When the organization was last updated
          */
         updated_at: string;
@@ -10963,6 +10994,13 @@ export interface components {
       id: string;
       /** @description Display name */
       name: string;
+      /**
+       * Format: date-time
+       * @description When the org's creator finished or skipped the setup wizard. `null` means
+       *     onboarding is still incomplete, which the UI uses to resume the user at
+       *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
+       */
+      onboarding_completed_at?: string | null;
       /**
        * Format: date-time
        * @description When the organization was last updated
@@ -23824,6 +23862,47 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["OrgFeatureFlagsSettingsResponse"];
+        };
+      };
+      /** @description Organization not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  complete_org_onboarding: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Organization public ID */
+        org: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Onboarding marked complete */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OrganizationResponse"];
+        };
+      };
+      /** @description Not an admin of the organization */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
         };
       };
       /** @description Organization not found */

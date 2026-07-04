@@ -28,6 +28,12 @@ pub struct OrganizationRow {
     /// User who created this organization. NULL for seeded/external orgs.
     #[sqlx(default)]
     pub created_by: Option<Uuid>,
+    /// When the org's creator finished or skipped the setup wizard. NULL means
+    /// onboarding is still incomplete and the resume redirect sends the current
+    /// org's members back to /setup. Seeded/default and externally-synced orgs
+    /// are created already-complete. See migration 090.
+    #[sqlx(default)]
+    pub onboarding_completed_at: Option<DateTime<Utc>>,
 }
 
 /// Organization member row from database
