@@ -79,6 +79,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/brand.md` - Brand identity, colors, typography
 - `specs/diagrams.md` - Diagram specification
 - `specs/documentation.md` - Documentation site
+- `specs/signup-experience-redesign-brief.md` - Design brief for on-brand sign-up / onboarding screens
 
 ## MCP, integrations, and apps
 
