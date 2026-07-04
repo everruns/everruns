@@ -113,7 +113,7 @@ export default function LoginPage() {
   const canSignup = config?.signup_enabled ?? false;
 
   return (
-    <AuthShell headerNote="Secured by Everruns">
+    <AuthShell>
       <h2 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">Welcome back</h2>
       <p className="mt-[10px] text-sm text-muted-foreground">Sign in to your Everruns account</p>
 

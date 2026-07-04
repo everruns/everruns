@@ -82,7 +82,6 @@ export default function RegisterPage() {
 
   return (
     <AuthShell
-      headerNote="Secured by Everruns"
       brand={{
         eyebrow: "Everruns",
         headline: "Start building agents that ever run.",
