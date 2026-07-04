@@ -8345,6 +8345,67 @@
         ]
       }
     },
+    "/v1/orgs/{org}/onboarding/complete": {
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "POST /v1/orgs/:org/onboarding/complete - Mark the org's onboarding wizard as\nfinished (or skipped). Idempotent: the timestamp is set only when NULL.",
+        "description": "Authz mirrors the org-scoped mutations above (admin+), but resolves\nmembership/role from the DB rather than the auth token — a brand-new org may\nnot yet appear in the caller's token, and onboarding completion is exactly\nthat just-created case.",
+        "operationId": "complete_org_onboarding",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Onboarding marked complete",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin of the organization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
     "/v1/payments/accounts": {
       "get": {
         "tags": [

@@ -220,6 +220,7 @@ use utoipa::OpenApi;
         api::organizations::list_organizations,
         api::organizations::get_organization,
         api::organizations::update_organization,
+        api::organizations::complete_org_onboarding,
         // Org feature flags
         api::org_feature_flags::get_org_feature_flags,
         api::org_feature_flags::get_org_feature_flag_settings,
