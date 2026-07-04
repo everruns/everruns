@@ -228,13 +228,28 @@ Associates a capability with an agent via `ref` (CapabilityId) + optional `confi
 
 #### Capability Trait (everruns-core)
 
-See `crates/core/src/capabilities/mod.rs` for the `Capability` trait and `CapabilityRegistry`. Key trait methods: `id()`, `name()`, `description()`, `status()`, `system_prompt_contribution()`, `tools()`, `mounts()`, `dependencies()`, `features()`, `message_filter_provider()`.
+See `crates/core/src/capabilities/mod.rs` for the `Capability` trait and `CapabilityRegistry`. Key trait methods: `id()`, `name()`, `description()`, `status()`, `system_prompt_contribution()`, `facts()`, `tools()`, `mounts()`, `dependencies()`, `features()`, `message_filter_provider()`.
 
 ##### System Prompt Methods
 
 - **`system_prompt_addition()`** — Sync, returns static `&str`. Used by sync collection path.
 - **`system_prompt_contribution(ctx)`** — Async, receives `SystemPromptContext` with session filesystem access. Default wraps `system_prompt_addition()` in XML tags. Capabilities needing dynamic content (e.g., `agent_instructions`, `skills`) override to read from session filesystem.
 - **`system_prompt_contribution_with_config(ctx, config)`** — Async, receives per-capability config JSON. Default delegates to `system_prompt_contribution(ctx)`. Used by `collect_capabilities_with_configs()`.
+
+##### Facts (Cache-Friendly Dynamic Context)
+
+`facts(config, ctx) -> Vec<Fact>` lets a capability contribute key/value context to the model without deciding *where* it goes. The runtime routes each `Fact` by its `Volatility` so provider prompt caching is never needlessly invalidated:
+
+| Volatility | Rendered | Cache effect |
+|---|---|---|
+| `Static` | Folded into a `<facts>` block in the cached system-prompt prefix at build time. | In the cached prefix; assumed stable for the session, so free to cache. |
+| `Dynamic` | Appended as a live `<facts>` block at the **conversation tail** on every request (`ReasonAtom`), delivered as a trailing user-role message. | Outside the cached prefix. The system prompt, tools, and conversation history stay byte-identical turn to turn; only the small trailing block is re-processed. |
+
+This is the generic mechanism behind "the current time is X": baking a changing timestamp into the system prompt would bust the system-prompt cache every turn, and a tool round-trip is slower and only informs the model when it asks. `current_time` contributes its value as a `Dynamic` fact (and keeps `get_current_time` for explicit timezone/format queries). Static facts share the same `<facts>` wire format; a single explanatory note (`FACTS_DYNAMIC_NOTE`) is added to the cached prompt once whenever any active capability declares a dynamic fact.
+
+`facts()` is called both at prompt-assembly time (to fold static facts and detect whether any dynamic facts exist) and once per request (to render the live tail block via `collect_dynamic_facts`), so implementations must be cheap and side-effect free. See `crates/core/src/capabilities/facts.rs`.
+
+**Cache-anchor interaction.** Appending a volatile tail would, by default, pull a driver's message-level cache breakpoint onto content that changes every turn — evicting the conversation-history cache. `ReasonAtom` therefore sets `LlmCallConfig.volatile_suffix_len` to the number of trailing volatile messages; the Anthropic driver anchors its breakpoint on the last *stable* block, letting the volatile tail ride as an uncached suffix. Drivers that do not implement message-level anchoring ignore the field and behave exactly as before (`0` is the default).
 
 ##### System Prompt Content Contract
 
