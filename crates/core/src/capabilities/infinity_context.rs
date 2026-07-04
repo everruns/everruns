@@ -729,15 +729,11 @@ mod tests {
     use crate::in_memory::InMemoryMessageRetriever;
     use crate::typed_id::SessionId;
 
-    #[test]
-    fn test_capability_metadata() {
-        let capability = InfinityContextCapability;
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
-        assert_eq!(capability.id(), INFINITY_CONTEXT_CAPABILITY_ID);
-        assert_eq!(capability.name(), "Infinity Context");
-        assert_eq!(capability.status(), CapabilityStatus::Available);
-        assert_eq!(capability.category(), Some("Optimization"));
-        assert_eq!(capability.tools().len(), 1);
+    #[test]
+    fn test_provides_message_filter() {
+        let capability = InfinityContextCapability;
         assert!(capability.message_filter_provider().is_some());
     }
 

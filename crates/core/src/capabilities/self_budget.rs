@@ -68,22 +68,7 @@ const SELF_BUDGET_SYSTEM_PROMPT: &str = "User-stated budgets are agent-managed s
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = SelfBudgetCapability;
-        assert_eq!(cap.id(), "self_budget");
-        assert_eq!(cap.name(), "Self-Budget");
-        assert_eq!(cap.icon(), Some("gauge"));
-        assert_eq!(cap.category(), Some("System"));
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-    }
-
-    #[test]
-    fn test_capability_has_no_tools() {
-        let cap = SelfBudgetCapability;
-        assert!(cap.tools().is_empty());
-        assert!(cap.tool_definitions().is_empty());
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_capability_has_system_prompt() {

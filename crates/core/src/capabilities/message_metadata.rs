@@ -259,15 +259,7 @@ mod tests {
         render_annotation(msg, &[MessageMetadataField::Timestamp]).unwrap()
     }
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = MessageMetadataCapability;
-        assert_eq!(cap.id(), "message_metadata");
-        assert_eq!(cap.name(), "Message Metadata");
-        assert_eq!(cap.category(), Some("Core"));
-        assert!(cap.system_prompt_addition().is_some());
-        assert!(cap.tools().is_empty());
-    }
+    // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_capability_in_registry() {
