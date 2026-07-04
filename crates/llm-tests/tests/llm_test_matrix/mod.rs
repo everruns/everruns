@@ -135,11 +135,12 @@ pub const OPENROUTER_GPT4O_MINI: ProviderModelConfig = ProviderModelConfig::new(
 );
 
 // Fireworks AI serves open models via an OpenAI-compatible Chat Completions
-// API. kimi-k2p5 is a chat + tool-calling model. Exercises the Chat Completions
-// streaming path against a third (non-OpenAI/Azure) host.
+// API. kimi-k2p6 is a chat + tool-calling model (Fireworks' current default
+// Kimi K2 line; kimi-k2p5 was deprecated/removed from serverless). Exercises
+// the Chat Completions streaming path against a third (non-OpenAI/Azure) host.
 pub const FIREWORKS_KIMI: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Fireworks,
-    "accounts/fireworks/models/kimi-k2p5",
+    "accounts/fireworks/models/kimi-k2p6",
     "FIREWORKS_API_KEY",
 );
 
