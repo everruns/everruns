@@ -1,9 +1,10 @@
 //! CurrentTime Capability - provides tools to get current date and time
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, Fact, FactsContext};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use async_trait::async_trait;
+use chrono::SecondsFormat;
 use serde_json::Value;
 
 pub const CURRENT_TIME_CAPABILITY_ID: &str = "current_time";
@@ -46,6 +47,16 @@ impl Capability for CurrentTimeCapability {
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![Box::new(GetCurrentTimeTool)]
+    }
+
+    /// Contribute the current UTC time as a dynamic fact. The runtime appends
+    /// it to a live `<facts>` block at the conversation tail each turn, so the
+    /// model always knows "now" without a tool round-trip and without the
+    /// changing value invalidating the system-prompt cache. The
+    /// `get_current_time` tool remains for explicit timezone/format queries.
+    fn facts(&self, _config: &Value, _ctx: &FactsContext) -> Vec<Fact> {
+        let now = chrono::Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+        vec![Fact::dynamic("current_time", now)]
     }
 }
 
@@ -141,6 +152,24 @@ mod tests {
     fn test_capability_no_system_prompt() {
         let cap = CurrentTimeCapability;
         assert!(cap.system_prompt_addition().is_none());
+    }
+
+    #[test]
+    fn test_contributes_dynamic_current_time_fact() {
+        use crate::capabilities::{FactsContext, Volatility};
+        use crate::typed_id::SessionId;
+
+        let cap = CurrentTimeCapability;
+        let facts = cap.facts(
+            &serde_json::Value::Null,
+            &FactsContext::new(SessionId::new()),
+        );
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].key, "current_time");
+        assert_eq!(facts[0].volatility, Volatility::Dynamic);
+        // RFC3339 UTC, e.g. 2026-07-04T12:00:00Z
+        assert!(facts[0].value.ends_with('Z'), "got: {}", facts[0].value);
+        assert!(facts[0].value.contains('T'));
     }
 
     #[tokio::test]

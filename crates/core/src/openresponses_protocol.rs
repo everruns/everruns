@@ -2289,6 +2289,7 @@ mod tests {
             }),
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
         let input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -2328,6 +2329,7 @@ mod tests {
             }),
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
         let first_input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -2380,6 +2382,7 @@ mod tests {
             }),
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
         let input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -2422,6 +2425,7 @@ mod tests {
             }),
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
         let input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -3294,6 +3298,7 @@ mod tests {
             prompt_cache: None,
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
 
         // Fire the request. The stream body is irrelevant for this assertion.
@@ -3379,6 +3384,7 @@ mod tests {
             prompt_cache: None,
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
 
         let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
@@ -3440,6 +3446,7 @@ mod tests {
                 ..Default::default()
             }),
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
 
         let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
@@ -3499,6 +3506,7 @@ mod tests {
             prompt_cache: None,
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
 
         let stream = driver
@@ -4091,6 +4099,7 @@ mod tests {
             prompt_cache: None,
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
 
         // Simulate the driver's filter logic
@@ -4124,6 +4133,7 @@ mod tests {
             prompt_cache: None,
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
 
         let reasoning = config
@@ -4706,6 +4716,7 @@ mod tests {
             prompt_cache: None,
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         }
     }
 

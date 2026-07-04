@@ -192,8 +192,22 @@ impl AnthropicChatDriver {
         })
     }
 
-    fn mark_last_text_block_for_cache(messages: &mut [AnthropicMessage]) {
-        for msg in messages.iter_mut().rev() {
+    /// Place the message-level prompt-cache breakpoint on the last text block,
+    /// skipping `volatile_suffix_len` trailing messages.
+    ///
+    /// The runtime appends volatile content (a live `<facts>` block that changes
+    /// every turn) after the last stable message. Anchoring the breakpoint on
+    /// that volatile tail would make the cached prefix diverge from the next
+    /// turn's prefix right after the last stable message, evicting the
+    /// conversation-history cache. Skipping the volatile suffix keeps the
+    /// breakpoint on the last stable block, so the trailing block rides as an
+    /// uncached suffix while everything before it stays cached.
+    fn mark_last_text_block_for_cache(
+        messages: &mut [AnthropicMessage],
+        volatile_suffix_len: usize,
+    ) {
+        let anchor_len = messages.len().saturating_sub(volatile_suffix_len);
+        for msg in messages[..anchor_len].iter_mut().rev() {
             for block in msg.content.iter_mut().rev() {
                 if let AnthropicContentBlock::Text { cache_control, .. } = block {
                     *cache_control = Some(AnthropicCacheControl::ephemeral());
@@ -206,6 +220,7 @@ impl AnthropicChatDriver {
     fn convert_messages(
         messages: &[LlmMessage],
         prompt_cache_enabled: bool,
+        volatile_suffix_len: usize,
     ) -> (Option<String>, Vec<AnthropicMessage>) {
         // Accumulate all system messages into Anthropic's separate top-level
         // `system` field. Overwriting on each System message would drop the agent
@@ -348,7 +363,7 @@ impl AnthropicChatDriver {
         }
 
         if prompt_cache_enabled {
-            Self::mark_last_text_block_for_cache(&mut converted);
+            Self::mark_last_text_block_for_cache(&mut converted, volatile_suffix_len);
         }
 
         (system_prompt, converted)
@@ -446,7 +461,7 @@ impl ChatDriver for AnthropicChatDriver {
         // creates gen-ai spans from those events.
         let prompt_cache_enabled = config.prompt_cache.as_ref().is_some_and(|cfg| cfg.enabled);
         let (system_prompt, anthropic_messages) =
-            Self::convert_messages(&messages, prompt_cache_enabled);
+            Self::convert_messages(&messages, prompt_cache_enabled, config.volatile_suffix_len);
         let system = Self::system_prompt_for_request(system_prompt, prompt_cache_enabled);
 
         // `[1m]` model ids (e.g. `claude-opus-4-8[1m]`) are the gateway's
@@ -2057,11 +2072,50 @@ mod tests {
             },
         ];
 
-        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, true);
+        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, true, 0);
         let json = serde_json::to_value(&converted).unwrap();
         let cache_controls = json.to_string().matches("cache_control").count();
 
         assert_eq!(cache_controls, 1);
+    }
+
+    #[test]
+    fn test_cache_anchor_skips_volatile_suffix() {
+        let msg = |role: LlmMessageRole, s: &str| LlmMessage {
+            role,
+            content: LlmMessageContent::Text(s.to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            phase: None,
+            thinking: None,
+            thinking_signature: None,
+        };
+        // A live `<facts>` block trails the last stable (assistant) message.
+        let messages = vec![
+            msg(LlmMessageRole::User, "stable user"),
+            msg(LlmMessageRole::Assistant, "stable reply"),
+            msg(LlmMessageRole::User, "<facts>\n- current_time: X\n</facts>"),
+        ];
+
+        // With no volatile suffix, the breakpoint anchors on the last message.
+        let (_, base) = AnthropicChatDriver::convert_messages(&messages, true, 0);
+        let base_json = serde_json::to_value(&base).unwrap();
+        assert_eq!(
+            base_json[2]["content"][0]["cache_control"]["type"],
+            "ephemeral"
+        );
+
+        // Marking the facts message volatile moves the breakpoint back to the
+        // last stable message; the volatile tail stays uncached. This is what
+        // keeps the conversation-history cache from being evicted every turn.
+        let (_, anchored) = AnthropicChatDriver::convert_messages(&messages, true, 1);
+        let json = serde_json::to_value(&anchored).unwrap();
+        assert!(
+            json[2]["content"][0].get("cache_control").is_none(),
+            "volatile tail must not be cache-anchored"
+        );
+        assert_eq!(json[1]["content"][0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(json.to_string().matches("cache_control").count(), 1);
     }
 
     #[test]
@@ -2259,7 +2313,7 @@ mod tests {
             thinking_signature: None,
         }];
 
-        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, false);
+        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
 
         assert_eq!(converted.len(), 1);
         // Content should have tool_use block but no empty text block
@@ -2356,7 +2410,7 @@ mod tests {
             },
         ];
 
-        let (system, converted) = AnthropicChatDriver::convert_messages(&messages, false);
+        let (system, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
 
         assert_eq!(system, Some("You are helpful".to_string()));
         assert_eq!(converted.len(), 1); // Only user message
@@ -2374,7 +2428,7 @@ mod tests {
             LlmMessage::text(LlmMessageRole::System, "B"),
         ];
 
-        let (system, converted) = AnthropicChatDriver::convert_messages(&messages, false);
+        let (system, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
 
         assert_eq!(system, Some("A\n\nB".to_string()));
         assert_eq!(converted.len(), 1); // Only the user message
@@ -2409,7 +2463,7 @@ mod tests {
             },
         ];
 
-        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, false);
+        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
 
         assert_eq!(converted.len(), 2);
         assert_eq!(converted[1].role, "user");
@@ -2444,7 +2498,7 @@ mod tests {
             thinking_signature: None,
         }];
 
-        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, false);
+        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, false, 0);
 
         assert!(converted.is_empty());
     }
@@ -2482,7 +2536,7 @@ mod tests {
             thinking: None,
             thinking_signature: None,
         };
-        let (_, converted) = AnthropicChatDriver::convert_messages(&[assistant, msg], false);
+        let (_, converted) = AnthropicChatDriver::convert_messages(&[assistant, msg], false, 0);
 
         assert_eq!(converted.len(), 2);
         assert_eq!(converted[1].role, "user");
@@ -2548,7 +2602,7 @@ mod tests {
             thinking: None,
             thinking_signature: None,
         };
-        let (_, converted) = AnthropicChatDriver::convert_messages(&[assistant, msg], false);
+        let (_, converted) = AnthropicChatDriver::convert_messages(&[assistant, msg], false, 0);
 
         match &converted[1].content[0] {
             AnthropicContentBlock::ToolResult { content, .. } => match content {
