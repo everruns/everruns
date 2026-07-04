@@ -198,6 +198,10 @@ pub struct OrganizationResponse {
     pub created_at: chrono::DateTime<chrono::Utc>,
     /// When the organization was last updated
     pub updated_at: chrono::DateTime<chrono::Utc>,
+    /// When the org's creator finished or skipped the setup wizard. `null` means
+    /// onboarding is still incomplete, which the UI uses to resume the user at
+    /// `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
+    pub onboarding_completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 /// Build organization routes
@@ -210,6 +214,10 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/v1/orgs/{org}",
             get(get_organization).patch(update_organization),
+        )
+        .route(
+            "/v1/orgs/{org}/onboarding/complete",
+            axum::routing::post(complete_org_onboarding),
         )
         // Organization members
         .route("/v1/orgs/{org}/members", get(list_members).post(add_member))
@@ -651,6 +659,79 @@ pub async fn update_organization(
     Ok(Json(response))
 }
 
+/// POST /v1/orgs/:org/onboarding/complete - Mark the org's onboarding wizard as
+/// finished (or skipped). Idempotent: the timestamp is set only when NULL.
+///
+/// Authz mirrors the org-scoped mutations above (admin+), but resolves
+/// membership/role from the DB rather than the auth token — a brand-new org may
+/// not yet appear in the caller's token, and onboarding completion is exactly
+/// that just-created case.
+#[utoipa::path(
+    post,
+    path = "/v1/orgs/{org}/onboarding/complete",
+    tag = "Organizations",
+    params(
+        ("org" = String, Path, description = "Organization public ID")
+    ),
+    responses(
+        (status = 200, description = "Onboarding marked complete", body = OrganizationResponse),
+        (status = 403, description = "Not an admin of the organization", body = ErrorResponse),
+        (status = 404, description = "Organization not found", body = ErrorResponse)
+    ),
+    security(
+        ("bearerAuth" = []),
+        ("cookieAuth" = [])
+    )
+)]
+pub async fn complete_org_onboarding(
+    State(state): State<AppState>,
+    user: AuthUser,
+    Path(org_public_id): Path<String>,
+) -> ApiResult<OrganizationResponse> {
+    // Validate format (404 on bad shape to avoid enumeration).
+    if !validate_org_public_id(&org_public_id) {
+        return Err(ErrorResponse::not_found("Organization"));
+    }
+
+    // Membership check from DB (404 for non-members, prevents enumeration).
+    if !is_member_of_public_db(&state.db, user.id, &org_public_id).await? {
+        return Err(ErrorResponse::not_found("Organization"));
+    }
+
+    // Only admin+ (owner is admin+) may complete onboarding.
+    if !is_org_admin_of_public_db(&state.db, user.id, &org_public_id).await? {
+        return Err(
+            ErrorResponse::new("Only organization admins can complete onboarding")
+                .into_response(StatusCode::FORBIDDEN),
+        );
+    }
+
+    let org_row = state
+        .db
+        .get_organization_by_public_id(&org_public_id)
+        .await
+        .log_internal_error_json("get organization")?
+        .ok_or_not_found_json("Organization")?;
+
+    state
+        .db
+        .mark_org_onboarding_complete(org_row.org_id)
+        .await
+        .log_internal_error_json("mark org onboarding complete")?;
+
+    // Re-read so the response reflects the persisted completion timestamp.
+    let row = state
+        .db
+        .get_organization_by_public_id(&org_public_id)
+        .await
+        .log_internal_error_json("get organization")?
+        .ok_or_not_found_json("Organization")?;
+
+    Ok(Json(
+        build_organization_response(&state.db, row.org_id, row).await?,
+    ))
+}
+
 /// Check membership by querying the DB (avoids stale auth context).
 pub(crate) async fn is_member_of_public_db(
     db: &StorageBackend,
@@ -690,6 +771,7 @@ async fn build_organization_response(
         .await
         .log_internal_error_json("get organization settings")?;
 
+    let onboarding_completed_at = row.onboarding_completed_at;
     let org = Organization {
         public_id: row.public_id,
         name: row.name,
@@ -709,6 +791,7 @@ async fn build_organization_response(
             .unwrap_or_default(),
         created_at: org.created_at,
         updated_at: org.updated_at,
+        onboarding_completed_at,
     })
 }
 
@@ -1175,6 +1258,119 @@ mod tests {
         assert_eq!(count, 1);
     }
 
+    #[tokio::test]
+    async fn mark_org_onboarding_complete_is_idempotent() {
+        use crate::storage::models::CreateOrganizationRow;
+
+        let db = StorageBackend::in_memory();
+        let org = db
+            .create_organization(CreateOrganizationRow {
+                public_id: generate_org_public_id(),
+                name: "New Org".to_string(),
+                created_by: Some(Uuid::now_v7()),
+            })
+            .await
+            .unwrap();
+        // A freshly created (user-owned) org starts un-onboarded.
+        assert!(org.onboarding_completed_at.is_none());
+
+        db.mark_org_onboarding_complete(org.org_id).await.unwrap();
+        let after = db.get_organization(org.org_id).await.unwrap().unwrap();
+        let first = after.onboarding_completed_at.expect("timestamp set");
+
+        // A second call must be a no-op — the completion time never moves.
+        db.mark_org_onboarding_complete(org.org_id).await.unwrap();
+        let after2 = db.get_organization(org.org_id).await.unwrap().unwrap();
+        assert_eq!(after2.onboarding_completed_at, Some(first));
+    }
+
+    #[tokio::test]
+    async fn seeded_org_is_created_already_onboarded() {
+        use crate::storage::models::CreateOrganizationRow;
+
+        let db = StorageBackend::in_memory();
+
+        // The pre-seeded default org is already onboarded.
+        let default_org = db.get_organization(DEFAULT_ORG_ID).await.unwrap().unwrap();
+        assert!(default_org.onboarding_completed_at.is_some());
+
+        // Orgs created via the seeding path (`create_organization_with_id`) are
+        // likewise created already-complete.
+        let seeded = db
+            .create_organization_with_id(
+                4242,
+                CreateOrganizationRow {
+                    public_id: generate_org_public_id(),
+                    name: "Seeded".to_string(),
+                    created_by: None,
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(seeded.onboarding_completed_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn complete_org_onboarding_marks_and_is_idempotent() {
+        let (app, db, _user_id) = create_org_app(None);
+
+        // Create an org — the caller becomes owner and onboarding starts NULL.
+        let resp = app
+            .clone()
+            .oneshot(create_org_request("Acme Corp"))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let org_public_id = json["id"].as_str().unwrap().to_string();
+        assert!(json["onboarding_completed_at"].is_null());
+
+        let complete_req = |id: &str| {
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/orgs/{id}/onboarding/complete"))
+                .header("Authorization", "Bearer test-token")
+                .body(Body::empty())
+                .unwrap()
+        };
+
+        let resp = app
+            .clone()
+            .oneshot(complete_req(&org_public_id))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let body = resp.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(!json["onboarding_completed_at"].is_null());
+
+        let first = db
+            .get_organization_by_public_id(&org_public_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .onboarding_completed_at
+            .expect("marked complete");
+
+        // Idempotent: a repeat call still returns 200 and never moves the time.
+        let resp = app
+            .clone()
+            .oneshot(complete_req(&org_public_id))
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), StatusCode::OK);
+        let again = db
+            .get_organization_by_public_id(&org_public_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .onboarding_completed_at
+            .expect("still complete");
+        assert_eq!(first, again);
+    }
+
     #[test]
     fn test_organization_response_fields() {
         let response = OrganizationResponse {
@@ -1186,6 +1382,7 @@ mod tests {
             default_provider_per_service: std::collections::HashMap::new(),
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            onboarding_completed_at: None,
         };
 
         assert_eq!(response.id, "org_00000000000000000000000000000001");

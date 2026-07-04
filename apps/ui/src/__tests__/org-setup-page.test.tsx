@@ -19,6 +19,11 @@ jest.mock("@/lib/api/organizations", () => ({
     default_harness_id: "harness_default",
     base_harness_id: "harness_base",
   }),
+  completeOrgOnboarding: jest.fn().mockResolvedValue({
+    id: "org_test123",
+    name: "Test Org",
+    onboarding_completed_at: "2026-01-01T00:00:00Z",
+  }),
 }));
 
 jest.mock("@/lib/api/harnesses", () => ({

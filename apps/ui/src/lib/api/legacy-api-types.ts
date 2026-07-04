@@ -819,6 +819,11 @@ export interface Organization {
   default_provider_per_service: Record<string, string>;
   created_at: string;
   updated_at: string;
+  /**
+   * When the org's creator finished or skipped the setup wizard. `null` means
+   * onboarding is incomplete; the resume redirect sends the user to /setup.
+   */
+  onboarding_completed_at: string | null;
 }
 
 /** Request to create an organization */

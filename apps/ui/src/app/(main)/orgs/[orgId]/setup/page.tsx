@@ -12,7 +12,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Building2,
   Check,
@@ -29,7 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { getOrganization } from "@/lib/api/organizations";
+import { getOrganization, completeOrgOnboarding } from "@/lib/api/organizations";
 import { listHarnesses } from "@/lib/api/harnesses";
 import { useCreateProvider, useProviders } from "@/hooks/use-providers";
 import { usePageTitle } from "@/hooks";
@@ -103,6 +103,7 @@ export default function OrgSetupPage() {
   usePageTitle("Org Setup");
   const { orgId } = useParams<{ orgId: string }>();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { currentOrg, organizations, setCurrentOrg, isSwitching } = useOrg();
 
   const {
@@ -205,6 +206,21 @@ export default function OrgSetupPage() {
   const [providerJustConfigured, setProviderJustConfigured] = useState(false);
   const providerConnected = hasProvider || providerJustConfigured;
 
+  // Durably mark onboarding complete (finish OR skip), then reveal the Done
+  // step. Best-effort: on failure we still proceed to Done — the resume redirect
+  // may re-show setup on the next entry, which is acceptable. On success we seed
+  // the org-detail cache so the resume redirect immediately sees completion and
+  // does not bounce the user back here after they navigate away.
+  const finishOnboarding = useCallback(async () => {
+    try {
+      const updated = await completeOrgOnboarding(orgId);
+      queryClient.setQueryData(queryKeys.organizations.detail(orgId), updated);
+    } catch {
+      // Intentionally ignored — completion is best-effort.
+    }
+    setDone(true);
+  }, [orgId, queryClient]);
+
   const handleContinue = async () => {
     if (!apiKey.trim()) {
       setProviderError("Please enter an API key");
@@ -218,7 +234,7 @@ export default function OrgSetupPage() {
         api_key: apiKey,
       });
       setProviderJustConfigured(true);
-      setDone(true);
+      await finishOnboarding();
     } catch {
       setProviderError("Failed to configure provider. Please try again.");
     }
@@ -442,7 +458,7 @@ export default function OrgSetupPage() {
           >
             {hasProvider ? (
               /* Provider already configured — go straight to the Done step */
-              <Button className="w-full" onClick={() => setDone(true)}>
+              <Button className="w-full" onClick={() => void finishOnboarding()}>
                 Continue
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
@@ -489,7 +505,7 @@ export default function OrgSetupPage() {
                   <div className="mt-3 text-center">
                     <button
                       type="button"
-                      onClick={() => setDone(true)}
+                      onClick={() => void finishOnboarding()}
                       className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground transition-colors"
                     >
                       Skip for now

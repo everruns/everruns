@@ -1127,9 +1127,13 @@ async fn send_password_reset_email(state: &BuiltinAuthBackend, to: &str, raw_tok
 
 /// Best-effort send of the email-verification email.
 async fn send_verification_email(state: &BuiltinAuthBackend, to: &str, raw_token: &str) {
+    // Carry the (URL-encoded) email so the verify-email page can offer a
+    // one-click "resend" without an active session. The raw token is server-
+    // generated hex; the email is user-controlled, so it must be encoded.
     let url = format!(
-        "{}/verify-email?token={raw_token}",
-        state.config.frontend_url.trim_end_matches('/')
+        "{}/verify-email?token={raw_token}&email={}",
+        state.config.frontend_url.trim_end_matches('/'),
+        urlencoding::encode(to),
     );
     let subject = "Verify your Everruns email";
     let text = format!(

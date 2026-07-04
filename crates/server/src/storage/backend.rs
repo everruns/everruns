@@ -2679,6 +2679,11 @@ impl StorageBackend {
         dispatch!(self, delete_organization, org_id)
     }
 
+    /// Idempotently mark an org's onboarding complete (no-op if already set).
+    pub async fn mark_org_onboarding_complete(&self, org_id: i64) -> Result<()> {
+        dispatch!(self, mark_org_onboarding_complete, org_id)
+    }
+
     // ============================================
     // Organization Members
     // ============================================
