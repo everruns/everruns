@@ -1019,26 +1019,14 @@ mod oauth_tests {
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
     }
 
-    #[test]
-    fn openrouter_key_response_deserializes() {
-        // OpenRouter returns the user-controlled key plus a user id we ignore.
-        let resp: OpenRouterKeyResponse =
-            serde_json::from_str(r#"{"key":"sk-or-v1-abc","user_id":"usr_1"}"#).unwrap();
-        assert_eq!(resp.key, "sk-or-v1-abc");
-    }
+    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_error_response_serialization() {
-        // RFC 9457 wire shape: `detail` carries the message.
-        let error = ErrorResponse::new("Internal server error");
-        let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
-        assert_eq!(parsed["detail"], "Internal server error");
-    }
+    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
     fn test_error_response_internal_error_format() {

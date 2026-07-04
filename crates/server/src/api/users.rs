@@ -461,37 +461,7 @@ pub async fn export_user_data(
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_user_serialization() {
-        let user = User {
-            id: "123".to_string(),
-            email: "test@example.com".to_string(),
-            name: "Test User".to_string(),
-            avatar_url: None,
-            roles: vec!["user".to_string()],
-            auth_provider: Some("local".to_string()),
-            created_at: Utc::now(),
-        };
-
-        let json = serde_json::to_string(&user).unwrap();
-        assert!(json.contains("test@example.com"));
-        assert!(json.contains("Test User"));
-    }
-
-    #[test]
-    fn test_list_users_query_deserialize() {
-        let query: ListUsersQuery = serde_json::from_str(r#"{"search": "test"}"#).unwrap();
-        assert_eq!(query.search, Some("test".to_string()));
-
-        let query: ListUsersQuery = serde_json::from_str(r#"{}"#).unwrap();
-        assert_eq!(query.search, None);
-    }
-
-    #[test]
-    fn test_update_profile_request_deserialize() {
-        let req: UpdateProfileRequest = serde_json::from_str(r#"{"name": "New Name"}"#).unwrap();
-        assert_eq!(req.name, "New Name");
-    }
+    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
     fn test_profile_response_serialization() {

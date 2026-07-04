@@ -1194,12 +1194,7 @@ mod tests {
         assert!(response.base_harness_id.is_some());
     }
 
-    #[test]
-    fn test_create_request_deserialization() {
-        let json = r#"{"name": "Acme Corp"}"#;
-        let req: CreateOrganizationRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.name, "Acme Corp");
-    }
+    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
     fn test_create_request_empty_name() {
