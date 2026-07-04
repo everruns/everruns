@@ -1906,8 +1906,10 @@ mod oauth_state_tests {
 
     // Full-mode backend so password registration is enabled.
     fn full_mode_backend() -> BuiltinAuthBackend {
-        let mut config = AuthConfig::default();
-        config.mode = AuthMode::Full;
+        let config = AuthConfig {
+            mode: AuthMode::Full,
+            ..Default::default()
+        };
         BuiltinAuthBackend::new(
             config,
             Arc::new(StorageBackend::in_memory()),
