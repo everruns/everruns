@@ -9073,6 +9073,13 @@ export interface components {
         name: string;
         /**
          * Format: date-time
+         * @description When the org's creator finished or skipped the setup wizard. `null` means
+         *     onboarding is still incomplete, which the UI uses to resume the user at
+         *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
+         */
+        onboarding_completed_at?: string | null;
+        /**
+         * Format: date-time
          * @description When the organization was last updated
          */
         updated_at: string;
@@ -10963,6 +10970,13 @@ export interface components {
       id: string;
       /** @description Display name */
       name: string;
+      /**
+       * Format: date-time
+       * @description When the org's creator finished or skipped the setup wizard. `null` means
+       *     onboarding is still incomplete, which the UI uses to resume the user at
+       *     `/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete.
+       */
+      onboarding_completed_at?: string | null;
       /**
        * Format: date-time
        * @description When the organization was last updated
