@@ -354,20 +354,7 @@ pub async fn export_session_jsonl(
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_content_part_text_serialization() {
-        let part = ContentPart::text("Hello, world!");
-        let json = serde_json::to_string(&part).unwrap();
-        assert!(json.contains(r#""type":"text""#));
-        assert!(json.contains(r#""text":"Hello, world!""#));
-    }
-
-    #[test]
-    fn test_content_part_deserialization() {
-        let json = r#"{"type":"text","text":"Hello!"}"#;
-        let part: ContentPart = serde_json::from_str(json).unwrap();
-        assert_eq!(part.as_text(), Some("Hello!"));
-    }
+    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
     fn test_create_message_request_user() {
