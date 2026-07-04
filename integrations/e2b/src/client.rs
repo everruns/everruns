@@ -250,7 +250,7 @@ impl E2BClient {
             process: buffa::MessageField::some(proto::process::ProcessConfig {
                 cmd: "/bin/bash".to_string(),
                 args: vec!["-l".to_string(), "-c".to_string(), command.to_string()],
-                envs: std::collections::HashMap::new(),
+                envs: Default::default(),
                 cwd: cwd.map(|v| v.to_string()),
                 ..Default::default()
             }),
@@ -275,7 +275,7 @@ impl E2BClient {
             .await
             .map_err(|e| format!("Failed reading sandbox command stream: {e}"))?
         {
-            let Some(event) = message.reborrow().event.as_option() else {
+            let Some(event) = message.view().event.as_option() else {
                 continue;
             };
             match &event.event {
