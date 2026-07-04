@@ -64,9 +64,7 @@ describe("useOnboardingResumeRedirect", () => {
   it("redirects to setup when the current org's onboarding is incomplete", async () => {
     mockGetOrganization.mockResolvedValue({ id: "org_new", onboarding_completed_at: null });
     const { result } = renderHook(() => useOnboardingResumeRedirect(), { wrapper });
-    await waitFor(() =>
-      expect(mockReplace).toHaveBeenCalledWith("/orgs/org_new/setup"),
-    );
+    await waitFor(() => expect(mockReplace).toHaveBeenCalledWith("/orgs/org_new/setup"));
     expect(result.current).toBe(true);
   });
 
