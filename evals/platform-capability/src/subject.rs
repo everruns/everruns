@@ -167,7 +167,11 @@ impl EverrunsServerSubject {
     }
 
     /// Fetch events after `cursor`; returns (events, new_cursor).
-    async fn events_after(&self, session_id: &str, cursor: i64) -> Result<(Vec<Value>, i64), String> {
+    async fn events_after(
+        &self,
+        session_id: &str,
+        cursor: i64,
+    ) -> Result<(Vec<Value>, i64), String> {
         let path = if cursor > 0 {
             format!("/v1/sessions/{session_id}/events?after_sequence={cursor}")
         } else {
@@ -301,10 +305,7 @@ fn extract_tool_calls(events: &[Value]) -> Vec<String> {
 fn extract_final_response(events: &[Value]) -> Option<String> {
     events
         .iter()
-        .filter(|e| {
-            e.get("type").and_then(|t| t.as_str()) == Some("output.message.completed")
-        })
-        .last()
+        .rfind(|e| e.get("type").and_then(|t| t.as_str()) == Some("output.message.completed"))
         .and_then(|e| e.get("data"))
         .and_then(|d| d.get("message"))
         .and_then(|m| m.get("content"))

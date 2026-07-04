@@ -52,9 +52,7 @@ fn targets() -> Vec<Target> {
 fn platform_capability() -> Eval {
     let dataset = Dataset::from_jsonl_str(DATASET).expect("embedded dataset.jsonl must parse");
     Eval::new("platform_capability")
-        .describe(
-            "Drive the everruns platform via platform_management tools from natural language",
-        )
+        .describe("Drive the everruns platform via platform_management tools from natural language")
         .dataset(dataset)
         .targets(targets())
         .subject(EverrunsServerSubject::from_env())

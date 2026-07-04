@@ -72,7 +72,10 @@ pub fn forbidden_tools() -> Box<dyn Scorer> {
                 format!("no forbidden tool called (forbidden: {forbidden:?})"),
             )
         } else {
-            Score::fail("forbidden_tools", format!("called forbidden tool(s): {hit:?}"))
+            Score::fail(
+                "forbidden_tools",
+                format!("called forbidden tool(s): {hit:?}"),
+            )
         }
     })
 }
@@ -91,7 +94,10 @@ pub fn response_matches() -> Box<dyn Scorer> {
                 "response_matches",
                 format!("no match for /{pattern}/ in final response"),
             ),
-            Err(e) => Score::na("response_matches", format!("invalid regex /{pattern}/: {e}")),
+            Err(e) => Score::na(
+                "response_matches",
+                format!("invalid regex /{pattern}/: {e}"),
+            ),
         }
     })
 }
