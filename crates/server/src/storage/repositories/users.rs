@@ -118,6 +118,35 @@ impl Database {
         Ok(row)
     }
 
+    /// Attach an OAuth identity to an existing account so a subsequent
+    /// `get_user_by_oauth(provider, provider_id)` resolves to it. Only touches
+    /// the provider columns; `password_hash` is preserved so a linked account
+    /// keeps password login and password reset (`is_local_password_user` keys
+    /// off `password_hash`). Callers must confirm the provider verified the
+    /// email before linking (see TM-AUTH-017 / `oauth_identity_rejection_reason`).
+    pub async fn link_oauth_identity(
+        &self,
+        id: Uuid,
+        provider: &str,
+        provider_id: &str,
+    ) -> Result<Option<UserRow>> {
+        let row = sqlx::query_as::<_, UserRow>(
+            r#"
+            UPDATE users
+            SET auth_provider = $2, auth_provider_id = $3, updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
+            "#,
+        )
+        .bind(id)
+        .bind(provider)
+        .bind(provider_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     pub async fn update_user(&self, id: Uuid, input: UpdateUser) -> Result<Option<UserRow>> {
         let roles_json = input.roles.map(|r| serde_json::to_value(&r)).transpose()?;
 

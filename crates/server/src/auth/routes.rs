@@ -1007,67 +1007,109 @@ pub async fn oauth_callback(
                 AuthError::unauthorized("OAuth authentication failed")
             })?;
 
-        if let Some(_existing) = existing_user {
-            // For now, don't auto-link accounts - require explicit action
-            // TODO: Implement account linking flow
+        if let Some(existing) = existing_user {
+            // Link the OAuth identity to the existing account (same email =
+            // same account, per specs/authentication.md and TM-AUTH-012).
             //
-            // TM-AUTH-014: return a generic failure that does not disclose
-            // whether an account with this email already exists. Mirrors the
-            // password `register` path, which collapses the existing-account
-            // case into the same generic "Registration failed" response. The
-            // precise reason is logged server-side only.
+            // Safe because TM-AUTH-017 (`oauth_identity_rejection_reason`, run
+            // above) already rejected `email_verified=false`, so the provider
+            // has proven the caller owns this email — the same trust basis as
+            // email-based password reset. Linking only sets the provider
+            // columns; `password_hash` is preserved, so a linked password
+            // account keeps password login and reset.
+            //
+            // Only link accounts that are password/unlinked (`auth_provider`
+            // is `local` or unset). An account already bound to a *different*
+            // OAuth provider cannot be represented by the single-provider
+            // schema; refuse it (generic failure) rather than silently
+            // dropping the other identity. A multi-identity table is the
+            // follow-up if a second login provider is ever enabled.
+            let already_linked_elsewhere = matches!(
+                existing.auth_provider.as_deref(),
+                Some(p) if p != "local" && p != provider_str
+            );
+            if already_linked_elsewhere {
+                tracing::warn!(
+                    provider = %provider_str,
+                    existing_provider = existing.auth_provider.as_deref().unwrap_or(""),
+                    "OAuth login blocked: email already bound to a different provider (no multi-link)"
+                );
+                return Err(AuthError::unauthorized(GENERIC_REGISTRATION_FAILED));
+            }
+
+            let linked = state
+                .db
+                .link_oauth_identity(existing.id, provider_str, &user_info.provider_id)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to link OAuth identity: {}", e);
+                    AuthError::unauthorized("OAuth authentication failed")
+                })?
+                .ok_or_else(|| {
+                    tracing::error!("Account vanished while linking OAuth identity");
+                    AuthError::unauthorized("OAuth authentication failed")
+                })?;
+
+            audit::emit(
+                state.db.clone(),
+                DEFAULT_ORG_ID,
+                Some(linked.id),
+                "auth.oauth.linked",
+                audit::client_ip(&headers),
+                serde_json::json!({"provider": provider}),
+            );
             tracing::info!(
                 provider = %provider_str,
-                "OAuth signup blocked: an account with this email already exists (no auto-link)"
+                "Linked OAuth identity to existing account by verified email"
             );
-            return Err(AuthError::unauthorized(GENERIC_REGISTRATION_FAILED));
-        }
+            linked
+        } else {
+            // Create new user
+            let created_user = state
+                .db
+                .create_user(CreateUserRow {
+                    email: user_info.email.clone(),
+                    name: user_info.name.clone(),
+                    avatar_url: user_info.avatar_url.clone(),
+                    roles: vec!["user".to_string()],
+                    password_hash: None,
+                    email_verified: user_info.email_verified,
+                    auth_provider: Some(provider_str.to_string()),
+                    auth_provider_id: Some(user_info.provider_id.clone()),
+                    external_id: None,
+                })
+                .await
+                .map_err(|e| {
+                    tracing::error!("User creation error during OAuth: {}", e);
+                    AuthError::unauthorized("OAuth authentication failed")
+                })?;
 
-        // Create new user
-        let created_user = state
-            .db
-            .create_user(CreateUserRow {
-                email: user_info.email.clone(),
-                name: user_info.name.clone(),
-                avatar_url: user_info.avatar_url.clone(),
-                roles: vec!["user".to_string()],
-                password_hash: None,
-                email_verified: user_info.email_verified,
-                auth_provider: Some(provider_str.to_string()),
-                auth_provider_id: Some(user_info.provider_id.clone()),
-                external_id: None,
-            })
+            // Add newly created user to default organization
+            let _ = state
+                .db
+                .add_organization_member(DEFAULT_ORG_ID, created_user.id, "member")
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to add OAuth user to default org: {}", e);
+                    // Continue anyway
+                });
+
+            // Harness-seed safety net (see equivalent comment in `register` and
+            // EVE-390). Drive the provisioner from `platform_definition`, not
+            // `oss_built_in_harnesses()`, so a custom platform definition is
+            // never overridden on OAuth signup.
+            if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
+                &state.db,
+                DEFAULT_ORG_ID,
+                state.platform_definition.built_in_harnesses(),
+            )
             .await
-            .map_err(|e| {
-                tracing::error!("User creation error during OAuth: {}", e);
-                AuthError::unauthorized("OAuth authentication failed")
-            })?;
+            {
+                tracing::warn!(error = %e, "Failed to ensure default org harnesses (non-fatal)");
+            }
 
-        // Add newly created user to default organization
-        let _ = state
-            .db
-            .add_organization_member(DEFAULT_ORG_ID, created_user.id, "member")
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to add OAuth user to default org: {}", e);
-                // Continue anyway
-            });
-
-        // Harness-seed safety net (see equivalent comment in `register` and
-        // EVE-390). Drive the provisioner from `platform_definition`, not
-        // `oss_built_in_harnesses()`, so a custom platform definition is
-        // never overridden on OAuth signup.
-        if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
-            &state.db,
-            DEFAULT_ORG_ID,
-            state.platform_definition.built_in_harnesses(),
-        )
-        .await
-        {
-            tracing::warn!(error = %e, "Failed to ensure default org harnesses (non-fatal)");
+            created_user
         }
-
-        created_user
     };
 
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
@@ -1574,13 +1616,15 @@ mod tests {
         assert_eq!(OAUTH_STATE_COOKIE, "oauth_state");
     }
 
-    // EVE-632 / TM-AUTH-014: the OAuth signup path rejects a request whose email
-    // already belongs to an account using the SAME generic failure as the
-    // password-register path. Neither may disclose that the account exists,
-    // otherwise signup becomes an account-enumeration oracle. This test locks
-    // the shared message and its sanitization so the OAuth branch (which
-    // previously returned "An account with this email already exists…") cannot
-    // silently regress.
+    // EVE-632 / TM-AUTH-014: when the OAuth callback DOES refuse (an email bound
+    // to a *different* login provider than the one being used — see the
+    // cross-provider guard in `oauth_callback`), it must reuse the SAME generic
+    // failure as the password-register path. Neither may disclose that the
+    // account exists, otherwise signup becomes an account-enumeration oracle.
+    // (The common case — email matches an existing password account — now links
+    // instead of failing; see `link_oauth_identity`.) This test locks the shared
+    // message and its sanitization so that refusal branch cannot silently
+    // regress to a leaky message like "An account with this email already exists…".
     #[tokio::test]
     async fn oauth_signup_existing_account_message_does_not_leak_existence() {
         use axum::response::IntoResponse;
