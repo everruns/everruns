@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.17.4] - 2026-07-05
+
+### Highlights
+
+- **Streamlined Onboarding** — Durable onboarding-complete + resume state, sidebar-less setup flow ([#2560](https://github.com/everruns/everruns/pull/2560)).
+- **Eval Run Comparison** — Compare eval runs side-by-side with regression highlighting ([#2531](https://github.com/everruns/everruns/pull/2531)).
+
+### What's Changed
+
+- test(llm): update Fireworks live model by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump fetchkit to 0.4.1 by [@chaliy](https://github.com/chaliy)
+- feat(evals): add platform-capability Mira eval study ([#2564](https://github.com/everruns/everruns/pull/2564)) by [@chaliy](https://github.com/chaliy)
+- test(ui): drop CSS-class change-detector tests ([#2563](https://github.com/everruns/everruns/pull/2563)) by [@chaliy](https://github.com/chaliy)
+- test(server): drop trivial DTO serde round-trips in api ([#2562](https://github.com/everruns/everruns/pull/2562)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): cache-friendly Facts for dynamic context ([#2557](https://github.com/everruns/everruns/pull/2557)) by [@chaliy](https://github.com/chaliy)
+- feat(onboarding): durable onboarding-complete + resume, sidebar-less setup ([#2560](https://github.com/everruns/everruns/pull/2560)) by [@chaliy](https://github.com/chaliy)
+- chore(specs): index signup-experience-redesign-brief in README ([#2561](https://github.com/everruns/everruns/pull/2561)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): cross-run eval comparison with regression highlighting ([#2531](https://github.com/everruns/everruns/pull/2531)) by [@chaliy](https://github.com/chaliy)
+- test(core): replace per-model profile mirrors with invariant ([#2558](https://github.com/everruns/everruns/pull/2558)) by [@chaliy](https://github.com/chaliy)
+- test(core): prune capability metadata mirrors across modules ([#2551](https://github.com/everruns/everruns/pull/2551)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump the cargo group across 1 directory with 10 updates ([#2554](https://github.com/everruns/everruns/pull/2554)) by [@dependabot](https://github.com/apps/dependabot)
+- test(llm-tests): skip live matrix on transient transport errors ([#2550](https://github.com/everruns/everruns/pull/2550)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump react and @types/react in /apps/ui ([#2538](https://github.com/everruns/everruns/pull/2538)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump cmov from 0.5.3 to 0.5.4 in /examples/weekend-concierge-host in the cargo group across 1 directory ([#2553](https://github.com/everruns/everruns/pull/2553)) by [@dependabot](https://github.com/apps/dependabot)
+
 ## [0.17.3] - 2026-07-02
 
 ### What's Changed
