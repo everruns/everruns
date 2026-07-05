@@ -119,7 +119,7 @@ pub use in_memory::{
     InMemorySessionFileStore, InMemorySessionFileSystemFactory, InMemorySessionStorageStore,
     InMemorySessionStore,
 };
-pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory};
+pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory, multi_root_file_system};
 pub use runtime::{
     InProcessRuntime, InProcessRuntimeBuilder, TurnResult, in_process_internal_org_id,
 };

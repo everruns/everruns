@@ -755,6 +755,14 @@ impl SessionFileSystemFactoryContext {
             .get(&TypeId::of::<T>())
             .and_then(|value| value.clone().downcast::<T>().ok())
     }
+
+    pub fn with_workspace_roots(self, roots: Arc<crate::WorkspaceRootSet>) -> Self {
+        self.with(roots)
+    }
+
+    pub fn workspace_roots(&self) -> Option<Arc<crate::WorkspaceRootSet>> {
+        self.get::<crate::WorkspaceRootSet>()
+    }
 }
 
 /// Factory for deployment-selected session filesystem implementations.

@@ -120,6 +120,7 @@ pub mod skill;
 pub mod system_allowlist;
 pub mod vector_store;
 pub mod workspace;
+pub mod workspace_roots;
 
 // Multi-platform channel abstractions (thread context, delivery, routing)
 pub mod channel;
@@ -232,6 +233,10 @@ pub use user_facing_error::{
     ErrorDisclosure, UserFacingError, UserFacingErrorContext, UserFacingErrorFields,
     classify_runtime_error_message, codes as user_facing_error_codes, is_provider_quota_message,
     metadata_keys as user_facing_error_metadata_keys, trim_error_chain_prefixes,
+};
+pub use workspace_roots::{
+    ADDITIONAL_ROOTS_MOUNT, PRIMARY_WORKSPACE_ROOT_NAME, RelPath, ResolvedPath, WorkspaceRoot,
+    WorkspaceRootSet,
 };
 
 // Channel abstraction re-exports
