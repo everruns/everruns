@@ -11,6 +11,9 @@ import type {
   CreateEvalCaseRequest,
   EvalRun,
   CreateEvalRunRequest,
+  EvalRunShareLink,
+  EvalRunShareStatus,
+  PublicEvalRun,
 } from "./types";
 
 export const evalsCrudApi = createCrudApi<Eval, CreateEvalRequest, UpdateEvalRequest>("/v1/evals");
@@ -61,4 +64,34 @@ export async function createEvalRun(
 
 export async function cancelEvalRun(evalId: string, runId: string): Promise<void> {
   await api.post(`/v1/evals/${evalId}/runs/${runId}/cancel`, {});
+}
+
+// Read-only share links for a run.
+export async function getRunShareStatus(
+  evalId: string,
+  runId: string,
+): Promise<EvalRunShareStatus> {
+  const response = await api.get<EvalRunShareStatus>(`/v1/evals/${evalId}/runs/${runId}/share`);
+  return response.data;
+}
+
+export async function createRunShare(evalId: string, runId: string): Promise<EvalRunShareLink> {
+  const response = await api.post<EvalRunShareLink>(`/v1/evals/${evalId}/runs/${runId}/share`, {});
+  return response.data;
+}
+
+export async function revokeRunShare(evalId: string, runId: string): Promise<void> {
+  await api.delete(`/v1/evals/${evalId}/runs/${runId}/share`);
+}
+
+// Public (unauthenticated) read of a shared run. Uses a bare fetch — no auth
+// cookies/headers needed — so it works for anonymous viewers.
+export async function getPublicEvalRun(token: string): Promise<PublicEvalRun> {
+  const res = await fetch(`/api/v1/public/eval-runs/${encodeURIComponent(token)}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) {
+    throw new Error(res.status === 404 ? "not_found" : `request failed (${res.status})`);
+  }
+  return (await res.json()) as PublicEvalRun;
 }

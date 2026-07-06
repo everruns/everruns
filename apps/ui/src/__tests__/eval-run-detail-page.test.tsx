@@ -1,7 +1,16 @@
 import { render, screen, act, fireEvent } from "@testing-library/react";
 import { Suspense, type ReactNode } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import EvalRunDetailPage from "@/app/(main)/evals/[evalId]/runs/[runId]/page";
 import type { Eval, EvalRun } from "@/lib/api/types";
+
+// The Share button (rendered in the run header) queries share status; stub the
+// share API so it resolves cleanly under the test QueryClient.
+jest.mock("@/lib/api/evals", () => ({
+  getRunShareStatus: jest.fn().mockResolvedValue({ active: false }),
+  createRunShare: jest.fn(),
+  revokeRunShare: jest.fn(),
+}));
 
 jest.mock("next/link", () => ({
   __esModule: true,
@@ -63,12 +72,15 @@ const mockRun: EvalRun = {
 
 async function renderWithSuspense(params: { evalId: string; runId: string }) {
   const paramsPromise = Promise.resolve(params);
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 
   await act(async () => {
     render(
-      <Suspense fallback={<div>Loading...</div>}>
-        <EvalRunDetailPage params={paramsPromise} />
-      </Suspense>,
+      <QueryClientProvider client={queryClient}>
+        <Suspense fallback={<div>Loading...</div>}>
+          <EvalRunDetailPage params={paramsPromise} />
+        </Suspense>
+      </QueryClientProvider>,
     );
     await paramsPromise;
   });

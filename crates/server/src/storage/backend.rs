@@ -3849,6 +3849,39 @@ impl StorageBackend {
         dispatch!(self, get_eval_run_by_public_id, org_id, public_id)
     }
 
+    pub async fn get_eval_run_by_id(&self, id: Uuid) -> Result<Option<EvalRunRow>> {
+        dispatch!(self, get_eval_run_by_id, id)
+    }
+
+    // Eval run share tokens (migration 091)
+
+    pub async fn create_eval_run_share_token(
+        &self,
+        org_id: i64,
+        input: CreateEvalRunShareTokenRow,
+    ) -> Result<EvalRunShareTokenRow> {
+        dispatch!(self, create_eval_run_share_token, org_id, input)
+    }
+
+    pub async fn revoke_eval_run_share_tokens(
+        &self,
+        org_id: i64,
+        eval_run_id: Uuid,
+    ) -> Result<u64> {
+        dispatch!(self, revoke_eval_run_share_tokens, org_id, eval_run_id)
+    }
+
+    pub async fn eval_run_has_active_share(&self, org_id: i64, eval_run_id: Uuid) -> Result<bool> {
+        dispatch!(self, eval_run_has_active_share, org_id, eval_run_id)
+    }
+
+    pub async fn get_eval_run_share_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<EvalRunShareTokenRow>> {
+        dispatch!(self, get_eval_run_share_token_by_hash, token_hash)
+    }
+
     pub async fn update_eval_run_status(
         &self,
         id: Uuid,

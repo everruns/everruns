@@ -12,6 +12,7 @@ A **public endpoint** is an HTTP endpoint that accepts unauthenticated traffic a
 | FCP message | `POST /v1/apps/{app_id}/fcp` | `crates/server/src/api/fcp.rs` | Public, app-scoped text-in / text-out; optional channel token; FCP-only rate limiter |
 | Slack events | `POST /v1/apps/{app_id}/slack/events` | `crates/server/src/api/slack_events.rs` | Anonymous Slack webhook (signature-verified) |
 | Slack manifest | `GET /v1/apps/{app_id}/slack/manifest` | `crates/server/src/api/slack_events.rs` | Anonymous YAML manifest fetch |
+| Shared eval run | `GET /v1/public/eval-runs/{token}` | `crates/server/src/api/evals.rs` | Anonymous read-only view of one eval run, gated by an unguessable share token; sanitized DTO (no org/internal/session ids, no internal targets, no attribution env labels); uniform 404 for unknown/revoked/expired |
 
 Any new public endpoint MUST be added to this table and MUST follow the rules below. Existing endpoints that pre-date this contract may not yet route every error path through `PublicError`; aligning them is tracked separately and applies whenever those endpoints stream payload-phase errors to the caller.
 

@@ -1910,6 +1910,52 @@ export interface EvalCaseResult {
   updated_at: string;
 }
 
+// Read-only share links (see specs/evals.md, specs/public-endpoints.md).
+export interface EvalRunShareLink {
+  token: string;
+  token_prefix: string;
+  created_at: string;
+}
+
+export interface EvalRunShareStatus {
+  active: boolean;
+}
+
+// Sanitized attribution shown on a public share.
+export interface PublicAttribution {
+  system?: string;
+  version?: string;
+  url?: string;
+}
+
+// Anonymous, sanitized view of one run returned by the public share endpoint.
+// Omits org/internal ids, session ids, internal targets, attribution labels.
+export interface PublicEvalRun {
+  id: string;
+  status: EvalRunStatus;
+  source?: "internal" | "external";
+  attribution?: PublicAttribution;
+  summary?: RunSummary;
+  created_at: string;
+  completed_at?: string;
+  results: PublicEvalCaseResult[];
+}
+
+export interface PublicEvalCaseResult {
+  case_name?: string;
+  // Only label-only (external) targets are exposed publicly.
+  target?: EvalTarget;
+  status: EvalCaseResult["status"];
+  scores?: EvalScore[] | Record<string, { pass: boolean; value: number; reason: string }>;
+  transcript?: EvalTranscript;
+  metrics?: Record<string, number>;
+  turns?: number;
+  latency_ms?: number;
+  input_tokens?: number;
+  output_tokens?: number;
+  error_message?: string;
+}
+
 // Request types
 export interface CreateEvalRequest {
   name: string;

@@ -788,4 +788,77 @@ impl InMemoryDatabase {
         row.updated_at = now;
         Ok(Some(row.clone()))
     }
+
+    // ============================================
+    // Eval Run Share Tokens (migration 091)
+    // ============================================
+
+    pub async fn create_eval_run_share_token(
+        &self,
+        org_id: i64,
+        input: CreateEvalRunShareTokenRow,
+    ) -> Result<EvalRunShareTokenRow> {
+        let now = Self::now();
+        let id = Uuid::now_v7();
+        let row = EvalRunShareTokenRow {
+            id,
+            org_id,
+            public_id: input.public_id,
+            eval_run_id: input.eval_run_id,
+            token_hash: input.token_hash,
+            token_prefix: input.token_prefix,
+            created_by: input.created_by,
+            expires_at: input.expires_at,
+            revoked_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+        self.eval_run_share_tokens.write().insert(id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn revoke_eval_run_share_tokens(
+        &self,
+        org_id: i64,
+        eval_run_id: Uuid,
+    ) -> Result<u64> {
+        let now = Self::now();
+        let mut tokens = self.eval_run_share_tokens.write();
+        let mut revoked = 0u64;
+        for row in tokens.values_mut() {
+            if row.org_id == org_id && row.eval_run_id == eval_run_id && row.revoked_at.is_none() {
+                row.revoked_at = Some(now);
+                row.updated_at = now;
+                revoked += 1;
+            }
+        }
+        Ok(revoked)
+    }
+
+    pub async fn eval_run_has_active_share(&self, org_id: i64, eval_run_id: Uuid) -> Result<bool> {
+        let now = Self::now();
+        let tokens = self.eval_run_share_tokens.read();
+        Ok(tokens.values().any(|row| {
+            row.org_id == org_id
+                && row.eval_run_id == eval_run_id
+                && row.revoked_at.is_none()
+                && row.expires_at.is_none_or(|e| e > now)
+        }))
+    }
+
+    pub async fn get_eval_run_share_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<EvalRunShareTokenRow>> {
+        let tokens = self.eval_run_share_tokens.read();
+        Ok(tokens
+            .values()
+            .find(|row| row.token_hash == token_hash)
+            .cloned())
+    }
+
+    pub async fn get_eval_run_by_id(&self, id: Uuid) -> Result<Option<EvalRunRow>> {
+        let runs = self.eval_runs.read();
+        Ok(runs.get(&id).cloned())
+    }
 }

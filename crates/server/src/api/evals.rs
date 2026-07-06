@@ -22,10 +22,11 @@ use crate::domains::evals::EvalService;
 use crate::domains::evals::dataset::ExportEvalRunDatasetRequest;
 use crate::domains::evals::runner::EvalRunContext;
 use crate::domains::evals::{
-    BulkUpdateEvalRunScores, CancelEvalRun, CreateEval, CreateEvalCase, CreateEvalRun, DeleteEval,
-    DeleteEvalCase, EvalImportPreflightCmd, ExportEvalRunArtifacts, ExportEvalRunDataset, GetEval,
-    GetEvalCase, GetEvalRun, GetEvalRunDataset, ImportEvalRun, ListEvalCases, ListEvalRuns,
-    ListEvals, UpdateEval, UpdateEvalCase, UpdateEvalResultScores,
+    BulkUpdateEvalRunScores, CancelEvalRun, CreateEval, CreateEvalCase, CreateEvalRun,
+    CreateEvalRunShare, DeleteEval, DeleteEvalCase, EvalImportPreflightCmd, ExportEvalRunArtifacts,
+    ExportEvalRunDataset, GetEval, GetEvalCase, GetEvalRun, GetEvalRunDataset, GetEvalRunShare,
+    ImportEvalRun, ListEvalCases, ListEvalRuns, ListEvals, RevokeEvalRunShare, UpdateEval,
+    UpdateEvalCase, UpdateEvalResultScores,
 };
 use crate::storage::StorageBackend;
 use everruns_core::Caller;
@@ -374,6 +375,82 @@ pub struct ListEvalsQuery {
 // Routes
 // ============================================
 
+// ============================================
+// Share links (read-only public views).
+// See specs/evals.md, specs/public-endpoints.md.
+// ============================================
+
+/// A freshly minted share link. The raw `token` is returned once and never
+/// stored; build the public URL `/shared/eval-runs/<token>` from it.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct EvalRunShareLink {
+    pub token: String,
+    pub token_prefix: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Whether a run currently has an active share link.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct EvalRunShareStatus {
+    pub active: bool,
+}
+
+/// Attribution shown on a public share (external runs). Display fields only.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PublicAttribution {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+/// Sanitized, anonymous view of one eval run, returned by the public share
+/// endpoint. Omits org/internal ids, session ids, internal targets, and
+/// attribution env labels — only the shared content remains.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PublicEvalRun {
+    pub id: String,
+    pub status: EvalRunStatus,
+    pub source: EvalRunSource,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attribution: Option<PublicAttribution>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<RunSummary>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub results: Vec<PublicEvalCaseResult>,
+}
+
+/// One case result in a public run view.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PublicEvalCaseResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub case_name: Option<String>,
+    /// Only label-only (external) targets are exposed; internal targets are dropped.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<EvalTarget>,
+    pub status: CaseResultStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scores: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transcript: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metrics: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turns: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
+
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/evals", post(create_eval).get(list_evals))
@@ -418,7 +495,72 @@ pub fn routes(state: AppState) -> Router {
             "/v1/evals/{eval_id}/runs/{run_id}/scores",
             patch(bulk_update_run_scores),
         )
+        // Read-only share link (mint / status / revoke).
+        .route(
+            "/v1/evals/{eval_id}/runs/{run_id}/share",
+            post(create_run_share)
+                .get(get_run_share)
+                .delete(revoke_run_share),
+        )
+        // Public, UNAUTHENTICATED read of a shared run (no auth extractor).
+        .route("/v1/public/eval-runs/{token}", get(public_eval_run))
         .with_state(state)
+}
+
+// ============================================
+// Share-link handlers
+// ============================================
+
+async fn create_run_share(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((eval_id, run_id)): Path<(String, String)>,
+) -> ApiResult<EvalRunShareLink> {
+    let link = CreateEvalRunShare { eval_id, run_id }
+        .run(&state.ctx(&org))
+        .await?;
+    Ok(Json(link))
+}
+
+async fn get_run_share(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((eval_id, run_id)): Path<(String, String)>,
+) -> ApiResult<EvalRunShareStatus> {
+    let status = GetEvalRunShare { eval_id, run_id }
+        .run(&state.ctx(&org))
+        .await?;
+    Ok(Json(status))
+}
+
+async fn revoke_run_share(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((eval_id, run_id)): Path<(String, String)>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    state
+        .dispatcher(&org)
+        .run_no_content(RevokeEvalRunShare { eval_id, run_id })
+        .await
+}
+
+/// Public, unauthenticated read of a shared eval run. No auth extractor ⇒
+/// anonymous; the token is the authorization. Unknown/revoked/expired ⇒ 404.
+async fn public_eval_run(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+) -> Result<Json<PublicEvalRun>, (StatusCode, Json<ErrorResponse>)> {
+    match state.service.resolve_public_share(&token).await {
+        Ok(Some(run)) => Ok(Json(run)),
+        Ok(None) => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse::new("Shared run not found")),
+        )),
+        Err(_) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse::new("internal_error")),
+        )),
+    }
 }
 
 // ============================================

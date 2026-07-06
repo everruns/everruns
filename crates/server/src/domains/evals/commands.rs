@@ -1,8 +1,8 @@
 use super::queries as q;
 use super::types::{
     BulkUpdateEvalRunScoresRequest, CreateEvalCaseRequest, CreateEvalRequest, CreateEvalRunRequest,
-    EvalImportPreflight, ImportEvalRunRequest, ListEvalsQuery, UpdateEvalCaseRequest,
-    UpdateEvalRequest, UpdateEvalResultScoresRequest,
+    EvalImportPreflight, EvalRunShareLink, EvalRunShareStatus, ImportEvalRunRequest,
+    ListEvalsQuery, UpdateEvalCaseRequest, UpdateEvalRequest, UpdateEvalResultScoresRequest,
 };
 use crate::domains::common::*;
 use everruns_core::eval::{Eval, EvalCase, EvalCaseResult, EvalRun};
@@ -764,6 +764,115 @@ impl Command for CancelEvalRun {
 }
 
 inventory::submit! { CommandDescriptor::of::<CancelEvalRun>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateEvalRunShare {
+    pub eval_id: String,
+    pub run_id: String,
+}
+
+impl Command for CreateEvalRunShare {
+    type Output = EvalRunShareLink;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "create_eval_run_share",
+            category: "evals",
+            description: "Mint a read-only share link for an eval run.",
+            method: "POST",
+            path: "/v1/evals/{eval_id}/runs/{run_id}/share",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<EvalRunShareLink, CommandError> {
+        require_evals_enabled(ctx)?;
+        let eval_id = q::parse_eval_id(&self.eval_id)?;
+        let run_id = q::parse_run_id(&self.run_id)?;
+        q::service(ctx)
+            .create_run_share(&ctx.caller, &eval_id.to_string(), &run_id.to_string())
+            .await
+            .map_err(classify_anyhow)
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<CreateEvalRunShare>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct GetEvalRunShare {
+    pub eval_id: String,
+    pub run_id: String,
+}
+
+impl Command for GetEvalRunShare {
+    type Output = EvalRunShareStatus;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "get_eval_run_share",
+            category: "evals",
+            description: "Whether an eval run has an active share link.",
+            method: "GET",
+            path: "/v1/evals/{eval_id}/runs/{run_id}/share",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_VIEW)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<EvalRunShareStatus, CommandError> {
+        require_evals_enabled(ctx)?;
+        let eval_id = q::parse_eval_id(&self.eval_id)?;
+        let run_id = q::parse_run_id(&self.run_id)?;
+        let active = q::service(ctx)
+            .run_has_active_share(&ctx.caller, &eval_id.to_string(), &run_id.to_string())
+            .await
+            .map_err(classify_anyhow)?;
+        Ok(EvalRunShareStatus { active })
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<GetEvalRunShare>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct RevokeEvalRunShare {
+    pub eval_id: String,
+    pub run_id: String,
+}
+
+impl Command for RevokeEvalRunShare {
+    type Output = bool;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "revoke_eval_run_share",
+            category: "evals",
+            description: "Revoke all share links for an eval run.",
+            method: "DELETE",
+            path: "/v1/evals/{eval_id}/runs/{run_id}/share",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
+        require_evals_enabled(ctx)?;
+        let eval_id = q::parse_eval_id(&self.eval_id)?;
+        let run_id = q::parse_run_id(&self.run_id)?;
+        q::service(ctx)
+            .revoke_run_share(&ctx.caller, &eval_id.to_string(), &run_id.to_string())
+            .await
+            .map_err(classify_anyhow)
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<RevokeEvalRunShare>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateEvalResultScores {
