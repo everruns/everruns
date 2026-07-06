@@ -52,7 +52,7 @@ Verify that an agent with the `subagents` capability can spawn a subagent via th
      }'
    ```
 
-4. Wait for completion (60-120 seconds for foreground subagent execution).
+4. Wait for completion (spawn returns immediately in background mode; allow 60-120 seconds for the subagent itself and the completion wake-up to land).
 
 5. Retrieve events and session list for assertions:
    ```bash
@@ -79,8 +79,8 @@ Verify that an agent with the `subagents` capability can spawn a subagent via th
 |-------|----------|
 | subagent_id present | `tool.completed` result contains `subagent_id` (non-empty string) |
 | name present | Result `name` equals `"Greeter"` |
-| status present | Result `status` is `"completed"` or `"idle"` |
-| result present | Result `result` contains non-empty response text |
+| status present | Result `status` is `"running"` (background default); `"completed"`/`"idle"` if the model chose foreground mode |
+| task_id present | Result contains `task_id`; in background mode the final result lands on the task record (`get_task` summary) and a completion wake-up message follows |
 
 ### Child Session Assertions
 

@@ -496,7 +496,8 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .execute_with_context(
             serde_json::json!({
                 "name": "gRPC Subagent",
-                "instructions": "Exercise spawn_subagent through the gRPC platform adapter"
+                "instructions": "Exercise spawn_subagent through the gRPC platform adapter",
+                "mode": "foreground"
             }),
             &context,
         )
