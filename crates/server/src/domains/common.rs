@@ -237,6 +237,9 @@ pub fn classify_anyhow(e: anyhow::Error) -> CommandError {
         "only api key mcp servers can store an api key",
         "api key auth mode requires",
         "oauth mcp servers require a user connection",
+        // EVE-649: org MCP servers reject stdio/local transports at
+        // create/update — client-supplied config, not an internal invariant.
+        "stdio mcp servers are not supported for organization mcp servers",
     ]
     .iter()
     .any(|pattern| lowered.contains(pattern));
@@ -1285,6 +1288,25 @@ mod error_tests {
         assert_eq!(err.status(), StatusCode::NOT_FOUND);
     }
 
+    // EVE-649: org MCP server create/update raise a stringly-typed
+    // `anyhow::bail!("stdio MCP servers are not supported for organization MCP
+    // servers")` on client-supplied transport config. Pin that it classifies
+    // as a 400 instead of falling through to Internal/500.
+    #[test]
+    fn classify_anyhow_maps_stdio_mcp_server_rejection_to_bad_request() {
+        let err = classify_anyhow(anyhow::anyhow!(
+            "stdio MCP servers are not supported for organization MCP servers"
+        ));
+        let CommandError {
+            kind: CommandErrorKind::BadRequest(_),
+            ..
+        } = &err
+        else {
+            panic!("stdio MCP server rejection must classify as BadRequest, got {err:?}");
+        };
+        assert_eq!(err.status(), StatusCode::BAD_REQUEST);
+    }
+
     // EVE-437: every substring added to the `is_bad_request` list must in
     // fact map an `anyhow::bail!` to `CommandError::BadRequest` rather than
     // silently 500ing. New entries here pin the contract.
@@ -1303,6 +1325,8 @@ mod error_tests {
             "API key auth mode requires an API key",
             "API key auth mode requires a non-empty API key",
             "OAuth MCP servers require a user connection before tools can be refreshed",
+            // EVE-649: org MCP server transport validation
+            "stdio MCP servers are not supported for organization MCP servers",
         ];
         for raw in cases {
             let err = classify_anyhow(anyhow::anyhow!("{raw}"));

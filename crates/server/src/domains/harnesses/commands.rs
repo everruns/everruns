@@ -215,7 +215,7 @@ impl Command for CreateHarness {
             network_access: req
                 .network_access
                 .as_ref()
-                .map(|na| serde_json::to_value(na).unwrap()),
+                .map(|na| serde_json::to_value(na).unwrap_or_default()),
             embedder_metadata: serde_json::to_value(&req.embedder_metadata).unwrap_or_default(),
             is_built_in: false,
         };
@@ -495,7 +495,7 @@ impl Command for UpdateHarnessCmd {
                 .map(|servers| serde_json::to_value(&servers).unwrap_or_default()),
             network_access: req
                 .network_access
-                .map(|na| Some(serde_json::to_value(na).unwrap())),
+                .map(|na| Some(serde_json::to_value(na).unwrap_or_default())),
             embedder_metadata: req
                 .embedder_metadata
                 .map(|m| serde_json::to_value(&m).unwrap_or_default()),

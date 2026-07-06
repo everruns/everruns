@@ -636,7 +636,7 @@ impl SessionService {
             network_access: req
                 .network_access
                 .as_ref()
-                .map(|na| serde_json::to_value(na).unwrap()),
+                .map(|na| serde_json::to_value(na).unwrap_or_default()),
             max_iterations: max_iterations::to_db(req.max_iterations)?,
             parallel_tool_calls: req.parallel_tool_calls,
             blueprint_id: None,
@@ -786,7 +786,7 @@ impl SessionService {
             network_access: req
                 .network_access
                 .as_ref()
-                .map(|na| serde_json::to_value(na).unwrap()),
+                .map(|na| serde_json::to_value(na).unwrap_or_default()),
             max_iterations: max_iterations::to_db(req.max_iterations)?,
             parallel_tool_calls: req.parallel_tool_calls,
             blueprint_id: Some(blueprint_id),
