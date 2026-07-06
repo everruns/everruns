@@ -171,6 +171,15 @@ impl StorageBackend {
         dispatch!(self, get_user_by_oauth, provider, provider_id)
     }
 
+    pub async fn link_oauth_identity(
+        &self,
+        id: Uuid,
+        provider: &str,
+        provider_id: &str,
+    ) -> Result<Option<UserRow>> {
+        dispatch!(self, link_oauth_identity, id, provider, provider_id)
+    }
+
     pub async fn update_user(&self, id: Uuid, input: UpdateUser) -> Result<Option<UserRow>> {
         dispatch!(self, update_user, id, input)
     }
