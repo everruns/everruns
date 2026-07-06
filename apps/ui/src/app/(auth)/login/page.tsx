@@ -61,6 +61,9 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // True when the current error is the generic credential failure — the one
+  // state where the user needs an explicit way forward (password reset).
+  const [showRecovery, setShowRecovery] = useState(false);
   // Disable the SSO buttons once one is clicked — the full-page redirect can
   // take a beat and double-clicks would restart the OAuth dance.
   const [oauthPending, setOauthPending] = useState(false);
@@ -109,6 +112,7 @@ export default function LoginPage() {
   const handleEmailContinue = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setShowRecovery(false);
     setPhase("password");
   };
 
@@ -116,6 +120,7 @@ export default function LoginPage() {
     setPhase("email");
     setPassword("");
     setError(null);
+    setShowRecovery(false);
     // Return focus to the email field so keyboard/screen-reader users are
     // not stranded on a removed element.
     setTimeout(() => emailRef.current?.focus(), 0);
@@ -124,6 +129,7 @@ export default function LoginPage() {
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setShowRecovery(false);
 
     const target = getRedirectTarget();
     // For backend redirects (e.g. /oauth/authorize), call the API directly
@@ -178,6 +184,7 @@ export default function LoginPage() {
         return;
       } catch {
         setError("Invalid email or password.");
+        setShowRecovery(true);
         return;
       }
     }
@@ -187,6 +194,7 @@ export default function LoginPage() {
         ? `Invalid email or password. New accounts need at least ${MIN_PASSWORD_LENGTH} characters.`
         : "Invalid email or password.",
     );
+    setShowRecovery(true);
   };
 
   const handleOAuthLogin = (provider: string) => {
@@ -243,6 +251,17 @@ export default function LoginPage() {
           {error && (
             <div role="alert" className="bg-destructive/10 text-destructive text-sm p-3">
               {error}
+              {showRecovery && (
+                <>
+                  {" "}
+                  <Link
+                    href={`/forgot-password?email=${encodeURIComponent(email)}`}
+                    className="font-medium underline underline-offset-2 hover:no-underline"
+                  >
+                    Reset your password
+                  </Link>
+                </>
+              )}
             </div>
           )}
           <div className="space-y-2">

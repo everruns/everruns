@@ -6,6 +6,7 @@
 // one (abuse-prone email-sending endpoint).
 
 import { useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,8 +21,10 @@ export default function ForgotPasswordPage() {
   usePageTitle("Reset your password");
   const { data: config } = useAuthConfig();
   const forgotPasswordMutation = useForgotPassword();
+  const searchParams = useSearchParams();
 
-  const [email, setEmail] = useState("");
+  // Prefilled when arriving from the login door's credential-failure alert.
+  const [email, setEmail] = useState(() => searchParams.get("email") ?? "");
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
