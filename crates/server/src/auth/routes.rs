@@ -2558,8 +2558,7 @@ mod oauth_state_tests {
             }),
         )
         .await
-        .err()
-        .expect("oversized password must fail");
+        .expect_err("oversized password must fail");
         assert_eq!(err.status, StatusCode::UNAUTHORIZED);
         assert_eq!(err.error, "Invalid email or password");
     }
@@ -2618,8 +2617,7 @@ mod oauth_state_tests {
             }),
         )
         .await
-        .err()
-        .expect("wrong password fails");
+        .expect_err("wrong password fails");
         assert_eq!(err.status, StatusCode::UNAUTHORIZED);
     }
 
