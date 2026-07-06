@@ -131,6 +131,23 @@ The login page accepts exactly one public query parameter for auth resume:
 
 Implementations: `apps/ui/src/lib/auth-redirect.ts` (`sanitizeReturnTo`) and `apps/ui/src/app/(auth)/login/page.tsx`.
 
+### Unified Entry (Log In or Sign Up)
+
+`/login` is the single door for both returning and new users; `/register`
+forwards there (preserving `return_to`). The screen is SSO-primary (OAuth
+buttons first, email + password as the secondary path behind an email →
+password two-step). Login vs signup is the same action: the UI authenticates,
+and when the server returns 401, signup is enabled, and the password meets the
+registration minimum, it retries the same credentials against
+`POST /v1/auth/register`. Server contracts are unchanged — the unification is
+purely a UI-flow decision.
+
+Enumeration stance: the door never reveals whether an email has an account.
+Every failure path renders the same generic message, and the login→register
+fallback exposes nothing the public register endpoint doesn't already (its
+failures are equally generic). The visible difference between "logged in" and
+"account created" is inherent to open signup, not an oracle.
+
 ### External Mode and OAuth Providers
 
 `AUTH_MODE=external` and the built-in OAuth flow are mutually exclusive. External mode delegates user identity to a third-party provider (PropelAuth, Auth0, Clerk, etc.); the platform's own OAuth handlers (`/v1/auth/oauth/{provider}`, `/v1/auth/callback/{provider}`) are disabled.

@@ -23,16 +23,17 @@ Verify the complete flow of logging in with a previously signed up user and then
 
 1. Navigate to the login page (ensure not already logged in)
 2. Enter email: `testuser@example.com`
-3. Enter password: `TestPassword123!`
-4. Click the login button
-5. Verify successful login:
+3. Click "Continue with email"
+4. Enter password: `TestPassword123!`
+5. Click "Continue"
+6. Verify successful login:
    - User is redirected to dashboard
    - User name and email are displayed in sidebar
-6. Navigate to different pages (Dashboard, Agents, Capabilities)
-7. Return to Dashboard
-8. Click on the user avatar/menu in the sidebar
-9. Click the "Sign out" button
-10. Verify successful sign-out:
+7. Navigate to different pages (Dashboard, Agents, Capabilities)
+8. Return to Dashboard
+9. Click on the user avatar/menu in the sidebar
+10. Click the "Sign out" button
+11. Verify successful sign-out:
     - User is redirected to login page
     - Session is cleared
 

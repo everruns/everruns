@@ -1,6 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+// Unified auth entry (Frames 1–2 of the onboarding arc): one door for both
+// log in and sign up, SSO-primary. Phase "email" shows the OAuth buttons and
+// an email field; phase "password" asks for the password with the email
+// locked in. Login vs signup is the same action — authenticate, and when the
+// account doesn't exist yet (401) and signup is open, create it with the same
+// credentials. All failure copy stays generic (TM-AUTH-014/019): the door
+// never reveals whether an email already has an account.
+
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -8,12 +16,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { OAuthProviderIcon } from "@/components/auth/oauth-provider-icon";
-import { useAuthConfig, useLogin } from "@/hooks/use-auth";
+import { useAuthConfig, useLogin, useRegister } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks";
 import { ApiError } from "@/lib/api/client";
-import { getOAuthUrl, login } from "@/lib/api/auth";
+import { getOAuthUrl, login, register } from "@/lib/api/auth";
 import { isBackendNavigationPath, sanitizeReturnTo } from "@/lib/auth-redirect";
-import { Loader2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 
 // Session storage key for preserving return_to across OAuth redirects
 const RETURN_TO_KEY = "everruns_return_to";
@@ -24,16 +32,25 @@ const oauthProviders: Record<string, { name: string }> = {
   github: { name: "GitHub" },
 };
 
+// New accounts require 8+ characters (server-enforced); used to decide
+// whether a failed login is worth retrying as a signup.
+const MIN_PASSWORD_LENGTH = 8;
+
+type Phase = "email" | "password";
+
 export default function LoginPage() {
-  usePageTitle("Sign in");
+  usePageTitle("Log in or sign up");
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: config, isLoading: configLoading } = useAuthConfig();
   const loginMutation = useLogin();
+  const registerMutation = useRegister();
 
+  const [phase, setPhase] = useState<Phase>("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   // Sanitize to a safe relative path — prevents open-redirect into
   // attacker-controlled origins (see specs/authentication.md).
@@ -46,6 +63,13 @@ export default function LoginPage() {
     }
   }, [config, router]);
 
+  // Focus the password field when the second phase opens.
+  useEffect(() => {
+    if (phase === "password") {
+      passwordRef.current?.focus();
+    }
+  }, [phase]);
+
   const getRedirectTarget = (): string => {
     // Check URL param first, then sessionStorage (for OAuth flow).
     // Both are sanitized so a poisoned sessionStorage can't redirect off-origin.
@@ -54,35 +78,81 @@ export default function LoginPage() {
     return returnTo || stored || "/dashboard";
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const hasPasswordAuth = config?.password_auth_enabled ?? false;
+  const hasOAuthProviders = (config?.oauth_providers?.length ?? 0) > 0;
+  const canSignup = config?.signup_enabled ?? false;
+
+  const handleEmailContinue = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setPhase("password");
+  };
+
+  const handleBack = () => {
+    setPhase("email");
+    setPassword("");
+    setError(null);
+  };
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
+    const target = getRedirectTarget();
+    // For backend redirects (e.g. /oauth/authorize), call the API directly
+    // and navigate immediately — don't go through the mutation's onSuccess
+    // which refetches auth state and can trigger React re-renders that
+    // race with the navigation.
+    const backendTarget = isBackendNavigationPath(target);
+
     try {
-      const target = getRedirectTarget();
-      // For backend redirects (e.g. /oauth/authorize), call login() directly
-      // and navigate immediately — don't go through the mutation's onSuccess
-      // which refetches auth state and can trigger React re-renders that
-      // race with the navigation.
-      if (isBackendNavigationPath(target)) {
+      if (backendTarget) {
         await login({ email, password });
         window.location.assign(target);
         return;
       }
       await loginMutation.mutateAsync({ email, password });
       router.push(target);
+      return;
     } catch (err) {
       // EVE-452 / TM-AUTH-019: never render raw server messages on a login
       // failure. Inspect the error type/status instead so non-credential
       // problems (network, 500, CSRF) get a useful operator-facing fallback
       // string while the credential-failure path still gets the fixed
       // generic message that closes the enumeration oracle.
-      if (err instanceof ApiError && err.status === 401) {
-        setError("Invalid email or password.");
-      } else {
+      if (!(err instanceof ApiError && err.status === 401)) {
         setError("Login failed. Please try again.");
+        return;
       }
     }
+
+    // Unified door: a 401 may simply mean "no account yet". When signup is
+    // open and the password is registrable, retry as a signup with the same
+    // credentials. A register failure (existing account, wrong password, …)
+    // reports the same generic message as a failed login, so the outcome
+    // reveals nothing an attacker couldn't get from the register endpoint
+    // itself (TM-AUTH-014).
+    if (canSignup && password.length >= MIN_PASSWORD_LENGTH) {
+      try {
+        if (backendTarget) {
+          await register({ email, password });
+          window.location.assign(target);
+          return;
+        }
+        await registerMutation.mutateAsync({ email, password });
+        router.push(target);
+        return;
+      } catch {
+        setError("Invalid email or password.");
+        return;
+      }
+    }
+
+    setError(
+      canSignup && password.length < MIN_PASSWORD_LENGTH
+        ? `Invalid email or password. New accounts need at least ${MIN_PASSWORD_LENGTH} characters.`
+        : "Invalid email or password.",
+    );
   };
 
   const handleOAuthLogin = (provider: string) => {
@@ -108,14 +178,86 @@ export default function LoginPage() {
     return null;
   }
 
-  const hasPasswordAuth = config?.password_auth_enabled ?? false;
-  const hasOAuthProviders = (config?.oauth_providers?.length ?? 0) > 0;
-  const canSignup = config?.signup_enabled ?? false;
+  const isSubmitting = loginMutation.isPending || registerMutation.isPending;
 
+  // --- Phase 2: password, email locked in ---
+  if (phase === "password" && hasPasswordAuth) {
+    return (
+      <AuthShell>
+        <button
+          type="button"
+          onClick={handleBack}
+          className="mb-5 inline-flex items-center gap-[7px] text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft className="icon-sharp h-[15px] w-[15px]" strokeWidth={2} />
+          Back
+        </button>
+        <h2 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
+          Enter your password
+        </h2>
+        <p className="mt-[10px] text-sm text-muted-foreground">
+          Continuing as <b className="font-medium text-foreground">{email}</b>.
+          {canSignup && <> New here? We&apos;ll create your account with this email.</>}
+        </p>
+
+        <form onSubmit={handlePasswordSubmit} className="mt-6 space-y-4">
+          {error && <div className="bg-destructive/10 text-destructive text-sm p-3">{error}</div>}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Password</Label>
+              <Link
+                href="/forgot-password"
+                className="text-xs text-muted-foreground hover:text-primary hover:underline"
+              >
+                Forgot password?
+              </Link>
+            </div>
+            <Input
+              id="password"
+              ref={passwordRef}
+              type="password"
+              placeholder="Enter your password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+            />
+          </div>
+          <Button type="submit" className="w-full" disabled={isSubmitting}>
+            {isSubmitting ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Continuing...
+              </>
+            ) : (
+              <>
+                Continue
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </>
+            )}
+          </Button>
+        </form>
+
+        {hasOAuthProviders && (
+          <p className="mt-5 border-t pt-5 text-[12.5px] leading-relaxed text-muted-foreground">
+            Prefer Google or GitHub? Go back — it&apos;s one click and skips email verification.
+          </p>
+        )}
+      </AuthShell>
+    );
+  }
+
+  // --- Phase 1: one door, SSO-primary ---
   return (
     <AuthShell>
-      <h2 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">Welcome back</h2>
-      <p className="mt-[10px] text-sm text-muted-foreground">Sign in to your Everruns account</p>
+      <h2 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
+        {canSignup ? "Log in or sign up" : "Welcome back"}
+      </h2>
+      <p className="mt-[10px] text-sm text-muted-foreground">
+        {canSignup
+          ? "Continue to your console. We'll create an account if you don't have one yet."
+          : "Sign in to your Everruns account"}
+      </p>
 
       <div className="mt-7 space-y-4">
         {/* OAuth Buttons */}
@@ -127,7 +269,7 @@ export default function LoginPage() {
                 <Button
                   key={provider}
                   variant="outline"
-                  className="h-11 w-full justify-start gap-[10px]"
+                  className="h-12 w-full justify-center gap-[10px] font-medium"
                   onClick={() => handleOAuthLogin(provider)}
                 >
                   <OAuthProviderIcon provider={provider} />
@@ -138,7 +280,7 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* OR divider between OAuth and password */}
+        {/* OR divider between OAuth and email */}
         {hasOAuthProviders && hasPasswordAuth && (
           <div className="flex items-center gap-[14px]">
             <span className="h-px flex-1 bg-border" />
@@ -147,51 +289,24 @@ export default function LoginPage() {
           </div>
         )}
 
-        {/* Email/Password Form */}
+        {/* Email step — the password comes on the next screen */}
         {hasPasswordAuth && (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && <div className="bg-destructive/10 text-destructive text-sm p-3">{error}</div>}
+          <form onSubmit={handleEmailContinue} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="you@example.com"
+                placeholder="you@company.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoComplete="email"
               />
             </div>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
-                <Link
-                  href="/forgot-password"
-                  className="text-xs text-muted-foreground hover:text-primary hover:underline"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                autoComplete="current-password"
-              />
-            </div>
-            <Button type="submit" className="w-full" disabled={loginMutation.isPending}>
-              {loginMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
-                </>
-              ) : (
-                "Sign in"
-              )}
+            <Button type="submit" className="w-full">
+              Continue with email
+              <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </form>
         )}
@@ -203,19 +318,6 @@ export default function LoginPage() {
           </div>
         )}
       </div>
-
-      {/* Sign up link */}
-      {canSignup && hasPasswordAuth && (
-        <p className="mt-[18px] text-sm text-muted-foreground">
-          Don&apos;t have an account?{" "}
-          <Link
-            href={returnTo ? `/register?return_to=${encodeURIComponent(returnTo)}` : "/register"}
-            className="font-medium text-primary hover:underline"
-          >
-            Sign up
-          </Link>
-        </p>
-      )}
     </AuthShell>
   );
 }

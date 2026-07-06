@@ -1,26 +1,29 @@
 "use client";
 
+// Email-verification landing page (Frame 3 of the onboarding arc) — rendered
+// inside the shared AuthShell so verification feels like part of the journey
+// instead of a lone card. Reached from the emailed link; the verify gate
+// itself stays server-enforced.
+
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { AuthShell } from "@/components/auth/auth-shell";
 import { useVerifyEmail, useResendVerification } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks";
-import { Loader2 } from "lucide-react";
+import { Check, Loader2, Mail } from "lucide-react";
 
 type VerifyState = "verifying" | "success" | "error";
 
+const BRAND = {
+  eyebrow: "Everruns",
+  headline: "A verified identity is the first durable link in the chain.",
+};
+
 export default function VerifyEmailPage() {
   usePageTitle("Verify your email");
+  const router = useRouter();
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
   // The verification link may optionally carry the email so we can offer a
@@ -63,53 +66,58 @@ export default function VerifyEmailPage() {
 
   if (state === "verifying") {
     return (
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <Image src="/logo.svg" alt="Everruns" width={48} height={48} />
-          </div>
-          <CardTitle className="text-2xl">Verifying your email</CardTitle>
-          <CardDescription>This will only take a moment.</CardDescription>
-        </CardHeader>
-        <CardContent className="flex justify-center py-4">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        </CardContent>
-      </Card>
+      <AuthShell brand={BRAND}>
+        <div className="mb-6 flex h-12 w-12 items-center justify-center border border-accent/40 bg-accent/[0.12] text-accent-foreground">
+          <Mail className="icon-sharp h-[22px] w-[22px]" strokeWidth={1.8} />
+        </div>
+        <h2 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
+          Verifying your email
+        </h2>
+        <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+          This will only take a moment.
+        </p>
+        <div className="mt-7">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      </AuthShell>
     );
   }
 
   if (state === "success") {
     return (
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <Image src="/logo.svg" alt="Everruns" width={48} height={48} />
-          </div>
-          <CardTitle className="text-2xl">Your email is verified</CardTitle>
-          <CardDescription>Thanks for confirming your email address.</CardDescription>
-        </CardHeader>
-        <CardFooter className="flex justify-center">
-          <Link href="/dashboard" className="text-sm text-primary hover:underline">
-            Continue
-          </Link>
-        </CardFooter>
-      </Card>
+      <AuthShell brand={BRAND}>
+        <div className="mb-6 flex h-12 w-12 items-center justify-center border border-accent/40 bg-accent/[0.12] text-accent-foreground">
+          <Check className="icon-sharp h-[22px] w-[22px]" strokeWidth={2.2} />
+        </div>
+        <h2 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
+          Your email is verified
+        </h2>
+        <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+          Thanks for confirming your email address. You can pick up right where you left off.
+        </p>
+        <Button className="mt-7" onClick={() => router.push("/dashboard")}>
+          Continue
+        </Button>
+      </AuthShell>
     );
   }
 
   // Failure state
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader className="text-center">
-        <div className="flex justify-center mb-4">
-          <Image src="/logo.svg" alt="Everruns" width={48} height={48} />
-        </div>
-        <CardTitle className="text-2xl">Verification failed</CardTitle>
-        <CardDescription>This verification link is invalid or has expired.</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <AuthShell brand={BRAND}>
+      <div className="mb-6 flex h-12 w-12 items-center justify-center border border-accent/40 bg-accent/[0.12] text-accent-foreground">
+        <Mail className="icon-sharp h-[22px] w-[22px]" strokeWidth={1.8} />
+      </div>
+      <h2 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
+        Verification failed
+      </h2>
+      <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+        This verification link is invalid or has expired.
+      </p>
+
+      <div className="mt-7 space-y-4">
         {resent ? (
-          <div className="text-center text-sm text-muted-foreground">
+          <div className="text-sm text-muted-foreground">
             If an account exists for {email}, we&apos;ve sent a new verification link. Check your
             inbox.
           </div>
@@ -129,16 +137,17 @@ export default function VerifyEmailPage() {
             )}
           </Button>
         ) : (
-          <div className="text-center text-sm text-muted-foreground">
+          <div className="text-sm text-muted-foreground">
             Sign in to request a new verification email.
           </div>
         )}
-      </CardContent>
-      <CardFooter className="flex justify-center">
-        <Link href="/login" className="text-sm text-primary hover:underline">
-          Back to sign in
-        </Link>
-      </CardFooter>
-    </Card>
+
+        <p className="text-sm text-muted-foreground">
+          <Link href="/login" className="font-medium text-primary hover:underline">
+            Back to sign in
+          </Link>
+        </p>
+      </div>
+    </AuthShell>
   );
 }
