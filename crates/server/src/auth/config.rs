@@ -188,6 +188,20 @@ pub struct AuthConfig {
     pub disable_signup: bool,
     /// Session max age in seconds (default: 30 days)
     pub session_max_age: Duration,
+    /// Cloudflare Turnstile challenge for abuse-prone auth endpoints
+    /// (register, forgot-password, resend-verification). Enabled when both
+    /// keys are configured; the site key is surfaced via `/v1/auth/config`
+    /// so the UI can render the (invisible) widget.
+    pub turnstile: Option<TurnstileAuthConfig>,
+}
+
+/// Cloudflare Turnstile keys for the auth surface.
+#[derive(Debug, Clone)]
+pub struct TurnstileAuthConfig {
+    /// Public site key rendered into the client widget.
+    pub site_key: String,
+    /// Server-side siteverify secret. Never surfaced to clients.
+    pub secret_key: String,
 }
 
 impl Default for AuthConfig {
@@ -204,6 +218,7 @@ impl Default for AuthConfig {
             disable_password_auth: false,
             disable_signup: false,
             session_max_age: Duration::from_secs(30 * 24 * 60 * 60), // 30 days
+            turnstile: None,
         }
     }
 }
@@ -378,6 +393,21 @@ impl AuthConfig {
             .map(|mins: u64| Duration::from_secs(mins * 60))
             .unwrap_or_else(|| Duration::from_secs(30 * 24 * 60 * 60));
 
+        // Turnstile for auth endpoints: enabled only when BOTH keys are set.
+        // A half-configured pair is a deploy mistake — fail fast below.
+        let turnstile_site = env_opt_string_any(&["AUTH_TURNSTILE_SITE_KEY"]);
+        let turnstile_secret = env_opt_string_any(&["AUTH_TURNSTILE_SECRET_KEY"]);
+        let turnstile = match (turnstile_site, turnstile_secret) {
+            (Some(site_key), Some(secret_key)) => Some(TurnstileAuthConfig {
+                site_key,
+                secret_key,
+            }),
+            (None, None) => None,
+            _ => {
+                panic!("AUTH_TURNSTILE_SITE_KEY and AUTH_TURNSTILE_SECRET_KEY must be set together")
+            }
+        };
+
         let config = Self {
             mode,
             base_url,
@@ -390,6 +420,7 @@ impl AuthConfig {
             disable_password_auth,
             disable_signup,
             session_max_age,
+            turnstile,
         };
 
         // Fail fast on conflicting auth-config combinations so operators see
