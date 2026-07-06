@@ -2864,6 +2864,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "dirs",
+ "everruns-anthropic",
  "everruns-core",
  "everruns-runtime",
  "libc",
