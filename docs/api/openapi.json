@@ -15784,7 +15784,7 @@
           },
           "channel_type": {
             "$ref": "#/components/schemas/ChannelType",
-            "description": "Channel kind (slack, ag_ui, webhook, a2a, fcp)."
+            "description": "Channel kind (slack, ag_ui, webhook, a2a, fcp, public_chat)."
           },
           "completed_at": {
             "type": [
@@ -16384,7 +16384,8 @@
           "webhook",
           "a2a",
           "fcp",
-          "api_endpoint"
+          "api_endpoint",
+          "public_chat"
         ],
         "example": "webhook"
       },

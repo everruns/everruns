@@ -4413,7 +4413,7 @@ export interface components {
       channel_id: string;
       /** @description Human-readable channel name when set. */
       channel_name?: string | null;
-      /** @description Channel kind (slack, ag_ui, webhook, a2a, fcp). */
+      /** @description Channel kind (slack, ag_ui, webhook, a2a, fcp, public_chat). */
       channel_type: components["schemas"]["ChannelType"];
       /**
        * Format: date-time
@@ -4751,7 +4751,15 @@ export interface components {
      * @example webhook
      * @enum {string}
      */
-    ChannelType: "slack" | "ag_ui" | "schedule" | "webhook" | "a2a" | "fcp" | "api_endpoint";
+    ChannelType:
+      | "slack"
+      | "ag_ui"
+      | "schedule"
+      | "webhook"
+      | "a2a"
+      | "fcp"
+      | "api_endpoint"
+      | "public_chat";
     /** @description Response for agent name availability check. */
     CheckAgentNameResponse: {
       /** @description Whether the name is available for use. */

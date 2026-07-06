@@ -397,7 +397,14 @@ export interface PreviewHarnessRequest {
 // From legacy app-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 export type AppStatus = "draft" | "published" | "archived" | "deleted";
 
-export type ChannelType = "slack" | "ag_ui" | "schedule" | "webhook" | "a2a" | "fcp";
+export type ChannelType =
+  | "slack"
+  | "ag_ui"
+  | "schedule"
+  | "webhook"
+  | "a2a"
+  | "fcp"
+  | "public_chat";
 
 export type SessionStrategy = "per_thread" | "per_channel" | "per_user";
 
@@ -591,6 +598,44 @@ export interface A2aChannelConfig {
   signing_secret_configured?: boolean;
 }
 
+/** Branding shown on a Public Chat surface. All fields optional. */
+export interface PublicChatBranding {
+  display_name?: string;
+  logo_url?: string;
+  primary_color?: string;
+  welcome_message?: string;
+}
+
+/**
+ * CAPTCHA / bot-mitigation config for a Public Chat channel (Cloudflare
+ * Turnstile). `secret_key` is write-only; reads expose only
+ * `secret_key_configured`. `site_key` is public.
+ */
+export interface PublicChatCaptchaConfig {
+  provider?: "turnstile";
+  enabled?: boolean;
+  site_key: string;
+  secret_key?: string;
+  secret_key_configured?: boolean;
+}
+
+/**
+ * Public Chat channel configuration. Reuses AG-UI streaming semantics plus
+ * branding and bot-mitigation tailored to a public, link-shareable chat.
+ */
+export interface PublicChatChannelConfig {
+  anonymous?: boolean;
+  token?: string;
+  token_configured?: boolean;
+  session_expiration_seconds?: number;
+  rate_limit_per_minute?: number;
+  tool_visibility?: AgUiToolVisibility;
+  generic_tool_text?: string;
+  auth?: AppEndpointAuthConfig;
+  branding?: PublicChatBranding;
+  captcha?: PublicChatCaptchaConfig;
+}
+
 export interface AppChannel {
   id: string;
   channel_type: ChannelType;
@@ -601,6 +646,7 @@ export interface AppChannel {
     | WebhookChannelConfig
     | A2aChannelConfig
     | FcpChannelConfig
+    | PublicChatChannelConfig
     | Record<string, unknown>;
   enabled: boolean;
   next_run_at?: string | null;
@@ -665,6 +711,7 @@ export interface CreateAppRequest {
     | WebhookChannelConfig
     | A2aChannelConfig
     | FcpChannelConfig
+    | PublicChatChannelConfig
     | Record<string, unknown>;
 }
 
@@ -688,6 +735,7 @@ export interface AddChannelRequest {
     | WebhookChannelConfig
     | A2aChannelConfig
     | FcpChannelConfig
+    | PublicChatChannelConfig
     | Record<string, unknown>;
   enabled?: boolean;
 }
@@ -701,6 +749,7 @@ export interface UpdateChannelRequest {
     | WebhookChannelConfig
     | A2aChannelConfig
     | FcpChannelConfig
+    | PublicChatChannelConfig
     | Record<string, unknown>;
   enabled?: boolean;
 }
@@ -723,6 +772,8 @@ export interface FeatureFlags {
   agent_delegation: boolean;
   /** Observers: online scoring of production sessions. Experimental. */
   observers: boolean;
+  /** Public Chat (isolated public-facing chat web app + `public_chat` channel). Experimental. */
+  public_chat: boolean;
 }
 
 export interface OrgFeatureFlagSetting {

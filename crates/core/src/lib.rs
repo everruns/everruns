@@ -414,8 +414,10 @@ pub use agent_identity::{AgentIdentity, AgentIdentityStatus};
 pub use app::{
     A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentVersionPolicy,
     ApiEndpointChannelConfig, App, AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode,
-    AppEndpointAuthProviderConfig, AppEndpointAuthRequirements, AppStatus, ChannelType,
-    FcpChannelConfig, InvocationSessionMode, SessionStrategy, SlackChannelConfig, SlackReplyMode,
+    AppEndpointAuthProviderConfig, AppEndpointAuthRequirements, AppStatus, CaptchaProvider,
+    ChannelType, FcpChannelConfig, InvocationSessionMode, PublicChatBranding,
+    PublicChatCaptchaConfig, PublicChatChannelConfig, SessionStrategy, SlackChannelConfig,
+    SlackReplyMode,
 };
 pub use ard_attachment::{
     ARD_ATTACHMENT_KV_PREFIX, ARD_ATTACHMENT_RESOURCE_KIND, ARD_DISCOVERY_KV_PREFIX, ArdAttachment,

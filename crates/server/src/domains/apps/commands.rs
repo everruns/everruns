@@ -27,7 +27,8 @@ use everruns_core::typed_id::{AgentId, AgentVersionId, AppChannelId, AppId, Harn
 use everruns_core::{
     A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentAction, ApiEndpointChannelConfig,
     App, AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
-    AppStatus, AuditEvent, ChannelType, FcpChannelConfig, Policy, SlackChannelConfig,
+    AppStatus, AuditEvent, ChannelType, FcpChannelConfig, Policy, PublicChatChannelConfig,
+    SlackChannelConfig,
 };
 use everruns_durable::{
     CreateScheduleRow, Pagination as DurablePagination, ScheduleExecutionFilter,
@@ -237,12 +238,26 @@ fn cron_min_interval_seconds(schedule: &cron::Schedule) -> Option<i64> {
         .min()
 }
 
+/// Gate feature-flagged channel types. Public Chat is only available to
+/// organizations with the `public_chat` feature flag enabled.
+fn ensure_channel_type_enabled(ctx: &Ctx, channel_type: &ChannelType) -> Result<(), CommandError> {
+    if *channel_type == ChannelType::PublicChat && !ctx.feature_flags.public_chat {
+        return Err(CommandError::bad_request(
+            "Public Chat is not enabled for this organization",
+        ));
+    }
+    Ok(())
+}
+
 fn normalize_and_validate_channel_config(
     channel_type: ChannelType,
     mut channel_config: Value,
 ) -> Result<Value, CommandError> {
     match channel_type {
-        ChannelType::AgUi | ChannelType::A2a | ChannelType::ApiEndpoint => {
+        ChannelType::AgUi
+        | ChannelType::A2a
+        | ChannelType::ApiEndpoint
+        | ChannelType::PublicChat => {
             normalize_inline_endpoint_auth(&channel_type, &mut channel_config)?;
         }
         ChannelType::Fcp | ChannelType::Slack | ChannelType::Schedule | ChannelType::Webhook => {
@@ -458,6 +473,90 @@ fn normalize_and_validate_channel_config(
                 ));
             }
         }
+        ChannelType::PublicChat => {
+            let config: PublicChatChannelConfig = serde_json::from_value(channel_config.clone())
+                .map_err(|e| {
+                    CommandError::bad_request(format!("Invalid Public Chat channel config: {e}"))
+                })?;
+            // Mirror the AG-UI cap so a typo cannot silently disable the
+            // per-app limit by overflowing reasonable expectations. `0` means
+            // "no per-app cap".
+            if let Some(limit) = config.rate_limit_per_minute
+                && limit > 1_000_000
+            {
+                return Err(CommandError::bad_request(
+                    "Public Chat rate_limit_per_minute must be at most 1,000,000",
+                ));
+            }
+            if let Some(token) = config.token.as_deref()
+                && token.trim().is_empty()
+            {
+                return Err(CommandError::bad_request(
+                    "Public Chat token must be non-empty when configured",
+                ));
+            }
+            if config.generic_tool_text.chars().count() > 120 {
+                return Err(CommandError::bad_request(
+                    "Public Chat generic_tool_text must be at most 120 characters",
+                ));
+            }
+            if matches!(
+                config.tool_visibility,
+                AgUiToolVisibility::Generic | AgUiToolVisibility::Narrated
+            ) && config.generic_tool_text.trim().is_empty()
+            {
+                return Err(CommandError::bad_request(
+                    "Public Chat generic_tool_text cannot be empty when tool_visibility is generic or narrated",
+                ));
+            }
+            // An anonymous channel with no auth and no captcha is allowed (the
+            // simplest "anyone with the link" case), but a captcha config must
+            // be coherent: a non-empty site key, and a secret key on first
+            // configuration (PATCH may omit it to preserve the stored value).
+            if let Some(captcha) = config.captcha.as_ref() {
+                if captcha.site_key.trim().is_empty() {
+                    return Err(CommandError::bad_request(
+                        "Public Chat captcha requires a non-empty site_key",
+                    ));
+                }
+                if let Some(secret) = captcha.secret_key.as_deref()
+                    && secret.trim().is_empty()
+                {
+                    return Err(CommandError::bad_request(
+                        "Public Chat captcha secret_key must be non-empty when configured",
+                    ));
+                }
+                // An enabled captcha with no stored secret would fail closed at
+                // runtime (every anonymous request → 503). Require the secret
+                // when enabled. On PATCH the existing secret is merged in before
+                // this check, so editing other fields keeps working.
+                let has_secret = captcha
+                    .secret_key
+                    .as_deref()
+                    .is_some_and(|s| !s.trim().is_empty());
+                if captcha.enabled && !has_secret {
+                    return Err(CommandError::bad_request(
+                        "Public Chat captcha requires a secret_key when enabled",
+                    ));
+                }
+            }
+            // Branding sanity: cap the free-text fields so a single channel
+            // write cannot bloat the encrypted config column.
+            if let Some(name) = config.branding.display_name.as_deref()
+                && name.chars().count() > 120
+            {
+                return Err(CommandError::bad_request(
+                    "Public Chat branding display_name must be at most 120 characters",
+                ));
+            }
+            if let Some(welcome) = config.branding.welcome_message.as_deref()
+                && welcome.chars().count() > 2000
+            {
+                return Err(CommandError::bad_request(
+                    "Public Chat branding welcome_message must be at most 2000 characters",
+                ));
+            }
+        }
     }
 
     Ok(channel_config)
@@ -513,9 +612,9 @@ fn validate_endpoint_auth_config(
     match auth.mode {
         AppEndpointAuthMode::Anonymous => Ok(()),
         AppEndpointAuthMode::SharedSecret => {
-            if *channel_type != ChannelType::AgUi {
+            if *channel_type != ChannelType::AgUi && *channel_type != ChannelType::PublicChat {
                 return Err(CommandError::bad_request(
-                    "Shared token auth is only supported for AG-UI channels",
+                    "Shared token auth is only supported for AG-UI and Public Chat channels",
                 ));
             }
             if channel_config
@@ -526,7 +625,7 @@ fn validate_endpoint_auth_config(
                 Ok(())
             } else {
                 Err(CommandError::bad_request(
-                    "Shared token auth requires a non-empty AG-UI token",
+                    "Shared token auth requires a non-empty token",
                 ))
             }
         }
@@ -700,6 +799,24 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
             // read; the non-secret api_key_prefix stays for display.
             map.remove("api_key_hash");
         }
+        ChannelType::PublicChat => {
+            if map.remove("token").is_some() {
+                map.insert("token_configured".to_string(), Value::Bool(true));
+            }
+            // Turnstile secret key is write-only: surface only whether it is
+            // configured so the site key (public) can still be returned for the
+            // client widget without leaking the verification secret.
+            if let Some(captcha) = map.get_mut("captcha").and_then(Value::as_object_mut) {
+                let removed = captcha.remove("secret_key");
+                let is_configured = removed
+                    .as_ref()
+                    .and_then(Value::as_str)
+                    .is_some_and(|s| !s.trim().is_empty());
+                if is_configured {
+                    captcha.insert("secret_key_configured".to_string(), Value::Bool(true));
+                }
+            }
+        }
         ChannelType::Schedule => {}
     }
 }
@@ -818,6 +935,34 @@ fn merge_preserved_secret_fields(
             for key in ["api_key_hash", "api_key_prefix"] {
                 if let Some(existing_value) = existing.get(key) {
                     out.insert(key.to_string(), existing_value.clone());
+                }
+            }
+        }
+        ChannelType::PublicChat => {
+            let should_preserve = out
+                .get("token")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .is_none_or(str::is_empty);
+            if should_preserve && let Some(existing_value) = existing.get("token") {
+                out.insert("token".to_string(), existing_value.clone());
+            }
+            // Preserve the write-only Turnstile secret across a PATCH that
+            // edits other captcha fields (e.g. toggling `enabled` or rotating
+            // the site key) so the operator does not silently disable
+            // verification by omitting the secret.
+            if let (Some(out_captcha), Some(existing_captcha)) = (
+                out.get_mut("captcha").and_then(Value::as_object_mut),
+                existing.get("captcha").and_then(Value::as_object),
+            ) {
+                let should_preserve = out_captcha
+                    .get("secret_key")
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .is_none_or(str::is_empty);
+                if should_preserve && let Some(existing_secret) = existing_captcha.get("secret_key")
+                {
+                    out_captcha.insert("secret_key".to_string(), existing_secret.clone());
                 }
             }
         }
@@ -1888,6 +2033,7 @@ impl Command for CreateApp {
         let mut channel_config = channel_config.unwrap_or_default();
 
         if let Some(channel_type) = channel_type.clone() {
+            ensure_channel_type_enabled(ctx, &channel_type)?;
             if channel_type == ChannelType::Schedule {
                 let _ = durable_store(ctx)?;
                 // Soft cap: count then create (TOCTOU window is intentional — this is a
@@ -2946,6 +3092,8 @@ impl Command for AddChannel {
             ));
         }
 
+        ensure_channel_type_enabled(ctx, &self.req.channel_type)?;
+
         if self.req.channel_type == ChannelType::Schedule {
             let _ = durable_store(ctx)?;
             let enabled = self.req.enabled.unwrap_or(true);
@@ -3749,6 +3897,7 @@ impl Command for UpdateChannelCmd {
                 }
             }
         }
+        ensure_channel_type_enabled(ctx, &final_channel_type)?;
         let normalized_channel_config =
             normalize_and_validate_channel_config(final_channel_type, final_channel_config)?;
 
@@ -4035,5 +4184,118 @@ mod tests {
             "zero should fall back to default"
         );
         unsafe { std::env::remove_var("SCHEDULE_CHANNEL_MAX_PER_ORG") };
+    }
+
+    #[test]
+    fn public_chat_channel_accepts_anonymous_default_config() {
+        normalize_and_validate_channel_config(ChannelType::PublicChat, json!({}))
+            .expect("empty public_chat config defaults to anonymous and is valid");
+    }
+
+    #[test]
+    fn public_chat_channel_accepts_google_oidc_and_branding() {
+        let config = json!({
+            "anonymous": false,
+            "auth": {
+                "mode": "google_oidc",
+                "provider": {"type": "google_oidc", "client_id": "abc.apps.googleusercontent.com"}
+            },
+            "branding": {"display_name": "Helpdesk", "primary_color": "#0A1636"},
+            "captcha": {"site_key": "1x0000AA", "secret_key": "1x0000secret"}
+        });
+        normalize_and_validate_channel_config(ChannelType::PublicChat, config)
+            .expect("google oidc + branding + captcha is valid");
+    }
+
+    #[test]
+    fn public_chat_channel_rejects_empty_token() {
+        let err =
+            normalize_and_validate_channel_config(ChannelType::PublicChat, json!({"token": "   "}))
+                .expect_err("whitespace-only token should fail");
+        assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
+    }
+
+    #[test]
+    fn public_chat_channel_rejects_enabled_captcha_without_secret() {
+        // captcha.enabled defaults to true; an enabled captcha with no secret
+        // would fail closed at runtime, so it must be rejected at write time.
+        let err = normalize_and_validate_channel_config(
+            ChannelType::PublicChat,
+            json!({"captcha": {"site_key": "k"}}),
+        )
+        .expect_err("enabled captcha without secret should fail");
+        assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
+    }
+
+    #[test]
+    fn public_chat_channel_allows_disabled_captcha_without_secret() {
+        normalize_and_validate_channel_config(
+            ChannelType::PublicChat,
+            json!({"captcha": {"enabled": false, "site_key": "k"}}),
+        )
+        .expect("disabled captcha without secret is allowed");
+    }
+
+    #[test]
+    fn public_chat_channel_rejects_captcha_without_site_key() {
+        let err = normalize_and_validate_channel_config(
+            ChannelType::PublicChat,
+            json!({"captcha": {"site_key": "", "secret_key": "s"}}),
+        )
+        .expect_err("captcha without site_key should fail");
+        assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
+    }
+
+    #[test]
+    fn public_chat_channel_rejects_overlong_rate_limit() {
+        let err = normalize_and_validate_channel_config(
+            ChannelType::PublicChat,
+            json!({"rate_limit_per_minute": 2_000_000}),
+        )
+        .expect_err("rate limit above cap should fail");
+        assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
+    }
+
+    #[test]
+    fn public_chat_redacts_token_and_captcha_secret() {
+        let mut config = json!({
+            "token": "shared-secret",
+            "captcha": {"provider": "turnstile", "site_key": "1x0000AA", "secret_key": "1x0000secret"}
+        });
+        redact_channel_config(&ChannelType::PublicChat, &mut config);
+        assert!(config.get("token").is_none());
+        assert_eq!(config.get("token_configured"), Some(&Value::Bool(true)));
+        let captcha = config.get("captcha").and_then(Value::as_object).unwrap();
+        // Site key stays (public, needed by the client widget); secret is gone.
+        assert_eq!(
+            captcha.get("site_key").and_then(Value::as_str),
+            Some("1x0000AA")
+        );
+        assert!(captcha.get("secret_key").is_none());
+        assert_eq!(
+            captcha.get("secret_key_configured"),
+            Some(&Value::Bool(true))
+        );
+    }
+
+    #[test]
+    fn public_chat_preserves_captcha_secret_on_patch() {
+        // PATCH that toggles `enabled` but omits the write-only secret must keep
+        // the stored secret rather than silently disabling verification.
+        let mut final_config = json!({
+            "captcha": {"provider": "turnstile", "enabled": false, "site_key": "1x0000AA"}
+        });
+        let existing = json!({
+            "captcha": {"provider": "turnstile", "enabled": true, "site_key": "1x0000AA", "secret_key": "1x0000secret"}
+        });
+        merge_preserved_secret_fields(ChannelType::PublicChat, &mut final_config, &existing);
+        let captcha = final_config
+            .get("captcha")
+            .and_then(Value::as_object)
+            .unwrap();
+        assert_eq!(
+            captcha.get("secret_key").and_then(Value::as_str),
+            Some("1x0000secret")
+        );
     }
 }

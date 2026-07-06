@@ -34,7 +34,9 @@ A distribution channel attached to an App. Each channel has its own type, config
 
 ### Channel Types
 
-Current: `slack`, `ag_ui`, `schedule`, `webhook`. Future: `whatsapp`, `web_widget`, `api_endpoint`, `discord`, etc. The `api_endpoint` channel carries an app-scoped, execution-only API key over the native session API; see [app-api-keys.md](app-api-keys.md).
+Current: `slack`, `ag_ui`, `schedule`, `webhook`, `a2a`, `fcp`, `api_endpoint`, `public_chat`. Future: `whatsapp`, `web_widget`, `discord`, etc. The `api_endpoint` channel carries an app-scoped, execution-only API key over the native session API; see [app-api-keys.md](app-api-keys.md).
+
+`public_chat` is an isolated, public-facing chat web app bound to a single App's agent (anonymous by default, optional Google sign-in, optional Cloudflare Turnstile bot mitigation, plus branding). It reuses AG-UI streaming and the shared App endpoint auth verifier. See [public-chat.md](public-chat.md).
 
 Channel config is stored as JSONB and validated at the application layer per channel type.
 
