@@ -67,13 +67,16 @@ describe("ZeroOrgOnboarding", () => {
     expect(mockMutateAsync).not.toHaveBeenCalled();
   });
 
-  it("surfaces a create error", () => {
+  it("surfaces a create error generically (no raw server message)", () => {
     createOrgState.isError = true;
     createOrgState.error = new Error("boom");
 
     render(<ZeroOrgOnboarding />);
 
-    expect(screen.getByText(/failed to create organisation: boom/i)).toBeInTheDocument();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(/failed to create organisation/i);
+    // Server error strings must never render (TM-AUTH-019 discipline).
+    expect(alert).not.toHaveTextContent(/boom/);
   });
 
   it("swallows a create rejection without redirecting (no unhandled rejection)", async () => {

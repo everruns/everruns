@@ -159,8 +159,10 @@ export function ZeroOrgOnboarding({
                 </div>
 
                 {createOrg.isError && (
-                  <p className="text-sm text-destructive">
-                    Failed to create organisation: {createOrg.error.message}
+                  // Generic copy only — server error strings are not for
+                  // rendering (TM-AUTH-019 discipline applies UI-wide).
+                  <p role="alert" className="text-sm text-destructive">
+                    Failed to create organisation. Please try again.
                   </p>
                 )}
                 <Button

@@ -288,8 +288,10 @@ export default function OrgSetupPage() {
             <h1 className="text-xl font-semibold">
               {is404 ? "Organization not found" : "Failed to load organization"}
             </h1>
-            {!is404 && orgErrorDetail?.message && (
-              <p className="text-sm text-muted-foreground">{orgErrorDetail.message}</p>
+            {!is404 && (
+              <p role="alert" className="text-sm text-muted-foreground">
+                Something went wrong loading this organisation. Please retry.
+              </p>
             )}
             <Button variant="outline" onClick={() => router.push("/dashboard")}>
               Go to dashboard
@@ -577,7 +579,9 @@ export default function OrgSetupPage() {
                     Your API key will be stored securely and encrypted
                   </p>
                   {providerError && (
-                    <p className="mt-1.5 text-xs text-destructive">{providerError}</p>
+                    <p role="alert" className="mt-1.5 text-xs text-destructive">
+                      {providerError}
+                    </p>
                   )}
                 </div>
 
@@ -586,7 +590,8 @@ export default function OrgSetupPage() {
                   <button
                     type="button"
                     onClick={() => void finishOnboarding()}
-                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                    disabled={createProvider.isPending}
+                    className="text-sm text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
                   >
                     Skip for now
                   </button>
