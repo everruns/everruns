@@ -17,6 +17,7 @@ import {
   Building2,
   Check,
   CircleDot,
+  Clock,
   Loader2,
   ArrowRight,
   Plus,
@@ -37,7 +38,7 @@ import { ProviderIcon } from "@/components/providers/provider-icon";
 import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
 import { OnboardingShell } from "@/components/onboarding/onboarding-shell";
-import { OSS_ONBOARDING_STEPS } from "@/components/onboarding/steps";
+import { useOnboardingArc } from "@/components/onboarding/onboarding-arc-context";
 import type { ApiError } from "@/lib/api/client";
 import type { DriverId } from "@/lib/api/types";
 
@@ -56,36 +57,45 @@ interface StepContext {
   baseHarnessId: string | null;
 }
 
+// Labels follow the onboarding-arc copy: the last item is an action ("first
+// provider" — more can be added later), rendered in-progress until a provider
+// actually exists rather than falsely ticking off.
 const SETUP_STEPS: SetupStep[] = [
   {
-    label: "Organization created",
-    description: "Your new organization has been provisioned",
+    label: "Organisation created",
+    description: "Your new organisation has been provisioned",
     check: (ctx) => ctx.orgLoaded,
   },
   {
-    label: "Harnesses initialised",
+    label: "Harnesses provisioned",
     description: "Built-in harnesses are ready",
     check: (ctx) => ctx.harnessCount > 0,
   },
   {
-    label: "Default settings configured",
+    label: "Settings initialised",
     description: "Default and base harnesses have been assigned",
     check: (ctx) => !!ctx.defaultHarnessId && !!ctx.baseHarnessId,
   },
   {
-    label: "LLM provider configured",
-    description: "API provider and credentials set up",
-    // Always shows as part of the animated sequence — actual config happens inline
+    label: "Connect your first provider",
+    description: "Add a model provider to finish setup",
+    // Always part of the animated sequence — actual config happens inline
     check: () => true,
   },
 ];
 
 const STEP_DELAY_MS = 400;
 
-const PROVIDER_OPTIONS: { type: SetupProviderType; label: string }[] = [
-  { type: "openai", label: "OpenAI" },
-  { type: "anthropic", label: "Anthropic" },
+const PROVIDER_OPTIONS: { type: SetupProviderType; label: string; models: string }[] = [
+  { type: "openai", label: "OpenAI", models: "GPT & o-series" },
+  { type: "anthropic", label: "Anthropic", models: "Claude Opus, Sonnet" },
 ];
+
+// The setup form features the two most common providers; the rest of the
+// driver catalog stays one click away after setup so the pair never reads as
+// "only two models exist".
+const MORE_PROVIDERS = ["Gemini", "Azure OpenAI", "Bedrock"];
+const MORE_PROVIDERS_EXTRA = 4; // openrouter, openai_completions, mai, fireworks
 
 // Docs base used elsewhere in the app (see capabilities page).
 const DOCS_URL = "https://docs.everruns.com";
@@ -105,6 +115,10 @@ export default function OrgSetupPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { currentOrg, organizations, setCurrentOrg, isSwitching } = useOrg();
+  // Arc position: Configure is OSS step 1, Done is OSS step 2. A wrapper arc
+  // (e.g. SaaS with a prepended "Verify") shifts indices/labels via context so
+  // the stepper stays continuous across the whole journey.
+  const arc = useOnboardingArc();
 
   const {
     data: org,
@@ -291,9 +305,9 @@ export default function OrgSetupPage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background bg-brand-dots p-4">
         <OnboardingShell
-          steps={OSS_ONBOARDING_STEPS}
-          currentIndex={2}
-          stepLabel="Step 3 of 3"
+          steps={arc.steps}
+          currentIndex={arc.stepIndex(2)}
+          stepLabel={arc.stepLabel(2)}
           brand={{
             eyebrow: "Setup complete",
             headline: "You're ready. Spin up an agent that ever runs.",
@@ -383,11 +397,11 @@ export default function OrgSetupPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-background bg-brand-dots p-4">
       <OnboardingShell
-        steps={OSS_ONBOARDING_STEPS}
-        currentIndex={1}
-        stepLabel="Step 2 of 3"
+        steps={arc.steps}
+        currentIndex={arc.stepIndex(1)}
+        stepLabel={arc.stepLabel(1)}
         brand={{
-          eyebrow: "Step 2 / 3",
+          eyebrow: `Step ${arc.stepIndex(1) + 1} / ${arc.steps.length}`,
           headline: "Bring your own model. Keys encrypted at rest.",
           features: [
             { label: "Durable execution engine", done: true },
@@ -406,13 +420,32 @@ export default function OrgSetupPage() {
             {SETUP_STEPS.map((step, i) => {
               const passed = step.check(stepContext);
               const animated = i < completedCount;
+              const isProviderStep = i === SETUP_STEPS.length - 1;
 
-              // Completed and animated
+              // The provider step is an action, not a provisioning fact: it
+              // holds a gold in-progress badge until a provider actually
+              // exists instead of falsely ticking off with the animation.
+              if (isProviderStep && animated && !providerConnected) {
+                return (
+                  <div key={step.label} className="flex items-center gap-3">
+                    <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center border border-accent bg-accent/[0.14] text-accent-foreground">
+                      <Clock className="icon-sharp h-[13px] w-[13px]" strokeWidth={2} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold">{step.label}</p>
+                      <p className="text-xs text-accent-foreground">{step.description}</p>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Completed and animated — sharp navy check badge (0px radius,
+              // matches the stepper)
               if (passed && animated) {
                 return (
                   <div key={step.label} className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
-                      <Check className="h-4 w-4" />
+                    <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center border border-primary bg-primary text-primary-foreground">
+                      <Check className="icon-sharp h-[13px] w-[13px]" strokeWidth={2.5} />
                     </div>
                     <div>
                       <p className="text-sm font-medium">{step.label}</p>
@@ -426,8 +459,8 @@ export default function OrgSetupPage() {
               if (passed && !animated) {
                 return (
                   <div key={step.label} className="flex items-center gap-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center">
-                      <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                    <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center">
+                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
                     </div>
                     <div>
                       <p className="text-sm font-medium">{step.label}</p>
@@ -440,8 +473,8 @@ export default function OrgSetupPage() {
               // Pending
               return (
                 <div key={step.label} className="flex items-center gap-3 opacity-40">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center">
-                    <CircleDot className="h-5 w-5 text-muted-foreground/50" />
+                  <div className="flex h-[26px] w-[26px] shrink-0 items-center justify-center">
+                    <CircleDot className="icon-sharp h-4 w-4 text-muted-foreground/50" />
                   </div>
                   <div>
                     <p className="text-sm font-medium">{step.label}</p>
@@ -463,10 +496,9 @@ export default function OrgSetupPage() {
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-5">
                 {/* Provider type selector */}
                 <div>
-                  <h2 className="text-sm font-semibold mb-3">Select your LLM provider</h2>
                   <div className="grid grid-cols-2 gap-3">
                     {PROVIDER_OPTIONS.map((opt) => {
                       const isSelected = selectedProvider === opt.type;
@@ -478,38 +510,50 @@ export default function OrgSetupPage() {
                             setSelectedProvider(opt.type);
                             setProviderError(null);
                           }}
-                          className={`relative flex flex-col items-center gap-2 border-2 p-4 transition-colors ${
+                          className={`relative flex items-center gap-3 border p-3.5 text-left transition-colors ${
                             isSelected
-                              ? "border-primary bg-primary/5"
+                              ? "border-accent bg-accent/[0.07]"
                               : "border-border hover:border-primary/40"
                           }`}
                         >
-                          <ProviderIcon providerType={opt.type} size="lg" />
-                          <span className="text-sm font-medium">{opt.label}</span>
-                          {/* Radio indicator */}
-                          <div
-                            className={`h-4 w-4 rounded-full border-2 transition-colors ${
-                              isSelected ? "border-primary" : "border-muted-foreground/40"
-                            }`}
-                          >
-                            {isSelected && (
-                              <div className="m-[2px] h-2 w-2 rounded-full bg-primary" />
-                            )}
-                          </div>
+                          <ProviderIcon providerType={opt.type} />
+                          <span className="min-w-0">
+                            <span
+                              className={`block text-sm ${isSelected ? "font-semibold" : "font-medium"}`}
+                            >
+                              {opt.label}
+                            </span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {opt.models}
+                            </span>
+                          </span>
+                          {/* Sharp gold selection badge (0px radius) */}
+                          {isSelected && (
+                            <span className="absolute right-2.5 top-2.5 flex h-[18px] w-[18px] items-center justify-center bg-accent text-accent-foreground">
+                              <Check className="icon-sharp h-[11px] w-[11px]" strokeWidth={3} />
+                            </span>
+                          )}
                         </button>
                       );
                     })}
                   </div>
 
-                  {/* Skip link */}
-                  <div className="mt-3 text-center">
-                    <button
-                      type="button"
-                      onClick={() => void finishOnboarding()}
-                      className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground transition-colors"
-                    >
-                      Skip for now
-                    </button>
+                  {/* Breadth strip: the two featured cards must not read as
+                      the whole catalog. Informational only — the full picker
+                      lives in Settings → Providers after setup. */}
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Also supported</span>
+                    {MORE_PROVIDERS.map((name) => (
+                      <span
+                        key={name}
+                        className="border px-2 py-[3px] text-xs text-muted-foreground"
+                      >
+                        {name}
+                      </span>
+                    ))}
+                    <span className="text-xs text-muted-foreground">
+                      + {MORE_PROVIDERS_EXTRA} more in Settings after setup
+                    </span>
                   </div>
                 </div>
 
@@ -537,15 +581,20 @@ export default function OrgSetupPage() {
                   )}
                 </div>
 
-                {/* Continue button */}
-                <Button
-                  className="w-full"
-                  onClick={handleContinue}
-                  disabled={createProvider.isPending}
-                >
-                  {createProvider.isPending ? "Configuring..." : "Finish setup"}
-                  {!createProvider.isPending && <ArrowRight className="ml-2 h-4 w-4" />}
-                </Button>
+                {/* Footer row: skip escape hatch left, primary action right */}
+                <div className="flex items-center justify-between pt-1">
+                  <button
+                    type="button"
+                    onClick={() => void finishOnboarding()}
+                    className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    Skip for now
+                  </button>
+                  <Button onClick={handleContinue} disabled={createProvider.isPending}>
+                    {createProvider.isPending ? "Configuring..." : "Finish setup"}
+                    {!createProvider.isPending && <ArrowRight className="ml-2 h-4 w-4" />}
+                  </Button>
+                </div>
               </div>
             )}
           </div>

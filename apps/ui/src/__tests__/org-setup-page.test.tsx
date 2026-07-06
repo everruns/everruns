@@ -79,10 +79,13 @@ describe("OrgSetupPage", () => {
     expect(await screen.findByText("Setting up Test Org")).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "OpenAI" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Anthropic" })).toBeInTheDocument();
+      // Card accessible names include the models subline, so match by prefix.
+      expect(screen.getByRole("button", { name: /^OpenAI/ })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^Anthropic/ })).toBeInTheDocument();
     });
 
-    expect(screen.queryByRole("button", { name: "Azure OpenAI" })).not.toBeInTheDocument();
+    // The breadth strip mentions Azure OpenAI as plain text, but it must not
+    // be a selectable card during setup.
+    expect(screen.queryByRole("button", { name: /Azure OpenAI/ })).not.toBeInTheDocument();
   });
 });

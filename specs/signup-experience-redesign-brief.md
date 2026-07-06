@@ -4,6 +4,13 @@ Status: design brief (not yet a spec). Purpose: give a design agent enough conte
 produce on-brand sign-up / onboarding screens for Everruns SaaS. Engineering will
 implement from the resulting designs.
 
+Implementation status: the resulting "Onboarding Arc" design (Frames 1–6) is
+implemented — persistent shell (`OnboardingShell`/`AuthShell` + stepper + navy
+brand panel), unified `/login` door (see `specs/authentication.md` § Unified
+Entry), verify-email under the shell, org creation (`ZeroOrgOnboarding`), the
+setup wizard as Configure, and the Done/first-action screen. Wrappers extend
+the stepper via `OnboardingArcProvider` (`onboarding-arc-context.tsx`).
+
 ---
 
 ## 1. What exists today
