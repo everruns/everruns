@@ -8,7 +8,7 @@
 // credentials. All failure copy stays generic (TM-AUTH-014/019): the door
 // never reveals whether an email already has an account.
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { OAuthProviderIcon } from "@/components/auth/oauth-provider-icon";
+import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { useAuthConfig, useLogin, useRegister } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks";
 import { ApiError } from "@/lib/api/client";
@@ -38,6 +39,16 @@ const MIN_PASSWORD_LENGTH = 8;
 
 type Phase = "email" | "password";
 
+// Friendly copy for the coarse categories the OAuth callback redirects with
+// (specs/authentication.md § OAuth Callback Failure UX). Unknown values fall
+// back to the generic line so a bad query param can't inject copy.
+const OAUTH_ERROR_COPY: Record<string, string> = {
+  oauth_cancelled: "Sign-in was cancelled. You can try again anytime.",
+  oauth_not_permitted:
+    "That account can't be used to sign in here. Try a different account or continue with email.",
+  oauth_failed: "Sign-in with the provider didn't complete. Try again or continue with email.",
+};
+
 export default function LoginPage() {
   usePageTitle("Log in or sign up");
   const router = useRouter();
@@ -50,7 +61,20 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // Disable the SSO buttons once one is clicked — the full-page redirect can
+  // take a beat and double-clicks would restart the OAuth dance.
+  const [oauthPending, setOauthPending] = useState(false);
+  // Captcha token for the signup fallback, when the server advertises one.
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
+
+  // OAuth callback failures land back here as ?error=<category>.
+  const oauthError = useMemo(() => {
+    const category = searchParams.get("error");
+    return category ? (OAUTH_ERROR_COPY[category] ?? OAUTH_ERROR_COPY.oauth_failed) : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Sanitize to a safe relative path — prevents open-redirect into
   // attacker-controlled origins (see specs/authentication.md).
@@ -92,6 +116,9 @@ export default function LoginPage() {
     setPhase("email");
     setPassword("");
     setError(null);
+    // Return focus to the email field so keyboard/screen-reader users are
+    // not stranded on a removed element.
+    setTimeout(() => emailRef.current?.focus(), 0);
   };
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
@@ -133,13 +160,20 @@ export default function LoginPage() {
     // reveals nothing an attacker couldn't get from the register endpoint
     // itself (TM-AUTH-014).
     if (canSignup && password.length >= MIN_PASSWORD_LENGTH) {
+      // When the server requires a captcha for signup, don't attempt the
+      // fallback without a solved token — surface the challenge instead.
+      if (config?.captcha && !captchaToken) {
+        setError("Please complete the verification challenge below.");
+        return;
+      }
+      const captcha_token = captchaToken ?? undefined;
       try {
         if (backendTarget) {
-          await register({ email, password });
+          await register({ email, password, captcha_token });
           window.location.assign(target);
           return;
         }
-        await registerMutation.mutateAsync({ email, password });
+        await registerMutation.mutateAsync({ email, password, captcha_token });
         router.push(target);
         return;
       } catch {
@@ -156,6 +190,8 @@ export default function LoginPage() {
   };
 
   const handleOAuthLogin = (provider: string) => {
+    if (oauthPending) return;
+    setOauthPending(true);
     // Persist return_to in sessionStorage so it survives the OAuth redirect chain
     const target = returnTo || sessionStorage.getItem(RETURN_TO_KEY);
     if (target) {
@@ -163,6 +199,9 @@ export default function LoginPage() {
     }
     window.location.assign(getOAuthUrl(provider));
   };
+
+  const handleCaptchaVerify = useCallback((token: string) => setCaptchaToken(token), []);
+  const handleCaptchaReset = useCallback(() => setCaptchaToken(null), []);
 
   // Show loading state while fetching config
   if (configLoading) {
@@ -192,16 +231,20 @@ export default function LoginPage() {
           <ArrowLeft className="icon-sharp h-[15px] w-[15px]" strokeWidth={2} />
           Back
         </button>
-        <h2 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
+        <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
           Enter your password
-        </h2>
+        </h1>
         <p className="mt-[10px] text-sm text-muted-foreground">
           Continuing as <b className="font-medium text-foreground">{email}</b>.
           {canSignup && <> New here? We&apos;ll create your account with this email.</>}
         </p>
 
         <form onSubmit={handlePasswordSubmit} className="mt-6 space-y-4">
-          {error && <div className="bg-destructive/10 text-destructive text-sm p-3">{error}</div>}
+          {error && (
+            <div role="alert" className="bg-destructive/10 text-destructive text-sm p-3">
+              {error}
+            </div>
+          )}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="password">Password</Label>
@@ -238,6 +281,19 @@ export default function LoginPage() {
           </Button>
         </form>
 
+        {/* Signup captcha (only when the server advertises one): solving it
+            up-front keeps the login-vs-signup unification seamless. */}
+        {config?.captcha && canSignup && (
+          <div className="mt-4">
+            <TurnstileWidget
+              siteKey={config.captcha.site_key}
+              onVerify={handleCaptchaVerify}
+              onExpire={handleCaptchaReset}
+              onError={handleCaptchaReset}
+            />
+          </div>
+        )}
+
         {hasOAuthProviders && (
           <p className="mt-5 border-t pt-5 text-[12.5px] leading-relaxed text-muted-foreground">
             Prefer Google or GitHub? Go back — it&apos;s one click and skips email verification.
@@ -250,14 +306,20 @@ export default function LoginPage() {
   // --- Phase 1: one door, SSO-primary ---
   return (
     <AuthShell>
-      <h2 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
+      <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
         {canSignup ? "Log in or sign up" : "Welcome back"}
-      </h2>
+      </h1>
       <p className="mt-[10px] text-sm text-muted-foreground">
         {canSignup
           ? "Continue to your console. We'll create an account if you don't have one yet."
           : "Sign in to your Everruns account"}
       </p>
+
+      {oauthError && (
+        <div role="alert" className="mt-4 bg-destructive/10 text-destructive text-sm p-3">
+          {oauthError}
+        </div>
+      )}
 
       <div className="mt-7 space-y-4">
         {/* OAuth Buttons */}
@@ -271,6 +333,7 @@ export default function LoginPage() {
                   variant="outline"
                   className="h-12 w-full justify-center gap-[10px] font-medium"
                   onClick={() => handleOAuthLogin(provider)}
+                  disabled={oauthPending}
                 >
                   <OAuthProviderIcon provider={provider} />
                   Continue with {providerInfo?.name ?? provider}
@@ -296,6 +359,7 @@ export default function LoginPage() {
               <Label htmlFor="email">Email</Label>
               <Input
                 id="email"
+                ref={emailRef}
                 type="email"
                 placeholder="you@company.com"
                 value={email}

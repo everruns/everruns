@@ -14,7 +14,11 @@ import { useVerifyEmail, useResendVerification } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks";
 import { Check, Loader2, Mail } from "lucide-react";
 
-type VerifyState = "verifying" | "success" | "error";
+type VerifyState = "verifying" | "success" | "error" | "pending";
+
+// Matches the server's per-address email budget (1/minute) so the button
+// unlocks roughly when the server would accept another send.
+const RESEND_COOLDOWN_SECS = 60;
 
 const BRAND = {
   eyebrow: "Everruns",
@@ -33,8 +37,20 @@ export default function VerifyEmailPage() {
   const verifyEmailMutation = useVerifyEmail();
   const resendVerificationMutation = useResendVerification();
 
-  const [state, setState] = useState<VerifyState>(token ? "verifying" : "error");
+  // No token + an email means "we just sent you a link" (post-signup nudge);
+  // no token and no email is a dead link.
+  const [state, setState] = useState<VerifyState>(
+    token ? "verifying" : email ? "pending" : "error",
+  );
   const [resent, setResent] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+
+  // Tick the resend cooldown down once armed.
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = setInterval(() => setCooldown((c) => (c > 0 ? c - 1 : 0)), 1000);
+    return () => clearInterval(id);
+  }, [cooldown]);
 
   // Guard against React strict-mode double invocation: verify-email consumes a
   // single-use token, so a duplicate call would fail the second attempt.
@@ -54,7 +70,7 @@ export default function VerifyEmailPage() {
   }, [token]);
 
   const handleResend = async () => {
-    if (!email) return;
+    if (!email || cooldown > 0) return;
     // Enumeration-safe endpoint: always treat as sent regardless of outcome.
     try {
       await resendVerificationMutation.mutateAsync({ email });
@@ -62,7 +78,54 @@ export default function VerifyEmailPage() {
       // Intentionally ignored — never reveal whether the account exists.
     }
     setResent(true);
+    setCooldown(RESEND_COOLDOWN_SECS);
   };
+
+  const resendLabel =
+    cooldown > 0
+      ? `Resend link · 0:${String(cooldown).padStart(2, "0")}`
+      : resent
+        ? "Resend link again"
+        : "Resend verification email";
+
+  if (state === "pending") {
+    return (
+      <AuthShell brand={BRAND}>
+        <div className="mb-6 flex h-12 w-12 items-center justify-center border border-accent/40 bg-accent/[0.12] text-accent-foreground">
+          <Mail className="icon-sharp h-[22px] w-[22px]" strokeWidth={1.8} />
+        </div>
+        <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
+          Verify your email
+        </h1>
+        <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+          We sent a verification link to <b className="font-medium text-foreground">{email}</b>.
+          Click it to continue — this keeps your account secure and stays enforced on our side.
+        </p>
+        <div className="mt-7 flex flex-wrap gap-3">
+          <Button
+            variant="outline"
+            onClick={handleResend}
+            disabled={cooldown > 0 || resendVerificationMutation.isPending}
+          >
+            {resendVerificationMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Sending...
+              </>
+            ) : (
+              resendLabel
+            )}
+          </Button>
+        </div>
+        <p className="mt-6 text-[13px] text-muted-foreground">
+          Wrong address?{" "}
+          <Link href="/login" className="font-medium text-primary hover:underline">
+            Use a different email
+          </Link>
+        </p>
+      </AuthShell>
+    );
+  }
 
   if (state === "verifying") {
     return (
@@ -70,9 +133,9 @@ export default function VerifyEmailPage() {
         <div className="mb-6 flex h-12 w-12 items-center justify-center border border-accent/40 bg-accent/[0.12] text-accent-foreground">
           <Mail className="icon-sharp h-[22px] w-[22px]" strokeWidth={1.8} />
         </div>
-        <h2 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
+        <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
           Verifying your email
-        </h2>
+        </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
           This will only take a moment.
         </p>
@@ -89,12 +152,14 @@ export default function VerifyEmailPage() {
         <div className="mb-6 flex h-12 w-12 items-center justify-center border border-accent/40 bg-accent/[0.12] text-accent-foreground">
           <Check className="icon-sharp h-[22px] w-[22px]" strokeWidth={2.2} />
         </div>
-        <h2 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
+        <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
           Your email is verified
-        </h2>
+        </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
           Thanks for confirming your email address. You can pick up right where you left off.
         </p>
+        {/* In a browser without a session, /dashboard bounces to /login with
+            return_to — so this works in both the original and a fresh browser. */}
         <Button className="mt-7" onClick={() => router.push("/dashboard")}>
           Continue
         </Button>
@@ -108,9 +173,9 @@ export default function VerifyEmailPage() {
       <div className="mb-6 flex h-12 w-12 items-center justify-center border border-accent/40 bg-accent/[0.12] text-accent-foreground">
         <Mail className="icon-sharp h-[22px] w-[22px]" strokeWidth={1.8} />
       </div>
-      <h2 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
+      <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
         Verification failed
-      </h2>
+      </h1>
       <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
         This verification link is invalid or has expired.
       </p>
@@ -125,7 +190,7 @@ export default function VerifyEmailPage() {
           <Button
             className="w-full"
             onClick={handleResend}
-            disabled={resendVerificationMutation.isPending}
+            disabled={cooldown > 0 || resendVerificationMutation.isPending}
           >
             {resendVerificationMutation.isPending ? (
               <>
@@ -133,7 +198,7 @@ export default function VerifyEmailPage() {
                 Sending...
               </>
             ) : (
-              "Resend verification email"
+              resendLabel
             )}
           </Button>
         ) : (

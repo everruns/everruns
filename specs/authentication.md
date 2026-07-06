@@ -172,7 +172,9 @@ Account linking by email is supported (same email = same account).
 
 ### Password Requirements
 
-- Minimum 8 characters
+- Minimum 8 characters, maximum 128 characters (the cap bounds Argon2
+  hashing work; login rejects oversized inputs with the generic credential
+  failure before any hashing)
 - Hashed with Argon2id (default parameters)
 
 ### Password Reset
@@ -192,6 +194,38 @@ Confirms a user controls the email they registered with. On successful `POST /v1
 - `POST /v1/auth/resend-verification` `{ email }` — account-enumeration safe (`200 { "ok": true }` always); issues a new token only for an existing local account whose email is not yet verified.
 
 Token model is identical to password reset (hashed, single-use, short TTL; `email_verification_tokens`, migration 089) but with a 24-hour TTL. Both recovery and verification routes share the registration rate limiter (per client IP).
+
+### Abuse Limits
+
+Beyond the per-IP limiter (TM-AUTH-001), the auth surface enforces:
+
+- **Per-account login throttle** — login attempts are additionally keyed on
+  the submitted email (lowercased) across all source IPs, so distributed
+  credential stuffing against one account is capped. Over-limit returns a
+  generic 429.
+- **Per-address email budget** — forgot-password and resend-verification
+  share a per-address send budget (1/minute plus a small daily cap). Over
+  budget the endpoints return the normal enumeration-safe success without
+  sending (the throttle is not an oracle).
+- **OAuth endpoints** share the login-tier per-IP limiter (the callback
+  performs an outbound token exchange per hit).
+- **Logout revokes server-side** — `POST /v1/auth/logout` deletes the
+  refresh-token row (best-effort) in addition to clearing cookies.
+- **Captcha (optional)** — setting `AUTH_TURNSTILE_SITE_KEY` +
+  `AUTH_TURNSTILE_SECRET_KEY` requires a Cloudflare Turnstile token
+  (`captcha_token`) on register / forgot-password / resend-verification.
+  `/v1/auth/config` advertises `captcha: { provider, site_key }` so the UI
+  renders the widget only when configured. Fail-closed: invalid → generic
+  403; siteverify outage → 500-class retryable error.
+
+### OAuth Callback Failure UX
+
+`GET /v1/auth/callback/{provider}` is only ever hit by a browser, so every
+failure redirects to `{FRONTEND_URL}/login?error=<category>` instead of
+returning raw JSON. Categories are coarse by design (`oauth_cancelled`,
+`oauth_not_permitted`, `oauth_failed`); specifics stay in logs and the audit
+trail. Provider error bounces (`?error=access_denied`) are handled the same
+way rather than failing query extraction.
 
 ### Environment Variables
 

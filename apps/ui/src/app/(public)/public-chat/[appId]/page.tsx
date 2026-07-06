@@ -15,7 +15,7 @@ import {
   fetchBootstrap,
   runPublicChat,
 } from "@/lib/public-chat/client";
-import { TurnstileWidget } from "./turnstile-widget";
+import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { GoogleSignInButton } from "./google-signin";
 
 function threadStorageKey(appId: string): string {

@@ -795,6 +795,13 @@ export interface AuthConfigResponse {
   password_auth_enabled: boolean;
   oauth_providers: string[];
   signup_enabled: boolean;
+  /** Bot-mitigation challenge for abuse-prone auth forms, when configured. */
+  captcha?: AuthCaptchaConfig;
+}
+
+export interface AuthCaptchaConfig {
+  provider: string;
+  site_key: string;
 }
 
 /** Response from GET /v1/{resource}/config */
@@ -810,6 +817,8 @@ export interface LoginRequest {
 export interface RegisterRequest {
   email: string;
   password: string;
+  /** Captcha token; required when /v1/auth/config advertises a captcha. */
+  captcha_token?: string;
 }
 
 export interface TokenResponse {
@@ -822,6 +831,8 @@ export interface TokenResponse {
 /** Request to begin a password reset (enumeration-safe). */
 export interface ForgotPasswordRequest {
   email: string;
+  /** Captcha token; required when /v1/auth/config advertises a captcha. */
+  captcha_token?: string;
 }
 
 /** Request to complete a password reset using an emailed token. */
