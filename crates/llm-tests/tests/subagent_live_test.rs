@@ -1,6 +1,8 @@
-// Live end-to-end smoke test for background spawn_subagent against a REAL LLM
-// through the local runtime host: InProcessRuntime + LocalPlatformStore (over a
-// runner wrapping the runtime itself) + SQLite LocalSessionTaskRegistry.
+// Live end-to-end test for background spawn_subagent against a real LLM
+// through the runtime: InProcessRuntime + the local-host PlatformStore
+// (`everruns-local` owns the embeddable PlatformStore implementation the
+// subagent tools require; `everruns-runtime` deliberately has none) + the
+// SQLite LocalSessionTaskRegistry.
 //
 // No mocks anywhere in the loop:
 // - a real model decides to call spawn_subagent from plain instructions
@@ -8,18 +10,22 @@
 // - the detached watcher creates the child session and drives its REAL LLM turn
 // - the task settles Succeeded with the child's actual reply as the summary
 //
-// Ignored by default (network + ANTHROPIC_API_KEY). Run:
-//   doppler run -- cargo test -p everruns-local --test subagent_live_test -- --ignored --nocapture
+// Skips gracefully when ANTHROPIC_API_KEY is absent (matrix convention). Run:
+//   doppler run -- cargo test -p everruns-llm-tests --test subagent_live_test
+#![cfg(feature = "llm-tests")]
+
+mod llm_test_matrix;
+
+use llm_test_matrix::*;
 
 use async_trait::async_trait;
 use everruns_core::capabilities::SubagentCapability;
-use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::error::Result;
 use everruns_core::platform_store::{PlatformMessage, PlatformStore};
 use everruns_core::session::Session;
 use everruns_core::session_task::{SessionTaskRegistry, SessionTaskState};
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
-use everruns_core::{CapabilityRegistry, DriverId, MessageRole, PlatformDefinition, ResolvedModel};
+use everruns_core::{CapabilityRegistry, MessageRole, PlatformDefinition};
 use everruns_local::{LocalPlatformStore, LocalSessionRunner, LocalSessionTaskRegistry, SqliteDb};
 use everruns_runtime::{
     AgentBuilder, HarnessBuilder, InProcessRuntime, InProcessRuntimeBuilder, RuntimeBackends,
@@ -28,7 +34,6 @@ use everruns_runtime::{
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-const LIVE_MODEL: &str = "claude-haiku-4-5-20251001";
 const CHILD_MARKER: &str = "EVERRUNS_LIVE_OK";
 
 /// LocalSessionRunner over the runtime it is embedded in — the wiring every
@@ -125,16 +130,16 @@ impl LocalSessionRunner for RuntimeRunner {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "live: requires network + ANTHROPIC_API_KEY"]
 async fn background_spawn_subagent_live_end_to_end() {
-    let api_key = std::env::var("ANTHROPIC_API_KEY")
-        .expect("ANTHROPIC_API_KEY must be set for the live test");
+    let config = ANTHROPIC_HAIKU;
+    let Some(model) = config.model() else {
+        eprintln!("Skipping: {} not set", config.label());
+        return;
+    };
 
-    let mut drivers = DriverRegistry::new();
-    everruns_anthropic::register_driver(&mut drivers);
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(SubagentCapability);
-    let platform = PlatformDefinition::new(capabilities, drivers);
+    let platform = PlatformDefinition::new(capabilities, all_providers_registry());
 
     let harness_id = HarnessId::from_seed(535);
     let agent_id = AgentId::from_seed(535);
@@ -174,13 +179,7 @@ async fn background_spawn_subagent_live_end_to_end() {
         .backends(backends)
         .with_session_task_registry(registry.clone())
         .with_platform_store_factory(Arc::new(move |_org, _session| store.clone()))
-        .default_model(ResolvedModel {
-            model: LIVE_MODEL.to_string(),
-            provider_type: DriverId::Anthropic,
-            api_key: Some(api_key),
-            base_url: None,
-            provider_metadata: None,
-        })
+        .default_model(model)
         .harness(harness)
         .agent(agent)
         .session(parent)

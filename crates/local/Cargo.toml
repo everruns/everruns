@@ -52,5 +52,3 @@ tracing.workspace = true
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 tempfile.workspace = true
-# Live subagent smoke test (ignored by default) drives a real Anthropic model.
-everruns-anthropic = { path = "../anthropic" }
