@@ -2,7 +2,8 @@
 //! no server, no HTTP, no database. Each sample gets a fresh
 //! `InProcessRuntime` built from the matrix case:
 //!
-//! - target → provider driver + `ResolvedModel` (`anthropic`, `openai`)
+//! - target → provider driver + `ResolvedModel` (`anthropic`, `openai`,
+//!   `openrouter`)
 //! - `harness` axis → a [`HarnessProfile`](crate::profiles::HarnessProfile)
 //!   (system prompt + capability set)
 //! - `config` axis → a [`ConfigProfile`](crate::profiles::ConfigProfile)
@@ -11,7 +12,8 @@
 //!
 //! Sample `files` are seeded into the in-memory session workspace before the
 //! run; paths named by `metadata.expect_files` are read back into
-//! `Transcript.files` afterwards so scorers can grade workspace state.
+//! `Transcript.files` afterwards so scorers can grade workspace state. Image
+//! `attachments` are sent with the sample's first turn (vision cases).
 //!
 //! A case whose `metadata.requires` capabilities are not provided by the
 //! active harness profile is **skipped**: the transcript carries a
@@ -24,13 +26,13 @@ use everruns_core::capabilities::AgentCapabilityConfig;
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::typed_id::SessionId;
 use everruns_core::{
-    CapabilityRegistry, Controls, DriverId, InputMessage, PlatformDefinition, ReasoningConfig,
-    ResolvedModel,
+    CapabilityRegistry, ContentPart, Controls, DriverId, ImageContentPart, InputMessage,
+    PlatformDefinition, ReasoningConfig, ResolvedModel,
 };
 use everruns_runtime::{InProcessRuntime, InProcessRuntimeBuilder};
 
 use mira::subject::summarize_events;
-use mira::{ErrorKind, RunCx, Sample, Subject, Target, Transcript};
+use mira::{ErrorKind, Part, RunCx, Sample, Source, Subject, Target, Transcript};
 
 use crate::profiles::{
     self, ConfigProfile, DEFAULT_CONFIG, DEFAULT_EFFORT, DEFAULT_HARNESS, HarnessProfile,
@@ -81,6 +83,13 @@ impl Subject for GenericRuntimeSubject {
             return transcript;
         }
 
+        // Non-text attachments (images) ride along with the first turn. An
+        // attachment kind we can't map is a dataset-authoring fault.
+        let attachments = match attachment_parts(sample) {
+            Ok(parts) => parts,
+            Err(e) => return Transcript::infra_error(e),
+        };
+
         let (runtime, session_id) = match build_runtime(sample, &cx.target, harness, config).await {
             Ok(handle) => handle,
             // The runtime failed to build before the model ran — scaffolding,
@@ -88,8 +97,11 @@ impl Subject for GenericRuntimeSubject {
             Err(e) => return Transcript::infra_error(format!("runtime build failed: {e}")),
         };
 
-        for turn in &sample.input {
+        for (index, turn) in sample.input.iter().enumerate() {
             let mut input = InputMessage::user(turn.clone());
+            if index == 0 {
+                input.content.extend(attachments.iter().cloned());
+            }
             if effort != DEFAULT_EFFORT {
                 input.controls = Some(Controls {
                     reasoning: Some(ReasoningConfig {
@@ -155,6 +167,26 @@ fn missing_capability(sample: &Sample, harness: &HarnessProfile) -> Option<Strin
         .map(String::from)
 }
 
+/// Map the sample's non-text attachments onto everruns content parts. Images
+/// are supported (inline base64 or a URL / `data:` URI — the drivers decode
+/// both); any other attachment kind is rejected.
+fn attachment_parts(sample: &Sample) -> Result<Vec<ContentPart>, String> {
+    sample
+        .attachments
+        .iter()
+        .map(|part| match part {
+            Part::Image { media_type, source } => Ok(ContentPart::Image(match source {
+                Source::Data(b64) => ImageContentPart::from_base64(b64.clone(), media_type.clone()),
+                Source::Uri(uri) => ImageContentPart::from_url(uri.clone()),
+            })),
+            other => Err(format!(
+                "{}: unsupported attachment kind {other:?} (images only)",
+                sample.id
+            )),
+        })
+        .collect()
+}
+
 /// Paths named by `metadata.expect_files[].path`.
 fn expected_file_paths(sample: &Sample) -> Vec<String> {
     sample
@@ -202,6 +234,7 @@ async fn build_runtime(
     let mut drivers = DriverRegistry::new();
     everruns_anthropic::register_driver(&mut drivers);
     everruns_openai::register_driver(&mut drivers);
+    everruns_openrouter::register_driver(&mut drivers);
     let platform = PlatformDefinition::new(CapabilityRegistry::with_builtins(), drivers);
 
     let session_id = SessionId::new();
@@ -243,9 +276,13 @@ fn resolved_model(target: &Target) -> Result<ResolvedModel, String> {
     let (provider_type, api_key) = match target.provider.as_str() {
         "anthropic" => (DriverId::Anthropic, std::env::var("ANTHROPIC_API_KEY").ok()),
         "openai" => (DriverId::OpenAI, std::env::var("OPENAI_API_KEY").ok()),
+        "openrouter" => (
+            DriverId::OpenRouter,
+            std::env::var("OPENROUTER_API_KEY").ok(),
+        ),
         other => {
             return Err(format!(
-                "unsupported provider '{other}' (supported: anthropic, openai)"
+                "unsupported provider '{other}' (supported: anthropic, openai, openrouter)"
             ));
         }
     };

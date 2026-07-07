@@ -8,8 +8,8 @@
 //! configurations on the same dataset.
 //!
 //! The matrix:
-//! - **target** (model): key-gated `anthropic`/`openai` defaults, or
-//!   `EVERRUNS_EVAL_TARGETS="anthropic/claude-sonnet-5,openai/gpt-5.5"`
+//! - **target** (model): key-gated `anthropic`/`openai`/`openrouter` defaults,
+//!   or `EVERRUNS_EVAL_TARGETS="anthropic/claude-sonnet-5,openai/gpt-5.5,openrouter/z-ai/glm-5.2"`
 //! - **effort** axis: `EVERRUNS_EVAL_EFFORTS="default,low,high"`
 //! - **harness** axis: `EVERRUNS_EVAL_HARNESSES="minimal,workspace,coding"`
 //! - **config** axis: `EVERRUNS_EVAL_CONFIGS="default,tight-iterations"`
@@ -40,19 +40,22 @@ use crate::subject::GenericRuntimeSubject;
 const DATASET: &str = include_str!("../dataset.jsonl");
 
 /// Default model matrix: one key-gated model per supported provider — without
-/// keys those cases are skipped, so a key-free run stays green.
+/// keys those cases are skipped, so a key-free run stays green. GLM rides
+/// through OpenRouter (its slug keeps the vendor prefix).
 const DEFAULT_ANTHROPIC_MODEL: &str = "claude-sonnet-5";
 const DEFAULT_OPENAI_MODEL: &str = "gpt-5.5";
+const DEFAULT_OPENROUTER_MODEL: &str = "z-ai/glm-5.2";
 
 /// Model matrix axis. `EVERRUNS_EVAL_TARGETS` is a comma-separated list of
-/// `provider/model` entries (`anthropic/...`, `openai/...`). Unset →
-/// key-gated provider defaults.
+/// `provider/model` entries (`anthropic/...`, `openai/...`,
+/// `openrouter/<vendor>/<model>`). Unset → key-gated provider defaults.
 fn targets() -> Vec<Target> {
     let spec = std::env::var("EVERRUNS_EVAL_TARGETS").unwrap_or_default();
     if spec.trim().is_empty() {
         return vec![
             Target::anthropic(DEFAULT_ANTHROPIC_MODEL),
             Target::openai(DEFAULT_OPENAI_MODEL),
+            Target::cloud("openrouter", DEFAULT_OPENROUTER_MODEL, "OPENROUTER_API_KEY"),
         ];
     }
     spec.split(',')
@@ -61,6 +64,7 @@ fn targets() -> Vec<Target> {
         .map(|entry| match entry.split_once('/') {
             Some(("anthropic", model)) => Target::anthropic(model),
             Some(("openai", model)) => Target::openai(model),
+            Some(("openrouter", model)) => Target::cloud("openrouter", model, "OPENROUTER_API_KEY"),
             // Unknown providers stay in the matrix; the subject rejects them
             // with a clear infra error naming the supported set.
             Some((provider, model)) => Target::new(entry, provider, model),
@@ -221,9 +225,40 @@ mod tests {
     fn study_builds_with_full_default_matrix() {
         let eval = generic();
         assert_eq!(eval.name, "generic");
-        assert_eq!(eval.targets.len(), 2, "anthropic + openai defaults");
+        assert_eq!(
+            eval.targets.len(),
+            3,
+            "anthropic + openai + openrouter defaults"
+        );
         // effort × harness × config default to a single combination.
         assert_eq!(eval.axis_combinations().len(), 1);
+    }
+
+    #[test]
+    fn attachments_are_self_contained_images() {
+        // Vision cases must carry their pixels inline (base64), not reference
+        // external URLs — the dataset has no network dependencies.
+        let ds = Dataset::from_jsonl_str(DATASET).unwrap();
+        let mut vision_cases = 0;
+        for s in &ds.samples {
+            for part in &s.attachments {
+                match part {
+                    mira::Part::Image { source, .. } => {
+                        assert!(
+                            source.data().is_some(),
+                            "{}: image attachment must be inline base64",
+                            s.id
+                        );
+                        vision_cases += 1;
+                    }
+                    other => panic!("{}: unsupported attachment {other:?}", s.id),
+                }
+            }
+        }
+        assert!(
+            vision_cases >= 3,
+            "expected multimodal cases in the dataset"
+        );
     }
 
     #[test]

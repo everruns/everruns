@@ -957,6 +957,7 @@ dependencies = [
  "everruns-anthropic",
  "everruns-core",
  "everruns-openai",
+ "everruns-openrouter",
  "everruns-runtime",
  "mira-eval",
  "regex",
@@ -994,6 +995,18 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "everruns-openrouter"
+version = "0.17.4"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

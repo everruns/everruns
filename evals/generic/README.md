@@ -36,13 +36,16 @@ in your working tree.
 
 | Axis | Values | Env override | Default |
 |------|--------|--------------|---------|
-| **target** (model) | `anthropic/<model>`, `openai/<model>` | `EVERRUNS_EVAL_TARGETS` | key-gated `anthropic/claude-sonnet-5` + `openai/gpt-5.5` |
+| **target** (model) | `anthropic/<model>`, `openai/<model>`, `openrouter/<vendor>/<model>` | `EVERRUNS_EVAL_TARGETS` | key-gated `anthropic/claude-sonnet-5` + `openai/gpt-5.5` + `openrouter/z-ai/glm-5.2` |
 | **effort** | `default`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh` | `EVERRUNS_EVAL_EFFORTS` | `default` (no override) |
 | **harness** | `minimal`, `workspace`, `coding` | `EVERRUNS_EVAL_HARNESSES` | `coding` |
 | **config** | `default`, `tight-iterations`, `parallel-tools` | `EVERRUNS_EVAL_CONFIGS` | `default` |
 
-- **Targets** are key-gated (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`): missing
-  key ⇒ those cases are *skipped*, never failed, so a key-free run stays green.
+- **Targets** are key-gated (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY` /
+  `OPENROUTER_API_KEY`): missing key ⇒ those cases are *skipped*, never
+  failed, so a key-free run stays green. OpenRouter carries any vendor it
+  proxies (GLM, Qwen, DeepSeek, …) — the model slug keeps its vendor prefix,
+  e.g. `openrouter/z-ai/glm-5.2`.
 - **Effort** maps onto `Controls.reasoning.effort` on every input turn
   (`default` sends no override). Not every model supports every level; an
   unsupported combination surfaces as a provider error on that case.
@@ -59,7 +62,7 @@ Example runs:
 
 ```bash
 # Compare models at two efforts on the full-capability harness
-EVERRUNS_EVAL_TARGETS="anthropic/claude-sonnet-5,openai/gpt-5.5" \
+EVERRUNS_EVAL_TARGETS="anthropic/claude-sonnet-5,openai/gpt-5.5,openrouter/z-ai/glm-5.2" \
 EVERRUNS_EVAL_EFFORTS="low,high" \
 mira run
 
@@ -77,7 +80,7 @@ EVERRUNS_EVAL_CONFIGS="default,tight-iterations" mira run --preset tools
    brew install everruns/tap/mira      # or: cargo install mira-cli --locked
    ```
 2. Provider API keys in the environment for the models you want to evaluate
-   (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`).
+   (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OPENROUTER_API_KEY`).
 3. The Rust toolchain (this study is a standalone crate; `mira` builds it).
 
 ## Run
@@ -100,9 +103,10 @@ mira report <run_id>                           # re-render a saved run
 
 [`dataset.jsonl`](dataset.jsonl) is a portable Mira dataset — one `Sample` per
 line, runner-agnostic. Cases are self-contained: samples that need workspace
-state seed it via the sample's `files` field, so nothing depends on
-pre-existing entities or ordering. Each sample carries its expectations in
-`metadata`, which the scorers read:
+state seed it via the sample's `files` field, and multimodal (vision) cases
+carry their images inline as base64 `attachments`, so nothing depends on
+pre-existing entities, external URLs, or ordering. Each sample carries its
+expectations in `metadata`, which the scorers read:
 
 ```json
 {"id":"files-write",
@@ -128,9 +132,12 @@ Metadata keys (all optional):
   (`max_tool_calls: 0` asserts a plain question wastes no tool round-trips).
 
 Tags select subsets: `text` (no tools; runs on every harness), `tools`,
-`smoke` (fast text-only sanity set), `safety`, plus per-category tags
-(`instruction`, `format`, `reasoning`, `extraction`, `multi-turn`, `files`,
-`shell`, `time`, `knowledge`, `efficiency`).
+`smoke` (fast text-only sanity set), `safety`, `multimodal` / `vision`
+(image-input cases — sent with the first turn; a non-vision model fails these
+with a provider error, so exclude them via tags when comparing text-only
+models), plus per-category tags (`instruction`, `format`, `reasoning`,
+`extraction`, `multi-turn`, `files`, `shell`, `time`, `knowledge`,
+`efficiency`).
 
 ## Scoring
 
