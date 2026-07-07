@@ -142,11 +142,16 @@ Deployment properties:
 1. Introduce `EgressService` and platform/runtime threading.
 2. Move internal system services onto it. `EmailSender` is migrated first;
    `UtilityLlmService` follows with provider-driver migration.
-3. Move fetchkit/web_fetch and any future bashkit HTTP hooks onto it.
+3. Move fetchkit/web_fetch and bashkit HTTP onto it.
    *Done for web_fetch*: runtime contexts route through
    `crates/core/src/capabilities/web_fetch/egress_transport.rs`; the fetchkit direct
    client remains only as the fallback for contexts without an egress service
    (see `specs/fetchkit.md`).
+   *Done for bashkit*: curl/wget (opt-in via the `bashkit_shell` capability's
+   `enable_http` config) route through
+   `crates/core/src/capabilities/bashkit_shell/egress_transport.rs` with no
+   direct-client fallback — without an egress service the shell stays offline
+   (see `specs/network-access.md`).
 4. Move LLM drivers and model discovery onto it.
 5. Move integration provider clients onto it.
 6. Add the remote Egress Gateway implementation and make worker/CP direct
