@@ -138,9 +138,12 @@ impl Subject for GenericRuntimeSubject {
                 }
             }
         }
-        let (usage, tools) = summarize_events(&transcript.events);
+        let (usage, _) = summarize_events(&transcript.events);
         transcript.usage = usage;
-        transcript.tool_calls = tools;
+        // Tool names come from the runtime's `tool.completed` events —
+        // mira's generic walk looks for `{name, input}` objects, which the
+        // everruns event shape (`data.tool_name`) doesn't match.
+        transcript.tool_calls = extract_tool_calls(&transcript.events);
         transcript.tool_calls_count = transcript.tool_calls.len();
 
         // Read back the workspace files the sample's expectations name, so
@@ -165,6 +168,20 @@ fn missing_capability(sample: &Sample, harness: &HarnessProfile) -> Option<Strin
         .filter_map(|v| v.as_str())
         .find(|cap| !harness.capabilities.contains(cap))
         .map(String::from)
+}
+
+/// Tool names, in call order, from the runtime's `tool.completed` events.
+fn extract_tool_calls(events: &[serde_json::Value]) -> Vec<String> {
+    events
+        .iter()
+        .filter(|e| e.get("type").and_then(|t| t.as_str()) == Some("tool.completed"))
+        .filter_map(|e| {
+            e.get("data")
+                .and_then(|d| d.get("tool_name"))
+                .and_then(|n| n.as_str())
+                .map(String::from)
+        })
+        .collect()
 }
 
 /// Map the sample's non-text attachments onto everruns content parts. Images
@@ -377,5 +394,22 @@ mod tests {
     fn unsupported_provider_is_rejected() {
         let err = resolved_model(&Target::new("x", "acme", "m")).unwrap_err();
         assert!(err.contains("unsupported provider"));
+    }
+
+    #[test]
+    fn tool_calls_come_from_tool_completed_events() {
+        // The everruns event shape (`data.tool_name`) — pinned so scorer
+        // input doesn't silently go empty if the event schema drifts.
+        let events = vec![
+            serde_json::json!({"type": "turn.started", "data": {}}),
+            serde_json::json!({"type": "tool.completed",
+                "data": {"tool_call_id": "c1", "tool_name": "write_file",
+                         "success": true, "status": "success"}}),
+            serde_json::json!({"type": "tool.completed",
+                "data": {"tool_call_id": "c2", "tool_name": "read_file",
+                         "success": true, "status": "success"}}),
+            serde_json::json!({"type": "turn.completed", "data": {}}),
+        ];
+        assert_eq!(extract_tool_calls(&events), vec!["write_file", "read_file"]);
     }
 }
