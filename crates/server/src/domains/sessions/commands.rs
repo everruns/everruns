@@ -466,8 +466,11 @@ mod tests {
     use crate::domains::harnesses::CreateHarness;
     use crate::domains::harnesses::types::CreateHarnessRequest;
     use crate::storage::StorageBackend;
-    use everruns_core::{Caller, DEFAULT_ORG_ID, DefaultPermissionResolver, HarnessId};
+    use everruns_core::{
+        Caller, DEFAULT_ORG_ID, DefaultPermissionResolver, HarnessId, OrgRole, SessionId,
+    };
     use std::sync::Arc;
+    use uuid::Uuid;
 
     #[test]
     fn parse_provider_type_accepts_mixed_case_known_values() {
@@ -494,6 +497,29 @@ mod tests {
         .with_session_service(session_service);
         ctx.resource_limits.max_sessions_per_org = max_sessions_per_org;
         ctx
+    }
+
+    fn external_test_ctx(db: Arc<StorageBackend>, user_id: Uuid) -> Ctx {
+        let session_service = Arc::new(crate::domains::sessions::SessionService::new(db.clone()));
+        let capability_service =
+            Arc::new(crate::services::CapabilityService::new(db.clone(), None));
+        Ctx::new(
+            Caller {
+                org_id: DEFAULT_ORG_ID,
+                org_public_id: everruns_core::organization::org_public_id_from_internal(
+                    DEFAULT_ORG_ID,
+                ),
+                user_id: Some(user_id),
+                role: OrgRole::Owner,
+                is_platform_user: false,
+                is_internal: false,
+            },
+            db,
+            capability_service,
+            None,
+            Arc::new(DefaultPermissionResolver),
+        )
+        .with_session_service(session_service)
     }
 
     fn create_request(harness_id: HarnessId) -> CreateSessionRequest {
@@ -558,6 +584,45 @@ mod tests {
             .expect_err("second session exceeds the cap");
         assert_eq!(err.status().as_u16(), 409);
         assert!(err.message().contains("Session limit reached"));
+    }
+
+    #[tokio::test]
+    async fn create_session_with_non_internal_owner_sets_parent_session_id() {
+        // Trusted subagent/handoff spawns dispatch CreateSession through
+        // DirectPlatformStore, whose caller runs as the session owner
+        // (`is_internal == false`, see caller_resolution.rs). The internal
+        // parent link must survive that path. Forgery by untrusted clients is
+        // prevented at the HTTP boundary, which strips `parent_session_id`
+        // before dispatch (see `strip_internal_only_fields` in api/sessions.rs),
+        // so the command layer must not reject a caller-set parent link.
+        let db = Arc::new(StorageBackend::in_memory());
+        let internal_ctx = test_ctx(db.clone(), 10);
+        let harness_id = seed_harness(&internal_ctx).await;
+        let owner = db
+            .create_user(crate::storage::models::CreateUserRow {
+                email: format!("owner-{}@example.com", Uuid::now_v7()),
+                name: "Owner".to_string(),
+                avatar_url: None,
+                roles: vec!["user".to_string()],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: None,
+                auth_provider_id: None,
+                external_id: None,
+            })
+            .await
+            .expect("create owner user");
+        let ctx = external_test_ctx(db, owner.id);
+        let parent = SessionId::new();
+        let mut req = create_request(harness_id);
+        req.parent_session_id = Some(parent);
+
+        let session = CreateSession(req)
+            .execute(&ctx)
+            .await
+            .expect("owner-caller spawn with a parent link should succeed");
+
+        assert_eq!(session.parent_session_id, Some(parent));
     }
 }
 

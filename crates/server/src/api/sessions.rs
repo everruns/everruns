@@ -516,17 +516,26 @@ pub async fn create_session(
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Session>>), (StatusCode, Json<ErrorResponse>)> {
     check_session_create_rate_limit(&state, org.org_id).await?;
-    // `parent_session_id` is internal-only: the subagent/handoff spawn flow
-    // sets it via the platform store (DirectPlatformStore::create_session
-    // dispatches the command directly). External HTTP callers must never set
-    // it — that would let a client forge cross-session/cross-org parent links —
-    // so strip any client-supplied value at the public boundary.
     let mut req = req;
-    req.parent_session_id = None;
+    strip_internal_only_fields(&mut req);
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     let session = CreateSession(req).run(&state.ctx(&org)).await?;
 
     Ok((StatusCode::CREATED, Json(urls.wrap(session))))
+}
+
+/// Strip request fields that only trusted internal dispatch paths may set.
+///
+/// `parent_session_id` is internal-only metadata used for subagent/handoff
+/// ownership. The trusted spawn flow sets it via `DirectPlatformStore`, which
+/// dispatches the `CreateSession` command directly and never passes through
+/// this HTTP handler. Any value on an inbound public request is therefore a
+/// forgery attempt (cross-session/cross-org parent link) and is dropped here,
+/// at the untrusted boundary — the command layer intentionally trusts the
+/// caller-set value so the spawn path (which runs as the session owner, not an
+/// internal caller) keeps working.
+fn strip_internal_only_fields(req: &mut CreateSessionRequest) {
+    req.parent_session_id = None;
 }
 
 /// POST /v1/sessions/{session_id}/fork - Fork a session into an independent copy
@@ -943,6 +952,20 @@ mod tests {
         assert!(req.tags.is_empty());
         assert_eq!(req.model_id, None);
         assert!(req.capabilities.is_empty());
+    }
+
+    #[test]
+    fn strip_internal_only_fields_drops_client_supplied_parent_session_id() {
+        // A public HTTP client must not be able to forge the internal-only
+        // parent link; the boundary drops any caller-supplied value.
+        let json = format!(r#"{{"harness_id": "{}"}}"#, TEST_HARNESS_ID);
+        let mut req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
+        req.parent_session_id = Some(SessionId::new());
+        assert!(req.parent_session_id.is_some());
+
+        strip_internal_only_fields(&mut req);
+
+        assert_eq!(req.parent_session_id, None);
     }
 
     #[test]
