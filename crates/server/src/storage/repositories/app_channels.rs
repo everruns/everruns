@@ -2,8 +2,22 @@
 
 use super::super::models::*;
 use super::Database;
+use crate::errors::BadRequestError;
 use anyhow::Result;
 use uuid::Uuid;
+
+fn schedule_cap_error(max: i64, count: i64) -> anyhow::Error {
+    BadRequestError::new(format!(
+        "Organization may have at most {max} enabled schedule channel(s); currently has {count}"
+    ))
+    .into()
+}
+
+fn schedule_cap_lock_key(org_id: i64) -> i64 {
+    // Namespace the advisory lock so schedule-cap checks for one org serialize
+    // without blocking unrelated PostgreSQL advisory lock users.
+    org_id ^ 0x4556_4552_5343_4844_i64
+}
 
 impl Database {
     // ============================================
@@ -32,6 +46,53 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
+        Ok(row)
+    }
+
+    pub async fn create_app_channel_enforcing_schedule_cap(
+        &self,
+        org_id: i64,
+        app_id: Uuid,
+        input: CreateAppChannelRow,
+        max_enabled_schedule_channels: i64,
+    ) -> Result<AppChannelRow> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SELECT pg_advisory_xact_lock($1)")
+            .bind(schedule_cap_lock_key(org_id))
+            .execute(&mut *tx)
+            .await?;
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)
+            FROM app_channels ac
+            JOIN apps a ON ac.app_id = a.id
+            WHERE a.org_id = $1 AND ac.channel_type = 'schedule' AND ac.enabled = true
+            "#,
+        )
+        .bind(org_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if count >= max_enabled_schedule_channels {
+            return Err(schedule_cap_error(max_enabled_schedule_channels, count));
+        }
+
+        let row = sqlx::query_as::<_, AppChannelRow>(
+            r#"
+            INSERT INTO app_channels (app_id, public_id, channel_type, channel_config, channel_config_encrypted, durable_schedule_id, enabled)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, durable_schedule_id, enabled, created_at, updated_at
+            "#,
+        )
+        .bind(app_id)
+        .bind(&input.public_id)
+        .bind(&input.channel_type)
+        .bind(&input.channel_config)
+        .bind(&input.channel_config_encrypted)
+        .bind(input.durable_schedule_id)
+        .bind(input.enabled)
+        .fetch_one(&mut *tx)
+        .await?;
+        tx.commit().await?;
         Ok(row)
     }
 
@@ -127,6 +188,60 @@ impl Database {
         .fetch_optional(&self.pool)
         .await?;
 
+        Ok(row)
+    }
+
+    pub async fn update_app_channel_enforcing_schedule_cap(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateAppChannel,
+        max_enabled_schedule_channels: i64,
+    ) -> Result<Option<AppChannelRow>> {
+        let mut tx = self.pool.begin().await?;
+        sqlx::query("SELECT pg_advisory_xact_lock($1)")
+            .bind(schedule_cap_lock_key(org_id))
+            .execute(&mut *tx)
+            .await?;
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)
+            FROM app_channels ac
+            JOIN apps a ON ac.app_id = a.id
+            WHERE a.org_id = $1 AND ac.channel_type = 'schedule' AND ac.enabled = true
+            "#,
+        )
+        .bind(org_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        if count >= max_enabled_schedule_channels {
+            return Err(schedule_cap_error(max_enabled_schedule_channels, count));
+        }
+
+        let row = sqlx::query_as::<_, AppChannelRow>(
+            r#"
+            UPDATE app_channels
+            SET
+                channel_type = COALESCE($2, channel_type),
+                channel_config = COALESCE($3, channel_config),
+                channel_config_encrypted = COALESCE($4, channel_config_encrypted),
+                durable_schedule_id = CASE WHEN $5 THEN $6 ELSE durable_schedule_id END,
+                enabled = COALESCE($7, enabled),
+                updated_at = NOW()
+            WHERE id = $1
+            RETURNING id, app_id, public_id, channel_type, channel_config, channel_config_encrypted, durable_schedule_id, enabled, created_at, updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(&input.channel_type)
+        .bind(&input.channel_config)
+        .bind(&input.channel_config_encrypted)
+        .bind(input.durable_schedule_id.is_changed())
+        .bind(input.durable_schedule_id.into_value())
+        .bind(input.enabled)
+        .fetch_optional(&mut *tx)
+        .await?;
+        tx.commit().await?;
         Ok(row)
     }
 
