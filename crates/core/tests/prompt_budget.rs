@@ -71,7 +71,10 @@ async fn memory_prompt_is_empty() {
 
 #[tokio::test]
 async fn subagents_prompt_within_budget() {
-    assert_contribution_under(&SubagentCapability, 350).await;
+    // Bumped 350 → 500: background-by-default spawning needs first-turn
+    // guidance on the task_id/wake workflow and the foreground opt-out, or
+    // models block on results they no longer receive inline.
+    assert_contribution_under(&SubagentCapability, 500).await;
 }
 
 #[tokio::test]

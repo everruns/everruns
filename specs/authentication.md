@@ -131,6 +131,23 @@ The login page accepts exactly one public query parameter for auth resume:
 
 Implementations: `apps/ui/src/lib/auth-redirect.ts` (`sanitizeReturnTo`) and `apps/ui/src/app/(auth)/login/page.tsx`.
 
+### Unified Entry (Log In or Sign Up)
+
+`/login` is the single door for both returning and new users; `/register`
+forwards there (preserving `return_to`). The screen is SSO-primary (OAuth
+buttons first, email + password as the secondary path behind an email →
+password two-step). Login vs signup is the same action: the UI authenticates,
+and when the server returns 401, signup is enabled, and the password meets the
+registration minimum, it retries the same credentials against
+`POST /v1/auth/register`. Server contracts are unchanged — the unification is
+purely a UI-flow decision.
+
+Enumeration stance: the door never reveals whether an email has an account.
+Every failure path renders the same generic message, and the login→register
+fallback exposes nothing the public register endpoint doesn't already (its
+failures are equally generic). The visible difference between "logged in" and
+"account created" is inherent to open signup, not an oracle.
+
 ### External Mode and OAuth Providers
 
 `AUTH_MODE=external` and the built-in OAuth flow are mutually exclusive. External mode delegates user identity to a third-party provider (PropelAuth, Auth0, Clerk, etc.); the platform's own OAuth handlers (`/v1/auth/oauth/{provider}`, `/v1/auth/callback/{provider}`) are disabled.
@@ -155,8 +172,32 @@ Account linking by email is supported (same email = same account).
 
 ### Password Requirements
 
-- Minimum 8 characters
+- Newly set passwords (signup, reset): minimum 12 characters including at
+  least one number, maximum 128 characters (the cap bounds Argon2 hashing
+  work; login rejects oversized inputs with the generic credential failure
+  before any hashing). Existing passwords are never re-validated — login is
+  unaffected by policy changes.
 - Hashed with Argon2id (default parameters)
+
+### Signup Email Confirmation (`AUTH_SIGNUP_EMAIL_CONFIRM`)
+
+Off by default (self-host keeps instant-session signup). When enabled,
+email/password signup is an explicit, enumeration-safe two-step flow:
+
+- `POST /v1/auth/register` never creates a session. A fresh address creates
+  an unverified account and emails a confirmation link; an already-registered
+  address sends a "you already have an account" email instead. Both cases
+  return the same `200 { "ok": true }` — the emailed body is the only place
+  the two outcomes diverge.
+- `POST /v1/auth/verify-email` consumes the single-use token, marks the email
+  verified, and (best-effort) mints a session — the confirmation link doubles
+  as sign-in. Session minting on verify applies in all modes; the token
+  proves control of the mailbox.
+- `/v1/auth/config` advertises `signup_email_confirm` so the UI renders the
+  "Check your email" landing (identical copy for new and existing addresses)
+  instead of expecting tokens.
+- Requires a configured email sender; enabling it without one makes email
+  signup a dead end by design (operators own that pairing).
 
 ### Password Reset
 
@@ -176,6 +217,38 @@ Confirms a user controls the email they registered with. On successful `POST /v1
 
 Token model is identical to password reset (hashed, single-use, short TTL; `email_verification_tokens`, migration 089) but with a 24-hour TTL. Both recovery and verification routes share the registration rate limiter (per client IP).
 
+### Abuse Limits
+
+Beyond the per-IP limiter (TM-AUTH-001), the auth surface enforces:
+
+- **Per-account login throttle** — login attempts are additionally keyed on
+  the submitted email (lowercased) across all source IPs, so distributed
+  credential stuffing against one account is capped. Over-limit returns a
+  generic 429.
+- **Per-address email budget** — forgot-password and resend-verification
+  share a per-address send budget (1/minute plus a small daily cap). Over
+  budget the endpoints return the normal enumeration-safe success without
+  sending (the throttle is not an oracle).
+- **OAuth endpoints** share the login-tier per-IP limiter (the callback
+  performs an outbound token exchange per hit).
+- **Logout revokes server-side** — `POST /v1/auth/logout` deletes the
+  refresh-token row (best-effort) in addition to clearing cookies.
+- **Captcha (optional)** — setting `AUTH_TURNSTILE_SITE_KEY` +
+  `AUTH_TURNSTILE_SECRET_KEY` requires a Cloudflare Turnstile token
+  (`captcha_token`) on register / forgot-password / resend-verification.
+  `/v1/auth/config` advertises `captcha: { provider, site_key }` so the UI
+  renders the widget only when configured. Fail-closed: invalid → generic
+  403; siteverify outage → 500-class retryable error.
+
+### OAuth Callback Failure UX
+
+`GET /v1/auth/callback/{provider}` is only ever hit by a browser, so every
+failure redirects to `{FRONTEND_URL}/login?error=<category>` instead of
+returning raw JSON. Categories are coarse by design (`oauth_cancelled`,
+`oauth_not_permitted`, `oauth_failed`); specifics stay in logs and the audit
+trail. Provider error bounces (`?error=access_denied`) are handled the same
+way rather than failing query extraction.
+
 ### Environment Variables
 
 | Variable | Description | Default |
@@ -191,6 +264,7 @@ Token model is identical to password reset (hashed, single-use, short TTL; `emai
 | `AUTH_JWT_REFRESH_TOKEN_LIFETIME` | Refresh token lifetime in seconds | `2592000` (30 days) |
 | `AUTH_DISABLE_PASSWORD` | Disable password authentication | `false` |
 | `AUTH_DISABLE_SIGNUP` | Disable user registration | `false` |
+| `AUTH_SIGNUP_EMAIL_CONFIRM` | Email signup requires clicking the emailed confirmation link before a session exists (see above) | `false` |
 | `AUTH_GOOGLE_CLIENT_ID` | Google OAuth client ID | - |
 | `AUTH_GOOGLE_CLIENT_SECRET` | Google OAuth client secret | - |
 | `AUTH_GOOGLE_REDIRECT_URI` | Google OAuth redirect URI | `{AUTH_BASE_URL}/v1/auth/callback/google` |

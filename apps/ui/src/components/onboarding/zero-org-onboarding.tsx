@@ -29,7 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { OnboardingShell } from "./onboarding-shell";
-import { OSS_ONBOARDING_STEPS } from "./steps";
+import { useOnboardingArc } from "./onboarding-arc-context";
 
 /** State returned by a zero-org policy hook. */
 export type ZeroOrgPolicyState =
@@ -75,6 +75,10 @@ export function ZeroOrgOnboarding({
   const { setCurrentOrg } = useOrg();
   const createOrg = useCreateOrg();
   const policy = usePolicy();
+  // Arc position: this surface is the first OSS step ("Organisation"); a
+  // wrapper-provided arc (e.g. SaaS with a prepended "Verify") shifts the
+  // stepper index and labels via context.
+  const arc = useOnboardingArc();
   const [name, setName] = useState(suggestedName ?? "");
   // Show the auto-filled chip only while the prefilled value is unchanged.
   const showAutoFill = !!suggestedName && name === suggestedName;
@@ -96,12 +100,18 @@ export function ZeroOrgOnboarding({
   return (
     <div className="flex min-h-screen items-center justify-center bg-background bg-brand-dots p-4">
       <OnboardingShell
-        steps={OSS_ONBOARDING_STEPS}
-        currentIndex={0}
-        stepLabel="Step 1 of 3"
+        steps={arc.steps}
+        currentIndex={arc.stepIndex(0)}
+        stepLabel={arc.stepLabel(0)}
         brand={{
-          eyebrow: "Step 1 / 3",
+          eyebrow: `Step ${arc.stepIndex(0) + 1} / ${arc.steps.length}`,
           headline: "Your workspace for agents, harnesses, and durable runs.",
+          // "What you'll get" checklist — fills in on later steps.
+          features: [
+            { label: "Durable execution engine" },
+            { label: "Agent harnesses & capabilities" },
+            { label: "Session traces & evals" },
+          ],
         }}
       >
         <div className="max-w-[420px]">
@@ -155,8 +165,10 @@ export function ZeroOrgOnboarding({
                 </div>
 
                 {createOrg.isError && (
-                  <p className="text-sm text-destructive">
-                    Failed to create organisation: {createOrg.error.message}
+                  // Generic copy only — server error strings are not for
+                  // rendering (TM-AUTH-019 discipline applies UI-wide).
+                  <p role="alert" className="text-sm text-destructive">
+                    Failed to create organisation. Please try again.
                   </p>
                 )}
                 <Button

@@ -78,6 +78,17 @@ impl AuthError {
         }
     }
 
+    /// 429 for per-account / per-address throttles (login stuffing, email
+    /// bombing). Message stays generic — the throttle itself must not become
+    /// an enumeration oracle.
+    pub fn too_many_requests(message: &str) -> Self {
+        Self {
+            error: message.to_string(),
+            status: StatusCode::TOO_MANY_REQUESTS,
+            code: Some("rate_limited"),
+        }
+    }
+
     /// Internal server error. Use for storage/DB or other server-side failures
     /// so clients can distinguish a real auth failure (401) from a transient
     /// server error. The message must stay generic — never leak internals.
@@ -1065,6 +1076,8 @@ mod tests {
                 password_auth_enabled: false,
                 oauth_providers: vec![],
                 signup_enabled: false,
+                signup_email_confirm: false,
+                captcha: None,
             }
         }
     }
@@ -1193,6 +1206,8 @@ mod tests {
                 password_auth_enabled: false,
                 oauth_providers: vec![],
                 signup_enabled: false,
+                signup_email_confirm: false,
+                captcha: None,
             }
         }
     }
@@ -1409,6 +1424,8 @@ mod tests {
                 password_auth_enabled: false,
                 oauth_providers: vec![],
                 signup_enabled: false,
+                signup_email_confirm: false,
+                captcha: None,
             }
         }
     }

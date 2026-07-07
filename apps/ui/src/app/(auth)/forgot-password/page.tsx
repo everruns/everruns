@@ -1,37 +1,51 @@
 "use client";
 
-import { useState } from "react";
+// Begin a password reset — on the shared branded AuthShell like the rest of
+// the auth arc. Enumeration-safe: the confirmation never reveals whether an
+// account exists. Renders the Turnstile challenge when the server advertises
+// one (abuse-prone email-sending endpoint).
+
+import { useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { useForgotPassword } from "@/hooks/use-auth";
+import { AuthShell } from "@/components/auth/auth-shell";
+import { TurnstileWidget } from "@/components/auth/turnstile-widget";
+import { useAuthConfig, useForgotPassword } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks";
-import { Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Mail } from "lucide-react";
 
 export default function ForgotPasswordPage() {
   usePageTitle("Reset your password");
+  const { data: config } = useAuthConfig();
   const forgotPasswordMutation = useForgotPassword();
+  const searchParams = useSearchParams();
 
-  const [email, setEmail] = useState("");
+  // Prefilled when arriving from the login door's credential-failure alert.
+  const [email, setEmail] = useState(() => searchParams.get("email") ?? "");
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+
+  const handleCaptchaVerify = useCallback((token: string) => setCaptchaToken(token), []);
+  const handleCaptchaReset = useCallback(() => setCaptchaToken(null), []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // The endpoint is enumeration-safe and always returns success, so we show
-    // the same generic confirmation regardless of the result (including errors
-    // such as transient network failures) to avoid leaking account existence.
+    setError(null);
+    if (config?.captcha && !captchaToken) {
+      setError("Please complete the verification challenge below.");
+      return;
+    }
+    // Enumeration-safe: treat every outcome as "sent". Only a captcha or
+    // transport failure is worth surfacing.
     try {
-      await forgotPasswordMutation.mutateAsync({ email });
+      await forgotPasswordMutation.mutateAsync({
+        email,
+        captcha_token: captchaToken ?? undefined,
+      });
     } catch {
       // Intentionally ignored — never reveal whether the account exists.
     }
@@ -40,68 +54,82 @@ export default function ForgotPasswordPage() {
 
   if (submitted) {
     return (
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="flex justify-center mb-4">
-            <Image src="/logo.svg" alt="Everruns" width={48} height={48} />
-          </div>
-          <CardTitle className="text-2xl">Check your inbox</CardTitle>
-          <CardDescription>
-            If an account exists for {email}, we&apos;ve sent a password reset link. Check your
-            inbox.
-          </CardDescription>
-        </CardHeader>
-        <CardFooter className="flex justify-center">
-          <Link href="/login" className="text-sm text-primary hover:underline">
+      <AuthShell>
+        <div className="mb-6 flex h-12 w-12 items-center justify-center border border-accent/40 bg-accent/[0.12] text-accent-foreground">
+          <Mail className="icon-sharp h-[22px] w-[22px]" strokeWidth={1.8} />
+        </div>
+        <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
+          Check your inbox
+        </h1>
+        <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
+          If an account exists for <b className="font-medium text-foreground">{email}</b>,
+          we&apos;ve sent a password reset link. The link expires in one hour.
+        </p>
+        <p className="mt-7 text-sm text-muted-foreground">
+          <Link href="/login" className="font-medium text-primary hover:underline">
             Back to sign in
           </Link>
-        </CardFooter>
-      </Card>
+        </p>
+      </AuthShell>
     );
   }
 
   return (
-    <Card className="w-full max-w-md">
-      <CardHeader className="text-center">
-        <div className="flex justify-center mb-4">
-          <Image src="/logo.svg" alt="Everruns" width={48} height={48} />
-        </div>
-        <CardTitle className="text-2xl">Reset your password</CardTitle>
-        <CardDescription>
-          Enter your email and we&apos;ll send you a link to reset your password.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-            />
+    <AuthShell>
+      <Link
+        href="/login"
+        className="mb-5 inline-flex items-center gap-[7px] text-[13px] text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="icon-sharp h-[15px] w-[15px]" strokeWidth={2} />
+        Back to sign in
+      </Link>
+      <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
+        Reset your password
+      </h1>
+      <p className="mt-[10px] text-sm text-muted-foreground">
+        Enter your email and we&apos;ll send you a reset link.
+      </p>
+
+      <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+        {error && (
+          <div role="alert" className="bg-destructive/10 text-destructive text-sm p-3">
+            {error}
           </div>
-          <Button type="submit" className="w-full" disabled={forgotPasswordMutation.isPending}>
-            {forgotPasswordMutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Sending...
-              </>
-            ) : (
-              "Send reset link"
-            )}
-          </Button>
-        </form>
-      </CardContent>
-      <CardFooter className="flex justify-center">
-        <Link href="/login" className="text-sm text-primary hover:underline">
-          Back to sign in
-        </Link>
-      </CardFooter>
-    </Card>
+        )}
+        <div className="space-y-2">
+          <Label htmlFor="email">Email</Label>
+          <Input
+            id="email"
+            type="email"
+            placeholder="you@company.com"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            autoComplete="email"
+          />
+        </div>
+        <Button type="submit" className="w-full" disabled={forgotPasswordMutation.isPending}>
+          {forgotPasswordMutation.isPending ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Sending...
+            </>
+          ) : (
+            "Send reset link"
+          )}
+        </Button>
+      </form>
+
+      {config?.captcha && (
+        <div className="mt-4">
+          <TurnstileWidget
+            siteKey={config.captcha.site_key}
+            onVerify={handleCaptchaVerify}
+            onExpire={handleCaptchaReset}
+            onError={handleCaptchaReset}
+          />
+        </div>
+      )}
+    </AuthShell>
   );
 }

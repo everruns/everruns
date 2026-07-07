@@ -52,7 +52,7 @@ Verify that after spawning multiple subagents, `list_tasks` (from the generic se
      }'
    ```
 
-4. Wait for completion (120-180 seconds for two foreground subagents sequentially).
+4. Wait for completion (background subagents run in parallel; allow 120-180 seconds for both to finish).
 
 5. Retrieve events:
    ```bash

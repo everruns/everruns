@@ -1152,6 +1152,8 @@ mod tests {
                 password_auth_enabled: false,
                 signup_enabled: false,
                 oauth_providers: vec![],
+                signup_email_confirm: false,
+                captcha: None,
             }
         }
     }

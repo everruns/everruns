@@ -1,6 +1,7 @@
 "use client";
 
-// Cloudflare Turnstile widget for the Public Chat surface. Loads the Turnstile
+// Cloudflare Turnstile widget (shared by Public Chat and the auth forms).
+// Loads the Turnstile
 // script once and renders an explicit widget, reporting the solved token (or
 // an expiry/error) to the parent. Only mounted when the channel enforces a
 // captcha; signed-in visitors never see it.
