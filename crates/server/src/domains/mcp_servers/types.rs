@@ -3,7 +3,7 @@
 // Storage row types are re-exported from `storage::models` so domain code
 // has a single import path.
 
-use everruns_core::{McpServerAuthMode, McpServerStatus, McpServerTransportType};
+use everruns_core::{McpProtocolMode, McpServerAuthMode, McpServerStatus, McpServerTransportType};
 use serde::Deserialize;
 use std::collections::HashMap;
 use utoipa::ToSchema;
@@ -31,6 +31,9 @@ pub struct CreateMcpServerRequest {
     /// Example shape is defined on `McpServerAuthMode`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_mode: Option<McpServerAuthMode>,
+    /// Protocol-era policy. Defaults to `auto` (negotiates legacy/current/RC).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protocol_mode: Option<McpProtocolMode>,
     /// API key for authentication (optional). Sent with each request; never echoed in responses.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "sk-mcp-redacted-1234567890abcdef")]
@@ -66,6 +69,9 @@ pub struct UpdateMcpServerRequest {
     /// Authentication mode.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_mode: Option<McpServerAuthMode>,
+    /// Protocol-era policy (`auto`, `legacy`, `stable`, `rc`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protocol_mode: Option<McpProtocolMode>,
     /// The status of the MCP server. Set to "disabled" to disable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<McpServerStatus>,

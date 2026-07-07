@@ -1136,6 +1136,7 @@ async fn test_driver_registry_integration() {
         prompt_cache: None,
         openrouter_routing: None,
         parallel_tool_calls: None,
+        volatile_suffix_len: 0,
     };
 
     let response = driver

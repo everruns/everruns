@@ -26,7 +26,7 @@ pub struct LocalProfile {
 
 impl Default for LocalProfile {
     fn default() -> Self {
-        let data_dir = std::env::temp_dir().join("everruns-local");
+        let data_dir = default_data_dir();
         Self {
             workspace_root: data_dir.join("workspace"),
             data_dir,
@@ -74,14 +74,107 @@ impl LocalProfile {
         self
     }
 
-    /// Ensure `data_dir` and `workspace_root` exist on disk.
+    /// Ensure `data_dir` and `workspace_root` exist on disk with private
+    /// permissions. Local stores can contain prompts, tool output, and schedule
+    /// metadata, so pre-existing unsafe paths are rejected instead of followed.
     pub fn ensure_dirs(&self) -> std::io::Result<()> {
-        std::fs::create_dir_all(&self.data_dir)?;
-        std::fs::create_dir_all(&self.workspace_root)?;
+        ensure_private_dir(&self.data_dir)?;
+        ensure_private_dir(&self.workspace_root)?;
         Ok(())
     }
 
     pub fn data_dir(&self) -> &Path {
         &self.data_dir
+    }
+}
+
+fn default_data_dir() -> PathBuf {
+    dirs::data_local_dir()
+        .unwrap_or_else(std::env::temp_dir)
+        .join("everruns")
+        .join("local")
+}
+
+#[cfg(unix)]
+fn ensure_private_dir(path: &Path) -> std::io::Result<()> {
+    use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+    std::fs::create_dir_all(path)?;
+    let metadata = std::fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!(
+                "refusing to use symlinked local profile directory {}",
+                path.display()
+            ),
+        ));
+    }
+    if !metadata.is_dir() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("local profile path is not a directory: {}", path.display()),
+        ));
+    }
+    if metadata.uid() != current_uid() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!(
+                "local profile directory is not owned by the current user: {}",
+                path.display()
+            ),
+        ));
+    }
+    if metadata.permissions().mode() & 0o077 != 0 {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn ensure_private_dir(path: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(path)
+}
+
+#[cfg(unix)]
+fn current_uid() -> u32 {
+    // SAFETY: getuid has no preconditions and cannot fail.
+    unsafe { libc::getuid() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_profile_uses_user_local_data_dir() {
+        assert!(
+            !LocalProfile::default()
+                .data_dir
+                .starts_with(std::env::temp_dir())
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ensure_dirs_hardens_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let profile = LocalProfile::new(root.path().join("profile"));
+        profile.ensure_dirs().unwrap();
+
+        let data_mode = std::fs::metadata(&profile.data_dir)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        let workspace_mode = std::fs::metadata(&profile.workspace_root)
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(data_mode, 0o700);
+        assert_eq!(workspace_mode, 0o700);
     }
 }

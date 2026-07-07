@@ -27,6 +27,7 @@ import {
   PageMasthead,
   PageControlStrip,
   SectionTabs,
+  EmptyState,
   PageColumns,
   PageMain,
   PageRail,
@@ -142,7 +143,18 @@ export default function MemoryPage() {
             errorMessagePrefix="Failed to load memory"
             skeletonCount={6}
             emptyState={
-              <EmptyState hasSearch={!!search.trim()} onCreate={() => setCreateOpen(true)} />
+              <EmptyState
+                icon={<Brain />}
+                title={search.trim() ? "No memory found" : "No memory"}
+                action={
+                  !search.trim() && (
+                    <Button variant="accent" onClick={() => setCreateOpen(true)}>
+                      <Plus className="size-4" />
+                      New Memory
+                    </Button>
+                  )
+                }
+              />
             }
           >
             {(items) => (
@@ -397,19 +409,4 @@ function formatSyncInterval(memory: Memory) {
     return hours === 1 ? "Hourly" : `Every ${hours} hours`;
   }
   return `Every ${Math.round(interval / 60)} minutes`;
-}
-
-function EmptyState({ hasSearch, onCreate }: { hasSearch: boolean; onCreate: () => void }) {
-  return (
-    <div className="flex flex-col items-center justify-center border border-dashed py-12 text-center">
-      <Brain className="mb-4 h-12 w-12 text-muted-foreground" />
-      <h3 className="mb-2 text-lg font-semibold">{hasSearch ? "No memory found" : "No memory"}</h3>
-      {!hasSearch && (
-        <Button variant="accent" onClick={onCreate}>
-          <Plus className="h-4 w-4" />
-          New Memory
-        </Button>
-      )}
-    </div>
-  );
 }

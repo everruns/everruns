@@ -11,8 +11,8 @@
 //
 // See `specs/file-store.md` for the contract.
 
-use everruns_core::{MountFs, SessionFileSystem, SessionId};
-use everruns_runtime::{InMemorySessionFileStore, RealDiskFileStore};
+use everruns_core::{MountFs, SessionFileSystem, SessionId, WorkspaceRootSet};
+use everruns_runtime::{InMemorySessionFileStore, RealDiskFileStore, multi_root_file_system};
 use std::sync::Arc;
 
 #[tokio::main]
@@ -82,6 +82,42 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "\nmodel-facing root stayed `{}` across the switch ✓",
         host_fs.display_root()
+    );
+
+    // ---------------------------------------------------------------------
+    // 3. Multiple host roots in one session namespace.
+    // ---------------------------------------------------------------------
+    let primary = tempfile::tempdir()?;
+    let backend = tempfile::tempdir()?;
+    let roots = WorkspaceRootSet::new(
+        primary.path(),
+        [("backend".to_string(), backend.path().to_path_buf())],
+    )?;
+    let multi_root_fs = multi_root_file_system(&roots)?;
+
+    multi_root_fs
+        .write_file(session, "/workspace/README.md", "primary", "text")
+        .await?;
+    multi_root_fs
+        .write_file(
+            session,
+            "/workspace/roots/backend/Cargo.toml",
+            "backend",
+            "text",
+        )
+        .await?;
+    assert_eq!(
+        std::fs::read_to_string(primary.path().join("README.md"))?,
+        "primary"
+    );
+    assert_eq!(
+        std::fs::read_to_string(backend.path().join("Cargo.toml"))?,
+        "backend"
+    );
+    println!(
+        "multi-root write: /workspace -> {}, /workspace/roots/backend -> {}",
+        primary.path().display(),
+        backend.path().display()
     );
 
     println!("\nmount_fs_workspace example OK");

@@ -37,6 +37,7 @@ use everruns_worker::AgentRunner;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 /// How often the orphaned-monitor reconciliation sweep runs regardless of the
@@ -63,7 +64,7 @@ pub fn spawn_session_scheduler(
     runner: Arc<dyn AgentRunner>,
     probe_tool_registry: Option<Arc<ToolRegistry>>,
     poll_interval: Duration,
-) {
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(poll_interval);
         // Skip the immediate first tick — let the server finish starting.
@@ -103,7 +104,7 @@ pub fn spawn_session_scheduler(
                 last_sweep = Some(std::time::Instant::now());
             }
         }
-    });
+    })
 }
 
 /// One iteration of the poll loop.

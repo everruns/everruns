@@ -53,6 +53,10 @@ jest.mock("@/components/command-palette", () => ({
   CommandPalette: () => <div data-testid="command-palette">Command Palette</div>,
 }));
 
+jest.mock("@/components/layout/early-access-banner", () => ({
+  EarlyAccessBanner: () => <div data-testid="early-access-banner">Early Access Banner</div>,
+}));
+
 jest.mock("@/hooks/use-command-palette", () => ({
   CommandPaletteContext: ({ children }: { children: React.ReactNode }) => <>{children}</>,
   useCommandPaletteState: () => ({}),
@@ -72,6 +76,14 @@ jest.mock("@/providers/notifications-provider", () => ({
 
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlag: () => false,
+}));
+
+// The resume-onboarding hook issues a react-query fetch; these auth-availability
+// tests render MainLayout without a QueryClientProvider and don't exercise
+// onboarding, so stub it to a no-op (a real org has completed onboarding here).
+jest.mock("@/components/onboarding/use-onboarding-resume-redirect", () => ({
+  useOnboardingResumeRedirect: () => false,
+  isOnboardingRoute: () => false,
 }));
 
 describe("MainLayout auth availability", () => {

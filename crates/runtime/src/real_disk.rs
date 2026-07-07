@@ -17,6 +17,7 @@ use everruns_core::traits::{
     SessionFileSystem, SessionFileSystemFactory, SessionFileSystemFactoryContext,
 };
 use everruns_core::typed_id::SessionId;
+use everruns_core::{MountFs, WorkspaceRootSet};
 use ignore::WalkBuilder;
 use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
@@ -67,10 +68,27 @@ impl SessionFileSystemFactory for RealDiskSessionFileSystemFactory {
 
     async fn create_session_file_system(
         &self,
-        _context: SessionFileSystemFactoryContext,
+        context: SessionFileSystemFactoryContext,
     ) -> Result<Arc<dyn SessionFileSystem>> {
+        if let Some(root_set) = context.workspace_roots() {
+            return multi_root_file_system(&root_set);
+        }
         Ok(Arc::new(RealDiskFileStore::new(self.root.clone())?))
     }
+}
+
+pub fn multi_root_file_system(root_set: &WorkspaceRootSet) -> Result<Arc<dyn SessionFileSystem>> {
+    let primary = Arc::new(RealDiskFileStore::new(root_set.primary_host_root())?);
+    let mut fs = MountFs::new(primary);
+    for root in &root_set.additional {
+        let store = Arc::new(RealDiskFileStore::new(&root.path)?);
+        fs = fs.with_mount(
+            WorkspaceRootSet::additional_mount_point(&root.name),
+            store,
+            "/",
+        );
+    }
+    Ok(Arc::new(fs))
 }
 
 impl RealDiskFileStore {
@@ -854,6 +872,158 @@ mod tests {
 
     fn sid() -> SessionId {
         SessionId::new()
+    }
+
+    #[tokio::test]
+    async fn multi_root_reads_writes_lists_and_greps() {
+        let primary = TempDir::new().unwrap();
+        let backend = TempDir::new().unwrap();
+        let root_set = WorkspaceRootSet::new(
+            primary.path(),
+            [("backend".to_string(), backend.path().to_path_buf())],
+        )
+        .unwrap();
+        let store = multi_root_file_system(&root_set).unwrap();
+        let session = sid();
+
+        let primary_file = store
+            .write_file(session, "/workspace/README.md", "needle primary", "text")
+            .await
+            .unwrap();
+        assert_eq!(primary_file.path, "/README.md");
+        assert_eq!(
+            std::fs::read_to_string(primary.path().join("README.md")).unwrap(),
+            "needle primary"
+        );
+
+        let backend_file = store
+            .write_file(
+                session,
+                "/workspace/roots/backend/Cargo.toml",
+                "needle backend",
+                "text",
+            )
+            .await
+            .unwrap();
+        assert_eq!(backend_file.path, "/workspace/roots/backend/Cargo.toml");
+        assert_eq!(
+            std::fs::read_to_string(backend.path().join("Cargo.toml")).unwrap(),
+            "needle backend"
+        );
+
+        let listed = store
+            .list_directory(session, "/workspace/roots/backend")
+            .await
+            .unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].path, "/workspace/roots/backend/Cargo.toml");
+
+        let matches = store.grep_files(session, "needle", None).await.unwrap();
+        let paths: Vec<_> = matches.into_iter().map(|m| m.path).collect();
+        assert_eq!(
+            paths,
+            vec![
+                "/README.md".to_string(),
+                "/workspace/roots/backend/Cargo.toml".to_string()
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn multi_root_escape_attempts_fail() {
+        let primary = TempDir::new().unwrap();
+        let backend = TempDir::new().unwrap();
+        let root_set = WorkspaceRootSet::new(
+            primary.path(),
+            [("backend".to_string(), backend.path().to_path_buf())],
+        )
+        .unwrap();
+        let store = multi_root_file_system(&root_set).unwrap();
+
+        let err = store
+            .write_file(
+                sid(),
+                "/workspace/roots/backend/../../outside.txt",
+                "nope",
+                "text",
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("path traversal rejected"));
+    }
+
+    #[tokio::test]
+    async fn multi_root_blocklist_applies_to_every_root() {
+        let primary = TempDir::new().unwrap();
+        let backend = TempDir::new().unwrap();
+        let root_set = WorkspaceRootSet::new(
+            primary.path(),
+            [("backend".to_string(), backend.path().to_path_buf())],
+        )
+        .unwrap();
+        let inner = multi_root_file_system(&root_set).unwrap();
+        let store: Arc<dyn SessionFileSystem> =
+            Arc::new(crate::WriteBlocklistFileStore::new(inner));
+
+        let primary_err = store
+            .write_file(sid(), "/workspace/target/out.txt", "nope", "text")
+            .await
+            .unwrap_err();
+        assert!(primary_err.to_string().contains("write blocklist rejected"));
+
+        let backend_err = store
+            .write_file(
+                sid(),
+                "/workspace/roots/backend/node_modules/pkg.js",
+                "nope",
+                "text",
+            )
+            .await
+            .unwrap_err();
+        assert!(backend_err.to_string().contains("write blocklist rejected"));
+    }
+
+    #[tokio::test]
+    async fn factory_context_root_set_repoints_only_primary() {
+        let configured = TempDir::new().unwrap();
+        let primary = TempDir::new().unwrap();
+        let backend = TempDir::new().unwrap();
+        let root_set = WorkspaceRootSet::new(
+            primary.path(),
+            [("backend".to_string(), backend.path().to_path_buf())],
+        )
+        .unwrap();
+        let factory = RealDiskSessionFileSystemFactory::new(configured.path());
+        let store = factory
+            .create_session_file_system(
+                SessionFileSystemFactoryContext::new().with_workspace_roots(Arc::new(root_set)),
+            )
+            .await
+            .unwrap();
+
+        store
+            .write_file(sid(), "/workspace/primary.txt", "primary", "text")
+            .await
+            .unwrap();
+        store
+            .write_file(
+                sid(),
+                "/workspace/roots/backend/backend.txt",
+                "backend",
+                "text",
+            )
+            .await
+            .unwrap();
+
+        assert!(!configured.path().join("primary.txt").exists());
+        assert_eq!(
+            std::fs::read_to_string(primary.path().join("primary.txt")).unwrap(),
+            "primary"
+        );
+        assert_eq!(
+            std::fs::read_to_string(backend.path().join("backend.txt")).unwrap(),
+            "backend"
+        );
     }
 
     #[tokio::test]

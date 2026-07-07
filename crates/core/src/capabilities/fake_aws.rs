@@ -188,15 +188,7 @@ async fn persist<T: Serialize>(
     Ok(())
 }
 
-/// Extract the file store from context or return a tool error.
-macro_rules! require_file_store {
-    ($ctx:expr) => {
-        match &$ctx.file_store {
-            Some(s) => s.as_ref(),
-            None => return ToolExecutionResult::tool_error("File system not available"),
-        }
-    };
-}
+use super::util::require_file_store;
 
 // ============================================================================
 // Data model structs
@@ -845,7 +837,10 @@ impl Tool for AwsListEc2InstancesTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = require_file_store!(context);
+        let store = match require_file_store(context) {
+            Ok(store) => store,
+            Err(e) => return e,
+        };
         simulate_latency(OpKind::List).await;
 
         let state_filter = arguments.get("state").and_then(|v| v.as_str());
@@ -919,7 +914,10 @@ impl Tool for AwsCreateEc2InstanceTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = require_file_store!(context);
+        let store = match require_file_store(context) {
+            Ok(store) => store,
+            Err(e) => return e,
+        };
         simulate_latency(OpKind::Create).await;
 
         let instance_type = match arguments.get("instance_type").and_then(|v| v.as_str()) {
@@ -1032,7 +1030,10 @@ impl Tool for AwsStopEc2InstanceTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = require_file_store!(context);
+        let store = match require_file_store(context) {
+            Ok(store) => store,
+            Err(e) => return e,
+        };
         simulate_latency(OpKind::Modify).await;
 
         let instance_id = match arguments.get("instance_id").and_then(|v| v.as_str()) {
@@ -1111,7 +1112,10 @@ impl Tool for AwsListRdsDatabasesTool {
         _arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = require_file_store!(context);
+        let store = match require_file_store(context) {
+            Ok(store) => store,
+            Err(e) => return e,
+        };
         simulate_latency(OpKind::List).await;
 
         let databases = read_or_seed(store, context.session_id, RDS_PATH, seed_rds).await;
@@ -1169,7 +1173,10 @@ impl Tool for AwsCreateRdsDatabaseTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = require_file_store!(context);
+        let store = match require_file_store(context) {
+            Ok(store) => store,
+            Err(e) => return e,
+        };
         simulate_latency(OpKind::Create).await;
 
         let db_id = match arguments.get("db_instance_id").and_then(|v| v.as_str()) {
@@ -1278,7 +1285,10 @@ impl Tool for AwsListS3BucketsTool {
         _arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = require_file_store!(context);
+        let store = match require_file_store(context) {
+            Ok(store) => store,
+            Err(e) => return e,
+        };
         simulate_latency(OpKind::List).await;
 
         let buckets = read_or_seed(store, context.session_id, S3_PATH, seed_s3).await;
@@ -1334,7 +1344,10 @@ impl Tool for AwsCreateS3BucketTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = require_file_store!(context);
+        let store = match require_file_store(context) {
+            Ok(store) => store,
+            Err(e) => return e,
+        };
         simulate_latency(OpKind::Create).await;
 
         let bucket_name = match arguments.get("bucket_name").and_then(|v| v.as_str()) {
@@ -1421,7 +1434,10 @@ impl Tool for AwsListIamUsersTool {
         _arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = require_file_store!(context);
+        let store = match require_file_store(context) {
+            Ok(store) => store,
+            Err(e) => return e,
+        };
         simulate_latency(OpKind::List).await;
 
         let users = read_or_seed(store, context.session_id, IAM_PATH, seed_iam).await;
@@ -1479,7 +1495,10 @@ impl Tool for AwsCreateIamUserTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = require_file_store!(context);
+        let store = match require_file_store(context) {
+            Ok(store) => store,
+            Err(e) => return e,
+        };
         simulate_latency(OpKind::Create).await;
 
         let username = match arguments.get("username").and_then(|v| v.as_str()) {
@@ -1567,7 +1586,10 @@ impl Tool for AwsListSecurityGroupsTool {
         _arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = require_file_store!(context);
+        let store = match require_file_store(context) {
+            Ok(store) => store,
+            Err(e) => return e,
+        };
         simulate_latency(OpKind::List).await;
 
         let groups = read_or_seed(store, context.session_id, SG_PATH, seed_security_groups).await;
@@ -1637,7 +1659,10 @@ impl Tool for AwsGetCloudWatchMetricsTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let store = require_file_store!(context);
+        let store = match require_file_store(context) {
+            Ok(store) => store,
+            Err(e) => return e,
+        };
         simulate_latency(OpKind::Query).await;
 
         let resource_id = match arguments.get("resource_id").and_then(|v| v.as_str()) {

@@ -11,7 +11,7 @@ import {
   useDurableMetrics,
   usePageTitle,
 } from "@/hooks";
-import { MetricsCharts } from "@/components/durable/metrics-charts";
+import dynamic from "next/dynamic";
 import {
   Server,
   Workflow,
@@ -29,6 +29,16 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
 import { getHealthBadgeVariant, getWorkflowStatusBadgeVariant } from "@/lib/status-utils";
+
+// `recharts` is heavy and only rendered once metrics load on this page. Load it
+// lazily so it stays out of the initial durable-route bundle.
+const MetricsCharts = dynamic(
+  () => import("@/components/durable/metrics-charts").then((m) => m.MetricsCharts),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="h-64 w-full" />,
+  },
+);
 
 function getHealthStatusColor(status: string) {
   switch (status) {

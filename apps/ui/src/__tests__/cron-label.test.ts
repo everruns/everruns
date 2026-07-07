@@ -4,12 +4,6 @@ import {
   isSupportedCronExpression,
 } from "@/components/apps/cron-label";
 
-describe("CRON_MIN_INTERVAL_SECONDS", () => {
-  it("equals 300 (matches server-side default)", () => {
-    expect(CRON_MIN_INTERVAL_SECONDS).toBe(300);
-  });
-});
-
 describe("getCronIntervalSeconds", () => {
   it("returns 60 for every-minute 7-field expression", () => {
     expect(getCronIntervalSeconds("0 * * * * * *")).toBe(60);

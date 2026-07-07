@@ -223,7 +223,7 @@ impl Command for CreateAgent {
                 network_access: req
                     .network_access
                     .as_ref()
-                    .map(|na| serde_json::to_value(na).unwrap()),
+                    .map(|na| serde_json::to_value(na).unwrap_or_default()),
                 max_iterations: max_iterations::to_db(req.max_iterations)
                     .map_err(classify_anyhow)?,
                 parallel_tool_calls: req.parallel_tool_calls,
@@ -252,7 +252,7 @@ impl Command for CreateAgent {
                 network_access: req
                     .network_access
                     .as_ref()
-                    .map(|na| serde_json::to_value(na).unwrap()),
+                    .map(|na| serde_json::to_value(na).unwrap_or_default()),
                 max_iterations: max_iterations::to_db(req.max_iterations)
                     .map_err(classify_anyhow)?,
                 parallel_tool_calls: req.parallel_tool_calls,
@@ -536,7 +536,7 @@ impl Command for UpdateAgentCmd {
                 .map_err(classify_anyhow)?,
             network_access: req
                 .network_access
-                .map(|na| Some(serde_json::to_value(na).unwrap())),
+                .map(|na| Some(serde_json::to_value(na).unwrap_or_default())),
             parallel_tool_calls: req.parallel_tool_calls.map(Some),
             ..Default::default()
         };
@@ -740,7 +740,7 @@ impl Command for UpsertAgent {
             network_access: req
                 .network_access
                 .as_ref()
-                .map(|na| serde_json::to_value(na).unwrap()),
+                .map(|na| serde_json::to_value(na).unwrap_or_default()),
         };
         let (row, was_created) = ctx
             .db

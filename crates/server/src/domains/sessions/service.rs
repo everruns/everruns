@@ -502,18 +502,22 @@ impl SessionService {
 
         let session_capabilities = sanitize_session_capabilities(req.capabilities);
 
-        // Validate session-level capability refs before persisting
-        crate::domains::capabilities::validation::validate_capability_refs(
-            &self.db,
-            org_id,
-            &session_capabilities,
-        )
-        .await?;
+        // EVE-AARDVARK: authorize high-risk session capability assignment
+        // before full config validation so unauthorized callers cannot force
+        // expensive validation for capabilities they are not allowed to use.
         self.require_admin_for_high_risk_session_capabilities(
             caller,
             org_id,
             harness_id.uuid(),
             agent_id.map(|id| id.uuid()),
+            &session_capabilities,
+        )
+        .await?;
+
+        // Validate session-level capability refs before persisting.
+        crate::domains::capabilities::validation::validate_capability_refs(
+            &self.db,
+            org_id,
             &session_capabilities,
         )
         .await?;
@@ -632,7 +636,7 @@ impl SessionService {
             network_access: req
                 .network_access
                 .as_ref()
-                .map(|na| serde_json::to_value(na).unwrap()),
+                .map(|na| serde_json::to_value(na).unwrap_or_default()),
             max_iterations: max_iterations::to_db(req.max_iterations)?,
             parallel_tool_calls: req.parallel_tool_calls,
             blueprint_id: None,
@@ -782,7 +786,7 @@ impl SessionService {
             network_access: req
                 .network_access
                 .as_ref()
-                .map(|na| serde_json::to_value(na).unwrap()),
+                .map(|na| serde_json::to_value(na).unwrap_or_default()),
             max_iterations: max_iterations::to_db(req.max_iterations)?,
             parallel_tool_calls: req.parallel_tool_calls,
             blueprint_id: Some(blueprint_id),

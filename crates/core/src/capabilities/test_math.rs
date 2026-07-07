@@ -298,45 +298,13 @@ impl Tool for DivideTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capabilities::CapabilityRegistry;
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = TestMathCapability;
-
-        assert_eq!(cap.id(), "test_math");
-        assert_eq!(cap.name(), "Test Math");
-        assert_eq!(cap.icon(), Some("calculator"));
-        assert_eq!(cap.category(), Some("Testing"));
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-    }
-
-    #[test]
-    fn test_capability_has_tools() {
-        let cap = TestMathCapability;
-        let tools = cap.tools();
-
-        assert_eq!(tools.len(), 4);
-        let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(tool_names.contains(&"add"));
-        assert!(tool_names.contains(&"subtract"));
-        assert!(tool_names.contains(&"multiply"));
-        assert!(tool_names.contains(&"divide"));
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_capability_no_system_prompt() {
         let cap = TestMathCapability;
         assert!(cap.system_prompt_addition().is_none());
-    }
-
-    #[test]
-    fn test_capability_in_registry() {
-        let registry = CapabilityRegistry::with_builtins();
-        let cap = registry.get("test_math").unwrap();
-
-        assert_eq!(cap.id(), "test_math");
-        assert_eq!(cap.tools().len(), 4);
     }
 
     #[tokio::test]

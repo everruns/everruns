@@ -135,11 +135,11 @@ pub const OPENROUTER_GPT4O_MINI: ProviderModelConfig = ProviderModelConfig::new(
 );
 
 // Fireworks AI serves open models via an OpenAI-compatible Chat Completions
-// API. kimi-k2p5 is a chat + tool-calling model. Exercises the Chat Completions
-// streaming path against a third (non-OpenAI/Azure) host.
-pub const FIREWORKS_KIMI: ProviderModelConfig = ProviderModelConfig::new(
+// API. gpt-oss-120b is a chat + tool-calling model. Exercises the Chat
+// Completions streaming path against a third (non-OpenAI/Azure) host.
+pub const FIREWORKS_GPT_OSS: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Fireworks,
-    "accounts/fireworks/models/kimi-k2p5",
+    "accounts/fireworks/models/gpt-oss-120b",
     "FIREWORKS_API_KEY",
 );
 
@@ -233,6 +233,62 @@ pub fn is_quota_exhausted(err: &str) -> bool {
     false
 }
 
+// ============================================================================
+// Transient transport / network flakiness
+// ============================================================================
+
+// The live LLM matrix talks to real providers over the network, so a turn can
+// fail because the HTTP/SSE connection was interrupted mid-stream rather than
+// because of any code regression. Historically these surface on `main` as
+// `LLM error: Stream error: Transport error: error decoding response body`
+// (reqwest/hyper failing to read the response body) and vary test-to-test,
+// which is the signature of infrastructure flakiness, not a contract break.
+//
+// We treat these the same way as quota exhaustion: skip the case with a loud
+// warning so `main` stays green, while genuine functional failures (auth,
+// schema, model availability, assertion mismatches) still fail loudly.
+//
+// Detection is kept specific to transport-layer signatures so ordinary API
+// errors are never swallowed. Auth/permission signals are excluded first, so a
+// broken credential can never be misread as a transient hiccup.
+pub fn is_transient_transport(err: &str) -> bool {
+    let e = err.to_lowercase();
+
+    // Never treat auth/permission failures as transient transport noise.
+    let auth_failure = e.contains("unauthorized")
+        || e.contains("forbidden")
+        || e.contains("invalid api key")
+        || e.contains("invalid_api_key")
+        || e.contains("permission")
+        || e.contains("authentication")
+        || e.contains(" 401")
+        || e.contains("401 ")
+        || e.contains(" 403")
+        || e.contains("403 ");
+    if auth_failure {
+        return false;
+    }
+
+    // Transport-layer / connection-teardown signatures from reqwest/hyper and
+    // the drivers' own error wrapping. These indicate the network stream was
+    // interrupted, not that the provider rejected the request on its merits.
+    e.contains("transport error")
+        || e.contains("error decoding response body")
+        || e.contains("connection reset")
+        || e.contains("connection closed")
+        || e.contains("connection aborted")
+        || e.contains("connection refused")
+        || e.contains("broken pipe")
+        || e.contains("incomplete message")
+        || e.contains("unexpected end of file")
+        || e.contains("unexpected eof")
+        || e.contains("error trying to connect")
+        || e.contains("tcp connect error")
+        || e.contains("dns error")
+        || e.contains("timed out")
+        || e.contains("timeout")
+}
+
 /// Skip the current test (with a loud stderr warning) if `result` failed due to
 /// the provider being out of quota/credits. Otherwise the test proceeds and its
 /// normal assertions run. `result` must expose `success: bool` and
@@ -252,6 +308,13 @@ macro_rules! skip_if_quota {
             if let Some(err) = __result.error.as_deref() {
                 if is_quota_exhausted(err) {
                     eprintln!("SKIP: provider {} out of quota: {}", $label, err);
+                    return;
+                }
+                if is_transient_transport(err) {
+                    eprintln!(
+                        "SKIP: provider {} transient transport error: {}",
+                        $label, err
+                    );
                     return;
                 }
             }
@@ -341,5 +404,53 @@ mod quota_detector_tests {
             "insufficient_quota but actually invalid api key"
         ));
         assert!(!is_quota_exhausted("permission denied for this model"));
+    }
+}
+
+#[cfg(test)]
+mod transient_transport_tests {
+    use super::is_transient_transport;
+
+    #[test]
+    fn matches_transport_flakes() {
+        // The exact message observed flaking `main` from live OpenAI streaming.
+        assert!(is_transient_transport(
+            "LLM error: Stream error: Transport error: error decoding response body"
+        ));
+        assert!(is_transient_transport("error decoding response body"));
+        assert!(is_transient_transport("connection reset by peer"));
+        assert!(is_transient_transport(
+            "connection closed before message completed"
+        ));
+        assert!(is_transient_transport("hyper: incomplete message"));
+        assert!(is_transient_transport(
+            "error trying to connect: tcp connect error"
+        ));
+        assert!(is_transient_transport("operation timed out"));
+        assert!(is_transient_transport("request timeout"));
+        // Case-insensitive.
+        assert!(is_transient_transport("TRANSPORT ERROR: broken pipe"));
+    }
+
+    #[test]
+    fn does_not_match_functional_or_auth_errors() {
+        // Genuine functional/contract breaks must still fail the test.
+        assert!(!is_transient_transport(
+            "Model not available: gpt-99-nonexistent"
+        ));
+        assert!(!is_transient_transport(
+            "Bad request: invalid schema for tool"
+        ));
+        assert!(!is_transient_transport("Internal server error"));
+        assert!(!is_transient_transport(""));
+        assert!(!is_transient_transport("rate_limit_exceeded"));
+        // Auth/permission failures must never be swallowed as transport noise,
+        // even when the message mentions a connection.
+        assert!(!is_transient_transport("401 Unauthorized: invalid api key"));
+        assert!(!is_transient_transport("403 Forbidden"));
+        assert!(!is_transient_transport(
+            "connection reset but actually 401 unauthorized"
+        ));
+        assert!(!is_transient_transport("permission denied for this model"));
     }
 }

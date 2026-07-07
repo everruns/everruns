@@ -108,6 +108,19 @@ async fn mcp_tool_call(server: &TestServer, tool: &str, arguments: Value) -> Val
     .await
 }
 
+/// Call a tool while negotiating a protocol version that exposes the richer
+/// tool catalog (card tools like `agent_get_card` are only registered for
+/// 2025-06-18+; the default fallback protocol omits them).
+async fn mcp_tool_call_latest(server: &TestServer, tool: &str, arguments: Value) -> Value {
+    mcp_tool_call_with_headers(
+        server,
+        tool,
+        arguments,
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_LATEST)],
+    )
+    .await
+}
+
 async fn mcp_tool_call_with_headers(
     server: &TestServer,
     tool: &str,
@@ -134,6 +147,23 @@ fn tool_text(resp: &Value) -> String {
 /// Check if a tools/call result is an error.
 fn tool_is_error(resp: &Value) -> bool {
     resp["result"]["isError"].as_bool().unwrap_or(false)
+}
+
+/// Extract the plain-text summary from a card tool result. Card tools return a
+/// content array of `[{type:"resource", ...}, {type:"text", text: summary}]`
+/// (see `card_tool_content`), so the summary lives on the first `text` item,
+/// not at `content[0]`.
+fn card_summary_text(resp: &Value) -> String {
+    resp["result"]["content"]
+        .as_array()
+        .and_then(|items| {
+            items
+                .iter()
+                .find(|item| item["type"] == "text")
+                .and_then(|item| item["text"].as_str())
+        })
+        .unwrap_or("")
+        .to_string()
 }
 
 /// Parse the text content of a tool result as JSON.
@@ -811,7 +841,7 @@ async fn test_mcp_agent_get_card_counts_sessions_by_internal_id() {
     let agent_public_id = agent["id"].as_str().unwrap().to_string();
 
     // Baseline: no sessions yet, card should report 0.
-    let resp = mcp_tool_call(
+    let resp = mcp_tool_call_latest(
         &server,
         "agent_get_card",
         json!({ "agent_id": agent_public_id }),
@@ -823,9 +853,9 @@ async fn test_mcp_agent_get_card_counts_sessions_by_internal_id() {
         tool_text(&resp)
     );
     assert!(
-        tool_text(&resp).contains("0 session(s)"),
+        card_summary_text(&resp).contains("0 session(s)"),
         "expected 0 sessions in summary, got: {}",
-        tool_text(&resp)
+        card_summary_text(&resp)
     );
 
     // Create a session bound to this agent (REST resolves public_id ->
@@ -844,7 +874,7 @@ async fn test_mcp_agent_get_card_counts_sessions_by_internal_id() {
 
     // Now the card must reflect 1 session. With the old (buggy) code that
     // counted by public_id, this would still be 0.
-    let resp = mcp_tool_call(
+    let resp = mcp_tool_call_latest(
         &server,
         "agent_get_card",
         json!({ "agent_id": agent_public_id }),
@@ -856,9 +886,9 @@ async fn test_mcp_agent_get_card_counts_sessions_by_internal_id() {
         tool_text(&resp)
     );
     assert!(
-        tool_text(&resp).contains("1 session(s)"),
+        card_summary_text(&resp).contains("1 session(s)"),
         "expected 1 session in summary, got: {}",
-        tool_text(&resp)
+        card_summary_text(&resp)
     );
 }
 
@@ -1466,8 +1496,11 @@ async fn test_mcp_execute_list_harnesses() {
         tool_text(&resp)
     );
 
+    // `list_harnesses` dispatches the `ListHarnesses` command whose output is a
+    // bare `Vec<Harness>`, so the tool result is a JSON array (not a
+    // `{data: [...]}` envelope).
     let result = tool_json(&resp);
-    let harnesses = result["data"].as_array().expect("Expected harnesses array");
+    let harnesses = result.as_array().expect("Expected harnesses array");
     assert!(!harnesses.is_empty(), "Should have seed harnesses");
 
     // Verify seed harnesses exist (Base and Generic are always seeded)
@@ -1556,16 +1589,18 @@ async fn test_mcp_execute_session_files_reads_virtual_mounts() {
         "test_cap".into(),
     );
 
+    // Session files were renamed to workspace files; the read tool is now
+    // `get_workspace_file` (still keyed by session id + path).
     let resp = mcp_tool_call(
         &server,
         "execute",
-        json!({ "commands": format!("get_session_file --session_id {} --path '/docs/readme.md'", session_id) }),
+        json!({ "commands": format!("get_workspace_file --session_id {} --path '/docs/readme.md'", session_id) }),
     )
     .await;
 
     assert!(
         !tool_is_error(&resp),
-        "execute get_session_file failed: {}",
+        "execute get_workspace_file failed: {}",
         tool_text(&resp)
     );
     let payload = tool_json(&resp);
@@ -1855,9 +1890,13 @@ async fn test_mcp_execute_argument_coercion_contract_matrix() {
     );
     assert_eq!(tool_json(&delete_resp)["deleted"], json!(true));
 
+    // Boolean flags in the execute CLI are presence flags (bashkit sets the
+    // flag to `true` when present and does not consume a following value
+    // token), so request archived agents with bare `--include_archived` rather
+    // than `--include_archived true` (which would leave `true` as a stray arg).
     let resp = execute_http_command(
         &url,
-        format!("list_agents --include_archived true --search {archived_agent_name} --limit 10"),
+        format!("list_agents --include_archived --search {archived_agent_name} --limit 10"),
     )
     .await;
     assert!(
@@ -2286,11 +2325,13 @@ async fn test_mcp_resources_read_cannot_escape_org_scope() {
 async fn test_mcp_execute_bash_pipe() {
     let (_server, url) = TestServer::serving().await;
 
-    // Use a pipe to count harnesses (tests bash pipe support in execute)
+    // Use a pipe to count harnesses (tests bash pipe support in execute).
+    // `list_harnesses` outputs a bare JSON array (Vec<Harness>), so count with
+    // `jq length` directly rather than indexing a `.data` envelope.
     let resp = mcp_tool_call_http(
         &url,
         "execute",
-        json!({ "commands": "list_harnesses | jq '.data | length'" }),
+        json!({ "commands": "list_harnesses | jq 'length'" }),
     )
     .await;
     assert!(!tool_is_error(&resp), "pipe failed: {}", tool_text(&resp));
@@ -2336,10 +2377,14 @@ async fn test_mcp_execute_list_providers() {
 async fn test_mcp_execute_list_orgs() {
     let (_server, url) = TestServer::serving().await;
 
+    // `list_orgs` lists the *authenticated user's* org memberships, so it
+    // requires a real user. The no-auth MCP path runs as the anonymous caller
+    // (no `user_id`, see `resolve_org_for_user`'s `AuthMethod::None` branch), so
+    // the command is correctly Forbidden rather than returning a result.
     let resp = mcp_tool_call_http(&url, "execute", json!({ "commands": "list_orgs" })).await;
     assert!(
-        !tool_is_error(&resp),
-        "list_orgs failed: {}",
+        tool_is_error(&resp),
+        "list_orgs should be forbidden for the anonymous MCP caller, got: {}",
         tool_text(&resp)
     );
 }
@@ -2377,9 +2422,10 @@ async fn test_mcp_execute_discover_all() {
         tool_text(&resp)
     );
 
-    let result = tool_json(&resp);
-    assert!(result["success"].as_bool().unwrap());
-    let stdout = result["stdout"].as_str().unwrap();
+    // `discover --all` writes the tool catalog to stdout as plain text (one
+    // `name  description` line per command), so assert against the text result
+    // directly rather than a JSON `{success, stdout}` envelope.
+    let stdout = tool_text(&resp);
     assert!(stdout.contains("agents"), "Should list agents category");
     assert!(stdout.contains("sessions"), "Should list sessions category");
     assert!(
@@ -3308,4 +3354,269 @@ async fn test_oauth_register_is_rate_limited() {
     assert_eq!(resp.status(), StatusCode::TOO_MANY_REQUESTS);
     let payload: Value = resp.json();
     assert_eq!(payload["error"], "too_many_requests");
+}
+
+// ============================================================================
+// MCP 2026-07-28 Tasks extension (SEP-2663)
+// ============================================================================
+
+/// The real 2026-07-28 protocol version. The file-level `..._LATEST` const is
+/// `2025-06-18` (the version that first exposed the richer tool shape); the
+/// Tasks extension needs the actual negotiated 2026 version.
+const MCP_PROTOCOL_VERSION_2026: &str = "2026-07-28";
+
+/// Per-request `_meta` block that advertises the Tasks extension opt-in, as an
+/// MCP 2026 client would send it.
+fn tasks_opt_in_meta() -> Value {
+    json!({
+        "io.modelcontextprotocol/clientCapabilities": {
+            "extensions": { "io.modelcontextprotocol/tasks": {} }
+        }
+    })
+}
+
+/// tools/call with the 2026 protocol header AND the tasks opt-in `_meta`.
+async fn mcp_task_tool_call(server: &TestServer, tool: &str, arguments: Value) -> Value {
+    mcp_call_with_headers(
+        server,
+        "tools/call",
+        json!({ "name": tool, "arguments": arguments, "_meta": tasks_opt_in_meta() }),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
+    )
+    .await
+}
+
+/// A 2026 `initialize` advertises the tasks extension under
+/// `capabilities.extensions`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_tasks_capability_advertised_for_2026() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_call(
+        &server,
+        "initialize",
+        json!({ "protocolVersion": MCP_PROTOCOL_VERSION_2026 }),
+    )
+    .await;
+
+    assert_eq!(resp["result"]["protocolVersion"], MCP_PROTOCOL_VERSION_2026);
+    assert!(
+        resp["result"]["capabilities"]["extensions"]["io.modelcontextprotocol/tasks"].is_object(),
+        "2026 initialize must advertise the tasks extension, got: {}",
+        resp["result"]["capabilities"]
+    );
+}
+
+/// 2025-* `initialize` responses are unchanged — no `extensions` key.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_tasks_capability_absent_for_2025() {
+    let server = TestServer::in_memory().await;
+    for version in [MCP_PROTOCOL_VERSION_LATEST, MCP_PROTOCOL_VERSION_FALLBACK] {
+        let resp = mcp_call(&server, "initialize", json!({ "protocolVersion": version })).await;
+        assert_eq!(resp["result"]["protocolVersion"], version);
+        assert!(
+            resp["result"]["capabilities"].get("extensions").is_none(),
+            "2025 initialize ({version}) must not advertise extensions, got: {}",
+            resp["result"]["capabilities"]
+        );
+    }
+}
+
+/// A 2026 tasks-opted-in `agent_run` returns the CreateTaskResult task-handle
+/// shape (resultType/taskId/status) alongside the existing session fields.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_agent_run_returns_task_handle_for_2026() {
+    let server = TestServer::new().await;
+
+    let resp =
+        mcp_task_tool_call(&server, "agent_run", json!({ "message": "Hello via task" })).await;
+    assert!(
+        !tool_is_error(&resp),
+        "agent_run failed: {}",
+        tool_text(&resp)
+    );
+
+    let result = &resp["result"];
+    // Additive task handle.
+    assert_eq!(result["resultType"], "task");
+    let task_id = result["taskId"].as_str().expect("taskId present");
+    assert!(task_id.starts_with("session_"), "taskId is session id");
+    assert_eq!(result["status"], "working");
+    assert!(result.get("ttlMs").is_some());
+    assert!(result.get("pollIntervalMs").is_some());
+
+    // Legacy content preserved: taskId equals the session_id in the body.
+    let body = tool_json(&resp);
+    assert_eq!(body["session_id"].as_str(), Some(task_id));
+}
+
+/// Without the opt-in `_meta`, a 2026 `agent_run` does NOT get task fields —
+/// the server must not push tasks onto a client that didn't advertise support.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_agent_run_no_task_handle_without_opt_in() {
+    let server = TestServer::new().await;
+
+    let resp = mcp_call_with_headers(
+        &server,
+        "tools/call",
+        json!({ "name": "agent_run", "arguments": { "message": "Hi" } }),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
+    )
+    .await;
+
+    assert!(resp["result"].get("resultType").is_none());
+    assert!(resp["result"].get("taskId").is_none());
+}
+
+/// 2025-* clients never see task fields even if they somehow send the `_meta`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_agent_run_no_task_handle_for_2025() {
+    let server = TestServer::new().await;
+
+    let resp = mcp_call_with_headers(
+        &server,
+        "tools/call",
+        json!({ "name": "agent_run", "arguments": { "message": "Hi" }, "_meta": tasks_opt_in_meta() }),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_LATEST)],
+    )
+    .await;
+
+    assert!(
+        !tool_is_error(&resp),
+        "agent_run failed: {}",
+        tool_text(&resp)
+    );
+    assert!(resp["result"].get("resultType").is_none());
+    assert!(resp["result"].get("taskId").is_none());
+}
+
+/// tasks/get resolves a task handle (session_id) to a Task object with a
+/// lifecycle status and a result snapshot.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_tasks_get_round_trip() {
+    let server = TestServer::new().await;
+
+    let run = mcp_task_tool_call(&server, "agent_run", json!({ "message": "task get" })).await;
+    let task_id = run["result"]["taskId"].as_str().unwrap().to_string();
+
+    let resp = mcp_call_with_headers(
+        &server,
+        "tasks/get",
+        json!({ "taskId": task_id }),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
+    )
+    .await;
+
+    let result = &resp["result"];
+    assert_eq!(result["taskId"].as_str(), Some(task_id.as_str()));
+    let status = result["status"].as_str().unwrap();
+    assert!(
+        [
+            "working",
+            "input_required",
+            "completed",
+            "failed",
+            "cancelled"
+        ]
+        .contains(&status),
+        "unexpected task status: {status}"
+    );
+    // The session_get_status payload is surfaced as the task result.
+    assert_eq!(
+        result["result"]["session_id"].as_str(),
+        Some(task_id.as_str())
+    );
+}
+
+/// tasks/get for 2025-* is method_not_found (extension doesn't exist there).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_tasks_get_rejected_for_2025() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_call_with_headers(
+        &server,
+        "tasks/get",
+        json!({ "taskId": "session_00000000000000000000000000000000" }),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_LATEST)],
+    )
+    .await;
+    assert_eq!(resp["error"]["code"], -32601, "expected method not found");
+}
+
+/// tasks/update sends input to a session and returns an updated Task object.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_tasks_update_round_trip() {
+    let server = TestServer::new().await;
+
+    let run = mcp_task_tool_call(&server, "agent_run", json!({ "message": "first" })).await;
+    let task_id = run["result"]["taskId"].as_str().unwrap().to_string();
+
+    let resp = mcp_call_with_headers(
+        &server,
+        "tasks/update",
+        json!({ "taskId": task_id, "message": "follow up" }),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
+    )
+    .await;
+
+    let result = &resp["result"];
+    assert_eq!(result["taskId"].as_str(), Some(task_id.as_str()));
+    assert!(result["status"].is_string());
+    // Underlying session_send_message result surfaced under `result`.
+    assert!(result["result"]["message_id"].as_str().is_some());
+}
+
+/// tasks/update accepts the SEP-2663 `inputResponses` map form too.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_tasks_update_accepts_input_responses_map() {
+    let server = TestServer::new().await;
+
+    let run = mcp_task_tool_call(&server, "agent_run", json!({ "message": "first" })).await;
+    let task_id = run["result"]["taskId"].as_str().unwrap().to_string();
+
+    let resp = mcp_call_with_headers(
+        &server,
+        "tasks/update",
+        json!({ "taskId": task_id, "inputResponses": { "prompt": "map form input" } }),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
+    )
+    .await;
+
+    assert_eq!(resp["result"]["taskId"].as_str(), Some(task_id.as_str()));
+    assert!(resp["result"]["result"]["message_id"].as_str().is_some());
+}
+
+/// tasks/cancel acknowledges cancellation of a task handle.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_tasks_cancel_round_trip() {
+    let server = TestServer::new().await;
+
+    let run = mcp_task_tool_call(&server, "agent_run", json!({ "message": "cancel me" })).await;
+    let task_id = run["result"]["taskId"].as_str().unwrap().to_string();
+
+    let resp = mcp_call_with_headers(
+        &server,
+        "tasks/cancel",
+        json!({ "taskId": task_id }),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
+    )
+    .await;
+
+    let result = &resp["result"];
+    assert_eq!(result["taskId"].as_str(), Some(task_id.as_str()));
+    // Cooperative cancel: status is a valid lifecycle value (often the
+    // post-cancel session state rather than literally `cancelled`).
+    assert!(result["status"].is_string());
+}
+
+/// tasks/* with a missing taskId is an invalid-params error.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_tasks_get_missing_task_id() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_call_with_headers(
+        &server,
+        "tasks/get",
+        json!({}),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
+    )
+    .await;
+    assert_eq!(resp["error"]["code"], -32602, "expected invalid params");
 }

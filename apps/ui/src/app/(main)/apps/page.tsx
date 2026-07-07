@@ -15,6 +15,7 @@ import {
   PageMasthead,
   PageControlStrip,
   SectionTabs,
+  EmptyState,
   PageColumns,
   PageMain,
   PageRail,
@@ -129,21 +130,28 @@ export default function AppsPage() {
             errorMessagePrefix="Failed to load apps"
             skeletonCount={3}
             emptyState={
-              <div className="border border-dashed py-12 text-center">
-                <p className="mb-4 text-muted-foreground">
-                  {search || statusTab !== "active"
-                    ? "No apps match your filters."
-                    : "Apps deploy your agents to channels like Slack and AG-UI. Create an app to connect an agent to the interface you need, or trigger it from schedules and authenticated webhooks."}
-                </p>
-                {!search && statusTab === "active" && (
-                  <Link href="/apps/new">
-                    <Button variant="accent">
-                      <Plus className="size-4" />
-                      Create your first app
-                    </Button>
-                  </Link>
-                )}
-              </div>
+              <EmptyState
+                icon={<Rocket />}
+                title={
+                  search || statusTab !== "active" ? "No apps match your filters." : "No apps yet"
+                }
+                description={
+                  !search && statusTab === "active"
+                    ? "Apps deploy your agents to channels like Slack and AG-UI. Create an app to connect an agent to the interface you need, or trigger it from schedules and authenticated webhooks."
+                    : undefined
+                }
+                action={
+                  !search &&
+                  statusTab === "active" && (
+                    <Link href="/apps/new">
+                      <Button variant="accent">
+                        <Plus className="size-4" />
+                        Create your first app
+                      </Button>
+                    </Link>
+                  )
+                }
+              />
             }
           >
             {(items) => (
@@ -350,5 +358,11 @@ function getPrimaryChannelAccess(appId: string, channel: AppChannel | undefined)
         copyable: false,
       };
     }
+    case "public_chat":
+      return {
+        kind: "url" as const,
+        value: origin ? `${origin}/public-chat/${appId}` : `/public-chat/${appId}`,
+        copyable: true,
+      };
   }
 }

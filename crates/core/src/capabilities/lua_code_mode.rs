@@ -424,15 +424,7 @@ mod tests {
         defs.iter().map(|d| d.name()).collect()
     }
 
-    #[test]
-    fn capability_metadata() {
-        let cap = LuaCodeModeCapability;
-        assert_eq!(cap.id(), "lua_code_mode");
-        assert_eq!(cap.risk_level(), RiskLevel::High);
-        assert_eq!(cap.dependencies(), vec!["lua"]);
-        assert_eq!(cap.category(), Some("Execution"));
-        assert!(cap.system_prompt_addition().is_some());
-    }
+    // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn hides_eligible_tools_keeps_lua_and_essential() {

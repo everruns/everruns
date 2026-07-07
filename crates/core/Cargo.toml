@@ -22,7 +22,6 @@ categories = ["development-tools", "asynchronous"]
 
 [dependencies]
 # Core dependencies
-everruns-config = { path = "../config", version = "0.17.0" }
 anyhow.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
@@ -36,7 +35,7 @@ futures.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
-toml = "0.8"
+toml = "1.1"
 
 # UUID and time
 uuid.workspace = true
@@ -44,7 +43,7 @@ chrono.workspace = true
 rand.workspace = true
 
 # Cron parsing for session-schedule minimum-interval enforcement
-cron = "0.15"
+cron = "0.17"
 
 # Tracing. `tracing` instrumentation is unconditional; the `tracing-subscriber`
 # registry/fmt layers are only used by telemetry init, so the dep is optional
@@ -63,12 +62,13 @@ tracing-opentelemetry = { workspace = true, optional = true }
 # Encoding
 base64.workspace = true
 sha2.workspace = true
+hex.workspace = true
 
 # Regex for argument substitution
 regex.workspace = true
 
 # Text diff rendering for edit_file previews
-similar = "2"
+similar = "3"
 
 # URL parsing
 url = "2"
@@ -76,7 +76,7 @@ url = "2"
 # Web fetching (optional; behind the `web-fetch` feature). fetchkit + the
 # ed25519 bot-auth key derivation pull a sizable HTTP/crypto subtree.
 bytes = "1"
-fetchkit = { version = "=0.4.0", features = ["bot-auth"], optional = true }
+fetchkit = { version = "=0.4.1", features = ["bot-auth"], optional = true }
 
 # Ed25519 key derivation (bot-auth public key registration)
 ed25519-dalek = { version = "2", features = ["rand_core"], optional = true }
@@ -87,13 +87,13 @@ bashkit = { version = "0.12.0", features = ["jq"] }
 # Sandboxed Lua interpreter for the experimental `lua` capability (vendored Lua
 # 5.4, never LuaJIT). Optional + behind the `lua` cargo feature so the default
 # build does not compile the C sources. See specs/lua-execution.md.
-mlua = { version = "0.10", features = ["lua54", "vendored", "async", "send", "serialize"], optional = true }
+mlua = { version = "0.11", features = ["lua54", "vendored", "async", "send", "serialize"], optional = true }
 
 # Tree-sitter for structural outlines (EVE-248)
-tree-sitter = { version = "0.24", optional = true }
-tree-sitter-rust = { version = "0.23", optional = true }
+tree-sitter = { version = "0.26", optional = true }
+tree-sitter-rust = { version = "0.24", optional = true }
 tree-sitter-typescript = { version = "0.23", optional = true }
-tree-sitter-python = { version = "0.23", optional = true }
+tree-sitter-python = { version = "0.25", optional = true }
 
 # TLS crypto provider (must be installed before any rustls usage)
 rustls.workspace = true
@@ -122,13 +122,13 @@ inventory.workspace = true
 # tiktoken-rs, clap, tracing-subscriber, crossterm, ratatui) — the driver only
 # uses the in-process library types (generator, latency, openai, script,
 # stream).
-llmsim = { version = "0.5.0", default-features = false, optional = true }
+llmsim = { version = "0.5.1", default-features = false, optional = true }
 
 # OpenUI component definitions and prompt generator
-everruns-openui = { path = "../openui", version = "0.17.0", optional = true }
+everruns-openui = { path = "../openui", version = "0.17.4", optional = true }
 
 # A2UI component catalog and prompt generator
-everruns-a2ui = { path = "../a2ui", version = "0.17.0", optional = true }
+everruns-a2ui = { path = "../a2ui", version = "0.17.4", optional = true }
 
 # A2A outbound agent delegation (optional; behind the `a2a` feature). Pulls the
 # tonic/prost gRPC stack and a second reqwest major, so it is the largest single
@@ -172,6 +172,7 @@ llm-tests = []  # LLM integration tests (requires API keys)
 llmsim = ["dep:llmsim"]
 
 [dev-dependencies]
+http = "1"
 tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber.workspace = true
 wiremock = "0.6"
@@ -180,3 +181,18 @@ insta = { version = "1.40", features = ["json", "redactions"] }
 a2a-server.workspace = true
 axum.workspace = true
 tempfile.workspace = true
+
+[[test]]
+name = "mid_turn_reasoning_effort_test"
+path = "tests/mid_turn_reasoning_effort_test.rs"
+required-features = ["llmsim"]
+
+[[test]]
+name = "message_metadata_test"
+path = "tests/message_metadata_test.rs"
+required-features = ["llmsim"]
+
+[[test]]
+name = "reason_atom_test"
+path = "tests/reason_atom_test.rs"
+required-features = ["llmsim"]

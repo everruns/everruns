@@ -1,6 +1,6 @@
 //! Shared helpers for naming external resources created from user-visible titles.
 
-use rand::Rng;
+use rand::RngExt;
 
 const SUFFIX_ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
 const SUFFIX_LEN: usize = 6;

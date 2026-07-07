@@ -142,7 +142,7 @@ impl Database {
             r#"
             INSERT INTO organizations (public_id, name, created_by)
             VALUES ($1, $2, $3)
-            RETURNING org_id, public_id, name, created_at, updated_at, external_id, created_by
+            RETURNING org_id, public_id, name, created_at, updated_at, external_id, created_by, onboarding_completed_at
             "#,
         )
         .bind(&input.public_id)
@@ -163,10 +163,12 @@ impl Database {
     ) -> Result<Option<OrganizationRow>> {
         let row = sqlx::query_as::<_, OrganizationRow>(
             r#"
-            INSERT INTO organizations (org_id, public_id, name, created_by)
-            VALUES ($1, $2, $3, $4)
+            -- Seeded orgs (default org) are created already-onboarded so their
+            -- members are never sent to /setup. See migration 090.
+            INSERT INTO organizations (org_id, public_id, name, created_by, onboarding_completed_at)
+            VALUES ($1, $2, $3, $4, NOW())
             ON CONFLICT (org_id) DO NOTHING
-            RETURNING org_id, public_id, name, created_at, updated_at, external_id, created_by
+            RETURNING org_id, public_id, name, created_at, updated_at, external_id, created_by, onboarding_completed_at
             "#,
         )
         .bind(org_id)
@@ -182,7 +184,7 @@ impl Database {
     pub async fn get_organization(&self, org_id: i64) -> Result<Option<OrganizationRow>> {
         let row = sqlx::query_as::<_, OrganizationRow>(
             r#"
-            SELECT org_id, public_id, name, created_at, updated_at, external_id
+            SELECT org_id, public_id, name, created_at, updated_at, external_id, onboarding_completed_at
             FROM organizations
             WHERE org_id = $1
             "#,
@@ -200,7 +202,7 @@ impl Database {
     ) -> Result<Option<OrganizationRow>> {
         let row = sqlx::query_as::<_, OrganizationRow>(
             r#"
-            SELECT org_id, public_id, name, created_at, updated_at, external_id
+            SELECT org_id, public_id, name, created_at, updated_at, external_id, onboarding_completed_at
             FROM organizations
             WHERE public_id = $1
             "#,
@@ -215,7 +217,7 @@ impl Database {
     pub async fn list_organizations(&self) -> Result<Vec<OrganizationRow>> {
         let rows = sqlx::query_as::<_, OrganizationRow>(
             r#"
-            SELECT org_id, public_id, name, created_at, updated_at, external_id
+            SELECT org_id, public_id, name, created_at, updated_at, external_id, onboarding_completed_at
             FROM organizations
             ORDER BY created_at DESC
             "#,
@@ -238,7 +240,7 @@ impl Database {
                 name = COALESCE($2, name),
                 updated_at = NOW()
             WHERE org_id = $1
-            RETURNING org_id, public_id, name, created_at, updated_at, external_id
+            RETURNING org_id, public_id, name, created_at, updated_at, external_id, onboarding_completed_at
             "#,
         )
         .bind(org_id)
@@ -247,6 +249,23 @@ impl Database {
         .await?;
 
         Ok(row)
+    }
+
+    /// Idempotently mark an org's onboarding complete. Sets the timestamp only
+    /// when it is currently NULL, so a skip-then-finish sequence or duplicate
+    /// calls never move the recorded completion time.
+    pub async fn mark_org_onboarding_complete(&self, org_id: i64) -> Result<()> {
+        sqlx::query(
+            r#"
+            UPDATE organizations
+            SET onboarding_completed_at = NOW(), updated_at = NOW()
+            WHERE org_id = $1 AND onboarding_completed_at IS NULL
+            "#,
+        )
+        .bind(org_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
     pub async fn delete_organization(&self, org_id: i64) -> Result<bool> {
@@ -472,7 +491,7 @@ impl Database {
     ) -> Result<Option<OrganizationRow>> {
         let row = sqlx::query_as::<_, OrganizationRow>(
             r#"
-            SELECT org_id, public_id, name, created_at, updated_at, external_id
+            SELECT org_id, public_id, name, created_at, updated_at, external_id, onboarding_completed_at
             FROM organizations
             WHERE external_id = $1
             "#,
@@ -493,10 +512,12 @@ impl Database {
     ) -> Result<OrganizationRow> {
         let row = sqlx::query_as::<_, OrganizationRow>(
             r#"
-            INSERT INTO organizations (public_id, name, external_id)
-            VALUES ($1, $2, $3)
+            -- Externally-synced orgs are managed by the identity provider and are
+            -- created already-onboarded. See migration 090.
+            INSERT INTO organizations (public_id, name, external_id, onboarding_completed_at)
+            VALUES ($1, $2, $3, NOW())
             ON CONFLICT (external_id) DO UPDATE SET name = EXCLUDED.name, updated_at = NOW()
-            RETURNING org_id, public_id, name, created_at, updated_at, external_id
+            RETURNING org_id, public_id, name, created_at, updated_at, external_id, onboarding_completed_at
             "#,
         )
         .bind(public_id)

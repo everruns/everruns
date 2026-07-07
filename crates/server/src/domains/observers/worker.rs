@@ -8,6 +8,7 @@
 
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::task::JoinHandle;
 
 use everruns_core::eval::Score;
 use everruns_core::observer::{ObserverScorerConfig, ScorerMethod};
@@ -59,7 +60,7 @@ pub fn spawn_observer_worker(
     deps: ObserverWorkerDeps,
     wake: Arc<tokio::sync::Notify>,
     config: ObserverWorkerConfig,
-) {
+) -> JoinHandle<()> {
     tokio::spawn(async move {
         tracing::info!("Observer scoring worker started");
         loop {
@@ -85,7 +86,7 @@ pub fn spawn_observer_worker(
                 _ = tokio::time::sleep(config.poll_interval) => {}
             }
         }
-    });
+    })
 }
 
 /// Claim and score one batch. Returns the number of scores processed.

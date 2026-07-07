@@ -167,14 +167,50 @@ async fn reporting_backfill_enqueues_missing_postgres_session_fact() {
     let server = TestServer::new().await;
     let title = format!("reporting-backfill-{}", Uuid::now_v7());
 
+    // `sessions.owner_principal_id` is NOT NULL (migration 018), so seed a
+    // principal for the default org and own the raw-inserted session with it.
+    let owner_principal_id = server
+        .db
+        .create_principal(everruns_server::storage::CreatePrincipalRow {
+            id: everruns_core::PrincipalId::new(),
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            kind: "system".to_string(),
+            subject_id: Some(Uuid::now_v7()),
+            parent_principal_id: None,
+            resolved_user_id: None,
+            metadata: json!({ "source": "reporting_integration_test" }),
+        })
+        .await
+        .expect("create owner principal")
+        .id;
+
+    // `sessions.workspace_id` is also NOT NULL (migration 056) and FK-references
+    // `workspaces`, so create a workspace for the default org and own the
+    // session with it (mirrors the per-session default workspace in production).
+    let workspace_id = Uuid::now_v7();
+    sqlx::query(
+        r#"
+        INSERT INTO workspaces (id, org_id, public_id, name, status)
+        VALUES ($1, 1, $2, $3, 'active')
+        "#,
+    )
+    .bind(workspace_id)
+    .bind(format!("wsp_{}", workspace_id.simple()))
+    .bind(format!("reporting-backfill-ws-{workspace_id}"))
+    .execute(&server.pool)
+    .await
+    .expect("insert test workspace");
+
     let (session_id, updated_at): (Uuid, chrono::DateTime<Utc>) = sqlx::query_as(
         r#"
-        INSERT INTO sessions (org_id, title, status)
-        VALUES (1, $1, 'started')
+        INSERT INTO sessions (org_id, title, status, owner_principal_id, workspace_id)
+        VALUES (1, $1, 'started', $2, $3)
         RETURNING id, updated_at
         "#,
     )
     .bind(&title)
+    .bind(owner_principal_id.uuid())
+    .bind(workspace_id)
     .fetch_one(&server.pool)
     .await
     .expect("insert test session");
@@ -202,5 +238,12 @@ async fn reporting_backfill_enqueues_missing_postgres_session_fact() {
     .await
     .expect("backfill should enqueue session outbox row");
 
-    assert_eq!(row.0, updated_at.to_rfc3339());
+    // The backfill stores the snapshot version as a `Z`-suffixed RFC3339 string
+    // with auto-trimmed sub-second precision (see `backfill_sessions` in
+    // crates/server/src/storage/reporting/outbox.rs). Match that formatting
+    // rather than `to_rfc3339()`, which renders the offset as `+00:00`.
+    assert_eq!(
+        row.0,
+        updated_at.to_rfc3339_opts(chrono::SecondsFormat::AutoSi, true)
+    );
 }

@@ -1,0 +1,128 @@
+# Scheduled compile guard for workspace-EXCLUDED standalone crates.
+#
+# Crates listed in the root Cargo.toml `[workspace] exclude` array have their
+# own `[workspace]`/`Cargo.lock` and therefore are NOT built by any other CI
+# job (ci.yml only ever touches workspace members). They silently drift out of
+# sync with `everruns-core` and only break when someone checks them by hand —
+# this is exactly what happened to `examples/weekend-concierge-host` (EVE-663).
+#
+# A per-PR full compile is too costly: each excluded crate resolves a separate
+# dependency tree from scratch (no shared workspace target/ or Cargo.lock), so
+# building them on every PR would add minutes of cold compilation for code that
+# changes rarely. A periodic sweep is the right tradeoff — it catches drift
+# within a week of an `everruns-core` API change without taxing the PR hot path.
+#
+# The list of crates is DERIVED from the root Cargo.toml `exclude` array at run
+# time (see the "Discover excluded crates" step), so it cannot fall out of sync
+# with the workspace definition: add or remove an entry in Cargo.toml `exclude`
+# and this guard picks it up automatically.
+name: Examples Compile Check
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Weekly, Mondays 15:00 UTC — one hour after integration-live-sweep so the
+    # two scheduled sweeps don't start simultaneously.
+    - cron: '0 15 * * 1'
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  excluded-examples-check:
+    name: Excluded Standalone Crates
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.96.0
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Distinct cache key: these crates have separate dependency trees from
+          # the workspace, so they must not share the workspace test/clippy cache.
+          shared-key: "examples-check"
+
+      # Parse the `exclude` array out of the root Cargo.toml so the guard's crate
+      # list is the single source of truth in Cargo.toml. Each excluded path must
+      # contain its own Cargo.toml (a standalone crate); paths without one are an
+      # error (a stale/typo'd exclude entry the maintainer should fix).
+      - name: Discover excluded crates
+        id: discover
+        run: |
+          set -euo pipefail
+          # Extract the contents of the `exclude = [ ... ]` array (it may span
+          # multiple lines), strip comments/quotes, and emit one path per line.
+          crates="$(
+            awk '
+              /^[[:space:]]*exclude[[:space:]]*=[[:space:]]*\[/ { collecting=1 }
+              collecting {
+                line=$0
+                sub(/.*\[/, "", line)   # drop everything up to the opening [
+                sub(/\].*/, "", line)   # drop the closing ] and trailing text
+                gsub(/#.*/, "", line)   # drop comments
+                n=split(line, parts, ",")
+                for (i=1; i<=n; i++) {
+                  p=parts[i]
+                  gsub(/[[:space:]"]/, "", p)
+                  if (p != "") print p
+                }
+              }
+              collecting && /\]/ { collecting=0 }
+            ' Cargo.toml
+          )"
+          if [ -z "$crates" ]; then
+            echo "::error::Could not parse any entries from the [workspace] exclude array in Cargo.toml" >&2
+            exit 1
+          fi
+          echo "Discovered excluded crates:"
+          echo "$crates"
+          {
+            echo "crates<<EOF"
+            echo "$crates"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      # Compile each excluded standalone crate against the current source tree.
+      # Runs every crate (no fail-fast) so one drifted example doesn't mask
+      # another, then fails the job if any did not compile.
+      - name: Check excluded crates compile
+        run: |
+          set -uo pipefail
+          failed=""
+          while IFS= read -r crate; do
+            [ -n "$crate" ] || continue
+            manifest="$crate/Cargo.toml"
+            if [ ! -f "$manifest" ]; then
+              echo "::error::Excluded path '$crate' has no Cargo.toml (stale exclude entry?)"
+              failed="$failed $crate(no-manifest)"
+              continue
+            fi
+            echo "::group::cargo check --manifest-path $manifest"
+            if cargo check --manifest-path "$manifest"; then
+              echo "OK: $crate"
+            else
+              echo "::error::Excluded crate failed to compile: $crate"
+              failed="$failed $crate"
+            fi
+            echo "::endgroup::"
+          done <<< "${{ steps.discover.outputs.crates }}"
+
+          if [ -n "$failed" ]; then
+            echo "One or more excluded standalone crates failed to compile:$failed"
+            exit 1
+          fi
+          echo "All excluded standalone crates compiled."

@@ -113,6 +113,9 @@ pub mod session_scheduler;
 // Session-task orphan reconciler schedule seeder
 pub mod session_task_reaper_scheduler;
 
+// Retained background-task supervision for server-owned control-plane loops
+pub mod supervised_task;
+
 // Background sweep: time out sessions stuck in waiting_for_tool_results
 pub mod tool_result_timeout;
 

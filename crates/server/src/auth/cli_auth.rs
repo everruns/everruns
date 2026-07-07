@@ -21,7 +21,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::{Duration, Utc};
-use rand::Rng;
+use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;

@@ -149,7 +149,7 @@ fn reasoning_effort_anthropic_extended_thinking() -> ReasoningEffortConfig {
 }
 
 /// Adaptive thinking config for recent Claude reasoning models
-/// (Fable 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 4.6)
+/// (Fable 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 5, Sonnet 4.6)
 /// Uses thinking.type="adaptive" with effort parameter instead of budget_tokens
 /// Default: high, supports: low, medium, high, max (mapped to xhigh)
 fn reasoning_effort_anthropic_adaptive_thinking() -> ReasoningEffortConfig {
@@ -296,6 +296,8 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["claude-opus-4-8[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-7[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-6[1m]"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-sonnet-5"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-sonnet-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-sonnet-4-6"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-sonnet-4-5"], ModelVendor::Anthropic, ANTHROPIC),
@@ -2169,6 +2171,7 @@ fn anthropic_family_supports_tool_search(family: &str) -> bool {
             | "claude-opus-4-5"
             | "claude-opus-4-1"
             | "claude-opus-4"
+            | "claude-sonnet-5"
             | "claude-sonnet-4-6"
             | "claude-sonnet-4-5"
             | "claude-sonnet-4"
@@ -2363,6 +2366,53 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
         "claude-opus-4-6[1m]" => {
             anthropic_profile_data("claude-opus-4-6").map(anthropic_1m_variant)
         }
+        "claude-sonnet-5[1m]" => {
+            anthropic_profile_data("claude-sonnet-5").map(anthropic_1m_variant)
+        }
+
+        // Claude Sonnet 5
+        // Source: Anthropic model card and docs.claude.com — Sonnet 5 is not yet
+        // in models.dev. Same API surface as Opus 4.8: adaptive thinking only
+        // (budget-based thinking returns 400) and non-default sampling parameters
+        // rejected, hence `temperature: false`. Pricing is the $3/$15 sticker; the
+        // introductory $2/$10 through 2026-08-31 is deliberately not encoded so
+        // the profile stays correct after it lapses. Release/knowledge dates are
+        // not published in the model card; the Models API exposes them at runtime.
+        "claude-sonnet-5" => Some(ModelProfile {
+            name: "Claude Sonnet 5".into(),
+            family: "claude-sonnet-5".into(),
+            description: None,
+            release_date: None,
+            last_updated: None,
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: None,
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(ModelCost {
+                input: 3.00,
+                output: 15.00,
+                cache_read: Some(0.30),
+                cost_tiers: vec![],
+            }),
+            limits: Some(ModelLimits {
+                // Bare id is the 200K profile; `claude-sonnet-5[1m]` is the 1M twin.
+                context: 200_000,
+                input: None,
+                output: 128_000,
+                max_media: None,
+            }),
+            modalities: Some(ModelModalities {
+                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+        }),
 
         "claude-sonnet-4-6" => Some(ModelProfile {
             name: "Claude Sonnet 4.6".into(),
@@ -3151,6 +3201,155 @@ mod tests {
             .unwrap_or("")
     }
 
+    /// Every registered model profile, by the provider surface it is served on.
+    /// The list is the single place a new model must be added — the structural
+    /// invariant below then exercises it, replacing the per-model constant-mirror
+    /// tests that only restated one model's name/family/cost/limits literals.
+    const REGISTERED_MODELS: &[(DriverId, &str)] = &[
+        // OpenAI
+        (DriverId::OpenAI, "gpt-realtime-2"),
+        (DriverId::OpenAI, "gpt-4o"),
+        (DriverId::OpenAI, "gpt-4o-mini"),
+        (DriverId::OpenAI, "o1"),
+        (DriverId::OpenAI, "o1-mini"),
+        (DriverId::OpenAI, "o1-pro"),
+        (DriverId::OpenAI, "o1-preview"),
+        (DriverId::OpenAI, "o3-mini"),
+        (DriverId::OpenAI, "o3"),
+        (DriverId::OpenAI, "o3-pro"),
+        (DriverId::OpenAI, "o4-mini"),
+        (DriverId::OpenAI, "o3-deep-research"),
+        (DriverId::OpenAI, "o4-mini-deep-research"),
+        (DriverId::OpenAI, "gpt-4.1"),
+        (DriverId::OpenAI, "gpt-4.1-mini"),
+        (DriverId::OpenAI, "gpt-4.1-nano"),
+        (DriverId::OpenAI, "gpt-5"),
+        (DriverId::OpenAI, "gpt-5-mini"),
+        (DriverId::OpenAI, "gpt-5-nano"),
+        (DriverId::OpenAI, "gpt-5-pro"),
+        (DriverId::OpenAI, "gpt-5-codex"),
+        (DriverId::OpenAI, "gpt-5-chat-latest"),
+        (DriverId::OpenAI, "gpt-5.1"),
+        (DriverId::OpenAI, "gpt-5.1-codex"),
+        (DriverId::OpenAI, "gpt-5.1-codex-mini"),
+        (DriverId::OpenAI, "gpt-5.1-codex-max"),
+        (DriverId::OpenAI, "gpt-5.1-chat-latest"),
+        (DriverId::OpenAI, "gpt-5.2"),
+        (DriverId::OpenAI, "gpt-5.2-pro"),
+        (DriverId::OpenAI, "gpt-5.2-codex"),
+        (DriverId::OpenAI, "gpt-5.2-chat-latest"),
+        (DriverId::OpenAI, "gpt-5.3-codex"),
+        (DriverId::OpenAI, "gpt-5.4"),
+        (DriverId::OpenAI, "gpt-5.4-mini"),
+        (DriverId::OpenAI, "gpt-5.4-nano"),
+        (DriverId::OpenAI, "gpt-5.4-pro"),
+        (DriverId::OpenAI, "gpt-5.5"),
+        (DriverId::OpenAI, "gpt-5.5-pro"),
+        // Anthropic
+        (DriverId::Anthropic, "claude-fable-5"),
+        (DriverId::Anthropic, "claude-opus-4-8"),
+        (DriverId::Anthropic, "claude-opus-4-7"),
+        (DriverId::Anthropic, "claude-opus-4-6"),
+        (DriverId::Anthropic, "claude-sonnet-5"),
+        (DriverId::Anthropic, "claude-sonnet-4-6"),
+        (DriverId::Anthropic, "claude-opus-4-5"),
+        (DriverId::Anthropic, "claude-sonnet-4-5"),
+        (DriverId::Anthropic, "claude-haiku-4-5"),
+        (DriverId::Anthropic, "claude-opus-4-1"),
+        (DriverId::Anthropic, "claude-sonnet-4"),
+        (DriverId::Anthropic, "claude-opus-4"),
+        (DriverId::Anthropic, "claude-3-7-sonnet"),
+        (DriverId::Anthropic, "claude-3-5-sonnet"),
+        (DriverId::Anthropic, "claude-3-5-haiku"),
+        (DriverId::Anthropic, "claude-3-opus"),
+        (DriverId::Anthropic, "claude-3-sonnet"),
+        (DriverId::Anthropic, "claude-3-haiku"),
+        // Gemini
+        (DriverId::Gemini, "gemini-3.1-pro-preview"),
+        (DriverId::Gemini, "gemini-2.5-pro"),
+        (DriverId::Gemini, "gemini-2.5-flash"),
+        (DriverId::Gemini, "gemini-2.0-flash"),
+        (DriverId::Gemini, "gemini-1.5-flash"),
+        (DriverId::Gemini, "gemini-1.5-pro"),
+    ];
+
+    /// Structural invariants that must hold for every registered profile. This
+    /// replaces the ~40 per-model tests that each re-asserted one model's
+    /// hardcoded name/family/cost/limits: instead of pinning literals, it
+    /// enforces the properties that would catch a real config defect (a blank
+    /// name, negative price, output exceeding context, or a reasoning-effort set
+    /// whose default is not among its own values).
+    #[test]
+    fn registered_model_profiles_are_structurally_consistent() {
+        for (provider, id) in REGISTERED_MODELS {
+            let p = get_model_profile(provider, id)
+                .unwrap_or_else(|| panic!("{id} should resolve under {provider:?}"));
+
+            assert!(!p.name.trim().is_empty(), "{id}: empty name");
+            assert!(!p.family.trim().is_empty(), "{id}: empty family");
+
+            if let Some(cost) = &p.cost {
+                assert!(
+                    cost.input.is_finite() && cost.input >= 0.0,
+                    "{id}: bad input cost {}",
+                    cost.input
+                );
+                assert!(
+                    cost.output.is_finite() && cost.output >= 0.0,
+                    "{id}: bad output cost {}",
+                    cost.output
+                );
+                if let Some(cache_read) = cost.cache_read {
+                    assert!(
+                        cache_read.is_finite() && cache_read >= 0.0 && cache_read <= cost.input,
+                        "{id}: cache_read {cache_read} must be >=0 and <= input {}",
+                        cost.input
+                    );
+                }
+            }
+
+            if let Some(limits) = &p.limits {
+                assert!(limits.context > 0, "{id}: non-positive context");
+                assert!(limits.output > 0, "{id}: non-positive output");
+                assert!(
+                    limits.output <= limits.context,
+                    "{id}: output {} exceeds context {}",
+                    limits.output,
+                    limits.context
+                );
+            }
+
+            if let Some(effort) = &p.reasoning_effort {
+                assert!(
+                    p.reasoning,
+                    "{id}: has reasoning_effort but reasoning flag is false"
+                );
+                assert!(
+                    !effort.values.is_empty(),
+                    "{id}: empty reasoning_effort set"
+                );
+                let mut seen: Vec<&ReasoningEffort> = Vec::new();
+                for v in &effort.values {
+                    assert!(
+                        !v.name.trim().is_empty(),
+                        "{id}: reasoning_effort value with empty display name"
+                    );
+                    assert!(
+                        !seen.contains(&&v.value),
+                        "{id}: duplicate reasoning_effort value {:?}",
+                        v.value
+                    );
+                    seen.push(&v.value);
+                }
+                assert!(
+                    effort.values.iter().any(|v| v.value == effort.default),
+                    "{id}: reasoning_effort default {:?} is not among its values",
+                    effort.default
+                );
+            }
+        }
+    }
+
     #[test]
     fn test_profile_keys_and_service_kinds() {
         // Canonical key from a dated wire id (version-suffix normalization).
@@ -3193,16 +3392,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn test_get_profile_openai_gpt4o() {
-        let profile = get_model_profile(&DriverId::OpenAI, "gpt-4o");
-        assert!(profile.is_some());
-        let profile = profile.unwrap();
-        assert_eq!(profile.name, "GPT-4o");
-        assert_eq!(profile.family, "gpt-4o");
-        assert!(profile.tool_call);
-        assert!(profile.structured_output);
-    }
+    // Per-model name/family/cost/limits constants covered by registered_model_profiles_are_structurally_consistent.
 
     #[test]
     fn test_get_profile_openai_gpt4o_versioned() {
@@ -3210,23 +3400,6 @@ mod tests {
         assert!(profile.is_some());
         let profile = profile.unwrap();
         assert_eq!(profile.name, "GPT-4o");
-    }
-
-    #[test]
-    fn test_get_profile_anthropic_claude35_sonnet() {
-        let profile = get_model_profile(&DriverId::Anthropic, "claude-3-5-sonnet-20241022");
-        assert!(profile.is_some());
-        let profile = profile.unwrap();
-        assert_eq!(profile.name, "Claude 3.5 Sonnet");
-        assert!(profile.tool_call);
-    }
-
-    #[test]
-    fn test_get_profile_anthropic_claude_sonnet4() {
-        let profile = get_model_profile(&DriverId::Anthropic, "claude-sonnet-4-20250514");
-        assert!(profile.is_some());
-        let profile = profile.unwrap();
-        assert_eq!(profile.name, "Claude Sonnet 4");
     }
 
     #[test]
@@ -3242,32 +3415,7 @@ mod tests {
         assert!(profile.is_none());
     }
 
-    #[test]
-    fn test_profile_has_cost_and_limits() {
-        let profile = get_model_profile(&DriverId::OpenAI, "gpt-4o").unwrap();
-        assert!(profile.cost.is_some());
-        assert!(profile.limits.is_some());
-
-        let cost = profile.cost.unwrap();
-        assert!(cost.input > 0.0);
-        assert!(cost.output > 0.0);
-
-        let limits = profile.limits.unwrap();
-        assert!(limits.context > 0);
-        assert!(limits.output > 0);
-    }
-
-    #[test]
-    fn test_o1_has_reasoning() {
-        let profile = get_model_profile(&DriverId::OpenAI, "o1").unwrap();
-        assert!(profile.reasoning);
-    }
-
-    #[test]
-    fn test_claude_opus_4_has_reasoning() {
-        let profile = get_model_profile(&DriverId::Anthropic, "claude-opus-4").unwrap();
-        assert!(profile.reasoning);
-    }
+    // Per-model name/family/cost/limits constants covered by registered_model_profiles_are_structurally_consistent.
 
     #[test]
     fn test_normalize_openai_model_id() {
@@ -3436,22 +3584,6 @@ mod tests {
         let effort = profile.reasoning_effort.unwrap();
         assert_eq!(effort.default, ReasoningEffort::Medium);
         assert_eq!(effort.values.len(), 3);
-    }
-
-    #[test]
-    fn test_gpt53_codex_profile() {
-        let profile = get_model_profile(&DriverId::OpenAI, "gpt-5.3-codex").unwrap();
-        assert_eq!(profile.name, "GPT-5.3 Codex");
-        assert!(profile.reasoning);
-        assert!(profile.tool_call);
-
-        let limits = profile.limits.unwrap();
-        assert_eq!(limits.context, 400_000);
-        assert_eq!(limits.output, 128_000);
-
-        let cost = profile.cost.unwrap();
-        assert!((cost.input - 1.75).abs() < f64::EPSILON);
-        assert!((cost.output - 14.00).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -3711,31 +3843,6 @@ mod tests {
         );
     }
 
-    // GPT-4.1 model tests
-
-    #[test]
-    fn test_gpt41_profile() {
-        let profile = get_model_profile(&DriverId::OpenAI, "gpt-4.1").unwrap();
-        assert_eq!(profile.name, "GPT-4.1");
-        assert_eq!(profile.family, "gpt-4.1");
-        assert!(!profile.reasoning);
-        assert!(profile.tool_call);
-    }
-
-    #[test]
-    fn test_gpt41_mini_profile() {
-        let profile = get_model_profile(&DriverId::OpenAI, "gpt-4.1-mini").unwrap();
-        assert_eq!(profile.name, "GPT-4.1 mini");
-        assert!(!profile.reasoning);
-    }
-
-    #[test]
-    fn test_gpt41_nano_profile() {
-        let profile = get_model_profile(&DriverId::OpenAI, "gpt-4.1-nano").unwrap();
-        assert_eq!(profile.name, "GPT-4.1 nano");
-        assert!(!profile.reasoning);
-    }
-
     // o3/o4 reasoning model tests
 
     #[test]
@@ -3877,69 +3984,7 @@ mod tests {
         assert_eq!(profile.name, "Claude Sonnet 4.6");
     }
 
-    // Claude 4.5 model tests
-
-    #[test]
-    fn test_claude_opus_45_profile() {
-        let profile = get_model_profile(&DriverId::Anthropic, "claude-opus-4-5-20251101").unwrap();
-        assert_eq!(profile.name, "Claude Opus 4.5");
-        assert!(profile.reasoning);
-        assert!(profile.tool_call);
-    }
-
-    #[test]
-    fn test_claude_sonnet_45_profile() {
-        let profile =
-            get_model_profile(&DriverId::Anthropic, "claude-sonnet-4-5-20250929").unwrap();
-        assert_eq!(profile.name, "Claude Sonnet 4.5");
-        assert!(profile.reasoning);
-    }
-
-    #[test]
-    fn test_claude_haiku_45_profile() {
-        let profile = get_model_profile(&DriverId::Anthropic, "claude-haiku-4-5-20251001").unwrap();
-        assert_eq!(profile.name, "Claude Haiku 4.5");
-        assert!(profile.reasoning);
-    }
-
-    // Claude 4.1 model tests
-
-    #[test]
-    fn test_claude_opus_41_profile() {
-        let profile = get_model_profile(&DriverId::Anthropic, "claude-opus-4-1-20250805").unwrap();
-        assert_eq!(profile.name, "Claude Opus 4.1");
-        assert_eq!(profile.family, "claude-opus-4-1");
-        assert!(profile.reasoning);
-        assert!(profile.tool_call);
-
-        let limits = profile.limits.unwrap();
-        assert_eq!(limits.context, 200_000);
-        assert_eq!(limits.output, 32_000);
-
-        let cost = profile.cost.unwrap();
-        assert!((cost.input - 15.00).abs() < f64::EPSILON);
-        assert!((cost.output - 75.00).abs() < f64::EPSILON);
-    }
-
-    // Claude Sonnet 4 updated output limit
-
-    #[test]
-    fn test_claude_sonnet_4_output_limit() {
-        let profile = get_model_profile(&DriverId::Anthropic, "claude-sonnet-4-20250514").unwrap();
-        assert_eq!(profile.name, "Claude Sonnet 4");
-        let limits = profile.limits.unwrap();
-        assert_eq!(limits.output, 64_000);
-        assert!(profile.reasoning);
-    }
-
-    #[test]
-    fn test_claude_37_sonnet_profile() {
-        let profile =
-            get_model_profile(&DriverId::Anthropic, "claude-3-7-sonnet-20250219").unwrap();
-        assert_eq!(profile.name, "Claude 3.7 Sonnet");
-        assert!(profile.reasoning);
-        assert!(profile.tool_call);
-    }
+    // Per-model name/family/cost/limits constants covered by registered_model_profiles_are_structurally_consistent.
 
     // Normalize tests for new models
 
@@ -4030,35 +4075,6 @@ mod tests {
     // Gemini model tests
 
     #[test]
-    fn test_gemini_25_pro_profile() {
-        let profile = get_model_profile(&DriverId::Gemini, "gemini-2.5-pro").unwrap();
-        assert_eq!(profile.name, "Gemini 2.5 Pro");
-        assert!(profile.reasoning);
-        assert!(profile.tool_call);
-        assert!(profile.structured_output);
-
-        let limits = profile.limits.unwrap();
-        assert_eq!(limits.context, 1_048_576);
-        assert!(limits.input.is_none());
-    }
-
-    #[test]
-    fn test_gemini_25_flash_profile() {
-        let profile = get_model_profile(&DriverId::Gemini, "gemini-2.5-flash").unwrap();
-        assert_eq!(profile.name, "Gemini 2.5 Flash");
-        assert!(profile.reasoning);
-        assert!(profile.tool_call);
-    }
-
-    #[test]
-    fn test_gemini_20_flash_profile() {
-        let profile = get_model_profile(&DriverId::Gemini, "gemini-2.0-flash").unwrap();
-        assert_eq!(profile.name, "Gemini 2.0 Flash");
-        assert!(!profile.reasoning);
-        assert!(profile.tool_call);
-    }
-
-    #[test]
     fn test_normalize_gemini_model_ids() {
         assert_eq!(
             normalize_gemini_model_id("gemini-2.5-pro"),
@@ -4085,38 +4101,6 @@ mod tests {
     }
 
     // Newly added flagship model profiles
-
-    #[test]
-    fn test_claude_fable_5_profile() {
-        let profile = get_model_profile(&DriverId::Anthropic, "claude-fable-5").unwrap();
-        assert_eq!(profile.name, "Claude Fable 5");
-        assert_eq!(profile.family, "claude-fable-5");
-        assert!(profile.reasoning);
-        // Fable 5 removed sampling parameters (temperature returns 400).
-        assert!(!profile.temperature);
-        let cost = profile.cost.as_ref().unwrap();
-        assert_eq!(cost.input, 10.00);
-        assert_eq!(cost.output, 50.00);
-        let limits = profile.limits.as_ref().unwrap();
-        // Bare id is the 200K profile; the 1M window is `claude-fable-5[1m]`
-        // (see test_claude_fable_5_1m_variant).
-        assert_eq!(limits.context, 200_000);
-        assert_eq!(limits.output, 128_000);
-        assert!(profile.reasoning_effort.is_some());
-    }
-
-    #[test]
-    fn test_claude_opus_4_8_profile() {
-        let profile = get_model_profile(&DriverId::Anthropic, "claude-opus-4-8").unwrap();
-        assert_eq!(profile.name, "Claude Opus 4.8");
-        assert_eq!(profile.family, "claude-opus-4-8");
-        assert!(profile.reasoning);
-        // Opus 4.8 removed sampling parameters (temperature returns 400).
-        assert!(!profile.temperature);
-        // Bare id is the 200K profile; the 1M window is `claude-opus-4-8[1m]`.
-        assert_eq!(profile.limits.as_ref().unwrap().context, 200_000);
-        assert!(profile.reasoning_effort.is_some());
-    }
 
     #[test]
     fn test_claude_opus_4_8_1m_variant() {
@@ -4159,6 +4143,18 @@ mod tests {
             assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
             assert!(m1.name.ends_with("(1M)"));
         }
+    }
+
+    #[test]
+    fn test_claude_sonnet_5_1m_variant() {
+        let base = get_model_profile(&DriverId::Anthropic, "claude-sonnet-5").unwrap();
+        assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
+
+        let m1 = get_model_profile(&DriverId::Anthropic, "claude-sonnet-5[1m]").unwrap();
+        assert_eq!(m1.name, "Claude Sonnet 5 (1M)");
+        assert_eq!(m1.family, "claude-sonnet-5");
+        assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
+        assert_eq!(m1.cost.unwrap().input, base.cost.unwrap().input);
     }
 
     #[test]

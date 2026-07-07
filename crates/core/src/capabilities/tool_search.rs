@@ -639,7 +639,6 @@ impl Tool for ToolSearchTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capabilities::CapabilityRegistry;
     use crate::tool_types::{BuiltinTool, ToolPolicy};
 
     fn builtin(name: &str, description: &str, deferrable: DeferrablePolicy) -> ToolDefinition {
@@ -690,23 +689,7 @@ mod tests {
         tool.parameters().get("properties").is_none()
     }
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = ToolSearchCapability::new();
-        assert_eq!(cap.id(), TOOL_SEARCH_CAPABILITY_ID);
-        assert_eq!(cap.name(), "Tool Search");
-        assert_eq!(cap.category(), Some("Optimization"));
-        assert!(cap.system_prompt_addition().is_some());
-        assert_eq!(cap.tools().len(), 1);
-        assert_eq!(cap.tools()[0].name(), TOOL_SEARCH_TOOL_NAME);
-    }
-
-    #[test]
-    fn test_capability_registered_in_builtins() {
-        let registry = CapabilityRegistry::with_builtins();
-        let cap = registry.get(TOOL_SEARCH_CAPABILITY_ID).unwrap();
-        assert_eq!(cap.id(), TOOL_SEARCH_CAPABILITY_ID);
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_hook_noop_below_threshold() {

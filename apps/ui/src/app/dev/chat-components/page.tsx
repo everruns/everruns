@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
 import { DevChatRuntimeScene } from "@/app/dev/_components/dev-chat-runtime-preview";
+import { DevChatNavRailPreview } from "@/app/dev/_components/dev-chat-nav-rail-preview";
 import {
   devCommands,
   devModels,
@@ -63,6 +64,18 @@ export default function DevChatComponentsPage() {
             </p>
           </div>
           <DevChatRuntimeScene scenario="chat-components" />
+        </section>
+
+        <section className="space-y-3">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-foreground">Turn navigation rail</h2>
+            <p className="text-sm text-muted-foreground">
+              Multi-turn transcript with the turn navigation rail (md+ screens). Hover a marker on
+              the right gutter to preview the turn; click to jump. The active turn fills with the
+              gold accent as you scroll.
+            </p>
+          </div>
+          <DevChatNavRailPreview />
         </section>
 
         <section className="space-y-3 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">

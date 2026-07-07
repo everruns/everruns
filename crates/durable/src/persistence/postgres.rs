@@ -308,72 +308,36 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         expected_sequence: i32,
         events: Vec<WorkflowEvent>,
     ) -> Result<i32, StoreError> {
-        let mut tx = self
-            .pool
-            .begin()
-            .await
-            .map_err(|e| StoreError::Database(e.to_string()))?;
-
-        // Lock the workflow instance row to prevent concurrent modifications
-        sqlx::query(
-            r#"
-            SELECT id FROM durable_workflow_instances
-            WHERE id = $1
-            FOR UPDATE
-            "#,
-        )
-        .bind(workflow_id)
-        .fetch_optional(&mut *tx)
-        .await
-        .map_err(|e| StoreError::Database(e.to_string()))?
-        .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
-
-        // Get current sequence (now safe since we hold the lock)
-        let row = sqlx::query(
-            r#"
-            SELECT COALESCE(MAX(sequence_num) + 1, 0) as next_seq
-            FROM durable_workflow_events
-            WHERE workflow_id = $1
-            "#,
-        )
-        .bind(workflow_id)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(|e| StoreError::Database(e.to_string()))?;
-
-        let current_sequence: i32 = row.get::<i32, _>("next_seq");
-
-        if current_sequence != expected_sequence {
-            return Err(StoreError::ConcurrencyConflict {
-                expected: expected_sequence,
-                actual: current_sequence,
-            });
+        if events.is_empty() {
+            return Ok(expected_sequence);
         }
 
-        // Insert events
-        let mut new_sequence = current_sequence;
-        for event in events {
-            let event_type = event_type_name(&event);
-            let event_data = serde_json::to_value(&event)
+        // EVE-639: single multi-row INSERT instead of FOR UPDATE + MAX(...) +
+        // one INSERT per event. Sequence numbers are assigned deterministically
+        // from `expected_sequence` (the caller's optimistic-concurrency cursor),
+        // and the UNIQUE(workflow_id, sequence_num) constraint is the source of
+        // truth: if another writer already wrote at any of these sequences, the
+        // INSERT fails with a unique violation, which we surface as a
+        // ConcurrencyConflict. The FK on workflow_id surfaces WorkflowNotFound.
+        let mut new_sequence = expected_sequence;
+
+        let mut builder = sqlx::QueryBuilder::new(
+            "INSERT INTO durable_workflow_events (workflow_id, sequence_num, event_type, event_data) ",
+        );
+        builder.push_values(events.iter(), |mut b, event| {
+            let event_type = event_type_name(event);
+            // serde_json::to_value is infallible for these event types in
+            // practice; on the off chance it fails we bind a null event_data,
+            // which the NOT NULL column rejects, turning into a Database error.
+            let event_data = serde_json::to_value(event)
                 .map(sanitize_json_null_bytes)
-                .map_err(|e| StoreError::Serialization(e.to_string()))?;
-
-            sqlx::query(
-                r#"
-                INSERT INTO durable_workflow_events (workflow_id, sequence_num, event_type, event_data)
-                VALUES ($1, $2, $3, $4)
-                "#,
-            )
-            .bind(workflow_id)
-            .bind(new_sequence)
-            .bind(event_type)
-            .bind(&event_data)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| StoreError::Database(e.to_string()))?;
-
+                .unwrap_or(serde_json::Value::Null);
+            b.push_bind(workflow_id)
+                .push_bind(new_sequence)
+                .push_bind(event_type)
+                .push_bind(event_data);
             new_sequence += 1;
-        }
+        });
 
         #[cfg(feature = "failpoints")]
         fail_point!("postgres_append_events_after_insert", |_| {
@@ -385,9 +349,11 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             Err(StoreError::Database("injected: before commit".into()))
         });
 
-        tx.commit()
+        builder
+            .build()
+            .execute(&self.pool)
             .await
-            .map_err(|e| StoreError::Database(e.to_string()))?;
+            .map_err(|e| map_append_events_error(e, workflow_id, expected_sequence))?;
 
         debug!(%workflow_id, new_sequence, "appended events");
         Ok(new_sequence)
@@ -802,13 +768,17 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         // 4. Limits to max_tasks
         // 5. Uses SKIP LOCKED to avoid contention
         // 6. Updates status and claiming info
-        // 7. Appends ActivityStarted events for workflow tasks before returning
-        //    the claim, avoiding a separate pre-execution write in the worker.
+        // 7. Appends ActivityStarted events for FIRST-attempt workflow tasks
+        //    before returning the claim, avoiding a separate pre-execution write
+        //    in the worker. Reclaims (attempt > 1) skip this write (EVE-639).
         //
         // The ActivityStarted sequence read is deliberately a separate statement
-        // after locking each workflow row. Under READ COMMITTED, a single-statement
+        // after locking the workflow rows. Under READ COMMITTED, a single-statement
         // CTE keeps its original snapshot even after waiting on row locks, which
         // can duplicate sequence numbers during concurrent claims for one workflow.
+        // EVE-639 makes this set-based: one ANY($) lock, one grouped MAX(seq)
+        // read, and one multi-row INSERT, rather than three statements per
+        // workflow.
         // NOTE: The `attempt < max_attempts` check is critical for preventing infinite
         // retries when workers panic. Without fail_task being called, the task becomes
         // stale, gets reclaimed, but must not be claimed if attempts are exhausted.
@@ -863,6 +833,12 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         })?;
 
         let mut claimed = Vec::with_capacity(rows.len());
+        // EVE-639: only record ActivityStarted on the FIRST attempt of a task,
+        // not on every reclaim. `attempt` is post-increment in the claim UPDATE
+        // above, so the first claim yields attempt == 1. Reclaims (attempt > 1)
+        // record no ActivityStarted event — this is genuine bookkeeping for the
+        // initial dispatch only. (The seal guard in reclaim_stale_tasks still
+        // excludes activity_started from its progress token; see EVE-534.)
         let mut started_by_workflow: BTreeMap<Uuid, Vec<(Uuid, String, i32)>> = BTreeMap::new();
         for row in rows {
             let options_json: serde_json::Value = row.get("options");
@@ -884,7 +860,9 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 max_attempts: row.get::<i32, _>("max_attempts") as u32,
             });
 
-            if let Some(workflow_id) = workflow_id {
+            if attempt == 1
+                && let Some(workflow_id) = workflow_id
+            {
                 started_by_workflow.entry(workflow_id).or_default().push((
                     task_id,
                     activity_id,
@@ -893,67 +871,97 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             }
         }
 
-        for (workflow_id, mut events) in started_by_workflow {
-            events.sort_by_key(|(task_id, _, _)| *task_id);
+        if !started_by_workflow.is_empty() {
+            // Set-based ActivityStarted persistence: lock all involved workflow
+            // rows in one statement, fetch each workflow's next sequence in one
+            // grouped statement, then write every ActivityStarted event in a
+            // single multi-row INSERT — instead of three statements per workflow.
+            // BTreeMap keeps workflow_ids ordered, which gives a deterministic
+            // FOR UPDATE lock order across concurrent claimers, avoiding
+            // deadlocks.
+            let workflow_ids: Vec<Uuid> = started_by_workflow.keys().copied().collect();
 
             sqlx::query(
                 r#"
                 SELECT id FROM durable_workflow_instances
-                WHERE id = $1
+                WHERE id = ANY($1)
+                ORDER BY id
                 FOR UPDATE
                 "#,
             )
-            .bind(workflow_id)
-            .fetch_one(&mut *tx)
+            .bind(&workflow_ids)
+            .fetch_all(&mut *tx)
             .await
             .map_err(|e| {
-                error!("Failed to lock workflow for activity start event: {}", e);
+                error!("Failed to lock workflows for activity start events: {}", e);
                 StoreError::Database(e.to_string())
             })?;
 
-            let mut next_sequence = sqlx::query_scalar::<_, i32>(
+            let seq_rows = sqlx::query(
                 r#"
-                SELECT COALESCE(MAX(sequence_num) + 1, 0)::INTEGER
+                SELECT workflow_id, COALESCE(MAX(sequence_num) + 1, 0)::INTEGER AS next_seq
                 FROM durable_workflow_events
-                WHERE workflow_id = $1
+                WHERE workflow_id = ANY($1)
+                GROUP BY workflow_id
                 "#,
             )
-            .bind(workflow_id)
-            .fetch_one(&mut *tx)
+            .bind(&workflow_ids)
+            .fetch_all(&mut *tx)
             .await
             .map_err(|e| {
-                error!("Failed to get workflow event sequence: {}", e);
+                error!("Failed to get workflow event sequences: {}", e);
                 StoreError::Database(e.to_string())
             })?;
 
-            for (_, activity_id, attempt) in events {
-                let event_data = serde_json::to_value(WorkflowEvent::ActivityStarted {
-                    activity_id: activity_id.clone(),
-                    attempt: attempt as u32,
-                    worker_id: worker_id.to_string(),
-                })
-                .map(sanitize_json_null_bytes)
-                .map_err(|e| StoreError::Serialization(e.to_string()))?;
+            let mut next_seq_by_workflow: BTreeMap<Uuid, i32> = BTreeMap::new();
+            for row in seq_rows {
+                next_seq_by_workflow.insert(row.get("workflow_id"), row.get::<i32, _>("next_seq"));
+            }
 
-                sqlx::query(
-                    r#"
-                    INSERT INTO durable_workflow_events (
-                        workflow_id, sequence_num, event_type, event_data
-                    )
-                    VALUES ($1, $2, 'activity_started', $3)
-                    "#,
-                )
-                .bind(workflow_id)
-                .bind(next_sequence)
-                .bind(&event_data)
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| {
-                    error!("Failed to write activity start event: {}", e);
+            // Build the rows for a single multi-row INSERT, assigning contiguous
+            // sequence numbers per workflow. Tasks within a workflow are ordered
+            // by task_id for deterministic sequencing.
+            struct StartedEventRow {
+                workflow_id: Uuid,
+                sequence_num: i32,
+                event_data: serde_json::Value,
+            }
+            let mut insert_rows: Vec<StartedEventRow> = Vec::new();
+            for (workflow_id, mut events) in started_by_workflow {
+                events.sort_by_key(|(task_id, _, _)| *task_id);
+                // A workflow that has events (it always does — WorkflowStarted is
+                // seq 0) returns a row; default to 0 only as a safety net.
+                let base_sequence = next_seq_by_workflow.get(&workflow_id).copied().unwrap_or(0);
+                for (offset, (_, activity_id, attempt)) in events.into_iter().enumerate() {
+                    let event_data = serde_json::to_value(WorkflowEvent::ActivityStarted {
+                        activity_id,
+                        attempt: attempt as u32,
+                        worker_id: worker_id.to_string(),
+                    })
+                    .map(sanitize_json_null_bytes)
+                    .map_err(|e| StoreError::Serialization(e.to_string()))?;
+                    insert_rows.push(StartedEventRow {
+                        workflow_id,
+                        sequence_num: base_sequence + offset as i32,
+                        event_data,
+                    });
+                }
+            }
+
+            if !insert_rows.is_empty() {
+                let mut builder = sqlx::QueryBuilder::new(
+                    "INSERT INTO durable_workflow_events (workflow_id, sequence_num, event_type, event_data) ",
+                );
+                builder.push_values(insert_rows.iter(), |mut b, r| {
+                    b.push_bind(r.workflow_id)
+                        .push_bind(r.sequence_num)
+                        .push_bind("activity_started")
+                        .push_bind(&r.event_data);
+                });
+                builder.build().execute(&mut *tx).await.map_err(|e| {
+                    error!("Failed to write activity start events: {}", e);
                     StoreError::Database(e.to_string())
                 })?;
-
-                next_sequence += 1;
             }
         }
 
@@ -1071,20 +1079,46 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         task_id: Uuid,
         error: &str,
     ) -> Result<TaskFailureOutcome, StoreError> {
-        // Get current task state
+        // EVE-639: SELECT FOR UPDATE and the follow-up UPDATE must share ONE
+        // transaction so the row lock is held across the whole read-modify-write.
+        // Previously both ran on `self.pool`, so the FOR UPDATE lock was released
+        // as soon as the SELECT statement returned and a concurrent fail_task /
+        // reclaim_stale_tasks could interleave and double-increment `attempt` or
+        // double-route the task to the DLQ. We also gate on status = 'claimed':
+        // if a reclaimer has already requeued or sealed this task, there is
+        // nothing for this caller to fail and we return TaskNotOwned rather than
+        // clobbering the reclaimer's decision.
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| StoreError::Database(e.to_string()))?;
+
         let row = sqlx::query(
             r#"
-            SELECT attempt, max_attempts, options
+            SELECT attempt, max_attempts, options, status
             FROM durable_task_queue
             WHERE id = $1
             FOR UPDATE
             "#,
         )
         .bind(task_id)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(|e| StoreError::Database(e.to_string()))?
         .ok_or(StoreError::TaskNotFound(task_id))?;
+
+        let status: String = row.get("status");
+        if status != "claimed" {
+            // Task was reclaimed, completed, or already dead by a concurrent
+            // actor while we waited on the lock. Do not act on it.
+            debug!(
+                %task_id,
+                status,
+                "fail_task: task no longer claimed, skipping"
+            );
+            return Err(StoreError::TaskNotOwned(task_id));
+        }
 
         let attempt: i32 = row.get("attempt");
         let max_attempts: i32 = row.get("max_attempts");
@@ -1092,7 +1126,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         let options: ActivityOptions = serde_json::from_value(options_json)
             .map_err(|e| StoreError::Serialization(e.to_string()))?;
 
-        if attempt < max_attempts {
+        let outcome = if attempt < max_attempts {
             // Calculate retry delay
             let delay = options.retry_policy.delay_for_attempt((attempt + 1) as u32);
             let visible_at = Utc::now() + chrono::Duration::from_std(delay).unwrap_or_default();
@@ -1113,15 +1147,15 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             .bind(task_id)
             .bind(error)
             .bind(visible_at)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .map_err(|e| StoreError::Database(e.to_string()))?;
 
             debug!(%task_id, next_attempt = attempt + 1, "task will retry");
-            Ok(TaskFailureOutcome::WillRetry {
+            TaskFailureOutcome::WillRetry {
                 next_attempt: (attempt + 1) as u32,
                 delay,
-            })
+            }
         } else {
             // Move to DLQ
             sqlx::query(
@@ -1134,13 +1168,19 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             )
             .bind(task_id)
             .bind(error)
-            .execute(&self.pool)
+            .execute(&mut *tx)
             .await
             .map_err(|e| StoreError::Database(e.to_string()))?;
 
             debug!(%task_id, "task moved to DLQ");
-            Ok(TaskFailureOutcome::MovedToDlq)
-        }
+            TaskFailureOutcome::MovedToDlq
+        };
+
+        tx.commit()
+            .await
+            .map_err(|e| StoreError::Database(e.to_string()))?;
+
+        Ok(outcome)
     }
 
     #[instrument(skip(self))]
@@ -1398,15 +1438,17 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                        -- token 0).
                        --
                        -- We EXCLUDE 'activity_started' events: claim_task writes
-                       -- one on EVERY (re)claim (see started_by_workflow loop),
-                       -- so counting them would make the token advance on every
-                       -- reclaim cycle even when the turn records no genuine
-                       -- forward progress — defeating the seal guard (EVE-534).
-                       -- 'activity_started' is the only per-(re)claim/per-attempt
-                       -- bookkeeping event written to durable_workflow_events;
-                       -- every other event_type records a real workflow fact
-                       -- (scheduled/completed/failed/timer/signal/child), so a
-                       -- denylist of just this one type is complete.
+                       -- one on the FIRST attempt of a task (see the EVE-639
+                       -- started_by_workflow handling; reclaims no longer emit
+                       -- it). Counting that first-attempt marker as progress
+                       -- would let a turn that crashes immediately after dispatch
+                       -- — recording nothing else — appear to advance, defeating
+                       -- the seal guard (EVE-534). 'activity_started' is the only
+                       -- dispatch/bookkeeping event written to
+                       -- durable_workflow_events; every other event_type records
+                       -- a real workflow fact (scheduled/completed/failed/timer/
+                       -- signal/child), so a denylist of just this one type is
+                       -- complete.
                        COALESCE(
                            (SELECT MAX(e.sequence_num)
                               FROM durable_workflow_events e
@@ -3665,6 +3707,34 @@ fn parse_workflow_status(status: &str) -> Result<WorkflowStatus, StoreError> {
             status
         ))),
     }
+}
+
+/// Map an `append_events` INSERT error to the appropriate `StoreError`.
+///
+/// EVE-639: the append path relies on DB constraints rather than a prior
+/// FOR UPDATE + MAX(...) read, so we translate the two expected violations:
+/// - unique `(workflow_id, sequence_num)` (SQLSTATE 23505) → a concurrency
+///   conflict (a competing writer already occupied one of our sequences). The
+///   actual conflicting sequence is not cheaply known here; callers recompute
+///   it via `count_events` on retry, so `actual` is reported as -1 (unknown).
+/// - foreign-key on `workflow_id` (SQLSTATE 23503) → workflow not found.
+fn map_append_events_error(
+    err: sqlx::Error,
+    workflow_id: Uuid,
+    expected_sequence: i32,
+) -> StoreError {
+    if let Some(db_err) = err.as_database_error() {
+        if db_err.is_unique_violation() {
+            return StoreError::ConcurrencyConflict {
+                expected: expected_sequence,
+                actual: -1,
+            };
+        }
+        if db_err.is_foreign_key_violation() {
+            return StoreError::WorkflowNotFound(workflow_id);
+        }
+    }
+    StoreError::Database(err.to_string())
 }
 
 fn event_type_name(event: &WorkflowEvent) -> &'static str {

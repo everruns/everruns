@@ -45,11 +45,11 @@ tracing.workspace = true
 # Utilities
 rand.workspace = true
 parking_lot = "0.12"
-cron = "0.15"
+cron = "0.17"
 hostname = "0.4"
 
 # Benchmark support
-sysinfo = "0.38"
+sysinfo = "0.39"
 minijinja = "2"
 indicatif = "0.18"
 
