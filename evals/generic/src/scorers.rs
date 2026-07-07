@@ -19,32 +19,22 @@
 //! - `min_tool_calls` / `max_tool_calls`: bounds on total tool calls (e.g.
 //!   `max_tool_calls: 0` asserts a plain question wastes no tool round-trips).
 //!
-//! Two subject-set transcript markers gate everything (see `subject.rs`):
-//! a `skipped` case scores N/A everywhere; a `sim` (offline echo) case scores
-//! N/A on content/tool checks and only `turn_completed` still applies.
+//! One subject-set transcript marker gates everything (see `subject.rs`): a
+//! `skipped` case (unmet `requires` on the active harness profile) scores N/A
+//! everywhere.
 
 use mira::scorer::scorer;
 use mira::{Sample, Score, Scorer, Transcript};
 
-use crate::subject::{SIM_KEY, SKIPPED_KEY};
+use crate::subject::SKIPPED_KEY;
 
 fn skipped(t: &Transcript) -> Option<&str> {
     t.metadata.get(SKIPPED_KEY).and_then(|v| v.as_str())
 }
 
-fn is_sim(t: &Transcript) -> bool {
-    t.metadata.get(SIM_KEY).and_then(|v| v.as_bool()) == Some(true)
-}
-
-/// N/A for the two transcript states no content scorer should grade.
+/// N/A for a transcript no content scorer should grade.
 fn gate(name: &str, t: &Transcript) -> Option<Score> {
-    if let Some(reason) = skipped(t) {
-        return Some(Score::na(name, reason.to_string()));
-    }
-    if is_sim(t) {
-        return Some(Score::na(name, "offline sim run (plumbing smoke only)"));
-    }
-    None
+    skipped(t).map(|reason| Score::na(name, reason.to_string()))
 }
 
 /// Read a metadata value that is either one string or a list of strings.
@@ -338,15 +328,6 @@ mod tests {
         ] {
             assert!(score_of(s.as_ref(), &sample, &t).is_na(), "{}", s.name());
         }
-    }
-
-    #[test]
-    fn sim_gates_content_but_not_completion() {
-        let sample = Sample::new("a", "x").meta("expect_regex", "hello");
-        let mut t = transcript("hello", &[]);
-        t.metadata.insert(SIM_KEY.into(), true.into());
-        assert!(score_of(response_matches().as_ref(), &sample, &t).is_na());
-        assert!(score_of(turn_completed().as_ref(), &sample, &t).pass);
     }
 
     #[test]

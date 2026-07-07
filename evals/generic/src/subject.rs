@@ -2,7 +2,7 @@
 //! no server, no HTTP, no database. Each sample gets a fresh
 //! `InProcessRuntime` built from the matrix case:
 //!
-//! - target → provider driver + `ResolvedModel` (`anthropic`, `openai`, `sim`)
+//! - target → provider driver + `ResolvedModel` (`anthropic`, `openai`)
 //! - `harness` axis → a [`HarnessProfile`](crate::profiles::HarnessProfile)
 //!   (system prompt + capability set)
 //! - `config` axis → a [`ConfigProfile`](crate::profiles::ConfigProfile)
@@ -22,7 +22,6 @@ use std::time::Instant;
 
 use everruns_core::capabilities::AgentCapabilityConfig;
 use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::typed_id::SessionId;
 use everruns_core::{
     CapabilityRegistry, Controls, DriverId, InputMessage, PlatformDefinition, ReasoningConfig,
@@ -40,10 +39,6 @@ use crate::profiles::{
 /// Transcript metadata key marking a case the subject did not run because the
 /// harness profile lacks a required capability. Scorers N/A on it.
 pub const SKIPPED_KEY: &str = "skipped";
-
-/// Transcript metadata key marking an offline `sim` run (echo model). Content
-/// and tool scorers N/A on it — sim only smoke-tests the runtime plumbing.
-pub const SIM_KEY: &str = "sim";
 
 pub struct GenericRuntimeSubject;
 
@@ -76,9 +71,6 @@ impl Subject for GenericRuntimeSubject {
             .metadata
             .insert("config".into(), config_name.into());
         transcript.metadata.insert("effort".into(), effort.into());
-        if cx.target.is_sim() {
-            transcript.metadata.insert(SIM_KEY.into(), true.into());
-        }
 
         // Incompatible (sample × harness) combo → skip, don't fail.
         if let Some(missing) = missing_capability(sample, harness) {
@@ -237,11 +229,6 @@ async fn build_runtime(
             s
         });
 
-    if target.is_sim() {
-        // Offline echo model: exercises seeding, harness build, the turn
-        // loop, and event normalization without a provider key.
-        builder = builder.llm_sim(LlmSimConfig::echo());
-    }
     for (path, content) in &sample.files {
         builder = builder.seed_text_file(session_id, path.clone(), content.clone());
     }
@@ -256,10 +243,9 @@ fn resolved_model(target: &Target) -> Result<ResolvedModel, String> {
     let (provider_type, api_key) = match target.provider.as_str() {
         "anthropic" => (DriverId::Anthropic, std::env::var("ANTHROPIC_API_KEY").ok()),
         "openai" => (DriverId::OpenAI, std::env::var("OPENAI_API_KEY").ok()),
-        "sim" => (DriverId::LlmSim, Some("sim".to_string())),
         other => {
             return Err(format!(
-                "unsupported provider '{other}' (supported: anthropic, openai, sim)"
+                "unsupported provider '{other}' (supported: anthropic, openai)"
             ));
         }
     };
@@ -317,41 +303,10 @@ mod tests {
     use super::*;
     use mira::RunCx;
 
-    fn sim_cx() -> RunCx {
-        RunCx::new(Target::sim())
-    }
-
-    #[tokio::test]
-    async fn sim_run_drives_the_local_runtime_end_to_end() {
-        // Regression check on the working tree: seeding, harness build, the
-        // turn loop, and event normalization all run offline via llmsim.
-        let subject = GenericRuntimeSubject;
-        let sample = Sample::new("echo", "hello runtime");
-        let t = subject.run(&sample, &sim_cx()).await;
-        assert!(t.error.is_none(), "sim run errored: {:?}", t.error);
-        assert!(!t.final_response.is_empty(), "echo response missing");
-        assert_eq!(
-            t.metadata.get(SIM_KEY).and_then(|v| v.as_bool()),
-            Some(true)
-        );
-    }
-
-    #[tokio::test]
-    async fn seeded_files_are_readable_back() {
-        let subject = GenericRuntimeSubject;
-        let sample = Sample::new("seeded", "hi")
-            .file("notes/seed.txt", "seeded content")
-            .meta(
-                "expect_files",
-                serde_json::json!([{ "path": "notes/seed.txt", "contains": "seeded content" }]),
-            );
-        let t = subject.run(&sample, &sim_cx()).await;
-        assert_eq!(
-            t.files.get("notes/seed.txt").map(String::as_str),
-            Some("seeded content"),
-            "seeded file not read back: {:?}",
-            t.files
-        );
+    // Both the skip and axis-validation paths return before any provider is
+    // contacted, so tests can use a real-shaped target without a key.
+    fn cx() -> RunCx {
+        RunCx::new(Target::new("anthropic/test", "anthropic", "test-model"))
     }
 
     #[tokio::test]
@@ -359,7 +314,7 @@ mod tests {
         let subject = GenericRuntimeSubject;
         let sample = Sample::new("needs-fs", "list files")
             .meta("requires", serde_json::json!(["session_file_system"]));
-        let mut cx = sim_cx();
+        let mut cx = cx();
         cx.params.insert("harness".into(), "minimal".into());
         let t = subject.run(&sample, &cx).await;
         assert!(
@@ -374,7 +329,7 @@ mod tests {
         let subject = GenericRuntimeSubject;
         let sample = Sample::new("a", "hi");
         for (axis, value) in [("harness", "nope"), ("config", "nope"), ("effort", "nope")] {
-            let mut cx = sim_cx();
+            let mut cx = cx();
             cx.params.insert(axis.into(), value.into());
             let t = subject.run(&sample, &cx).await;
             assert!(t.errored_infra(), "{axis}={value} should be infra");

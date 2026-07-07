@@ -8,8 +8,8 @@
 //! configurations on the same dataset.
 //!
 //! The matrix:
-//! - **target** (model): `sim` + key-gated `anthropic`/`openai` defaults, or
-//!   `EVERRUNS_EVAL_TARGETS="anthropic/claude-sonnet-4-6,openai/gpt-5.2,sim"`
+//! - **target** (model): key-gated `anthropic`/`openai` defaults, or
+//!   `EVERRUNS_EVAL_TARGETS="anthropic/claude-sonnet-5,openai/gpt-5.5"`
 //! - **effort** axis: `EVERRUNS_EVAL_EFFORTS="default,low,high"`
 //! - **harness** axis: `EVERRUNS_EVAL_HARNESSES="minimal,workspace,coding"`
 //! - **config** axis: `EVERRUNS_EVAL_CONFIGS="default,tight-iterations"`
@@ -39,20 +39,18 @@ use crate::subject::GenericRuntimeSubject;
 /// from any directory.
 const DATASET: &str = include_str!("../dataset.jsonl");
 
-/// Default model matrix: the offline simulator (always available; smoke-tests
-/// the runtime plumbing) plus one key-gated model per supported provider —
-/// without keys those cases are skipped, so a key-free run stays green.
-const DEFAULT_ANTHROPIC_MODEL: &str = "claude-sonnet-4-6";
-const DEFAULT_OPENAI_MODEL: &str = "gpt-5.2";
+/// Default model matrix: one key-gated model per supported provider — without
+/// keys those cases are skipped, so a key-free run stays green.
+const DEFAULT_ANTHROPIC_MODEL: &str = "claude-sonnet-5";
+const DEFAULT_OPENAI_MODEL: &str = "gpt-5.5";
 
 /// Model matrix axis. `EVERRUNS_EVAL_TARGETS` is a comma-separated list of
-/// `provider/model` entries (`anthropic/...`, `openai/...`) or the literal
-/// `sim`. Unset → sim + key-gated provider defaults.
+/// `provider/model` entries (`anthropic/...`, `openai/...`). Unset →
+/// key-gated provider defaults.
 fn targets() -> Vec<Target> {
     let spec = std::env::var("EVERRUNS_EVAL_TARGETS").unwrap_or_default();
     if spec.trim().is_empty() {
         return vec![
-            Target::sim(),
             Target::anthropic(DEFAULT_ANTHROPIC_MODEL),
             Target::openai(DEFAULT_OPENAI_MODEL),
         ];
@@ -61,13 +59,12 @@ fn targets() -> Vec<Target> {
         .map(str::trim)
         .filter(|entry| !entry.is_empty())
         .map(|entry| match entry.split_once('/') {
-            None if entry == "sim" => Target::sim(),
-            // Unknown providers stay in the matrix; the subject rejects them
-            // with a clear infra error naming the supported set.
-            None => Target::new(entry, entry, ""),
             Some(("anthropic", model)) => Target::anthropic(model),
             Some(("openai", model)) => Target::openai(model),
+            // Unknown providers stay in the matrix; the subject rejects them
+            // with a clear infra error naming the supported set.
             Some((provider, model)) => Target::new(entry, provider, model),
+            None => Target::new(entry, entry, ""),
         })
         .collect()
 }
@@ -224,7 +221,7 @@ mod tests {
     fn study_builds_with_full_default_matrix() {
         let eval = generic();
         assert_eq!(eval.name, "generic");
-        assert_eq!(eval.targets.len(), 3, "sim + anthropic + openai defaults");
+        assert_eq!(eval.targets.len(), 2, "anthropic + openai defaults");
         // effort × harness × config default to a single combination.
         assert_eq!(eval.axis_combinations().len(), 1);
     }

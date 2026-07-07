@@ -36,16 +36,13 @@ in your working tree.
 
 | Axis | Values | Env override | Default |
 |------|--------|--------------|---------|
-| **target** (model) | `sim`, `anthropic/<model>`, `openai/<model>` | `EVERRUNS_EVAL_TARGETS` | `sim` + key-gated `anthropic/claude-sonnet-4-6` + `openai/gpt-5.2` |
+| **target** (model) | `anthropic/<model>`, `openai/<model>` | `EVERRUNS_EVAL_TARGETS` | key-gated `anthropic/claude-sonnet-5` + `openai/gpt-5.5` |
 | **effort** | `default`, `none`, `minimal`, `low`, `medium`, `high`, `xhigh` | `EVERRUNS_EVAL_EFFORTS` | `default` (no override) |
 | **harness** | `minimal`, `workspace`, `coding` | `EVERRUNS_EVAL_HARNESSES` | `coding` |
 | **config** | `default`, `tight-iterations`, `parallel-tools` | `EVERRUNS_EVAL_CONFIGS` | `default` |
 
 - **Targets** are key-gated (`ANTHROPIC_API_KEY` / `OPENAI_API_KEY`): missing
   key ⇒ those cases are *skipped*, never failed, so a key-free run stays green.
-  The `sim` target runs an offline echo model that smoke-tests the runtime
-  plumbing (seeding, harness build, turn loop, event normalization); content
-  and tool scorers score N/A on it.
 - **Effort** maps onto `Controls.reasoning.effort` on every input turn
   (`default` sends no override). Not every model supports every level; an
   unsupported combination surfaces as a provider error on that case.
@@ -62,7 +59,7 @@ Example runs:
 
 ```bash
 # Compare models at two efforts on the full-capability harness
-EVERRUNS_EVAL_TARGETS="anthropic/claude-sonnet-4-6,openai/gpt-5.2" \
+EVERRUNS_EVAL_TARGETS="anthropic/claude-sonnet-5,openai/gpt-5.5" \
 EVERRUNS_EVAL_EFFORTS="low,high" \
 mira run
 
@@ -80,7 +77,7 @@ EVERRUNS_EVAL_CONFIGS="default,tight-iterations" mira run --preset tools
    brew install everruns/tap/mira      # or: cargo install mira-cli --locked
    ```
 2. Provider API keys in the environment for the models you want to evaluate
-   (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). None are needed for `sim`.
+   (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`).
 3. The Rust toolchain (this study is a standalone crate; `mira` builds it).
 
 ## Run
@@ -141,7 +138,7 @@ Seven sample-aware scorers ([`src/scorers.rs`](src/scorers.rs)). A scorer
 returns **N/A** when its metadata key is absent, so it only applies to samples
 that declare it. `turn_completed` grades every case (turns ran without a
 subject error; infra faults score N/A and are retried). Skipped cases
-(unmet `requires`) and `sim` runs score N/A on content/tool checks.
+(unmet `requires`) score N/A on every check.
 
 ## Caveats
 
@@ -156,5 +153,5 @@ subject error; infra faults score N/A and are retried). Skipped cases
 ## Development
 
 ```bash
-cargo test    # validates the dataset, scorers, and an offline llmsim end-to-end run
+cargo test    # validates the dataset, scorers, and the subject's skip/validation paths
 ```
