@@ -2565,8 +2565,10 @@ impl ReasonAtom {
 
         // Release buffered text only after post-generation guardrails allow it.
         // If they block, the replacement path below emits only sanitized text.
-        if buffer_output_deltas && tripped.is_none() && !pending_delta.is_empty() {
-            if let Err(e) = self
+        if buffer_output_deltas
+            && tripped.is_none()
+            && !pending_delta.is_empty()
+            && let Err(e) = self
                 .event_emitter
                 .emit(EventRequest::new(
                     session_id,
@@ -2578,13 +2580,12 @@ impl ReasonAtom {
                     },
                 ))
                 .await
-            {
-                tracing::warn!(
-                    session_id = %session_id,
-                    error = %e,
-                    "ReasonAtom: failed to emit guarded output.message.delta event"
-                );
-            }
+        {
+            tracing::warn!(
+                session_id = %session_id,
+                error = %e,
+                "ReasonAtom: failed to emit guarded output.message.delta event"
+            );
         }
 
         // If a streaming output guardrail tripped, emit
