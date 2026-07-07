@@ -173,7 +173,6 @@ export default function LoginPage() {
     window.location.assign(getOAuthUrl(provider));
   };
 
-
   // Show loading state while fetching config
   if (configLoading) {
     return (
@@ -263,7 +262,6 @@ export default function LoginPage() {
           </Button>
         </form>
 
-
         {hasOAuthProviders && (
           <p className="mt-5 border-t pt-5 text-[12.5px] leading-relaxed text-muted-foreground">
             Prefer Google or GitHub? Go back — it&apos;s one click and skips email verification.
@@ -276,9 +274,7 @@ export default function LoginPage() {
   // --- Phase 1: one door, SSO-primary ---
   return (
     <AuthShell>
-      <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
-        Log in
-      </h1>
+      <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">Log in</h1>
       <p className="mt-[10px] text-sm text-muted-foreground">
         Sign in to your Everruns console.
         {canSignup && (

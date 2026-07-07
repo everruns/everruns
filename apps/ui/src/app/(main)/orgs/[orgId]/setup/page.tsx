@@ -312,7 +312,8 @@ export default function OrgSetupPage() {
           stepLabel={arc.stepLabel(2)}
           brand={{
             eyebrow: "Setup complete",
-            headline: "Deploy your first agent and keep it running — through restarts, deploys, and outages.",
+            headline:
+              "Deploy your first agent and keep it running — through restarts, deploys, and outages.",
             features: [
               { label: "Durable execution engine", done: true },
               { label: "Agent harnesses & capabilities", done: true },
@@ -329,8 +330,8 @@ export default function OrgSetupPage() {
               {providerConnected ? (
                 <>
                   {org?.name ?? "Your workspace"} is provisioned and connected to a model provider.
-                  Deploy your first agent and keep it running &mdash; through restarts, deploys,
-                  and outages.
+                  Deploy your first agent and keep it running &mdash; through restarts, deploys, and
+                  outages.
                 </>
               ) : (
                 <>

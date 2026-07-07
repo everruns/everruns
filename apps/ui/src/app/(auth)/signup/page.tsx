@@ -96,8 +96,8 @@ export default function SignupPage() {
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
           If <b className="font-medium text-foreground">{submittedEmail}</b> can be registered,
-          we&apos;ve sent a confirmation link. Click it to verify your email and get started —
-          the link signs you in.
+          we&apos;ve sent a confirmation link. Click it to verify your email and get started — the
+          link signs you in.
         </p>
         <p className="mt-6 text-[13px] text-muted-foreground">
           Wrong address?{" "}
@@ -233,9 +233,7 @@ export default function SignupPage() {
                 >
                   <span
                     className={`flex h-3.5 w-3.5 items-center justify-center border ${
-                      ok
-                        ? "border-accent bg-accent/[0.15] text-accent-foreground"
-                        : "border-border"
+                      ok ? "border-accent bg-accent/[0.15] text-accent-foreground" : "border-border"
                     }`}
                   >
                     {ok && <Check className="icon-sharp h-2.5 w-2.5" strokeWidth={3} />}
@@ -245,11 +243,7 @@ export default function SignupPage() {
               ))}
             </ul>
           </div>
-          <Button
-            type="submit"
-            className="h-11 w-full"
-            disabled={registerMutation.isPending}
-          >
+          <Button type="submit" className="h-11 w-full" disabled={registerMutation.isPending}>
             {registerMutation.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
