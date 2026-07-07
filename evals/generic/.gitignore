@@ -1,2 +1,3 @@
+/target
 # Saved mira run folders (re-render with `mira report <run_id>`)
-results/
+/results
