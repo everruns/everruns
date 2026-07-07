@@ -8,7 +8,7 @@
 // credentials. All failure copy stays generic (TM-AUTH-014/019): the door
 // never reveals whether an email already has an account.
 
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -16,11 +16,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { OAuthProviderIcon } from "@/components/auth/oauth-provider-icon";
-import { TurnstileWidget } from "@/components/auth/turnstile-widget";
-import { useAuthConfig, useLogin, useRegister } from "@/hooks/use-auth";
+import { useAuthConfig, useLogin } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks";
 import { ApiError } from "@/lib/api/client";
-import { getOAuthUrl, login, register } from "@/lib/api/auth";
+import { getOAuthUrl, login } from "@/lib/api/auth";
 import { isBackendNavigationPath, sanitizeReturnTo } from "@/lib/auth-redirect";
 import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 
@@ -35,7 +34,6 @@ const oauthProviders: Record<string, { name: string }> = {
 
 // New accounts require 8+ characters (server-enforced); used to decide
 // whether a failed login is worth retrying as a signup.
-const MIN_PASSWORD_LENGTH = 8;
 
 type Phase = "email" | "password";
 
@@ -50,12 +48,11 @@ const OAUTH_ERROR_COPY: Record<string, string> = {
 };
 
 export default function LoginPage() {
-  usePageTitle("Log in or sign up");
+  usePageTitle("Log in");
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: config, isLoading: configLoading } = useAuthConfig();
   const loginMutation = useLogin();
-  const registerMutation = useRegister();
 
   const [phase, setPhase] = useState<Phase>("email");
   const [email, setEmail] = useState("");
@@ -67,8 +64,6 @@ export default function LoginPage() {
   // Disable the SSO buttons once one is clicked — the full-page redirect can
   // take a beat and double-clicks would restart the OAuth dance.
   const [oauthPending, setOauthPending] = useState(false);
-  // Captcha token for the signup fallback, when the server advertises one.
-  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
 
@@ -159,41 +154,11 @@ export default function LoginPage() {
       }
     }
 
-    // Unified door: a 401 may simply mean "no account yet". When signup is
-    // open and the password is registrable, retry as a signup with the same
-    // credentials. A register failure (existing account, wrong password, …)
-    // reports the same generic message as a failed login, so the outcome
-    // reveals nothing an attacker couldn't get from the register endpoint
-    // itself (TM-AUTH-014).
-    if (canSignup && password.length >= MIN_PASSWORD_LENGTH) {
-      // When the server requires a captcha for signup, don't attempt the
-      // fallback without a solved token — surface the challenge instead.
-      if (config?.captcha && !captchaToken) {
-        setError("Please complete the verification challenge below.");
-        return;
-      }
-      const captcha_token = captchaToken ?? undefined;
-      try {
-        if (backendTarget) {
-          await register({ email, password, captcha_token });
-          window.location.assign(target);
-          return;
-        }
-        await registerMutation.mutateAsync({ email, password, captcha_token });
-        router.push(target);
-        return;
-      } catch {
-        setError("Invalid email or password.");
-        setShowRecovery(true);
-        return;
-      }
-    }
-
-    setError(
-      canSignup && password.length < MIN_PASSWORD_LENGTH
-        ? `Invalid email or password. New accounts need at least ${MIN_PASSWORD_LENGTH} characters.`
-        : "Invalid email or password.",
-    );
+    // Login-first door: a 401 is always the calm generic failure. New users
+    // take the explicit "Create an account" path (/signup) instead of a
+    // silent register fallback — the fallback made wrong-password failures
+    // ambiguous and forced signup semantics onto the login screen.
+    setError("Email or password doesn't match. Try again or");
     setShowRecovery(true);
   };
 
@@ -208,8 +173,6 @@ export default function LoginPage() {
     window.location.assign(getOAuthUrl(provider));
   };
 
-  const handleCaptchaVerify = useCallback((token: string) => setCaptchaToken(token), []);
-  const handleCaptchaReset = useCallback(() => setCaptchaToken(null), []);
 
   // Show loading state while fetching config
   if (configLoading) {
@@ -225,7 +188,7 @@ export default function LoginPage() {
     return null;
   }
 
-  const isSubmitting = loginMutation.isPending || registerMutation.isPending;
+  const isSubmitting = loginMutation.isPending;
 
   // --- Phase 2: password, email locked in ---
   if (phase === "password" && hasPasswordAuth) {
@@ -243,13 +206,12 @@ export default function LoginPage() {
           Enter your password
         </h1>
         <p className="mt-[10px] text-sm text-muted-foreground">
-          Continuing as <b className="font-medium text-foreground">{email}</b>.
-          {canSignup && <> New here? We&apos;ll create your account with this email.</>}
+          Logging in as <b className="font-medium text-foreground">{email}</b>.
         </p>
 
         <form onSubmit={handlePasswordSubmit} className="mt-6 space-y-4">
           {error && (
-            <div role="alert" className="bg-destructive/10 text-destructive text-sm p-3">
+            <div role="alert" className="border bg-muted/60 p-3 text-sm text-foreground">
               {error}
               {showRecovery && (
                 <>
@@ -258,8 +220,9 @@ export default function LoginPage() {
                     href={`/forgot-password?email=${encodeURIComponent(email)}`}
                     className="font-medium underline underline-offset-2 hover:no-underline"
                   >
-                    Reset your password
+                    reset your password
                   </Link>
+                  .
                 </>
               )}
             </div>
@@ -300,18 +263,6 @@ export default function LoginPage() {
           </Button>
         </form>
 
-        {/* Signup captcha (only when the server advertises one): solving it
-            up-front keeps the login-vs-signup unification seamless. */}
-        {config?.captcha && canSignup && (
-          <div className="mt-4">
-            <TurnstileWidget
-              siteKey={config.captcha.site_key}
-              onVerify={handleCaptchaVerify}
-              onExpire={handleCaptchaReset}
-              onError={handleCaptchaReset}
-            />
-          </div>
-        )}
 
         {hasOAuthProviders && (
           <p className="mt-5 border-t pt-5 text-[12.5px] leading-relaxed text-muted-foreground">
@@ -326,16 +277,23 @@ export default function LoginPage() {
   return (
     <AuthShell>
       <h1 className="text-[28px] font-semibold leading-none tracking-[-0.02em]">
-        {canSignup ? "Log in or sign up" : "Welcome back"}
+        Log in
       </h1>
       <p className="mt-[10px] text-sm text-muted-foreground">
-        {canSignup
-          ? "Continue to your console. We'll create an account if you don't have one yet."
-          : "Sign in to your Everruns account"}
+        Sign in to your Everruns console.
+        {canSignup && (
+          <>
+            {" "}
+            New to Everruns?{" "}
+            <Link href="/signup" className="font-medium text-primary hover:underline">
+              Create an account
+            </Link>
+          </>
+        )}
       </p>
 
       {oauthError && (
-        <div role="alert" className="mt-4 bg-destructive/10 text-destructive text-sm p-3">
+        <div role="alert" className="mt-4 border bg-muted/60 p-3 text-sm text-foreground">
           {oauthError}
         </div>
       )}

@@ -106,6 +106,12 @@ export function ZeroOrgOnboarding({
         brand={{
           eyebrow: `Step ${arc.stepIndex(0) + 1} / ${arc.steps.length}`,
           headline: "Your workspace for agents, harnesses, and durable runs.",
+          // "What you'll get" checklist — fills in on later steps.
+          features: [
+            { label: "Durable execution engine" },
+            { label: "Agent harnesses & capabilities" },
+            { label: "Session traces & evals" },
+          ],
         }}
       >
         <div className="max-w-[420px]">

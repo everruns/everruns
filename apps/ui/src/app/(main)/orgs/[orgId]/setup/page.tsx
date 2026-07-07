@@ -87,7 +87,7 @@ const SETUP_STEPS: SetupStep[] = [
 const STEP_DELAY_MS = 400;
 
 const PROVIDER_OPTIONS: { type: SetupProviderType; label: string; models: string }[] = [
-  { type: "openai", label: "OpenAI", models: "GPT & o-series" },
+  { type: "openai", label: "OpenAI", models: "GPT-5.5, o-series" },
   { type: "anthropic", label: "Anthropic", models: "Claude Opus, Sonnet" },
 ];
 
@@ -312,7 +312,7 @@ export default function OrgSetupPage() {
           stepLabel={arc.stepLabel(2)}
           brand={{
             eyebrow: "Setup complete",
-            headline: "You're ready. Spin up an agent that ever runs.",
+            headline: "Deploy your first agent and keep it running — through restarts, deploys, and outages.",
             features: [
               { label: "Durable execution engine", done: true },
               { label: "Agent harnesses & capabilities", done: true },
@@ -329,7 +329,8 @@ export default function OrgSetupPage() {
               {providerConnected ? (
                 <>
                   {org?.name ?? "Your workspace"} is provisioned and connected to a model provider.
-                  Spin up your first agent that ever runs.
+                  Deploy your first agent and keep it running &mdash; through restarts, deploys,
+                  and outages.
                 </>
               ) : (
                 <>

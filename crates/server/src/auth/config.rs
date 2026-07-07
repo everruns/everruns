@@ -193,6 +193,14 @@ pub struct AuthConfig {
     /// keys are configured; the site key is surfaced via `/v1/auth/config`
     /// so the UI can render the (invisible) widget.
     pub turnstile: Option<TurnstileAuthConfig>,
+    /// When true, email/password signup does NOT create a session: the
+    /// account is created unverified and the emailed confirmation link both
+    /// verifies the address and signs the user in. Registration responds
+    /// identically whether the address is new or already registered
+    /// (existing accounts get a "you already have an account" email instead
+    /// — never an on-screen signal). Requires a configured email sender;
+    /// self-host default is off, keeping instant-session signup.
+    pub signup_email_confirm: bool,
 }
 
 /// Cloudflare Turnstile keys for the auth surface.
@@ -219,6 +227,7 @@ impl Default for AuthConfig {
             disable_signup: false,
             session_max_age: Duration::from_secs(30 * 24 * 60 * 60), // 30 days
             turnstile: None,
+            signup_email_confirm: false,
         }
     }
 }
@@ -387,6 +396,10 @@ impl AuthConfig {
             .map(|s| s.to_lowercase() == "true" || s == "1")
             .unwrap_or(false);
 
+        let signup_email_confirm = std::env::var("AUTH_SIGNUP_EMAIL_CONFIRM")
+            .map(|s| s.to_lowercase() == "true" || s == "1")
+            .unwrap_or(false);
+
         let session_max_age = std::env::var("AUTH_SESSION_MAX_AGE")
             .ok()
             .and_then(|s| s.parse().ok())
@@ -421,6 +434,7 @@ impl AuthConfig {
             disable_signup,
             session_max_age,
             turnstile,
+            signup_email_confirm,
         };
 
         // Fail fast on conflicting auth-config combinations so operators see

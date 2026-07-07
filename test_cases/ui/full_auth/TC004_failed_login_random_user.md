@@ -2,14 +2,10 @@
 
 ## Description
 
-Verify that authentication fails with a generic message when the password is
-wrong, and that the unified "Log in or sign up" door never reveals whether an
-account exists for an email.
-
-Note: with signup enabled, entering an unknown email with a valid (8+ char)
-password intentionally **creates** the account (unified door — see TC001).
-A failed outcome for an unknown user therefore requires either a wrong
-password for an existing account, or signup disabled.
+Verify that authentication fails with a calm generic message when the
+password is wrong or the account is unknown, and that the login door never
+reveals whether an account exists for an email. Login never creates
+accounts — signup is the explicit `/signup` path (TC001).
 
 ## Preconditions
 
@@ -36,13 +32,20 @@ password for an existing account, or signup disabled.
 ## Expected Result
 
 - Authentication fails; no session is established
-- A generic error message is displayed (e.g. "Invalid email or password.") —
-  it must not reveal whether the account exists or which field was wrong
+- A calm, muted (not alarm-red) alert reads "Email or password doesn't
+  match. Try again or reset your password." — with "reset your password"
+  linking to `/forgot-password` prefilled with the email. It must not reveal
+  whether the account exists or which field was wrong
 - User remains on the password screen and can retry or go back
+
+## Variant: unknown email
+
+Repeat with `randomuser123@example.com` / any password: identical generic
+alert, no account created (login never signs up — see TC001 for the
+explicit signup path).
 
 ## Variant: signup disabled
 
-With `AUTH_DISABLE_SIGNUP=true`, repeat with an unknown email
-(`randomuser123@example.com` / any password): the heading reads "Welcome
-back", authentication fails with the same generic message, and no account is
-created.
+With `AUTH_DISABLE_SIGNUP=true`: the "Create an account" link disappears
+from `/login` and `/signup` shows "Signups are closed"; failed logins behave
+exactly as above.

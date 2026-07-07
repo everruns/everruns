@@ -1076,6 +1076,7 @@ mod tests {
                 password_auth_enabled: false,
                 oauth_providers: vec![],
                 signup_enabled: false,
+                signup_email_confirm: false,
                 captcha: None,
             }
         }
@@ -1205,6 +1206,7 @@ mod tests {
                 password_auth_enabled: false,
                 oauth_providers: vec![],
                 signup_enabled: false,
+                signup_email_confirm: false,
                 captcha: None,
             }
         }
@@ -1422,6 +1424,7 @@ mod tests {
                 password_auth_enabled: false,
                 oauth_providers: vec![],
                 signup_enabled: false,
+                signup_email_confirm: false,
                 captcha: None,
             }
         }

@@ -87,8 +87,11 @@ export default function ResetPasswordPage() {
       setError({ kind: "message", text: "Passwords do not match" });
       return;
     }
-    if (password.length < 8) {
-      setError({ kind: "message", text: "Password must be at least 8 characters" });
+    if (password.length < 12 || !/\d/.test(password)) {
+      setError({
+        kind: "message",
+        text: "Your new password needs at least 12 characters including a number.",
+      });
       return;
     }
 
@@ -97,7 +100,10 @@ export default function ResetPasswordPage() {
       setSuccess(true);
     } catch (err) {
       if (err instanceof ApiError && err.status === 422) {
-        setError({ kind: "message", text: "Password must be between 8 and 128 characters" });
+        setError({
+          kind: "message",
+          text: "Your new password needs 12\u2013128 characters including a number.",
+        });
       } else if (err instanceof ApiError && err.status === 400) {
         // Expired/invalid/used token — swap to the request-a-new-link state.
         setError({ kind: "expired" });
@@ -127,12 +133,12 @@ export default function ResetPasswordPage() {
           <Input
             id="password"
             type="password"
-            placeholder="At least 8 characters"
+            placeholder="At least 12 characters, one number"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
             autoComplete="new-password"
-            minLength={8}
+            minLength={12}
             maxLength={128}
           />
         </div>
@@ -146,7 +152,7 @@ export default function ResetPasswordPage() {
             onChange={(e) => setConfirmPassword(e.target.value)}
             required
             autoComplete="new-password"
-            minLength={8}
+            minLength={12}
             maxLength={128}
           />
         </div>

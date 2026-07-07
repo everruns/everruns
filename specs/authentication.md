@@ -172,10 +172,32 @@ Account linking by email is supported (same email = same account).
 
 ### Password Requirements
 
-- Minimum 8 characters, maximum 128 characters (the cap bounds Argon2
-  hashing work; login rejects oversized inputs with the generic credential
-  failure before any hashing)
+- Newly set passwords (signup, reset): minimum 12 characters including at
+  least one number, maximum 128 characters (the cap bounds Argon2 hashing
+  work; login rejects oversized inputs with the generic credential failure
+  before any hashing). Existing passwords are never re-validated — login is
+  unaffected by policy changes.
 - Hashed with Argon2id (default parameters)
+
+### Signup Email Confirmation (`AUTH_SIGNUP_EMAIL_CONFIRM`)
+
+Off by default (self-host keeps instant-session signup). When enabled,
+email/password signup is an explicit, enumeration-safe two-step flow:
+
+- `POST /v1/auth/register` never creates a session. A fresh address creates
+  an unverified account and emails a confirmation link; an already-registered
+  address sends a "you already have an account" email instead. Both cases
+  return the same `200 { "ok": true }` — the emailed body is the only place
+  the two outcomes diverge.
+- `POST /v1/auth/verify-email` consumes the single-use token, marks the email
+  verified, and (best-effort) mints a session — the confirmation link doubles
+  as sign-in. Session minting on verify applies in all modes; the token
+  proves control of the mailbox.
+- `/v1/auth/config` advertises `signup_email_confirm` so the UI renders the
+  "Check your email" landing (identical copy for new and existing addresses)
+  instead of expecting tokens.
+- Requires a configured email sender; enabling it without one makes email
+  signup a dead end by design (operators own that pairing).
 
 ### Password Reset
 
@@ -242,6 +264,7 @@ way rather than failing query extraction.
 | `AUTH_JWT_REFRESH_TOKEN_LIFETIME` | Refresh token lifetime in seconds | `2592000` (30 days) |
 | `AUTH_DISABLE_PASSWORD` | Disable password authentication | `false` |
 | `AUTH_DISABLE_SIGNUP` | Disable user registration | `false` |
+| `AUTH_SIGNUP_EMAIL_CONFIRM` | Email signup requires clicking the emailed confirmation link before a session exists (see above) | `false` |
 | `AUTH_GOOGLE_CLIENT_ID` | Google OAuth client ID | - |
 | `AUTH_GOOGLE_CLIENT_SECRET` | Google OAuth client secret | - |
 | `AUTH_GOOGLE_REDIRECT_URI` | Google OAuth redirect URI | `{AUTH_BASE_URL}/v1/auth/callback/google` |

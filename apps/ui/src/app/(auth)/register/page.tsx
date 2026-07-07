@@ -1,9 +1,7 @@
 "use client";
 
-// The unified /login door ("Log in or sign up") replaced the separate
-// registration screen — signup now happens through the same entry. The route
-// stays for old links and bookmarks and simply forwards, preserving
-// return_to.
+// Legacy alias: /register forwards to the explicit /signup path (old links
+// and bookmarks), preserving return_to.
 
 import { useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -16,7 +14,7 @@ export default function RegisterPage() {
 
   useEffect(() => {
     const returnTo = sanitizeReturnTo(searchParams.get("return_to"));
-    router.replace(returnTo ? `/login?return_to=${encodeURIComponent(returnTo)}` : "/login");
+    router.replace(returnTo ? `/signup?return_to=${encodeURIComponent(returnTo)}` : "/signup");
   }, [router, searchParams]);
 
   return (

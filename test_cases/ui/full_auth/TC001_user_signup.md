@@ -2,17 +2,19 @@
 
 ## Description
 
-Verify that a new user can successfully sign up through the unified
-"Log in or sign up" entry when AUTH_MODE is set to full and signup is enabled.
-There is no separate registration screen: authenticating with an unknown email
-creates the account with the same credentials.
+Verify that a new user can sign up through the explicit "Create an account"
+path when AUTH_MODE is full and signup is enabled. Login and signup are
+separate screens; the login door links to `/signup`. With
+`AUTH_SIGNUP_EMAIL_CONFIRM=true` (SaaS/dev), signup always ends at a
+"Check your email" landing and the emailed confirmation link both verifies
+the address and signs the user in.
 
 ## Preconditions
 
 - `AUTH_MODE=full`
 - `AUTH_JWT_SECRET=MJ5SiIlm9mTmiVJV8O2NLrxnuEZDFuO/iXkjVXGqWD0=`
-- `AUTH_DISABLE_SIGNUP=false`
-- `AUTH_DISABLE_PASSWORD=false`
+- `AUTH_DISABLE_SIGNUP=false`, `AUTH_DISABLE_PASSWORD=false`
+- Confirm mode: `AUTH_SIGNUP_EMAIL_CONFIRM=true` + email delivery configured
 - No account exists for the test email
 
 ## Test Data
@@ -24,20 +26,29 @@ creates the account with the same credentials.
 
 ## Steps
 
-1. Navigate to the login page (`/login`)
-2. Verify the heading reads "Log in or sign up"
-3. Enter email: `testuser@example.com`
-4. Click "Continue with email"
-5. Verify the password screen shows "Continuing as testuser@example.com" and
-   mentions the account will be created for a new email
-6. Enter password: `TestPassword123!`
-7. Click "Continue"
+1. Navigate to `/login`; verify the heading reads "Log in" and the subline
+   offers "New to Everruns? Create an account"
+2. Click "Create an account" → lands on `/signup` ("Create your account",
+   SSO buttons first, then email + password)
+3. Type a short password (e.g. `abc1`) — verify the inline requirements
+   ("At least 12 characters", "At least one number") stay unchecked and
+   submit is blocked with a calm inline message
+4. Enter password `TestPassword123!` — both requirement rows tick
+5. Click "Create account"
+6. Verify the "Check your email" landing: copy reads "If
+   testuser@example.com can be registered, we've sent a confirmation link"
+   (identical whether or not the address already exists), with
+   "Use a different email" and "Log in" links
+7. Open the emailed confirmation link (`/verify-email?token=…`)
+8. Verify the email-verified state and that a session now exists — Continue
+   lands in the onboarding arc (organisation step), not back at login
 
 ## Expected Result
 
-- Account is created successfully (display name derived from the email)
-- User is automatically logged in after signup
-- User is redirected to the dashboard/main application
-- User session is established with the new account
-- User profile shows the correct email
-- Navigating to `/register` redirects to `/login` (single unified entry)
+- Account is created unverified at step 5; NO session until step 7
+- Repeating steps 2–5 with an already-registered email shows the exact same
+  on-screen outcome; that address receives a "you already have an account"
+  email instead
+- Confirmation link is single-use; reusing it shows the generic failure state
+- Self-host mode (`AUTH_SIGNUP_EMAIL_CONFIRM` unset): step 5 instead creates
+  the account AND signs in immediately (no check-email interstitial)
