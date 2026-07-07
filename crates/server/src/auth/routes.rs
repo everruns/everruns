@@ -39,7 +39,7 @@ impl FromRef<BuiltinAuthBackend> for AuthState {
 }
 
 use crate::storage::{
-    models::{CreateRefreshTokenRow, CreateUserRow},
+    models::{CreateRefreshTokenRow, CreateUserRow, UserRow},
     password::{hash_password, verify_password},
 };
 
@@ -121,6 +121,29 @@ fn oauth_identity_rejection_reason(
         }
         super::oauth::OAuthProvider::GitHub => None,
     }
+}
+
+/// Returns the audit reason when an existing same-email account must not be
+/// auto-linked to an OAuth identity. Verified OAuth proves the callback caller
+/// owns the mailbox now, but an unverified password account may have been
+/// pre-created by an attacker who never controlled that mailbox.
+fn existing_oauth_link_rejection_reason(
+    existing: &UserRow,
+    provider: &str,
+) -> Option<&'static str> {
+    let already_linked_elsewhere = matches!(
+        existing.auth_provider.as_deref(),
+        Some(p) if p != "local" && p != provider
+    );
+    if already_linked_elsewhere {
+        return Some("email_bound_to_different_provider");
+    }
+
+    if !existing.email_verified {
+        return Some("existing_email_unverified");
+    }
+
+    None
 }
 
 /// Login request
@@ -1008,31 +1031,16 @@ pub async fn oauth_callback(
             })?;
 
         if let Some(existing) = existing_user {
-            // Link the OAuth identity to the existing account (same email =
-            // same account, per specs/authentication.md and TM-AUTH-012).
-            //
-            // Safe because TM-AUTH-017 (`oauth_identity_rejection_reason`, run
-            // above) already rejected `email_verified=false`, so the provider
-            // has proven the caller owns this email — the same trust basis as
-            // email-based password reset. Linking only sets the provider
-            // columns; `password_hash` is preserved, so a linked password
-            // account keeps password login and reset.
-            //
-            // Only link accounts that are password/unlinked (`auth_provider`
-            // is `local` or unset). An account already bound to a *different*
-            // OAuth provider cannot be represented by the single-provider
-            // schema; refuse it (generic failure) rather than silently
-            // dropping the other identity. A multi-identity table is the
-            // follow-up if a second login provider is ever enabled.
-            let already_linked_elsewhere = matches!(
-                existing.auth_provider.as_deref(),
-                Some(p) if p != "local" && p != provider_str
-            );
-            if already_linked_elsewhere {
+            // Only auto-link to an existing account whose email was already
+            // verified by this service. Otherwise an attacker could pre-create
+            // a local account for a victim email and retain its password/session
+            // after the real mailbox owner later completes OAuth.
+            if let Some(reason) = existing_oauth_link_rejection_reason(&existing, provider_str) {
                 tracing::warn!(
                     provider = %provider_str,
                     existing_provider = existing.auth_provider.as_deref().unwrap_or(""),
-                    "OAuth login blocked: email already bound to a different provider (no multi-link)"
+                    reason = reason,
+                    "OAuth login blocked: existing same-email account is not safe to auto-link"
                 );
                 return Err(AuthError::unauthorized(GENERIC_REGISTRATION_FAILED));
             }
@@ -1049,6 +1057,14 @@ pub async fn oauth_callback(
                     tracing::error!("Account vanished while linking OAuth identity");
                     AuthError::unauthorized("OAuth authentication failed")
                 })?;
+
+            if let Err(e) = state.db.delete_user_refresh_tokens(linked.id).await {
+                tracing::warn!(
+                    error = %e,
+                    user_id = %linked.id,
+                    "failed to revoke refresh tokens after OAuth identity link"
+                );
+            }
 
             audit::emit(
                 state.db.clone(),
@@ -1650,6 +1666,51 @@ mod tests {
             );
         }
         assert_eq!(GENERIC_REGISTRATION_FAILED, "Registration failed");
+    }
+
+    fn oauth_link_candidate(verified: bool, provider: Option<&str>) -> UserRow {
+        let now = Utc::now();
+        UserRow {
+            id: Uuid::now_v7(),
+            email: "victim@example.com".to_string(),
+            name: "Victim".to_string(),
+            avatar_url: None,
+            roles: serde_json::json!(["user"]),
+            password_hash: Some("argon2-hash".to_string()),
+            email_verified: verified,
+            auth_provider: provider.map(str::to_string),
+            auth_provider_id: None,
+            created_at: now,
+            updated_at: now,
+            external_id: None,
+        }
+    }
+
+    #[test]
+    fn oauth_link_rejects_unverified_existing_email_account() {
+        let user = oauth_link_candidate(false, Some("local"));
+
+        assert_eq!(
+            existing_oauth_link_rejection_reason(&user, "google"),
+            Some("existing_email_unverified")
+        );
+    }
+
+    #[test]
+    fn oauth_link_allows_verified_local_account_only() {
+        let user = oauth_link_candidate(true, Some("local"));
+
+        assert_eq!(existing_oauth_link_rejection_reason(&user, "google"), None);
+    }
+
+    #[test]
+    fn oauth_link_rejects_different_existing_provider() {
+        let user = oauth_link_candidate(true, Some("github"));
+
+        assert_eq!(
+            existing_oauth_link_rejection_reason(&user, "google"),
+            Some("email_bound_to_different_provider")
+        );
     }
 
     #[test]
