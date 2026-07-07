@@ -982,14 +982,14 @@ mod engine {
         let table = lua.create_table()?;
         table.set(
             "encode",
-            lua.create_function(|lua, s: mlua::String| {
+            lua.create_function(|lua, s: mlua::LuaString| {
                 let out = base64::engine::general_purpose::STANDARD.encode(s.as_bytes());
                 lua.create_string(out)
             })?,
         )?;
         table.set(
             "decode",
-            lua.create_function(|lua, s: mlua::String| {
+            lua.create_function(|lua, s: mlua::LuaString| {
                 let bytes = base64::engine::general_purpose::STANDARD
                     .decode(s.as_bytes())
                     .map_err(mlua::Error::external)?;
