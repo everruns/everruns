@@ -3586,6 +3586,23 @@ impl StorageBackend {
         dispatch!(self, create_app_channel, app_id, input)
     }
 
+    pub async fn create_app_channel_enforcing_schedule_cap(
+        &self,
+        org_id: i64,
+        app_id: Uuid,
+        input: CreateAppChannelRow,
+        max_enabled_schedule_channels: i64,
+    ) -> Result<AppChannelRow> {
+        dispatch!(
+            self,
+            create_app_channel_enforcing_schedule_cap,
+            org_id,
+            app_id,
+            input,
+            max_enabled_schedule_channels
+        )
+    }
+
     pub async fn list_app_channels(&self, app_id: Uuid) -> Result<Vec<AppChannelRow>> {
         dispatch!(self, list_app_channels, app_id)
     }
@@ -3607,6 +3624,23 @@ impl StorageBackend {
         input: UpdateAppChannel,
     ) -> Result<Option<AppChannelRow>> {
         dispatch!(self, update_app_channel, id, input)
+    }
+
+    pub async fn update_app_channel_enforcing_schedule_cap(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateAppChannel,
+        max_enabled_schedule_channels: i64,
+    ) -> Result<Option<AppChannelRow>> {
+        dispatch!(
+            self,
+            update_app_channel_enforcing_schedule_cap,
+            org_id,
+            id,
+            input,
+            max_enabled_schedule_channels
+        )
     }
 
     pub async fn delete_app_channel(&self, id: Uuid) -> Result<bool> {

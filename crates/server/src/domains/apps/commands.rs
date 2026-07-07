@@ -225,17 +225,30 @@ fn normalize_cron_expression(cron_expression: &str) -> Result<String, CommandErr
     Ok(normalized)
 }
 
-/// Returns the minimum interval in seconds between the next few consecutive
-/// triggers of `schedule`. Returns None when fewer than 2 upcoming times exist.
-fn cron_min_interval_seconds(schedule: &cron::Schedule) -> Option<i64> {
-    let upcoming: Vec<_> = schedule.upcoming(Utc).take(3).collect();
-    if upcoming.len() < 2 {
-        return None;
+/// Returns the minimum interval in seconds between consecutive triggers over a
+/// full leap-year-sized horizon. Cron expressions are periodic over this window
+/// for supported fields, so this catches non-uniform bursts that a small sample
+/// from the current wall clock could miss. Returns None when fewer than 2
+/// upcoming times exist in the horizon.
+fn cron_min_interval_seconds(schedule: &cron::Schedule, reject_below_seconds: i64) -> Option<i64> {
+    let start = Utc::now();
+    let end = start + Duration::days(366);
+    let mut previous: Option<DateTime<Utc>> = None;
+    let mut min_interval: Option<i64> = None;
+
+    for next in schedule.after(&start).take_while(|next| *next <= end) {
+        if let Some(previous) = previous {
+            let interval = (next - previous).num_seconds();
+            min_interval =
+                Some(min_interval.map_or(interval, |current: i64| current.min(interval)));
+            if interval < reject_below_seconds {
+                break;
+            }
+        }
+        previous = Some(next);
     }
-    upcoming
-        .windows(2)
-        .map(|w| (w[1] - w[0]).num_seconds())
-        .min()
+
+    min_interval
 }
 
 /// Gate feature-flagged channel types. Public Chat is only available to
@@ -337,7 +350,7 @@ fn normalize_and_validate_channel_config(
             // Enforce minimum cron interval.
             let schedule = cron::Schedule::from_str(&normalized).expect("already validated");
             let min_limit = schedule_channel_min_interval_seconds();
-            if let Some(interval) = cron_min_interval_seconds(&schedule)
+            if let Some(interval) = cron_min_interval_seconds(&schedule, min_limit)
                 && interval < min_limit
             {
                 return Err(CommandError::bad_request(format!(
@@ -3096,21 +3109,6 @@ impl Command for AddChannel {
 
         if self.req.channel_type == ChannelType::Schedule {
             let _ = durable_store(ctx)?;
-            let enabled = self.req.enabled.unwrap_or(true);
-            if enabled {
-                // Soft cap — TOCTOU window acceptable for a noisy-neighbor limit.
-                let count = ctx
-                    .db
-                    .count_enabled_schedule_channels_for_org(ctx.org_id())
-                    .await
-                    .map_err(classify_anyhow)?;
-                let max = schedule_channel_max_per_org();
-                if count >= max {
-                    return Err(CommandError::bad_request(format!(
-                        "Organization may have at most {max} enabled schedule channel(s); currently has {count}"
-                    )));
-                }
-            }
         }
 
         let channel_config = normalize_and_validate_channel_config(
@@ -3131,11 +3129,22 @@ impl Command for AddChannel {
             enabled: self.req.enabled.unwrap_or(true),
         };
 
-        let row = ctx
-            .db
-            .create_app_channel(app.id, input)
-            .await
-            .map_err(classify_anyhow)?;
+        let row = if self.req.channel_type == ChannelType::Schedule && input.enabled {
+            ctx.db
+                .create_app_channel_enforcing_schedule_cap(
+                    ctx.org_id(),
+                    app.id,
+                    input,
+                    schedule_channel_max_per_org(),
+                )
+                .await
+                .map_err(classify_anyhow)?
+        } else {
+            ctx.db
+                .create_app_channel(app.id, input)
+                .await
+                .map_err(classify_anyhow)?
+        };
 
         let app = q::row_to_app(&ctx.db, encryption, app, ctx.org_id()).await;
         sync_schedule_binding_for_channel(ctx, &app, &row).await?;
@@ -3874,29 +3883,15 @@ impl Command for UpdateChannelCmd {
             &mut final_channel_config,
             &existing_decrypted,
         );
-        if final_channel_type == ChannelType::Schedule {
+        let enforce_schedule_cap = if final_channel_type == ChannelType::Schedule {
             let _ = durable_store(ctx)?;
-            // Check cap whenever this PATCH would result in a new enabled schedule channel
-            // that wasn't already one — covers both disabled→enabled and
-            // non-schedule-type→schedule-type while remaining enabled.
-            // Soft cap — TOCTOU window acceptable for a noisy-neighbor limit.
             let final_enabled = self.req.enabled.unwrap_or(channel_row.enabled);
             let was_enabled_schedule =
                 current_channel_type == ChannelType::Schedule && channel_row.enabled;
-            if final_enabled && !was_enabled_schedule {
-                let count = ctx
-                    .db
-                    .count_enabled_schedule_channels_for_org(ctx.org_id())
-                    .await
-                    .map_err(classify_anyhow)?;
-                let max = schedule_channel_max_per_org();
-                if count >= max {
-                    return Err(CommandError::bad_request(format!(
-                        "Organization may have at most {max} enabled schedule channel(s); currently has {count}"
-                    )));
-                }
-            }
-        }
+            final_enabled && !was_enabled_schedule
+        } else {
+            false
+        };
         ensure_channel_type_enabled(ctx, &final_channel_type)?;
         let normalized_channel_config =
             normalize_and_validate_channel_config(final_channel_type, final_channel_config)?;
@@ -3921,12 +3916,23 @@ impl Command for UpdateChannelCmd {
             enabled: self.req.enabled,
         };
 
-        let row = ctx
-            .db
-            .update_app_channel(channel_row.id, input)
-            .await
-            .map_err(classify_anyhow)?
-            .ok_or_else(|| CommandError::not_found("Channel"))?;
+        let row = if enforce_schedule_cap {
+            ctx.db
+                .update_app_channel_enforcing_schedule_cap(
+                    ctx.org_id(),
+                    channel_row.id,
+                    input,
+                    schedule_channel_max_per_org(),
+                )
+                .await
+                .map_err(classify_anyhow)?
+        } else {
+            ctx.db
+                .update_app_channel(channel_row.id, input)
+                .await
+                .map_err(classify_anyhow)?
+        }
+        .ok_or_else(|| CommandError::not_found("Channel"))?;
 
         let app = q::row_to_app(&ctx.db, encryption, app, ctx.org_id()).await;
         sync_schedule_binding_for_channel(ctx, &app, &row).await?;
@@ -4111,7 +4117,7 @@ mod tests {
     fn cron_min_interval_every_5_min() {
         // "0 */5 * * * *" fires every 5 minutes = 300 s.
         let schedule = cron::Schedule::from_str("0 */5 * * * *").expect("valid cron");
-        let interval = cron_min_interval_seconds(&schedule).expect("interval exists");
+        let interval = cron_min_interval_seconds(&schedule, 1).expect("interval exists");
         assert_eq!(interval, 300);
     }
 
@@ -4119,7 +4125,16 @@ mod tests {
     fn cron_min_interval_every_minute() {
         // "0 * * * * *" fires every 60 s.
         let schedule = cron::Schedule::from_str("0 * * * * *").expect("valid cron");
-        let interval = cron_min_interval_seconds(&schedule).expect("interval exists");
+        let interval = cron_min_interval_seconds(&schedule, 1).expect("interval exists");
+        assert_eq!(interval, 60);
+    }
+
+    #[test]
+    fn cron_min_interval_detects_later_non_uniform_burst() {
+        let schedule =
+            cron::Schedule::from_str("0 0,6,12,18,24,30,36,42,48,54,55,56,57,58,59 * * * * *")
+                .expect("valid cron");
+        let interval = cron_min_interval_seconds(&schedule, 1).expect("interval exists");
         assert_eq!(interval, 60);
     }
 
