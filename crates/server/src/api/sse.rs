@@ -107,7 +107,7 @@ impl SseStreamConfig {
     /// exactly max_connection_secs, creating a reconnection storm. Adding ±20% jitter
     /// spreads disconnects over a 2-minute window (for 5-min base = 4:00–6:00).
     pub fn jittered_max_connection_duration(&self) -> Duration {
-        use rand::Rng;
+        use rand::RngExt;
         let base = self.max_connection_secs as f64;
         let jitter_range = base * 0.2;
         let jitter = rand::rng().random_range(-jitter_range..jitter_range);

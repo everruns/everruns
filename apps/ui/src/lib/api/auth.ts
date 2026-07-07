@@ -10,6 +10,11 @@ import type {
   PersonalAccessTokenResponse,
   CreatePersonalAccessTokenRequest,
   ListResponse,
+  ForgotPasswordRequest,
+  ResetPasswordRequest,
+  VerifyEmailRequest,
+  ResendVerificationRequest,
+  OkResponse,
 } from "./types";
 
 /**
@@ -34,6 +39,41 @@ export async function login(request: LoginRequest): Promise<TokenResponse> {
  */
 export async function register(request: RegisterRequest): Promise<TokenResponse> {
   const { data } = await api.post<TokenResponse>("/v1/auth/register", request);
+  return data;
+}
+
+/**
+ * Begin a password reset. Enumeration-safe: always resolves 200 { ok: true }
+ * regardless of whether an account exists for the email.
+ */
+export async function forgotPassword(request: ForgotPasswordRequest): Promise<OkResponse> {
+  const { data } = await api.post<OkResponse>("/v1/auth/forgot-password", request);
+  return data;
+}
+
+/**
+ * Complete a password reset using an emailed token.
+ * Throws ApiError: 422 if password < 8 chars, 400 if token invalid/expired/used.
+ */
+export async function resetPassword(request: ResetPasswordRequest): Promise<OkResponse> {
+  const { data } = await api.post<OkResponse>("/v1/auth/reset-password", request);
+  return data;
+}
+
+/**
+ * Verify an email address using an emailed token.
+ * Throws ApiError: 400 if token invalid/expired/used.
+ */
+export async function verifyEmail(request: VerifyEmailRequest): Promise<OkResponse> {
+  const { data } = await api.post<OkResponse>("/v1/auth/verify-email", request);
+  return data;
+}
+
+/**
+ * Re-send a verification email. Enumeration-safe: always resolves 200 { ok: true }.
+ */
+export async function resendVerification(request: ResendVerificationRequest): Promise<OkResponse> {
+  const { data } = await api.post<OkResponse>("/v1/auth/resend-verification", request);
   return data;
 }
 

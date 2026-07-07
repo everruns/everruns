@@ -1004,7 +1004,7 @@ async fn import_from_example(
     // If an agent with the same name exists, keep trying suffixed variants
     // to avoid one-shot collisions and reduce failures under concurrency.
     let unique_name = {
-        use rand::Rng;
+        use rand::RngExt;
 
         let base = seed.name;
         let mut selected = None;

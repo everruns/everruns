@@ -1,4 +1,17 @@
 packages: []
+overrides:
+  '@babel/core': 7.29.6
+  dompurify: 3.4.11
+  js-yaml: 4.2.0
+  postcss: 8.5.14
+  prismjs: 1.30.0
+  uuid: 11.1.1
+  ws: ^8.21.0
+onlyBuiltDependencies:
+  - '@tailwindcss/oxide'
+  - esbuild
+  - sharp
+  - unrs-resolver
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
 # Security patches adopted before the maturity window (Dependabot GHSA fixes):
@@ -8,3 +21,6 @@ minimumReleaseAgeStrict: true
 # version; it only lets the fix land before the 7-day release-age window.
 minimumReleaseAgeExclude:
   - dompurify
+allowBuilds:
+  sharp: true
+  unrs-resolver: true

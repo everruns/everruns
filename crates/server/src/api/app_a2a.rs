@@ -230,8 +230,7 @@ fn legacy_task_json(mut task: Value) -> Value {
     responses(
         (status = 200, description = "JSON-RPC 2.0 response. For message/send and tasks/* the body is a single JSON envelope; for message/stream the body is text/event-stream of JSON-RPC envelopes. tasks/get and tasks/cancel surface -32001 Task not found for unknown task ids."),
         (status = 401, description = "Missing or invalid API key", body = ErrorResponse),
-        (status = 403, description = "App is not published or channel disabled", body = ErrorResponse),
-        (status = 404, description = "App or channel not found", body = ErrorResponse),
+        (status = 404, description = "App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration)", body = ErrorResponse),
         (status = 429, description = "Per-channel A2A rate limit exceeded, or SSE connection limit reached for the org/session", body = ErrorResponse),
     ),
     tag = "apps"
@@ -358,8 +357,14 @@ async fn authenticate_request(
         .map_err(internal_error)?
         .ok_or_else(not_found)?;
 
+    // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
+    // "app does not exist" apart from "app exists but is not published / the
+    // channel is disabled / misconfigured". Every such case collapses to a
+    // single generic 404 (matching the FCP channel in `api/fcp.rs`); the real
+    // reason is logged server-side only.
     if app.status != everruns_core::AppStatus::Published {
-        return Err(forbidden("App is not published"));
+        tracing::debug!(app_id = %app.public_id, status = ?app.status, "A2A request rejected: app not published");
+        return Err(not_found());
     }
 
     let channel_id_typed = channel_id
@@ -373,12 +378,14 @@ async fn authenticate_request(
     // disabled app channels, and every request must present the per-channel
     // API key before session creation.
     if !channel.enabled {
-        return Err(forbidden("A2A channel is disabled"));
+        tracing::debug!(app_id = %app.public_id, "A2A request rejected: channel disabled");
+        return Err(not_found());
     }
 
-    let config = channel
-        .a2a_config()
-        .ok_or_else(|| bad_request("Invalid A2A channel configuration"))?;
+    let Some(config) = channel.a2a_config() else {
+        tracing::error!(app_id = %app.public_id, "A2A channel config did not deserialize");
+        return Err(not_found());
+    };
 
     if let Some(auth) = config.auth.as_ref() {
         if auth.mode == everruns_core::AppEndpointAuthMode::ApiKey {

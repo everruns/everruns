@@ -120,14 +120,7 @@ impl Capability for ClaudeToolSearchCapability {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = ClaudeToolSearchCapability::new();
-        assert_eq!(cap.id(), CLAUDE_TOOL_SEARCH_CAPABILITY_ID);
-        assert_eq!(cap.name(), "Claude Tool Search");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert!(cap.tools().is_empty());
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_default_threshold() {
@@ -147,6 +140,7 @@ mod tests {
     fn test_native_support_lookup() {
         // Claude 4-family models support hosted tool_search; 3.x do not.
         assert!(model_supports_native_tool_search("claude-opus-4-8"));
+        assert!(model_supports_native_tool_search("claude-sonnet-5"));
         assert!(model_supports_native_tool_search("claude-sonnet-4-6"));
         assert!(model_supports_native_tool_search("claude-haiku-4-5"));
         assert!(model_supports_native_tool_search("claude-fable-5"));

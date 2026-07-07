@@ -1850,18 +1850,8 @@
               }
             }
           },
-          "403": {
-            "description": "App is not published or channel disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
           "404": {
-            "description": "App or channel not found",
+            "description": "App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2826,18 +2816,8 @@
               }
             }
           },
-          "403": {
-            "description": "App is not published or channel disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
           "404": {
-            "description": "App or channel not found",
+            "description": "App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration)",
             "content": {
               "application/json": {
                 "schema": {
@@ -8365,6 +8345,67 @@
         ]
       }
     },
+    "/v1/orgs/{org}/onboarding/complete": {
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "POST /v1/orgs/:org/onboarding/complete - Mark the org's onboarding wizard as\nfinished (or skipped). Idempotent: the timestamp is set only when NULL.",
+        "description": "Authz mirrors the org-scoped mutations above (admin+), but resolves\nmembership/role from the DB rather than the auth token — a brand-new org may\nnot yet appear in the caller's token, and onboarding completion is exactly\nthat just-created case.",
+        "operationId": "complete_org_onboarding",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Onboarding marked complete",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin of the organization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
     "/v1/payments/accounts": {
       "get": {
         "tags": [
@@ -8862,6 +8903,653 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugin_marketplaces": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /v1/plugin_marketplaces",
+        "operationId": "list_plugin_marketplaces",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search by name (case-insensitive substring match).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of plugin marketplaces"
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "POST /v1/plugin_marketplaces",
+        "operationId": "create_plugin_marketplace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePluginMarketplaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Marketplace created"
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugin_marketplaces/{id}": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /v1/plugin_marketplaces/{id}",
+        "operationId": "get_plugin_marketplace",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Marketplace ID (plgmkt_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Marketplace found"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "DELETE /v1/plugin_marketplaces/{id}",
+        "operationId": "delete_plugin_marketplace",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Marketplace ID (plgmkt_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Marketplace deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "PATCH /v1/plugin_marketplaces/{id}",
+        "operationId": "update_plugin_marketplace",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Marketplace ID (plgmkt_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePluginMarketplaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Marketplace updated"
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugin_marketplaces/{id}/plugins": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /v1/plugin_marketplaces/{id}/plugins",
+        "operationId": "get_marketplace_catalog",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Marketplace ID (plgmkt_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Catalog entries"
+          },
+          "400": {
+            "description": "Marketplace not yet synced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugin_marketplaces/{id}/sync": {
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "POST /v1/plugin_marketplaces/{id}/sync",
+        "operationId": "sync_plugin_marketplace",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Marketplace ID (plgmkt_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Marketplace synced"
+          },
+          "400": {
+            "description": "Sync not supported or source error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugins": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /v1/plugins",
+        "operationId": "list_plugins",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search by name (case-insensitive substring match).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of installed plugins"
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "POST /v1/plugins",
+        "operationId": "install_plugin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallPluginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Plugin installed"
+          },
+          "400": {
+            "description": "Compilation or source error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Plugin already installed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugins/{id}": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /v1/plugins/{id}",
+        "operationId": "get_plugin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Plugin install ID (plugin_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Installed plugin"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "DELETE /v1/plugins/{id}",
+        "operationId": "uninstall_plugin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Plugin install ID (plugin_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Plugin uninstalled"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "PATCH /v1/plugins/{id}",
+        "operationId": "patch_installed_plugin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Plugin install ID (plugin_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInstalledPluginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Plugin updated"
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugins/{id}/update": {
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "POST /v1/plugins/{id}/update",
+        "operationId": "update_plugin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Plugin install ID (plugin_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Plugin updated"
+          },
+          "400": {
+            "description": "No marketplace or source error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
             "content": {
               "application/json": {
                 "schema": {
@@ -15096,7 +15784,7 @@
           },
           "channel_type": {
             "$ref": "#/components/schemas/ChannelType",
-            "description": "Channel kind (slack, ag_ui, webhook, a2a, fcp)."
+            "description": "Channel kind (slack, ag_ui, webhook, a2a, fcp, public_chat)."
           },
           "completed_at": {
             "type": [
@@ -15208,6 +15896,10 @@
                 "null"
               ],
               "description": "Provider id used to resolve a user-scoped bearer token."
+            },
+            "protocol_mode": {
+              "$ref": "#/components/schemas/McpProtocolMode",
+              "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
             },
             "tool_discovery": {
               "type": "boolean",
@@ -15692,7 +16384,8 @@
           "webhook",
           "a2a",
           "fcp",
-          "api_endpoint"
+          "api_endpoint",
+          "public_chat"
         ],
         "example": "webhook"
       },
@@ -16945,6 +17638,17 @@
             "description": "The name of the MCP server. Must be unique.",
             "example": "atlassian-mcp-server"
           },
+          "protocol_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/McpProtocolMode",
+                "description": "Protocol-era policy. Defaults to `auto` (negotiates legacy/current/RC)."
+              }
+            ]
+          },
           "transport_type": {
             "$ref": "#/components/schemas/McpServerTransportType",
             "description": "Transport type. Currently only \"http\" is supported.\nExample shape is defined on `McpServerTransportType`."
@@ -17334,6 +18038,32 @@
             "type": "string",
             "description": "Class of subject this policy binds to. One of: `user`, `agent_identity`, `agent`, `app`, `session`, `org`.\nThe prefix on `subject_id` must match: `user`→`user_…`, `agent_identity`→`identity_…`,\n`agent`→`agent_…`, `app`→`app_…`, `session`→`session_…`, `org`→`org_…`.",
             "example": "agent_identity"
+          }
+        }
+      },
+      "CreatePluginMarketplaceRequest": {
+        "type": "object",
+        "description": "Request body for creating a plugin marketplace.",
+        "required": [
+          "name",
+          "source_type",
+          "source"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique name within the org (kebab-case, e.g. `my-org-plugins`).",
+            "example": "everruns-plugins"
+          },
+          "source": {
+            "type": "string",
+            "description": "Source value. For `github`: `\"owner/repo\"`. For `url`: full HTTPS URL.\nFor `local_path` (dev only): absolute filesystem path.",
+            "example": "everruns/plugins"
+          },
+          "source_type": {
+            "type": "string",
+            "description": "Source type: `github`, `url`, or `local_path` (dev/test only).",
+            "example": "github"
           }
         }
       },
@@ -20944,6 +21674,26 @@
           }
         }
       },
+      "InstallPluginRequest": {
+        "type": "object",
+        "description": "Request body for installing a plugin from a marketplace catalog entry.",
+        "required": [
+          "marketplace_id",
+          "plugin_name"
+        ],
+        "properties": {
+          "marketplace_id": {
+            "type": "string",
+            "description": "Public ID of the marketplace to install from.",
+            "example": "plgmkt_01933b5a000070008000000000000001"
+          },
+          "plugin_name": {
+            "type": "string",
+            "description": "Name of the plugin entry in the marketplace catalog.",
+            "example": "microsoft-docs"
+          }
+        }
+      },
       "InvocationSessionMode": {
         "type": "string",
         "description": "How app-triggered invocations route into sessions.",
@@ -22904,6 +23654,10 @@
                   ],
                   "description": "Stable provider id used for user-scoped OAuth connections."
                 },
+                "protocol_mode": {
+                  "$ref": "#/components/schemas/McpProtocolMode",
+                  "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
+                },
                 "status": {
                   "$ref": "#/components/schemas/McpServerStatus",
                   "description": "Current lifecycle status of the MCP server."
@@ -23248,6 +24002,14 @@
                 "name": {
                   "type": "string",
                   "description": "Display name"
+                },
+                "onboarding_completed_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
                 },
                 "updated_at": {
                   "type": "string",
@@ -23998,6 +24760,10 @@
                         "null"
                       ],
                       "description": "Stable provider id used for user-scoped OAuth connections."
+                    },
+                    "protocol_mode": {
+                      "$ref": "#/components/schemas/McpProtocolMode",
+                      "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
                     },
                     "status": {
                       "$ref": "#/components/schemas/McpServerStatus",
@@ -25480,6 +26246,17 @@
           }
         }
       },
+      "McpProtocolMode": {
+        "type": "string",
+        "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\nRC path first and transparently falls back to the stateful handshake when a\nserver demands it, so a single configuration speaks to legacy, current, and\nRC servers without operator action. The pinned variants skip negotiation\nwhen an operator knows a server's era (or to work around a server that\nmis-signals it).",
+        "enum": [
+          "auto",
+          "legacy",
+          "stable",
+          "rc"
+        ],
+        "example": "auto"
+      },
       "McpServer": {
         "type": "object",
         "description": "MCP Server configuration.\nRepresents a remote MCP server that can provide tools and resources.",
@@ -25557,6 +26334,10 @@
               "null"
             ],
             "description": "Stable provider id used for user-scoped OAuth connections."
+          },
+          "protocol_mode": {
+            "$ref": "#/components/schemas/McpProtocolMode",
+            "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
           },
           "status": {
             "$ref": "#/components/schemas/McpServerStatus",
@@ -26827,6 +27608,14 @@
           "name": {
             "type": "string",
             "description": "Display name"
+          },
+          "onboarding_completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
           },
           "updated_at": {
             "type": "string",
@@ -33503,6 +34292,19 @@
           }
         }
       },
+      "UpdateInstalledPluginRequest": {
+        "type": "object",
+        "description": "Request body for updating an installed plugin (status only; use POST .../update for recompile).",
+        "properties": {
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New lifecycle status: `active` or `disabled`."
+          }
+        }
+      },
       "UpdateKnowledgeBaseRequest": {
         "type": "object",
         "description": "Request body for the `update_knowledge_base` operation.",
@@ -33668,6 +34470,17 @@
             ],
             "description": "The name of the MCP server.",
             "example": "updated-mcp-server"
+          },
+          "protocol_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/McpProtocolMode",
+                "description": "Protocol-era policy (`auto`, `legacy`, `stable`, `rc`)."
+              }
+            ]
           },
           "status": {
             "oneOf": [
@@ -34017,6 +34830,24 @@
             ],
             "description": "New lifecycle status. Valid values: `active`, `disabled`.",
             "example": "disabled"
+          }
+        }
+      },
+      "UpdatePluginMarketplaceRequest": {
+        "type": "object",
+        "description": "Request body for updating a plugin marketplace.",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -35873,6 +36704,10 @@
                   "null"
                 ],
                 "description": "Stable provider id used for user-scoped OAuth connections."
+              },
+              "protocol_mode": {
+                "$ref": "#/components/schemas/McpProtocolMode",
+                "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
               },
               "status": {
                 "$ref": "#/components/schemas/McpServerStatus",

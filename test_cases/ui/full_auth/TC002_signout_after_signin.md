@@ -23,11 +23,12 @@ Verify that a user can successfully sign out after signing in when AUTH_MODE is 
 
 1. Navigate to the login page
 2. Enter email: `testuser@example.com`
-3. Enter password: `TestPassword123!`
-4. Click the login button
-5. Verify user is logged in and on the dashboard
-6. Click on the user avatar/menu in the sidebar
-7. Click the "Sign out" button
+3. Click "Continue with email"
+4. Enter password: `TestPassword123!`
+5. Click "Continue"
+6. Verify user is logged in and on the dashboard
+7. Click on the user avatar/menu in the sidebar
+8. Click the "Sign out" button
 
 ## Expected Result
 

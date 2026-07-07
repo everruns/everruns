@@ -63,24 +63,8 @@ impl Capability for OpenUiCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capabilities::CapabilityRegistry;
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = OpenUiCapability;
-        assert_eq!(cap.id(), OPENUI_CAPABILITY_ID);
-        assert_eq!(cap.name(), "OpenUI");
-        assert_eq!(cap.icon(), Some("layout"));
-        assert_eq!(cap.category(), Some("UI"));
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-    }
-
-    #[test]
-    fn test_capability_has_no_tools() {
-        let cap = OpenUiCapability;
-        let tools = cap.tools();
-        assert!(tools.is_empty());
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_capability_has_system_prompt() {
@@ -99,14 +83,6 @@ mod tests {
         let cap = OpenUiCapability;
         let features = cap.features();
         assert_eq!(features, vec!["openui"]);
-    }
-
-    #[test]
-    fn test_capability_in_registry() {
-        let registry = CapabilityRegistry::with_builtins();
-        let cap = registry.get(OPENUI_CAPABILITY_ID).unwrap();
-        assert_eq!(cap.id(), OPENUI_CAPABILITY_ID);
-        assert!(cap.system_prompt_addition().is_some());
     }
 
     #[test]

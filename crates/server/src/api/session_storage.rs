@@ -207,31 +207,7 @@ pub async fn batch_set_secrets(
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_key_value_info_serialization() {
-        let info = KeyValueInfo {
-            key: "test_key".to_string(),
-            value: "test_value".to_string(),
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            updated_at: "2024-01-01T00:00:00Z".to_string(),
-        };
-        let json = serde_json::to_string(&info).unwrap();
-        assert!(json.contains("test_key"));
-        assert!(json.contains("test_value"));
-    }
-
-    #[test]
-    fn test_secret_info_serialization() {
-        let info = SecretInfo {
-            name: "api_key".to_string(),
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            updated_at: "2024-01-01T00:00:00Z".to_string(),
-        };
-        let json = serde_json::to_string(&info).unwrap();
-        assert!(json.contains("api_key"));
-        // Ensure no value field exists
-        assert!(!json.contains("value"));
-    }
+    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
     fn test_batch_set_secrets_request_deserialization() {
@@ -240,19 +216,5 @@ mod tests {
         assert_eq!(req.secrets.len(), 2);
         assert_eq!(req.secrets["KEY1"], "value1");
         assert_eq!(req.secrets["KEY2"], "value2");
-    }
-
-    #[test]
-    fn test_batch_set_secrets_response_serialization() {
-        let resp = BatchSetSecretsResponse { count: 3 };
-        let json = serde_json::to_string(&resp).unwrap();
-        assert!(json.contains("\"count\":3"));
-    }
-
-    #[test]
-    fn test_batch_set_secrets_request_empty() {
-        let json = r#"{"secrets":{}}"#;
-        let req: BatchSetSecretsRequest = serde_json::from_str(json).unwrap();
-        assert!(req.secrets.is_empty());
     }
 }

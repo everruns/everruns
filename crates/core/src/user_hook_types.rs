@@ -199,6 +199,8 @@ pub enum ExecutorSpec {
 }
 
 pub const MAX_HOOK_ENV_VARS: usize = 16;
+pub const MAX_HOOK_COMMAND_BYTES: usize = 16 * 1024;
+pub const MAX_HOOK_MATCHER_STRING_BYTES: usize = 2 * 1024;
 
 // ============================================================================
 // OnError
@@ -307,6 +309,10 @@ pub enum HookSpecError {
     MatcherOnNonToolEvent(&'static str),
     #[error("hook has more than {MAX_HOOK_ENV_VARS} env vars")]
     TooManyEnvVars,
+    #[error("hook bash command is longer than {MAX_HOOK_COMMAND_BYTES} bytes")]
+    CommandTooLong,
+    #[error("hook matcher field `{0}` is longer than {MAX_HOOK_MATCHER_STRING_BYTES} bytes")]
+    MatcherFieldTooLong(&'static str),
     #[error("hook has both match_regex and deny_regex set; choose one")]
     AmbiguousRegex,
     #[error("hook regex `{0}` failed to compile: {1}")]
@@ -350,11 +356,20 @@ impl UserHookSpec {
                 if command.trim().is_empty() {
                     return Err(HookSpecError::EmptyCommand);
                 }
+                if command.len() > MAX_HOOK_COMMAND_BYTES {
+                    return Err(HookSpecError::CommandTooLong);
+                }
                 if env.len() > MAX_HOOK_ENV_VARS {
                     return Err(HookSpecError::TooManyEnvVars);
                 }
             }
         }
+
+        validate_optional_matcher_string("tool_name", &self.matcher.tool_name)?;
+        validate_optional_matcher_string("tool_name_glob", &self.matcher.tool_name_glob)?;
+        validate_optional_matcher_string("args_jsonpath", &self.matcher.args_jsonpath)?;
+        validate_optional_matcher_string("match_regex", &self.matcher.match_regex)?;
+        validate_optional_matcher_string("deny_regex", &self.matcher.deny_regex)?;
 
         if self.matcher.match_regex.is_some() && self.matcher.deny_regex.is_some() {
             return Err(HookSpecError::AmbiguousRegex);
@@ -375,6 +390,19 @@ impl UserHookSpec {
     fn matcher_is_empty(&self) -> bool {
         self.matcher.is_empty()
     }
+}
+
+fn validate_optional_matcher_string(
+    field: &'static str,
+    value: &Option<String>,
+) -> Result<(), HookSpecError> {
+    if value
+        .as_ref()
+        .is_some_and(|value| value.len() > MAX_HOOK_MATCHER_STRING_BYTES)
+    {
+        return Err(HookSpecError::MatcherFieldTooLong(field));
+    }
+    Ok(())
 }
 
 fn validate_glob(glob: &str) -> Result<(), HookSpecError> {
@@ -601,6 +629,48 @@ mod tests {
             source: HookSource::UserConfig,
         };
         assert!(matches!(spec.validate(), Err(HookSpecError::EmptyCommand)));
+    }
+
+    #[test]
+    fn validate_oversized_command_rejected() {
+        let spec = UserHookSpec {
+            id: None,
+            event: HookEvent::PreToolUse,
+            matcher: HookMatcher::default(),
+            executor: ExecutorSpec::Bash {
+                command: "x".repeat(MAX_HOOK_COMMAND_BYTES + 1),
+                env: Default::default(),
+            },
+            timeout_ms: 5000,
+            on_error: OnError::Warn,
+            description: None,
+            source: HookSource::UserConfig,
+        };
+        assert!(matches!(
+            spec.validate(),
+            Err(HookSpecError::CommandTooLong)
+        ));
+    }
+
+    #[test]
+    fn validate_oversized_matcher_regex_rejected_before_compile() {
+        let spec = UserHookSpec {
+            id: None,
+            event: HookEvent::PreToolUse,
+            matcher: HookMatcher {
+                match_regex: Some("[".repeat(MAX_HOOK_MATCHER_STRING_BYTES + 1)),
+                ..Default::default()
+            },
+            executor: bash_exec(),
+            timeout_ms: 5000,
+            on_error: OnError::Warn,
+            description: None,
+            source: HookSource::UserConfig,
+        };
+        assert!(matches!(
+            spec.validate(),
+            Err(HookSpecError::MatcherFieldTooLong("match_regex"))
+        ));
     }
 
     #[test]

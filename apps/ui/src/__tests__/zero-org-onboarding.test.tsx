@@ -43,9 +43,9 @@ describe("ZeroOrgOnboarding", () => {
 
     render(<ZeroOrgOnboarding />);
 
-    const input = screen.getByLabelText("Organization name");
+    const input = screen.getByLabelText("Organisation name");
     fireEvent.change(input, { target: { value: "Acme" } });
-    fireEvent.click(screen.getByRole("button", { name: /create organization/i }));
+    fireEvent.click(screen.getByRole("button", { name: /create organisation/i }));
 
     await waitFor(() => {
       expect(mockMutateAsync).toHaveBeenCalledWith({ name: "Acme" });
@@ -61,19 +61,22 @@ describe("ZeroOrgOnboarding", () => {
   it("does not submit when the name is blank", () => {
     render(<ZeroOrgOnboarding />);
 
-    const submit = screen.getByRole("button", { name: /create organization/i });
+    const submit = screen.getByRole("button", { name: /create organisation/i });
     expect(submit).toBeDisabled();
     fireEvent.click(submit);
     expect(mockMutateAsync).not.toHaveBeenCalled();
   });
 
-  it("surfaces a create error", () => {
+  it("surfaces a create error generically (no raw server message)", () => {
     createOrgState.isError = true;
     createOrgState.error = new Error("boom");
 
     render(<ZeroOrgOnboarding />);
 
-    expect(screen.getByText(/failed to create organization: boom/i)).toBeInTheDocument();
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent(/failed to create organisation/i);
+    // Server error strings must never render (TM-AUTH-019 discipline).
+    expect(alert).not.toHaveTextContent(/boom/);
   });
 
   it("swallows a create rejection without redirecting (no unhandled rejection)", async () => {
@@ -81,8 +84,8 @@ describe("ZeroOrgOnboarding", () => {
 
     render(<ZeroOrgOnboarding />);
 
-    fireEvent.change(screen.getByLabelText("Organization name"), { target: { value: "Acme" } });
-    fireEvent.click(screen.getByRole("button", { name: /create organization/i }));
+    fireEvent.change(screen.getByLabelText("Organisation name"), { target: { value: "Acme" } });
+    fireEvent.click(screen.getByRole("button", { name: /create organisation/i }));
 
     await waitFor(() => expect(mockMutateAsync).toHaveBeenCalledWith({ name: "Acme" }));
     expect(mockSetCurrentOrg).not.toHaveBeenCalled();
@@ -105,7 +108,7 @@ describe("ZeroOrgOnboarding", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Resend email" })).toBeInTheDocument();
     // Form is hidden while blocked
-    expect(screen.queryByLabelText("Organization name")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Organisation name")).not.toBeInTheDocument();
   });
 
   it("renders a loading state from the policy hook", () => {
@@ -113,8 +116,8 @@ describe("ZeroOrgOnboarding", () => {
 
     render(<ZeroOrgOnboarding usePolicy={usePolicy} />);
 
-    expect(screen.queryByLabelText("Organization name")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /create organization/i })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Organisation name")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /create organisation/i })).not.toBeInTheDocument();
   });
 
   it("honors a wrapper create-org override", async () => {
@@ -128,10 +131,10 @@ describe("ZeroOrgOnboarding", () => {
 
     render(<ZeroOrgOnboarding useCreateOrg={useCreateOrg} />);
 
-    fireEvent.change(screen.getByLabelText("Organization name"), {
+    fireEvent.change(screen.getByLabelText("Organisation name"), {
       target: { value: "SaaS Co" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /create organization/i }));
+    fireEvent.click(screen.getByRole("button", { name: /create organisation/i }));
 
     await waitFor(() => {
       expect(overrideMutate).toHaveBeenCalledWith({ name: "SaaS Co" });

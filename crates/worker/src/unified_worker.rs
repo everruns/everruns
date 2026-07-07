@@ -164,7 +164,7 @@ impl TaskWorkerConfig {
     /// (`WORKER_POLL_INTERVAL_MS` / `WORKER_POLL_BACKOFF_MAX_MS`) are independent.
     /// The claim batch is clamped to the execution concurrency.
     pub fn from_env() -> Self {
-        use everruns_config::{env_duration_ms, env_duration_secs, env_or, env_string_any};
+        use everruns_core::config::{env_duration_ms, env_duration_secs, env_or, env_string_any};
 
         let worker_id =
             std::env::var("WORKER_ID").unwrap_or_else(|_| format!("worker-{}", Uuid::now_v7()));

@@ -120,26 +120,15 @@ impl WorkspaceFileService {
         self
     }
 
-    /// Normalize a path: ensure it starts with /, no trailing slash, no double slashes
+    /// Normalize a path to its canonical session-store key.
+    ///
+    /// Delegates to the single cross-surface normalizer (EVE-670): collapse
+    /// repeated slashes, strip the `/workspace` alias, ensure a leading slash,
+    /// no trailing slash. Previously this kept `/workspace` literal, so the HTTP
+    /// FS API and the agent could key the same path differently; routing through
+    /// the shared normalizer makes them agree.
     fn normalize_path(path: &str) -> String {
-        let mut normalized = path.trim().to_string();
-
-        // Ensure starts with /
-        if !normalized.starts_with('/') {
-            normalized = format!("/{}", normalized);
-        }
-
-        // Remove trailing slash (except for root)
-        if normalized.len() > 1 && normalized.ends_with('/') {
-            normalized.pop();
-        }
-
-        // Remove double slashes
-        while normalized.contains("//") {
-            normalized = normalized.replace("//", "/");
-        }
-
-        normalized
+        everruns_core::session_path::to_session_path(path)
     }
 
     /// Validate that a path is valid
@@ -1914,7 +1903,9 @@ mod tests {
 
         db.create_session_file(CreateSessionFileRow {
             session_id: SessionId::from_uuid(sid),
-            path: "/workspace/repo".to_string(),
+            // Stored canonically (without the `/workspace` alias), as
+            // normalize_initial_file_path / the agent VFS key real repos.
+            path: "/repo".to_string(),
             content: None,
             is_directory: true,
             is_readonly: true,
@@ -1954,7 +1945,9 @@ mod tests {
 
         db.create_session_file(CreateSessionFileRow {
             session_id: SessionId::from_uuid(sid),
-            path: "/workspace/repo".to_string(),
+            // Stored canonically (without the `/workspace` alias), as
+            // normalize_initial_file_path / the agent VFS key real repos.
+            path: "/repo".to_string(),
             content: None,
             is_directory: true,
             is_readonly: true,

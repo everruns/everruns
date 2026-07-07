@@ -47,6 +47,7 @@ async fn openrouter_chat_with_session_id_and_routing_succeeds() {
             ..Default::default()
         }),
         parallel_tool_calls: None,
+        volatile_suffix_len: 0,
     };
 
     let messages = vec![LlmMessage::text(

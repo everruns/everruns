@@ -241,48 +241,10 @@ describe("Sidebar", () => {
     expect(screen.getByText(/^Everruns v\d+\.\d+\.\d+$/)).toBeInTheDocument();
   });
 
-  it("uses the compact sidebar shell treatment", () => {
-    const { container } = render(<Sidebar />);
-
-    expect(container.firstChild).toHaveClass("w-60");
-
-    const searchButton = screen.getByRole("button", { name: /search/i });
-    expect(searchButton).toHaveClass("gap-2");
-    expect(searchButton).toHaveClass("px-2.5");
-    expect(searchButton).toHaveClass("py-1.5");
-    expect(searchButton).toHaveClass("text-[13px]");
-
-    const dashboardLink = screen.getByRole("link", { name: "Dashboard" });
-    expect(dashboardLink).toHaveClass("gap-2.5");
-    expect(dashboardLink).toHaveClass("py-1.5");
-    expect(dashboardLink).toHaveClass("text-[13px]");
-  });
-
-  it("has exactly 8 core navigation items", () => {
-    render(<Sidebar />);
-
-    // Get nav links (excluding logo link)
-    const navLinks = screen
-      .getAllByRole("link")
-      .filter(
-        (link) =>
-          link.getAttribute("href") !== "/dashboard" || link.textContent?.includes("Dashboard"),
-      );
-    const navItems = [
-      "Chat",
-      "Dashboard",
-      "Harnesses",
-      "Agents",
-      "Memory",
-      "Models",
-      "Capabilities",
-      "Settings",
-    ];
-    const foundNavLinks = navLinks.filter((link) =>
-      navItems.some((item) => link.textContent?.includes(item)),
-    );
-    expect(foundNavLinks).toHaveLength(8);
-  });
+  // Pure-styling and hardcoded-count change-detectors removed (compact-shell
+  // utility classes, exact nav-item count, nav overflow classes): they broke on
+  // cosmetic refactors while asserting no behavior. Active-state/routing tests
+  // that verify *which* item is highlighted are kept below.
 
   it("renders section labels for Building Blocks and Durable Execution", () => {
     render(<Sidebar />);
@@ -321,14 +283,6 @@ describe("Sidebar", () => {
 
     fireEvent.click(toggle);
     expect(screen.queryByText("Workers")).not.toBeInTheDocument();
-  });
-
-  it("nav element has overflow-y-auto and min-h-0 to prevent sidebar overflow", () => {
-    render(<Sidebar />);
-
-    const nav = screen.getByRole("navigation");
-    expect(nav).toHaveClass("min-h-0");
-    expect(nav).toHaveClass("overflow-y-auto");
   });
 
   it("highlights durable navigation for nested routes", () => {

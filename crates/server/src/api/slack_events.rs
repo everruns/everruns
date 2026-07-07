@@ -33,7 +33,7 @@ use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
 use everruns_core::validate_safe_url;
 use everruns_core::{App, AppStatus, Caller, SessionStrategy, SlackChannelConfig, SlackReplyMode};
 use everruns_worker::AgentRunner;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use moka::sync::Cache;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -365,13 +365,20 @@ async fn handle_slack_event(
     })?
     .ok_or_else(|| ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))?;
 
-    // 2. Verify app is published and has a Slack channel
+    // 2. Verify app is published and has a Slack channel.
+    //
+    // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
+    // "app does not exist" apart from "app exists but is not published / has no
+    // Slack channel". Every such case collapses to the same generic 404
+    // (matching the FCP channel in `api/fcp.rs`); the real reason is logged
+    // server-side only.
     if app.status != AppStatus::Published {
-        return Err(ErrorResponse::new("App is not published").into_response(StatusCode::FORBIDDEN));
+        tracing::debug!(app_id = %app_id, status = ?app.status, "Slack webhook rejected: app not published");
+        return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
     }
     let slack_channel = app.slack_channel().ok_or_else(|| {
-        ErrorResponse::new("App has no enabled Slack channel")
-            .into_response(StatusCode::BAD_REQUEST)
+        tracing::debug!(app_id = %app_id, "Slack webhook rejected: no enabled Slack channel");
+        ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND)
     })?;
 
     // 3. Parse Slack channel config
@@ -1782,21 +1789,7 @@ mod tests {
         assert!(event.bot_id.is_some());
     }
 
-    #[test]
-    fn test_slack_channel_config_deserialization() {
-        let json = r#"{
-            "signing_secret": "abc123",
-            "bot_token": "xoxb-token",
-            "channel_id": "C0123456789",
-            "team_id": "T0123456789",
-            "session_strategy": "per_thread"
-        }"#;
-        let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.signing_secret, "abc123");
-        assert_eq!(config.bot_token, "xoxb-token");
-        assert_eq!(config.channel_id.unwrap(), "C0123456789");
-        assert_eq!(config.session_strategy, SessionStrategy::PerThread);
-    }
+    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
     fn test_slack_channel_config_defaults() {
@@ -2007,23 +2000,7 @@ mod tests {
         assert_eq!(meta.get("team_id").unwrap(), "T456");
     }
 
-    #[test]
-    fn test_external_actor_serialization_roundtrip() {
-        let actor = everruns_core::ExternalActor {
-            actor_id: "U123".to_string(),
-            actor_name: Some("Alice".to_string()),
-            source: "slack".to_string(),
-            metadata: None,
-        };
-
-        let json = serde_json::to_value(&actor).unwrap();
-        assert_eq!(json["actor_id"], "U123");
-        assert_eq!(json["actor_name"], "Alice");
-        assert_eq!(json["source"], "slack");
-
-        let deserialized: everruns_core::ExternalActor = serde_json::from_value(json).unwrap();
-        assert_eq!(deserialized, actor);
-    }
+    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     // Test helpers
     fn test_app() -> App {

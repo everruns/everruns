@@ -255,17 +255,7 @@ impl Capability for OpenRouterServerToolsCapability {
 mod tests {
     use super::*;
 
-    #[test]
-    fn metadata_and_no_tools() {
-        let cap = OpenRouterServerToolsCapability;
-        assert_eq!(cap.id(), OPENROUTER_SERVER_TOOLS_CAPABILITY_ID);
-        // Provider-executed: contributes no executable tools or prompt text.
-        assert!(cap.tools().is_empty());
-        assert!(cap.config_schema().is_some());
-        assert!(cap.config_ui_schema().is_some());
-        // Grants the model provider-side web reach (TM-AGENT-026).
-        assert_eq!(cap.risk_level(), RiskLevel::High);
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn schema_lists_every_tool_with_a_title() {

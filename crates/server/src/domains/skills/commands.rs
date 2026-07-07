@@ -52,8 +52,10 @@ impl Command for CreateSkill {
     async fn execute(self, ctx: &Ctx) -> Result<Skill, CommandError> {
         let req = self.0;
 
+        // Malformed SKILL.md is a validation failure (422), matching the
+        // documented OpenAPI contract for this endpoint.
         let parsed = parse_skill_md(&req.skill_md).map_err(|errors| {
-            CommandError::bad_request(format!("Invalid SKILL.md: {}", errors.join("; ")))
+            CommandError::unprocessable(format!("Invalid SKILL.md: {}", errors.join("; ")))
         })?;
 
         // Check duplicate name
@@ -369,7 +371,7 @@ impl Command for UpdateSkillCmd {
         // If skill_md is provided, re-parse it
         if let Some(ref skill_md) = req.skill_md {
             let parsed = parse_skill_md(skill_md).map_err(|errors| {
-                CommandError::bad_request(format!("Invalid SKILL.md: {}", errors.join("; ")))
+                CommandError::unprocessable(format!("Invalid SKILL.md: {}", errors.join("; ")))
             })?;
 
             // Check name uniqueness if name changed

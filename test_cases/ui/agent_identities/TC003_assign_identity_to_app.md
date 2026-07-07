@@ -2,7 +2,9 @@
 
 ## Description
 
-Verify that an agent identity can be assigned to an app during creation.
+Verify that an agent identity can be assigned to an app from the app detail
+page. Identity is no longer set during app creation; it is configured after the
+draft exists, alongside channels.
 
 ## Preconditions
 
@@ -11,12 +13,11 @@ Verify that an agent identity can be assigned to an app during creation.
 
 ## Steps
 
-1. Navigate to create a new app
-2. Fill in required fields
-3. Assign the existing identity in the creation form
-4. Submit
+1. Create a new app (name + harness) and submit.
+2. On the app detail page, locate the "Agent identity" control in the right rail.
+3. Select the existing identity.
 
 ## Expected Result
 
-- App is created with the assigned identity
-- App detail shows the identity association
+- The identity selection persists (reloading the detail page shows it selected).
+- App detail shows the identity association.

@@ -1,16 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, Bot, Loader2 } from "lucide-react";
 import type { CommandDescriptor, Controls } from "@/lib/api/types";
+import { getEventData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
 import {
   useImageAttachments,
   useImageDropZone,
+  useMessageScrollerVisibility,
   useModels,
   useScrollManager,
   useSessionCommands,
+  useTurnKeyboardNavigation,
 } from "@/hooks";
 import { useChatModelSelection } from "@/hooks/use-chat-model-selection";
 import { executeSessionCommand } from "@/lib/api/commands";
@@ -21,6 +24,7 @@ import { useMutation } from "@tanstack/react-query";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
+import { ChatNavRail, type ChatNavAnchor } from "@/components/chat/chat-nav-rail";
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { MessageContent } from "@/components/chat/message-content";
 import { SessionTaskChips } from "@/components/session/session-task-chips";
@@ -176,6 +180,37 @@ export function ChatPanel() {
       sessionId,
       scrollDeps: [streamingText, isThinking],
     });
+
+  // Turn navigation rail: one marker per user turn. Anchors must line up with
+  // the `data-message-anchor` markers that ChatMessageList sets on user rows.
+  const navAnchors = useMemo<ChatNavAnchor[]>(() => {
+    const anchors: ChatNavAnchor[] = [];
+    for (const event of chatEvents) {
+      if (event.type !== "input.message") continue;
+      const data = getEventData(event, "input.message");
+      if (!data) continue;
+      const text = getMessageText(data).trim();
+      anchors.push({
+        id: event.id,
+        label: text.length > 80 ? `${text.slice(0, 80)}…` : text,
+      });
+    }
+    return anchors;
+  }, [chatEvents, getMessageText]);
+
+  const { currentAnchorId, scrollToAnchor } = useMessageScrollerVisibility(
+    scrollContainerRef,
+    navAnchors.length,
+  );
+
+  // Keyboard turn stepping (Alt+↑/↓, or j/k outside inputs), built on the same
+  // anchors and scrollToAnchor the rail uses.
+  const navAnchorIds = useMemo(() => navAnchors.map((anchor) => anchor.id), [navAnchors]);
+  useTurnKeyboardNavigation({
+    anchorIds: navAnchorIds,
+    currentAnchorId,
+    onNavigate: scrollToAnchor,
+  });
 
   const { isDraggingOver, dropZoneProps, handlePaste } = useImageDropZone({
     onImageFiles: addFiles,
@@ -467,74 +502,82 @@ export function ChatPanel() {
 
   return (
     <>
-      <div
-        ref={scrollContainerRef}
-        onScroll={handleScrollUp}
-        className={cn(
-          "relative flex-1 overflow-y-auto bg-background bg-brand-dots px-3 py-4 sm:px-4",
-          !eventsLoading && chatEvents.length === 0 && "flex flex-col justify-end",
-        )}
-      >
-        <ChatMessageList
-          events={events}
-          chatEvents={chatEvents}
-          sessionId={sessionId}
-          toolResultsMap={toolResultsMap}
-          toolProgressMap={toolProgressMap}
-          toolOutputMap={toolOutputMap}
-          eventsLoading={eventsLoading}
-          hasMoreEvents={hasMoreEvents}
-          loadingOlderEvents={loadingOlderEvents}
-          getMessageText={getMessageText}
-          getToolCalls={getToolCalls}
-        />
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <div
+          ref={scrollContainerRef}
+          onScroll={handleScrollUp}
+          className={cn(
+            "relative flex-1 overflow-y-auto bg-background bg-brand-dots px-3 py-4 sm:px-4",
+            !eventsLoading && chatEvents.length === 0 && "flex flex-col justify-end",
+          )}
+        >
+          <ChatMessageList
+            events={events}
+            chatEvents={chatEvents}
+            sessionId={sessionId}
+            toolResultsMap={toolResultsMap}
+            toolProgressMap={toolProgressMap}
+            toolOutputMap={toolOutputMap}
+            eventsLoading={eventsLoading}
+            hasMoreEvents={hasMoreEvents}
+            loadingOlderEvents={loadingOlderEvents}
+            getMessageText={getMessageText}
+            getToolCalls={getToolCalls}
+          />
 
-        {(isThinking || streamingText) && (
-          <div className="mt-4 flex justify-start">
-            <div className={chatSurfaceStyles.agentMessageRow}>
-              <div className={chatSurfaceStyles.agentIcon}>
-                <Bot className="h-3 w-3" />
-              </div>
-              <div className={chatSurfaceStyles.agentMessage}>
-                {streamingIteration && streamingIteration > 1 && (
-                  <div className="mb-1 text-xs text-muted-foreground">
-                    {t("iteration", { value: streamingIteration })}
-                  </div>
-                )}
-                {isThinking && !streamingText ? (
-                  <ThinkingIndicator />
-                ) : streamingText ? (
-                  <StreamingMessage text={streamingText} />
-                ) : null}
+          {(isThinking || streamingText) && (
+            <div className="mt-4 flex justify-start">
+              <div className={chatSurfaceStyles.agentMessageRow}>
+                <div className={chatSurfaceStyles.agentIcon}>
+                  <Bot className="h-3 w-3" />
+                </div>
+                <div className={chatSurfaceStyles.agentMessage}>
+                  {streamingIteration && streamingIteration > 1 && (
+                    <div className="mb-1 text-xs text-muted-foreground">
+                      {t("iteration", { value: streamingIteration })}
+                    </div>
+                  )}
+                  {isThinking && !streamingText ? (
+                    <ThinkingIndicator />
+                  ) : streamingText ? (
+                    <StreamingMessage text={streamingText} />
+                  ) : null}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {submitError && (
-          <div className="mt-4">
-            <ChatErrorAlert message={submitError} />
-          </div>
-        )}
+          {submitError && (
+            <div className="mt-4">
+              <ChatErrorAlert message={submitError} />
+            </div>
+          )}
 
-        {voiceError && (
-          <div className="mt-4">
-            <ChatErrorAlert message={voiceError.message} description={voiceError.description} />
-          </div>
-        )}
+          {voiceError && (
+            <div className="mt-4">
+              <ChatErrorAlert message={voiceError.message} description={voiceError.description} />
+            </div>
+          )}
 
-        <div ref={messagesEndRef} />
+          <div ref={messagesEndRef} />
 
-        {hasNewMessages && (
-          <button
-            type="button"
-            onClick={dismissNewMessages}
-            className={chatSurfaceStyles.floatingNotice}
-          >
-            <ArrowDown className="h-3 w-3" />
-            {t("new_messages")}
-          </button>
-        )}
+          {hasNewMessages && (
+            <button
+              type="button"
+              onClick={dismissNewMessages}
+              className={chatSurfaceStyles.floatingNotice}
+            >
+              <ArrowDown className="h-3 w-3" />
+              {t("new_messages")}
+            </button>
+          )}
+        </div>
+
+        <ChatNavRail
+          anchors={navAnchors}
+          currentAnchorId={currentAnchorId}
+          onJump={scrollToAnchor}
+        />
       </div>
 
       <SessionTaskChips

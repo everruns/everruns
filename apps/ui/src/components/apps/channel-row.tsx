@@ -27,6 +27,7 @@ import type {
   App,
   AppChannel,
   ChannelType,
+  PublicChatChannelConfig,
   ScheduleChannelConfig,
   SlackChannelConfig,
   WebhookChannelConfig,
@@ -73,6 +74,10 @@ function channelName(channel: AppChannel): string {
   if (channel.channel_type === "webhook") return "Webhook endpoint";
   if (channel.channel_type === "ag_ui") return "AG-UI endpoint";
   if (channel.channel_type === "fcp") return "FCP endpoint";
+  if (channel.channel_type === "public_chat") {
+    const config = channel.channel_config as PublicChatChannelConfig;
+    return config.branding?.display_name?.trim() || "Public Chat";
+  }
   return getChannelTypeDisplayName(channel.channel_type);
 }
 
@@ -112,6 +117,24 @@ function detailText(channel: AppChannel): string {
   if (channel.channel_type === "ag_ui") {
     const config = channel.channel_config as AgUiChannelConfig;
     return `Tool visibility: ${config.tool_visibility ?? "generic"}`;
+  }
+  if (channel.channel_type === "public_chat") {
+    const config = channel.channel_config as PublicChatChannelConfig;
+    const hasSignIn = !!config.auth && config.auth.mode !== "anonymous";
+    const tokenProtected = !!config.token_configured || !!config.token;
+    let access: string;
+    if (hasSignIn) {
+      access = "sign-in required";
+    } else if (config.anonymous === false) {
+      // anonymous off without a sign-in provider locks the endpoint.
+      access = "no access configured";
+    } else if (tokenProtected) {
+      access = "token-protected";
+    } else {
+      access = "anonymous";
+    }
+    const captcha = config.captcha?.enabled ? " · Turnstile" : "";
+    return `Access: ${access}${captcha}`;
   }
   if (channel.channel_type === "slack") {
     const config = channel.channel_config as SlackChannelConfig;

@@ -896,6 +896,13 @@ pub async fn execute_input_activity<A: RuntimeHostAdapter>(
     org_id: i64,
     input: InputAtomInput,
 ) -> everruns_core::error::Result<InputAtomResult> {
+    // The live effort override is turn-scoped. Clear any value left by the
+    // previous turn before ReasonAtom can prefer it over this turn's message
+    // controls.
+    if let Some(handle) = adapter.reasoning_effort_handle(input.context.session_id) {
+        handle.set(None);
+    }
+
     RuntimeSessionLifecycle::new(adapter.clone(), org_id, input.context.session_id)
         .turn_started(input.context.turn_id, input.context.input_message_id)
         .await;
