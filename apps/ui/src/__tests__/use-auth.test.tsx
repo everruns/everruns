@@ -245,14 +245,12 @@ describe("Auth Hooks", () => {
 
       await act(async () => {
         await result.current.mutateAsync({
-          name: "New User",
           email: "new@example.com",
           password: "password123",
         });
       });
 
       expect(mockRegister).toHaveBeenCalledWith({
-        name: "New User",
         email: "new@example.com",
         password: "password123",
       });
@@ -297,7 +295,6 @@ describe("Auth Hooks", () => {
 
       await act(async () => {
         await result.current.mutateAsync({
-          name: "New User",
           email: "new@example.com",
           password: "password123",
         });
@@ -337,7 +334,6 @@ describe("Auth Hooks", () => {
 
       await act(async () => {
         await result.current.mutateAsync({
-          name: "New User",
           email: "new@example.com",
           password: "password123",
         });

@@ -159,26 +159,8 @@ impl Tool for CreateScheduleTool {
             return ToolExecutionResult::tool_error("Schedule store not available in this context");
         };
 
-        // Enforce per-session cap, per-org cap, and minimum recurring cron
-        // interval (shared with spawn_background's scheduled path).
-        match crate::session_schedule::enforce_create_limits(
-            store.as_ref(),
-            context.session_id,
-            cron_expression.as_deref(),
-        )
-        .await
-        {
-            Ok(()) => {}
-            Err(crate::session_schedule::ScheduleLimitError::Store(e)) => {
-                return ToolExecutionResult::internal_error(e);
-            }
-            Err(crate::session_schedule::ScheduleLimitError::Rejected(msg)) => {
-                return ToolExecutionResult::tool_error(msg);
-            }
-        }
-
         match store
-            .create_schedule(
+            .create_schedule_enforcing_limits(
                 context.session_id,
                 description,
                 cron_expression,
@@ -198,7 +180,12 @@ impl Tool for CreateScheduleTool {
                 "enabled": schedule.enabled,
                 "created": true,
             })),
-            Err(e) => ToolExecutionResult::internal_error(e),
+            Err(crate::session_schedule::ScheduleLimitError::Store(e)) => {
+                ToolExecutionResult::internal_error(e)
+            }
+            Err(crate::session_schedule::ScheduleLimitError::Rejected(msg)) => {
+                ToolExecutionResult::tool_error(msg)
+            }
         }
     }
 }
@@ -713,12 +700,5 @@ mod tests {
         }
     }
 
-    #[test]
-    fn capability_metadata() {
-        let cap = SessionScheduleCapability;
-        assert_eq!(cap.id(), "session_schedule");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert!(cap.system_prompt_addition().is_some());
-        assert_eq!(cap.tools().len(), 3);
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 }

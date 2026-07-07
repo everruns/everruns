@@ -74,7 +74,7 @@ fn command_schema_hash(
     if let Some(positional_arg) = positional_arg {
         hasher.update(positional_arg.as_bytes());
     }
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 #[tonic::async_trait]
@@ -1450,10 +1450,27 @@ impl WorkerService for WorkerServiceImpl {
             }
         };
 
-        let outcome = store.fail_task(task_id, &req.error).await.map_err(|e| {
-            tracing::error!("Failed to fail task: {}", e);
-            Status::internal("Failed to fail task")
-        })?;
+        let outcome = match store.fail_task(task_id, &req.error).await {
+            Ok(outcome) => outcome,
+            Err(StoreError::TaskNotOwned(_)) => {
+                // EVE-639: fail_task now no-ops if the task is no longer 'claimed'
+                // (a concurrent stale-reclaim already requeued or sealed it). The
+                // failure is absorbed by the reclaimer; report it as a retry
+                // (the task is back in the queue) rather than an internal error.
+                tracing::info!(
+                    %task_id,
+                    "Task failure absorbed: task was already reclaimed"
+                );
+                return Ok(Response::new(FailDurableTaskResponse {
+                    failed: true,
+                    will_retry: true,
+                }));
+            }
+            Err(e) => {
+                tracing::error!("Failed to fail task: {}", e);
+                return Err(Status::internal("Failed to fail task"));
+            }
+        };
 
         // Check if task will be retried
         let will_retry = matches!(outcome, TaskFailureOutcome::WillRetry { .. });
@@ -2227,6 +2244,7 @@ impl WorkerService for WorkerServiceImpl {
                             api_key: r.api_key,
                             headers: r.headers,
                             auth_mode: r.auth_mode.to_string(),
+                            protocol_mode: r.protocol_mode.to_string(),
                             oauth_provider_id: r.oauth_provider_id,
                         }),
                     }));
@@ -2253,6 +2271,7 @@ impl WorkerService for WorkerServiceImpl {
             api_key: r.api_key,
             headers: r.headers,
             auth_mode: r.auth_mode.to_string(),
+            protocol_mode: r.protocol_mode.to_string(),
             oauth_provider_id: r.oauth_provider_id,
         });
 
@@ -2805,8 +2824,11 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<CreateSessionTaskRequest>,
     ) -> Result<Response<SessionTaskResponse>, Status> {
         let req = request.into_inner();
-        let input: everruns_core::CreateSessionTask = serde_json::from_slice(&req.create_json)
-            .map_err(|e| Status::invalid_argument(format!("Invalid task create JSON: {e}")))?;
+        let create = req
+            .create
+            .ok_or_else(|| Status::invalid_argument("Missing create payload"))?;
+        let input = everruns_internal_protocol::proto_to_create_session_task(create)
+            .map_err(|e| Status::invalid_argument(format!("Invalid task create payload: {e}")))?;
 
         let task = self
             .session_task_registry()
@@ -2818,8 +2840,7 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(SessionTaskResponse {
-            task_json: serde_json::to_vec(&task)
-                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+            task: Some(everruns_internal_protocol::session_task_to_proto(&task)),
         }))
     }
 
@@ -2829,8 +2850,10 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<OptionalSessionTaskResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let update: everruns_core::SessionTaskUpdate = serde_json::from_slice(&req.update_json)
-            .map_err(|e| Status::invalid_argument(format!("Invalid task update JSON: {e}")))?;
+        let update_proto = req
+            .update
+            .ok_or_else(|| Status::invalid_argument("Missing update payload"))?;
+        let update = everruns_internal_protocol::proto_to_session_task_update(update_proto);
 
         let task = self
             .session_task_registry()
@@ -2842,10 +2865,9 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(OptionalSessionTaskResponse {
-            task_json: task
-                .map(|t| serde_json::to_vec(&t))
-                .transpose()
-                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+            task: task
+                .as_ref()
+                .map(everruns_internal_protocol::session_task_to_proto),
         }))
     }
 
@@ -2866,10 +2888,9 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(OptionalSessionTaskResponse {
-            task_json: task
-                .map(|t| serde_json::to_vec(&t))
-                .transpose()
-                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+            task: task
+                .as_ref()
+                .map(everruns_internal_protocol::session_task_to_proto),
         }))
     }
 
@@ -2902,11 +2923,10 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(ListSessionTasksResponse {
-            task_json: tasks
+            tasks: tasks
                 .iter()
-                .map(serde_json::to_vec)
-                .collect::<Result<_, _>>()
-                .map_err(|e| Status::internal(format!("Failed to encode tasks: {e}")))?,
+                .map(everruns_internal_protocol::session_task_to_proto)
+                .collect(),
         }))
     }
 
@@ -2927,10 +2947,9 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(OptionalSessionTaskResponse {
-            task_json: task
-                .map(|t| serde_json::to_vec(&t))
-                .transpose()
-                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+            task: task
+                .as_ref()
+                .map(everruns_internal_protocol::session_task_to_proto),
         }))
     }
 
@@ -2940,8 +2959,10 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<SessionTaskMessageResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let message: everruns_core::NewTaskMessage = serde_json::from_slice(&req.message_json)
-            .map_err(|e| Status::invalid_argument(format!("Invalid task message JSON: {e}")))?;
+        let message_proto = req
+            .message
+            .ok_or_else(|| Status::invalid_argument("Missing message payload"))?;
+        let message = everruns_internal_protocol::proto_to_new_task_message(message_proto);
 
         let stored = self
             .session_task_registry()
@@ -2953,8 +2974,7 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(SessionTaskMessageResponse {
-            message_json: serde_json::to_vec(&stored)
-                .map_err(|e| Status::internal(format!("Failed to encode task message: {e}")))?,
+            message: Some(everruns_internal_protocol::task_message_to_proto(&stored)),
         }))
     }
 
@@ -2975,11 +2995,10 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(ListSessionTaskMessagesResponse {
-            message_json: messages
+            messages: messages
                 .iter()
-                .map(serde_json::to_vec)
-                .collect::<Result<_, _>>()
-                .map_err(|e| Status::internal(format!("Failed to encode task messages: {e}")))?,
+                .map(everruns_internal_protocol::task_message_to_proto)
+                .collect(),
         }))
     }
 
@@ -3067,7 +3086,7 @@ impl WorkerService for WorkerServiceImpl {
             .map(everruns_internal_protocol::proto_timestamp_to_datetime);
 
         let schedule = store
-            .create_schedule(
+            .create_schedule_enforcing_limits(
                 session_id.into(),
                 req.description,
                 req.cron_expression,
@@ -3075,9 +3094,14 @@ impl WorkerService for WorkerServiceImpl {
                 req.timezone,
             )
             .await
-            .map_err(|e| {
-                tracing::error!("Failed to create schedule: {}", e);
-                Status::internal(format!("Failed to create schedule: {}", e))
+            .map_err(|e| match e {
+                everruns_core::session_schedule::ScheduleLimitError::Rejected(msg) => {
+                    Status::resource_exhausted(msg)
+                }
+                everruns_core::session_schedule::ScheduleLimitError::Store(err) => {
+                    tracing::error!("Failed to create schedule: {}", err);
+                    Status::internal(format!("Failed to create schedule: {}", err))
+                }
             })?;
 
         Ok(Response::new(CreateSessionScheduleResponse {
@@ -4115,7 +4139,7 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         _request: Request<PlatformGetBaseUrlRequest>,
     ) -> Result<Response<PlatformGetBaseUrlResponse>, Status> {
-        let base_url = everruns_config::env_string_any(
+        let base_url = everruns_core::config::env_string_any(
             &["PUBLIC_APP_URL", "FRONTEND_URL", "APP_URL"],
             "http://localhost:9300",
         );
@@ -4205,6 +4229,27 @@ impl WorkerService for WorkerServiceImpl {
             status: overall_status.into(),
             budgets: summaries,
             hint,
+        }))
+    }
+
+    async fn check_outbound_tool_rate_limit(
+        &self,
+        request: Request<CheckOutboundToolRateLimitRequest>,
+    ) -> Result<Response<CheckOutboundToolRateLimitResponse>, Status> {
+        let req = request.into_inner();
+        let allowed = match &self.org_rate_limiter {
+            Some(limiter) => limiter.check_outbound_tool_call(&req.org_key).await.is_ok(),
+            None => {
+                tracing::error!(
+                    org_key = %req.org_key,
+                    "gRPC outbound tool rate limiter is not configured; denying tool call"
+                );
+                false
+            }
+        };
+
+        Ok(Response::new(CheckOutboundToolRateLimitResponse {
+            allowed,
         }))
     }
 

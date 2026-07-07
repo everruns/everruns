@@ -23,6 +23,7 @@ use everruns_core::{
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 /// Well-known UUIDs for seed data
@@ -2366,13 +2367,13 @@ pub struct SeedAuthContext {
 /// Seeding failures are non-fatal - logged as warnings but don't crash the server.
 ///
 /// Uses `DeploymentGrade::from_env()` to determine which agents to seed.
-pub fn spawn_seed_task(db: Arc<StorageBackend>, auth_ctx: SeedAuthContext) {
+pub fn spawn_seed_task(db: Arc<StorageBackend>, auth_ctx: SeedAuthContext) -> JoinHandle<()> {
     spawn_seed_task_with_platform_definition(
         db,
         auth_ctx,
         crate::platform::oss_platform_definition_for_grade(DeploymentGrade::from_env()),
         None,
-    );
+    )
 }
 
 /// Spawn seeding as a background task using an explicit platform definition.
@@ -2388,7 +2389,7 @@ pub fn spawn_seed_task_with_platform_definition(
     auth_ctx: SeedAuthContext,
     platform_definition: PlatformDefinition,
     encryption: Option<Arc<EncryptionService>>,
-) {
+) -> JoinHandle<()> {
     let grade = DeploymentGrade::from_env();
     tracing::info!(deployment_grade = %grade, "Starting seeding task");
 
@@ -2458,7 +2459,7 @@ pub fn spawn_seed_task_with_platform_definition(
                 );
             }
         }
-    });
+    })
 }
 
 /// Reconcile built-in harnesses for every organization (including the default org).

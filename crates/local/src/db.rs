@@ -6,6 +6,8 @@
 // correct. Connections are opened with WAL so a freshly-spawned process can
 // reopen the same file (restart-survivability) without losing committed data.
 
+#[cfg(unix)]
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 use std::sync::Arc;
 
@@ -25,7 +27,9 @@ pub struct SqliteDb {
 impl SqliteDb {
     /// Open (creating if needed) a file-backed database at `path`.
     pub fn open(path: impl AsRef<Path>) -> LocalResult<Self> {
-        let conn = Connection::open(path.as_ref())?;
+        let path = path.as_ref();
+        ensure_private_db_file(path)?;
+        let conn = Connection::open(path)?;
         Self::from_connection(conn)
     }
 
@@ -52,5 +56,81 @@ impl SqliteDb {
     ) -> LocalResult<T> {
         let guard = self.conn.lock();
         f(&guard).map_err(LocalError::from)
+    }
+}
+
+#[cfg(unix)]
+fn ensure_private_db_file(path: &Path) -> std::io::Result<()> {
+    match std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
+    {
+        Ok(_) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+        Err(e) => return Err(e),
+    }
+
+    let metadata = std::fs::symlink_metadata(path)?;
+    if metadata.file_type().is_symlink() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!(
+                "refusing to use symlinked local SQLite database {}",
+                path.display()
+            ),
+        ));
+    }
+    if !metadata.is_file() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!(
+                "local SQLite database path is not a regular file: {}",
+                path.display()
+            ),
+        ));
+    }
+    if metadata.uid() != current_uid() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            format!(
+                "local SQLite database is not owned by the current user: {}",
+                path.display()
+            ),
+        ));
+    }
+    if metadata.permissions().mode() & 0o077 != 0 {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
+}
+
+#[cfg(not(unix))]
+fn ensure_private_db_file(_path: &Path) -> std::io::Result<()> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn current_uid() -> u32 {
+    // SAFETY: getuid has no preconditions and cannot fail.
+    unsafe { libc::getuid() }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn open_creates_private_db_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("local.db");
+        SqliteDb::open(&path).unwrap();
+
+        let mode = std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
     }
 }

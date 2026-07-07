@@ -171,6 +171,15 @@ impl StorageBackend {
         dispatch!(self, get_user_by_oauth, provider, provider_id)
     }
 
+    pub async fn link_oauth_identity(
+        &self,
+        id: Uuid,
+        provider: &str,
+        provider_id: &str,
+    ) -> Result<Option<UserRow>> {
+        dispatch!(self, link_oauth_identity, id, provider, provider_id)
+    }
+
     pub async fn update_user(&self, id: Uuid, input: UpdateUser) -> Result<Option<UserRow>> {
         dispatch!(self, update_user, id, input)
     }
@@ -347,6 +356,56 @@ impl StorageBackend {
 
     pub async fn delete_user_refresh_tokens(&self, user_id: Uuid) -> Result<u64> {
         dispatch!(self, delete_user_refresh_tokens, user_id)
+    }
+
+    // ============================================
+    // Password Reset / Email Verification Tokens
+    // ============================================
+    // Hashed, single-use, short-TTL tokens for native-auth account recovery.
+    // The raw token is emailed once and never stored; only its SHA-256 hash is
+    // persisted. `consume_*` is race-safe (single atomic UPDATE) like
+    // `consume_refresh_token_by_hash`.
+
+    pub async fn create_password_reset_token(
+        &self,
+        user_id: Uuid,
+        token_hash: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<()> {
+        dispatch!(
+            self,
+            create_password_reset_token,
+            user_id,
+            token_hash,
+            expires_at
+        )
+    }
+
+    /// Atomically claim a password reset token. Returns the owning `user_id`
+    /// only if a matching, unexpired, not-yet-used token exists; otherwise None.
+    pub async fn consume_password_reset_token(&self, token_hash: &str) -> Result<Option<Uuid>> {
+        dispatch!(self, consume_password_reset_token, token_hash)
+    }
+
+    pub async fn create_email_verification_token(
+        &self,
+        user_id: Uuid,
+        token_hash: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<()> {
+        dispatch!(
+            self,
+            create_email_verification_token,
+            user_id,
+            token_hash,
+            expires_at
+        )
+    }
+
+    /// Atomically claim an email verification token. Returns the owning
+    /// `user_id` only if a matching, unexpired, not-yet-used token exists.
+    pub async fn consume_email_verification_token(&self, token_hash: &str) -> Result<Option<Uuid>> {
+        dispatch!(self, consume_email_verification_token, token_hash)
     }
 
     // ============================================
@@ -2629,6 +2688,11 @@ impl StorageBackend {
         dispatch!(self, delete_organization, org_id)
     }
 
+    /// Idempotently mark an org's onboarding complete (no-op if already set).
+    pub async fn mark_org_onboarding_complete(&self, org_id: i64) -> Result<()> {
+        dispatch!(self, mark_org_onboarding_complete, org_id)
+    }
+
     // ============================================
     // Organization Members
     // ============================================
@@ -2894,6 +2958,31 @@ impl StorageBackend {
         dispatch!(self, delete_user_connection, user_id, provider)
     }
 
+    pub async fn list_user_preferences(&self, user_id: Uuid) -> Result<Vec<UserPreferenceRow>> {
+        dispatch!(self, list_user_preferences, user_id)
+    }
+
+    pub async fn get_user_preference(
+        &self,
+        user_id: Uuid,
+        key: &str,
+    ) -> Result<Option<UserPreferenceRow>> {
+        dispatch!(self, get_user_preference, user_id, key)
+    }
+
+    pub async fn set_user_preference(
+        &self,
+        user_id: Uuid,
+        key: &str,
+        value: &str,
+    ) -> Result<UserPreferenceRow> {
+        dispatch!(self, set_user_preference, user_id, key, value)
+    }
+
+    pub async fn delete_user_preference(&self, user_id: Uuid, key: &str) -> Result<bool> {
+        dispatch!(self, delete_user_preference, user_id, key)
+    }
+
     pub async fn get_connection_token_for_session(
         &self,
         session_id: SessionId,
@@ -3041,6 +3130,21 @@ impl StorageBackend {
         schedule_id: ScheduleId,
     ) -> Result<bool> {
         dispatch!(self, delete_session_schedule, org_id, schedule_id)
+    }
+
+    pub async fn create_session_schedule_with_limits(
+        &self,
+        input: CreateSessionScheduleRow,
+        max_per_session: u32,
+        max_per_org: i64,
+    ) -> Result<Option<SessionScheduleRow>> {
+        dispatch!(
+            self,
+            create_session_schedule_with_limits,
+            input,
+            max_per_session,
+            max_per_org
+        )
     }
 
     pub async fn count_active_session_schedules(&self, session_id: SessionId) -> Result<u32> {
@@ -3722,6 +3826,17 @@ impl StorageBackend {
         )
     }
 
+    /// Ingest one externally-executed eval run (upsert eval + cases by name,
+    /// replace any prior run sharing `source_run_id`, write a completed external
+    /// run with fully-populated results). See `ImportEvalRunInput`.
+    pub async fn import_eval_run(
+        &self,
+        org_id: i64,
+        input: ImportEvalRunInput,
+    ) -> Result<EvalRunRow> {
+        dispatch!(self, import_eval_run, org_id, input)
+    }
+
     pub async fn list_eval_runs(&self, eval_id: Uuid) -> Result<Vec<EvalRunRow>> {
         dispatch!(self, list_eval_runs, eval_id)
     }
@@ -3732,6 +3847,39 @@ impl StorageBackend {
         public_id: &str,
     ) -> Result<Option<EvalRunRow>> {
         dispatch!(self, get_eval_run_by_public_id, org_id, public_id)
+    }
+
+    pub async fn get_eval_run_by_id(&self, id: Uuid) -> Result<Option<EvalRunRow>> {
+        dispatch!(self, get_eval_run_by_id, id)
+    }
+
+    // Eval run share tokens (migration 091)
+
+    pub async fn create_eval_run_share_token(
+        &self,
+        org_id: i64,
+        input: CreateEvalRunShareTokenRow,
+    ) -> Result<EvalRunShareTokenRow> {
+        dispatch!(self, create_eval_run_share_token, org_id, input)
+    }
+
+    pub async fn revoke_eval_run_share_tokens(
+        &self,
+        org_id: i64,
+        eval_run_id: Uuid,
+    ) -> Result<u64> {
+        dispatch!(self, revoke_eval_run_share_tokens, org_id, eval_run_id)
+    }
+
+    pub async fn eval_run_has_active_share(&self, org_id: i64, eval_run_id: Uuid) -> Result<bool> {
+        dispatch!(self, eval_run_has_active_share, org_id, eval_run_id)
+    }
+
+    pub async fn get_eval_run_share_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<EvalRunShareTokenRow>> {
+        dispatch!(self, get_eval_run_share_token_by_hash, token_hash)
     }
 
     pub async fn update_eval_run_status(
@@ -3860,6 +4008,34 @@ impl StorageBackend {
         input: UpdateEvalCaseResultRow,
     ) -> Result<Option<EvalCaseResultRow>> {
         dispatch!(self, update_eval_case_result, id, input)
+    }
+
+    // ============================================
+    // Eval Run Dataset (async export handles — specs/dataset-export.md)
+    // ============================================
+
+    pub async fn create_eval_run_dataset(
+        &self,
+        org_id: i64,
+        input: CreateEvalRunDatasetRow,
+    ) -> Result<EvalRunDatasetRow> {
+        dispatch!(self, create_eval_run_dataset, org_id, input)
+    }
+
+    pub async fn get_eval_run_dataset(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<EvalRunDatasetRow>> {
+        dispatch!(self, get_eval_run_dataset, org_id, public_id)
+    }
+
+    pub async fn update_eval_run_dataset(
+        &self,
+        id: Uuid,
+        input: UpdateEvalRunDatasetRow,
+    ) -> Result<Option<EvalRunDatasetRow>> {
+        dispatch!(self, update_eval_run_dataset, id, input)
     }
 
     // ============================================

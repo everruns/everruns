@@ -286,6 +286,9 @@ pub mod tests {
         /// call so tests can assert which harness a child session was
         /// created against. See `start_handoff_uses_target_harness_not_parent`.
         pub created_session_harness_ids: std::sync::Mutex<Vec<HarnessId>>,
+        /// Status returned by `wait_for_idle` ("idle" by default). Tests set
+        /// a terminal turn status (e.g. "completed") to exercise settle paths.
+        pub wait_for_idle_status: std::sync::Mutex<String>,
     }
 
     impl Default for MockPlatformStore {
@@ -429,6 +432,7 @@ pub mod tests {
                     }
                 },
                 created_session_harness_ids: std::sync::Mutex::new(Vec::new()),
+                wait_for_idle_status: std::sync::Mutex::new("idle".to_string()),
             }
         }
     }
@@ -734,7 +738,7 @@ pub mod tests {
             ])
         }
         async fn wait_for_idle(&self, _id: SessionId, _t: Option<u64>) -> Result<String> {
-            Ok("idle".to_string())
+            Ok(self.wait_for_idle_status.lock().unwrap().clone())
         }
         async fn list_capabilities(&self, search: Option<&str>) -> Result<Vec<CapabilityInfo>> {
             let registry = crate::capabilities::CapabilityRegistry::with_builtins();

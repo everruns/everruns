@@ -7,7 +7,11 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use everruns_core::{
     AgentLoopError, Result, ScheduleId, SessionId, StoreResultExt,
-    session_schedule::SessionSchedule, traits::SessionScheduleStore,
+    session_schedule::{
+        MAX_ACTIVE_SCHEDULES_PER_SESSION, ScheduleLimitError, SessionSchedule,
+        max_active_schedules_per_org, validate_schedule_create_limits,
+    },
+    traits::SessionScheduleStore,
 };
 
 use super::backend::StorageBackend;
@@ -92,6 +96,62 @@ impl SessionScheduleStore for DbSessionScheduleStore {
             .store_err()?;
 
         Ok(row_to_domain(&row))
+    }
+
+    async fn create_schedule_enforcing_limits(
+        &self,
+        session_id: SessionId,
+        description: String,
+        cron_expression: Option<String>,
+        scheduled_at: Option<DateTime<Utc>>,
+        timezone: String,
+    ) -> std::result::Result<SessionSchedule, ScheduleLimitError> {
+        if let Some(cron) = cron_expression.as_deref() {
+            everruns_core::session_schedule::validate_cron_min_interval(cron)
+                .map_err(ScheduleLimitError::Rejected)?;
+        }
+
+        let next_trigger =
+            compute_next_trigger(cron_expression.as_deref(), scheduled_at, &timezone)
+                .map_err(|e| ScheduleLimitError::Store(AgentLoopError::tool(e.to_string())))?;
+        let session = self
+            .db
+            .get_session(self.org_id, session_id)
+            .await
+            .store_err()
+            .map_err(ScheduleLimitError::Store)?
+            .ok_or_else(|| ScheduleLimitError::Store(AgentLoopError::tool("Session not found")))?;
+
+        let max_per_org = max_active_schedules_per_org();
+        let row = self
+            .db
+            .create_session_schedule_with_limits(
+                CreateSessionScheduleRow {
+                    org_id: self.org_id,
+                    session_id,
+                    owner_principal_id: session.owner_principal_id,
+                    resolved_owner_user_id: session.resolved_owner_user_id,
+                    description,
+                    cron_expression,
+                    scheduled_at,
+                    timezone,
+                    next_trigger_at: next_trigger,
+                },
+                MAX_ACTIVE_SCHEDULES_PER_SESSION,
+                max_per_org,
+            )
+            .await
+            .store_err()
+            .map_err(ScheduleLimitError::Store)?;
+
+        match row {
+            Some(row) => Ok(row_to_domain(&row)),
+            None => validate_schedule_create_limits(self, session_id, None).await.and_then(|()| {
+                Err(ScheduleLimitError::Rejected(format!(
+                    "Maximum {max_per_org} active schedules per org reached. Cancel an existing schedule first."
+                )))
+            }),
+        }
     }
 
     async fn cancel_schedule(

@@ -220,6 +220,15 @@
   animation: chat-surface-enter 260ms ease-out both;
 }
 
+/* Let the browser skip paint/layout for message rows far outside the viewport
+   while keeping them in the DOM for selection, find-in-page, and a11y. Adopted
+   from shadcn/ui's MessageScrollerItem. The intrinsic size is a placeholder for
+   off-screen rows; on-screen rows measure normally. */
+.chat-transcript-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 4rem;
+}
+
 .animate-tool-pulse {
   animation: tool-pulse 1.6s ease-in-out infinite;
 }

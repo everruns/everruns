@@ -17,6 +17,7 @@ import {
   IconTile,
   PageControlStrip,
   SectionTabs,
+  EmptyState,
   PageColumns,
   PageMain,
   PageRail,
@@ -152,21 +153,25 @@ export default function AgentIdentitiesPage() {
               ))}
             </div>
           ) : filteredIdentities.length === 0 ? (
-            <div className="border border-dashed py-12 text-center">
-              <p className="mb-4 text-muted-foreground">
-                {search || statusTab !== "active"
+            <EmptyState
+              icon={<UserRound />}
+              title={
+                search || statusTab !== "active"
                   ? "No identities match your filters."
-                  : "No agent identities yet."}
-              </p>
-              {!search && statusTab === "active" && (
-                <Link href="/agent-identities/new">
-                  <Button>
-                    <Plus className="size-4" />
-                    Create your first identity
-                  </Button>
-                </Link>
-              )}
-            </div>
+                  : "No agent identities yet."
+              }
+              action={
+                !search &&
+                statusTab === "active" && (
+                  <Link href="/agent-identities/new">
+                    <Button variant="accent">
+                      <Plus className="size-4" />
+                      Create your first identity
+                    </Button>
+                  </Link>
+                )
+              }
+            />
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
               {filteredIdentities.map((identity) => (

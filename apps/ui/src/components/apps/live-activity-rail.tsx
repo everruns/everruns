@@ -21,7 +21,15 @@ export function LiveActivityRail({ appId, className }: { appId: string; classNam
   const polling = useQuery({
     queryKey: ["apps", appId, "runs"],
     queryFn: () => listAppRuns(appId),
-    refetchInterval: 5000,
+    staleTime: 5000,
+    // Poll fast (5s) only while a run is in flight; when everything is in a
+    // terminal state (completed/failed/skipped) fall back to a slow 30s poll so
+    // newly-started runs still surface without the unconditional 5s churn.
+    refetchInterval: (query) => {
+      const runs = query.state.data?.data ?? [];
+      const hasInFlight = runs.some((run) => run.status === "pending" || run.status === "running");
+      return hasInFlight ? 5000 : 30000;
+    },
   });
 
   const visibleEvents = polling.data?.data ?? [];

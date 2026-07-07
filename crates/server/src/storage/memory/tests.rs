@@ -3463,3 +3463,124 @@ async fn test_export_user_data() {
     let missing = db.export_user_data(uuid::Uuid::now_v7()).await.unwrap();
     assert!(missing.is_none());
 }
+
+#[tokio::test]
+async fn test_user_preferences_crud_and_isolation() {
+    let db = InMemoryDatabase::new();
+    let user_a = uuid::Uuid::now_v7();
+    let user_b = uuid::Uuid::now_v7();
+
+    // Missing key reads as None.
+    assert!(
+        db.get_user_preference(user_a, "theme")
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    // Set creates the row.
+    let created = db
+        .set_user_preference(user_a, "theme", "\"dark\"")
+        .await
+        .unwrap();
+    assert_eq!(created.key, "theme");
+    assert_eq!(created.value, "\"dark\"");
+
+    // Set again upserts (updates value, keeps identity, no duplicate row).
+    let updated = db
+        .set_user_preference(user_a, "theme", "\"light\"")
+        .await
+        .unwrap();
+    assert_eq!(updated.id, created.id, "upsert must reuse the same row");
+    assert_eq!(updated.value, "\"light\"");
+    assert_eq!(db.list_user_preferences(user_a).await.unwrap().len(), 1);
+
+    // Preferences are isolated per user.
+    db.set_user_preference(user_b, "theme", "\"system\"")
+        .await
+        .unwrap();
+    assert_eq!(
+        db.get_user_preference(user_a, "theme")
+            .await
+            .unwrap()
+            .unwrap()
+            .value,
+        "\"light\""
+    );
+    assert_eq!(db.list_user_preferences(user_b).await.unwrap().len(), 1);
+
+    // Delete removes only the targeted key and reports whether a row was hit.
+    assert!(db.delete_user_preference(user_a, "theme").await.unwrap());
+    assert!(!db.delete_user_preference(user_a, "theme").await.unwrap());
+    assert!(
+        db.get_user_preference(user_a, "theme")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    // user_b is unaffected by user_a's delete.
+    assert_eq!(db.list_user_preferences(user_b).await.unwrap().len(), 1);
+}
+
+// Account linking: signing in with an OAuth provider whose verified email
+// matches an existing password account must attach the provider identity to
+// that account (same email = same account) WITHOUT dropping password auth.
+// Mirrors the linking branch in `oauth_callback` (crates/server/src/auth/routes.rs).
+#[tokio::test]
+async fn link_oauth_identity_attaches_provider_and_preserves_password() {
+    let db = InMemoryDatabase::new();
+
+    let email = format!("linker-{}@example.com", Uuid::now_v7());
+    let user = db
+        .create_user(CreateUserRow {
+            email: email.clone(),
+            name: "Linker".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: Some("argon2-hash".to_string()),
+            email_verified: true,
+            auth_provider: Some("local".to_string()),
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+
+    // Before linking, the Google identity resolves to nobody.
+    assert!(
+        db.get_user_by_oauth("google", "google-sub-1")
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let linked = db
+        .link_oauth_identity(user.id, "google", "google-sub-1")
+        .await
+        .unwrap()
+        .expect("existing user linked");
+    assert_eq!(linked.id, user.id);
+
+    // Google login now resolves to the same account.
+    let by_oauth = db
+        .get_user_by_oauth("google", "google-sub-1")
+        .await
+        .unwrap()
+        .expect("oauth lookup resolves to linked account");
+    assert_eq!(by_oauth.id, user.id);
+
+    // Password auth is preserved: hash intact and email lookup still works, so
+    // password login and password reset keep functioning for the linked user.
+    assert_eq!(by_oauth.password_hash.as_deref(), Some("argon2-hash"));
+    let by_email = db.get_user_by_email(&email).await.unwrap().unwrap();
+    assert_eq!(by_email.id, user.id);
+    assert_eq!(by_email.password_hash.as_deref(), Some("argon2-hash"));
+
+    // Linking a non-existent user is a no-op (None), not an error.
+    assert!(
+        db.link_oauth_identity(Uuid::now_v7(), "google", "x")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}

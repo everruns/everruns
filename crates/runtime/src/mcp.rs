@@ -57,6 +57,7 @@ fn resolve_servers(servers: &ScopedMcpServers) -> Vec<ResolvedServer> {
                     name: name.clone(),
                     endpoint,
                     auth_mode: server.auth_mode.clone(),
+                    protocol_mode: server.protocol_mode,
                     oauth_provider_id: server.oauth_provider_id.clone(),
                 },
                 tool_discovery: server.tool_discovery,

@@ -1006,6 +1006,7 @@ mod tests {
             prompt_cache: None,
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         }
     }
 

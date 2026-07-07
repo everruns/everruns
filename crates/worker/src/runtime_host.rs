@@ -73,6 +73,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
                 headers,
             },
             auth_mode: info.auth_mode,
+            protocol_mode: info.protocol_mode,
             oauth_provider_id: info.oauth_provider_id,
         }))
     }

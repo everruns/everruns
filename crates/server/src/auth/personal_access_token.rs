@@ -7,7 +7,7 @@
 // Decision: full token is shown only once at creation, stored hashed in DB.
 
 use chrono::{DateTime, Utc};
-use rand::Rng;
+use rand::RngExt;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 

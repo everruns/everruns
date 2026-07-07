@@ -393,6 +393,8 @@ impl AuthBackend for BuiltinAuthBackend {
             password_auth_enabled: self.config.password_auth_enabled(),
             oauth_providers,
             signup_enabled: self.config.signup_enabled(),
+            signup_email_confirm: self.config.signup_email_confirm,
+            captcha: None,
         }
     }
 }

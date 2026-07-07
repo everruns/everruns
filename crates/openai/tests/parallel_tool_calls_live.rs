@@ -55,6 +55,7 @@ fn config_with(parallel: Option<bool>) -> LlmCallConfig {
         prompt_cache: None,
         openrouter_routing: None,
         parallel_tool_calls: parallel,
+        volatile_suffix_len: 0,
     }
 }
 

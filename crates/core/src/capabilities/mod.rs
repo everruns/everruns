@@ -100,6 +100,7 @@ mod current_time;
 mod data_knowledge;
 mod declarative;
 mod error_disclosure;
+pub mod facts;
 mod fake_aws;
 mod fake_crm;
 mod fake_financial;
@@ -149,6 +150,7 @@ mod tool_output_distillation;
 mod tool_output_persistence;
 mod tool_search;
 pub mod user_hooks;
+mod util;
 #[cfg(feature = "web-fetch")]
 mod web_fetch;
 
@@ -205,6 +207,7 @@ pub use declarative::{
 pub use error_disclosure::{
     ERROR_DISCLOSURE_CAPABILITY_ID, ErrorDisclosureCapability, resolve_error_disclosure,
 };
+pub use facts::{FACTS_DYNAMIC_NOTE, Fact, FactsContext, Volatility, render_facts_block};
 pub use fake_aws::{
     AwsCreateEc2InstanceTool, AwsCreateIamUserTool, AwsCreateRdsDatabaseTool,
     AwsCreateS3BucketTool, AwsGetCloudWatchMetricsTool, AwsListEc2InstancesTool,
@@ -804,6 +807,24 @@ pub trait Capability: Send + Sync {
     /// By default, returns None (no model-view transformation).
     fn model_view_provider(&self) -> Option<Arc<dyn ModelViewProvider>> {
         None
+    }
+
+    /// Returns key/value [`Fact`]s this capability contributes to the model.
+    ///
+    /// Facts are routed by their [`Volatility`] so prompt caching is preserved:
+    /// [`Volatility::Static`] facts fold into the cached system-prompt prefix at
+    /// build time; [`Volatility::Dynamic`] facts are appended at the
+    /// conversation tail on every turn (outside the cached prefix). This is the
+    /// generic seam for "changing facts" such as the current time — see
+    /// [`crate::capabilities::facts`].
+    ///
+    /// Called both at prompt-assembly time (to fold static facts and detect
+    /// whether any dynamic facts exist) and per request (to render the live
+    /// tail block), so implementations must be cheap and side-effect free.
+    ///
+    /// By default, returns an empty vector (no facts).
+    fn facts(&self, _config: &serde_json::Value, _ctx: &FactsContext) -> Vec<Fact> {
+        vec![]
     }
 
     /// Returns pre-tool execution hooks provided by this capability.
@@ -1860,6 +1881,37 @@ pub fn collect_model_view_providers(
     }
 }
 
+/// Collect [`Volatility::Dynamic`] facts from every active capability, in
+/// configured order. Called by `ReasonAtom` once per request so live values
+/// (e.g. the current time) are fresh, then rendered into the trailing `<facts>`
+/// block. Static facts are ignored here — they already live in the cached
+/// system prompt.
+pub fn collect_dynamic_facts(
+    capability_configs: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+    model: Option<&str>,
+    ctx: &FactsContext,
+) -> Vec<Fact> {
+    let mut dynamic = Vec::new();
+    for cap_config in capability_configs {
+        let cap_id = cap_config.capability_ref.as_str();
+        if let Some(capability) = registry.get(cap_id) {
+            if capability.status() != CapabilityStatus::Available {
+                continue;
+            }
+            let effective: &dyn Capability = capability
+                .resolve_for_model(model)
+                .unwrap_or_else(|| capability.as_ref());
+            for fact in effective.facts(&cap_config.config, ctx) {
+                if fact.volatility == Volatility::Dynamic {
+                    dynamic.push(fact);
+                }
+            }
+        }
+    }
+    dynamic
+}
+
 pub fn collect_capability_mcp_servers(
     capability_configs: &[AgentCapabilityConfig],
     registry: &CapabilityRegistry,
@@ -2264,6 +2316,12 @@ pub async fn collect_capabilities_with_configs(
     // hooks so model-authored narration (human_intent) keeps precedence.
     let mut narration_hooks: Vec<Arc<dyn ToolCallHook>> = Vec::new();
     let mut mcp_servers = ScopedMcpServers::default();
+    // Facts contributed by capabilities. Static facts fold into the cached
+    // system prompt below; a single note is added when any dynamic fact exists,
+    // explaining the live `<facts>` block that `ReasonAtom` appends per turn.
+    let mut static_facts: Vec<Fact> = Vec::new();
+    let mut has_dynamic_facts = false;
+    let facts_ctx = FactsContext::new(ctx.session_id);
     let compaction_on = compaction_is_enabled(capability_configs, registry);
 
     for cap_config in capability_configs {
@@ -2345,6 +2403,17 @@ pub async fn collect_capabilities_with_configs(
                     content: contribution.clone(),
                 });
                 system_prompt_parts.push(contribution);
+            }
+
+            // Collect declared facts. Static facts fold into the cached prompt
+            // below; dynamic facts are re-collected per request by `ReasonAtom`
+            // and appended at the conversation tail, so here we only note their
+            // presence to add the explanatory system-prompt line.
+            for fact in effective.facts(&cap_config.config, &facts_ctx) {
+                match fact.volatility {
+                    Volatility::Static => static_facts.push(fact),
+                    Volatility::Dynamic => has_dynamic_facts = true,
+                }
             }
 
             // Collect tools and hooks (config-aware: capabilities can adapt based on per-agent config)
@@ -2486,6 +2555,25 @@ pub async fn collect_capabilities_with_configs(
         }
         narration_hooks.push(Arc::new(CapabilityNarrationHook(bg_cap.clone())));
         applied_ids.push(BACKGROUND_EXECUTION_CAPABILITY_ID.to_string());
+    }
+
+    // Fold static facts into the cached system-prompt prefix, and add the
+    // dynamic-facts note once when any capability declared a dynamic fact. Both
+    // are stable across turns, so they stay in the cached prefix; the live
+    // dynamic values are appended at the conversation tail per request.
+    if let Some(block) = facts::render_facts_block(&static_facts) {
+        system_prompt_attributions.push(SystemPromptAttribution {
+            capability_id: "facts".to_string(),
+            content: block.clone(),
+        });
+        system_prompt_parts.push(block);
+    }
+    if has_dynamic_facts {
+        system_prompt_attributions.push(SystemPromptAttribution {
+            capability_id: "facts".to_string(),
+            content: FACTS_DYNAMIC_NOTE.to_string(),
+        });
+        system_prompt_parts.push(FACTS_DYNAMIC_NOTE.to_string());
     }
 
     // Append per-capability narration adapters after every explicit tool-call
@@ -2781,6 +2869,74 @@ mod tests {
         assert_eq!(noop.status(), CapabilityStatus::Available);
     }
 
+    /// Registry-wide invariants for every built-in capability. This replaces the
+    /// per-capability `test_capability_metadata` / `has_tools` / `in_registry`
+    /// boilerplate that only restated hardcoded constants: instead of pinning
+    /// each id/name/tool-list literal, it enforces the properties that actually
+    /// matter across the whole set and would catch a real defect (a blank id, a
+    /// duplicate or dangling dependency, colliding tool names) that constant
+    /// mirrors never could.
+    #[test]
+    fn builtin_capabilities_satisfy_registry_invariants() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        for cap in registry.list() {
+            let id = cap.id();
+            assert!(!id.is_empty(), "capability has an empty id");
+            assert!(
+                !cap.name().trim().is_empty(),
+                "capability `{id}` has an empty name"
+            );
+
+            // The registration key is `id()`, so every capability must resolve
+            // by its own id (guards against an id()/registration mismatch).
+            assert!(
+                registry.get(id).is_some(),
+                "capability `{id}` does not resolve by its own id"
+            );
+
+            // Every declared dependency must resolve to a registered capability
+            // (or alias) in the same registry — a typo or removed dependency
+            // would otherwise silently break dependency resolution at runtime.
+            for dep in cap.dependencies() {
+                assert!(
+                    registry.get(dep).is_some(),
+                    "capability `{id}` depends on `{dep}`, which is not registered"
+                );
+            }
+
+            // Tool names must be non-empty and unique within a capability, so
+            // dispatch by name is unambiguous.
+            let mut seen = std::collections::HashSet::new();
+            for tool in cap.tools() {
+                let name = tool.name().to_string();
+                assert!(
+                    !name.is_empty(),
+                    "capability `{id}` exposes a tool with an empty name"
+                );
+                assert!(
+                    seen.insert(name.clone()),
+                    "capability `{id}` exposes duplicate tool name `{name}`"
+                );
+            }
+
+            // Advertised tool definitions must likewise carry non-empty, unique
+            // names so the tool schema a client sees is unambiguous.
+            let mut def_seen = std::collections::HashSet::new();
+            for def in cap.tool_definitions() {
+                let name = def.name().to_string();
+                assert!(
+                    !name.is_empty(),
+                    "capability `{id}` advertises a tool definition with an empty name"
+                );
+                assert!(
+                    def_seen.insert(name.clone()),
+                    "capability `{id}` advertises duplicate tool definition name `{name}`"
+                );
+            }
+        }
+    }
+
     #[test]
     fn test_capability_registry_blueprint_with_capability() {
         struct BlueprintProviderCapability;
@@ -2938,10 +3094,22 @@ mod tests {
         )
         .await;
 
-        // CurrentTime has no system prompt addition but has a tool
-        assert_eq!(
-            applied.runtime_agent.system_prompt,
-            base_runtime_agent.system_prompt
+        // CurrentTime contributes a dynamic `current_time` fact, so the cached
+        // prompt gains the explanatory facts note (the live value is appended at
+        // the conversation tail per request). It also keeps its tool.
+        assert!(
+            applied
+                .runtime_agent
+                .system_prompt
+                .contains(FACTS_DYNAMIC_NOTE),
+            "current_time should contribute the dynamic-facts note"
+        );
+        assert!(
+            applied
+                .runtime_agent
+                .system_prompt
+                .contains(&base_runtime_agent.system_prompt),
+            "base prompt is preserved"
         );
         assert!(applied.tool_registry.has("get_current_time"));
         assert_eq!(applied.tool_registry.len(), 1);
@@ -3258,6 +3426,75 @@ mod tests {
             collect_capabilities(&["current_time".to_string()], &registry, &test_ctx()).await;
 
         assert!(collected.mounts.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_dynamic_facts_add_note_without_static_block() {
+        // `current_time` contributes a Dynamic fact, so the cached prompt gets
+        // the explanatory note but NOT a static `<facts>` block (the live value
+        // is appended at the conversation tail per request instead).
+        let registry = CapabilityRegistry::with_builtins();
+        let configs = vec![AgentCapabilityConfig::new("current_time".to_string())];
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+        let prompt = collected.system_prompt_parts.join("\n");
+        assert!(
+            prompt.contains(FACTS_DYNAMIC_NOTE),
+            "dynamic-facts note should be in the cached prompt"
+        );
+        assert!(
+            !prompt.contains("<facts>\n"),
+            "no static <facts> block for a purely-dynamic fact; got: {prompt}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_static_facts_fold_into_prompt() {
+        struct StaticFactCap;
+        impl Capability for StaticFactCap {
+            fn id(&self) -> &str {
+                "test_static_fact"
+            }
+            fn name(&self) -> &str {
+                "Static Fact"
+            }
+            fn description(&self) -> &str {
+                "test"
+            }
+            fn status(&self) -> CapabilityStatus {
+                CapabilityStatus::Available
+            }
+            fn facts(&self, _config: &serde_json::Value, _ctx: &FactsContext) -> Vec<Fact> {
+                vec![Fact::stat("workspace_root", "/workspace")]
+            }
+        }
+        let mut registry = CapabilityRegistry::new();
+        registry.register(StaticFactCap);
+        let configs = vec![AgentCapabilityConfig::new("test_static_fact".to_string())];
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+        let prompt = collected.system_prompt_parts.join("\n");
+        assert!(
+            prompt.contains("<facts>\n- workspace_root: /workspace\n</facts>"),
+            "static fact should fold into the cached prompt; got: {prompt}"
+        );
+        assert!(
+            !prompt.contains(FACTS_DYNAMIC_NOTE),
+            "no dynamic note when only static facts exist"
+        );
+    }
+
+    #[test]
+    fn test_collect_dynamic_facts_returns_current_time() {
+        let registry = CapabilityRegistry::with_builtins();
+        let configs = vec![AgentCapabilityConfig::new("current_time".to_string())];
+        let facts = collect_dynamic_facts(
+            &configs,
+            &registry,
+            None,
+            &FactsContext::new(SessionId::new()),
+        );
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].key, "current_time");
+        assert_eq!(facts[0].volatility, Volatility::Dynamic);
     }
 
     #[tokio::test]

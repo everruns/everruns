@@ -140,6 +140,9 @@ fn test_spawn_subagent_schema_validation() {
     assert_eq!(props["name"]["type"], "string");
     assert_eq!(props["instructions"]["type"], "string");
 
+    // Execution mode is optional with background as the documented default.
+    assert_eq!(props["mode"]["enum"], json!(["background", "foreground"]));
+
     // Check additionalProperties
     assert_eq!(schema["additionalProperties"], json!(false));
 }

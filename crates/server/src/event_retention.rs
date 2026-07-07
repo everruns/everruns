@@ -5,6 +5,7 @@
 
 use sqlx::PgPool;
 use std::time::Duration;
+use tokio::task::JoinHandle;
 use tracing::{debug, error, info};
 
 /// Default retention period in days (0 = disabled)
@@ -23,10 +24,10 @@ pub fn retention_days_from_env() -> u64 {
 
 /// Spawn the event retention background task.
 /// Runs every hour and archives events older than the configured retention period.
-pub fn spawn_retention_task(pool: PgPool, retention_days: u64) {
+pub fn spawn_retention_task(pool: PgPool, retention_days: u64) -> Option<JoinHandle<()>> {
     if retention_days == 0 {
         info!("Event retention disabled (EVENT_RETENTION_DAYS=0 or unset)");
-        return;
+        return None;
     }
 
     info!(
@@ -34,7 +35,7 @@ pub fn spawn_retention_task(pool: PgPool, retention_days: u64) {
         "Starting event retention background task"
     );
 
-    tokio::spawn(async move {
+    Some(tokio::spawn(async move {
         let interval = Duration::from_secs(3600); // 1 hour
         let mut ticker = tokio::time::interval(interval);
         ticker.tick().await; // skip first immediate tick
@@ -58,7 +59,7 @@ pub fn spawn_retention_task(pool: PgPool, retention_days: u64) {
                 }
             }
         }
-    });
+    }))
 }
 
 /// Archive events older than `retention_days` from `events` to `archived_events`.

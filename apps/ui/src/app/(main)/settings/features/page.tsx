@@ -18,7 +18,6 @@ export default function FeaturesSettingsPage() {
   const updateFlags = useUpdateOrgFeatureFlags();
 
   const availableFlags = data?.flags.filter((f) => f.system_enabled) ?? [];
-  const unavailableCount = data?.flags.filter((f) => !f.system_enabled).length ?? 0;
 
   const handleToggle = (flag: OrgFeatureFlagSetting, enabled: boolean) => {
     if (!canManage) return;
@@ -61,9 +60,7 @@ export default function FeaturesSettingsPage() {
 
       {!isLoading && availableFlags.length === 0 && (
         <Card className="p-6 text-sm text-muted-foreground">
-          No optional features are available to enable on this deployment.
-          {unavailableCount > 0 &&
-            ` (${unavailableCount} feature${unavailableCount === 1 ? "" : "s"} require operator configuration.)`}
+          No experimental features are currently available for your organization.
         </Card>
       )}
 

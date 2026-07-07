@@ -34,7 +34,9 @@ A distribution channel attached to an App. Each channel has its own type, config
 
 ### Channel Types
 
-Current: `slack`, `ag_ui`, `schedule`, `webhook`. Future: `whatsapp`, `web_widget`, `api_endpoint`, `discord`, etc. The `api_endpoint` channel carries an app-scoped, execution-only API key over the native session API; see [app-api-keys.md](app-api-keys.md).
+Current: `slack`, `ag_ui`, `schedule`, `webhook`, `a2a`, `fcp`, `api_endpoint`, `public_chat`. Future: `whatsapp`, `web_widget`, `discord`, etc. The `api_endpoint` channel carries an app-scoped, execution-only API key over the native session API; see [app-api-keys.md](app-api-keys.md).
+
+`public_chat` is an isolated, public-facing chat web app bound to a single App's agent (anonymous by default, optional Google sign-in, optional Cloudflare Turnstile bot mitigation, plus branding). It reuses AG-UI streaming and the shared App endpoint auth verifier. See [public-chat.md](public-chat.md).
 
 Channel config is stored as JSONB and validated at the application layer per channel type.
 
@@ -197,7 +199,7 @@ draft → published → draft → archived → deleted
 
 ## UI
 
-The App detail page is a channels-first operations page. It folds App configuration into the header, renders a Health / Invocations 24h / Success rate / Activity stat strip, lists channels as expandable rows, and shows a live activity rail. Channel creation and editing are full-page routes, not dialogs:
+The App detail page is a channels-first operations page. It folds App configuration into the header, renders a Health / Invocations 24h / Success rate / Activity stat strip, lists channels as expandable rows, and shows a live activity rail with an agent-identity control that persists changes inline. Channel creation and editing are full-page routes, not dialogs:
 
 - `/apps/{app_id}/channels/new`
 - `/apps/{app_id}/channels/{channel_id}`
@@ -211,7 +213,7 @@ Apps are the publish surface for Harnesses and Agents. To avoid forcing users to
 - Harness detail → `/apps/new?harness_id={harness_id}`
 - Agent detail → `/apps/new?agent_id={agent_id}`
 
-The create form reads `harness_id` and `agent_id` from the query string to seed its selectors. Because a Harness is required, the harness shortcut yields a directly submittable draft; the agent shortcut still requires the user to pick a harness.
+The create form is a streamlined draft form: an **App details** section (name, description) and a **Deployment** section (required Harness, optional Agent). Channel and agent-identity configuration are deferred to the detail page, so creation always yields a draft. The form reads `harness_id` and `agent_id` from the query string to seed its selectors. Because a Harness is required, the harness shortcut yields a directly submittable draft; the agent shortcut still requires the user to pick a harness.
 
 ## Data Model
 

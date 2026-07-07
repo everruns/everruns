@@ -422,27 +422,7 @@ mod tests {
     use super::*;
     use crate::typed_id::SessionId;
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = SessionSqlDatabaseCapability;
-        assert_eq!(cap.id(), "session_sql_database");
-        assert_eq!(cap.name(), "SQL Database");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("database"));
-        assert_eq!(cap.category(), Some("Data"));
-    }
-
-    #[test]
-    fn test_capability_has_three_tools() {
-        let cap = SessionSqlDatabaseCapability;
-        let tools = cap.tools();
-        assert_eq!(tools.len(), 3);
-
-        let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(tool_names.contains(&"sql_execute"));
-        assert!(tool_names.contains(&"sql_query"));
-        assert!(tool_names.contains(&"sql_schema"));
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_capability_has_system_prompt() {
@@ -450,13 +430,6 @@ mod tests {
         let prompt = cap.system_prompt_addition().unwrap();
         assert!(prompt.contains("SQLite"));
         assert!(prompt.contains("1000 rows"));
-    }
-
-    #[test]
-    fn test_tools_require_context() {
-        assert!(SqlExecuteTool.requires_context());
-        assert!(SqlQueryTool.requires_context());
-        assert!(SqlSchemaTool.requires_context());
     }
 
     #[tokio::test]

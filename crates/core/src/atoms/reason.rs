@@ -1407,8 +1407,29 @@ impl ReasonAtom {
             session_id,
             prior_usage: prior_usage.as_ref(),
         };
-        let context_messages =
+        let mut context_messages =
             model_view_providers.apply_model_view(patched_messages, &model_view_context);
+
+        // 9c. Append live dynamic facts (e.g. the current time) at the tail.
+        // Collected fresh each request so values are current, and delivered as a
+        // trailing user-role message so they never fold into the cached system
+        // prompt. `volatile_suffix_len` tells the Anthropic driver to anchor its
+        // message cache breakpoint *before* this block, so the volatile tail
+        // rides uncached while the conversation prefix stays cached.
+        let mut volatile_suffix_len = 0usize;
+        {
+            let facts_ctx = crate::capabilities::FactsContext::new(session_id);
+            let dynamic_facts = crate::capabilities::collect_dynamic_facts(
+                &resolved_capability_configs,
+                &self.capability_registry,
+                Some(model_with_provider.model.as_str()),
+                &facts_ctx,
+            );
+            if let Some(block) = crate::capabilities::render_facts_block(&dynamic_facts) {
+                context_messages.push(Message::user(block));
+                volatile_suffix_len = 1;
+            }
+        }
 
         // 10. Resolve images from image_file references (if any)
         //
@@ -1500,6 +1521,7 @@ impl ReasonAtom {
 
         let llm_config = llm_config_builder
             .previous_response_id(previous_response_id.clone())
+            .volatile_suffix_len(volatile_suffix_len)
             .build();
 
         tracing::debug!(
@@ -2006,6 +2028,7 @@ impl ReasonAtom {
                                 prompt_cache: None,
                                 openrouter_routing: None,
                                 parallel_tool_calls: None,
+                                volatile_suffix_len: 0,
                             };
 
                             match chat_driver
@@ -3549,6 +3572,7 @@ mod tests {
             }),
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
 
         let request_options = build_request_options(&config, "openai").unwrap();
@@ -3582,6 +3606,7 @@ mod tests {
             }),
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
 
         let request_options = build_request_options(&config, "gemini").unwrap();
@@ -3615,6 +3640,7 @@ mod tests {
             }),
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
 
         assert!(build_request_options(&config, "gemini").is_none());

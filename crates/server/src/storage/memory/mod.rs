@@ -44,6 +44,7 @@ mod sessions;
 mod skills;
 pub mod subagent_spawn_handles;
 mod user_connections;
+mod user_preferences;
 mod users;
 mod workspaces;
 
@@ -125,6 +126,8 @@ pub struct InMemoryDatabase {
     session_secrets: RwLock<HashMap<(SessionId, String), SessionSecretRow>>,
     // User connections (external service accounts)
     user_connections: RwLock<HashMap<Uuid, UserConnectionRow>>,
+    // User preferences: (user_id, key) -> row
+    user_preferences: RwLock<HashMap<(Uuid, String), UserPreferenceRow>>,
     // Pinned sessions: (user_id, session_id) -> (org_id, pinned_at)
     pinned_sessions: RwLock<HashMap<(Uuid, SessionId), PinnedSessionData>>,
     // Durable UI notifications
@@ -158,6 +161,8 @@ pub struct InMemoryDatabase {
     eval_cases: RwLock<HashMap<Uuid, EvalCaseRow>>,
     eval_runs: RwLock<HashMap<Uuid, EvalRunRow>>,
     eval_case_results: RwLock<HashMap<Uuid, EvalCaseResultRow>>,
+    eval_run_datasets: RwLock<HashMap<Uuid, EvalRunDatasetRow>>,
+    eval_run_share_tokens: RwLock<HashMap<Uuid, EvalRunShareTokenRow>>,
     agent_health_check_runs: RwLock<HashMap<Uuid, AgentHealthCheckRunRow>>,
     agent_check_rules: RwLock<HashMap<Uuid, AgentCheckRuleRow>>,
     observers: RwLock<HashMap<Uuid, ObserverRow>>,
@@ -194,6 +199,9 @@ pub struct InMemoryDatabase {
     org_task_webhooks: RwLock<Vec<OrgTaskWebhookRow>>,
     // OSS-owned organization invitations (EVE-602)
     org_invitations: RwLock<Vec<OrgInvitationRow>>,
+    // Native-auth account-recovery tokens (hashed, single-use, short-TTL).
+    password_reset_tokens: RwLock<Vec<auth::AccountRecoveryToken>>,
+    email_verification_tokens: RwLock<Vec<auth::AccountRecoveryToken>>,
 }
 
 impl Default for InMemoryDatabase {
@@ -212,6 +220,8 @@ impl Default for InMemoryDatabase {
                 updated_at: now,
                 external_id: None,
                 created_by: None,
+                // Default org is pre-provisioned and already onboarded.
+                onboarding_completed_at: Some(now),
             },
         );
 
@@ -267,6 +277,7 @@ impl Default for InMemoryDatabase {
             session_key_values: RwLock::new(HashMap::new()),
             session_secrets: RwLock::new(HashMap::new()),
             user_connections: RwLock::new(HashMap::new()),
+            user_preferences: RwLock::new(HashMap::new()),
             pinned_sessions: RwLock::new(HashMap::new()),
             notifications: RwLock::new(HashMap::new()),
             notification_turn_requests: RwLock::new(HashMap::new()),
@@ -287,6 +298,8 @@ impl Default for InMemoryDatabase {
             eval_cases: RwLock::new(HashMap::new()),
             eval_runs: RwLock::new(HashMap::new()),
             eval_case_results: RwLock::new(HashMap::new()),
+            eval_run_datasets: RwLock::new(HashMap::new()),
+            eval_run_share_tokens: RwLock::new(HashMap::new()),
             agent_health_check_runs: RwLock::new(HashMap::new()),
             agent_check_rules: RwLock::new(HashMap::new()),
             observers: RwLock::new(HashMap::new()),
@@ -313,6 +326,8 @@ impl Default for InMemoryDatabase {
             plugin_installs: RwLock::new(HashMap::new()),
             org_task_webhooks: RwLock::new(Vec::new()),
             org_invitations: RwLock::new(Vec::new()),
+            password_reset_tokens: RwLock::new(Vec::new()),
+            email_verification_tokens: RwLock::new(Vec::new()),
         }
     }
 }

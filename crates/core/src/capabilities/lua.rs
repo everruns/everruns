@@ -827,7 +827,9 @@ mod engine {
         let counted = Arc::new(AtomicU64::new(0));
         {
             let counted = counted.clone();
-            lua.set_hook(
+            // mlua 0.11 makes `set_hook` fallible; surface a setup failure as an
+            // engine error rather than silently ignoring the result.
+            if let Err(e) = lua.set_hook(
                 HookTriggers::new().every_nth_instruction(HOOK_EVERY),
                 move |_lua, _debug| {
                     if Instant::now() >= deadline {
@@ -838,7 +840,9 @@ mod engine {
                     }
                     Ok(VmState::Continue)
                 },
-            );
+            ) {
+                return LuaOutcome::engine_error(format!("install hook: {e}"));
+            }
         }
 
         let stdout = Arc::new(Mutex::new(String::new()));
@@ -1213,24 +1217,12 @@ mod engine {
 mod tests {
     use super::*;
 
-    #[test]
-    fn capability_metadata() {
-        let cap = LuaCapability;
-        assert_eq!(cap.id(), "lua");
-        assert_eq!(cap.name(), "Lua");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.risk_level(), RiskLevel::High);
-        assert_eq!(cap.category(), Some("Execution"));
-        assert_eq!(cap.dependencies(), vec!["session_file_system"]);
-        assert_eq!(cap.features(), vec!["file_system"]);
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
-    fn capability_has_one_tool() {
-        let tools = LuaCapability.tools();
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "lua");
-        assert!(tools[0].requires_context());
+    fn capability_features() {
+        let cap = LuaCapability;
+        assert_eq!(cap.features(), vec!["file_system"]);
     }
 
     #[test]

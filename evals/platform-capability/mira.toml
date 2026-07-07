@@ -1,0 +1,20 @@
+# Mira host config for the platform-capability study. Picked up by the `mira`
+# CLI when run from this directory.
+
+[results]
+dir = "./results"
+
+[environment]
+enabled = true
+
+# `mira run` with no --bin/--launcher uses this. The launcher builds and starts
+# the study process (cargo run -q --bin platform_capability).
+default_launcher = "platform_capability"
+
+[launchers.platform_capability]
+bin = "platform_capability"
+
+# Fast subset: read-only + safety cases create no entities, so they are safe to
+# run repeatedly. `mira run --preset smoke`.
+[presets.smoke]
+tag = "read"

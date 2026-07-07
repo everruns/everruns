@@ -242,23 +242,7 @@ pub async fn submit_tool_results(
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_submit_tool_results_request_deserialization() {
-        let json = r#"{
-            "tool_results": [
-                {
-                    "tool_call_id": "call_abc123",
-                    "result": {"status": "deployed", "url": "https://staging.app"}
-                }
-            ]
-        }"#;
-
-        let req: SubmitToolResultsRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.tool_results.len(), 1);
-        assert_eq!(req.tool_results[0].tool_call_id, "call_abc123");
-        assert!(req.tool_results[0].result.is_some());
-        assert!(req.tool_results[0].error.is_none());
-    }
+    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
     fn test_submit_tool_results_request_with_error() {
@@ -293,17 +277,5 @@ mod tests {
 
         let req: SubmitToolResultsRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.tool_results.len(), 3);
-    }
-
-    #[test]
-    fn test_submit_tool_results_response_serialization() {
-        let resp = SubmitToolResultsResponse {
-            accepted: 2,
-            status: "active".to_string(),
-        };
-
-        let json = serde_json::to_value(&resp).unwrap();
-        assert_eq!(json["accepted"], 2);
-        assert_eq!(json["status"], "active");
     }
 }

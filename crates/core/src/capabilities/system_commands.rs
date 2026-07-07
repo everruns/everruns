@@ -57,22 +57,7 @@ impl Capability for SystemCommandsCapability {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_system_commands_capability_metadata() {
-        let cap = SystemCommandsCapability;
-        assert_eq!(cap.id(), SYSTEM_COMMANDS_CAPABILITY_ID);
-        assert_eq!(cap.name(), "System Commands");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("terminal"));
-        assert_eq!(cap.category(), Some("System"));
-    }
-
-    #[test]
-    fn test_system_commands_no_tools() {
-        let cap = SystemCommandsCapability;
-        assert!(cap.tools().is_empty());
-        assert!(cap.tool_definitions().is_empty());
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_system_commands_no_system_prompt() {
