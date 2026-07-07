@@ -1295,15 +1295,16 @@ struct AnthropicOutputConfig {
     effort: String,
 }
 
-/// Claude families that use adaptive thinking. On Fable 5 and Opus 4.8/4.7
-/// budget-based thinking is removed (400); on Opus 4.6 / Sonnet 4.6 it is
-/// deprecated and adaptive is the recommended form. Keep in sync with the
+/// Claude families that use adaptive thinking. On Fable 5, Opus 4.8/4.7, and
+/// Sonnet 5 budget-based thinking is removed (400); on Opus 4.6 / Sonnet 4.6 it
+/// is deprecated and adaptive is the recommended form. Keep in sync with the
 /// adaptive-thinking profiles in `everruns_core::model_profiles`.
 const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
     "claude-fable-5",
     "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",
+    "claude-sonnet-5",
     "claude-sonnet-4-6",
 ];
 
@@ -1317,6 +1318,7 @@ const MILLION_CONTEXT_FAMILIES: &[&str] = &[
     "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",
+    "claude-sonnet-5",
     "claude-sonnet-4-6",
 ];
 
@@ -2014,6 +2016,7 @@ mod tests {
         assert!(uses_adaptive_thinking("claude-opus-4-8"));
         assert!(uses_adaptive_thinking("claude-opus-4-7-20260416"));
         assert!(uses_adaptive_thinking("claude-opus-4-6"));
+        assert!(uses_adaptive_thinking("claude-sonnet-5"));
         assert!(uses_adaptive_thinking("claude-sonnet-4-6"));
         // Budget-based families stay on extended thinking.
         assert!(!uses_adaptive_thinking("claude-opus-4-5"));
@@ -2777,6 +2780,10 @@ mod tests {
         assert_eq!(
             split_million_context("claude-opus-4-6[1m]"),
             ("claude-opus-4-6", true)
+        );
+        assert_eq!(
+            split_million_context("claude-sonnet-5[1m]"),
+            ("claude-sonnet-5", true)
         );
 
         // Date-suffixed 1M-capable id is still honored (family normalization).
