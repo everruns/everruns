@@ -186,7 +186,7 @@ async fn test_register_short_password_does_not_leak_account_existence() {
     let (router, _db) = auth_router().await;
 
     // Pre-register the email with a valid password.
-    register_user(&router, "exists@example.com", "validpassword").await;
+    register_user(&router, "exists@example.com", "validpassword1").await;
 
     let (status_a, body_a, _) = send(
         &router,
@@ -810,7 +810,7 @@ async fn test_register_safety_net_uses_platform_definition_not_oss_defaults() {
         "/v1/auth/register",
         Some(json!({
             "email": "new-user@example.com",
-            "password": "super-secret-password",
+            "password": "super-secret-password1",
             "name": "New User",
         })),
         None,
@@ -865,7 +865,7 @@ async fn test_register_safety_net_is_idempotent_when_seed_already_ran() {
         "/v1/auth/register",
         Some(json!({
             "email": "second-user@example.com",
-            "password": "another-secret-password",
+            "password": "another-secret-password1",
             "name": "Second User",
         })),
         None,
