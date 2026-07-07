@@ -181,6 +181,14 @@ fn test_rule_stop_message_includes_currency() {
 // ========================================================================
 
 #[test]
+fn test_metered_total_tokens_includes_disjoint_cache_buckets() {
+    assert_eq!(
+        BudgetService::metered_total_tokens(200_000, 0, 800_000, 25_000),
+        1_025_000
+    );
+}
+
+#[test]
 fn test_compute_debit_tokens_currency() {
     let (svc, _) = make_service();
     let debit = svc.compute_debit(
@@ -269,6 +277,55 @@ fn test_compute_debit_usd_zero_provider_cost_falls_back() {
         Some(0.0),
     );
     assert_eq!(debit, 1500.0);
+}
+
+#[test]
+fn test_compute_debit_raw_token_quotas_include_cached_prompt_tokens() {
+    let (svc, _) = make_service();
+    let total_tokens = BudgetService::metered_total_tokens(200_000, 0, 800_000, 0);
+
+    assert_eq!(
+        svc.compute_debit(
+            "tokens",
+            total_tokens,
+            200_000,
+            0,
+            800_000,
+            0,
+            None,
+            None,
+            None
+        ),
+        1_000_000.0
+    );
+    assert_eq!(
+        svc.compute_debit(
+            "credits",
+            total_tokens,
+            200_000,
+            0,
+            800_000,
+            0,
+            None,
+            None,
+            None
+        ),
+        1_000.0
+    );
+    assert_eq!(
+        svc.compute_debit(
+            "custom",
+            total_tokens,
+            200_000,
+            0,
+            800_000,
+            0,
+            None,
+            None,
+            None,
+        ),
+        1_000_000.0
+    );
 }
 
 #[test]

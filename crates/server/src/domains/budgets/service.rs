@@ -292,7 +292,12 @@ impl BudgetService {
             return; // No budgets — nothing to track
         }
 
-        let total_tokens = input_tokens + output_tokens;
+        let total_tokens = Self::metered_total_tokens(
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_creation_tokens,
+        );
         // Only persisted events have a sequence allocated by the events table.
         // Synthetic listener inputs preserve traceability via source_id but must
         // not write an FK to usage_journal.event_id.
@@ -440,6 +445,15 @@ impl BudgetService {
                 }
             }
         }
+    }
+
+    pub(crate) fn metered_total_tokens(
+        input_tokens: i64,
+        output_tokens: i64,
+        cache_read_tokens: i64,
+        cache_creation_tokens: i64,
+    ) -> i64 {
+        input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens
     }
 
     /// Compute the debit amount in the budget's currency.
