@@ -271,6 +271,9 @@ pub struct AuthConfigResponse {
     pub password_auth_enabled: bool,
     pub oauth_providers: Vec<String>,
     pub signup_enabled: bool,
+    /// True when email/password signup ends at a "check your email"
+    /// confirmation instead of an instant session (AUTH_SIGNUP_EMAIL_CONFIRM).
+    pub signup_email_confirm: bool,
     /// Bot-mitigation challenge the UI must solve on abuse-prone auth forms
     /// (register / forgot-password / resend-verification). Absent when no
     /// captcha is configured.
@@ -416,6 +419,7 @@ pub async fn get_auth_config(State(state): State<BuiltinAuthBackend>) -> Json<Au
         password_auth_enabled: state.config.password_auth_enabled(),
         oauth_providers: oauth_providers(&state.config),
         signup_enabled: state.config.signup_enabled(),
+        signup_email_confirm: state.config.signup_email_confirm,
         captcha: state
             .config
             .turnstile
@@ -629,7 +633,7 @@ pub async fn login(
 /// commitment in `specs/authentication.md` and the UI's `minLength={8}` on
 /// the register form (TM-AUTH-004 / EVE-453). UI validation is convenience;
 /// this server-side check is the trust boundary.
-const PASSWORD_MIN_LENGTH: usize = 8;
+const PASSWORD_MIN_LENGTH: usize = 12;
 
 /// Maximum password length (characters) accepted on register / reset.
 /// Argon2's per-hash work grows with input size, so unbounded passwords are a
@@ -642,6 +646,29 @@ const PASSWORD_MAX_LENGTH: usize = 128;
 /// the generic credential failure before any hashing work.
 const PASSWORD_MAX_BYTES: usize = PASSWORD_MAX_LENGTH * 4;
 
+/// Policy for any NEWLY SET password (signup + reset): at least 12 codepoints,
+/// at most 128, and at least one ASCII digit. Existing passwords are never
+/// re-validated — login is unaffected. `chars().count()` so multi-byte
+/// padding cannot cheat the minimum.
+fn validate_new_password(password: &str) -> Result<(), AuthError> {
+    if password.chars().count() < PASSWORD_MIN_LENGTH {
+        return Err(AuthError::unprocessable(
+            "Password must be at least 12 characters",
+        ));
+    }
+    if password.chars().count() > PASSWORD_MAX_LENGTH {
+        return Err(AuthError::unprocessable(
+            "Password must be at most 128 characters",
+        ));
+    }
+    if !password.chars().any(|c| c.is_ascii_digit()) {
+        return Err(AuthError::unprocessable(
+            "Password must include at least one number",
+        ));
+    }
+    Ok(())
+}
+
 /// Generic registration-failure message returned to the client on every
 /// signup rejection that touches an account record — password register and
 /// OAuth signup alike. It must never disclose whether an account with a given
@@ -650,13 +677,34 @@ const PASSWORD_MAX_BYTES: usize = PASSWORD_MAX_LENGTH * 4;
 /// logged server-side only.
 const GENERIC_REGISTRATION_FAILED: &str = "Registration failed";
 
+/// Outcome of `register`, shaped by `signup_email_confirm`:
+/// - `Session`: classic instant-session signup (201 + cookies + tokens).
+/// - `ConfirmationSent`: confirm mode — the account may or may not have been
+///   created, no session exists yet, and the body is the same generic
+///   `{ok:true}` either way (anti-enumeration; the emailed link is the only
+///   place the two cases diverge).
+#[derive(Debug)]
+pub enum RegisterOutcome {
+    Session(StatusCode, CookieJar, Json<TokenResponse>),
+    ConfirmationSent(Json<OkResponse>),
+}
+
+impl axum::response::IntoResponse for RegisterOutcome {
+    fn into_response(self) -> axum::response::Response {
+        match self {
+            Self::Session(status, jar, json) => (status, jar, json).into_response(),
+            Self::ConfirmationSent(json) => (StatusCode::OK, json).into_response(),
+        }
+    }
+}
+
 /// POST /v1/auth/register - Register a new user
 pub async fn register(
     State(state): State<BuiltinAuthBackend>,
     headers: HeaderMap,
     jar: CookieJar,
     Json(req): Json<RegisterRequest>,
-) -> Result<(StatusCode, CookieJar, Json<TokenResponse>), AuthError> {
+) -> Result<RegisterOutcome, AuthError> {
     // Check if signup is enabled
     if state.config.disable_signup {
         return Err(AuthError::forbidden("Registration is disabled"));
@@ -670,25 +718,11 @@ pub async fn register(
     // Bot gate (when configured) before any account work.
     enforce_auth_captcha(&state, req.captcha_token.as_deref(), None).await?;
 
-    // EVE-453 / TM-AUTH-004: enforce the documented 8-character minimum here
-    // so direct API callers cannot bypass the UI's `minLength={8}` and create
-    // weak-password accounts. Validate using `chars().count()` so a password
-    // padded with multi-byte characters that happens to be < 8 codepoints
-    // long still fails. Run before the email lookup and password hash so
-    // timing reflects "request rejected" rather than "registration failed",
-    // and use `unprocessable` (422) instead of the generic 401, since this
-    // is an input validation error and does not touch any account record —
-    // no new account-enumeration signal.
-    if req.password.chars().count() < PASSWORD_MIN_LENGTH {
-        return Err(AuthError::unprocessable(
-            "Password must be at least 8 characters",
-        ));
-    }
-    if req.password.chars().count() > PASSWORD_MAX_LENGTH {
-        return Err(AuthError::unprocessable(
-            "Password must be at most 128 characters",
-        ));
-    }
+    // TM-AUTH-004: enforce the password policy server-side so direct API
+    // callers cannot bypass the UI's client-side checks. Runs before the
+    // email lookup and password hash — input validation only, no account
+    // record touched, so 422 here is not an enumeration signal.
+    validate_new_password(&req.password)?;
 
     // Hash password first to make timing consistent whether or not the email exists.
     // This prevents account enumeration via response-time differences (TM-AUTH-014).
@@ -704,6 +738,27 @@ pub async fn register(
     })?;
 
     if existing.is_some() {
+        if state.config.signup_email_confirm {
+            // Same generic success as a fresh signup; the divergence lives in
+            // the email body only. Budgeted like all account emails.
+            if state
+                .rate_limiter
+                .check_account_email_send(&req.email.trim().to_lowercase())
+                .await
+                .is_ok()
+            {
+                send_account_exists_email(&state, &req.email).await;
+            }
+            audit::emit(
+                state.db.clone(),
+                DEFAULT_ORG_ID,
+                None,
+                "auth.register.existing_email",
+                audit::client_ip(&headers),
+                serde_json::json!({}),
+            );
+            return Ok(RegisterOutcome::ConfirmationSent(OkResponse::ok()));
+        }
         return Err(AuthError::unauthorized(GENERIC_REGISTRATION_FAILED));
     }
 
@@ -773,6 +828,20 @@ pub async fn register(
     // before `user.email` is moved into `auth_user` below.
     issue_verification_email(&state, user.id, &user.email).await;
 
+    if state.config.signup_email_confirm {
+        // No session until the emailed confirmation link is clicked — the
+        // verify-email endpoint mints it (see `verify_email`).
+        audit::emit(
+            state.db.clone(),
+            DEFAULT_ORG_ID,
+            Some(user.id),
+            "auth.register.pending_confirmation",
+            audit::client_ip(&headers),
+            serde_json::json!({}),
+        );
+        return Ok(RegisterOutcome::ConfirmationSent(OkResponse::ok()));
+    }
+
     let organizations = builtin::fetch_user_organizations(&state.db, user.id)
         .await
         .unwrap_or_default();
@@ -797,7 +866,7 @@ pub async fn register(
     );
 
     let (jar, json) = generate_token_response(&state, jar, &auth_user).await?;
-    Ok((StatusCode::CREATED, jar, json))
+    Ok(RegisterOutcome::Session(StatusCode::CREATED, jar, json))
 }
 
 /// POST /v1/auth/refresh - Refresh access token
@@ -1403,7 +1472,7 @@ async fn send_password_reset_email(state: &BuiltinAuthBackend, to: &str, raw_tok
     );
     let subject = "Reset your Everruns password";
     let text = format!(
-        "We received a request to reset your Everruns password.\n\nReset it here:\n{url}\n\nThis link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email."
+        "We received a request to reset your Everruns password.Reset it here:{url}This link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email."
     );
     let html = format!(
         "<p>We received a request to reset your Everruns password.</p>\
@@ -1425,13 +1494,30 @@ async fn send_verification_email(state: &BuiltinAuthBackend, to: &str, raw_token
     );
     let subject = "Verify your Everruns email";
     let text = format!(
-        "Welcome to Everruns!\n\nPlease confirm your email address:\n{url}\n\nIf you didn't create an Everruns account, you can ignore this email."
+        "Welcome to Everruns!Please confirm your email address:{url}If you didn't create an Everruns account, you can ignore this email."
     );
     let html = format!(
         "<p>Welcome to <strong>Everruns</strong>!</p>\
          <p>Please confirm your email address:</p>\
          <p><a href=\"{url}\">Verify your email</a></p>\
          <p>If you didn't create an Everruns account, you can ignore this email.</p>"
+    );
+    deliver_account_email(state, to, subject, text, html).await;
+}
+
+/// Confirm-mode signup with an already-registered address: the on-screen
+/// response is identical to a fresh signup, and THIS email is the only place
+/// the user learns they already have an account (anti-enumeration).
+async fn send_account_exists_email(state: &BuiltinAuthBackend, to: &str) {
+    let url = format!("{}/login", state.config.frontend_url.trim_end_matches('/'));
+    let subject = "You already have an Everruns account";
+    let text = format!(
+        "Someone (probably you) tried to create an Everruns account with this email — but you already have one.Log in here:{url}Forgot your password? Use \"Reset your password\" on the login page. If this wasn't you, you can safely ignore this email."
+    );
+    let html = format!(
+        "<p>Someone (probably you) tried to create an Everruns account with this email — but you already have one.</p>\
+         <p><a href=\"{url}\">Log in to Everruns</a></p>\
+         <p>Forgot your password? Use \"Reset your password\" on the login page. If this wasn't you, you can safely ignore this email.</p>"
     );
     deliver_account_email(state, to, subject, text, html).await;
 }
@@ -1516,16 +1602,7 @@ pub async fn reset_password(
 ) -> Result<Json<OkResponse>, AuthError> {
     // Validate password before consuming the token so an invalid password does
     // not burn a single-use token.
-    if req.password.chars().count() < PASSWORD_MIN_LENGTH {
-        return Err(AuthError::unprocessable(
-            "Password must be at least 8 characters",
-        ));
-    }
-    if req.password.chars().count() > PASSWORD_MAX_LENGTH {
-        return Err(AuthError::unprocessable(
-            "Password must be at most 128 characters",
-        ));
-    }
+    validate_new_password(&req.password)?;
 
     let token_hash = crate::api::org_invitations::hash_invite_token(&req.token);
     let user_id = state
@@ -1571,8 +1648,9 @@ pub async fn reset_password(
 /// POST /v1/auth/verify-email - Mark the user's email verified.
 pub async fn verify_email(
     State(state): State<BuiltinAuthBackend>,
+    jar: CookieJar,
     Json(req): Json<VerifyEmailRequest>,
-) -> Result<Json<OkResponse>, AuthError> {
+) -> Result<(CookieJar, Json<OkResponse>), AuthError> {
     let token_hash = crate::api::org_invitations::hash_invite_token(&req.token);
     let user_id = state
         .db
@@ -1599,7 +1677,37 @@ pub async fn verify_email(
             AuthError::internal("Email verification failed")
         })?;
 
-    Ok(OkResponse::ok())
+    // The single-use token proves control of the mailbox, so the confirmation
+    // link doubles as sign-in (required by confirm-mode signup, where no
+    // session exists before this point; harmless otherwise). Best-effort: a
+    // session failure must not fail verification itself.
+    let jar = match state.db.get_user(user_id).await {
+        Ok(Some(user)) => {
+            let organizations = builtin::fetch_user_organizations(&state.db, user.id)
+                .await
+                .unwrap_or_default();
+            let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
+            let auth_user = AuthUser {
+                id: user.id,
+                email: user.email,
+                name: user.name,
+                roles,
+                is_platform_user: false,
+                auth_method: AuthMethod::Jwt,
+                organizations: builtin::organizations_or_default(organizations),
+            };
+            match generate_token_response(&state, jar.clone(), &auth_user).await {
+                Ok((jar, _json)) => jar,
+                Err(err) => {
+                    tracing::warn!(error = %err.error, "verify-email session mint failed");
+                    jar
+                }
+            }
+        }
+        _ => jar,
+    };
+
+    Ok((jar, OkResponse::ok()))
 }
 
 /// POST /v1/auth/resend-verification - Re-send a verification email.
@@ -2206,19 +2314,22 @@ mod oauth_state_tests {
     async fn register_without_name_derives_display_name_from_email() {
         let state = full_mode_backend();
         let db = state.db.clone();
-        let (status, _jar, _json) = register(
+        let outcome = register(
             State(state.clone()),
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
                 email: "eli.wong@example.com".to_string(),
-                password: "password123".to_string(),
+                password: "password12345".to_string(),
                 name: None,
                 captcha_token: None,
             }),
         )
         .await
         .expect("register should succeed");
+        let RegisterOutcome::Session(status, _jar, _json) = outcome else {
+            panic!("default mode must return an instant session");
+        };
         assert_eq!(status, StatusCode::CREATED);
 
         let user = db
@@ -2240,7 +2351,7 @@ mod oauth_state_tests {
             CookieJar::new(),
             Json(RegisterRequest {
                 email: "someone@example.com".to_string(),
-                password: "password123".to_string(),
+                password: "password12345".to_string(),
                 name: Some("Ada Lovelace".to_string()),
                 captcha_token: None,
             }),
@@ -2277,7 +2388,7 @@ mod oauth_state_tests {
     #[tokio::test]
     async fn password_reset_token_create_consume_is_single_use() {
         let db = StorageBackend::in_memory();
-        let user_id = seed_local_user(&db, "reset@example.com", "password123").await;
+        let user_id = seed_local_user(&db, "reset@example.com", "password12345").await;
         let (raw, hash) = generate_recovery_token();
         db.create_password_reset_token(user_id, &hash, Utc::now() + Duration::hours(1))
             .await
@@ -2299,7 +2410,7 @@ mod oauth_state_tests {
     #[tokio::test]
     async fn password_reset_token_expired_and_unknown_return_none() {
         let db = StorageBackend::in_memory();
-        let user_id = seed_local_user(&db, "exp@example.com", "password123").await;
+        let user_id = seed_local_user(&db, "exp@example.com", "password12345").await;
         let (raw, hash) = generate_recovery_token();
         // Already expired.
         db.create_password_reset_token(user_id, &hash, Utc::now() - Duration::minutes(1))
@@ -2320,7 +2431,7 @@ mod oauth_state_tests {
     #[tokio::test]
     async fn email_verification_token_create_consume_is_single_use() {
         let db = StorageBackend::in_memory();
-        let user_id = seed_local_user(&db, "verify@example.com", "password123").await;
+        let user_id = seed_local_user(&db, "verify@example.com", "password12345").await;
         let (raw, hash) = generate_recovery_token();
         db.create_email_verification_token(user_id, &hash, Utc::now() + Duration::hours(1))
             .await
@@ -2364,7 +2475,7 @@ mod oauth_state_tests {
             State(state.clone()),
             Json(ResetPasswordRequest {
                 token: raw,
-                password: "newpassword".to_string(),
+                password: "newpassword12".to_string(),
             }),
         )
         .await
@@ -2374,7 +2485,7 @@ mod oauth_state_tests {
         let stored = user.password_hash.unwrap();
         // Old password no longer verifies; new one does.
         assert!(!verify_password("oldpassword", &stored).unwrap());
-        assert!(verify_password("newpassword", &stored).unwrap());
+        assert!(verify_password("newpassword12", &stored).unwrap());
         // Refresh tokens were revoked.
         assert_eq!(
             db.consume_refresh_token_by_hash("some-refresh-hash")
@@ -2392,7 +2503,7 @@ mod oauth_state_tests {
             State(state),
             Json(ResetPasswordRequest {
                 token: "nope".to_string(),
-                password: "newpassword".to_string(),
+                password: "newpassword12".to_string(),
             }),
         )
         .await
@@ -2405,7 +2516,7 @@ mod oauth_state_tests {
     #[tokio::test]
     async fn reset_password_rejects_expired_token() {
         let state = test_backend();
-        let user_id = seed_local_user(&state.db, "expired@example.com", "password123").await;
+        let user_id = seed_local_user(&state.db, "expired@example.com", "password12345").await;
         let (raw, hash) = generate_recovery_token();
         state
             .db
@@ -2427,16 +2538,20 @@ mod oauth_state_tests {
     #[tokio::test]
     async fn verify_email_rejects_expired_token() {
         let state = test_backend();
-        let user_id = seed_local_user(&state.db, "expired2@example.com", "password123").await;
+        let user_id = seed_local_user(&state.db, "expired2@example.com", "password12345").await;
         let (raw, hash) = generate_recovery_token();
         state
             .db
             .create_email_verification_token(user_id, &hash, Utc::now() - Duration::minutes(1))
             .await
             .unwrap();
-        let err = verify_email(State(state), Json(VerifyEmailRequest { token: raw }))
-            .await
-            .expect_err("expired token must be rejected");
+        let err = verify_email(
+            State(state),
+            CookieJar::new(),
+            Json(VerifyEmailRequest { token: raw }),
+        )
+        .await
+        .expect_err("expired token must be rejected");
         assert_eq!(err.status, StatusCode::BAD_REQUEST);
     }
 
@@ -2459,7 +2574,7 @@ mod oauth_state_tests {
     async fn verify_email_sets_email_verified() {
         let state = test_backend();
         let db = state.db.clone();
-        let user_id = seed_local_user(&db, "ve@example.com", "password123").await;
+        let user_id = seed_local_user(&db, "ve@example.com", "password12345").await;
         assert!(!db.get_user(user_id).await.unwrap().unwrap().email_verified);
 
         let (raw, hash) = generate_recovery_token();
@@ -2467,14 +2582,20 @@ mod oauth_state_tests {
             .await
             .unwrap();
 
-        let _ = verify_email(
+        let (jar, _ok) = verify_email(
             State(state.clone()),
+            CookieJar::new(),
             Json(VerifyEmailRequest { token: raw }),
         )
         .await
         .expect("verify should succeed");
 
         assert!(db.get_user(user_id).await.unwrap().unwrap().email_verified);
+        // The confirmation link doubles as sign-in: session cookies are set.
+        assert!(
+            jar.get("access_token").is_some(),
+            "verify must mint a session"
+        );
     }
 
     #[tokio::test]
@@ -2482,6 +2603,7 @@ mod oauth_state_tests {
         let state = test_backend();
         let err = verify_email(
             State(state),
+            CookieJar::new(),
             Json(VerifyEmailRequest {
                 token: "bad".to_string(),
             }),
@@ -2547,7 +2669,7 @@ mod oauth_state_tests {
     #[tokio::test]
     async fn login_rejects_oversized_password_with_generic_error() {
         let state = full_mode_backend();
-        seed_local_user(&state.db, "cap@example.com", "password123").await;
+        seed_local_user(&state.db, "cap@example.com", "password12345").await;
         let err = login(
             State(state),
             HeaderMap::new(),
@@ -2584,7 +2706,7 @@ mod oauth_state_tests {
     #[tokio::test]
     async fn login_per_account_throttle_returns_429() {
         let state = full_mode_backend();
-        seed_local_user(&state.db, "stuffed@example.com", "password123").await;
+        seed_local_user(&state.db, "stuffed@example.com", "password12345").await;
         let mut last_status = None;
         for _ in 0..25 {
             let result = login(
@@ -2606,7 +2728,7 @@ mod oauth_state_tests {
         );
 
         // A different account still gets the normal generic 401.
-        seed_local_user(&state.db, "fresh@example.com", "password123").await;
+        seed_local_user(&state.db, "fresh@example.com", "password12345").await;
         let err = login(
             State(state),
             HeaderMap::new(),
@@ -2627,19 +2749,21 @@ mod oauth_state_tests {
     async fn logout_revokes_refresh_token_server_side() {
         let state = full_mode_backend();
         let db = state.db.clone();
-        let (_status, jar, _json) = register(
+        let RegisterOutcome::Session(_status, jar, _json) = register(
             State(state.clone()),
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
                 email: "bye@example.com".to_string(),
-                password: "password123".to_string(),
+                password: "password12345".to_string(),
                 name: None,
                 captcha_token: None,
             }),
         )
         .await
-        .expect("register succeeds");
+        .expect("register succeeds") else {
+            panic!("default mode must return an instant session");
+        };
 
         let refresh_cookie = jar
             .get("refresh_token")
@@ -2703,7 +2827,7 @@ mod oauth_state_tests {
             CookieJar::new(),
             Json(RegisterRequest {
                 email: "bot@example.com".to_string(),
-                password: "password123".to_string(),
+                password: "password12345".to_string(),
                 name: None,
                 captcha_token: None,
             }),
@@ -2767,5 +2891,90 @@ mod oauth_state_tests {
             .unwrap_or_default()
             .to_string();
         assert_eq!(location, format!("{frontend}/login?error=oauth_failed"));
+    }
+
+    // --- signup email-confirm mode (AUTH_SIGNUP_EMAIL_CONFIRM) ---
+
+    fn confirm_mode_backend() -> BuiltinAuthBackend {
+        let config = AuthConfig {
+            mode: AuthMode::Full,
+            signup_email_confirm: true,
+            ..Default::default()
+        };
+        BuiltinAuthBackend::new(
+            config,
+            Arc::new(StorageBackend::in_memory()),
+            Arc::new(crate::platform::oss_platform_definition()),
+        )
+    }
+
+    #[tokio::test]
+    async fn confirm_mode_register_creates_account_without_session() {
+        let state = confirm_mode_backend();
+        let db = state.db.clone();
+        let outcome = register(
+            State(state),
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(RegisterRequest {
+                email: "pending@example.com".to_string(),
+                password: "password12345".to_string(),
+                name: None,
+                captcha_token: None,
+            }),
+        )
+        .await
+        .expect("register ok");
+        assert!(
+            matches!(outcome, RegisterOutcome::ConfirmationSent(_)),
+            "confirm mode must not return a session"
+        );
+        let user = db
+            .get_user_by_email("pending@example.com")
+            .await
+            .unwrap()
+            .expect("account created");
+        assert!(!user.email_verified);
+    }
+
+    // Existing address: identical generic outcome, no duplicate account, no
+    // on-screen enumeration signal.
+    #[tokio::test]
+    async fn confirm_mode_register_existing_email_is_indistinguishable() {
+        let state = confirm_mode_backend();
+        seed_local_user(&state.db, "taken@example.com", "password12345").await;
+        let outcome = register(
+            State(state.clone()),
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(RegisterRequest {
+                email: "taken@example.com".to_string(),
+                password: "password12345".to_string(),
+                name: None,
+                captcha_token: None,
+            }),
+        )
+        .await
+        .expect("must be generic success");
+        assert!(matches!(outcome, RegisterOutcome::ConfirmationSent(_)));
+    }
+
+    #[tokio::test]
+    async fn register_rejects_password_without_digit() {
+        let state = full_mode_backend();
+        let err = register(
+            State(state),
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(RegisterRequest {
+                email: "nodigit@example.com".to_string(),
+                password: "longenoughpassword".to_string(),
+                name: None,
+                captcha_token: None,
+            }),
+        )
+        .await
+        .expect_err("digit-less password must be rejected");
+        assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
     }
 }

@@ -795,6 +795,8 @@ export interface AuthConfigResponse {
   password_auth_enabled: boolean;
   oauth_providers: string[];
   signup_enabled: boolean;
+  /** True when email signup ends at a "check your email" confirmation. */
+  signup_email_confirm?: boolean;
   /** Bot-mitigation challenge for abuse-prone auth forms, when configured. */
   captcha?: AuthCaptchaConfig;
 }

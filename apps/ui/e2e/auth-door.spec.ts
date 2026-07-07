@@ -1,8 +1,8 @@
 import { test, expect, type Page } from "@playwright/test";
 
 /**
- * E2E coverage of the unified "Log in or sign up" door and its error/a11y
- * contract. The backend is mocked with route interception so these run
+ * E2E coverage of the login-first door, the explicit signup path, and their
+ * error/a11y contract. The backend is mocked with route interception so these run
  * hermetically in the ui-e2e job (no server, no real accounts).
  */
 
@@ -11,6 +11,7 @@ const AUTH_CONFIG = {
   password_auth_enabled: true,
   oauth_providers: ["google", "github"],
   signup_enabled: true,
+  signup_email_confirm: true,
 };
 
 async function mockAuthConfig(page: Page, config: Record<string, unknown> = AUTH_CONFIG) {
@@ -24,16 +25,21 @@ test.describe("Unified auth door", () => {
     await mockAuthConfig(page);
   });
 
-  test("phase 1 renders one door: SSO primary, email secondary, h1 heading", async ({
+  test("phase 1 is login-first: SSO primary, email secondary, create-account link", async ({
     page,
   }) => {
     await page.goto("/login");
-    await expect(page.getByRole("heading", { level: 1, name: "Log in or sign up" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Log in" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Continue with GitHub" })).toBeVisible();
     await expect(page.getByLabel("Email")).toBeVisible();
     // No password field until the email is submitted.
     await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
+    // Explicit signup path, no silent fallback.
+    await expect(page.getByRole("link", { name: "Create an account" })).toHaveAttribute(
+      "href",
+      "/signup",
+    );
   });
 
   test("email continue moves to the password phase with the email locked in", async ({
@@ -45,21 +51,18 @@ test.describe("Unified auth door", () => {
     await expect(
       page.getByRole("heading", { level: 1, name: "Enter your password" }),
     ).toBeVisible();
-    await expect(page.getByText("Continuing as")).toContainText("eli@acme.com");
+    await expect(page.getByText("Logging in as")).toContainText("eli@acme.com");
     // Password field receives focus for keyboard users.
     await expect(page.getByLabel("Password", { exact: true })).toBeFocused();
     // Back returns to the email phase.
     await page.getByRole("button", { name: "Back" }).click();
-    await expect(page.getByRole("heading", { level: 1, name: "Log in or sign up" })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: "Log in" })).toBeVisible();
     await expect(page.getByLabel("Email")).toBeFocused();
   });
 
-  test("bad credentials render the generic error as an alert", async ({ page }) => {
+  test("bad credentials render the calm generic error with a reset path", async ({ page }) => {
     await page.route("**/v1/auth/login", (route) =>
       route.fulfill({ status: 401, json: { error: "Invalid email or password" } }),
-    );
-    await page.route("**/v1/auth/register", (route) =>
-      route.fulfill({ status: 401, json: { error: "Registration failed" } }),
     );
     await page.goto("/login");
     await page.getByLabel("Email").fill("eli@acme.com");
@@ -69,35 +72,54 @@ test.describe("Unified auth door", () => {
     // Filter out Next's empty route announcer, which is also role=alert.
     const alert = page.getByRole("alert").filter({ hasText: /\S/ });
     await expect(alert).toBeVisible();
-    // Generic copy only — never a raw server message or field-specific hint.
-    await expect(alert).toContainText("Invalid email or password.");
+    // Calm generic copy only — no enumeration, no raw server message.
+    await expect(alert).toContainText("Email or password doesn't match");
+    // Never a dead end: the sentence ends in a prefilled reset link.
+    const reset = alert.getByRole("link", { name: "reset your password" });
+    await expect(reset).toHaveAttribute("href", "/forgot-password?email=eli%40acme.com");
+    await reset.click();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Reset your password" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Email")).toHaveValue("eli@acme.com");
   });
 
-  test("unknown email with a valid password signs up through the same door", async ({
+  test("explicit signup: requirements gate, then unconditional check-your-email", async ({
     page,
   }) => {
-    await page.route("**/v1/auth/login", (route) =>
-      route.fulfill({ status: 401, json: { error: "Invalid email or password" } }),
-    );
     let registered = false;
     await page.route("**/v1/auth/register", (route) => {
       registered = true;
-      return route.fulfill({
-        status: 201,
-        json: { access_token: "t", token_type: "Bearer", expires_in: 900 },
-      });
+      return route.fulfill({ status: 200, json: { ok: true } });
     });
-    await page.route("**/v1/auth/me", (route) =>
-      route.fulfill({
-        json: { id: "u1", email: "new@acme.com", name: "New", roles: ["user"] },
-      }),
-    );
-    await page.goto("/login");
+    await page.goto("/signup");
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Create your account" }),
+    ).toBeVisible();
     await page.getByLabel("Email").fill("new@acme.com");
-    await page.getByRole("button", { name: "Continue with email" }).click();
-    await page.getByLabel("Password", { exact: true }).fill("a-strong-password");
-    await page.getByRole("button", { name: "Continue", exact: true }).click();
-    await expect.poll(() => registered).toBe(true);
+    // Under-policy password: inline requirements stop the submit client-side.
+    await page.getByLabel("Password", { exact: true }).fill("short1");
+    await page.getByRole("button", { name: "Create account" }).click();
+    expect(registered).toBe(false);
+    // Meets policy: submits and lands on the generic confirmation state.
+    await page.getByLabel("Password", { exact: true }).fill("longenoughpass1");
+    await page.getByRole("button", { name: "Create account" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Check your email" })).toBeVisible();
+    await expect(page.getByText("can be registered")).toBeVisible();
+    expect(registered).toBe(true);
+  });
+
+  test("signup with an existing email shows the identical confirmation", async ({ page }) => {
+    // Confirm-mode backend answers 200 {ok:true} for taken addresses too;
+    // the UI must not diverge.
+    await page.route("**/v1/auth/register", (route) =>
+      route.fulfill({ status: 200, json: { ok: true } }),
+    );
+    await page.goto("/signup");
+    await page.getByLabel("Email").fill("taken@acme.com");
+    await page.getByLabel("Password", { exact: true }).fill("longenoughpass1");
+    await page.getByRole("button", { name: "Create account" }).click();
+    await expect(page.getByRole("heading", { level: 1, name: "Check your email" })).toBeVisible();
   });
 
   test("OAuth callback failure categories render friendly copy", async ({ page }) => {
@@ -112,10 +134,12 @@ test.describe("Unified auth door", () => {
     await expect(alert()).toContainText("didn't complete");
   });
 
-  test("signup disabled turns the door into welcome-back", async ({ page }) => {
+  test("signup disabled hides the create-account link and closes /signup", async ({ page }) => {
     await mockAuthConfig(page, { ...AUTH_CONFIG, signup_enabled: false });
     await page.goto("/login");
-    await expect(page.getByRole("heading", { level: 1, name: "Welcome back" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Create an account" })).toHaveCount(0);
+    await page.goto("/signup");
+    await expect(page.getByRole("heading", { level: 1, name: "Signups are closed" })).toBeVisible();
   });
 });
 
@@ -151,8 +175,8 @@ test.describe("Password recovery pages", () => {
       route.fulfill({ status: 400, json: { error: "Invalid or expired reset token" } }),
     );
     await page.goto("/reset-password?token=stale");
-    await page.getByLabel("New password").fill("password123");
-    await page.getByLabel("Confirm password").fill("password123");
+    await page.getByLabel("New password").fill("password12345");
+    await page.getByLabel("Confirm password").fill("password12345");
     await page.getByRole("button", { name: "Update password" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Invalid reset link" })).toBeVisible();
   });
