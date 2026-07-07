@@ -79,15 +79,15 @@ bytes = "1"
 fetchkit = { version = "=0.4.1", features = ["bot-auth"], optional = true }
 
 # Ed25519 key derivation (bot-auth public key registration)
-ed25519-dalek = { version = "2", features = ["rand_core"], optional = true }
+ed25519-dalek = { version = "3", features = ["rand_core"], optional = true }
 
 # Bash interpreter backing the bashkit_shell capability
-bashkit = { version = "0.12.0", features = ["jq"] }
+bashkit = { version = "0.13.0", features = ["jq"] }
 
 # Sandboxed Lua interpreter for the experimental `lua` capability (vendored Lua
 # 5.4, never LuaJIT). Optional + behind the `lua` cargo feature so the default
 # build does not compile the C sources. See specs/lua-execution.md.
-mlua = { version = "0.11", features = ["lua54", "vendored", "async", "send", "serialize"], optional = true }
+mlua = { version = "0.12", features = ["lua54", "vendored", "async", "send", "serialize"], optional = true }
 
 # Tree-sitter for structural outlines (EVE-248)
 tree-sitter = { version = "0.26", optional = true }
