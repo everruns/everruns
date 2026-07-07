@@ -2270,6 +2270,7 @@ pub struct DirectPlatformStore {
     capability_service: Arc<crate::services::CapabilityService>,
     session_service: Arc<SessionService>,
     message_service: Option<Arc<MessageService>>,
+    event_service: Arc<EventService>,
     encryption: Option<Arc<EncryptionService>>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     permission_resolver: Arc<dyn PermissionResolver>,
@@ -2312,6 +2313,7 @@ impl DirectPlatformStore {
             capability_service,
             session_service,
             message_service,
+            event_service: deps.event_service,
             encryption: deps.encryption,
             workflow_store: deps.workflow_store,
             permission_resolver: deps.permission_resolver,
@@ -2373,7 +2375,10 @@ impl DirectPlatformStore {
             self.permission_resolver.clone(),
         )
         .with_workflow_store(self.workflow_store.clone())
-        .with_session_service(self.session_service.clone());
+        .with_session_service(self.session_service.clone())
+        // wait_for_idle probes terminal turn events through list_events; without
+        // the event service every subagent wait fails in the in-process adapter.
+        .with_event_service(self.event_service.clone());
 
         if let Some(message_service) = &self.message_service {
             ctx = ctx.with_message_service(message_service.clone());
@@ -3623,6 +3628,32 @@ mod tests {
                 || err.to_string().contains("Permission denied"),
             "unexpected error: {err}"
         );
+    }
+
+    /// Regression: the direct platform store's command ctx must carry the
+    /// event service — wait_for_idle probes terminal turn events through the
+    /// list_events command, and without it every subagent wait failed with
+    /// "Event service not configured".
+    #[tokio::test]
+    async fn platform_store_wait_for_idle_reaches_event_service() {
+        use everruns_core::DEFAULT_ORG_ID;
+
+        let adapters = test_adapters();
+        let user_id = seed_platform_owner(&adapters.db, DEFAULT_ORG_ID, "waiter@example.com").await;
+        let harness_id =
+            seed_harness_for_platform_store(&adapters.db, DEFAULT_ORG_ID, "wait-harness", false)
+                .await;
+        let session_id =
+            seed_platform_session(&adapters.db, DEFAULT_ORG_ID, harness_id, Some(user_id)).await;
+        let store = adapters.platform_store(DEFAULT_ORG_ID, session_id);
+
+        // No terminal turn events exist, so a zero-timeout wait reports a
+        // timeout — the point is it must NOT fail on a missing event service.
+        let status = store
+            .wait_for_idle(session_id, Some(0))
+            .await
+            .expect("wait_for_idle should reach the event service");
+        assert!(status.starts_with("timeout"), "unexpected status: {status}");
     }
 
     // ---- helpers ----
