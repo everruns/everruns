@@ -45,6 +45,7 @@ exclude = [
     "research/lua-vs-bash",
     "examples/weekend-concierge-host",
     "evals/platform-capability",
+    "evals/generic",
 ]
 
 [workspace.package]
