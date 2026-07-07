@@ -1536,6 +1536,11 @@ impl ReasonAtom {
             }
         }
         let mut tripped: Option<TrippedGuardrail> = None;
+        // Blocking post-generation guardrails need the full assistant message
+        // before they can decide. When active, withhold text deltas until the
+        // seam allows the finalized output so blocked tokens are never emitted
+        // or persisted as output.message.delta events.
+        let buffer_output_deltas = !post_output_providers.is_empty();
         tracing::info!(
             session_id = %session_id,
             turn_id = %context.turn_id,
@@ -1752,6 +1757,7 @@ impl ReasonAtom {
             tool_calls,
             completion_metadata,
             time_to_first_token_ms,
+            pending_delta,
         ) = {
             let mut stream = match chat_driver
                 .chat_completion_stream(llm_messages_for_call.clone(), &llm_config)
@@ -2229,7 +2235,9 @@ impl ReasonAtom {
                         }
 
                         // Emit batched delta if interval elapsed
-                        if last_delta_emit.elapsed().as_millis() as u64 >= DELTA_BATCH_INTERVAL_MS
+                        if !buffer_output_deltas
+                            && last_delta_emit.elapsed().as_millis() as u64
+                                >= DELTA_BATCH_INTERVAL_MS
                             && !pending_delta.is_empty()
                         {
                             if let Err(e) = self
@@ -2369,8 +2377,11 @@ impl ReasonAtom {
                         tool_calls = calls;
                     }
                     LlmStreamEvent::Done(metadata) => {
-                        // Emit any remaining pending delta before completing
-                        if !pending_delta.is_empty()
+                        // Emit any remaining pending delta before completing,
+                        // unless a post-generation guardrail must first inspect
+                        // the finalized assistant text.
+                        if !buffer_output_deltas
+                            && !pending_delta.is_empty()
                             && let Err(e) = self
                                 .event_emitter
                                 .emit(EventRequest::new(
@@ -2506,6 +2517,7 @@ impl ReasonAtom {
                 tool_calls,
                 completion_metadata,
                 time_to_first_token_ms,
+                pending_delta,
             )
         };
         let (mut text, mut thinking, thinking_signature, mut tool_calls) =
@@ -2526,6 +2538,30 @@ impl ReasonAtom {
                 utility_llm_service: self.utility_llm_service.as_ref(),
             };
             tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
+        }
+
+        // Release buffered text only after post-generation guardrails allow it.
+        // If they block, the replacement path below emits only sanitized text.
+        if buffer_output_deltas && tripped.is_none() && !pending_delta.is_empty() {
+            if let Err(e) = self
+                .event_emitter
+                .emit(EventRequest::new(
+                    session_id,
+                    streaming_event_context.clone(),
+                    OutputMessageDeltaData {
+                        turn_id: context.turn_id,
+                        delta: pending_delta.clone(),
+                        accumulated: text.clone(),
+                    },
+                ))
+                .await
+            {
+                tracing::warn!(
+                    session_id = %session_id,
+                    error = %e,
+                    "ReasonAtom: failed to emit guarded output.message.delta event"
+                );
+            }
         }
 
         // If a streaming output guardrail tripped, emit
