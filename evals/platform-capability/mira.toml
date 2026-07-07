@@ -1,15 +1,17 @@
 # Mira host config for the platform-capability study. Picked up by the `mira`
 # CLI when run from this directory.
 
+# `mira run` with no --bin/--launcher uses this. The launcher builds and starts
+# the study process (cargo run -q --bin platform_capability). NOTE: top-level
+# keys must appear before the first [section] header, or TOML nests them under
+# the preceding section.
+default_launcher = "platform_capability"
+
 [results]
 dir = "./results"
 
 [environment]
 enabled = true
-
-# `mira run` with no --bin/--launcher uses this. The launcher builds and starts
-# the study process (cargo run -q --bin platform_capability).
-default_launcher = "platform_capability"
 
 [launchers.platform_capability]
 bin = "platform_capability"
