@@ -44,7 +44,7 @@ This reduces token waste from verbose build output (`cargo build`, `pnpm install
 
 Every hook returns `HookAction::Continue`; none widen bashkit's existing limits, network allowlist, or sandbox boundaries (TM-BASH).
 
-HTTP hooks (`before_http` / `after_http`) require bashkit's `http_client` feature, which is **not** enabled for `bashkit_shell` (see TM-BASH-003 — no network builtins). If that changes, register HTTP hooks alongside the existing ones.
+HTTP hooks (`before_http` / `after_http`) are registered by `configure_http` when the per-capability `enable_http` config turns outbound HTTP on (egress-routed; see TM-BASH-003 and `specs/network-access.md`). They log method and status only — URLs and headers can carry tenant data or secrets.
 
 ## Benefits
 

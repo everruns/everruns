@@ -19,7 +19,7 @@ use tempfile::TempDir;
 
 /// Run `pwd` through the bash tool and return the reported working directory.
 async fn bash_pwd(ctx: &ToolContext) -> String {
-    match BashTool
+    match BashTool::default()
         .execute_with_context(json!({ "commands": "pwd" }), ctx)
         .await
     {
