@@ -39,8 +39,8 @@ use crate::driver_registry::{
 };
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_retry::{
-    LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
-    is_transient_send_error, send_error_message,
+    LlmRetryConfig, RateLimitInfo, RetryDecision, RetryMetadata, SendOutcome, is_rate_limit_status,
+    retry_request, send_error_message,
 };
 use crate::openai_protocol::{
     AuthHeaderProvider, is_openai_model_not_found, is_openai_request_too_large,
@@ -136,7 +136,11 @@ impl OpenResponsesProtocolChatDriver {
     /// Create a new driver with the given API key
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
-            client: Client::new(),
+            // SSRF-hardened shared client (redirects disabled + DNS-pinned
+            // resolver). The api_url is org-configurable, so a bare
+            // `Client::new()` would leave this provider open to DNS-rebind /
+            // redirect SSRF (TM-API-013, EVE-623).
+            client: crate::driver_helpers::shared_streaming_http_client(),
             api_key: api_key.into(),
             api_url: DEFAULT_API_URL.to_string(),
             provider_type: DriverId::OpenAI,
@@ -149,7 +153,7 @@ impl OpenResponsesProtocolChatDriver {
     /// Create a new driver with a custom API URL
     pub fn with_base_url(api_key: impl Into<String>, api_url: impl Into<String>) -> Self {
         Self {
-            client: Client::new(),
+            client: crate::driver_helpers::shared_streaming_http_client(),
             api_key: api_key.into(),
             api_url: api_url.into(),
             provider_type: DriverId::OpenAI,
@@ -442,7 +446,7 @@ impl OpenResponsesProtocolChatDriver {
             "tools": tools,
         });
         let payload = serde_json::to_vec(&fingerprint).ok()?;
-        let digest = format!("{:x}", Sha256::digest(payload));
+        let digest = hex::encode(Sha256::digest(payload));
         let digest_len = OPENAI_PROMPT_CACHE_KEY_MAX_LEN - PROMPT_CACHE_KEY_PREFIX.len();
         Some(format!(
             "{PROMPT_CACHE_KEY_PREFIX}{}",
@@ -499,143 +503,108 @@ impl OpenResponsesProtocolChatDriver {
             format!("{}/compact", self.api_url.trim_end_matches('/'))
         };
 
-        // Retry loop for rate limit (429) and transient errors
-        let mut retry_metadata = RetryMetadata::default();
-        let mut last_error: Option<String> = None;
+        // Retry loop for rate limit (429) and transient errors. Shared executor
+        // owns the loop/backoff/send-error retry/exhaustion logging; the
+        // classifier preserves the compact endpoint's terminal classification
+        // and (compact-specific) error messages exactly.
+        let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
-        let response = loop {
-            // Auth is resolved per attempt so refreshable providers can rotate
-            // tokens across retries (same seam as the streaming path).
-            let (auth_name, auth_value) = self.resolve_auth_header(&compact_url).await?;
-            let response = match self
-                .client
-                .post(&compact_url)
-                .header(auth_name, auth_value)
-                .header("Content-Type", "application/json")
-                .json(&request)
-                .send()
-                .await
-            {
-                Ok(response) => response,
-                Err(e) => {
-                    // A send failure never produced an HTTP response, so it
-                    // bypasses the status-based retry below. Connection-level
-                    // errors (incl. a stale pooled keep-alive connection,
-                    // EVE-635) are transient — retry them with backoff, matching
-                    // SDK `APIConnectionError` behavior.
-                    if is_transient_send_error(&e)
-                        && retry_metadata.attempts < self.retry_config.max_retries
-                    {
-                        let wait_duration =
-                            self.retry_config.calculate_backoff(retry_metadata.attempts);
-                        tracing::warn!(
-                            error = %e,
-                            attempt = retry_metadata.attempts + 1,
-                            max_retries = self.retry_config.max_retries,
-                            wait_secs = wait_duration.as_secs_f64(),
-                            "OpenResponsesDriver: compact transient connection error sending request, retrying"
-                        );
-                        retry_metadata.record_retry(wait_duration, None);
-                        last_error = Some(format!("Failed to send compact request: {e}"));
-                        tokio::time::sleep(wait_duration).await;
-                        continue;
+        let (response, _retry_metadata) = retry_request(
+            &self.retry_config,
+            "OpenResponsesProtocolDriver(compact)",
+            || async {
+                // Auth is resolved per attempt so refreshable providers can
+                // rotate tokens across retries (same seam as the streaming path).
+                let (auth_name, auth_value) = self
+                    .resolve_auth_header(&compact_url)
+                    .await
+                    .map_err(SendOutcome::Fatal)?;
+                self.client
+                    .post(&compact_url)
+                    .header(auth_name, auth_value)
+                    .header("Content-Type", "application/json")
+                    .json(&request)
+                    .send()
+                    .await
+                    .map_err(SendOutcome::Send)
+            },
+            |response, attempts, can_retry| {
+                let last_error = Arc::clone(&last_error);
+                let request_model = request.model.clone();
+                async move {
+                    let status = response.status();
+
+                    if can_retry {
+                        let response_headers = response.headers().clone();
+                        let mut rate_limit_info = if is_rate_limit_status(status) {
+                            Some(RateLimitInfo::from_openai_headers(&response_headers))
+                        } else {
+                            None
+                        };
+
+                        let error_text = response.text().await.unwrap_or_default();
+                        if let (Some(extension), Some(info)) =
+                            (self.request_extension.as_ref(), rate_limit_info.as_mut())
+                        {
+                            extension.update_rate_limit_info(info, &response_headers, &error_text);
+                        }
+
+                        let wait = rate_limit_info
+                            .as_ref()
+                            .map(|info| info.recommended_wait(&self.retry_config, attempts))
+                            .unwrap_or_else(|| self.retry_config.calculate_backoff(attempts));
+
+                        *last_error.lock().unwrap() = Some(error_text);
+                        return RetryDecision::Retry {
+                            wait,
+                            rate_limit_info,
+                        };
                     }
-                    let suffix = if retry_metadata.attempts > 0 {
-                        format!(" (after {} retries)", retry_metadata.attempts)
-                    } else {
-                        String::new()
-                    };
-                    return Err(AgentLoopError::llm(format!(
-                        "Failed to send compact request: {e}{suffix}"
-                    )));
+
+                    // Non-retryable error or max retries exceeded
+                    let error_text = response.text().await.unwrap_or_default();
+
+                    // Check if this is a model-not-found error
+                    if is_openai_model_not_found(status, &error_text) {
+                        return RetryDecision::Terminal(AgentLoopError::model_not_available(
+                            request_model,
+                        ));
+                    }
+
+                    // Check if this is a request-too-large error (context length).
+                    if is_openai_request_too_large(status, &error_text) {
+                        return RetryDecision::Terminal(AgentLoopError::request_too_large(
+                            format!("OpenAI Responses compact API ({}): {}", status, error_text),
+                        ));
+                    }
+
+                    let error_msg = format!(
+                        "OpenAI Responses compact API error ({}): {}",
+                        status, error_text
+                    );
+
+                    if attempts > 0 {
+                        return RetryDecision::Terminal(AgentLoopError::llm(format!(
+                            "{} (after {} retries, last error: {})",
+                            error_msg,
+                            attempts,
+                            last_error.lock().unwrap().take().unwrap_or_default()
+                        )));
+                    }
+
+                    RetryDecision::Terminal(AgentLoopError::llm(error_msg))
                 }
-            };
-
-            let status = response.status();
-
-            if status.is_success() {
-                break response;
-            }
-
-            // Check if this is a retryable error
-            if is_transient_error(status) && retry_metadata.attempts < self.retry_config.max_retries
-            {
-                let response_headers = response.headers().clone();
-                let mut rate_limit_info = if is_rate_limit_status(status) {
-                    Some(RateLimitInfo::from_openai_headers(&response_headers))
+            },
+            |e, attempts| {
+                let suffix = if attempts > 0 {
+                    format!(" (after {attempts} retries)")
                 } else {
-                    None
+                    String::new()
                 };
-
-                let error_text = response.text().await.unwrap_or_default();
-                if let (Some(extension), Some(info)) =
-                    (self.request_extension.as_ref(), rate_limit_info.as_mut())
-                {
-                    extension.update_rate_limit_info(info, &response_headers, &error_text);
-                }
-
-                let wait_duration = rate_limit_info
-                    .as_ref()
-                    .map(|info| info.recommended_wait(&self.retry_config, retry_metadata.attempts))
-                    .unwrap_or_else(|| {
-                        self.retry_config.calculate_backoff(retry_metadata.attempts)
-                    });
-
-                tracing::warn!(
-                    status = %status,
-                    attempt = retry_metadata.attempts + 1,
-                    max_retries = self.retry_config.max_retries,
-                    wait_secs = wait_duration.as_secs_f64(),
-                    "OpenResponsesDriver: compact rate limit or transient error, retrying"
-                );
-
-                retry_metadata.record_retry(wait_duration, rate_limit_info);
-                last_error = Some(error_text);
-
-                tokio::time::sleep(wait_duration).await;
-                continue;
-            }
-
-            // Non-retryable error or max retries exceeded
-            let error_text = response.text().await.unwrap_or_default();
-
-            // Check if this is a model-not-found error
-            if is_openai_model_not_found(status, &error_text) {
-                return Err(AgentLoopError::model_not_available(request.model.clone()));
-            }
-
-            // Check if this is a request-too-large error (context length exceeded)
-            if is_openai_request_too_large(status, &error_text) {
-                return Err(AgentLoopError::request_too_large(format!(
-                    "OpenAI Responses compact API ({}): {}",
-                    status, error_text
-                )));
-            }
-
-            let error_msg = format!(
-                "OpenAI Responses compact API error ({}): {}",
-                status, error_text
-            );
-
-            if retry_metadata.attempts > 0 {
-                return Err(AgentLoopError::llm(format!(
-                    "{} (after {} retries, last error: {})",
-                    error_msg,
-                    retry_metadata.attempts,
-                    last_error.unwrap_or_default()
-                )));
-            }
-
-            return Err(AgentLoopError::llm(error_msg));
-        };
-
-        if retry_metadata.had_retries() {
-            tracing::info!(
-                attempts = retry_metadata.attempts,
-                total_wait_secs = retry_metadata.total_retry_wait.as_secs_f64(),
-                "OpenResponsesDriver: compact request succeeded after retries"
-            );
-        }
+                AgentLoopError::llm(format!("Failed to send compact request: {e}{suffix}"))
+            },
+        )
+        .await?;
 
         // Parse the response
         let compact_response: CompactResponse = response
@@ -1010,165 +979,120 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             extension.decorate_headers(&mut extension_headers, config)?;
         }
 
-        // Retry loop for rate limit (429) and transient errors
-        let mut retry_metadata = RetryMetadata::default();
-        let mut last_error: Option<String> = None;
+        // Retry loop for rate limit (429) and transient errors. The shared
+        // executor (llm_retry::retry_request) owns the loop/backoff/send-error
+        // retry/exhaustion logging; this classifier closure preserves the
+        // previous terminal classification and error messages exactly.
+        let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
-        let response = loop {
-            // Compose headers: provider decoration first, then the resolved auth
-            // header (awaited each attempt so refreshable providers can rotate
-            // tokens per retry). `insert` overrides any same-named decoration
-            // header, so auth always wins on conflict.
-            let mut headers = extension_headers.clone();
-            let (auth_name, auth_value) = self.resolve_auth_header(&self.api_url).await?;
-            headers.insert(auth_name, auth_value);
+        let (response, retry_metadata) = retry_request(
+            &self.retry_config,
+            "OpenResponsesProtocolDriver",
+            || async {
+                // Compose headers: provider decoration first, then the resolved
+                // auth header (awaited each attempt so refreshable providers can
+                // rotate tokens per retry). `insert` overrides any same-named
+                // decoration header, so auth always wins on conflict. An auth
+                // failure is fatal (no retry).
+                let mut headers = extension_headers.clone();
+                let (auth_name, auth_value) = self
+                    .resolve_auth_header(&self.api_url)
+                    .await
+                    .map_err(SendOutcome::Fatal)?;
+                headers.insert(auth_name, auth_value);
 
-            let response = match self
-                .client
-                .post(&self.api_url)
-                .headers(headers)
-                .header("Content-Type", "application/json")
-                .json(&request_body)
-                .send()
-                .await
-            {
-                Ok(response) => response,
-                Err(e) => {
-                    // A send failure never produced an HTTP response, so it
-                    // bypasses the status-based retry below. Connection-level
-                    // errors (incl. a stale pooled keep-alive connection,
-                    // EVE-635) are transient — retry them with backoff, matching
-                    // SDK `APIConnectionError` behavior.
-                    if is_transient_send_error(&e)
-                        && retry_metadata.attempts < self.retry_config.max_retries
-                    {
-                        let wait_duration =
-                            self.retry_config.calculate_backoff(retry_metadata.attempts);
-                        tracing::warn!(
-                            error = %e,
-                            attempt = retry_metadata.attempts + 1,
-                            max_retries = self.retry_config.max_retries,
-                            wait_secs = wait_duration.as_secs_f64(),
-                            "OpenResponsesProtocolDriver: transient connection error sending request, retrying"
-                        );
-                        retry_metadata.record_retry(wait_duration, None);
-                        last_error = Some(format!("Failed to send request: {e}"));
-                        tokio::time::sleep(wait_duration).await;
-                        continue;
+                self.client
+                    .post(&self.api_url)
+                    .headers(headers)
+                    .header("Content-Type", "application/json")
+                    .json(&request_body)
+                    .send()
+                    .await
+                    .map_err(SendOutcome::Send)
+            },
+            |response, attempts, can_retry| {
+                let last_error = Arc::clone(&last_error);
+                let model = config.model.clone();
+                async move {
+                    let status = response.status();
+
+                    if can_retry {
+                        // Parse rate limit info from headers before consuming body.
+                        let response_headers = response.headers().clone();
+                        let mut rate_limit_info = if is_rate_limit_status(status) {
+                            Some(RateLimitInfo::from_openai_headers(&response_headers))
+                        } else {
+                            None
+                        };
+
+                        let error_text = response.text().await.unwrap_or_default();
+                        if let (Some(extension), Some(info)) =
+                            (self.request_extension.as_ref(), rate_limit_info.as_mut())
+                        {
+                            extension.update_rate_limit_info(info, &response_headers, &error_text);
+                        }
+
+                        // Exhausted billing quota is surfaced as a 429 but is not
+                        // transient — fail fast instead of burning retries.
+                        if is_provider_quota_message(&error_text) {
+                            return RetryDecision::Terminal(AgentLoopError::llm_kind(
+                                LlmErrorKind::QuotaExhausted,
+                                format!("OpenAI Responses API error ({}): {}", status, error_text),
+                            ));
+                        }
+
+                        let wait = rate_limit_info
+                            .as_ref()
+                            .map(|info| info.recommended_wait(&self.retry_config, attempts))
+                            .unwrap_or_else(|| self.retry_config.calculate_backoff(attempts));
+
+                        *last_error.lock().unwrap() = Some(error_text);
+                        return RetryDecision::Retry {
+                            wait,
+                            rate_limit_info,
+                        };
                     }
-                    return Err(AgentLoopError::llm(send_error_message(
-                        &e,
-                        retry_metadata.attempts,
-                    )));
+
+                    // Non-retryable error or max retries exceeded
+                    let error_text = response.text().await.unwrap_or_default();
+
+                    // Check if this is a model-not-found error
+                    if is_openai_model_not_found(status, &error_text) {
+                        return RetryDecision::Terminal(AgentLoopError::model_not_available(model));
+                    }
+
+                    // Check if this is a request-too-large error (context length).
+                    if is_openai_request_too_large(status, &error_text) {
+                        return RetryDecision::Terminal(AgentLoopError::request_too_large(
+                            format!("OpenAI Responses API ({}): {}", status, error_text),
+                        ));
+                    }
+
+                    let error_msg =
+                        format!("OpenAI Responses API error ({}): {}", status, error_text);
+
+                    // Attach the semantic error kind while the HTTP status and
+                    // body are still available (see LlmErrorKind).
+                    let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
+
+                    if attempts > 0 {
+                        return RetryDecision::Terminal(AgentLoopError::llm_kind(
+                            kind,
+                            format!(
+                                "{} (after {} retries, last error: {})",
+                                error_msg,
+                                attempts,
+                                last_error.lock().unwrap().take().unwrap_or_default()
+                            ),
+                        ));
+                    }
+
+                    RetryDecision::Terminal(AgentLoopError::llm_kind(kind, error_msg))
                 }
-            };
-
-            let status = response.status();
-
-            if status.is_success() {
-                // Success - exit retry loop
-                break response;
-            }
-
-            // Check if this is a retryable error
-            if is_transient_error(status) && retry_metadata.attempts < self.retry_config.max_retries
-            {
-                // Parse rate limit info from headers before consuming response body
-                let response_headers = response.headers().clone();
-                let mut rate_limit_info = if is_rate_limit_status(status) {
-                    Some(RateLimitInfo::from_openai_headers(&response_headers))
-                } else {
-                    None
-                };
-
-                let error_text = response.text().await.unwrap_or_default();
-                if let (Some(extension), Some(info)) =
-                    (self.request_extension.as_ref(), rate_limit_info.as_mut())
-                {
-                    extension.update_rate_limit_info(info, &response_headers, &error_text);
-                }
-
-                // Exhausted billing quota is surfaced as a 429 but is not
-                // transient — fail fast instead of burning retries.
-                if is_provider_quota_message(&error_text) {
-                    return Err(AgentLoopError::llm_kind(
-                        LlmErrorKind::QuotaExhausted,
-                        format!("OpenAI Responses API error ({}): {}", status, error_text),
-                    ));
-                }
-
-                // Calculate wait duration
-                let wait_duration = rate_limit_info
-                    .as_ref()
-                    .map(|info| info.recommended_wait(&self.retry_config, retry_metadata.attempts))
-                    .unwrap_or_else(|| {
-                        self.retry_config.calculate_backoff(retry_metadata.attempts)
-                    });
-
-                tracing::warn!(
-                    status = %status,
-                    attempt = retry_metadata.attempts + 1,
-                    max_retries = self.retry_config.max_retries,
-                    wait_secs = wait_duration.as_secs_f64(),
-                    retry_after = ?rate_limit_info.as_ref().and_then(|i| i.retry_after_secs),
-                    "OpenResponsesDriver: rate limit or transient error, retrying"
-                );
-
-                // Record retry attempt
-                retry_metadata.record_retry(wait_duration, rate_limit_info);
-                last_error = Some(error_text);
-
-                // Wait before retry
-                tokio::time::sleep(wait_duration).await;
-                continue;
-            }
-
-            // Non-retryable error or max retries exceeded
-            let error_text = response.text().await.unwrap_or_default();
-
-            // Check if this is a model-not-found error
-            if is_openai_model_not_found(status, &error_text) {
-                return Err(AgentLoopError::model_not_available(config.model.clone()));
-            }
-
-            // Check if this is a request-too-large error (context length exceeded)
-            if is_openai_request_too_large(status, &error_text) {
-                return Err(AgentLoopError::request_too_large(format!(
-                    "OpenAI Responses API ({}): {}",
-                    status, error_text
-                )));
-            }
-
-            let error_msg = format!("OpenAI Responses API error ({}): {}", status, error_text);
-
-            // Attach the semantic error kind while the HTTP status and body
-            // are still available (see LlmErrorKind).
-            let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
-
-            // If we exhausted retries, include that in the error message
-            if retry_metadata.attempts > 0 {
-                return Err(AgentLoopError::llm_kind(
-                    kind,
-                    format!(
-                        "{} (after {} retries, last error: {})",
-                        error_msg,
-                        retry_metadata.attempts,
-                        last_error.unwrap_or_default()
-                    ),
-                ));
-            }
-
-            return Err(AgentLoopError::llm_kind(kind, error_msg));
-        };
-
-        // Log successful retry recovery
-        if retry_metadata.had_retries() {
-            tracing::info!(
-                attempts = retry_metadata.attempts,
-                total_wait_secs = retry_metadata.total_retry_wait.as_secs_f64(),
-                "OpenResponsesDriver: request succeeded after retries"
-            );
-        }
+            },
+            |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
+        )
+        .await?;
 
         let byte_stream = response.bytes_stream();
         let event_stream = byte_stream.eventsource();
@@ -2365,6 +2289,7 @@ mod tests {
             }),
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
         let input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -2404,6 +2329,7 @@ mod tests {
             }),
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
         let first_input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -2456,6 +2382,7 @@ mod tests {
             }),
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
         let input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -2498,6 +2425,7 @@ mod tests {
             }),
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
         let input = vec![ResponsesInputItem::Message {
             r#type: "message".to_string(),
@@ -3370,6 +3298,7 @@ mod tests {
             prompt_cache: None,
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
 
         // Fire the request. The stream body is irrelevant for this assertion.
@@ -3455,6 +3384,7 @@ mod tests {
             prompt_cache: None,
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
 
         let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
@@ -3516,6 +3446,7 @@ mod tests {
                 ..Default::default()
             }),
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
 
         let messages = vec![LlmMessage::text(LlmMessageRole::User, "hello")];
@@ -3575,6 +3506,7 @@ mod tests {
             prompt_cache: None,
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
 
         let stream = driver
@@ -4167,6 +4099,7 @@ mod tests {
             prompt_cache: None,
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
 
         // Simulate the driver's filter logic
@@ -4200,6 +4133,7 @@ mod tests {
             prompt_cache: None,
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
 
         let reasoning = config
@@ -4782,6 +4716,7 @@ mod tests {
             prompt_cache: None,
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         }
     }
 

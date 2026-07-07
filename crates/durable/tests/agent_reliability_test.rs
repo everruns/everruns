@@ -171,6 +171,17 @@ async fn reset_durable_tables(pool: &PgPool) {
     .execute(pool)
     .await
     .expect("Failed to reset durable test tables");
+
+    // TRUNCATE bypasses the row-level triggers that maintain `durable_stat_counters`
+    // (migration 082), so the cumulative health counters would otherwise stay
+    // non-zero while the tables they track are now empty. That stale drift made
+    // `postgres_repository_test`'s counter==COUNT(*) health check flaky when this
+    // binary ran first against the shared DB. The triggers UPDATE pre-seeded rows,
+    // so the rows must remain — zero the values in place instead of truncating.
+    sqlx::query("UPDATE durable_stat_counters SET value = 0")
+        .execute(pool)
+        .await
+        .expect("Failed to reset durable stat counters");
 }
 
 fn create_executor(

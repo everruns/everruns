@@ -1193,6 +1193,16 @@ pub struct LlmCallConfig {
     /// `tool_choice.disable_parallel_tool_use = true`. `None` preserves
     /// provider defaults (no field sent).
     pub parallel_tool_calls: Option<bool>,
+    /// Number of trailing messages that are volatile (regenerated every turn)
+    /// and must not anchor a message-level prompt-cache breakpoint.
+    ///
+    /// `ReasonAtom` sets this to the count of live `<facts>` messages it appends
+    /// at the conversation tail. Drivers that place a message cache breakpoint
+    /// on the last block (Anthropic) skip this many trailing messages so the
+    /// breakpoint lands on the last *stable* block — otherwise a tail that
+    /// changes each turn would evict the conversation-history cache. `0` (the
+    /// default) preserves the previous behavior exactly.
+    pub volatile_suffix_len: usize,
 }
 
 impl LlmCallConfig {
@@ -1228,6 +1238,7 @@ impl From<&RuntimeAgent> for LlmCallConfig {
             prompt_cache: runtime_agent.prompt_cache.clone(),
             openrouter_routing: runtime_agent.openrouter_routing.clone(),
             parallel_tool_calls: runtime_agent.parallel_tool_calls,
+            volatile_suffix_len: 0,
         }
     }
 }
@@ -1346,6 +1357,14 @@ impl LlmCallConfigBuilder {
     /// Set the request-level parallel tool calling preference (EVE-598).
     pub fn parallel_tool_calls(mut self, parallel_tool_calls: Option<bool>) -> Self {
         self.config.parallel_tool_calls = parallel_tool_calls;
+        self
+    }
+
+    /// Set the number of trailing volatile messages that must not anchor a
+    /// message-level prompt-cache breakpoint (see
+    /// [`LlmCallConfig::volatile_suffix_len`]).
+    pub fn volatile_suffix_len(mut self, len: usize) -> Self {
+        self.config.volatile_suffix_len = len;
         self
     }
 

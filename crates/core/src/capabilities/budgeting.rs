@@ -150,23 +150,7 @@ impl Tool for CheckBudgetTool {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = BudgetingCapability;
-        assert_eq!(cap.id(), "budgeting");
-        assert_eq!(cap.name(), "Budgeting");
-        assert_eq!(cap.icon(), Some("wallet"));
-        assert_eq!(cap.category(), Some("System"));
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-    }
-
-    #[test]
-    fn test_capability_has_tools() {
-        let cap = BudgetingCapability;
-        let tools = cap.tools();
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "check_budget");
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_capability_has_system_prompt() {

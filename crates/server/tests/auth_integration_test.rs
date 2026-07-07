@@ -169,7 +169,7 @@ async fn test_register_rejects_short_password_via_api() {
         "/v1/auth/register",
         Some(json!({
             "email": "weak@example.com",
-            "password": "longenough",
+            "password": "longenough123",
             "name": "Weak Pw User"
         })),
         None,
@@ -186,7 +186,7 @@ async fn test_register_short_password_does_not_leak_account_existence() {
     let (router, _db) = auth_router().await;
 
     // Pre-register the email with a valid password.
-    register_user(&router, "exists@example.com", "validpassword").await;
+    register_user(&router, "exists@example.com", "validpassword1").await;
 
     let (status_a, body_a, _) = send(
         &router,
@@ -229,7 +229,7 @@ async fn test_refresh_via_json_body() {
     let (router, _db) = auth_router().await;
 
     let (_access, refresh, _cookies) =
-        register_user(&router, "body@example.com", "password123").await;
+        register_user(&router, "body@example.com", "password12345").await;
 
     // Refresh using JSON body (the original flow)
     let (status, body, new_cookies) = send(
@@ -265,7 +265,7 @@ async fn test_refresh_via_cookie() {
     let (router, _db) = auth_router().await;
 
     let (_access, refresh, _cookies) =
-        register_user(&router, "cookie@example.com", "password123").await;
+        register_user(&router, "cookie@example.com", "password12345").await;
 
     // Refresh using cookie (no JSON body) — the new browser flow
     let cookie_header = format!("refresh_token={refresh}");
@@ -290,8 +290,8 @@ async fn test_refresh_body_takes_precedence_over_cookie() {
     let (router, _db) = auth_router().await;
 
     // Register two users
-    let (_a1, refresh1, _c1) = register_user(&router, "user1@example.com", "password123").await;
-    let (_a2, refresh2, _c2) = register_user(&router, "user2@example.com", "password123").await;
+    let (_a1, refresh1, _c1) = register_user(&router, "user1@example.com", "password12345").await;
+    let (_a2, refresh2, _c2) = register_user(&router, "user2@example.com", "password12345").await;
 
     // Send body with user1's token, cookie with user2's token
     // Body should take precedence
@@ -329,7 +329,7 @@ async fn test_refresh_sets_cookie_with_root_path() {
     let (router, _db) = auth_router().await;
 
     let (_access, refresh, _cookies) =
-        register_user(&router, "path@example.com", "password123").await;
+        register_user(&router, "path@example.com", "password12345").await;
 
     let (status, _body, new_cookies) = send(
         &router,
@@ -425,7 +425,7 @@ async fn test_refresh_reuse_revoked_token_returns_401() {
     let (router, _db) = auth_router().await;
 
     let (_access, refresh, _cookies) =
-        register_user(&router, "revoke@example.com", "password123").await;
+        register_user(&router, "revoke@example.com", "password12345").await;
 
     // First refresh succeeds (consumes the token)
     let (status1, _body1, _) = send(
@@ -464,7 +464,7 @@ async fn test_refresh_concurrent_requests_only_one_succeeds() {
     let (router, _db) = auth_router().await;
 
     let (_access, refresh, _cookies) =
-        register_user(&router, "concurrent@example.com", "password123").await;
+        register_user(&router, "concurrent@example.com", "password12345").await;
 
     // Fire multiple concurrent refreshes with the same refresh token.
     let mut handles = Vec::new();
@@ -506,7 +506,7 @@ async fn test_refresh_with_access_token_returns_401() {
     let (router, _db) = auth_router().await;
 
     let (access, _refresh, _cookies) =
-        register_user(&router, "wrong-type@example.com", "password123").await;
+        register_user(&router, "wrong-type@example.com", "password12345").await;
 
     // Try refreshing with an access token (wrong token type)
     let (status, body, _cookies) = send(
@@ -599,7 +599,7 @@ async fn test_login_sets_cookies_with_root_path() {
     let (router, _db) = auth_router().await;
 
     // Register first
-    register_user(&router, "login@example.com", "password123").await;
+    register_user(&router, "login@example.com", "password12345").await;
 
     // Login
     let (status, body, cookies) = send(
@@ -608,7 +608,7 @@ async fn test_login_sets_cookies_with_root_path() {
         "/v1/auth/login",
         Some(json!({
             "email": "login@example.com",
-            "password": "password123"
+            "password": "password12345"
         })),
         None,
     )
@@ -633,7 +633,7 @@ async fn test_full_flow_register_login_refresh_cookie_refresh() {
 
     // 1. Register
     let (_access, _refresh, _reg_cookies) =
-        register_user(&router, "flow@example.com", "password123").await;
+        register_user(&router, "flow@example.com", "password12345").await;
 
     // 2. Login
     let (status, _body, login_cookies) = send(
@@ -642,7 +642,7 @@ async fn test_full_flow_register_login_refresh_cookie_refresh() {
         "/v1/auth/login",
         Some(json!({
             "email": "flow@example.com",
-            "password": "password123"
+            "password": "password12345"
         })),
         None,
     )
@@ -810,7 +810,7 @@ async fn test_register_safety_net_uses_platform_definition_not_oss_defaults() {
         "/v1/auth/register",
         Some(json!({
             "email": "new-user@example.com",
-            "password": "super-secret-password",
+            "password": "super-secret-password1",
             "name": "New User",
         })),
         None,
@@ -865,7 +865,7 @@ async fn test_register_safety_net_is_idempotent_when_seed_already_ran() {
         "/v1/auth/register",
         Some(json!({
             "email": "second-user@example.com",
-            "password": "another-secret-password",
+            "password": "another-secret-password1",
             "name": "Second User",
         })),
         None,

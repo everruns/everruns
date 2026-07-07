@@ -18,8 +18,8 @@ use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    Caller, DirectEgressService, EgressService, McpServer, McpServerAuthMode, McpServerStatus,
-    McpToolDefinition, mcp_oauth_provider_id_for_uuid,
+    Caller, DirectEgressService, EgressService, McpProtocolMode, McpServer, McpServerAuthMode,
+    McpServerStatus, McpToolDefinition, mcp_oauth_provider_id_for_uuid,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -87,6 +87,10 @@ pub struct McpServerService {
 pub struct McpServerSettings {
     #[serde(default)]
     pub auth_mode: McpServerAuthMode,
+    /// Protocol-era adoption policy. Persisted in the `settings` JSON so no
+    /// schema migration is needed; absent (legacy rows) deserializes to `auto`.
+    #[serde(default, skip_serializing_if = "McpProtocolMode::is_auto")]
+    pub protocol_mode: McpProtocolMode,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth: Option<McpServerOAuthSettings>,
 }
@@ -142,6 +146,7 @@ impl McpServerService {
         let mut settings =
             serde_json::from_value(row.settings.clone()).unwrap_or(McpServerSettings {
                 auth_mode: McpServerAuthMode::None,
+                protocol_mode: McpProtocolMode::Auto,
                 oauth: None,
             });
 
@@ -215,6 +220,7 @@ impl McpServerService {
 
         let settings = McpServerSettings {
             auth_mode,
+            protocol_mode: req.protocol_mode.unwrap_or_default(),
             oauth: None,
         };
 
@@ -290,13 +296,17 @@ impl McpServerService {
             anyhow::bail!("stdio MCP servers are not supported for organization MCP servers");
         }
         let existing_row = self.db.get_mcp_server(caller.org_id, id).await?;
-        let existing_row = existing_row.ok_or_else(|| anyhow!("MCP server not found"))?;
+        let existing_row =
+            existing_row.ok_or_else(|| crate::errors::ResourceNotFoundError::new("MCP server"))?;
         let mut settings = Self::settings_from_row(&existing_row);
         if let Some(auth_mode) = req.auth_mode.clone() {
             settings.auth_mode = auth_mode;
             if settings.auth_mode != McpServerAuthMode::OAuth {
                 settings.oauth = None;
             }
+        }
+        if let Some(protocol_mode) = req.protocol_mode {
+            settings.protocol_mode = protocol_mode;
         }
         if req.api_key.is_some() && settings.auth_mode != McpServerAuthMode::ApiKey {
             anyhow::bail!("Only API key MCP servers can store an API key");
@@ -383,7 +393,7 @@ impl McpServerService {
             .db
             .get_mcp_server(caller.org_id, id)
             .await?
-            .ok_or_else(|| anyhow!("MCP server not found"))?;
+            .ok_or_else(|| crate::errors::ResourceNotFoundError::new("MCP server"))?;
         let settings = Self::settings_from_row(&row);
 
         // Get decrypted API key if set
@@ -449,7 +459,7 @@ impl McpServerService {
             .db
             .get_mcp_server(caller.org_id, id)
             .await?
-            .ok_or_else(|| anyhow!("MCP server not found"))?;
+            .ok_or_else(|| crate::errors::ResourceNotFoundError::new("MCP server"))?;
         let headers: HashMap<String, String> =
             serde_json::from_value(row.headers.clone()).unwrap_or_default();
         let tools = fetch_mcp_tools(
@@ -525,7 +535,7 @@ impl McpServerService {
             .db
             .get_mcp_server(caller.org_id, id)
             .await?
-            .ok_or_else(|| anyhow!("MCP server not found"))?;
+            .ok_or_else(|| crate::errors::ResourceNotFoundError::new("MCP server"))?;
 
         if Self::cache_fresh(&row) {
             return Ok(Self::cached_tools(&row));
@@ -662,7 +672,7 @@ impl McpServerService {
             .db
             .get_mcp_server(caller.org_id, id)
             .await?
-            .ok_or_else(|| anyhow!("MCP server not found"))?;
+            .ok_or_else(|| crate::errors::ResourceNotFoundError::new("MCP server"))?;
 
         if !row.api_key_set {
             return Ok(None);
@@ -730,6 +740,7 @@ impl McpServerService {
             name: server.name,
             url: server.url,
             auth_mode: server.auth_mode,
+            protocol_mode: server.protocol_mode,
             oauth_provider_id: server.oauth_provider_id,
             api_key,
             headers,
@@ -771,6 +782,8 @@ pub struct McpServerResolved {
     pub name: String,
     pub url: String,
     pub auth_mode: McpServerAuthMode,
+    /// Protocol-era adoption policy (`auto` negotiates legacy/current/RC).
+    pub protocol_mode: McpProtocolMode,
     pub oauth_provider_id: Option<String>,
     pub api_key: Option<String>,
     pub headers: HashMap<String, String>,
@@ -1133,6 +1146,7 @@ mod tests {
                     url: "https://example.com/mcp".into(),
                     transport_type: McpServerTransportType::Http,
                     auth_mode: Some(McpServerAuthMode::None),
+                    protocol_mode: None,
                     api_key: Some("secret".into()),
                     headers: None,
                 },

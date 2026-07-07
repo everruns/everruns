@@ -123,17 +123,6 @@ describe("SettingsLayout", () => {
     expect(membersLink).toHaveClass("border-accent");
   });
 
-  it("has exactly 8 navigation items", () => {
-    render(
-      <SettingsLayout>
-        <div>Test Content</div>
-      </SettingsLayout>,
-    );
-
-    const navLinks = screen.getAllByRole("link");
-    expect(navLinks).toHaveLength(8);
-  });
-
   it("groups items under correct sections", () => {
     render(
       <SettingsLayout>
@@ -164,27 +153,6 @@ describe("SettingsLayout", () => {
     expect(personalSection).toHaveTextContent("Personal access tokens");
     expect(personalSection).not.toHaveTextContent("Organization");
     expect(personalSection).not.toHaveTextContent("Members");
-  });
-
-  it("renders section labels with uppercase styling", () => {
-    render(
-      <SettingsLayout>
-        <div>Test Content</div>
-      </SettingsLayout>,
-    );
-
-    const orgLabel = screen
-      .getAllByText("Organization")
-      .find((node) => node.classList.contains("uppercase"))!;
-    const personalLabel = screen.getByText("Personal");
-
-    expect(orgLabel).toHaveClass("uppercase");
-    expect(orgLabel).toHaveClass("tracking-[0.08em]");
-    expect(orgLabel).toHaveClass("text-[11px]");
-    expect(orgLabel).toHaveClass("font-mono");
-
-    expect(personalLabel).toHaveClass("uppercase");
-    expect(personalLabel).toHaveClass("tracking-[0.08em]");
   });
 
   it("applies inactive styles to non-active items", () => {

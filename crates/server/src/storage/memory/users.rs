@@ -90,6 +90,22 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    pub async fn link_oauth_identity(
+        &self,
+        id: Uuid,
+        provider: &str,
+        provider_id: &str,
+    ) -> Result<Option<UserRow>> {
+        let mut users = self.users.write();
+        if let Some(user) = users.get_mut(&id) {
+            user.auth_provider = Some(provider.to_string());
+            user.auth_provider_id = Some(provider_id.to_string());
+            user.updated_at = Self::now();
+            return Ok(Some(user.clone()));
+        }
+        Ok(None)
+    }
+
     pub async fn update_user(&self, id: Uuid, input: UpdateUser) -> Result<Option<UserRow>> {
         let mut users = self.users.write();
         if let Some(user) = users.get_mut(&id) {

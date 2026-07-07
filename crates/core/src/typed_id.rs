@@ -476,6 +476,14 @@ impl IdMarker for EvalRunIdMarker {
     const PREFIX: &'static str = "evalrun";
 }
 
+/// Marker for Eval Run Dataset IDs (async dataset export handles — see
+/// `specs/dataset-export.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct EvalDatasetIdMarker;
+impl IdMarker for EvalDatasetIdMarker {
+    const PREFIX: &'static str = "evaldataset";
+}
+
 /// Marker for Agent Health Check Run IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct HealthCheckRunIdMarker;
@@ -653,6 +661,8 @@ pub type EvalId = TypedId<EvalIdMarker>;
 pub type EvalCaseId = TypedId<EvalCaseIdMarker>;
 /// Eval Run ID
 pub type EvalRunId = TypedId<EvalRunIdMarker>;
+/// Eval Run Dataset ID (async dataset export handle — see `specs/dataset-export.md`)
+pub type EvalDatasetId = TypedId<EvalDatasetIdMarker>;
 /// Agent Health Check Run ID
 pub type HealthCheckRunId = TypedId<HealthCheckRunIdMarker>;
 /// Eval Case Result ID

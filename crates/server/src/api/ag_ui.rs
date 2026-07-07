@@ -169,16 +169,25 @@ async fn authorize_ag_ui_request(
     // private app configurations.
     // Mitigation: Require a published app, an enabled AG-UI channel, and
     // `anonymous=true` before accepting unauthenticated traffic.
+    //
+    // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
+    // "app does not exist" apart from "app exists but is not published / has no
+    // AG-UI channel / is misconfigured". Every such case collapses to a single
+    // generic 404 (matching the FCP channel in `api/fcp.rs`); the real reason is
+    // logged server-side only.
     if app.status != AppStatus::Published {
-        return Err(forbidden("App is not published"));
+        tracing::debug!(app_id = %app.public_id, status = ?app.status, "AG-UI request rejected: app not published");
+        return Err(not_found());
     }
 
-    let channel = app
-        .ag_ui_channel()
-        .ok_or_else(|| bad_request("App does not have an enabled AG-UI channel"))?;
-    let channel_config = channel
-        .ag_ui_config()
-        .ok_or_else(|| bad_request("Invalid AG-UI channel configuration"))?;
+    let Some(channel) = app.ag_ui_channel() else {
+        tracing::debug!(app_id = %app.public_id, "AG-UI request rejected: no enabled AG-UI channel");
+        return Err(not_found());
+    };
+    let Some(channel_config) = channel.ag_ui_config() else {
+        tracing::error!(app_id = %app.public_id, "AG-UI channel config did not deserialize");
+        return Err(not_found());
+    };
     if let Some(auth) = channel_config.auth.as_ref() {
         state
             .auth_verifier
@@ -194,7 +203,11 @@ async fn authorize_ag_ui_request(
             .map_err(ag_ui_auth_error_response)?;
     } else {
         if !channel_config.anonymous {
-            return Err(forbidden("Anonymous AG-UI access is disabled"));
+            // No auth provider configured and anonymous access disabled: the
+            // channel is not reachable. Collapse to a generic 404 rather than a
+            // 403 so callers cannot confirm the app exists (TM-TENANT-002).
+            tracing::debug!(app_id = %app.public_id, "AG-UI request rejected: anonymous access disabled with no auth provider");
+            return Err(not_found());
         }
         if let Some(expected_token) = channel_config.token.as_deref()
             && !expected_token.is_empty()
@@ -323,20 +336,35 @@ async fn run_agent(
     headers: HeaderMap,
     request: Request,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, Response> {
-    // EVE-415: monotonic anchor for the AG-UI ingress phase. Used to attribute
-    // the gap between accepted request and `ReasonAtom: starting LLM call`
-    // (~600-700ms baseline) to the AG-UI handler vs. the durable runtime.
-    // The handler emits a single structured `ag_ui.ingress_complete` log just
-    // before returning the SSE stream so downstream profilers can isolate the
-    // ingress portion without grepping for adjacent timestamps.
-    let ingress_start = Instant::now();
-
     let request_id = req_id.map(|Extension(r)| r.0);
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
     let AuthorizedAgUiRequest {
         app,
         channel_config,
     } = authorize_ag_ui_request(&state, &app_id, &headers, peer_addr).await?;
+
+    run_app_agent_stream(state, app, channel_config, "ag_ui", request, request_id).await
+}
+
+/// Shared AG-UI ingress + streaming core, reused by both the AG-UI channel and
+/// the Public Chat channel. `tag_prefix` scopes the session routing tags
+/// (`{prefix}:app:{id}` / `{prefix}:thread:{id}`) so reusing a thread ID across
+/// channels or apps can never merge tenants or sessions (TM-TENANT-009).
+pub(crate) async fn run_app_agent_stream(
+    state: AgUiState,
+    app: App,
+    channel_config: AgUiChannelConfig,
+    tag_prefix: &str,
+    request: Request,
+    request_id: Option<String>,
+) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, Response> {
+    // EVE-415: monotonic anchor for the ingress phase. Used to attribute
+    // the gap between accepted request and `ReasonAtom: starting LLM call`
+    // (~600-700ms baseline) to the AG-UI handler vs. the durable runtime.
+    // The handler emits a single structured `ag_ui.ingress_complete` log just
+    // before returning the SSE stream so downstream profilers can isolate the
+    // ingress portion without grepping for adjacent timestamps.
+    let ingress_start = Instant::now();
 
     let Json(req): Json<AgUiRunAgentInput> = Json::from_request(request, &state)
         .await
@@ -364,13 +392,13 @@ async fn run_agent(
     let thread_tag = thread_id.to_string();
     let run_tag = run_id.to_string();
 
-    // THREAT[TM-TENANT-009]: Reusing the same AG-UI thread ID across apps must
+    // THREAT[TM-TENANT-009]: Reusing the same thread ID across apps/channels must
     // not merge tenants or app sessions.
-    // Mitigation: Scope the session lookup tags by both app public ID and
-    // thread ID so thread collisions stay isolated per app.
+    // Mitigation: Scope the session lookup tags by channel prefix, app public
+    // ID, and thread ID so thread collisions stay isolated per app and channel.
     let routing_tags = vec![
-        format!("ag_ui:app:{}", app.public_id),
-        format!("ag_ui:thread:{}", thread_tag),
+        format!("{tag_prefix}:app:{}", app.public_id),
+        format!("{tag_prefix}:thread:{}", thread_tag),
     ];
     let session = find_or_create_session(
         &state,

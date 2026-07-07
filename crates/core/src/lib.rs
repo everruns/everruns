@@ -64,8 +64,10 @@ pub mod event_listeners;
 // Error reporter (vendor-neutral embedder hook)
 pub mod error_reporter;
 
-// Observation backends (OTel, etc.)
-pub mod observation;
+// Observability exporters (Braintrust, OpenTelemetry) live in the
+// `everruns-observability` crate (EVE-651), depending on core only for the
+// `EventListener` trait + event types. The gen-AI span conventions and OTLP
+// init they build on stay here in `telemetry`.
 
 // Typed ID system (type-safe prefixed identifiers)
 // See specs/id-schema.md for specification
@@ -118,6 +120,7 @@ pub mod skill;
 pub mod system_allowlist;
 pub mod vector_store;
 pub mod workspace;
+pub mod workspace_roots;
 
 // Multi-platform channel abstractions (thread context, delivery, routing)
 pub mod channel;
@@ -138,6 +141,7 @@ pub mod atoms;
 pub mod capabilities;
 pub mod command;
 pub mod command_host;
+pub mod config;
 pub mod config_layer;
 pub mod context_report;
 pub mod dependency_blocker;
@@ -160,6 +164,7 @@ pub mod platform_store;
 pub mod resource_ownership;
 pub mod runtime_agent;
 pub mod runtime_context;
+pub mod stream_accumulator;
 pub mod tool_output_sanitizer;
 pub mod tools;
 pub mod traits;
@@ -194,7 +199,8 @@ pub use config_layer::{
     AgentConfigOverlay, merge_capabilities, merge_initial_files, normalize_initial_file_path,
 };
 pub use error::{
-    AgentLoopError, LlmError, LlmErrorKind, Result, StoreResultExt, from_json, json_val,
+    AgentLoopError, FileSystemError, FileSystemErrorClass, LlmError, LlmErrorKind, Result,
+    StoreResultExt, classify_fs_error, from_json, json_val,
 };
 pub use message::{
     ContentPart, ContentType, Controls, ExternalActor, ImageContentPart, ImageFileContentPart,
@@ -227,6 +233,10 @@ pub use user_facing_error::{
     ErrorDisclosure, UserFacingError, UserFacingErrorContext, UserFacingErrorFields,
     classify_runtime_error_message, codes as user_facing_error_codes, is_provider_quota_message,
     metadata_keys as user_facing_error_metadata_keys, trim_error_chain_prefixes,
+};
+pub use workspace_roots::{
+    ADDITIONAL_ROOTS_MOUNT, PRIMARY_WORKSPACE_ROOT_NAME, RelPath, ResolvedPath, WorkspaceRoot,
+    WorkspaceRootSet,
 };
 
 // Channel abstraction re-exports
@@ -404,8 +414,10 @@ pub use agent_identity::{AgentIdentity, AgentIdentityStatus};
 pub use app::{
     A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentVersionPolicy,
     ApiEndpointChannelConfig, App, AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode,
-    AppEndpointAuthProviderConfig, AppEndpointAuthRequirements, AppStatus, ChannelType,
-    FcpChannelConfig, InvocationSessionMode, SessionStrategy, SlackChannelConfig, SlackReplyMode,
+    AppEndpointAuthProviderConfig, AppEndpointAuthRequirements, AppStatus, CaptchaProvider,
+    ChannelType, FcpChannelConfig, InvocationSessionMode, PublicChatBranding,
+    PublicChatCaptchaConfig, PublicChatChannelConfig, SessionStrategy, SlackChannelConfig,
+    SlackReplyMode,
 };
 pub use ard_attachment::{
     ARD_ATTACHMENT_KV_PREFIX, ARD_ATTACHMENT_RESOURCE_KIND, ARD_DISCOVERY_KV_PREFIX, ArdAttachment,
@@ -449,13 +461,14 @@ pub use leased_resource::{
 };
 pub use mcp_proxy::{McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools};
 pub use mcp_server::{
-    McpContent, McpError, McpServer, McpServerAuthMode, McpServerStatus, McpServerTransportType,
-    McpToolAnnotations, McpToolCallParams, McpToolCallRequest, McpToolCallResponse,
-    McpToolCallResult, McpToolDefinition, McpToolsListRequest, McpToolsListResponse,
-    McpToolsListResult, ScopedMcpServer, ScopedMcpServers, is_mcp_tool,
+    MCP_PROTOCOL_VERSION_LEGACY, MCP_PROTOCOL_VERSION_RC, MCP_PROTOCOL_VERSION_STABLE, McpContent,
+    McpError, McpProtocolMode, McpServer, McpServerAuthMode, McpServerStatus,
+    McpServerTransportType, McpToolAnnotations, McpToolCallParams, McpToolCallRequest,
+    McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolsListRequest,
+    McpToolsListResponse, McpToolsListResult, ScopedMcpServer, ScopedMcpServers, is_mcp_tool,
     mcp_oauth_provider_id_for_uuid, mcp_oauth_session_secret_name, mcp_tool_name,
-    merge_scoped_mcp_servers, parse_mcp_tool_name, sanitize_mcp_server_name,
-    scoped_mcp_servers_is_empty,
+    merge_scoped_mcp_servers, normalize_mcp_error_code, parse_mcp_tool_name,
+    sanitize_mcp_server_name, scoped_mcp_servers_is_empty,
 };
 pub use model::{
     CostTier, Modality, Model, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelSource,
@@ -532,6 +545,3 @@ pub use feature_flags::{
     API_FEATURE_FLAG_DEFINITIONS, FeatureFlagDefinition, FeatureFlagMap, FeatureFlags,
     InternalFeatureFlags,
 };
-
-// Observation backends
-pub use observation::{BraintrustConfig, BraintrustListener, OtelEventListener};

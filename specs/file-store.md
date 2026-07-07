@@ -17,7 +17,8 @@ This is the platform-level session filesystem seam. `PlatformDefinition`
 carries a `SessionFileSystemFactory`, and runtime/server hosts resolve a live
 `SessionFileSystem` from host dependencies such as in-memory state, a storage
 backend, or a root directory. It is still compatible with the mount-overlay
-resolver direction, which can compose mounts on top of a base filesystem.
+resolver direction, and host-backed runtime sessions can now compose a primary
+workspace root with additional mounted roots in one model-facing namespace.
 
 ## Background
 
@@ -87,6 +88,19 @@ onto *different* backends later is `MountFs::with_mount(...)` — the resolver d
 not change. The model-facing namespace is a stable `/workspace` even for a
 host-rooted backend; host-absolute display is opt-in rendering, not addressing.
 
+For host-filesystem sessions with multiple registered workspace roots, the
+primary root keeps the same layout and relative-path behavior:
+
+- `/workspace/...` and relative paths resolve to the primary host root.
+- `/workspace/roots/<name>/...` resolves to additional root `<name>`.
+- Additional roots are intentionally not addressable by bare relative paths.
+
+`everruns_core::WorkspaceRootSet` is the shared root-set contract for embedders.
+It canonicalizes roots at construction, rejects duplicates and overlapping host
+directories, parses model-facing VFS paths, and exposes host-scope helpers for
+host-side tools. Embedders that need host paths MUST use this resolver instead
+of copying `/workspace` stripping or containment logic locally.
+
 `MountFs` is the only path authority. It normalizes input against the cwd,
 collapses `.`/`..`, and dispatches to the longest-matching mount; the chosen
 backend then keys on the resulting **leading-slash session path** (`/src/lib.rs`).
@@ -118,6 +132,7 @@ Every spelling below resolves to the same backend session path. The wire form is
 | `"/workspace/src/bar.txt"` | `/src/bar.txt` |
 | host-absolute under root (real-disk) | `/src/bar.txt` |
 | `"/workspace"`, `""`, `"/"` | `/` |
+| `"/workspace/roots/backend/src/lib.rs"` (multi-root) | `/workspace/roots/backend/src/lib.rs` routed to the `backend` root |
 
 Guarantees:
 
@@ -129,6 +144,9 @@ Guarantees:
 - Host-backed stores reject `..` traversal and symlinks and re-check containment
   under the root, so resolving outside `/workspace` still cannot escape the
   backend root (it just lands at `<root>/etc/...`, not the host `/etc/...`).
+- In multi-root sessions, host-absolute paths outside every registered root are
+  rejected. Host-absolute paths under a registered root are accepted as aliases
+  for that root after canonicalization.
 - Backslashes are not separators and environment variables are not expanded.
 
 ### Host mapping (real-disk backend)
@@ -144,6 +162,9 @@ store, so that logic is private to `everruns_runtime::RealDiskFileStore`
 - The root is shared behind a handle, so an embedder's worktree switch via
   `RealDiskFileStore::set_host_root` is seen by every clone of the store at once
   while the model-facing `/workspace` stays stable.
+- `WorkspaceRootSet::set_primary_host_root` and `RealDiskFileStore::set_host_root`
+  repoint only the primary root. Additional roots are fixed for the session
+  lifetime.
 
 ### Display Paths
 
@@ -158,6 +179,8 @@ Each backend owns its `display_path`/`display_root`:
 - `MountFs` forces the `/workspace` view on top, so behind the resolver (the
   production wiring) the model always sees a stable `/workspace` regardless of
   backend.
+- For additional mounted roots, returned file paths include the stable mounted
+  prefix, e.g. `/workspace/roots/backend/Cargo.toml`.
 
 ### Encoding
 
@@ -273,6 +296,21 @@ Implementation notes:
 
 Source: `crates/runtime/src/real_disk.rs`.
 
+### Multi-root host filesystems
+
+`everruns-runtime` exposes `multi_root_file_system(root_set)` and teaches
+`RealDiskSessionFileSystemFactory` to read an optional
+`WorkspaceRootSet` from `SessionFileSystemFactoryContext::workspace_roots()`.
+When present, the factory builds a `MountFs` over one `RealDiskFileStore` per
+registered root:
+
+- primary root at `/workspace` plus legacy root paths;
+- each additional root at `/workspace/roots/<name>`;
+- grep without a path searches every mounted root and reports mounted paths for
+  non-primary hits.
+
+An empty additional list is equivalent to the previous single-root behavior.
+
 ### Factories
 
 - `InMemorySessionFileSystemFactory` resolves the runtime in-memory filesystem.
@@ -330,6 +368,24 @@ let platform = PlatformDefinition::builder()
         RealDiskSessionFileSystemFactory::new(workspace_root),
     ))
     .build();
+```
+
+For multi-root host sessions, pass the root set through the factory context:
+
+```rust,ignore
+let roots = WorkspaceRootSet::new(
+    primary_root,
+    [("backend".to_string(), backend_root)],
+)?;
+
+let runtime = InProcessRuntimeBuilder::new()
+    .platform_definition(platform)
+    .session_file_system_factory_context(
+        SessionFileSystemFactoryContext::new()
+            .with_workspace_roots(Arc::new(roots)),
+    )
+    .build()
+    .await?;
 ```
 
 Factories may require host dependencies such as a database handle, virtual
@@ -412,9 +468,6 @@ demonstrated is the wrong default.
   of the path. The CLI use case does not need it; the spec keeps the door
   open by accepting (and ignoring) `session_id` in the current
   implementation.
-- **Mount-overlay resolver (Option B).** A separate follow-up. Once
-  landed, `RealDiskFileStore` becomes one possible `MountSource::HostPath`
-  on top of the resolver. The trait shape here does not need to change.
 - **Filesystem permissions for `is_readonly`.** Today `is_readonly` is
   honored at the trait layer (in-memory tracking) but is not mapped to
   `0o444` on disk.
@@ -422,20 +475,12 @@ demonstrated is the wrong default.
   a real-disk variant is a separate security conversation about
   unsandboxed shell execution.
 
-## Forward Compatibility with Mount Overlay (Option B)
+## Forward Compatibility
 
-When the mount-overlay resolver lands, the migration path is:
-
-1. `RealDiskFileStore` keeps its current trait impl and stays the base
-   backend.
-2. A new `MountSource::HostPath { root: PathBuf, access: MountAccess }`
-   variant is added.
-3. The resolver composes mounts on top of a base `SessionFileSystem`.
-   Embedders that already use `RealDiskSessionFileSystemFactory` continue to
-   work; the resolver wraps the resolved filesystem.
-4. Capabilities can declare host-path mounts (e.g. `~/.local/share/data`
-   as `/data` read-only) through `mounts()` instead of needing a custom
-   `SessionFileSystem` impl.
+`MountFs` remains the general composition point. Future capability-owned
+mounts such as `/outputs`, `/.agents/skills`, or read-only data volumes can
+still be layered with `MountFs::with_mount(...)` without changing capability
+APIs or the `SessionFileSystem` trait.
 
 ## Source Index
 
@@ -443,6 +488,8 @@ When the mount-overlay resolver lands, the migration path is:
   path authority, EVE-660)
 - `crates/core/src/session_path.rs` — host-agnostic `/workspace`-alias helpers
   (`to_session_path`, `to_display_path`)
+- `crates/core/src/workspace_roots.rs` — `WorkspaceRootSet` and host-root
+  resolver for multi-root host sessions
 - `crates/runtime/src/real_disk.rs` — `RealDiskFileStore` + its private
   `HostPathMap` (virtual ⇄ host mapping; the only host-rooted backend)
 - `crates/core/src/traits.rs` — `SessionFileSystem` trait

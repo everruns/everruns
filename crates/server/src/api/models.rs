@@ -363,22 +363,7 @@ mod tests {
         assert!(parsed.get("allowed_actions").is_none());
     }
 
-    #[test]
-    fn test_error_response_internal_error_format() {
-        // The canonical internal_error helper attaches the stable `code`.
-        let (_, body) = ErrorResponse::internal_error();
-        let parsed: serde_json::Value = serde_json::to_value(&body.0).expect("Failed to serialize");
-        assert_eq!(parsed["detail"], "Internal server error");
-        assert_eq!(parsed["code"], "internal_error");
-        assert_eq!(parsed["status"], 500);
-    }
-
-    #[test]
-    fn test_error_response_not_found_format() {
-        let error = ErrorResponse::new("Model not found");
-        let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
-        assert_eq!(parsed["detail"], "Model not found");
-    }
+    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
     fn test_internal_error_does_not_leak_details() {

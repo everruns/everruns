@@ -15,13 +15,20 @@
 /// It is purely a *view*; addressing is done by [`crate::mount_fs::MountFs`].
 pub const WORKSPACE_PREFIX: &str = "/workspace";
 
-/// Canonical leading-slash session path from any accepted spelling: strips the
-/// `/workspace` alias, ensures a single leading slash, trims a trailing slash.
+/// Canonical leading-slash session path from any accepted spelling: collapses
+/// repeated slashes, strips the `/workspace` alias, ensures a single leading
+/// slash, and trims a trailing slash.
+///
+/// This is the single normalizer for every session-path surface — the agent
+/// (via `MountFs`/the VFS backends) and the control-plane HTTP FS API both route
+/// through it, so a path resolves to the same key regardless of entry point.
 ///
 /// Examples: `/workspace` → `/`, `/workspace/a.txt` → `/a.txt`,
-/// `/workspacefoo` → `/workspacefoo`, `a.txt` → `/a.txt`, `/sub/dir/` → `/sub/dir`.
+/// `/workspacefoo` → `/workspacefoo`, `a.txt` → `/a.txt`, `/sub/dir/` → `/sub/dir`,
+/// `/a//b/` → `/a/b`.
 pub fn to_session_path(input: &str) -> String {
-    let stripped = strip_workspace_alias(input.trim());
+    let collapsed = collapse_slashes(input.trim());
+    let stripped = strip_workspace_alias(&collapsed);
     if stripped.is_empty() || stripped == "/" {
         return "/".to_string();
     }
@@ -34,6 +41,25 @@ pub fn to_session_path(input: &str) -> String {
         normalized.pop();
     }
     normalized
+}
+
+/// Collapse runs of `/` into a single `/` (`a//b` → `a/b`). Leaves the rest of
+/// the string untouched.
+fn collapse_slashes(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut prev_slash = false;
+    for ch in s.chars() {
+        if ch == '/' {
+            if !prev_slash {
+                out.push(ch);
+            }
+            prev_slash = true;
+        } else {
+            out.push(ch);
+            prev_slash = false;
+        }
+    }
+    out
 }
 
 /// Model-facing display for a canonical session path: the `/workspace` alias.
@@ -80,6 +106,14 @@ mod tests {
         assert_eq!(to_session_path("foo.txt"), "/foo.txt");
         assert_eq!(to_session_path("/sub/dir/"), "/sub/dir");
         assert_eq!(to_session_path("  /workspace/x  "), "/x");
+    }
+
+    #[test]
+    fn to_session_path_collapses_repeated_slashes() {
+        assert_eq!(to_session_path("/a//b"), "/a/b");
+        assert_eq!(to_session_path("//a///b//"), "/a/b");
+        assert_eq!(to_session_path("//workspace//x"), "/x");
+        assert_eq!(to_session_path("///"), "/");
     }
 
     #[test]

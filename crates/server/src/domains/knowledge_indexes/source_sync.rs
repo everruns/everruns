@@ -24,6 +24,7 @@ use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 use tokio::task;
+use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 use crate::services::ProviderResolverService;
@@ -377,16 +378,16 @@ pub fn spawn_knowledge_index_sync_task(
     provider_resolver: Arc<ProviderResolverService>,
     driver_registry: Arc<DriverRegistry>,
     vector_store: Arc<dyn VectorStore>,
-) {
+) -> Option<JoinHandle<()>> {
     if !env_bool("KNOWLEDGE_INDEX_SYNC_ENABLED", true) {
         tracing::info!("Knowledge index sync background task disabled");
-        return;
+        return None;
     }
 
     let config = KnowledgeIndexSyncConfig::from_env();
     if config.poll_interval.is_zero() {
         tracing::info!("Knowledge index sync background task disabled by zero interval");
-        return;
+        return None;
     }
 
     let service = KnowledgeIndexSyncService::new(
@@ -397,7 +398,7 @@ pub fn spawn_knowledge_index_sync_task(
         vector_store,
         config.clone(),
     );
-    tokio::spawn(async move {
+    Some(tokio::spawn(async move {
         let mut interval = tokio::time::interval(config.poll_interval);
         tracing::info!(
             interval_secs = config.poll_interval.as_secs(),
@@ -427,7 +428,7 @@ pub fn spawn_knowledge_index_sync_task(
                 }
             }
         }
-    });
+    }))
 }
 
 // ============================================================================

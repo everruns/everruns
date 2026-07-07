@@ -496,7 +496,8 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .execute_with_context(
             serde_json::json!({
                 "name": "gRPC Subagent",
-                "instructions": "Exercise spawn_subagent through the gRPC platform adapter"
+                "instructions": "Exercise spawn_subagent through the gRPC platform adapter",
+                "mode": "foreground"
             }),
             &context,
         )
@@ -651,6 +652,19 @@ fn test_require_grpc_auth_token_panics_without_env() {
 }
 
 #[test]
+fn test_require_grpc_auth_token_result_errors_without_env() {
+    let _lock = lock_env();
+    unsafe { std::env::remove_var("WORKER_GRPC_AUTH_TOKEN") };
+
+    let error = require_grpc_auth_token_result().expect_err("missing token should error");
+    assert!(
+        error
+            .to_string()
+            .contains("WORKER_GRPC_AUTH_TOKEN must be set")
+    );
+}
+
+#[test]
 fn test_require_grpc_auth_token_returns_value() {
     let _lock = lock_env();
     unsafe { std::env::set_var("WORKER_GRPC_AUTH_TOKEN", "test-token-123") };
@@ -672,6 +686,28 @@ fn test_grpc_server_tls_returns_none_when_no_env_vars() {
         config.is_none(),
         "Should return None when TLS not configured"
     );
+}
+
+#[test]
+fn test_grpc_server_tls_result_errors_on_missing_cert_file() {
+    let _lock = lock_env();
+    unsafe {
+        std::env::set_var("WORKER_GRPC_TLS_CERT", "/nonexistent/cert.pem");
+        std::env::set_var("WORKER_GRPC_TLS_KEY", "/nonexistent/key.pem");
+        std::env::remove_var("WORKER_GRPC_TLS_CA_CERT");
+    }
+
+    let error = grpc_server_tls_from_env_result().expect_err("missing cert should error");
+    assert!(
+        error
+            .to_string()
+            .contains("Failed to read WORKER_GRPC_TLS_CERT")
+    );
+
+    unsafe {
+        std::env::remove_var("WORKER_GRPC_TLS_CERT");
+        std::env::remove_var("WORKER_GRPC_TLS_KEY");
+    }
 }
 
 #[test]

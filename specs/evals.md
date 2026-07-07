@@ -252,6 +252,51 @@ All endpoints under `/v1/evals`. See `crates/server/src/api/evals.rs`.
 | `PATCH` | `/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores` | Write external scores back to a completed result |
 | `PATCH` | `/v1/evals/{eval_id}/runs/{run_id}/scores` | Bulk write external scores back to a completed run |
 
+### Import (external eval results)
+
+Everruns also hosts and visualizes runs it did **not** execute, so external eval
+systems (e.g. Mira) can publish results without onboarding into the session
+system. See `proposals/mira-results-publishing.md`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/evals/import` | Ingest a full external run group (one run → one EvalRun per eval) |
+| `GET` | `/v1/evals/import/preflight` | Report `{ evals_enabled, can_import }` so optional-feature clients check before publishing |
+
+- An imported `EvalRun` carries `source = external` plus `attribution` (system,
+  version, url, run id, labels); internal runs are unchanged (`source =
+  internal`). Evals and cases are upserted **by name** within the org (no
+  namespacing — name collisions merge; see proposal). External cases are
+  identity-only: everruns never re-executes or re-scores them.
+- Idempotent on the external `source.run_id`: re-publishing replaces the prior
+  run for each eval in the group.
+- Scores are stored opaque (named, attributed) — everruns trusts the external
+  verdict. Per-result transcript and an open-vocab metrics bag ride in the
+  result `metadata` envelope rather than dedicated columns.
+- Gated by `EVAL_IMPORT` (`OrgAgentsManage` only — no sessions are created, so
+  unlike `EVAL_RUN` it does not require `OrgSessionsManage`).
+
+### Share links (read-only public views)
+
+A run can be shared read-only via an unguessable token, so results (matrix,
+transcript, comparison-friendly data) can be shown to people without an org
+seat. General-purpose and OSS-native; no separate public domain is required.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/v1/evals/{eval_id}/runs/{run_id}/share` | Mint a link (returns the raw token once); revokes any prior active link |
+| `GET` | `/v1/evals/{eval_id}/runs/{run_id}/share` | Whether the run has an active link |
+| `DELETE` | `/v1/evals/{eval_id}/runs/{run_id}/share` | Revoke all links for the run |
+| `GET` | `/v1/public/eval-runs/{token}` | **Unauthenticated** read of the shared run (sanitized) |
+
+- Tokens (`evr_share_…`) are stored SHA-256-hashed like PATs — the raw token is
+  surfaced once. `revoked_at`/`expires_at` disable a link without deleting the
+  row (migration 091). At most one active link per run.
+- Mint/revoke require `EVAL_MANAGE`; the public read takes no auth extractor —
+  the token is the authorization (see `specs/public-endpoints.md`). The public
+  DTO is sanitized: no org/internal/session ids, no internal (session/app)
+  targets, no attribution env labels; unknown/revoked/expired ⇒ uniform 404.
+
 #### Run Limits (EVE-509)
 
 `POST /runs` enforces two limits at trigger time, returning HTTP 400 on violation:

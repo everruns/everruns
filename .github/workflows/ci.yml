@@ -300,7 +300,6 @@ jobs:
       - name: Check published crates against MSRV
         run: |
           cargo check --locked --all-features \
-            -p everruns-config \
             -p everruns-openui \
             -p everruns-a2ui \
             -p everruns-core \
@@ -701,13 +700,13 @@ jobs:
             --test session_git_integration_test \
             -- --test-threads=1
 
-      # Previously-unrun server integration tests, now wired in (EVE-664). These
-      # files existed under crates/server/tests/ but were never named in any CI
-      # step, so ~17 files silently never ran. These pass on a fresh migrated DB;
+      # Previously-unrun server integration tests, now wired in (EVE-664, EVE-668).
+      # These files existed under crates/server/tests/ but were never named in any
+      # CI step, so ~17 files silently never ran. These pass on a fresh migrated DB;
       # the still-failing ones are allowlisted in
       # scripts/lib/check-server-test-enumeration.sh with tracking issues
-      # (EVE-667, EVE-668). The Server Test Enumeration job enforces that every
-      # server test file is either run here or explicitly allowlisted.
+      # (EVE-667). The Server Test Enumeration job enforces that every server test
+      # file is either run here or explicitly allowlisted.
       - name: Run previously-unenumerated domain integration tests
         run: |
           cargo test -p everruns-server \
@@ -715,11 +714,16 @@ jobs:
             --test command_policy_enforcement_test \
             --test fcp_integration_test \
             --test guardrails_integration_test \
+            --test mcp_endpoint_test \
             --test migration_history_test \
+            --test openapi_coverage_test \
+            --test openapi_descriptions_test \
             --test org_invitations_test \
             --test plugins_integration_test \
             --test plugins_remote_test \
+            --test reporting_integration_test \
             --test session_workspace_attach_test \
+            --test skills_integration_test \
             --test strict_client_tools \
             --test subagent_spawn_handles_test \
             --test workspace_files_integration_test \
@@ -764,7 +768,7 @@ jobs:
         # breaks still fail the step.
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
-        run: doppler run --preserve-env="DATABASE_URL" -- cargo test -p everruns-llm-tests --test agent_run_basic --test agent_run_with_thinking --all-features
+        run: doppler run --preserve-env="DATABASE_URL" -- cargo test -p everruns-llm-tests --test agent_run_basic --test agent_run_with_thinking --test subagent_live_test --all-features
 
   # S3 blob-backend integration tests.
   # The PostgreSQL `integration-test` job above only exercises the inline
@@ -1324,6 +1328,9 @@ jobs:
 
       - name: Lint
         run: pnpm run lint
+
+      - name: Check generated API types
+        run: pnpm run api-types:check
 
       - name: Type check
         run: pnpm run typecheck

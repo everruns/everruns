@@ -9,7 +9,9 @@ the `SubagentTaskExecutor`.
 
 <!-- Design Decisions:
   - 1 creation tool: spawn_subagent (get/message/cancel handled by generic session_tasks tools)
-  - Foreground execution blocks parent tool call (Phase 1); background mode deferred
+  - Background execution is the default: spawn returns immediately with a task_id;
+    a detached watcher settles the task and the OnTerminal wake policy notifies the parent
+  - mode: "foreground" blocks the parent tool call until the child idles (original Phase 1 behavior)
   - No nesting: subagents cannot spawn subagents
   - Human-readable names by default ("Test Runner" not "test-runner")
   - message_task / cancel_task unify steering and cancellation via the task registry
@@ -28,7 +30,7 @@ Inspired by Claude Code's Agent tool, Cursor's sub-agents, and OpenAI Codex's mu
 | Principle | Rationale |
 |-----------|-----------|
 | Single creation tool | Minimal surface area. `spawn_subagent` covers creation; lifecycle is managed via generic task tools. |
-| Foreground-first | Simpler mental model: agent calls tool, blocks, gets result. Background deferred to Phase 1b. |
+| Background-first | Parallelism is the point of subagents: spawn returns a `task_id` immediately and the parent keeps working; the task's `OnTerminal` wake policy notifies it on completion. `mode: "foreground"` opts back into block-and-return for results the parent cannot proceed without. |
 | No nesting | Prevents runaway resource consumption and simplifies reasoning about execution depth. |
 | Human-readable names | "Test Runner" is more natural than `test-runner` in conversation. |
 | Inherit parent config | Subagent uses same harness, agent, and model. No capability escalation. |
@@ -81,23 +83,37 @@ See `crates/server/migrations/009_subagents.sql` for schema changes.
 
 ### spawn_subagent
 
-Creates a child session and sends the instructions as the first user message. In foreground mode, blocks until the child idles. Returns a `task_id` that can be used with the generic session task tools.
+Creates a child session and sends the instructions as the first user message. Runs in the background by default and returns immediately; `mode: "foreground"` blocks until the child idles. Returns a `task_id` that can be used with the generic session task tools.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | Yes | Human-readable name for the subagent |
 | `instructions` | string | Yes | Instructions sent as first user message |
+| `mode` | string | No | `background` (default) or `foreground` |
 
-**Returns:** Last assistant message from the child session plus a `task_id` for the session task record.
+**Returns (background):** `task_id` and `status: "running"` immediately; the final result lands on the task record (`summary`) and the parent is woken on the terminal transition.
 
-**Behavior:**
+**Returns (foreground):** Last assistant message from the child session plus a `task_id` for the session task record.
+
+**Behavior (both modes):**
 1. Creates child session with `parent_session_id` set to current session
 2. Inherits the parent session locale when present
 3. Creates a `TASK_KIND_SUBAGENT` task on the parent session linked to the child session
+
+**Foreground:**
 4. Sends `instructions` as first user message
-5. Blocks on `wait_for_idle` (foreground mode)
-6. On child idle: returns last assistant message, task state → `succeeded`
+5. Blocks on `wait_for_idle`
+6. On child terminal turn status: returns last assistant message, task state → `succeeded`/`failed`/`canceled`
 7. On child failure: returns error, task state → `failed`
+
+**Background:**
+4. Detaches a watcher (same pattern as `spawn_background` runs) and returns immediately; the watcher sends `instructions` as the first user message — deferred so local hosts, where `send_message` runs the child turn synchronously, do not block the spawn call
+5. The task is created with `wake_policy: on_terminal`; the watcher heartbeats the task registry (attempt-fenced) so the session task reaper can fail an orphaned watcher after worker loss
+6. The watcher waits in slices until the child reaches a terminal turn status (overall cap 6 h), then settles the task and the durable spawn handle; the registry-level wake policy delivers the completion message to the parent (specs/session-tasks.md, Wake-ups)
+7. Local/embedded hosts (everruns-runtime) may report a bare `idle` after their synchronous turn — the watcher settles it as `completed`; hosted adapters never return bare `idle`
+8. `SubagentTaskExecutor::reconcile` (invoked from `wait_task`'s poll loop) probes the child's terminal turn status and settles the task if the watcher died, so `wait_task` converges even after worker loss
+
+**Degradation:** background mode requires a session task registry (it is the only surface for the result). An explicit `mode: "background"` without one is a tool error; an unspecified mode degrades to foreground so embedders without background tracking keep blocking semantics.
 
 ### Monitoring and steering subagents
 
@@ -175,7 +191,7 @@ This is a hard constraint enforced at the tool execution layer, not a configurat
 |---------|------------|
 | Capability escalation | Subagent inherits parent capabilities exactly; no additional capabilities |
 | Context isolation | Separate message history; child cannot read parent messages |
-| Resource exhaustion | 300s timeout on `wait_for_idle`; max iterations per child session |
+| Resource exhaustion | Foreground: 300s timeout on `wait_for_idle`. Background: 6h overall watcher cap; max iterations per child session; orphaned watchers are failed by the session task reaper on stale heartbeats |
 | Runaway nesting | Hard block on subagents spawning subagents |
 | Org boundary | Child session inherits org_id; standard multitenancy enforcement applies |
 
@@ -192,9 +208,12 @@ The `subagents` feature string is contributed when the subagent tools are availa
 
 ## Phase 1b (Future)
 
+Background mode shipped (default; see `spawn_subagent` above) — completion is
+delivered through the task registry's `OnTerminal` wake policy rather than a
+subagent-specific mechanism. Remaining candidates:
+
 | Feature | Description |
 |---------|-------------|
-| Background mode | `spawn_subagent` returns immediately; completion via steering message injected into parent turn |
 | Subagent results table | Durable tracking of subagent outcomes across sessions |
 | Max iterations config | Per-subagent iteration limit (separate from session default) |
 | Parallel spawn | Spawn multiple subagents in a single tool call |

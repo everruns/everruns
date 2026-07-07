@@ -98,6 +98,8 @@ impl InMemoryDatabase {
             updated_at: now,
             external_id: None,
             created_by: input.created_by,
+            // User-created orgs start un-onboarded; the setup wizard marks them.
+            onboarding_completed_at: None,
         };
         orgs.insert(org_id, row.clone());
         Ok(row)
@@ -123,6 +125,8 @@ impl InMemoryDatabase {
             updated_at: now,
             external_id: None,
             created_by: input.created_by,
+            // Seeded orgs (default org) are already-onboarded. See migration 090.
+            onboarding_completed_at: Some(now),
         };
         orgs.insert(org_id, row.clone());
         Ok(Some(row))
@@ -165,6 +169,20 @@ impl InMemoryDatabase {
             return Ok(Some(org.clone()));
         }
         Ok(None)
+    }
+
+    /// Idempotently mark an org's onboarding complete (sets the timestamp only
+    /// when currently NULL), mirroring the Postgres path.
+    pub async fn mark_org_onboarding_complete(&self, org_id: i64) -> Result<()> {
+        let now = Self::now();
+        let mut orgs = self.organizations.write();
+        if let Some(org) = orgs.get_mut(&org_id)
+            && org.onboarding_completed_at.is_none()
+        {
+            org.onboarding_completed_at = Some(now);
+            org.updated_at = now;
+        }
+        Ok(())
     }
 
     pub async fn delete_organization(&self, org_id: i64) -> Result<bool> {
@@ -383,6 +401,8 @@ impl InMemoryDatabase {
             updated_at: now,
             external_id: Some(external_id.to_string()),
             created_by: None,
+            // Externally-synced orgs are already-onboarded. See migration 090.
+            onboarding_completed_at: Some(now),
         };
         orgs.insert(org_id, row.clone());
         Ok(row)

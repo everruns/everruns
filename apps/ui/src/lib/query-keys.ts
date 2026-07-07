@@ -169,6 +169,13 @@ export const queryKeys = {
     list: () => ["user-connections"] as const,
   },
 
+  // User preference (key/value) queries
+  userPreferences: {
+    all: ["user-preferences"] as const,
+    list: () => ["user-preferences"] as const,
+    detail: (key: string) => ["user-preferences", key] as const,
+  },
+
   payments: {
     all: ["payments"] as const,
     accounts: (params: Record<string, unknown> = {}) => ["payments", "accounts", params] as const,
@@ -237,6 +244,14 @@ export const queryKeys = {
     cases: (evalId: string) => ["eval", evalId, "cases"] as const,
     runs: (evalId: string) => ["eval", evalId, "runs"] as const,
     runDetail: (evalId: string, runId: string) => ["eval", evalId, "run", runId] as const,
+  },
+
+  // Observer queries
+  observers: {
+    all: ["observers"] as const,
+    list: (includeArchived = false) => ["observers", { includeArchived }] as const,
+    detail: (observerId: string) => ["observer", observerId] as const,
+    scores: (observerId: string) => ["observer", observerId, "scores"] as const,
   },
 
   // Policy queries

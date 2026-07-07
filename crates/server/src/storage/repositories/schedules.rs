@@ -42,6 +42,65 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn create_session_schedule_with_limits(
+        &self,
+        input: CreateSessionScheduleRow,
+        max_per_session: u32,
+        max_per_org: i64,
+    ) -> Result<Option<SessionScheduleRow>> {
+        let mut tx = self.pool.begin().await?;
+        // Serialize quota checks and insertion per org so concurrent creators
+        // cannot all observe the same below-cap count before inserting.
+        sqlx::query("SELECT pg_advisory_xact_lock($1)")
+            .bind(input.org_id)
+            .execute(&mut *tx)
+            .await?;
+
+        let active_session_count: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM session_schedules WHERE session_id = $1 AND enabled = true",
+        )
+        .bind(input.session_id)
+        .fetch_one(&mut *tx)
+        .await?;
+        let active_org_count: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM session_schedules WHERE org_id = $1 AND enabled = true",
+        )
+        .bind(input.org_id)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        if active_session_count.0 >= i64::from(max_per_session) || active_org_count.0 >= max_per_org
+        {
+            tx.rollback().await?;
+            return Ok(None);
+        }
+
+        let id = ScheduleId::new();
+        let public_id = id.to_string();
+        let row = sqlx::query_as::<_, SessionScheduleRow>(
+            r#"
+            INSERT INTO session_schedules (id, public_id, org_id, session_id, owner_principal_id, resolved_owner_user_id, description, cron_expression, scheduled_at, timezone, next_trigger_at)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            RETURNING *
+            "#,
+        )
+        .bind(id)
+        .bind(&public_id)
+        .bind(input.org_id)
+        .bind(input.session_id)
+        .bind(input.owner_principal_id)
+        .bind(input.resolved_owner_user_id)
+        .bind(&input.description)
+        .bind(&input.cron_expression)
+        .bind(input.scheduled_at)
+        .bind(&input.timezone)
+        .bind(input.next_trigger_at)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(Some(row))
+    }
     pub async fn get_session_schedule(
         &self,
         org_id: i64,

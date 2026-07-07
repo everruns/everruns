@@ -5,19 +5,25 @@
 
 use crate::api::evals::{
     BulkUpdateEvalRunScoresRequest, CreateEvalCaseRequest, CreateEvalRequest, CreateEvalRunRequest,
-    ExternalScoreStatus, UpdateEvalCaseRequest, UpdateEvalRequest, UpdateEvalResultScoresRequest,
+    EvalRunShareLink, ExternalScoreStatus, ImportEvalCaseEntry, ImportEvalRunRequest,
+    PublicAttribution, PublicEvalCaseResult, PublicEvalRun, UpdateEvalCaseRequest,
+    UpdateEvalRequest, UpdateEvalResultScoresRequest,
 };
+use crate::auth::share_token::{SHARE_PREFIX, generate_share_token, hash_share_token};
 use crate::domains::evals::limits::EvalLimits;
 use crate::domains::evals::runner::{EvalRunContext, spawn_eval_run};
 use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::storage::StorageBackend;
 use crate::storage::models::{
     CreateEvalCaseRow, CreateEvalRow, CreateEvalRunError, CreateEvalRunRow,
-    UpdateEvalCaseResultRow, UpdateEvalCaseRow, UpdateEvalRow,
+    CreateEvalRunShareTokenRow, ImportEvalCaseInput, ImportEvalRunInput, UpdateEvalCaseResultRow,
+    UpdateEvalCaseRow, UpdateEvalRow,
 };
 use anyhow::Result;
 use everruns_core::eval::*;
-use everruns_core::typed_id::{EvalCaseId, EvalId, EvalResultId, EvalRunId, SessionId};
+use everruns_core::typed_id::{
+    EvalCaseId, EvalDatasetId, EvalId, EvalResultId, EvalRunId, SessionId,
+};
 use everruns_core::{Caller, Permission, Policy, Rule};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
@@ -59,6 +65,16 @@ pub const DATASET_EXPORT: Policy = Policy {
         Rule::UserHasPermission(Permission::OrgAgentsManage),
         Rule::UserHasPermission(Permission::OrgSessionsManage),
     ],
+};
+
+/// Policy: Import externally-executed eval runs (everruns as host/viewer).
+///
+/// Unlike `EVAL_RUN`, importing creates no sessions — the run is ingested
+/// already-complete — so it requires only eval-management, not session
+/// management. See proposals/mira-results-publishing.md.
+pub const EVAL_IMPORT: Policy = Policy {
+    id: "eval.import",
+    rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
 };
 
 pub struct EvalService {
@@ -474,6 +490,79 @@ impl EvalService {
         Ok(Some(run_row_to_run(run_row, results)))
     }
 
+    /// Enqueue an async dataset export for a completed run. Persists a `pending`
+    /// dataset handle, spawns the background export, and returns the handle.
+    /// Org scope is enforced by `get_run` (resolves only the caller's runs).
+    pub async fn create_dataset_export(
+        &self,
+        caller: &Caller,
+        eval_public_id: &str,
+        run_public_id: &str,
+        req: crate::domains::evals::dataset::ExportEvalRunDatasetRequest,
+    ) -> Result<Option<EvalRunDataset>> {
+        let Some(run) = self.get_run(caller, eval_public_id, run_public_id).await? else {
+            return Ok(None);
+        };
+
+        if run.status != EvalRunStatus::Completed {
+            return Err(
+                BadRequestError::new("Dataset export requires a completed eval run").into(),
+            );
+        }
+
+        let public_id = everruns_core::typed_id::EvalDatasetId::from_uuid(Uuid::now_v7());
+        let request_json = serde_json::to_value(&req)?;
+        let row = self
+            .db
+            .create_eval_run_dataset(
+                caller.org_id,
+                crate::storage::models::CreateEvalRunDatasetRow {
+                    public_id: public_id.to_string(),
+                    eval_run_id: run.internal_id,
+                    request: request_json,
+                },
+            )
+            .await?;
+
+        crate::domains::evals::dataset_export::spawn_dataset_export(
+            self.db.clone(),
+            row.id,
+            run,
+            req,
+        );
+
+        Ok(Some(dataset_row_to_dataset(row, false)))
+    }
+
+    /// Fetch a dataset export handle by id (status + NDJSON body when complete).
+    /// Org-scoped: only datasets owned by the caller's org resolve.
+    pub async fn get_dataset(
+        &self,
+        caller: &Caller,
+        eval_public_id: &str,
+        run_public_id: &str,
+        dataset_public_id: &str,
+    ) -> Result<Option<EvalRunDataset>> {
+        // Resolve the run first so a dataset from another run/org is never
+        // reachable even if its id is guessed.
+        let Some(run) = self.get_run(caller, eval_public_id, run_public_id).await? else {
+            return Ok(None);
+        };
+
+        let Some(row) = self
+            .db
+            .get_eval_run_dataset(caller.org_id, dataset_public_id)
+            .await?
+        else {
+            return Ok(None);
+        };
+        if row.eval_run_id != Some(run.internal_id) {
+            return Ok(None);
+        }
+
+        Ok(Some(dataset_row_to_dataset(row, true)))
+    }
+
     pub async fn cancel_run(
         &self,
         caller: &Caller,
@@ -654,6 +743,257 @@ impl EvalService {
     }
 
     // ============================================
+    // Import (external eval results)
+    // ============================================
+
+    /// Ingest a full external run group (one external run → one EvalRun per
+    /// eval, sharing `source.run_id`). Upserts evals/cases by name and stores
+    /// fully-scored, completed results. Everruns trusts the external verdicts;
+    /// it never re-grades. See proposals/mira-results-publishing.md.
+    pub async fn import_run(
+        &self,
+        caller: &Caller,
+        req: ImportEvalRunRequest,
+    ) -> Result<Vec<EvalRun>> {
+        if req.evals.is_empty() {
+            return Err(BadRequestError::new("import must include at least one eval").into());
+        }
+        if req.source.system.trim().is_empty() {
+            return Err(BadRequestError::new("source.system is required").into());
+        }
+        if req.source.run_id.trim().is_empty() {
+            return Err(BadRequestError::new("source.run_id is required").into());
+        }
+
+        let attribution = serde_json::json!({
+            "system": req.source.system,
+            "version": req.source.version,
+            "url": req.source.url,
+            "run_id": req.source.run_id,
+            "metadata": req.source.metadata,
+        });
+        let triggered_by = format!("import:{}", req.source.system);
+
+        let mut runs = Vec::with_capacity(req.evals.len());
+        for group in req.evals {
+            if group.name.trim().is_empty() {
+                return Err(BadRequestError::new("eval name is required").into());
+            }
+
+            let mut import_cases = Vec::with_capacity(group.cases.len());
+            let mut acc = ImportSummaryAcc::default();
+            for case in group.cases {
+                if case.name.trim().is_empty() {
+                    return Err(BadRequestError::new("case name is required").into());
+                }
+                for score in &case.scores {
+                    if !score.value.is_finite() || !(0.0..=1.0).contains(&score.value) {
+                        return Err(BadRequestError::new(format!(
+                            "score value for scorer '{}' must be between 0.0 and 1.0",
+                            score.scorer
+                        ))
+                        .into());
+                    }
+                }
+
+                let status = case.status.as_str();
+                acc.add(status, &case);
+
+                let target = EvalTarget::External {
+                    provider: case.target.provider.clone(),
+                    model: case.target.model.clone(),
+                    params: case.target.params.clone(),
+                };
+                let conversation = serde_json::to_value(
+                    case.input
+                        .iter()
+                        .map(|content| EvalInputMessage {
+                            content: content.clone(),
+                        })
+                        .collect::<Vec<_>>(),
+                )?;
+                // Per-result transcript + open-vocab metrics ride in the
+                // metadata envelope rather than dedicated columns.
+                let mut envelope = serde_json::Map::new();
+                if let Some(t) = &case.transcript {
+                    envelope.insert("transcript".to_string(), t.clone());
+                }
+                if let Some(m) = &case.metrics {
+                    envelope.insert("metrics".to_string(), m.clone());
+                }
+                let metadata =
+                    (!envelope.is_empty()).then_some(serde_json::Value::Object(envelope));
+                let scores = (!case.scores.is_empty())
+                    .then(|| serde_json::to_value(&case.scores))
+                    .transpose()?;
+
+                import_cases.push(ImportEvalCaseInput {
+                    case_name: case.name,
+                    case_description: case.description,
+                    conversation,
+                    target_snapshot: Some(serde_json::to_value(&target)?),
+                    status: status.to_string(),
+                    scores,
+                    metadata,
+                    turns: case.turns.map(|v| v as i32),
+                    latency_ms: case.latency_ms.map(|v| v as i64),
+                    input_tokens: case.input_tokens.map(|v| v as i64),
+                    output_tokens: case.output_tokens.map(|v| v as i64),
+                    error_message: case.error_message,
+                    artifacts: None,
+                });
+            }
+
+            let input = ImportEvalRunInput {
+                eval_name: group.name,
+                eval_description: group.description,
+                eval_tags: group.tags,
+                run_public_id: EvalRunId::from_uuid(Uuid::now_v7()).to_string(),
+                source: "external".to_string(),
+                source_run_id: req.source.run_id.clone(),
+                attribution: Some(attribution.clone()),
+                triggered_by: triggered_by.clone(),
+                summary: Some(serde_json::to_value(acc.finish())?),
+                cases: import_cases,
+            };
+
+            let run_row = self.db.import_eval_run(caller.org_id, input).await?;
+            runs.push(run_row_to_run(run_row, vec![]));
+        }
+
+        Ok(runs)
+    }
+
+    // ============================================
+    // Share links (read-only public views)
+    // ============================================
+
+    /// Mint a read-only share link for a run. Revokes any prior active link so a
+    /// run has at most one live share. The raw token is returned once and stored
+    /// only hashed. See specs/evals.md, specs/public-endpoints.md.
+    pub async fn create_run_share(
+        &self,
+        caller: &Caller,
+        eval_public_id: &str,
+        run_public_id: &str,
+    ) -> Result<EvalRunShareLink> {
+        let run_row = self
+            .load_run_owned(caller, eval_public_id, run_public_id)
+            .await?;
+
+        // One active link per run: revoke the old before minting the new.
+        self.db
+            .revoke_eval_run_share_tokens(caller.org_id, run_row.id)
+            .await?;
+
+        let generated = generate_share_token();
+        let public_id = format!("evalshare_{:032x}", Uuid::now_v7().as_u128());
+        let row = self
+            .db
+            .create_eval_run_share_token(
+                caller.org_id,
+                CreateEvalRunShareTokenRow {
+                    public_id,
+                    org_id: caller.org_id,
+                    eval_run_id: run_row.id,
+                    token_hash: generated.token_hash,
+                    token_prefix: generated.token_prefix,
+                    created_by: None,
+                    expires_at: None,
+                },
+            )
+            .await?;
+
+        Ok(EvalRunShareLink {
+            token: generated.token,
+            token_prefix: row.token_prefix,
+            created_at: row.created_at,
+        })
+    }
+
+    /// Revoke every active share link for a run. Returns whether any were live.
+    pub async fn revoke_run_share(
+        &self,
+        caller: &Caller,
+        eval_public_id: &str,
+        run_public_id: &str,
+    ) -> Result<bool> {
+        let run_row = self
+            .load_run_owned(caller, eval_public_id, run_public_id)
+            .await?;
+        let revoked = self
+            .db
+            .revoke_eval_run_share_tokens(caller.org_id, run_row.id)
+            .await?;
+        Ok(revoked > 0)
+    }
+
+    /// Whether a run currently has an active share link (for the UI).
+    pub async fn run_has_active_share(
+        &self,
+        caller: &Caller,
+        eval_public_id: &str,
+        run_public_id: &str,
+    ) -> Result<bool> {
+        let run_row = self
+            .load_run_owned(caller, eval_public_id, run_public_id)
+            .await?;
+        self.db
+            .eval_run_has_active_share(caller.org_id, run_row.id)
+            .await
+    }
+
+    /// Resolve a share token to a sanitized, anonymous view of one run. The token
+    /// IS the authorization — no caller/org. Returns `None` for unknown, revoked,
+    /// or expired tokens so the handler answers a uniform 404 (no oracle).
+    pub async fn resolve_public_share(&self, token: &str) -> Result<Option<PublicEvalRun>> {
+        if !token.starts_with(SHARE_PREFIX) {
+            return Ok(None);
+        }
+        let hash = hash_share_token(token);
+        let Some(share) = self.db.get_eval_run_share_token_by_hash(&hash).await? else {
+            return Ok(None);
+        };
+        if share.revoked_at.is_some() {
+            return Ok(None);
+        }
+        if let Some(exp) = share.expires_at
+            && exp <= chrono::Utc::now()
+        {
+            return Ok(None);
+        }
+        let Some(run_row) = self.db.get_eval_run_by_id(share.eval_run_id).await? else {
+            return Ok(None);
+        };
+        let result_rows = self.db.list_eval_case_results(run_row.id).await?;
+        let cases = self.db.list_eval_cases(run_row.eval_id).await?;
+        Ok(Some(build_public_run(run_row, result_rows, &cases)))
+    }
+
+    /// Load a run verifying it belongs to the caller's org and the given eval.
+    async fn load_run_owned(
+        &self,
+        caller: &Caller,
+        eval_public_id: &str,
+        run_public_id: &str,
+    ) -> Result<crate::storage::models::EvalRunRow> {
+        let eval = self
+            .db
+            .get_eval_by_public_id(caller.org_id, eval_public_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("Eval"))?;
+        let run_row = self
+            .db
+            .get_eval_run_by_public_id(caller.org_id, run_public_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("EvalRun"))?;
+        if run_row.eval_id != eval.id {
+            return Err(ResourceNotFoundError::new("EvalRun").into());
+        }
+        Ok(run_row)
+    }
+
+    // ============================================
     // Helpers
     // ============================================
 
@@ -797,6 +1137,8 @@ fn run_row_to_run(
         model_override: row.model_override,
         filter_tags: row.filter_tags,
         status: EvalRunStatus::from(row.status.as_str()),
+        source: EvalRunSource::from(row.source.as_str()),
+        attribution: row.attribution,
         triggered_by: row.triggered_by,
         started_at: row.started_at,
         completed_at: row.completed_at,
@@ -804,6 +1146,121 @@ fn run_row_to_run(
         results,
         created_at: row.created_at,
         updated_at: row.updated_at,
+    }
+}
+
+/// Map a dataset row to the API type. `include_body` controls whether the
+/// (potentially large) NDJSON is attached — list/enqueue views omit it, the
+/// detail view includes it.
+fn dataset_row_to_dataset(
+    row: crate::storage::models::EvalRunDatasetRow,
+    include_body: bool,
+) -> EvalRunDataset {
+    EvalRunDataset {
+        public_id: row
+            .public_id
+            .parse()
+            .unwrap_or_else(|_| EvalDatasetId::from_uuid(row.id)),
+        // A dataset always references a run at creation; fall back to the row id
+        // only if the FK was cleared by run deletion (ON DELETE SET NULL).
+        eval_run_id: row
+            .eval_run_id
+            .map(EvalRunId::from_uuid)
+            .unwrap_or_else(|| EvalRunId::from_uuid(row.id)),
+        status: EvalDatasetStatus::from(row.status.as_str()),
+        record_count: row.record_count.map(|c| c.max(0) as u64),
+        error_message: row.error_message,
+        body: if include_body { row.body } else { None },
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    }
+}
+
+// ============================================
+// Public (share-link) sanitization
+// ============================================
+
+/// Build the sanitized public view of a run. Strips everything an anonymous
+/// viewer must not see: org/internal ids, session ids, internal (session/app)
+/// targets, and attribution env/labels. Keeps the shared content: statuses,
+/// scores, external target labels, and the normalized transcript/metrics.
+fn build_public_run(
+    run: crate::storage::models::EvalRunRow,
+    result_rows: Vec<crate::storage::models::EvalCaseResultRow>,
+    cases: &[crate::storage::models::EvalCaseRow],
+) -> PublicEvalRun {
+    let results = result_rows
+        .into_iter()
+        .map(|r| {
+            let case_name = cases
+                .iter()
+                .find(|c| c.id == r.eval_case_id)
+                .map(|c| c.name.clone());
+            public_result_row(r, case_name)
+        })
+        .collect();
+
+    PublicEvalRun {
+        id: run.public_id,
+        status: EvalRunStatus::from(run.status.as_str()),
+        source: EvalRunSource::from(run.source.as_str()),
+        attribution: run.attribution.and_then(sanitize_attribution),
+        summary: run.summary.and_then(|s| serde_json::from_value(s).ok()),
+        created_at: run.created_at,
+        completed_at: run.completed_at,
+        results,
+    }
+}
+
+fn public_result_row(
+    row: crate::storage::models::EvalCaseResultRow,
+    case_name: Option<String>,
+) -> PublicEvalCaseResult {
+    // Only expose label-only (External) targets. Session/App targets carry
+    // internal harness/agent/app ids and are dropped for the public view.
+    let target = row
+        .target_snapshot
+        .as_ref()
+        .and_then(|v| serde_json::from_value::<EvalTarget>(v.clone()).ok())
+        .filter(|t| matches!(t, EvalTarget::External { .. }));
+    // Transcript + metrics ride in the metadata envelope; expose only those two
+    // keys, never the raw envelope (which may carry other provenance).
+    let (transcript, metrics) = match &row.metadata {
+        Some(serde_json::Value::Object(m)) => {
+            (m.get("transcript").cloned(), m.get("metrics").cloned())
+        }
+        _ => (None, None),
+    };
+
+    PublicEvalCaseResult {
+        case_name,
+        target,
+        status: CaseResultStatus::from(row.status.as_str()),
+        scores: row.scores,
+        transcript,
+        metrics,
+        turns: row.turns.map(|v| v as u32),
+        latency_ms: row.latency_ms.map(|v| v as u64),
+        input_tokens: row.input_tokens.map(|v| v as u64),
+        output_tokens: row.output_tokens.map(|v| v as u64),
+        error_message: row.error_message,
+    }
+}
+
+/// Keep only the display fields of an external run's attribution (system,
+/// version, url). Drops `run_id` and the `metadata` bag (git/host/env labels).
+fn sanitize_attribution(v: serde_json::Value) -> Option<PublicAttribution> {
+    let obj = v.as_object()?;
+    let str_field = |k: &str| obj.get(k).and_then(|s| s.as_str()).map(String::from);
+    let att = PublicAttribution {
+        system: str_field("system"),
+        version: str_field("version"),
+        url: str_field("url"),
+    };
+    if att.system.is_none() && att.version.is_none() && att.url.is_none() {
+        None
+    } else {
+        Some(att)
     }
 }
 
@@ -932,7 +1389,7 @@ fn build_run_summary(
             CaseResultStatus::Passed => passed += 1,
             CaseResultStatus::Failed => failed += 1,
             CaseResultStatus::Errored | CaseResultStatus::Timeout => errored += 1,
-            CaseResultStatus::Pending | CaseResultStatus::Running => {}
+            CaseResultStatus::Pending | CaseResultStatus::Running | CaseResultStatus::Skipped => {}
         }
 
         if matches!(status, CaseResultStatus::Passed | CaseResultStatus::Failed) {
@@ -975,6 +1432,87 @@ fn build_run_summary(
         total_input_tokens,
         total_output_tokens,
     }
+}
+
+/// Accumulates a `RunSummary` for an imported run. Mirrors `build_run_summary`
+/// but reads the import request directly. `total` counts executed cases
+/// (passed/failed/errored); skipped cases are excluded from all tallies.
+#[derive(Default)]
+struct ImportSummaryAcc {
+    total: u32,
+    passed: u32,
+    failed: u32,
+    errored: u32,
+    total_score: f64,
+    total_turns: f64,
+    total_latency: u64,
+    total_input_tokens: u64,
+    total_output_tokens: u64,
+}
+
+impl ImportSummaryAcc {
+    fn add(&mut self, status: &str, case: &ImportEvalCaseEntry) {
+        match status {
+            "passed" => self.passed += 1,
+            "failed" => self.failed += 1,
+            "errored" | "timeout" => self.errored += 1,
+            _ => return, // skipped / not executed: excluded from tallies
+        }
+        self.total += 1;
+        if matches!(status, "passed" | "failed") {
+            self.total_score += import_case_avg_score(case);
+            self.total_turns += case.turns.unwrap_or_default() as f64;
+            self.total_latency += case.latency_ms.unwrap_or_default();
+            self.total_input_tokens += case.input_tokens.unwrap_or_default();
+            self.total_output_tokens += case.output_tokens.unwrap_or_default();
+        }
+    }
+
+    fn finish(self) -> RunSummary {
+        let total = self.total;
+        RunSummary {
+            total,
+            passed: self.passed,
+            failed: self.failed,
+            errored: self.errored,
+            pass_rate: if total > 0 {
+                self.passed as f64 / total as f64
+            } else {
+                0.0
+            },
+            avg_score: if total > 0 {
+                self.total_score / total as f64
+            } else {
+                0.0
+            },
+            avg_turns: if total > 0 {
+                self.total_turns / total as f64
+            } else {
+                0.0
+            },
+            avg_latency_ms: if total > 0 {
+                self.total_latency / total as u64
+            } else {
+                0
+            },
+            total_input_tokens: self.total_input_tokens,
+            total_output_tokens: self.total_output_tokens,
+        }
+    }
+}
+
+/// Mean of applicable (non-N/A) score values for an imported case.
+fn import_case_avg_score(case: &ImportEvalCaseEntry) -> f64 {
+    let applicable: Vec<f64> = case
+        .scores
+        .iter()
+        .filter(|score| !score.na)
+        .map(|score| score.value)
+        .collect();
+    if applicable.is_empty() {
+        return 0.0;
+    }
+    applicable.iter().sum::<f64>() / applicable.len() as f64
 }
 
 fn case_result_avg_score(
@@ -1139,6 +1677,228 @@ mod tests {
                 .await
                 .unwrap(),
             2
+        );
+    }
+
+    fn import_request(run_id: &str, failed_value: f64) -> ImportEvalRunRequest {
+        use crate::api::evals::{
+            ImportCaseStatus, ImportEvalCaseEntry, ImportEvalGroup, ImportEvalSource,
+            ImportEvalTarget, ImportScore,
+        };
+        let target = ImportEvalTarget {
+            provider: "anthropic".into(),
+            model: "claude".into(),
+            params: None,
+        };
+        ImportEvalRunRequest {
+            source: ImportEvalSource {
+                system: "mira".into(),
+                version: Some("0.1.0".into()),
+                url: None,
+                run_id: run_id.into(),
+                metadata: None,
+            },
+            evals: vec![ImportEvalGroup {
+                name: "coding".into(),
+                description: Some("imported".into()),
+                tags: vec!["ci".into()],
+                cases: vec![
+                    ImportEvalCaseEntry {
+                        name: "case-a".into(),
+                        description: None,
+                        input: vec!["solve it".into()],
+                        target: target.clone(),
+                        status: ImportCaseStatus::Passed,
+                        scores: vec![ImportScore {
+                            scorer: "contains".into(),
+                            value: 1.0,
+                            pass: true,
+                            reason: "ok".into(),
+                            na: false,
+                        }],
+                        transcript: Some(serde_json::json!({"messages": []})),
+                        metrics: Some(serde_json::json!({"cost_usd": 0.01})),
+                        turns: Some(2),
+                        latency_ms: Some(1200),
+                        input_tokens: Some(100),
+                        output_tokens: Some(50),
+                        error_message: None,
+                    },
+                    ImportEvalCaseEntry {
+                        name: "case-b".into(),
+                        description: None,
+                        input: vec!["other".into()],
+                        target,
+                        status: ImportCaseStatus::Failed,
+                        scores: vec![ImportScore {
+                            scorer: "contains".into(),
+                            value: failed_value,
+                            pass: false,
+                            reason: "no".into(),
+                            na: false,
+                        }],
+                        transcript: None,
+                        metrics: None,
+                        turns: Some(1),
+                        latency_ms: Some(800),
+                        input_tokens: Some(80),
+                        output_tokens: Some(20),
+                        error_message: None,
+                    },
+                ],
+            }],
+        }
+    }
+
+    #[tokio::test]
+    async fn import_run_creates_external_run() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let org_id = 7i64;
+        let caller = Caller::internal(org_id);
+        let svc = EvalService::new(db.clone());
+
+        let runs = svc
+            .import_run(&caller, import_request("mira-run-1", 0.0))
+            .await
+            .unwrap();
+
+        assert_eq!(runs.len(), 1);
+        let run = &runs[0];
+        assert_eq!(run.source, EvalRunSource::External);
+        assert_eq!(run.status, EvalRunStatus::Completed);
+        let summary = run.summary.as_ref().expect("summary");
+        assert_eq!(summary.total, 2);
+        assert_eq!(summary.passed, 1);
+        assert_eq!(summary.failed, 1);
+        assert!((summary.pass_rate - 0.5).abs() < 1e-9);
+
+        // Eval auto-provisioned by name.
+        let evals = db.list_evals(org_id, None, false).await.unwrap();
+        assert_eq!(evals.len(), 1);
+        assert_eq!(evals[0].name, "coding");
+
+        // Results stored with transcript/metrics in the metadata envelope.
+        let result_rows = db.list_eval_case_results(run.internal_id).await.unwrap();
+        assert_eq!(result_rows.len(), 2);
+        let passed = result_rows
+            .iter()
+            .find(|r| r.status == "passed")
+            .expect("passed result");
+        let meta = passed.metadata.as_ref().expect("metadata envelope");
+        assert!(meta.get("transcript").is_some());
+        assert_eq!(meta["metrics"]["cost_usd"], 0.01);
+    }
+
+    #[tokio::test]
+    async fn import_run_is_idempotent_on_source_run_id() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let org_id = 8i64;
+        let caller = Caller::internal(org_id);
+        let svc = EvalService::new(db.clone());
+
+        svc.import_run(&caller, import_request("mira-run-1", 0.0))
+            .await
+            .unwrap();
+        // Re-publish the same run id with a different failed score.
+        svc.import_run(&caller, import_request("mira-run-1", 0.4))
+            .await
+            .unwrap();
+
+        // Still one eval and exactly one run (the prior was replaced).
+        let evals = db.list_evals(org_id, None, false).await.unwrap();
+        assert_eq!(evals.len(), 1);
+        let run_rows = db.list_eval_runs(evals[0].id).await.unwrap();
+        assert_eq!(run_rows.len(), 1);
+        // And exactly two results (not four) — old ones were cascaded away.
+        let result_rows = db.list_eval_case_results(run_rows[0].id).await.unwrap();
+        assert_eq!(result_rows.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn share_link_resolves_sanitized_then_revokes() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let org_id = 9i64;
+        let caller = Caller::internal(org_id);
+        let svc = EvalService::new(db.clone());
+
+        let runs = svc
+            .import_run(&caller, import_request("mira-share-1", 0.0))
+            .await
+            .unwrap();
+        let run_pub = runs[0].public_id.to_string();
+        let evals = db.list_evals(org_id, None, false).await.unwrap();
+        let eval_pub = evals[0].public_id.to_string();
+
+        // Mint a link; the run now reports an active share.
+        let link = svc
+            .create_run_share(&caller, &eval_pub, &run_pub)
+            .await
+            .unwrap();
+        assert!(link.token.starts_with("evr_share_"));
+        assert!(
+            svc.run_has_active_share(&caller, &eval_pub, &run_pub)
+                .await
+                .unwrap()
+        );
+
+        // Public resolve returns the sanitized run.
+        let public = svc
+            .resolve_public_share(&link.token)
+            .await
+            .unwrap()
+            .expect("token resolves");
+        assert_eq!(public.id, run_pub);
+        assert_eq!(public.source, EvalRunSource::External);
+        let passed = public
+            .results
+            .iter()
+            .find(|r| r.status == CaseResultStatus::Passed)
+            .expect("a passed result");
+        // External (label-only) target is exposed and the transcript is present.
+        assert!(matches!(passed.target, Some(EvalTarget::External { .. })));
+        assert!(passed.transcript.is_some());
+
+        // Re-minting revokes the old link (one active link per run).
+        let link2 = svc
+            .create_run_share(&caller, &eval_pub, &run_pub)
+            .await
+            .unwrap();
+        assert!(
+            svc.resolve_public_share(&link.token)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            svc.resolve_public_share(&link2.token)
+                .await
+                .unwrap()
+                .is_some()
+        );
+
+        // Revoke → nothing resolves; unknown tokens are a quiet None (no oracle).
+        assert!(
+            svc.revoke_run_share(&caller, &eval_pub, &run_pub)
+                .await
+                .unwrap()
+        );
+        assert!(
+            svc.resolve_public_share(&link2.token)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            svc.resolve_public_share("evr_share_deadbeef")
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            svc.resolve_public_share("not-a-token")
+                .await
+                .unwrap()
+                .is_none()
         );
     }
 

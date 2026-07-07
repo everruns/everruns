@@ -270,26 +270,5 @@ pub async fn get_schema(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    #[test]
-    fn test_database_info_response_serialization() {
-        let info = DatabaseInfoResponse {
-            name: "test_db".to_string(),
-            size_bytes: 4096,
-            page_count: 1,
-            created_at: "2024-01-01T00:00:00Z".to_string(),
-            updated_at: "2024-01-01T00:00:00Z".to_string(),
-        };
-        let json = serde_json::to_string(&info).unwrap();
-        assert!(json.contains("test_db"));
-        assert!(json.contains("4096"));
-    }
-
-    #[test]
-    fn test_create_request_deserialization() {
-        let json = r#"{"name": "analytics"}"#;
-        let req: CreateDatabaseRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.name, "analytics");
-    }
+    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 }

@@ -258,43 +258,13 @@ impl Tool for GetForecastTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capabilities::CapabilityRegistry;
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = TestWeatherCapability;
-
-        assert_eq!(cap.id(), "test_weather");
-        assert_eq!(cap.name(), "Test Weather");
-        assert_eq!(cap.icon(), Some("cloud-sun"));
-        assert_eq!(cap.category(), Some("Testing"));
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-    }
-
-    #[test]
-    fn test_capability_has_tools() {
-        let cap = TestWeatherCapability;
-        let tools = cap.tools();
-
-        assert_eq!(tools.len(), 2);
-        let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(tool_names.contains(&"get_weather"));
-        assert!(tool_names.contains(&"get_forecast"));
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_capability_no_system_prompt() {
         let cap = TestWeatherCapability;
         assert!(cap.system_prompt_addition().is_none());
-    }
-
-    #[test]
-    fn test_capability_in_registry() {
-        let registry = CapabilityRegistry::with_builtins();
-        let cap = registry.get("test_weather").unwrap();
-
-        assert_eq!(cap.id(), "test_weather");
-        assert_eq!(cap.tools().len(), 2);
     }
 
     #[tokio::test]

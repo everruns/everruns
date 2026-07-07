@@ -649,18 +649,7 @@ async fn list_run_ids(
         .collect()
 }
 
-fn require_str<'a>(
-    args: &'a Value,
-    field: &str,
-) -> std::result::Result<&'a str, ToolExecutionResult> {
-    args.get(field)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| {
-            ToolExecutionResult::tool_error(format!("Missing required parameter: {field}"))
-        })
-}
+use super::util::require_str_trimmed as require_str;
 
 async fn save_run(context: &ToolContext, record: &AgentRunRecord) -> Result<()> {
     mirror_run_to_task(context, record).await;
@@ -1030,6 +1019,40 @@ async fn submit_run(
 /// expires. Sends a registry heartbeat on every poll iteration when
 /// `heartbeat_attempt` is provided, so the reaper knows the worker is alive
 /// and stale writes from a superseded executor are rejected.
+/// Terminal outcome of a poll loop, replacing the previous stringly-typed
+/// control flow (timeout/supersede were detected via `error.starts_with(...)`).
+/// `Err(String)` is still used for genuine I/O/transport failures; the
+/// non-error terminal states (completed, timed out, superseded) are typed.
+enum WaitOutcome {
+    /// The run reached a terminal status (or had no remote task to poll).
+    /// Boxed: `AgentRunRecord` is ~900 bytes and dwarfs the other variants;
+    /// boxing keeps the enum small (clippy `large_enum_variant`).
+    Completed(Box<AgentRunRecord>),
+    /// The poll deadline elapsed before the run finished.
+    TimedOut { run_id: String, timeout_secs: u64 },
+    /// The attempt fence revealed a newer executor owns this task.
+    Superseded {
+        run_id: String,
+        attempt: i32,
+        by_attempt: i32,
+    },
+}
+
+impl WaitOutcome {
+    /// User-facing timeout message. Kept byte-identical to the legacy string so
+    /// `timeout_or_error_result` surfaces the same text downstream.
+    fn timed_out_message(run_id: &str, timeout_secs: u64) -> String {
+        format!("Timed out waiting for external agent run {run_id} after {timeout_secs}s")
+    }
+
+    /// Diagnostic supersede message. Logged only; never surfaced to callers.
+    fn superseded_message(run_id: &str, attempt: i32, by_attempt: i32) -> String {
+        format!(
+            "{SUPERSEDED_ERROR_PREFIX} run {run_id} (attempt {attempt} superseded by {by_attempt})"
+        )
+    }
+}
+
 async fn wait_for_run(
     context: &ToolContext,
     agent: &ExternalA2aAgentConfig,
@@ -1038,7 +1061,7 @@ async fn wait_for_run(
     // When Some, write a heartbeat on every poll with this attempt fence so
     // a superseded executor's stale writes are rejected.
     heartbeat_attempt: Option<i32>,
-) -> std::result::Result<AgentRunRecord, String> {
+) -> std::result::Result<WaitOutcome, String> {
     if record.status.is_terminal() {
         write_result_artifact(context, &mut record)
             .await
@@ -1046,10 +1069,10 @@ async fn wait_for_run(
         save_run(context, &record)
             .await
             .map_err(|e| e.to_string())?;
-        return Ok(record);
+        return Ok(WaitOutcome::Completed(Box::new(record)));
     }
     let Some(remote_task_id) = record.remote_task_id.clone() else {
-        return Ok(record);
+        return Ok(WaitOutcome::Completed(Box::new(record)));
     };
     let client = build_client(agent, context).await?;
     let deadline = Instant::now() + Duration::from_secs(timeout_secs);
@@ -1084,10 +1107,11 @@ async fn wait_for_run(
             if let Ok(Some(task)) = heartbeat
                 && task.attempt != attempt
             {
-                return Err(format!(
-                    "{SUPERSEDED_ERROR_PREFIX} run {} (attempt {attempt} superseded by {})",
-                    record.run_id, task.attempt
-                ));
+                return Ok(WaitOutcome::Superseded {
+                    run_id: record.run_id.clone(),
+                    attempt,
+                    by_attempt: task.attempt,
+                });
             }
         }
 
@@ -1110,36 +1134,58 @@ async fn wait_for_run(
             save_run(context, &record)
                 .await
                 .map_err(|e| e.to_string())?;
-            return Ok(record);
+            return Ok(WaitOutcome::Completed(Box::new(record)));
         }
         sleep(poll_interval).await;
     }
 
-    Err(format!(
-        "Timed out waiting for external agent run {} after {}s",
-        record.run_id, timeout_secs
-    ))
+    Ok(WaitOutcome::TimedOut {
+        run_id: record.run_id.clone(),
+        timeout_secs,
+    })
 }
 
-async fn timeout_or_error_result(
+/// Render a timeout outcome as a (successful) tool result reporting
+/// `timed_out: true`. Separated from the error path now that timeout is a
+/// typed `WaitOutcome` variant rather than a string-prefix sniff.
+async fn timed_out_result(
     context: &ToolContext,
     run_id: &str,
-    error: String,
+    message: String,
 ) -> ToolExecutionResult {
-    if error.starts_with("Timed out waiting for external agent run") {
-        return match load_run(context, run_id).await {
-            Ok(record) => ToolExecutionResult::success(json!({
-                "agent_run_id": record.run_id,
-                "status": record.status,
-                "timed_out": true,
-                "message": truncate_text(error),
-                "remote_task_id": record.remote_task_id,
-                "remote_context_id": record.remote_context_id,
-            })),
-            Err(e) => e,
-        };
+    match load_run(context, run_id).await {
+        Ok(record) => ToolExecutionResult::success(json!({
+            "agent_run_id": record.run_id,
+            "status": record.status,
+            "timed_out": true,
+            "message": truncate_text(message),
+            "remote_task_id": record.remote_task_id,
+            "remote_context_id": record.remote_context_id,
+        })),
+        Err(e) => e,
     }
-    ToolExecutionResult::tool_error(error)
+}
+
+/// Persist a Failed run record with `message`, notify the parent, and wake it
+/// when appropriate. Shared by the background monitor's timeout and error
+/// paths, which previously both flowed through a single `Err(String)` arm.
+async fn persist_failed_run(
+    context: &ToolContext,
+    run_id: &str,
+    fallback_record: AgentRunRecord,
+    message: String,
+) {
+    let mut failed = load_run(context, run_id).await.unwrap_or(fallback_record);
+    failed.status = AgentRunStatus::Failed;
+    set_error(&mut failed, message);
+    let _ = write_result_artifact(context, &mut failed).await;
+    let _ = save_run(context, &failed).await;
+    post_task_completion_message(context, &failed).await;
+    // Legacy wake: only when no registry is present (registry-level
+    // wake_policy handles it otherwise via post_task_completion_message).
+    if failed.wake_on_completion && context.session_task_registry.is_none() {
+        let _ = wake_parent(context, &failed).await;
+    }
 }
 
 /// Background poll loop for an A2A run. `heartbeat_attempt` is the task
@@ -1156,26 +1202,27 @@ async fn background_monitor(
     let fallback_record = record.clone();
     let record = match wait_for_run(&context, &agent, record, timeout_secs, heartbeat_attempt).await
     {
-        Ok(record) => record,
+        Ok(WaitOutcome::Completed(record)) => *record,
         // Superseded by a newer attempt (reaper re-attached the task to
         // another executor): exit silently — the new owner reports state;
         // writing failure here would overwrite its work.
-        Err(error) if error.starts_with(SUPERSEDED_ERROR_PREFIX) => {
+        Ok(WaitOutcome::Superseded { .. }) => {
             tracing::info!(run_id = %run_id, "A2A background monitor superseded; exiting");
             return;
         }
+        // Timeout and genuine errors both persist a Failed run record. Build
+        // the user-facing message from the typed outcome so the persisted text
+        // stays identical to the legacy string.
+        Ok(WaitOutcome::TimedOut {
+            run_id: timed_out_run_id,
+            timeout_secs,
+        }) => {
+            let message = WaitOutcome::timed_out_message(&timed_out_run_id, timeout_secs);
+            persist_failed_run(&context, &run_id, fallback_record, message).await;
+            return;
+        }
         Err(error) => {
-            let mut failed = load_run(&context, &run_id).await.unwrap_or(fallback_record);
-            failed.status = AgentRunStatus::Failed;
-            set_error(&mut failed, error);
-            let _ = write_result_artifact(&context, &mut failed).await;
-            let _ = save_run(&context, &failed).await;
-            post_task_completion_message(&context, &failed).await;
-            // Legacy wake: only when no registry is present (registry-level
-            // wake_policy handles it otherwise via post_task_completion_message).
-            if failed.wake_on_completion && context.session_task_registry.is_none() {
-                let _ = wake_parent(&context, &failed).await;
-            }
+            persist_failed_run(&context, &run_id, fallback_record, error).await;
             return;
         }
     };
@@ -1388,8 +1435,31 @@ impl Tool for SpawnAgentTool {
                 // Foreground wait: the tool executor owns the call stack so no
                 // separate heartbeat thread is needed; pass None.
                 match wait_for_run(context, &agent, record, timeout_secs, None).await {
-                    Ok(record) => ToolExecutionResult::success(record.public_json()),
-                    Err(error) => timeout_or_error_result(context, &run_id, error).await,
+                    Ok(WaitOutcome::Completed(record)) => {
+                        ToolExecutionResult::success(record.public_json())
+                    }
+                    Ok(WaitOutcome::TimedOut {
+                        run_id: timed_out_run_id,
+                        timeout_secs,
+                    }) => {
+                        let message =
+                            WaitOutcome::timed_out_message(&timed_out_run_id, timeout_secs);
+                        timed_out_result(context, &run_id, message).await
+                    }
+                    // Foreground waits pass `heartbeat_attempt: None`, so the
+                    // fence never fires and Superseded is unreachable here.
+                    // Surface it as a tool error rather than panicking if that
+                    // invariant ever changes.
+                    Ok(WaitOutcome::Superseded {
+                        run_id: superseded_run_id,
+                        attempt,
+                        by_attempt,
+                    }) => ToolExecutionResult::tool_error(WaitOutcome::superseded_message(
+                        &superseded_run_id,
+                        attempt,
+                        by_attempt,
+                    )),
+                    Err(error) => ToolExecutionResult::tool_error(error),
                 }
             }
         }
@@ -2584,12 +2654,37 @@ mod tests {
 
         // Poll as the old executor (attempt 1): the first heartbeat reveals
         // the supersession and the loop exits before any remote call.
-        let err = wait_for_run(&ctx, &config, record, 30, Some(1))
+        let outcome = wait_for_run(&ctx, &config, record, 30, Some(1))
             .await
-            .expect_err("superseded poll must error");
+            .expect("superseded poll must not be a transport error");
+        // EVE-645: supersession is now a typed WaitOutcome variant rather than
+        // a string-prefix sniff on the error.
+        let WaitOutcome::Superseded {
+            run_id: superseded_run_id,
+            attempt,
+            by_attempt,
+        } = outcome
+        else {
+            panic!("expected Superseded outcome");
+        };
+        assert_eq!(superseded_run_id, run_id);
+        assert_eq!(attempt, 1);
+        assert_eq!(by_attempt, 2);
+        // Diagnostic string still carries the legacy prefix for log greps.
         assert!(
-            err.starts_with(SUPERSEDED_ERROR_PREFIX),
-            "expected superseded error, got: {err}"
+            WaitOutcome::superseded_message(&superseded_run_id, attempt, by_attempt)
+                .starts_with(SUPERSEDED_ERROR_PREFIX)
+        );
+    }
+
+    // EVE-645: timeout is selected via the typed WaitOutcome::TimedOut variant
+    // and its message stays byte-identical to the legacy string.
+    #[test]
+    fn wait_outcome_timed_out_message_is_stable() {
+        let msg = WaitOutcome::timed_out_message("run-123", 30);
+        assert_eq!(
+            msg,
+            "Timed out waiting for external agent run run-123 after 30s"
         );
     }
 

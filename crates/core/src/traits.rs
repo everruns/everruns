@@ -755,6 +755,14 @@ impl SessionFileSystemFactoryContext {
             .get(&TypeId::of::<T>())
             .and_then(|value| value.clone().downcast::<T>().ok())
     }
+
+    pub fn with_workspace_roots(self, roots: Arc<crate::WorkspaceRootSet>) -> Self {
+        self.with(roots)
+    }
+
+    pub fn workspace_roots(&self) -> Option<Arc<crate::WorkspaceRootSet>> {
+        self.get::<crate::WorkspaceRootSet>()
+    }
 }
 
 /// Factory for deployment-selected session filesystem implementations.
@@ -918,6 +926,59 @@ pub trait SessionScheduleStore: Send + Sync {
         scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
         timezone: String,
     ) -> Result<SessionSchedule>;
+
+    /// Create a new schedule after enforcing create-time limits in the same
+    /// store operation. Backends with shared mutable state must override this
+    /// to make the check-and-create sequence atomic.
+    async fn create_schedule_enforcing_limits(
+        &self,
+        session_id: SessionId,
+        description: String,
+        cron_expression: Option<String>,
+        scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
+        timezone: String,
+    ) -> std::result::Result<SessionSchedule, crate::session_schedule::ScheduleLimitError> {
+        let per_session = self
+            .count_active_schedules(session_id)
+            .await
+            .map_err(crate::session_schedule::ScheduleLimitError::Store)?;
+        if per_session >= crate::session_schedule::MAX_ACTIVE_SCHEDULES_PER_SESSION {
+            return Err(crate::session_schedule::ScheduleLimitError::Rejected(
+                format!(
+                    "Maximum {} active schedules per session. Cancel an existing schedule first.",
+                    crate::session_schedule::MAX_ACTIVE_SCHEDULES_PER_SESSION
+                ),
+            ));
+        }
+
+        let max_per_org = crate::session_schedule::max_active_schedules_per_org();
+        let per_org = self
+            .count_active_org_schedules()
+            .await
+            .map_err(crate::session_schedule::ScheduleLimitError::Store)?;
+        if i64::from(per_org) >= max_per_org {
+            return Err(crate::session_schedule::ScheduleLimitError::Rejected(
+                format!(
+                    "Maximum {max_per_org} active schedules per org reached. Cancel an existing schedule first."
+                ),
+            ));
+        }
+
+        if let Some(cron) = cron_expression.as_deref() {
+            crate::session_schedule::validate_cron_min_interval(cron)
+                .map_err(crate::session_schedule::ScheduleLimitError::Rejected)?;
+        }
+
+        self.create_schedule(
+            session_id,
+            description,
+            cron_expression,
+            scheduled_at,
+            timezone,
+        )
+        .await
+        .map_err(crate::session_schedule::ScheduleLimitError::Store)
+    }
 
     /// Cancel (disable) a schedule.
     async fn cancel_schedule(

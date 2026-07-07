@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
@@ -41,8 +40,13 @@ import {
 } from "@/hooks/use-mcp-servers";
 import { usePolicies } from "@/hooks/use-policies";
 import { usePageTitle } from "@/hooks";
-import { Plus, Plug, Trash2, Key, X } from "lucide-react";
-import type { McpServer, CreateMcpServerRequest, McpServerAuthMode } from "@/lib/api/types";
+import { Plus, Trash2, Key, X } from "lucide-react";
+import type {
+  McpServer,
+  CreateMcpServerRequest,
+  McpServerAuthMode,
+  McpProtocolMode,
+} from "@/lib/api/types";
 import {
   apiKeySecretSchema,
   getFieldErrors,
@@ -60,6 +64,7 @@ import {
   PageMasthead,
   PageControlStrip,
   SectionTabs,
+  EmptyState,
   IconTile,
   PageColumns,
   PageMain,
@@ -71,6 +76,20 @@ import { capabilityIconMap } from "@/lib/capability-icons";
 import { pluralize } from "@/lib/formatting";
 
 const McpIcon = capabilityIconMap.mcp;
+
+/** Human-readable label for the protocol-era policy. Undefined means `auto`. */
+function protocolModeLabel(mode?: McpProtocolMode): string {
+  switch (mode) {
+    case "legacy":
+      return "Legacy";
+    case "stable":
+      return "Stable";
+    case "rc":
+      return "RC 2026";
+    default:
+      return "Auto";
+  }
+}
 
 function McpServerRow({
   server,
@@ -109,6 +128,9 @@ function McpServerRow({
         <Badge variant="secondary" className="font-mono">
           {server.transport_type.toUpperCase()}
         </Badge>
+      </TableCell>
+      <TableCell>
+        <Badge variant="outline">{protocolModeLabel(server.protocol_mode)}</Badge>
       </TableCell>
       <TableCell>
         <Badge variant={getEntityStatusBadgeVariant(server.status)}>{server.status}</Badge>
@@ -155,6 +177,7 @@ function AddMcpServerDialog({
   const [url, setUrl] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [authMode, setAuthMode] = useState<McpServerAuthMode>("none");
+  const [protocolMode, setProtocolMode] = useState<McpProtocolMode>("auto");
   const [headers, setHeaders] = useState<Array<{ key: string; value: string }>>([]);
   const [headerErrors, setHeaderErrors] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -168,6 +191,7 @@ function AddMcpServerDialog({
     setUrl("");
     setApiKey("");
     setAuthMode("none");
+    setProtocolMode("auto");
     setHeaders([]);
     setHeaderErrors(null);
     setFieldErrors({});
@@ -205,6 +229,7 @@ function AddMcpServerDialog({
       url: parsed.data.url,
       transport_type: "http",
       auth_mode: parsed.data.auth_mode,
+      protocol_mode: protocolMode === "auto" ? undefined : protocolMode,
       api_key: parsed.data.auth_mode === "api_key" ? parsed.data.api_key : undefined,
       headers: headersRecord,
     };
@@ -215,6 +240,7 @@ function AddMcpServerDialog({
     setUrl("");
     setApiKey("");
     setAuthMode("none");
+    setProtocolMode("auto");
     setHeaders([]);
     setHeaderErrors(null);
     setFieldErrors({});
@@ -296,6 +322,27 @@ function AddMcpServerDialog({
                 <SelectItem value="oauth">OAuth per user</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="protocol-mode">Protocol compatibility</Label>
+            <Select
+              value={protocolMode}
+              onValueChange={(value) => setProtocolMode(value as McpProtocolMode)}
+            >
+              <SelectTrigger id="protocol-mode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">Auto (negotiate)</SelectItem>
+                <SelectItem value="rc">RC 2026 — stateless</SelectItem>
+                <SelectItem value="stable">Stable 2025-06-18</SelectItem>
+                <SelectItem value="legacy">Legacy 2025-03-26</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Auto probes the server and adapts across legacy, current, and the 2026 stateless
+              release candidate. Pin an era only to work around a server that mis-signals it.
+            </p>
           </div>
           {authMode === "api_key" && (
             <div className="space-y-2">
@@ -671,6 +718,9 @@ function McpServerRowSkeleton() {
         <Skeleton className="h-5 w-14" />
       </TableCell>
       <TableCell>
+        <Skeleton className="h-5 w-14" />
+      </TableCell>
+      <TableCell>
         <Skeleton className="h-5 w-16" />
       </TableCell>
       <TableCell>
@@ -799,25 +849,28 @@ export default function McpServersPage() {
               </Table>
             }
             emptyState={
-              <Card className="p-8 text-center">
-                <Plug className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-                <h2 className="mb-2 text-lg font-medium">
-                  {search || statusTab !== "active"
+              <EmptyState
+                icon={<McpIcon />}
+                title={
+                  search || statusTab !== "active"
                     ? "No MCP servers match your filters"
-                    : "No MCP servers configured"}
-                </h2>
-                {!search && statusTab === "active" && (
-                  <>
-                    <p className="mb-4 text-muted-foreground">
-                      Add an MCP server to extend your agents with external tools and resources.
-                    </p>
+                    : "No MCP servers configured"
+                }
+                description={
+                  !search && statusTab === "active"
+                    ? "Add an MCP server to extend your agents with external tools and resources."
+                    : undefined
+                }
+                action={
+                  !search &&
+                  statusTab === "active" && (
                     <Button variant="accent" onClick={() => setAddServerOpen(true)}>
-                      <Plus className="mr-2 h-4 w-4" />
+                      <Plus className="size-4" />
                       Add Server
                     </Button>
-                  </>
-                )}
-              </Card>
+                  )
+                }
+              />
             }
           >
             {(items) => (
@@ -827,6 +880,7 @@ export default function McpServersPage() {
                     <TableRow>
                       <TableHead>Server</TableHead>
                       <TableHead>Transport</TableHead>
+                      <TableHead>Protocol</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
                     </TableRow>

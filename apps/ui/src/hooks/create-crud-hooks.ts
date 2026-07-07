@@ -14,6 +14,8 @@ import { useResourceOrgFallback } from "./use-resource-org-fallback";
 
 interface UseCrudListOptions {
   includeArchived?: boolean;
+  /** Defaults to true; pass false to defer the fetch (e.g. behind a feature flag). */
+  enabled?: boolean;
 }
 
 type QueryKeyValue = readonly unknown[];
@@ -84,6 +86,7 @@ export function createCrudHooks<TItem, TCreate, TUpdate>({
     return useOrgScopedQuery({
       queryKey: queryKeys.list(includeArchived),
       queryFn: () => api.list(includeArchived),
+      enabled: options.enabled ?? true,
       staleTime,
     });
   }

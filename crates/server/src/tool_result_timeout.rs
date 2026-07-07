@@ -11,6 +11,7 @@ use everruns_core::events::{
 use everruns_core::typed_id::{MessageId, SessionId, TurnId};
 use everruns_worker::AgentRunner;
 use std::sync::Arc;
+use tokio::task::JoinHandle;
 
 /// Default timeout for waiting_for_tool_results sessions (5 minutes).
 const DEFAULT_TIMEOUT_SECS: u64 = 300;
@@ -24,7 +25,7 @@ pub fn spawn_tool_result_timeout_sweep(
     db: Arc<StorageBackend>,
     runner: Arc<dyn AgentRunner>,
     event_delivery: crate::event_delivery::EventDelivery,
-) {
+) -> JoinHandle<()> {
     let timeout_secs = std::env::var("TOOL_RESULT_TIMEOUT_SECS")
         .ok()
         .and_then(|v| v.parse().ok())
@@ -48,7 +49,7 @@ pub fn spawn_tool_result_timeout_sweep(
                 tracing::warn!(error = %e, "Tool result timeout sweep error");
             }
         }
-    });
+    })
 }
 
 async fn sweep_timed_out_sessions(

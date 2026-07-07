@@ -41,6 +41,9 @@ enum RateLimitBackend {
         login: Arc<KeyedLimiter>,
         register: Arc<KeyedLimiter>,
         refresh: Arc<KeyedLimiter>,
+        account_login: Arc<StringKeyedLimiter>,
+        email_send_minute: Arc<StringKeyedLimiter>,
+        email_send_daily: Arc<StringKeyedLimiter>,
     },
     /// Distributed rate limiting (Valkey sliding-window counter)
     Valkey(ValkeyClient),
@@ -58,6 +61,30 @@ const REGISTER_LIMIT: u32 = 5;
 const REFRESH_LIMIT: u32 = 30;
 const WINDOW_SECS: u64 = 60;
 
+/// Per-account login attempts across ALL source IPs (TM-AUTH-001): the per-IP
+/// limiter alone leaves one account open to distributed credential stuffing.
+/// 20 attempts / 15 min is far above any human retry pattern.
+const ACCOUNT_LOGIN_LIMIT: u32 = 20;
+const ACCOUNT_LOGIN_WINDOW_SECS: u64 = 900;
+
+/// Per-address outbound account email (verification / password reset):
+/// 1 per minute with a small daily budget — email-bombing protection on top
+/// of the per-IP register limiter. Callers stay enumeration-safe by returning
+/// the generic success response without sending when over budget.
+const EMAIL_SEND_MINUTE_LIMIT: u32 = 1;
+const EMAIL_SEND_DAILY_LIMIT: u32 = 8;
+const DAY_SECS: u64 = 86_400;
+
+fn string_keyed_limiter(limit: u32, window_secs: u64) -> Arc<StringKeyedLimiter> {
+    // Token bucket shaped to "limit per window": burst of `limit`, refilling
+    // one permit per window/limit seconds.
+    let period = std::time::Duration::from_secs((window_secs / u64::from(limit.max(1))).max(1));
+    let quota = Quota::with_period(period)
+        .expect("non-zero period")
+        .allow_burst(NonZeroU32::new(limit.max(1)).unwrap());
+    Arc::new(RateLimiter::keyed(quota))
+}
+
 impl AuthRateLimiter {
     /// Create an in-memory rate limiter (per-instance, no external deps).
     pub fn new() -> Self {
@@ -72,6 +99,9 @@ impl AuthRateLimiter {
                 refresh: Arc::new(RateLimiter::keyed(Quota::per_minute(
                     NonZeroU32::new(REFRESH_LIMIT).unwrap(),
                 ))),
+                account_login: string_keyed_limiter(ACCOUNT_LOGIN_LIMIT, ACCOUNT_LOGIN_WINDOW_SECS),
+                email_send_minute: string_keyed_limiter(EMAIL_SEND_MINUTE_LIMIT, WINDOW_SECS),
+                email_send_daily: string_keyed_limiter(EMAIL_SEND_DAILY_LIMIT, DAY_SECS),
             },
         }
     }
@@ -98,12 +128,96 @@ impl AuthRateLimiter {
         self.check("refresh", REFRESH_LIMIT, ip).await
     }
 
+    /// Per-account login throttle across all IPs. `account_key` should be the
+    /// submitted email, trimmed and lowercased (works for unknown emails too —
+    /// no DB read required). Fail-closed on backend errors like the other
+    /// auth limiters.
+    pub async fn check_account_login(&self, account_key: &str) -> Result<(), RateLimitError> {
+        match &self.backend {
+            RateLimitBackend::InMemory { account_login, .. } => {
+                match account_login.check_key(&account_key.to_string()) {
+                    Ok(_) => Ok(()),
+                    Err(_) => {
+                        tracing::warn!("Per-account login rate limit exceeded (in-memory)");
+                        Err(RateLimitError)
+                    }
+                }
+            }
+            RateLimitBackend::Valkey(client) => {
+                let key = format!("rl:auth:account_login:{account_key}");
+                match client
+                    .check_rate_limit(&key, ACCOUNT_LOGIN_LIMIT, ACCOUNT_LOGIN_WINDOW_SECS)
+                    .await
+                {
+                    Ok(_) => Ok(()),
+                    Err(RateLimitCheckError::Exceeded) => {
+                        tracing::warn!("Per-account login rate limit exceeded (valkey)");
+                        Err(RateLimitError)
+                    }
+                    Err(RateLimitCheckError::BackendError) => {
+                        tracing::warn!(
+                            "Per-account login limit Valkey error — denying (fail-closed)"
+                        );
+                        Err(RateLimitError)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Per-address budget for verification / password-reset emails
+    /// (1/minute + a small daily cap). `email_key` should be trimmed and
+    /// lowercased. Callers return the normal enumeration-safe success
+    /// response without sending when this is exceeded.
+    pub async fn check_account_email_send(&self, email_key: &str) -> Result<(), RateLimitError> {
+        match &self.backend {
+            RateLimitBackend::InMemory {
+                email_send_minute,
+                email_send_daily,
+                ..
+            } => {
+                let key = email_key.to_string();
+                if email_send_minute.check_key(&key).is_err()
+                    || email_send_daily.check_key(&key).is_err()
+                {
+                    tracing::warn!("Per-address email-send budget exceeded (in-memory)");
+                    return Err(RateLimitError);
+                }
+                Ok(())
+            }
+            RateLimitBackend::Valkey(client) => {
+                let minute_key = format!("rl:auth:email_send_min:{email_key}");
+                let daily_key = format!("rl:auth:email_send_day:{email_key}");
+                for (key, limit, window) in [
+                    (&minute_key, EMAIL_SEND_MINUTE_LIMIT, WINDOW_SECS),
+                    (&daily_key, EMAIL_SEND_DAILY_LIMIT, DAY_SECS),
+                ] {
+                    match client.check_rate_limit(key, limit, window).await {
+                        Ok(_) => {}
+                        Err(RateLimitCheckError::Exceeded) => {
+                            tracing::warn!("Per-address email-send budget exceeded (valkey)");
+                            return Err(RateLimitError);
+                        }
+                        Err(RateLimitCheckError::BackendError) => {
+                            tracing::warn!(
+                                "Email-send budget Valkey error — denying (fail-closed)"
+                            );
+                            return Err(RateLimitError);
+                        }
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+
     async fn check(&self, endpoint: &str, limit: u32, ip: IpAddr) -> Result<(), RateLimitError> {
         match &self.backend {
             RateLimitBackend::InMemory {
                 login,
                 register,
                 refresh,
+                ..
             } => {
                 let limiter = match endpoint {
                     "login" => login,
@@ -254,7 +368,7 @@ enum ApiBackend {
 
 impl ApiRateLimiter {
     fn api_rpm() -> u32 {
-        let rpm: u32 = everruns_config::env_or("RATE_LIMIT_API_REQUESTS_PER_MINUTE", 1200);
+        let rpm: u32 = everruns_core::config::env_or("RATE_LIMIT_API_REQUESTS_PER_MINUTE", 1200);
         rpm.max(1)
     }
 
@@ -399,19 +513,19 @@ impl OrgRateLimiter {
     }
 
     pub fn from_env_with_valkey(client: Option<ValkeyClient>) -> Self {
-        let session_rpm: u32 = everruns_config::env_or(
+        let session_rpm: u32 = everruns_core::config::env_or(
             "RATE_LIMIT_ORG_SESSION_CREATE_PER_MINUTE",
             DEFAULT_SESSION_CREATE_RPM,
         );
-        let schedule_rpm: u32 = everruns_config::env_or(
+        let schedule_rpm: u32 = everruns_core::config::env_or(
             "RATE_LIMIT_ORG_SCHEDULE_CREATE_PER_MINUTE",
             DEFAULT_SCHEDULE_CREATE_RPM,
         );
-        let org_rph: u32 = everruns_config::env_or(
+        let org_rph: u32 = everruns_core::config::env_or(
             "RATE_LIMIT_USER_ORG_CREATE_PER_HOUR",
             DEFAULT_ORG_CREATE_RPH,
         );
-        let tool_rpm: u32 = everruns_config::env_or(
+        let tool_rpm: u32 = everruns_core::config::env_or(
             "RATE_LIMIT_ORG_TOOL_CALLS_PER_MINUTE",
             DEFAULT_ORG_TOOL_CALLS_RPM,
         );
@@ -579,6 +693,54 @@ mod tests {
         assert!(
             limiter.check_register(ip).await.is_err(),
             "Register should be blocked after 5 requests"
+        );
+    }
+
+    #[tokio::test]
+    async fn account_login_limit_blocks_across_ips() {
+        let limiter = AuthRateLimiter::new();
+        // The per-account limiter is IP-independent: exhaust it for one
+        // account and it stays blocked regardless of source, while another
+        // account is unaffected.
+        for _ in 0..ACCOUNT_LOGIN_LIMIT {
+            let _ = limiter.check_account_login("victim@example.com").await;
+        }
+        assert!(
+            limiter
+                .check_account_login("victim@example.com")
+                .await
+                .is_err()
+        );
+        assert!(
+            limiter
+                .check_account_login("other@example.com")
+                .await
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn email_send_budget_one_per_minute_per_address() {
+        let limiter = AuthRateLimiter::new();
+        assert!(
+            limiter
+                .check_account_email_send("a@example.com")
+                .await
+                .is_ok()
+        );
+        assert!(
+            limiter
+                .check_account_email_send("a@example.com")
+                .await
+                .is_err(),
+            "second send within a minute must be over budget"
+        );
+        assert!(
+            limiter
+                .check_account_email_send("b@example.com")
+                .await
+                .is_ok(),
+            "budget is per address"
         );
     }
 
