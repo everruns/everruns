@@ -515,19 +515,7 @@ pub async fn create_session(
     State(state): State<AppState>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Session>>), (StatusCode, Json<ErrorResponse>)> {
-    if state
-        .org_rate_limiter
-        .check_session_create(org.org_id)
-        .await
-        .is_err()
-    {
-        return Err(
-            ErrorResponse::new("Too many requests. Please try again later.")
-                .with_code("rate_limited")
-                .with_retry_after(60)
-                .into_response(StatusCode::TOO_MANY_REQUESTS),
-        );
-    }
+    check_session_create_rate_limit(&state, org.org_id).await?;
     // `parent_session_id` is internal-only: the subagent/handoff spawn flow
     // sets it via the platform store (DirectPlatformStore::create_session
     // dispatches the command directly). External HTTP callers must never set
@@ -565,15 +553,49 @@ pub async fn fork_session(
     Path(session_id): Path<String>,
     body: Option<Json<ForkSessionRequest>>,
 ) -> Result<(StatusCode, Json<WithUrls<Session>>), (StatusCode, Json<ErrorResponse>)> {
+    let ctx = state.ctx(&org);
+
+    // Authorize before consuming the org's session-create budget. Forking
+    // creates a new session and deep-copies parent state, so successful forks
+    // share the same per-org velocity limit as ordinary session creation.
+    if let Some(policy) = ForkSession::policy() {
+        policy
+            .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+            .map_err(|e| crate::domains::common::CommandError::forbidden(e.message))?;
+    }
+
+    check_session_create_rate_limit(&state, org.org_id).await?;
+
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     let session = ForkSession {
         session_id,
         overrides: body.map(|Json(b)| b).unwrap_or_default(),
     }
-    .run(&state.ctx(&org))
+    .run(&ctx)
     .await?;
 
     Ok((StatusCode::CREATED, Json(urls.wrap(session))))
+}
+
+async fn check_session_create_rate_limit(
+    state: &AppState,
+    org_id: i64,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if state
+        .org_rate_limiter
+        .check_session_create(org_id)
+        .await
+        .is_err()
+    {
+        return Err(
+            ErrorResponse::new("Too many requests. Please try again later.")
+                .with_code("rate_limited")
+                .with_retry_after(60)
+                .into_response(StatusCode::TOO_MANY_REQUESTS),
+        );
+    }
+
+    Ok(())
 }
 
 /// Guard the Platform Chat feature behind the org-effective `global_chat` flag.
