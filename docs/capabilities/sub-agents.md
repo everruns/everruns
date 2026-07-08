@@ -16,11 +16,11 @@ Spawn subagents for parallel task execution. Each subagent runs in its own isola
 
 ### `spawn_agent`
 
-Subagent-only sessions also expose the unified delegation tool with
-`target.type: "subagent"`. It follows the same lifecycle as `spawn_subagent`:
-background by default, `foreground` when requested, and a returned `task_id` for
-the generic session task tools. This is the migration path toward one delegation
-surface across subagents, first-party agent handoffs, and external A2A agents.
+Subagent-only sessions expose the unified delegation tool with
+`target.type: "subagent"`. Handoff-only sessions expose the same tool with
+`target.type: "agent"`. These migration adapters return a `task_id` for the
+generic session task tools and move Everruns toward one delegation surface
+across subagents, first-party agent handoffs, and external A2A agents.
 
 ### `spawn_subagent`
 

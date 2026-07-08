@@ -49,6 +49,32 @@ before performing external writes.
 
 ## Tools
 
+### `spawn_agent` (`target.type = "agent"`)
+
+Handoff-only sessions also expose the unified delegation tool with
+`target.type = "agent"` when no other `spawn_agent` provider is active. This is
+the migration path toward the single delegation surface described in
+`specs/session-tasks.md`.
+
+Parameters:
+
+| Field | Required | Description |
+|---|---:|---|
+| `name` | yes | Human-readable label for this delegated run and task. |
+| `instructions` | yes | Work request for the target agent. Must not contain credentials. |
+| `target.type` | yes | Must be `agent`. |
+| `target.id` | yes | Target key from capability config. |
+| `mode` | no | `background` by default when task tracking is available; `foreground` blocks for the result. |
+| `public_context` | no | Non-secret structured context appended to the child task. |
+
+Behavior matches `start_agent_handoff` for authorization, child-session
+creation, task kind, and result handling. Background mode creates an
+`agent_handoff` task with `wake_policy = on_terminal`, sends the initial
+instructions from a detached watcher, heartbeats the task while waiting, and
+settles the task with the child session's terminal status and last assistant
+message. If task tracking is unavailable, an omitted mode degrades to
+`foreground`; explicit `background` is rejected.
+
 ### `start_agent_handoff`
 
 Starts a child session using the configured target Agent.
@@ -74,6 +100,8 @@ Behavior:
    `target_id`/`external_agent_id`/`mode`.
 7. Send the task to the child session.
 8. Block until the child session idles and return its last assistant message.
+
+`start_agent_handoff` remains during the EVE-677 migration and is wait-only.
 
 ### `get_agent_handoffs`
 
@@ -136,12 +164,12 @@ Create an RDS database named app-db in us-east-1.
 5. Add a Fake AWS connection in Settings → Connections. Any non-empty key is
    accepted by the fake provider for local testing.
 6. Retry the user request. The welcome agent should call
-   `start_agent_handoff`, and the child AWS Operator session should receive the
-   task and use its own fake AWS tools.
+   `spawn_agent` with `target.type = "agent"` (or legacy
+   `start_agent_handoff` during migration), and the child AWS Operator session
+   should receive the task and use its own fake AWS tools.
 
-Background mode is intentionally not exposed until there is a durable lifecycle
-updater that can move handoff resources from `active` to a terminal status after
-the parent turn has returned.
+Background mode is available through `spawn_agent`; legacy
+`start_agent_handoff` remains wait-only during migration.
 
 Focused verification:
 

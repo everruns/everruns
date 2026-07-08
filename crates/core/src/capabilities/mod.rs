@@ -169,7 +169,7 @@ pub use a2a_delegation::{A2aAgentDelegationCapability, SpawnAgentTool};
 pub use a2ui::{A2UI_CAPABILITY_ID, A2UiCapability};
 pub use agent_handoff::{
     AGENT_HANDOFF_CAPABILITY_ID, AgentHandoffCapability, GetAgentHandoffsTool,
-    MessageAgentHandoffTool, StartAgentHandoffTool,
+    MessageAgentHandoffTool, SpawnAgentHandoffTool, StartAgentHandoffTool,
 };
 pub use agent_instructions::{
     AGENT_INSTRUCTIONS_CAPABILITY_ID, AGENTS_MD_PATH, AgentInstructionsCapability,
@@ -2323,6 +2323,7 @@ pub async fn collect_capabilities_with_configs(
     let mut has_dynamic_facts = false;
     let facts_ctx = FactsContext::new(ctx.session_id);
     let compaction_on = compaction_is_enabled(capability_configs, registry);
+    let mut agent_handoff_spawn_config: Option<serde_json::Value> = None;
 
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_ref.as_str();
@@ -2392,6 +2393,9 @@ pub async fn collect_capabilities_with_configs(
                     None => capability.as_ref(),
                 };
             let effective_id = effective.id();
+            if cap_id == AGENT_HANDOFF_CAPABILITY_ID {
+                agent_handoff_spawn_config = Some(cap_config.config.clone());
+            }
 
             // Collect dynamic system prompt contribution (config-aware, may read from filesystem)
             if let Some(contribution) = effective
@@ -2523,18 +2527,28 @@ pub async fn collect_capabilities_with_configs(
         }
     }
 
-    // EVE-677 migration slice: subagent-only sessions should expose the new
-    // unified delegation surface without colliding with existing `spawn_agent`
-    // providers (currently external A2A). Once all providers share one
-    // dispatcher, this conditional adapter can retire with `spawn_subagent`.
-    if applied_ids.iter().any(|id| id == SUBAGENTS_CAPABILITY_ID)
-        && !tools.iter().any(|tool| tool.name() == "spawn_agent")
+    // EVE-677 migration slices: expose the new unified delegation surface for
+    // single-provider sessions without colliding with existing `spawn_agent`
+    // owners (currently external A2A). Once all providers share one dispatcher,
+    // these conditional adapters can retire with the legacy spawn tools.
+    if !tools.iter().any(|tool| tool.name() == "spawn_agent")
+        && applied_ids.iter().any(|id| id == SUBAGENTS_CAPABILITY_ID)
     {
         let tool = SpawnSubagentAsAgentTool;
         let def = tool
             .to_definition()
             .with_category("Core")
             .with_capability_attribution(SUBAGENTS_CAPABILITY_ID, Some("Subagents"));
+        tools.push(Box::new(tool));
+        tool_definitions.push(def);
+    } else if !tools.iter().any(|tool| tool.name() == "spawn_agent")
+        && let Some(config) = agent_handoff_spawn_config.as_ref()
+    {
+        let tool = SpawnAgentHandoffTool::new(config);
+        let def = tool
+            .to_definition()
+            .with_category("Orchestration")
+            .with_capability_attribution(AGENT_HANDOFF_CAPABILITY_ID, Some("Agent Handoff"));
         tools.push(Box::new(tool));
         tool_definitions.push(def);
     }
@@ -4742,6 +4756,43 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn test_agent_handoff_collects_unified_spawn_agent_adapter() {
+        let mut registry = CapabilityRegistry::new();
+        registry.register(AgentHandoffCapability);
+        let agent_id = crate::typed_id::AgentId::new();
+        let harness_id = crate::typed_id::HarnessId::new();
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new(AGENT_HANDOFF_CAPABILITY_ID),
+            config: serde_json::json!({
+                "targets": [{
+                    "id": "aws_operator",
+                    "name": "AWS Operator",
+                    "agent_id": agent_id,
+                    "harness_id": harness_id
+                }]
+            }),
+        }];
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+
+        assert!(
+            collected
+                .tools
+                .iter()
+                .any(|tool| tool.name() == "spawn_agent"),
+            "agent_handoff-only sessions should get the unified spawn_agent adapter"
+        );
+        let spawn_agent = collected
+            .tool_definitions
+            .iter()
+            .find(|tool| tool.name() == "spawn_agent")
+            .expect("spawn_agent definition");
+        assert_eq!(
+            spawn_agent.parameters()["properties"]["target"]["properties"]["type"]["enum"],
+            serde_json::json!(["agent"])
+        );
+    }
+
     struct ExistingSpawnAgentCapability;
 
     impl Capability for ExistingSpawnAgentCapability {
@@ -4813,6 +4864,46 @@ mod tests {
             &test_ctx(),
         )
         .await;
+
+        let spawn_agent_defs: Vec<_> = collected
+            .tool_definitions
+            .iter()
+            .filter(|tool| tool.name() == "spawn_agent")
+            .collect();
+        assert_eq!(spawn_agent_defs.len(), 1);
+        assert_eq!(
+            spawn_agent_defs[0].parameters()["properties"]["target"]["properties"]["type"]["enum"],
+            serde_json::json!(["external_a2a"])
+        );
+    }
+
+    #[tokio::test]
+    async fn test_agent_handoff_does_not_shadow_existing_spawn_agent_provider() {
+        let mut registry = CapabilityRegistry::new();
+        registry.register(AgentHandoffCapability);
+        registry.register(ExistingSpawnAgentCapability);
+
+        let agent_id = crate::typed_id::AgentId::new();
+        let harness_id = crate::typed_id::HarnessId::new();
+        let configs = vec![
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new(AGENT_HANDOFF_CAPABILITY_ID),
+                config: serde_json::json!({
+                    "targets": [{
+                        "id": "aws_operator",
+                        "name": "AWS Operator",
+                        "agent_id": agent_id,
+                        "harness_id": harness_id
+                    }]
+                }),
+            },
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new("existing_spawn_agent"),
+                config: serde_json::json!({}),
+            },
+        ];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
 
         let spawn_agent_defs: Vec<_> = collected
             .tool_definitions
