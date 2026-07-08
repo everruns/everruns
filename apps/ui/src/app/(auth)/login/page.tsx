@@ -262,6 +262,18 @@ export default function LoginPage() {
           </Button>
         </form>
 
+        {canSignup && (
+          <p className="mt-5 text-[13px] text-muted-foreground">
+            New to Everruns?{" "}
+            <Link
+              href={`/signup?email=${encodeURIComponent(email)}`}
+              className="font-medium text-primary hover:underline"
+            >
+              Create an account
+            </Link>
+          </p>
+        )}
+
         {hasOAuthProviders && (
           <p className="mt-5 border-t pt-5 text-[12.5px] leading-relaxed text-muted-foreground">
             Prefer Google or GitHub? Go back — it&apos;s one click and skips email verification.
