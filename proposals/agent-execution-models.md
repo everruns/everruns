@@ -127,11 +127,19 @@ schema mismatch — prose parsing never does):
 This makes the parent-facing contract deterministic without constraining how
 the child works internally.
 
-## Sequencing
+## Phases (epic-sized)
 
-1. Spawn unification + handoff task kind (small, spec-first; enables the rest).
-2. Deterministic results (`result_schema` / `report_result`).
-3. Detached sessions with `goal` + seeding.
-4. Governed nesting (depth, shared budget, `root_session_id`).
-5. Mid-turn wake delivery.
-6. Work view; webhooks; orchestration primitive.
+| # | Epic | Scope | Size | Depends on |
+|---|------|-------|------|------------|
+| 1 | Unified spawn | One `spawn_agent` with `target: subagent \| agent \| external_a2a`; handoff gets own task kind + background mode; retire `spawn_subagent` / `start_agent_handoff`; spec + migration | ~2 wk, 3–4 PRs | — |
+| 2 | Deterministic results | `result_schema` → auto-injected `report_result` (only path to `succeeded`); `message_schema` → `report_progress` typed data parts; result at `/.tasks/{id}/result.json` | ~2 wk, 2–3 PRs | 1 |
+| 3 | Detached sessions | `lifetime: detached` (peer session, lineage not nesting); `goal` field on Session; seeding `fresh \| fork \| workspace`; silent task record for visibility | ~2–3 wk, 3–4 PRs | 1 |
+| 4 | Governed nesting | `max_subagent_depth` (default 2) replaces hard block; shared root budget pool → `Sealed` on exhaustion; breadth/total descendant caps; `root_session_id` on sessions/tasks | ~3 wk, 3–5 PRs | 1; budget pool reusable from `specs/budgeting.md` |
+| 5 | Live delegation UX | Mid-turn wake delivery (steering injection into running parent loop); cross-session Work view (`GET /v1/tasks` grouped by `root_session_id`, tree of snapshot chips) | ~2–3 wk, 3–4 PRs | 2, 4 (root id) |
+| 6 | Protocol parity | Registry-level push webhooks on task transitions; inbound A2A (expose agents as A2A tasks); `io.modelcontextprotocol/tasks` on the MCP surface | ~3–4 wk, 4–6 PRs | 2 |
+| 7 | Orchestration primitive | Code-defined fan-out/pipeline/join on the durable execution engine, spawning tasks as steps; per-step schemas from phase 2; sanctioned answer to depth beyond phase 4's cap | ~4–6 wk, 5+ PRs | 1, 2, 4 |
+
+Phases 1–2 are the keystone: small, spec-first, and everything else composes
+with them. 3 and 4 are independent of each other and can run in parallel.
+Total: roughly 18–23 weeks of single-track work; parallelizable to ~3 months
+with two tracks (3+5 UX track, 4+6 platform track) after phase 2 lands.
