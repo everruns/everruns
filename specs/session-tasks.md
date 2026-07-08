@@ -269,11 +269,14 @@ cancel_task             — sets cancel intent
 wait_task               — generic foreground wait; subsumes wait_agent
 ```
 
-Spawning stays per-capability (`spawn_subagent`, `spawn_agent`,
-`spawn_background`) because input schemas genuinely differ — but every spawn
-creates a task and returns its `task_id`. Blocking (foreground) spawns also
-create task records: same object, and the UI shows it live while the parent
-turn waits; background is a mode, not a different entity.
+Spawning is converging on the unified `spawn_agent` surface while some legacy
+per-capability entry points remain during migration. Subagent-only sessions now
+advertise `spawn_agent(target.type = "subagent")`; external A2A continues to use
+`spawn_agent(target.type = "external_a2a")`; `spawn_subagent` remains available
+until the migration completes. Every spawn creates a task and returns its
+`task_id`. Blocking (foreground) spawns also create task records: same object,
+and the UI shows it live while the parent turn waits; background is a mode, not
+a different entity.
 
 Naming cleanup: `task` parameters that carry instruction text
 (`subagent_task`, `spawn_subagent(task:)`) have been renamed to `instructions` so

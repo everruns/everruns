@@ -81,6 +81,19 @@ See `crates/server/migrations/009_subagents.sql` for schema changes.
 
 ## Tools
 
+### spawn_agent (`target.type = "subagent"`)
+
+During the unified delegation migration, sessions with `subagents` enabled and
+no other `spawn_agent` provider advertise `spawn_agent` with a single supported
+target type: `subagent`. The wrapper uses the same behavior as
+`spawn_subagent`: it creates a child session with `parent_session_id` set,
+creates a `TASK_KIND_SUBAGENT` task, defaults to background mode, and supports
+`mode: "foreground"` for blocking execution.
+
+This adapter is conditional so it does not shadow other current `spawn_agent`
+providers such as external A2A. Once all delegation targets share one dispatcher,
+`spawn_subagent` can retire.
+
 ### spawn_subagent
 
 Creates a child session and sends the instructions as the first user message. Runs in the background by default and returns immediately; `mode: "foreground"` blocks until the child idles. Returns a `task_id` that can be used with the generic session task tools.
@@ -117,7 +130,8 @@ Creates a child session and sends the instructions as the first user message. Ru
 
 ### Monitoring and steering subagents
 
-Use the generic `session_tasks` tools after spawning. The `task_id` is returned by `spawn_subagent`.
+Use the generic `session_tasks` tools after spawning. The `task_id` is returned
+by `spawn_agent(target.type = "subagent")` and by `spawn_subagent`.
 
 | Tool | Description |
 |------|-------------|

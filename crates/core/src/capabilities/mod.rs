@@ -324,7 +324,7 @@ pub use skills_scoped::{
 pub use stateless_todo_list::{
     STATELESS_TODO_LIST_CAPABILITY_ID, StatelessTodoListCapability, WriteTodosTool,
 };
-pub use subagents::{SUBAGENTS_CAPABILITY_ID, SubagentCapability};
+pub use subagents::{SUBAGENTS_CAPABILITY_ID, SpawnSubagentAsAgentTool, SubagentCapability};
 // Blueprint types are exported directly from the trait definitions above
 pub use bashkit_shell::{
     BASHKIT_SHELL_CAPABILITY_ID, BashTool, BashkitShellCapability, SessionFileSystemAdapter,
@@ -2523,6 +2523,22 @@ pub async fn collect_capabilities_with_configs(
         }
     }
 
+    // EVE-677 migration slice: subagent-only sessions should expose the new
+    // unified delegation surface without colliding with existing `spawn_agent`
+    // providers (currently external A2A). Once all providers share one
+    // dispatcher, this conditional adapter can retire with `spawn_subagent`.
+    if applied_ids.iter().any(|id| id == SUBAGENTS_CAPABILITY_ID)
+        && !tools.iter().any(|tool| tool.name() == "spawn_agent")
+    {
+        let tool = SpawnSubagentAsAgentTool;
+        let def = tool
+            .to_definition()
+            .with_category("Core")
+            .with_capability_attribution(SUBAGENTS_CAPABILITY_ID, Some("Subagents"));
+        tools.push(Box::new(tool));
+        tool_definitions.push(def);
+    }
+
     // Auto-activate `background_execution` whenever any collected tool
     // declares background support via `ToolHints::supports_background`.
     //
@@ -4695,6 +4711,118 @@ mod tests {
             "background_execution must not appear in applied_ids when no \
              background-capable tool is present; got: {:?}",
             collected.applied_ids
+        );
+    }
+
+    #[tokio::test]
+    async fn test_subagents_collect_unified_spawn_agent_adapter() {
+        let registry = CapabilityRegistry::with_builtins();
+        let collected = collect_capabilities(
+            &[SUBAGENTS_CAPABILITY_ID.to_string()],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
+
+        assert!(
+            collected
+                .tools
+                .iter()
+                .any(|tool| tool.name() == "spawn_agent"),
+            "subagent-only sessions should get the unified spawn_agent adapter"
+        );
+        let spawn_agent = collected
+            .tool_definitions
+            .iter()
+            .find(|tool| tool.name() == "spawn_agent")
+            .expect("spawn_agent definition");
+        assert_eq!(
+            spawn_agent.parameters()["properties"]["target"]["properties"]["type"]["enum"],
+            serde_json::json!(["subagent"])
+        );
+    }
+
+    struct ExistingSpawnAgentCapability;
+
+    impl Capability for ExistingSpawnAgentCapability {
+        fn id(&self) -> &str {
+            "existing_spawn_agent"
+        }
+
+        fn name(&self) -> &str {
+            "Existing Spawn Agent"
+        }
+
+        fn description(&self) -> &str {
+            "Test capability that already owns spawn_agent"
+        }
+
+        fn tools(&self) -> Vec<Box<dyn Tool>> {
+            vec![Box::new(ExistingSpawnAgentTool)]
+        }
+    }
+
+    struct ExistingSpawnAgentTool;
+
+    #[async_trait]
+    impl Tool for ExistingSpawnAgentTool {
+        fn name(&self) -> &str {
+            "spawn_agent"
+        }
+
+        fn description(&self) -> &str {
+            "Existing spawn_agent test tool"
+        }
+
+        fn parameters_schema(&self) -> serde_json::Value {
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "target": {
+                        "type": "object",
+                        "properties": {
+                            "type": {"type": "string", "enum": ["external_a2a"]}
+                        },
+                        "required": ["type"]
+                    }
+                },
+                "required": ["target"]
+            })
+        }
+
+        async fn execute(
+            &self,
+            _arguments: serde_json::Value,
+        ) -> crate::tools::ToolExecutionResult {
+            crate::tools::ToolExecutionResult::success(serde_json::json!({"ok": true}))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_subagents_do_not_shadow_existing_spawn_agent_provider() {
+        let mut registry = CapabilityRegistry::new();
+        registry.register(SubagentCapability);
+        registry.register(ExistingSpawnAgentCapability);
+
+        let collected = collect_capabilities(
+            &[
+                SUBAGENTS_CAPABILITY_ID.to_string(),
+                "existing_spawn_agent".to_string(),
+            ],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
+
+        let spawn_agent_defs: Vec<_> = collected
+            .tool_definitions
+            .iter()
+            .filter(|tool| tool.name() == "spawn_agent")
+            .collect();
+        assert_eq!(spawn_agent_defs.len(), 1);
+        assert_eq!(
+            spawn_agent_defs[0].parameters()["properties"]["target"]["properties"]["type"]["enum"],
+            serde_json::json!(["external_a2a"])
         );
     }
 

@@ -14,6 +14,14 @@ Spawn subagents for parallel task execution. Each subagent runs in its own isola
 
 ## Tools
 
+### `spawn_agent`
+
+Subagent-only sessions also expose the unified delegation tool with
+`target.type: "subagent"`. It follows the same lifecycle as `spawn_subagent`:
+background by default, `foreground` when requested, and a returned `task_id` for
+the generic session task tools. This is the migration path toward one delegation
+surface across subagents, first-party agent handoffs, and external A2A agents.
+
 ### `spawn_subagent`
 
 Create and start a new subagent. By default the subagent runs in the background: the tool returns immediately with a `task_id`, the parent agent keeps working, and the session is notified when the subagent finishes. Use the `task_id` with the generic session task tools to monitor, message, or cancel the subagent.
