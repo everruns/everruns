@@ -23,8 +23,10 @@ Email is not an agent capability, public API, or UI surface. It is a host servic
 - `EmailError` separates configuration, request validation, transport, and provider failures.
 - Platform/application state stores the sender as `Arc<dyn EmailSender>` when it must be shared across services.
 - `PlatformDefinition` carries the active system email sender as part of the platform profile.
-- Concrete senders use `EgressService` for provider HTTP; email remains a
-  domain-specific service above the outbound transport boundary.
+- Concrete senders use direct provider HTTP clients; email remains a
+  domain-specific host service outside the tenant/agent egress boundary.
+- System email is not governed by tenant/agent egress policy such as
+  `EVERRUNS_SYSTEM_ALLOWLIST_ENABLED`.
 
 Messages support:
 
@@ -67,7 +69,7 @@ When `EMAIL_PROVIDER` is unset, the system email configuration is disabled. Prod
 
 The default OSS platform profile resolves `SystemEmailConfig::from_env()` during `oss_platform_definition_for_grade()` construction. Invalid email configuration fails startup when a provider is explicitly enabled.
 
-Embedders can bypass env-based setup by constructing a custom `PlatformDefinition` and calling `PlatformDefinition::builder().email_sender(...)` before passing it to `ServerAppBuilder::platform_definition(...)`.
+Embedders can bypass env-based setup by constructing a custom `PlatformDefinition` and calling `PlatformDefinition::builder().email_sender(...)` before passing it to `ServerAppBuilder::platform_definition(...)`. Reusable OSS helpers include `SystemEmailConfig::into_sender()`, `ResendEmailSender::new(...)`, and `ResendEmailSender::with_http_client(...)` for deployments that assemble their own platform profile.
 
 `ServerContext.email_sender` exposes the configured sender to internal background tasks and extension code. Request handlers should access the sender through their service/application state when a feature needs transactional email.
 
