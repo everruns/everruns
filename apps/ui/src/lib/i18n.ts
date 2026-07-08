@@ -192,6 +192,15 @@ const messages = {
     mount_path_trailing_slash: "Path must not end with a trailing slash",
     mount_path_duplicate: "Duplicate mount path '{value}'",
     mount_path_overlap: "Path '{value}' overlaps with '{other}'",
+    export_session: "Export session",
+    export_jsonl: "Export JSONL",
+    export_atif: "Export ATIF",
+    atif_export_title: "ATIF export",
+    atif_export_failed_title: "ATIF export failed",
+    atif_export_too_large: "This session is too large for ATIF export.",
+    atif_images_omitted_one: "{count} image was omitted from the ATIF export",
+    atif_images_omitted_few: "{count} images were omitted from the ATIF export",
+    atif_images_omitted_many: "{count} images were omitted from the ATIF export",
   },
   uk: {
     thinking: "думаю",
@@ -379,6 +388,15 @@ const messages = {
     mount_path_trailing_slash: "Шлях не може закінчуватися символом '/'",
     mount_path_duplicate: "Повторюваний шлях монтування '{value}'",
     mount_path_overlap: "Шлях '{value}' перетинається з '{other}'",
+    export_session: "Експортувати сесію",
+    export_jsonl: "Експортувати JSONL",
+    export_atif: "Експортувати ATIF",
+    atif_export_title: "Експорт ATIF",
+    atif_export_failed_title: "Не вдалося експортувати ATIF",
+    atif_export_too_large: "Ця сесія завелика для експорту ATIF.",
+    atif_images_omitted_one: "{count} зображення пропущено під час експорту ATIF",
+    atif_images_omitted_few: "{count} зображення пропущено під час експорту ATIF",
+    atif_images_omitted_many: "{count} зображень пропущено під час експорту ATIF",
   },
 } as const;
 
@@ -445,6 +463,27 @@ export function formatImageCount(locale: SupportedLocale, count: number): string
   }
 
   return formatMessage(locale, count === 1 ? "image_count_one" : "image_count_many", { count });
+}
+
+export function formatAtifImagesOmitted(locale: SupportedLocale, count: number): string {
+  if (locale === "uk") {
+    const form = getUkrainianPluralForm(count);
+    if (form === "one") {
+      return formatMessage(locale, "atif_images_omitted_one", { count });
+    }
+    if (form === "few") {
+      return formatMessage(locale, "atif_images_omitted_few", { count });
+    }
+    return formatMessage(locale, "atif_images_omitted_many", { count });
+  }
+
+  return formatMessage(
+    locale,
+    count === 1 ? "atif_images_omitted_one" : "atif_images_omitted_many",
+    {
+      count,
+    },
+  );
 }
 
 export function formatEditCount(locale: SupportedLocale, count: number): string {

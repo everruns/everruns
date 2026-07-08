@@ -1,7 +1,7 @@
 // Session API functions
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org)
 
-import { api } from "./client";
+import { api, throwApiError } from "./client";
 import type {
   Session,
   SessionStats,
@@ -113,23 +113,48 @@ export async function unpinSession(sessionId: string): Promise<void> {
 // Session Export
 // ============================================
 
-/** Export session messages as JSONL file and trigger browser download */
-export async function exportSessionJsonl(sessionId: string): Promise<void> {
-  const response = await fetch(`/api/v1/sessions/${sessionId}/export`, {
+export type SessionExportFormat = "jsonl" | "atif";
+
+export interface SessionExportResult {
+  /**
+   * Number of image parts the server omitted from an ATIF document
+   * (`X-Atif-Images-Omitted` header). 0 when the header is absent (JSONL
+   * exports, or servers without ATIF support).
+   */
+  imagesOmitted: number;
+}
+
+/**
+ * Export session messages and trigger a browser download.
+ * `jsonl` (default) downloads `{sessionId}.jsonl`; `atif` downloads the
+ * ATIF-v1.7 trajectory document as `{sessionId}.atif.json`.
+ *
+ * Throws `ApiError` on failure — notably status 413 when the ATIF document
+ * exceeds the server's size cap.
+ */
+export async function exportSession(
+  sessionId: string,
+  format: SessionExportFormat = "jsonl",
+): Promise<SessionExportResult> {
+  const query = format === "atif" ? "?format=atif" : "";
+  const response = await fetch(`/api/v1/sessions/${sessionId}/export${query}`, {
     credentials: "include",
   });
   if (!response.ok) {
-    throw new Error(`Export failed: ${response.status} ${response.statusText}`);
+    await throwApiError(response);
   }
+  const omittedHeader = response.headers.get("X-Atif-Images-Omitted");
+  const omitted = omittedHeader ? Number.parseInt(omittedHeader, 10) : 0;
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${sessionId}.jsonl`;
+  a.download = format === "atif" ? `${sessionId}.atif.json` : `${sessionId}.jsonl`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+  return { imagesOmitted: Number.isFinite(omitted) && omitted > 0 ? omitted : 0 };
 }
 
 // ============================================
