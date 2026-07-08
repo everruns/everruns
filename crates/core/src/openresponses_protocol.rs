@@ -20,7 +20,6 @@
 // The Chat Completions API remains supported for backward compatibility.
 
 use async_trait::async_trait;
-use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use reqwest::{
     Client,
@@ -48,6 +47,7 @@ use crate::openai_protocol::{
 };
 use crate::openresponses_types::{self as types, StreamingEvent};
 use crate::provider::DriverId;
+use crate::stream_reconnect::connect_sse_with_reconnect;
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::user_facing_error::is_provider_quota_message;
 
@@ -217,6 +217,132 @@ impl OpenResponsesProtocolChatDriver {
     pub fn with_retry_config(mut self, config: LlmRetryConfig) -> Self {
         self.retry_config = config;
         self
+    }
+
+    /// Send one streaming Responses request, applying the shared header-phase
+    /// retry loop (transient send failures, 429, and 5xx), and return the raw
+    /// response plus its retry metadata.
+    ///
+    /// Invoked once per reconnect attempt by [`connect_sse_with_reconnect`]; it
+    /// re-sends the identical request and consumes no body bytes, so retrying is
+    /// idempotent. The classifier preserves the Responses API terminal
+    /// classification and error messages exactly.
+    async fn send_responses_request(
+        &self,
+        request_body: &Value,
+        extension_headers: &HeaderMap,
+        model: &str,
+    ) -> Result<(reqwest::Response, RetryMetadata)> {
+        let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+
+        retry_request(
+            &self.retry_config,
+            "OpenResponsesProtocolDriver",
+            || async {
+                // Compose headers: provider decoration first, then the resolved
+                // auth header (awaited each attempt so refreshable providers can
+                // rotate tokens per retry). `insert` overrides any same-named
+                // decoration header, so auth always wins on conflict. An auth
+                // failure is fatal (no retry).
+                let mut headers = extension_headers.clone();
+                let (auth_name, auth_value) = self
+                    .resolve_auth_header(&self.api_url)
+                    .await
+                    .map_err(SendOutcome::Fatal)?;
+                headers.insert(auth_name, auth_value);
+
+                self.client
+                    .post(&self.api_url)
+                    .headers(headers)
+                    .header("Content-Type", "application/json")
+                    .json(request_body)
+                    .send()
+                    .await
+                    .map_err(SendOutcome::Send)
+            },
+            |response, attempts, can_retry| {
+                let last_error = Arc::clone(&last_error);
+                let model = model.to_string();
+                async move {
+                    let status = response.status();
+
+                    if can_retry {
+                        // Parse rate limit info from headers before consuming body.
+                        let response_headers = response.headers().clone();
+                        let mut rate_limit_info = if is_rate_limit_status(status) {
+                            Some(RateLimitInfo::from_openai_headers(&response_headers))
+                        } else {
+                            None
+                        };
+
+                        let error_text = response.text().await.unwrap_or_default();
+                        if let (Some(extension), Some(info)) =
+                            (self.request_extension.as_ref(), rate_limit_info.as_mut())
+                        {
+                            extension.update_rate_limit_info(info, &response_headers, &error_text);
+                        }
+
+                        // Exhausted billing quota is surfaced as a 429 but is not
+                        // transient — fail fast instead of burning retries.
+                        if is_provider_quota_message(&error_text) {
+                            return RetryDecision::Terminal(AgentLoopError::llm_kind(
+                                LlmErrorKind::QuotaExhausted,
+                                format!("OpenAI Responses API error ({}): {}", status, error_text),
+                            ));
+                        }
+
+                        let wait = rate_limit_info
+                            .as_ref()
+                            .map(|info| info.recommended_wait(&self.retry_config, attempts))
+                            .unwrap_or_else(|| self.retry_config.calculate_backoff(attempts));
+
+                        *last_error.lock().unwrap() = Some(error_text);
+                        return RetryDecision::Retry {
+                            wait,
+                            rate_limit_info,
+                        };
+                    }
+
+                    // Non-retryable error or max retries exceeded
+                    let error_text = response.text().await.unwrap_or_default();
+
+                    // Check if this is a model-not-found error
+                    if is_openai_model_not_found(status, &error_text) {
+                        return RetryDecision::Terminal(AgentLoopError::model_not_available(model));
+                    }
+
+                    // Check if this is a request-too-large error (context length).
+                    if is_openai_request_too_large(status, &error_text) {
+                        return RetryDecision::Terminal(AgentLoopError::request_too_large(
+                            format!("OpenAI Responses API ({}): {}", status, error_text),
+                        ));
+                    }
+
+                    let error_msg =
+                        format!("OpenAI Responses API error ({}): {}", status, error_text);
+
+                    // Attach the semantic error kind while the HTTP status and
+                    // body are still available (see LlmErrorKind).
+                    let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
+
+                    if attempts > 0 {
+                        return RetryDecision::Terminal(AgentLoopError::llm_kind(
+                            kind,
+                            format!(
+                                "{} (after {} retries, last error: {})",
+                                error_msg,
+                                attempts,
+                                last_error.lock().unwrap().take().unwrap_or_default()
+                            ),
+                        ));
+                    }
+
+                    RetryDecision::Terminal(AgentLoopError::llm_kind(kind, error_msg))
+                }
+            },
+            |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
+        )
+        .await
     }
 
     /// Get the API URL
@@ -979,123 +1105,18 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             extension.decorate_headers(&mut extension_headers, config)?;
         }
 
-        // Retry loop for rate limit (429) and transient errors. The shared
-        // executor (llm_retry::retry_request) owns the loop/backoff/send-error
-        // retry/exhaustion logging; this classifier closure preserves the
-        // previous terminal classification and error messages exactly.
-        let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-
-        let (response, retry_metadata) = retry_request(
+        // Establish the SSE stream, transparently reconnecting on a transport
+        // failure that lands before the first event is decoded (the "error
+        // decoding response body" flake). Header-phase retries (429/5xx and
+        // transient send failures) are handled inside the per-attempt send.
+        let (event_stream, retry_metadata) = connect_sse_with_reconnect(
             &self.retry_config,
             "OpenResponsesProtocolDriver",
-            || async {
-                // Compose headers: provider decoration first, then the resolved
-                // auth header (awaited each attempt so refreshable providers can
-                // rotate tokens per retry). `insert` overrides any same-named
-                // decoration header, so auth always wins on conflict. An auth
-                // failure is fatal (no retry).
-                let mut headers = extension_headers.clone();
-                let (auth_name, auth_value) = self
-                    .resolve_auth_header(&self.api_url)
-                    .await
-                    .map_err(SendOutcome::Fatal)?;
-                headers.insert(auth_name, auth_value);
-
-                self.client
-                    .post(&self.api_url)
-                    .headers(headers)
-                    .header("Content-Type", "application/json")
-                    .json(&request_body)
-                    .send()
-                    .await
-                    .map_err(SendOutcome::Send)
+            |_attempt| {
+                self.send_responses_request(&request_body, &extension_headers, &config.model)
             },
-            |response, attempts, can_retry| {
-                let last_error = Arc::clone(&last_error);
-                let model = config.model.clone();
-                async move {
-                    let status = response.status();
-
-                    if can_retry {
-                        // Parse rate limit info from headers before consuming body.
-                        let response_headers = response.headers().clone();
-                        let mut rate_limit_info = if is_rate_limit_status(status) {
-                            Some(RateLimitInfo::from_openai_headers(&response_headers))
-                        } else {
-                            None
-                        };
-
-                        let error_text = response.text().await.unwrap_or_default();
-                        if let (Some(extension), Some(info)) =
-                            (self.request_extension.as_ref(), rate_limit_info.as_mut())
-                        {
-                            extension.update_rate_limit_info(info, &response_headers, &error_text);
-                        }
-
-                        // Exhausted billing quota is surfaced as a 429 but is not
-                        // transient — fail fast instead of burning retries.
-                        if is_provider_quota_message(&error_text) {
-                            return RetryDecision::Terminal(AgentLoopError::llm_kind(
-                                LlmErrorKind::QuotaExhausted,
-                                format!("OpenAI Responses API error ({}): {}", status, error_text),
-                            ));
-                        }
-
-                        let wait = rate_limit_info
-                            .as_ref()
-                            .map(|info| info.recommended_wait(&self.retry_config, attempts))
-                            .unwrap_or_else(|| self.retry_config.calculate_backoff(attempts));
-
-                        *last_error.lock().unwrap() = Some(error_text);
-                        return RetryDecision::Retry {
-                            wait,
-                            rate_limit_info,
-                        };
-                    }
-
-                    // Non-retryable error or max retries exceeded
-                    let error_text = response.text().await.unwrap_or_default();
-
-                    // Check if this is a model-not-found error
-                    if is_openai_model_not_found(status, &error_text) {
-                        return RetryDecision::Terminal(AgentLoopError::model_not_available(model));
-                    }
-
-                    // Check if this is a request-too-large error (context length).
-                    if is_openai_request_too_large(status, &error_text) {
-                        return RetryDecision::Terminal(AgentLoopError::request_too_large(
-                            format!("OpenAI Responses API ({}): {}", status, error_text),
-                        ));
-                    }
-
-                    let error_msg =
-                        format!("OpenAI Responses API error ({}): {}", status, error_text);
-
-                    // Attach the semantic error kind while the HTTP status and
-                    // body are still available (see LlmErrorKind).
-                    let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
-
-                    if attempts > 0 {
-                        return RetryDecision::Terminal(AgentLoopError::llm_kind(
-                            kind,
-                            format!(
-                                "{} (after {} retries, last error: {})",
-                                error_msg,
-                                attempts,
-                                last_error.lock().unwrap().take().unwrap_or_default()
-                            ),
-                        ));
-                    }
-
-                    RetryDecision::Terminal(AgentLoopError::llm_kind(kind, error_msg))
-                }
-            },
-            |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
         )
         .await?;
-
-        let byte_stream = response.bytes_stream();
-        let event_stream = byte_stream.eventsource();
 
         let model = config.model.clone();
         let input_tokens = Arc::new(Mutex::new(0u32));

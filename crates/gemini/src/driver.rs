@@ -30,9 +30,10 @@ use everruns_core::driver_registry::{
 use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_core::is_provider_quota_message;
 use everruns_core::llm_retry::{
-    LlmRetryConfig, RetryDecision, SendOutcome, retry_request, send_error_message,
+    LlmRetryConfig, RetryDecision, RetryMetadata, SendOutcome, retry_request, send_error_message,
 };
 use everruns_core::stream_accumulator::StreamToolCallAccumulator;
+use everruns_core::stream_reconnect::connect_bytes_with_reconnect;
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
@@ -292,73 +293,37 @@ impl GeminiChatDriver {
     fn models_url(&self) -> String {
         format!("{}/models", self.base_url)
     }
-}
 
-#[async_trait]
-impl ChatDriver for GeminiChatDriver {
-    async fn chat_completion_stream(
+    /// Send one streaming `streamGenerateContent` request, applying the shared
+    /// header-phase retry loop (transient send failures, 429, and 5xx), and
+    /// return the raw response plus its retry metadata.
+    ///
+    /// Invoked once per reconnect attempt by [`connect_bytes_with_reconnect`]. It
+    /// re-sends the identical request and consumes no body bytes, so retrying is
+    /// idempotent. Terminal classification and error messages are preserved
+    /// exactly.
+    async fn send_generate_content_request(
         &self,
-        messages: Vec<LlmMessage>,
-        config: &LlmCallConfig,
-    ) -> Result<LlmResponseStream> {
-        let (system_instruction, contents) = Self::convert_messages(&messages);
-
-        let tools = Self::convert_tools(&config.tools);
-
-        let mut generation_config = GeminiGenerationConfig {
-            temperature: config.temperature,
-            max_output_tokens: config.max_tokens,
-        };
-
-        // If no max_tokens specified, use model's max output from profile, or 8192 fallback
-        if generation_config.max_output_tokens.is_none() {
-            generation_config.max_output_tokens = Some(
-                everruns_core::get_model_profile(&everruns_core::DriverId::Gemini, &config.model)
-                    .and_then(|p| {
-                        p.limits.and_then(|l| {
-                            u32::try_from(l.output)
-                                .ok()
-                                .and_then(|v| if v > 0 { Some(v) } else { None })
-                        })
-                    })
-                    .unwrap_or(8_192),
-            );
-        }
-
-        let request = GeminiRequest {
-            contents,
-            system_instruction,
-            tools,
-            generation_config: Some(generation_config),
-            cached_content: config
-                .prompt_cache
-                .as_ref()
-                .filter(|cfg| cfg.enabled)
-                .and_then(|cfg| cfg.gemini_cached_content.clone()),
-        };
-
-        // Retry loop for rate limit (429) and transient errors. The shared
-        // executor (everruns_core::llm_retry::retry_request) owns the loop,
-        // backoff, send-error retry, and success/exhaustion logging; this
-        // closure supplies Gemini's terminal classification, preserving the
-        // previous error types and messages exactly.
-        let url = self.stream_url(&config.model);
+        request: &GeminiRequest,
+        url: &str,
+        model: &str,
+    ) -> Result<(reqwest::Response, RetryMetadata)> {
         let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
-        let (response, retry_metadata) = retry_request(
+        retry_request(
             &self.retry_config,
             "GeminiDriver",
             || {
                 self.client
-                    .post(&url)
+                    .post(url)
                     .header("Content-Type", "application/json")
                     .header("x-goog-api-key", &self.api_key)
-                    .json(&request)
+                    .json(request)
                     .send()
                     .map(|r| r.map_err(SendOutcome::Send))
             },
             |response, attempts, can_retry| {
-                let model = config.model.clone();
+                let model = model.to_string();
                 let last_error = Arc::clone(&last_error);
                 async move {
                     let status = response.status();
@@ -418,7 +383,64 @@ impl ChatDriver for GeminiChatDriver {
             },
             |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
         )
-        .await?;
+        .await
+    }
+}
+
+#[async_trait]
+impl ChatDriver for GeminiChatDriver {
+    async fn chat_completion_stream(
+        &self,
+        messages: Vec<LlmMessage>,
+        config: &LlmCallConfig,
+    ) -> Result<LlmResponseStream> {
+        let (system_instruction, contents) = Self::convert_messages(&messages);
+
+        let tools = Self::convert_tools(&config.tools);
+
+        let mut generation_config = GeminiGenerationConfig {
+            temperature: config.temperature,
+            max_output_tokens: config.max_tokens,
+        };
+
+        // If no max_tokens specified, use model's max output from profile, or 8192 fallback
+        if generation_config.max_output_tokens.is_none() {
+            generation_config.max_output_tokens = Some(
+                everruns_core::get_model_profile(&everruns_core::DriverId::Gemini, &config.model)
+                    .and_then(|p| {
+                        p.limits.and_then(|l| {
+                            u32::try_from(l.output)
+                                .ok()
+                                .and_then(|v| if v > 0 { Some(v) } else { None })
+                        })
+                    })
+                    .unwrap_or(8_192),
+            );
+        }
+
+        let request = GeminiRequest {
+            contents,
+            system_instruction,
+            tools,
+            generation_config: Some(generation_config),
+            cached_content: config
+                .prompt_cache
+                .as_ref()
+                .filter(|cfg| cfg.enabled)
+                .and_then(|cfg| cfg.gemini_cached_content.clone()),
+        };
+
+        // Establish the byte stream, transparently reconnecting on a transport
+        // failure that lands before the first chunk (the "error decoding
+        // response body" flake). Header-phase retries (429/5xx and transient
+        // send failures) are handled inside the per-attempt send. Gemini parses
+        // SSE by hand, so this uses the raw byte-stream reconnect variant.
+        let url = self.stream_url(&config.model);
+        let (byte_stream, retry_metadata) =
+            connect_bytes_with_reconnect(&self.retry_config, "GeminiDriver", |_attempt| {
+                self.send_generate_content_request(&request, &url, &config.model)
+            })
+            .await?;
 
         // Gemini streams SSE events with JSON data, each containing a candidate
         let model = config.model.clone();
@@ -432,9 +454,6 @@ impl ChatDriver for GeminiChatDriver {
         } else {
             None
         };
-
-        // Gemini SSE stream: each event has `data: {...}` lines
-        let byte_stream = response.bytes_stream();
 
         // Use a buffered approach to handle SSE events
         let converted_stream: LlmResponseStream = Box::pin(futures::stream::unfold(
