@@ -6,6 +6,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { EarlyAccessBanner } from "@/components/layout/early-access-banner";
+import { VerifyEmailBanner } from "@/components/layout/verify-email-banner";
 import { CommandPalette } from "@/components/command-palette";
 import { AuthUnavailableState } from "@/components/layout/auth-unavailable-state";
 import { CommandPaletteContext, useCommandPaletteState } from "@/hooks/use-command-palette";
@@ -112,6 +113,7 @@ function MainLayoutInner({ children }: MainLayoutProps) {
   const appChrome = (
     <div className="flex h-screen flex-col">
       <EarlyAccessBanner />
+      <VerifyEmailBanner />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main className="flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>

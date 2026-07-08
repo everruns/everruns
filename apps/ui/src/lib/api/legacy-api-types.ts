@@ -913,6 +913,8 @@ export interface UserInfoResponse {
   name: string;
   roles: string[];
   avatar_url?: string;
+  /** Whether the account's email has been verified. Drives the in-app verify nudge. */
+  email_verified: boolean;
   /** Organizations the user belongs to */
   organizations?: OrganizationMembership[];
 }

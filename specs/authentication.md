@@ -208,6 +208,12 @@ Self-service recovery for local (password) accounts. Two endpoints:
 
 Token model: the raw token is emailed once and never stored; only its SHA-256 hash is persisted (`password_reset_tokens`, migration 089). Single-use is enforced via `used_at` set in one atomic `UPDATE … WHERE used_at IS NULL AND expires_at > now()`.
 
+Because reset is skipped silently for OAuth-only accounts, the login-failure
+alert also names the OAuth alternative ("Signed up with Google or GitHub? Go
+back and use that instead"), shown to everyone so it reveals nothing — without
+it, an OAuth-only user who tried a password and then reset would dead-end on a
+"Check your inbox" screen for an email that never arrives.
+
 ### Email Verification
 
 Confirms a user controls the email they registered with. On successful `POST /v1/auth/register`, a verification token is created and a `{FRONTEND_URL}/verify-email?token=…` link is emailed (best-effort; never fails registration). Endpoints:
@@ -216,6 +222,16 @@ Confirms a user controls the email they registered with. On successful `POST /v1
 - `POST /v1/auth/resend-verification` `{ email }` — account-enumeration safe (`200 { "ok": true }` always); issues a new token only for an existing local account whose email is not yet verified.
 
 Token model is identical to password reset (hashed, single-use, short TTL; `email_verification_tokens`, migration 089) but with a 24-hour TTL. Both recovery and verification routes share the registration rate limiter (per client IP).
+
+Login does **not** gate on `email_verified`, so a signed-in user can be
+unverified. To avoid stranding them (the original 24h token may have expired,
+and re-signup sends a "log in" email, not a fresh link), `email_verified` is
+exposed on `GET /v1/auth/me` and drives a persistent in-app **verify-email
+banner** (`components/layout/verify-email-banner.tsx`) with an inline resend —
+the surfaced path a signed-in unverified user needs before they hit the
+invite-accept gate (TM-AUTH-023). The `/verify-email` dead-link state (no
+token, no email) likewise accepts an email and resends in place rather than
+directing the user to a screen that does not exist.
 
 ### Abuse Limits
 
@@ -244,10 +260,55 @@ Beyond the per-IP limiter (TM-AUTH-001), the auth surface enforces:
 
 `GET /v1/auth/callback/{provider}` is only ever hit by a browser, so every
 failure redirects to `{FRONTEND_URL}/login?error=<category>` instead of
-returning raw JSON. Categories are coarse by design (`oauth_cancelled`,
-`oauth_not_permitted`, `oauth_failed`); specifics stay in logs and the audit
-trail. Provider error bounces (`?error=access_denied`) are handled the same
-way rather than failing query extraction.
+returning raw JSON. Categories are coarse by design; specifics stay in logs
+and the audit trail. Provider error bounces (`?error=access_denied`) are
+handled the same way rather than failing query extraction.
+
+| Category | When | Copy intent |
+|----------|------|-------------|
+| `oauth_cancelled` | user declined at the provider | transient — try again |
+| `oauth_not_permitted` | 403 identity gate (Google `email_verified=false`, domain allow-list) | permanent for this account — use a different one |
+| `oauth_account_exists` | 409: the verified email already has an account bound to another sign-in method (different provider, or an unverified local twin that must not be auto-linked per TM-AUTH-012) | permanent — **sign in with your original method**, not "try again" |
+| `oauth_failed` | anything else | transient — try again |
+
+`oauth_account_exists` is separated from `oauth_failed` deliberately: the
+caller completed the provider handshake and thus owns the mailbox, so naming
+the existing account is not enumeration, and folding a *permanent* refusal
+into the transient "didn't complete, try again" bucket sent users into a
+retry loop with no way out (see Flow Reachability below).
+
+### Flow Reachability (State Machine)
+
+The auth surface is a state machine spanning three layers — **UI** screens,
+**backend** outcomes (session vs confirmation, OAuth link-refusal categories),
+and **external** events (a link sitting in an inbox, its TTL, single-use
+consumption). Its contract is one invariant: **from any (goal, account-state)
+situation there is always a path to the goal via an affordance that actually
+works for that account** — no dead ends, no surfaced remediation that silently
+no-ops.
+
+This is modelled and enforced in code, not just prose:
+
+- `apps/ui/src/lib/auth-flow/machine.ts` — states, account states (`none`,
+  `local_unverified`, `local_verified`, `oauth_only`), layer-tagged nodes, and
+  guarded transitions (`worksFor` restricts an edge to the account states it
+  genuinely advances — the absence of a guard is how a trap is encoded).
+- `machine.test.ts` — two invariants with a ratchet: **structural
+  reachability** (BFS reaches each goal) and **no misleading remediation** (a
+  registry of surfaced-but-broken affordances). Both are asserted empty; any
+  new dead end fails CI.
+
+Backend transitions themselves (confirm-mode `ConfirmationSent` vs `Session`,
+single-use/expiry token semantics, enumeration parity) are additionally
+enforced by the Rust tests in `crates/server/src/auth/routes.rs`.
+
+**Enumeration-safety is not traded away to close dead ends.** Every recovery
+affordance is either generic copy shown to *everyone* (e.g. the login-failure
+alert naming OAuth as an alternative — an `oauth_only` account's reset silently
+no-ops, so without it those users dead-ended), an action on the user's *own*
+authenticated account (the in-app verify-email banner), or addressed to a
+caller who has *already proven* mailbox ownership (`oauth_account_exists`).
+None reveals account existence to an unauthenticated party.
 
 ### Environment Variables
 

@@ -3,7 +3,9 @@ import {
   EDGES,
   findDeadEnds,
   findTraps,
+  GOALS,
   goalReachable,
+  NODE_LAYER,
   SCENARIOS,
   type Node,
   type Screen,
@@ -17,15 +19,15 @@ import {
 // from the KNOWN_* list in the same change.
 
 // --- Ratchet lists: the gaps we know about, pending fixes. ---
+// Both are empty: every dead end and trap the audit found has been closed. A
+// NEW entry appearing here means a regression was introduced and consciously
+// parked; the goal is to keep both empty.
 
 /** Situations where the goal is structurally unreachable (no working path). */
-const KNOWN_DEAD_ENDS = [
-  "Signed-in unverified user hits the invite gate and must verify",
-  "Unverified user lands on an expired link with no email param",
-];
+const KNOWN_DEAD_ENDS: string[] = [];
 
 /** Screens that surface a broken remediation without the working alternative. */
-const KNOWN_TRAPS = ["login.password:reset your password", "oauth.rejected_permanent:Try again / continue with email"];
+const KNOWN_TRAPS: string[] = [];
 
 describe("auth flow · structural reachability", () => {
   it("every scenario's goal is reachable except the known dead ends", () => {
@@ -45,7 +47,7 @@ describe("auth flow · structural reachability", () => {
     }
   });
 
-  it.failing("GOAL: no situation is a dead end (flip to it() once all are fixed)", () => {
+  it("GOAL: no situation is a dead end", () => {
     expect(findDeadEnds()).toHaveLength(0);
   });
 });
@@ -66,30 +68,26 @@ describe("auth flow · misleading remediations", () => {
     }
   });
 
-  it.failing("GOAL: no misleading remediations remain (flip once all are fixed)", () => {
+  it("GOAL: no misleading remediations remain", () => {
     expect(findTraps()).toHaveLength(0);
   });
 });
 
 describe("auth flow · model integrity", () => {
-  const SCREENS: Screen[] = [
-    "login.email",
-    "login.password",
-    "signup.form",
-    "signup.check_email",
-    "forgot.form",
-    "forgot.sent",
-    "reset.form",
-    "reset.invalid",
-    "verify.pending",
-    "verify.failed_with_email",
-    "verify.failed_no_email",
-    "oauth.rejected_permanent",
-    "app.gated_on_verify",
-  ];
+  // Derived from the layer map so the two can't drift apart.
+  const SCREENS = Object.keys(NODE_LAYER) as Screen[];
+
+  it("every node has a declared layer (ui / backend / external)", () => {
+    for (const [node, layer] of Object.entries(NODE_LAYER)) {
+      expect({ node, layer }).toEqual({
+        node,
+        layer: expect.stringMatching(/^(ui|backend|external)$/),
+      });
+    }
+  });
 
   it("every edge references declared nodes and account states", () => {
-    const nodes = new Set<Node>([...SCREENS, "authenticated", "email_verified"]);
+    const nodes = new Set<Node>([...SCREENS, ...GOALS]);
     for (const e of EDGES) {
       expect(nodes.has(e.from)).toBe(true);
       expect(nodes.has(e.to)).toBe(true);
@@ -97,6 +95,11 @@ describe("auth flow · model integrity", () => {
         expect(ACCOUNT_STATES).toContain(a);
       }
     }
+  });
+
+  it("the model spans all three layers (not just UI screens)", () => {
+    const layers = new Set(Object.values(NODE_LAYER));
+    expect(layers).toEqual(new Set(["ui", "backend", "external"]));
   });
 
   it("every screen is the source of at least one affordance (no orphan states)", () => {

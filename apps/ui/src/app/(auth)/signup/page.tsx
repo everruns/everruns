@@ -151,6 +151,10 @@ export default function SignupPage() {
   }
 
   const oauthProviders = config?.oauth_providers ?? [];
+  // Mirror the login door: only render the email/password form when the server
+  // actually accepts password registration. Otherwise the form submits into a
+  // 403 and loops on a generic error — a dead end (auth-flow dead-end audit).
+  const hasPasswordAuth = config?.password_auth_enabled ?? false;
 
   return (
     <AuthShell>
@@ -166,99 +170,110 @@ export default function SignupPage() {
 
       <div className="mt-7 space-y-4">
         {oauthProviders.length > 0 && (
-          <>
-            <div className="space-y-3">
-              {oauthProviders.map((provider) => (
-                <Button
-                  key={provider}
-                  variant="outline"
-                  className="h-12 w-full justify-center gap-[10px] font-medium"
-                  onClick={() => handleOAuth(provider)}
-                  disabled={oauthPending}
-                >
-                  <OAuthProviderIcon provider={provider} />
-                  Continue with {providerLabel(provider)}
-                </Button>
-              ))}
-            </div>
-            <div className="flex items-center gap-3 py-1">
-              <div className="h-px flex-1 bg-border" />
-              <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
-                or
-              </span>
-              <div className="h-px flex-1 bg-border" />
-            </div>
-          </>
+          <div className="space-y-3">
+            {oauthProviders.map((provider) => (
+              <Button
+                key={provider}
+                variant="outline"
+                className="h-12 w-full justify-center gap-[10px] font-medium"
+                onClick={() => handleOAuth(provider)}
+                disabled={oauthPending}
+              >
+                <OAuthProviderIcon provider={provider} />
+                Continue with {providerLabel(provider)}
+              </Button>
+            ))}
+          </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div role="alert" className="border bg-muted/60 p-3 text-sm text-foreground">
-              {error}
-            </div>
-          )}
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              placeholder="you@company.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoComplete="email"
-            />
+        {oauthProviders.length > 0 && hasPasswordAuth && (
+          <div className="flex items-center gap-3 py-1">
+            <div className="h-px flex-1 bg-border" />
+            <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+              or
+            </span>
+            <div className="h-px flex-1 bg-border" />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="new-password"
-              minLength={MIN_LENGTH}
-              maxLength={128}
-              aria-describedby="password-requirements"
-            />
-            {/* Inline requirements, live-checked as the user types. */}
-            <ul id="password-requirements" className="space-y-1 pt-1">
-              {[
-                { ok: lengthOk, label: "At least 12 characters" },
-                { ok: digitOk, label: "At least one number" },
-              ].map(({ ok, label }) => (
-                <li
-                  key={label}
-                  className={`flex items-center gap-2 text-[12.5px] ${
-                    ok ? "text-foreground" : "text-muted-foreground"
-                  }`}
-                >
-                  <span
-                    className={`flex h-3.5 w-3.5 items-center justify-center border ${
-                      ok ? "border-accent bg-accent/[0.15] text-accent-foreground" : "border-border"
+        )}
+
+        {!hasPasswordAuth && oauthProviders.length === 0 && (
+          <p className="py-4 text-center text-sm text-muted-foreground">
+            No sign-up methods are currently available on this deployment.
+          </p>
+        )}
+
+        {hasPasswordAuth && (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {error && (
+              <div role="alert" className="border bg-muted/60 p-3 text-sm text-foreground">
+                {error}
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="you@company.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoComplete="new-password"
+                minLength={MIN_LENGTH}
+                maxLength={128}
+                aria-describedby="password-requirements"
+              />
+              {/* Inline requirements, live-checked as the user types. */}
+              <ul id="password-requirements" className="space-y-1 pt-1">
+                {[
+                  { ok: lengthOk, label: "At least 12 characters" },
+                  { ok: digitOk, label: "At least one number" },
+                ].map(({ ok, label }) => (
+                  <li
+                    key={label}
+                    className={`flex items-center gap-2 text-[12.5px] ${
+                      ok ? "text-foreground" : "text-muted-foreground"
                     }`}
                   >
-                    {ok && <Check className="icon-sharp h-2.5 w-2.5" strokeWidth={3} />}
-                  </span>
-                  {label}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <Button type="submit" className="h-11 w-full" disabled={registerMutation.isPending}>
-            {registerMutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Creating account...
-              </>
-            ) : (
-              "Create account"
-            )}
-          </Button>
-        </form>
+                    <span
+                      className={`flex h-3.5 w-3.5 items-center justify-center border ${
+                        ok
+                          ? "border-accent bg-accent/[0.15] text-accent-foreground"
+                          : "border-border"
+                      }`}
+                    >
+                      {ok && <Check className="icon-sharp h-2.5 w-2.5" strokeWidth={3} />}
+                    </span>
+                    {label}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <Button type="submit" className="h-11 w-full" disabled={registerMutation.isPending}>
+              {registerMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating account...
+                </>
+              ) : (
+                "Create account"
+              )}
+            </Button>
+          </form>
+        )}
 
-        {config?.captcha && (
+        {hasPasswordAuth && config?.captcha && (
           <TurnstileWidget
             siteKey={config.captcha.site_key}
             onVerify={handleCaptchaVerify}

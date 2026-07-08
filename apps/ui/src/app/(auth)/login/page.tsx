@@ -45,6 +45,10 @@ const OAUTH_ERROR_COPY: Record<string, string> = {
   oauth_not_permitted:
     "That account can't be used to sign in here. Try a different account or continue with email.",
   oauth_failed: "Sign-in with the provider didn't complete. Try again or continue with email.",
+  // Permanent, not transient: the verified email already has an account bound to
+  // another sign-in method. Name the way through instead of "try again".
+  oauth_account_exists:
+    "This email already has an account. Sign in with the method you first used — your password below, or your original provider.",
 };
 
 export default function LoginPage() {
@@ -222,6 +226,24 @@ export default function LoginPage() {
                     reset your password
                   </Link>
                   .
+                  {/* Enumeration-safe pointer shown to everyone (reveals nothing
+                      about this email): an OAuth-only account has no password, so
+                      reset silently no-ops — without this line those users hit a
+                      dead end (auth-flow dead-end audit). */}
+                  {hasOAuthProviders && (
+                    <>
+                      {" "}
+                      Signed up with Google or GitHub?{" "}
+                      <button
+                        type="button"
+                        onClick={handleBack}
+                        className="font-medium underline underline-offset-2 hover:no-underline"
+                      >
+                        Go back
+                      </button>{" "}
+                      and use that instead.
+                    </>
+                  )}
                 </>
               )}
             </div>
