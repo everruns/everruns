@@ -11542,8 +11542,8 @@
         "tags": [
           "sessions"
         ],
-        "summary": "Export session messages as a JSONL file",
-        "description": "Returns all materialized messages (user, agent) as newline-delimited JSON.\nDelta events are excluded. Each line is a complete JSON object representing one message.\nThe response includes `Content-Disposition: attachment` for browser download.",
+        "summary": "Export session messages as a JSONL file (default) or as an ATIF trajectory",
+        "description": "Default (`format=jsonl`): all materialized messages (user, agent) as\nnewline-delimited JSON, one complete JSON object per line; delta events are\nexcluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document\nfolded from the session's event log (see `specs/atif-adoption.md`).\nThe response includes `Content-Disposition: attachment` for browser download.",
         "operationId": "export_session_jsonl",
         "parameters": [
           {
@@ -11554,11 +11554,20 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Output format: jsonl (default) or atif",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "JSONL file with one message per line",
+            "description": "JSONL file with one message per line, or one ATIF trajectory JSON document",
             "content": {
               "application/x-ndjson": {}
             }

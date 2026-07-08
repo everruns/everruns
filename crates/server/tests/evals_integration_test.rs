@@ -853,3 +853,197 @@ async fn test_dataset_export_cross_org_returns_not_found() {
         .expect("missing dataset get");
     assert!(missing.is_none(), "unknown dataset id is not-found");
 }
+
+// ============================================================================
+// ATIF export/import (specs/atif-adoption.md)
+// ============================================================================
+
+#[tokio::test]
+async fn test_dataset_export_atif_format_produces_atif_trajectories() {
+    use everruns_server::domains::evals::dataset::DatasetFormat;
+
+    let server = TestServer::in_memory().await;
+    let (eval_id, run_id) = seed_run_with_session_events(&server).await;
+    let service = EvalService::new(server.db.clone());
+    let caller = Caller::internal(TEST_ORG_ID);
+
+    let handle = service
+        .create_dataset_export(
+            &caller,
+            &eval_id,
+            &run_id,
+            ExportEvalRunDatasetRequest {
+                format: DatasetFormat::Atif,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("enqueue export")
+        .expect("run exists");
+    let done = await_dataset(
+        &service,
+        &caller,
+        &eval_id,
+        &run_id,
+        &handle.public_id.to_string(),
+    )
+    .await;
+    assert_eq!(done.status, EvalDatasetStatus::Completed);
+    let body = done.body.expect("completed dataset has body");
+
+    // One complete ATIF trajectory per line.
+    let lines: Vec<&str> = body.lines().filter(|l| !l.is_empty()).collect();
+    assert_eq!(lines.len(), 1);
+    let record: serde_json::Value = serde_json::from_str(lines[0]).expect("valid NDJSON record");
+    assert_eq!(record["schema_version"], json!("ATIF-v1.7"));
+    assert_eq!(record["agent"]["name"], json!("everruns"));
+
+    // Steps folded from the seeded events: user message + agent message.
+    let steps = record["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
+    assert_eq!(steps[0]["source"], json!("user"));
+    assert_eq!(steps[0]["message"], json!("hello"));
+    assert_eq!(steps[0]["step_id"], json!(1));
+    assert_eq!(steps[1]["source"], json!("agent"));
+    assert_eq!(steps[1]["step_id"], json!(2));
+
+    // Reward and case identity live at the ATIF extension point.
+    assert_eq!(record["extra"]["reward"]["pass"], json!(true));
+    assert_eq!(record["extra"]["reward"]["score"], json!(1.0));
+    assert!(record["extra"]["source_key"].is_string());
+    assert_eq!(record["extra"]["case_name"], json!("case-one"));
+
+    // Always-on secret scrubbing applies on the ATIF path too.
+    assert!(
+        !body.contains(SEEDED_SECRET),
+        "seeded secret must be scrubbed from the ATIF export"
+    );
+    assert!(body.contains("[REDACTED]"));
+}
+
+#[tokio::test]
+async fn test_atif_import_creates_and_updates_cases_idempotently() {
+    let server = TestServer::in_memory().await;
+    let eval: Eval = server
+        .post("/v1/evals", json!({ "name": "atif import eval" }))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let trajectory = json!({
+        "schema_version": "ATIF-v1.7",
+        "session_id": "session_ext_1",
+        "agent": {"name": "yolop", "version": "0.3.0"},
+        "steps": [
+            {"step_id": 1, "source": "user", "message": "What is 2+2?"},
+            {"step_id": 2, "source": "agent", "message": "4"}
+        ],
+        "extra": {"case_name": "arith-1", "reward": {"pass": true, "score": 1.0}}
+    });
+    // NDJSON body: one trajectory per line.
+    let ndjson = format!("{}\n", serde_json::to_string(&trajectory).unwrap());
+
+    let response = server
+        .request_raw(
+            axum::http::Method::POST,
+            &format!("/v1/evals/{}/atif_import", eval.public_id),
+            vec![("content-type", "application/x-ndjson")],
+            ndjson.clone().into_bytes(),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    let report = response.json_value();
+    assert_eq!(report["created"], json!(1));
+    assert_eq!(report["updated"], json!(0));
+
+    // Re-import converges (upsert by case name) instead of duplicating.
+    let response = server
+        .request_raw(
+            axum::http::Method::POST,
+            &format!("/v1/evals/{}/atif_import", eval.public_id),
+            vec![("content-type", "application/x-ndjson")],
+            ndjson.into_bytes(),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+    let report = response.json_value();
+    assert_eq!(report["created"], json!(0));
+    assert_eq!(report["updated"], json!(1));
+
+    let cases = server
+        .get(&format!("/v1/evals/{}/cases", eval.public_id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json_value();
+    let items = cases["data"].as_array().expect("cases list");
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0]["name"], json!("arith-1"));
+    assert_eq!(
+        items[0]["conversation"][0]["content"],
+        json!("What is 2+2?")
+    );
+    let description = items[0]["description"].as_str().unwrap();
+    assert!(description.contains("Reference final agent message"));
+
+    // Malformed payloads are rejected with 400.
+    server
+        .request_raw(
+            axum::http::Method::POST,
+            &format!("/v1/evals/{}/atif_import", eval.public_id),
+            vec![("content-type", "application/json")],
+            b"{\"schema_version\": \"OTHER-v1\", \"steps\": []}".to_vec(),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_session_export_atif_format() {
+    let server = TestServer::in_memory().await;
+    // Reuse the dataset-export seed: it creates a session with input/output
+    // message events (plus a credential the export must scrub).
+    let (eval_id, run_id) = seed_run_with_session_events(&server).await;
+    let service = EvalService::new(server.db.clone());
+    let caller = Caller::internal(TEST_ORG_ID);
+    let run = service
+        .get_run(&caller, &eval_id, &run_id)
+        .await
+        .expect("get run")
+        .expect("run exists");
+    let session_id = run.results[0].session_id.expect("case session");
+
+    let response = server
+        .get(&format!("/v1/sessions/{}/export?format=atif", session_id))
+        .await
+        .assert_status(StatusCode::OK);
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "application/json"
+    );
+    let disposition = response
+        .headers()
+        .get("content-disposition")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(disposition.contains(&format!("{}.atif.json", session_id)));
+
+    let body = response.text();
+    let trajectory: serde_json::Value = serde_json::from_str(&body).expect("single JSON document");
+    assert_eq!(trajectory["schema_version"], json!("ATIF-v1.7"));
+    assert_eq!(trajectory["session_id"], json!(session_id.to_string()));
+    let steps = trajectory["steps"].as_array().expect("steps");
+    assert_eq!(steps[0]["source"], json!("user"));
+    assert!(!body.contains(SEEDED_SECRET), "secret must be scrubbed");
+
+    // Default format is unchanged: JSONL with one message per line.
+    let response = server
+        .get(&format!("/v1/sessions/{}/export", session_id))
+        .await
+        .assert_status(StatusCode::OK);
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "application/x-ndjson"
+    );
+}

@@ -127,10 +127,25 @@ pub struct ExportSessionJsonl {
     pub body: String,
 }
 
+/// Output format for session export.
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SessionExportFormat {
+    /// One materialized message per line (`application/x-ndjson`).
+    #[default]
+    Jsonl,
+    /// A single ATIF trajectory document folded from the session's event log
+    /// (`application/json`). See `specs/atif-adoption.md`.
+    Atif,
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ExportSessionMessages {
     /// Session's prefixed public identifier.
     pub session_id: String,
+    /// Output format (defaults to `jsonl`).
+    #[serde(default)]
+    pub format: SessionExportFormat,
 }
 
 impl Command for ExportSessionMessages {
@@ -157,6 +172,29 @@ impl Command for ExportSessionMessages {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Session"))?;
+
+        if self.format == SessionExportFormat::Atif {
+            // Fold the full event log into one ATIF trajectory document.
+            // Secret scrubbing is always applied by the ATIF builder.
+            let event_service = crate::services::EventService::new(
+                ctx.db.clone(),
+                crate::event_delivery::EventDelivery::in_memory(),
+            );
+            let events = event_service
+                .list(session_id.uuid(), None, None, &[], &[], None, None)
+                .await
+                .map_err(classify_anyhow)?;
+            let trajectory = crate::atif::build_trajectory(
+                Some(&session_id.to_string()),
+                &events,
+                serde_json::Map::new(),
+                crate::atif::AtifOptions::default(),
+            );
+            let body =
+                serde_json::to_string(&trajectory).map_err(|e| CommandError::internal(e.into()))?;
+            return Ok(ExportSessionJsonl { body });
+        }
+
         let messages = q::message_service(ctx)?
             .list(session_id.uuid())
             .await
