@@ -51,10 +51,11 @@ before performing external writes.
 
 ### `spawn_agent` (`target.type = "agent"`)
 
-Handoff-only sessions also expose the unified delegation tool with
-`target.type = "agent"` when no other `spawn_agent` provider is active. This is
-the migration path toward the single delegation surface described in
-`specs/session-tasks.md`.
+Sessions with `agent_handoff` enabled advertise `agent` in the shared
+`spawn_agent` dispatcher's `target.type` enum. The dispatcher can advertise
+other active known delegation providers alongside `agent` (for example
+subagents or external A2A), which is the migration path toward the single
+delegation surface described in `specs/session-tasks.md`.
 
 Parameters:
 

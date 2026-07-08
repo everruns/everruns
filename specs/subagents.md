@@ -83,16 +83,16 @@ See `crates/server/migrations/009_subagents.sql` for schema changes.
 
 ### spawn_agent (`target.type = "subagent"`)
 
-During the unified delegation migration, sessions with `subagents` enabled and
-no other `spawn_agent` provider advertise `spawn_agent` with a single supported
-target type: `subagent`. The wrapper uses the same behavior as
-`spawn_subagent`: it creates a child session with `parent_session_id` set,
-creates a `TASK_KIND_SUBAGENT` task, defaults to background mode, and supports
-`mode: "foreground"` for blocking execution.
+During the unified delegation migration, sessions with `subagents` enabled
+advertise `subagent` in the shared `spawn_agent` dispatcher's `target.type`
+enum. The dispatcher routes to the same behavior as `spawn_subagent`: it creates
+a child session with `parent_session_id` set, creates a `TASK_KIND_SUBAGENT`
+task, defaults to background mode, and supports `mode: "foreground"` for
+blocking execution.
 
-This adapter is conditional so it does not shadow other current `spawn_agent`
-providers such as external A2A. Once all delegation targets share one dispatcher,
-`spawn_subagent` can retire.
+The dispatcher can advertise other active known delegation providers alongside
+`subagent` (for example first-party handoff or external A2A). Once all legacy
+references are migrated, `spawn_subagent` can retire.
 
 ### spawn_subagent
 
