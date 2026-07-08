@@ -14,6 +14,14 @@ Each line is a JSON object representing one message (user or agent).
 Tool results are embedded as `tool_result` content parts within agent messages.
 Delta events are excluded — only materialized messages are exported.
 
+### `?format=atif`
+
+`GET /v1/sessions/{session_id}/export?format=atif` returns a single ATIF-v1.7
+trajectory JSON document instead (Content-Type `application/json`, filename
+`{session_id}.atif.json`), folded from the session's event log with always-on
+secret scrubbing. See `specs/atif-adoption.md`. The default (`jsonl`) behavior
+is unchanged.
+
 ### JSONL line schema
 
 ```json

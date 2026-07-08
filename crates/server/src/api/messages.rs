@@ -10,7 +10,9 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
-use crate::domains::messages::{CreateMessage, ExportSessionMessages, ListMessages};
+use crate::domains::messages::{
+    CreateMessage, ExportSessionMessages, ListMessages, SessionExportFormat,
+};
 use crate::middleware::RequestId;
 use crate::storage::StorageBackend;
 use axum::{
@@ -299,19 +301,30 @@ pub async fn list_messages(
     Ok(Json(ListResponse::new(messages)))
 }
 
-/// Export session messages as a JSONL file
+/// Query parameters for session export.
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+pub struct ExportSessionQuery {
+    /// Output format: `jsonl` (default) or `atif`.
+    #[serde(default)]
+    pub format: SessionExportFormat,
+}
+
+/// Export session messages as a JSONL file (default) or as an ATIF trajectory
 ///
-/// Returns all materialized messages (user, agent) as newline-delimited JSON.
-/// Delta events are excluded. Each line is a complete JSON object representing one message.
+/// Default (`format=jsonl`): all materialized messages (user, agent) as
+/// newline-delimited JSON, one complete JSON object per line; delta events are
+/// excluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document
+/// folded from the session's event log (see `specs/atif-adoption.md`).
 /// The response includes `Content-Disposition: attachment` for browser download.
 #[utoipa::path(
     get,
     path = "/v1/sessions/{session_id}/export",
     params(
-        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)"),
+        ("format" = Option<String>, Query, description = "Output format: jsonl (default) or atif")
     ),
     responses(
-        (status = 200, description = "JSONL file with one message per line", content_type = "application/x-ndjson"),
+        (status = 200, description = "JSONL file with one message per line, or one ATIF trajectory JSON document", content_type = "application/x-ndjson"),
         (status = 400, description = "Invalid ID format"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Session not found"),
@@ -323,20 +336,22 @@ pub async fn export_session_jsonl(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
+    axum::extract::Query(query): axum::extract::Query<ExportSessionQuery>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
     let export = ExportSessionMessages {
         session_id: session_id.clone(),
+        format: query.format,
     }
     .run(&state.ctx(&org))
     .await?;
-    let filename = format!("{}.jsonl", session_id);
+    let (content_type, filename) = match query.format {
+        SessionExportFormat::Jsonl => ("application/x-ndjson", format!("{}.jsonl", session_id)),
+        SessionExportFormat::Atif => ("application/json", format!("{}.atif.json", session_id)),
+    };
     Ok((
         StatusCode::OK,
         [
-            (
-                axum::http::header::CONTENT_TYPE,
-                "application/x-ndjson".to_string(),
-            ),
+            (axum::http::header::CONTENT_TYPE, content_type.to_string()),
             (
                 axum::http::header::CONTENT_DISPOSITION,
                 format!("attachment; filename=\"{}\"", filename),
