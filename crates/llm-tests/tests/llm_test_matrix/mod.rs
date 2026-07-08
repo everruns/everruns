@@ -138,13 +138,15 @@ pub const OPENROUTER_GPT4O_MINI: ProviderModelConfig = ProviderModelConfig::new(
 // API. The point of this case is to exercise our OpenAI-protocol driver's
 // streaming + tool-calling path against a third (non-OpenAI/Azure) host — not
 // to probe a model's intelligence — so the model must call tools reliably for
-// the `test_tool_call` assertion to be deterministic. Llama 3.3 70B Instruct is
-// a dependable tool-caller; the previous `gpt-oss-120b` (an open reasoning
-// model) inconsistently emitted tool calls and flaked the "must call tool"
-// assert (see the #2550/#2556 live-matrix history).
-pub const FIREWORKS_LLAMA33: ProviderModelConfig = ProviderModelConfig::new(
+// the `test_tool_call` assertion to be deterministic. Kimi K2 is purpose-built
+// for agentic tool use and calls tools deterministically. Fireworks has
+// churned its serverless catalog repeatedly: `gpt-oss-120b` flaked the "must
+// call tool" assert (#2550/#2556), and `llama-v3p3-70b-instruct` (#2597) was
+// then de-listed from the account entirely ("Model not available"). Kimi K2 is
+// a current, dependable tool-caller in the served catalog.
+pub const FIREWORKS_KIMI_K2: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Fireworks,
-    "accounts/fireworks/models/llama-v3p3-70b-instruct",
+    "accounts/fireworks/models/kimi-k2p6",
     "FIREWORKS_API_KEY",
 );
 
