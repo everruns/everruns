@@ -122,9 +122,15 @@ test.describe("Unified auth door", () => {
     await page.getByLabel("Password", { exact: true }).fill("longenoughpass1");
     await page.getByRole("button", { name: "Create account" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Check your email" })).toBeVisible();
-    // Full-phrase assertion: guards the space between the email and the copy,
-    // which a substring match would miss (the JSX pipeline once ate it).
-    await expect(page.getByText("new@acme.com can be registered")).toBeVisible();
+    // Full-sentence assertion: guards every word boundary in the copy — the
+    // JSX pipeline once ate the space after the email, and a substring match
+    // let it through.
+    await expect(
+      page.getByText(
+        "If new@acme.com can be registered, we've sent a confirmation link. " +
+          "Click it to verify your email and get started — the link signs you in.",
+      ),
+    ).toBeVisible();
     expect(registered).toBe(true);
   });
 

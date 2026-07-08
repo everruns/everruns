@@ -99,8 +99,8 @@ export default function SignupPage() {
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
           If <b className="font-medium text-foreground">{submittedEmail}</b>
-          {" can be registered, we've sent a confirmation link."}{" "}
-          Click it to verify your email and get started — the link signs you in.
+          {" can be registered, we've sent a confirmation link. Click it to verify"}
+          {" your email and get started — the link signs you in."}
         </p>
         <p className="mt-6 text-[13px] text-muted-foreground">
           Wrong address?{" "}
