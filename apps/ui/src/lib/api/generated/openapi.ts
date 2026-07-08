@@ -2863,9 +2863,11 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Export session messages as a JSONL file
-     * @description Returns all materialized messages (user, agent) as newline-delimited JSON.
-     *     Delta events are excluded. Each line is a complete JSON object representing one message.
+     * Export session messages as a JSONL file (default) or as an ATIF trajectory
+     * @description Default (`format=jsonl`): all materialized messages (user, agent) as
+     *     newline-delimited JSON, one complete JSON object per line; delta events are
+     *     excluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document
+     *     folded from the session's event log (see `specs/atif-adoption.md`).
      *     The response includes `Content-Disposition: attachment` for browser download.
      */
     get: operations["export_session_jsonl"];
@@ -26455,7 +26457,10 @@ export interface operations {
   };
   export_session_jsonl: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Output format: jsonl (default) or atif */
+        format?: string;
+      };
       header?: never;
       path: {
         /** @description Session ID (prefixed, e.g., session_...) */
@@ -26465,7 +26470,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description JSONL file with one message per line */
+      /** @description JSONL file with one message per line, or one ATIF trajectory JSON document */
       200: {
         headers: {
           [name: string]: unknown;

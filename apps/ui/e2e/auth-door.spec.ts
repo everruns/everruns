@@ -154,9 +154,55 @@ test.describe("Unified auth door", () => {
     await expect(alert()).toContainText("Sign-in was cancelled");
     await page.goto("/login?error=oauth_not_permitted");
     await expect(alert()).toContainText("can't be used to sign in here");
+    // A permanent "already registered" refusal must name the way through, not
+    // the transient "try again" copy (auth-flow dead-end audit).
+    await page.goto("/login?error=oauth_account_exists");
+    await expect(alert()).toContainText("already has an account");
     // Unknown categories fall back to the generic copy, never raw text.
     await page.goto("/login?error=<script>alert(1)</script>");
     await expect(alert()).toContainText("didn't complete");
+  });
+
+  test("credential failure points OAuth users back to their provider", async ({ page }) => {
+    await page.route("**/v1/auth/login", (route) =>
+      route.fulfill({ status: 401, json: { error: "Invalid email or password" } }),
+    );
+    await page.goto("/login");
+    await page.getByLabel("Email").fill("googler@acme.com");
+    await page.getByRole("button", { name: "Continue with email" }).click();
+    await page.getByLabel("Password", { exact: true }).fill("wrong-password");
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    const alert = page.getByRole("alert").filter({ hasText: /\S/ });
+    // The OAuth-only reset trap: reset no-ops for these accounts, so the alert
+    // must also offer the provider path. "Go back" returns to the SSO buttons.
+    await expect(alert).toContainText("Signed up with Google or GitHub");
+    await alert.getByRole("button", { name: "Go back" }).click();
+    await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
+  });
+
+  test("signup hides the password form when password auth is disabled", async ({ page }) => {
+    await mockAuthConfig(page, { ...AUTH_CONFIG, password_auth_enabled: false });
+    await page.goto("/signup");
+    // OAuth stays; the password form (which would 403) must not render.
+    await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
+    await expect(page.getByLabel("Password", { exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Create account" })).toHaveCount(0);
+  });
+
+  test("verify-email dead link lets the user request a fresh one in place", async ({ page }) => {
+    let resendEmail: string | null = null;
+    await page.route("**/v1/auth/resend-verification", (route, request) => {
+      resendEmail = (request.postDataJSON() as { email: string }).email;
+      return route.fulfill({ json: { ok: true } });
+    });
+    // No token, no email = the former dead end ("sign in to request…").
+    await page.goto("/verify-email");
+    await expect(page.getByRole("heading", { level: 1, name: "Verification failed" })).toBeVisible();
+    // Now self-serve: enter an email and get a new link without leaving.
+    await page.getByLabel(/Enter your email/).fill("stuck@acme.com");
+    await page.getByRole("button", { name: /Resend/ }).click();
+    await expect.poll(() => resendEmail).toBe("stuck@acme.com");
+    await expect(page.getByText("we've sent a new verification link")).toBeVisible();
   });
 
   test("signup disabled hides the create-account link and closes /signup", async ({ page }) => {

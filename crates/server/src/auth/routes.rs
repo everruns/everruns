@@ -224,6 +224,10 @@ pub struct UserInfoResponse {
     pub name: String,
     pub roles: Vec<String>,
     pub avatar_url: Option<String>,
+    /// Whether the account's email address has been verified. Drives the
+    /// in-app "verify your email" nudge so a signed-in but unverified user has
+    /// a surfaced path to verification (auth-flow dead-end audit).
+    pub email_verified: bool,
     /// Organizations the user belongs to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organizations: Option<Vec<OrgMembershipResponse>>,
@@ -1058,6 +1062,18 @@ pub async fn get_current_user(
         jar
     };
 
+    // Fetch the verified flag from the DB row (AuthUser does not carry it).
+    // Default to `true` when the row is absent (e.g. the anonymous user in
+    // `none` mode) so we never nag a principal whose mailbox we can't check.
+    let email_verified = state
+        .db
+        .get_user(user.id)
+        .await
+        .ok()
+        .flatten()
+        .map(|u| u.email_verified)
+        .unwrap_or(true);
+
     (
         jar,
         Json(UserInfoResponse {
@@ -1066,6 +1082,7 @@ pub async fn get_current_user(
             name: user.name,
             roles: user.roles,
             avatar_url: None,
+            email_verified,
             organizations,
         }),
     )
@@ -1181,10 +1198,15 @@ pub async fn oauth_callback(
     match oauth_callback_inner(&state, &headers, &provider, &code, &cb_state, jar).await {
         Ok(ok) => ok,
         Err(e) => {
-            let category = if e.status == StatusCode::FORBIDDEN {
-                "oauth_not_permitted"
-            } else {
-                "oauth_failed"
+            // Map the failure onto a coarse, safe category the login page renders
+            // as fixed copy. CONFLICT is the "your verified email already has an
+            // account — use your original method" case: a PERMANENT condition, so
+            // it must not fall into the generic "didn't complete, try again"
+            // bucket that implies a transient error (auth-flow dead-end audit).
+            let category = match e.status {
+                StatusCode::FORBIDDEN => "oauth_not_permitted",
+                StatusCode::CONFLICT => "oauth_account_exists",
+                _ => "oauth_failed",
             };
             (cleared_jar, oauth_failure_redirect(&state.config, category))
         }
@@ -1318,7 +1340,14 @@ async fn oauth_callback_inner(
                     reason = reason,
                     "OAuth login blocked: existing same-email account is not safe to auto-link"
                 );
-                return Err(AuthError::unauthorized(GENERIC_REGISTRATION_FAILED));
+                // 409, not the generic 401: the caller completed the provider
+                // handshake and thus owns this mailbox, so we can safely tell them
+                // the account already exists and to use their original method,
+                // rather than the misleading transient "try again" (dead-end
+                // audit). Still no auto-link — that remains refused (TM-AUTH-012).
+                return Err(AuthError::conflict(
+                    "This email already has an Everruns account. Sign in with your original method.",
+                ));
             }
 
             let linked = state

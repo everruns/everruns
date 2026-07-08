@@ -116,6 +116,7 @@ describe("Auth Hooks", () => {
         email: "test@example.com",
         name: "Test User",
         roles: ["user"],
+        email_verified: true,
       };
 
       mockLogin.mockResolvedValueOnce(mockTokenResponse);
@@ -169,6 +170,7 @@ describe("Auth Hooks", () => {
           email: "test@example.com",
           name: "Test User",
           roles: ["user"],
+          email_verified: true,
         };
       });
 
@@ -195,6 +197,7 @@ describe("Auth Hooks", () => {
         email: "test@example.com",
         name: "Test User",
         roles: ["user"],
+        email_verified: true,
       };
 
       mockLogin.mockResolvedValueOnce({
@@ -236,6 +239,7 @@ describe("Auth Hooks", () => {
         email: "new@example.com",
         name: "New User",
         roles: ["user"],
+        email_verified: true,
       };
 
       mockRegister.mockResolvedValueOnce(mockTokenResponse);
@@ -288,6 +292,7 @@ describe("Auth Hooks", () => {
           email: "new@example.com",
           name: "New User",
           roles: ["user"],
+          email_verified: true,
         };
       });
 
@@ -312,6 +317,7 @@ describe("Auth Hooks", () => {
         email: "old@example.com",
         name: "Old User",
         roles: ["admin"],
+        email_verified: true,
       };
       await initializeUserQuery(oldUser);
 
@@ -320,6 +326,7 @@ describe("Auth Hooks", () => {
         email: "new@example.com",
         name: "New User",
         roles: ["user"],
+        email_verified: true,
       };
 
       mockRegister.mockResolvedValueOnce({
@@ -354,6 +361,7 @@ describe("Auth Hooks", () => {
         email: "test@example.com",
         name: "Test User",
         roles: ["user"],
+        email_verified: true,
       };
       queryClient.setQueryData(authKeys.user(), mockUser);
       queryClient.setQueryData(authKeys.personalAccessTokens(DEFAULT_ORG.public_id), [
@@ -398,6 +406,7 @@ describe("Auth Hooks", () => {
         email: "test@example.com",
         name: "Test User",
         roles: ["user"],
+        email_verified: true,
       });
 
       // Verify user exists before logout
