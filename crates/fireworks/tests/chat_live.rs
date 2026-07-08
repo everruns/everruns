@@ -3,7 +3,7 @@
 //! Exercises a real streamed chat completion through `FireworksChatDriver` plus
 //! live `/models` discovery and profile mapping. These are the live counterparts
 //! to the wiremock unit tests. (Live tool-calling is covered by the shared
-//! `everruns-llm-tests` matrix via the `FIREWORKS_GPT_OSS` case.)
+//! `everruns-llm-tests` matrix via the `FIREWORKS_KIMI_K2` case.)
 //!
 //! Ignored by default (requires network + `FIREWORKS_API_KEY`); run manually:
 //!   `doppler run -- cargo test -p everruns-fireworks --test chat_live -- --ignored --nocapture`
