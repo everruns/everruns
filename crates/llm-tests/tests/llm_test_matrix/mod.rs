@@ -135,11 +135,16 @@ pub const OPENROUTER_GPT4O_MINI: ProviderModelConfig = ProviderModelConfig::new(
 );
 
 // Fireworks AI serves open models via an OpenAI-compatible Chat Completions
-// API. gpt-oss-120b is a chat + tool-calling model. Exercises the Chat
-// Completions streaming path against a third (non-OpenAI/Azure) host.
-pub const FIREWORKS_GPT_OSS: ProviderModelConfig = ProviderModelConfig::new(
+// API. The point of this case is to exercise our OpenAI-protocol driver's
+// streaming + tool-calling path against a third (non-OpenAI/Azure) host — not
+// to probe a model's intelligence — so the model must call tools reliably for
+// the `test_tool_call` assertion to be deterministic. Llama 3.3 70B Instruct is
+// a dependable tool-caller; the previous `gpt-oss-120b` (an open reasoning
+// model) inconsistently emitted tool calls and flaked the "must call tool"
+// assert (see the #2550/#2556 live-matrix history).
+pub const FIREWORKS_LLAMA33: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Fireworks,
-    "accounts/fireworks/models/gpt-oss-120b",
+    "accounts/fireworks/models/llama-v3p3-70b-instruct",
     "FIREWORKS_API_KEY",
 );
 
