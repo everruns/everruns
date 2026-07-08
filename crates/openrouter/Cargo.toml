@@ -34,7 +34,7 @@ chrono.workspace = true
 # default-features = false sheds core's heavy optional subtrees (telemetry/OTLP,
 # a2a gRPC, web-fetch/fetchkit) that an OpenRouter provider does not need. This
 # is what keeps the standalone `everruns-openrouter` dependency tree small.
-everruns-core = { path = "../core", version = "0.17.4", default-features = false }
+everruns-core = { path = "../core", version = "0.17.5", default-features = false }
 
 [dev-dependencies]
 # tokio powers `#[tokio::test]`; wiremock captures driver requests; futures

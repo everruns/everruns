@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.17.5] - 2026-07-08
+
+### Highlights
+
+- **Public Chat** — Turn an App into a standalone, branded public-facing chat site behind a feature flag, with anonymous or Google sign-in and Turnstile bot protection ([#2400](https://github.com/everruns/everruns/pull/2400)).
+- **Redesigned sign-up & login** — Explicit signup path with an email-confirmation gate, unified auth entry, and clearer credential-failure recovery ([#2574](https://github.com/everruns/everruns/pull/2574), [#2572](https://github.com/everruns/everruns/pull/2572), [#2571](https://github.com/everruns/everruns/pull/2571), [#2573](https://github.com/everruns/everruns/pull/2573), [#2570](https://github.com/everruns/everruns/pull/2570)).
+- **Eval run share links** — Publish read-only, revocable share links for eval runs ([#2565](https://github.com/everruns/everruns/pull/2565)).
+- **Background subagents** — `spawn_subagent` now runs in the background by default, waking the parent on completion ([#2576](https://github.com/everruns/everruns/pull/2576)).
+- **Claude Sonnet 5 model support** ([#2583](https://github.com/everruns/everruns/pull/2583)).
+
+### What's Changed
+
+- feat(runtime): add multi-root host workspace mounts by [@chaliy](https://github.com/chaliy)
+- feat(auth): link OAuth identity to existing account by verified email ([#2570](https://github.com/everruns/everruns/pull/2570)) by [@chaliy](https://github.com/chaliy)
+- feat(evals): read-only share links for eval runs ([#2565](https://github.com/everruns/everruns/pull/2565)) by [@chaliy](https://github.com/chaliy)
+- fix(server): map MCP/plugin validation errors to 400 ([#2534](https://github.com/everruns/everruns/pull/2534)) by [@chaliy](https://github.com/chaliy)
+- feat(public-chat): isolated public chat app behind feature flag ([#2400](https://github.com/everruns/everruns/pull/2400)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): unified auth entry and onboarding arc continuity ([#2571](https://github.com/everruns/everruns/pull/2571)) by [@chaliy](https://github.com/chaliy)
+- feat(auth): abuse limits, password cap, logout revoke, oauth UX ([#2572](https://github.com/everruns/everruns/pull/2572)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): offer password reset from login credential-failure alert ([#2573](https://github.com/everruns/everruns/pull/2573)) by [@chaliy](https://github.com/chaliy)
+- feat(auth): explicit signup path with email-confirm gate ([#2574](https://github.com/everruns/everruns/pull/2574)) by [@chaliy](https://github.com/chaliy)
+- feat(subagents): background spawn_subagent with foreground opt-in ([#2576](https://github.com/everruns/everruns/pull/2576)) by [@chaliy](https://github.com/chaliy)
+- feat(models): add Claude Sonnet 5 model profile ([#2583](https://github.com/everruns/everruns/pull/2583)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): require verified email before auto-linking OAuth identity ([#2575](https://github.com/everruns/everruns/pull/2575)) by [@chaliy](https://github.com/chaliy)
+- fix(budgets): meter cached prompt tokens ([#2579](https://github.com/everruns/everruns/pull/2579)) by [@chaliy](https://github.com/chaliy)
+- fix(evals): bound oversized run case loading ([#2581](https://github.com/everruns/everruns/pull/2581)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): rate limit session forks ([#2580](https://github.com/everruns/everruns/pull/2580)) by [@chaliy](https://github.com/chaliy)
+- fix(guardrails): buffer post-output guarded deltas ([#2578](https://github.com/everruns/everruns/pull/2578)) by [@chaliy](https://github.com/chaliy)
+- fix(apps): harden schedule channel limits ([#2582](https://github.com/everruns/everruns/pull/2582)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): reject forged parent links ([#2577](https://github.com/everruns/everruns/pull/2577)) by [@chaliy](https://github.com/chaliy)
+- feat(bashkit): egress-routed outbound HTTP behind enable_http config ([#2588](https://github.com/everruns/everruns/pull/2588)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump rust 1.96.0 to 1.96.1-slim-bookworm in /docker ([#2586](https://github.com/everruns/everruns/pull/2586)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump rust 1.96.0-slim to 1.96.1-slim in /crates/worker ([#2585](https://github.com/everruns/everruns/pull/2585)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump rust 1.96.0-slim to 1.96.1-slim in /crates/server ([#2584](https://github.com/everruns/everruns/pull/2584)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump cargo group (ed25519-dalek 3, mlua 0.12, aws-smithy-types 1.6) ([#2589](https://github.com/everruns/everruns/pull/2589)) by [@dependabot](https://github.com/apps/dependabot)
+
 ## [0.17.4] - 2026-07-05
 
 ### Highlights
