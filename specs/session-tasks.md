@@ -50,7 +50,7 @@ IDs use the `task_` prefix per `specs/id-schema.md`.
 |---|---|
 | `id` | `task_*` public ID |
 | `session_id` | Owning session; `ON DELETE CASCADE` |
-| `kind` | `subagent`, `external_agent`, `background_tool`, `monitor`, … |
+| `kind` | `subagent`, `agent_handoff`, `external_agent`, `background_tool`, `monitor`, … |
 | `display_name` | Human label ("Test Runner") |
 | `spec` | Kind-specific input (instructions, tool args, external agent id) |
 | `state` | See state machine below |
@@ -337,9 +337,10 @@ session's effective network ACL (harness chain → agent → session overlay fol
 if the ACL cannot be computed the executor call is skipped with a `warn`.
 
 Specifically:
-- `POST …/messages`: rejected with 400 for `subagent`-kind tasks — subagent
-  steering is done exclusively by the parent agent via the `message_task` tool;
-  `links.child_session_id` exposes the child session for direct addressing. For
+- `POST …/messages`: rejected with 400 for `subagent`- and `agent_handoff`-kind
+  tasks — both are steered exclusively by the parent agent (via the
+  `message_task` / `message_agent_handoff` tools); `links.child_session_id`
+  exposes the child session for direct addressing. For
   all other kinds the message is recorded durably, the task is re-fetched (it
   may have transitioned to `running` if the message answered an input request),
   and `executor.deliver` is called. For kinds without a registered executor the

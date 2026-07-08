@@ -10,8 +10,8 @@ use super::util::{get_platform_store, require_str_nonblank as require_str};
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext};
 use crate::session::SubagentStatus;
 use crate::session_task::{
-    CreateSessionTask, SessionTaskFilter, SessionTaskState, SessionTaskUpdate, TASK_KIND_SUBAGENT,
-    TaskError, TaskLinks, TaskWakePolicy,
+    CreateSessionTask, SessionTaskFilter, SessionTaskState, SessionTaskUpdate,
+    TASK_KIND_AGENT_HANDOFF, TaskError, TaskLinks, TaskWakePolicy,
 };
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
@@ -522,7 +522,7 @@ impl Tool for StartAgentHandoffTool {
                     .create(CreateSessionTask {
                         session_id: context.session_id,
                         id: None,
-                        kind: TASK_KIND_SUBAGENT.to_string(),
+                        kind: TASK_KIND_AGENT_HANDOFF.to_string(),
                         display_name: target.name.clone(),
                         spec: json!({
                             "target_id": &target.id,
@@ -698,7 +698,7 @@ impl Tool for GetAgentHandoffsTool {
             .list(
                 context.session_id,
                 Some(&SessionTaskFilter {
-                    kind: Some(TASK_KIND_SUBAGENT.to_string()),
+                    kind: Some(TASK_KIND_AGENT_HANDOFF.to_string()),
                     state: None,
                 }),
             )
@@ -711,10 +711,10 @@ impl Tool for GetAgentHandoffsTool {
         let handoffs = tasks
             .into_iter()
             .filter_map(|task| {
-                // Subagent-kind tasks cover both spawn_subagent and handoffs;
-                // only handoff tasks carry `target_id`/`external_agent_id` in
-                // their spec (set by start_agent_handoff), so use that to
-                // exclude plain subagents.
+                // Handoff tasks are their own kind (`agent_handoff`), so the
+                // registry filter above already excludes plain `subagent` tasks.
+                // Every handoff task carries `target_id`/`external_agent_id` in
+                // its spec (set by start_agent_handoff); read it for the output.
                 let target_id = task.spec.get("target_id").and_then(Value::as_str)?;
                 let child_session_id = task.links.child_session_id?;
                 let handoff_id_str = child_session_id.to_string();
@@ -857,7 +857,9 @@ mod tests {
     use crate::Result;
     use crate::capabilities::session_tasks::tests::InMemorySessionTaskRegistry;
     use crate::platform_store::tests::MockPlatformStore;
-    use crate::session_task::{CreateSessionTask, SessionTaskRegistry, TaskLinks};
+    use crate::session_task::{
+        CreateSessionTask, SessionTaskRegistry, TASK_KIND_SUBAGENT, TaskLinks,
+    };
     use crate::tools::{Tool, ToolExecutionResult};
     use crate::traits::UserConnectionResolver;
     use crate::typed_id::SessionId;
@@ -1165,11 +1167,10 @@ mod tests {
             .create(CreateSessionTask {
                 session_id: parent_id,
                 id: None,
-                kind: TASK_KIND_SUBAGENT.to_string(),
+                kind: TASK_KIND_AGENT_HANDOFF.to_string(),
                 display_name: "AWS Operator".to_string(),
-                // Handoff tasks carry target_id/external_agent_id in spec;
-                // get_agent_handoffs filters on target_id to exclude plain
-                // spawn_subagent tasks.
+                // Handoff tasks use the dedicated `agent_handoff` kind and carry
+                // target_id/external_agent_id in spec.
                 spec: json!({ "target_id": "aws", "external_agent_id": "agent_aws" }),
                 state: SessionTaskState::Succeeded,
                 links: TaskLinks {
@@ -1200,8 +1201,9 @@ mod tests {
 
     #[tokio::test]
     async fn get_handoffs_excludes_plain_subagent_tasks() {
-        // A subagent-kind task without target_id in spec is a plain
-        // spawn_subagent, not a handoff — it must not be listed.
+        // A `subagent`-kind task is a plain spawn_subagent, not a handoff
+        // (which now uses the dedicated `agent_handoff` kind) — it must not be
+        // listed by get_agent_handoffs.
         let parent_id = SessionId::new();
         let child_id = SessionId::new();
         let store = Arc::new(MockPlatformStore::new());
