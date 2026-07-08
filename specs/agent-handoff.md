@@ -69,15 +69,21 @@ Behavior:
 3. If a connection is missing, return `connection_required(provider)`.
 4. Create a child session with the target `agent_id`.
 5. Persist parent/child metadata through the existing subagent session fields.
-6. Register a `session_resources.kind = "agent_handoff"` entry.
+6. Create a `session_tasks` row of kind `agent_handoff` (distinct from
+   `subagent`) with `links.child_session_id` set and `spec` carrying
+   `target_id`/`external_agent_id`/`mode`.
 7. Send the task to the child session.
 8. Block until the child session idles and return its last assistant message.
 
 ### `get_agent_handoffs`
 
-Lists handoff resources for the current session. When the session resource
-registry is available, this uses `session_resources`; otherwise it falls back to
-child-session metadata.
+Lists handoffs for the current session by reading the session task registry for
+tasks of kind `agent_handoff`. Because handoffs have their own kind,
+`list_tasks(kind="subagent")` and this listing are disjoint — plain
+`spawn_subagent` tasks are never reported as handoffs. Each task's
+`display_name`/`state` supply the handoff name/status,
+`links.child_session_id` the child session, and `spec.target_id`/
+`external_agent_id` the target.
 
 ### `message_agent_handoff`
 

@@ -3,8 +3,8 @@ use crate::domains::common::*;
 use crate::domains::sessions::{SESSION_MANAGE, SESSION_VIEW};
 use everruns_core::SessionTask;
 use everruns_core::session_task::{
-    NewTaskMessage, SessionTaskFilter, SessionTaskRegistry, SessionTaskState, TASK_KIND_SUBAGENT,
-    TaskMessage, TaskMessagePart, find_task_executor,
+    NewTaskMessage, SessionTaskFilter, SessionTaskRegistry, SessionTaskState,
+    TASK_KIND_AGENT_HANDOFF, TASK_KIND_SUBAGENT, TaskMessage, TaskMessagePart, find_task_executor,
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -264,10 +264,10 @@ impl Command for PostSessionTaskMessage {
             .await?
             .ok_or_else(|| CommandError::not_found("Session task"))?;
 
-        if task.kind == TASK_KIND_SUBAGENT {
+        if task.kind == TASK_KIND_SUBAGENT || task.kind == TASK_KIND_AGENT_HANDOFF {
             return Err(CommandError::bad_request(
-                "Subagent tasks are steered by their parent agent via the message_task tool; \
-                 HTTP message delivery is not supported for this task kind.",
+                "Subagent and agent-handoff tasks are steered by their parent agent via the \
+                 message_task tool; HTTP message delivery is not supported for this task kind.",
             ));
         }
 
@@ -445,8 +445,8 @@ mod tests {
     use everruns_core::network_access::NetworkAccessList;
     use everruns_core::session_task::{
         CreateSessionTask, NewTaskMessage, SessionTaskRegistry, SessionTaskState,
-        TASK_KIND_BACKGROUND_TOOL, TASK_KIND_MONITOR, TASK_KIND_SUBAGENT, TaskLinks,
-        TaskMessagePart, TaskWakePolicy,
+        TASK_KIND_AGENT_HANDOFF, TASK_KIND_BACKGROUND_TOOL, TASK_KIND_MONITOR, TASK_KIND_SUBAGENT,
+        TaskLinks, TaskMessagePart, TaskWakePolicy,
     };
     use everruns_core::{Caller, DEFAULT_ORG_ID, HarnessId, PrincipalId};
     use std::sync::Arc;
@@ -822,6 +822,57 @@ mod tests {
         assert!(
             messages.is_empty(),
             "no message must be persisted for subagent tasks"
+        );
+    }
+
+    /// Handoff tasks are also parent-steered (via message_agent_handoff), so the
+    /// HTTP message endpoint must reject them exactly like subagent tasks.
+    #[tokio::test]
+    async fn post_message_to_agent_handoff_task_returns_bad_request() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_id = create_session(&db).await;
+        let ctx = test_ctx(db.clone());
+
+        let registry = q::registry_for_ctx(&ctx);
+        let task = registry
+            .create(CreateSessionTask {
+                session_id,
+                id: None,
+                kind: TASK_KIND_AGENT_HANDOFF.to_string(),
+                display_name: "AWS Operator".to_string(),
+                spec: serde_json::json!({ "target_id": "aws", "external_agent_id": "agent_aws" }),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+
+        let result = PostSessionTaskMessage {
+            session_id: session_id.to_string(),
+            task_id: task.id.clone(),
+            text: Some("steer me".to_string()),
+            content: None,
+            in_reply_to: None,
+        }
+        .execute(&ctx)
+        .await;
+
+        assert!(result.is_err(), "handoff task message must be rejected");
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err.kind, CommandErrorKind::BadRequest(_)),
+            "must be a BadRequest error, got: {:?}",
+            err.kind
+        );
+
+        let messages = registry
+            .list_messages(session_id, &task.id, Some(10), None)
+            .await
+            .unwrap();
+        assert!(
+            messages.is_empty(),
+            "no message must be persisted for agent-handoff tasks"
         );
     }
 

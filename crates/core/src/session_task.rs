@@ -29,6 +29,11 @@ pub type TaskProgress = crate::background::BackgroundProgress;
 /// Well-known task kinds. Kind stays a free-form string; these constants
 /// cover the built-in executors.
 pub const TASK_KIND_SUBAGENT: &str = "subagent";
+/// Cross-agent handoff to a different configured Agent in the same harness.
+/// Distinct from `subagent` so `list_tasks(kind="subagent")` returns only
+/// same-agent subagents and not handoffs (they share the spawn shape but are a
+/// different target). Matches the historical `session_resources.kind`.
+pub const TASK_KIND_AGENT_HANDOFF: &str = "agent_handoff";
 pub const TASK_KIND_EXTERNAL_AGENT: &str = "external_agent";
 pub const TASK_KIND_BACKGROUND_TOOL: &str = "background_tool";
 /// Long-lived monitor task linked to a session schedule. Stays `running`
