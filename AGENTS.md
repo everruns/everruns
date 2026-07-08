@@ -91,6 +91,10 @@ Commit attribution must be the real human user.
 ### PRs and CI
 
 - Use `.github/pull_request_template.md`.
+- PR descriptions center on functional change and impact, not a code-location
+  walkthrough (the diff shows that). Keep code-level notes short and specific, and
+  add a Before / After with proof — output, logs, metrics, or screenshots for UI —
+  whenever behavior changes.
 - PR titles must be Conventional Commits and under 70 characters.
 - Squash and Merge.
 - GitHub Actions is the CI source of truth; check with `gh`.
