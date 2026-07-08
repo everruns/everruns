@@ -97,7 +97,7 @@ static SECRET_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     .collect()
 });
 
-const REDACTED: &str = "[REDACTED]";
+pub(crate) const REDACTED: &str = "[REDACTED]";
 
 /// Scrub credential-looking substrings from a single string.
 pub fn scrub_secrets(input: &str) -> String {
@@ -110,8 +110,9 @@ pub fn scrub_secrets(input: &str) -> String {
 
 /// Recursively scrub secrets in every string leaf of `value`. When
 /// `redact_content` is set, content-bearing fields are first replaced wholesale
-/// with a placeholder (structure is preserved).
-fn sanitize_value(value: &mut Value, redact_content: bool) {
+/// with a placeholder (structure is preserved). Shared with the ATIF exporter
+/// (`crate::atif`) so every export path applies the same scrubbing policy.
+pub(crate) fn sanitize_value(value: &mut Value, redact_content: bool) {
     match value {
         Value::String(s) => *s = scrub_secrets(s),
         Value::Array(items) => {

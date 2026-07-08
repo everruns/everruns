@@ -853,3 +853,58 @@ async fn test_dataset_export_cross_org_returns_not_found() {
         .expect("missing dataset get");
     assert!(missing.is_none(), "unknown dataset id is not-found");
 }
+
+// ============================================================================
+// ATIF session export (specs/atif-adoption.md)
+// ============================================================================
+
+#[tokio::test]
+async fn test_session_export_atif_format() {
+    let server = TestServer::in_memory().await;
+    // Reuse the dataset-export seed: it creates a session with input/output
+    // message events (plus a credential the export must scrub).
+    let (eval_id, run_id) = seed_run_with_session_events(&server).await;
+    let service = EvalService::new(server.db.clone());
+    let caller = Caller::internal(TEST_ORG_ID);
+    let run = service
+        .get_run(&caller, &eval_id, &run_id)
+        .await
+        .expect("get run")
+        .expect("run exists");
+    let session_id = run.results[0].session_id.expect("case session");
+
+    let response = server
+        .get(&format!("/v1/sessions/{}/export?format=atif", session_id))
+        .await
+        .assert_status(StatusCode::OK);
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "application/json"
+    );
+    let disposition = response
+        .headers()
+        .get("content-disposition")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
+    assert!(disposition.contains(&format!("{}.atif.json", session_id)));
+
+    let body = response.text();
+    let trajectory: serde_json::Value = serde_json::from_str(&body).expect("single JSON document");
+    assert_eq!(trajectory["schema_version"], json!("ATIF-v1.7"));
+    assert_eq!(trajectory["session_id"], json!(session_id.to_string()));
+    let steps = trajectory["steps"].as_array().expect("steps");
+    assert_eq!(steps[0]["source"], json!("user"));
+    assert!(!body.contains(SEEDED_SECRET), "secret must be scrubbed");
+
+    // Default format is unchanged: JSONL with one message per line.
+    let response = server
+        .get(&format!("/v1/sessions/{}/export", session_id))
+        .await
+        .assert_status(StatusCode::OK);
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "application/x-ndjson"
+    );
+}
