@@ -76,33 +76,59 @@ async fn test_basic_completion(#[case] config: ProviderModelConfig) {
 #[case::fireworks_kimi_k2(FIREWORKS_KIMI_K2)]
 #[tokio::test]
 async fn test_tool_call(#[case] config: ProviderModelConfig) {
-    let Some(model) = config.model() else {
+    if config.model().is_none() {
         eprintln!("Skipping: {} not set", config.label());
         return;
-    };
+    }
 
-    let runner = InMemoryAgenticLoop::builder()
-        .agent_name("Time Agent")
-        .system_prompt("When asked about time, use get_current_time tool first.")
-        .model(model)
-        .driver_registry(all_providers_registry())
-        .capability(CurrentTimeCapability)
-        .max_iterations(5)
-        .build()
-        .await
-        .unwrap();
+    // Live models are occasionally non-deterministic about emitting a tool call
+    // for this borderline prompt: the "Should have called get_current_time"
+    // assertion has flaked across successive pinned models (gpt-oss-120b, then
+    // Anthropic Haiku on main). This case verifies the driver's tool-calling
+    // *path* end-to-end against each provider — not single-shot model
+    // determinism — so retry a few times and require the model to call the tool
+    // (and iterate reason -> act -> reason) on at least one attempt. Genuine
+    // turn failures still fail fast; only a successful turn that skipped the
+    // tool triggers a retry.
+    const MAX_ATTEMPTS: u32 = 3;
+    let mut last = None;
+    for attempt in 1..=MAX_ATTEMPTS {
+        let model = config.model().expect("model set (checked above)");
+        let runner = InMemoryAgenticLoop::builder()
+            .agent_name("Time Agent")
+            .system_prompt("When asked about time, use get_current_time tool first.")
+            .model(model)
+            .driver_registry(all_providers_registry())
+            .capability(CurrentTimeCapability)
+            .max_iterations(5)
+            .build()
+            .await
+            .unwrap();
 
-    let result = runner.run_turn("What time is it?").await.unwrap();
+        let result = runner.run_turn("What time is it?").await.unwrap();
 
-    skip_if_quota!(result, config.label());
-    assert!(result.success, "Turn should succeed: {:?}", result.error);
-    assert!(
-        result.tool_calls_count > 0,
-        "Should have called get_current_time"
-    );
-    assert!(
-        result.iterations > 1,
-        "Should have multiple iterations (reason -> act -> reason)"
+        skip_if_quota!(result, config.label());
+        assert!(result.success, "Turn should succeed: {:?}", result.error);
+
+        if result.tool_calls_count > 0 && result.iterations > 1 {
+            return;
+        }
+
+        eprintln!(
+            "{}: attempt {attempt}/{MAX_ATTEMPTS} did not exercise the tool path \
+             (tool_calls_count={}, iterations={}); retrying",
+            config.label(),
+            result.tool_calls_count,
+            result.iterations
+        );
+        last = Some(result);
+    }
+
+    let result = last.expect("at least one attempt ran");
+    panic!(
+        "Should have called get_current_time and iterated (reason -> act -> reason) \
+         within {MAX_ATTEMPTS} attempts; last: tool_calls_count={}, iterations={}",
+        result.tool_calls_count, result.iterations
     );
 }
 
