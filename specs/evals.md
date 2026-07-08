@@ -239,6 +239,7 @@ All endpoints under `/v1/evals`. See `crates/server/src/api/evals.rs`.
 | `GET` | `/v1/evals/{eval_id}/cases/{case_id}` | Get case |
 | `PATCH` | `/v1/evals/{eval_id}/cases/{case_id}` | Update case |
 | `DELETE` | `/v1/evals/{eval_id}/cases/{case_id}` | Remove case |
+| `POST` | `/v1/evals/{eval_id}/atif_import` | Upsert cases from ATIF trajectories (NDJSON or JSON body; see `specs/atif-adoption.md`) |
 
 ### Run Management
 

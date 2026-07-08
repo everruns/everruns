@@ -136,6 +136,55 @@ impl Command for ImportEvalRun {
 
 inventory::submit! { CommandDescriptor::of::<ImportEvalRun>() }
 
+/// Import ATIF trajectories as eval cases (specs/atif-adoption.md).
+///
+/// `body` is the raw import payload: NDJSON (one trajectory per line), a JSON
+/// array of trajectories, a single trajectory object, or `{ "trajectories":
+/// [...] }`. Cases are upserted by name, so re-import is idempotent.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ImportAtifTrajectories {
+    pub eval_id: String,
+    /// Raw ATIF payload (NDJSON or JSON).
+    pub body: String,
+}
+
+impl Command for ImportAtifTrajectories {
+    type Output = crate::api::evals::AtifImportReport;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "import_atif_trajectories",
+            category: "evals",
+            description: "Import ATIF trajectories as eval cases (upserted by name).",
+            method: "POST",
+            path: "/v1/evals/{eval_id}/atif_import",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
+        require_evals_enabled(ctx)?;
+        let eval_id = q::parse_eval_id(&self.eval_id)?;
+        let trajectories =
+            crate::atif::parse_import_body(&self.body).map_err(CommandError::bad_request)?;
+        let drafts = trajectories
+            .iter()
+            .enumerate()
+            .map(|(i, t)| crate::atif::trajectory_to_case_draft(t, i))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(CommandError::bad_request)?;
+        q::service(ctx)
+            .import_atif_cases(&ctx.caller, &eval_id.to_string(), drafts)
+            .await
+            .map_err(classify_anyhow)
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ImportAtifTrajectories>() }
+
 /// Preflight: report whether the caller can import (feature enabled + has the
 /// eval-management permission) without failing. No policy gate so any org
 /// member can probe; the report just returns `false`.
