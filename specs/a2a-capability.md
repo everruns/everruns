@@ -105,13 +105,17 @@ agent runs via the `ExternalAgentTaskExecutor`.
 ### `spawn_agent`
 
 Creates an external A2A run. Returns an `agent_run_id` and `task_id`.
+When other known delegation providers are active, external A2A is advertised as
+the `external_a2a` target in the shared `spawn_agent` dispatcher rather than as
+a competing tool definition.
 
 Parameters:
 
 - `instructions` required
 - `target.type = external_a2a`
 - `target.external_agent_id`
-- `mode = wait | background`
+- `mode = wait | background`; the shared dispatcher also accepts `foreground`
+  as an alias for `wait`.
 - `wait_timeout_secs`
 - `wake_on_completion`
 

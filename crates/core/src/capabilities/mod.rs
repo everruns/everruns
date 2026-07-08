@@ -29,8 +29,8 @@ use crate::message::Message;
 use crate::message_filter::MessageFilterProvider;
 use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::{ToolCall, ToolDefinition};
-use crate::tools::{Tool, ToolRegistry};
-use crate::traits::SessionFileSystem;
+use crate::tools::{Tool, ToolExecutionResult, ToolRegistry};
+use crate::traits::{SessionFileSystem, ToolContext};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -1688,6 +1688,208 @@ impl CollectedCapabilities {
     }
 }
 
+struct SpawnAgentTargetProvider {
+    target_type: &'static str,
+    tool: Box<dyn Tool>,
+}
+
+struct UnifiedSpawnAgentTool {
+    providers: Vec<SpawnAgentTargetProvider>,
+}
+
+impl UnifiedSpawnAgentTool {
+    fn new(providers: Vec<SpawnAgentTargetProvider>) -> Self {
+        Self { providers }
+    }
+
+    fn provider_for(&self, target_type: &str) -> Option<&dyn Tool> {
+        self.providers
+            .iter()
+            .find(|provider| provider.target_type == target_type)
+            .map(|provider| provider.tool.as_ref())
+    }
+
+    fn target_types(&self) -> Vec<&'static str> {
+        ["subagent", "agent", "external_a2a"]
+            .into_iter()
+            .filter(|target_type| {
+                self.providers
+                    .iter()
+                    .any(|provider| provider.target_type == *target_type)
+            })
+            .collect()
+    }
+
+    fn normalize_arguments(&self, mut arguments: serde_json::Value) -> serde_json::Value {
+        let target_type = arguments
+            .get("target")
+            .and_then(|target| target.get("type"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+
+        if target_type == "external_a2a" {
+            if let Some(target) = arguments
+                .get_mut("target")
+                .and_then(serde_json::Value::as_object_mut)
+                && !target.contains_key("external_agent_id")
+                && let Some(id) = target.get("id").cloned()
+            {
+                target.insert("external_agent_id".to_string(), id);
+            }
+            if arguments.get("mode").and_then(serde_json::Value::as_str) == Some("foreground") {
+                arguments["mode"] = serde_json::Value::String("wait".to_string());
+            }
+        } else if matches!(target_type, "subagent" | "agent")
+            && arguments.get("mode").and_then(serde_json::Value::as_str) == Some("wait")
+        {
+            arguments["mode"] = serde_json::Value::String("foreground".to_string());
+        }
+
+        arguments
+    }
+}
+
+#[async_trait]
+impl Tool for UnifiedSpawnAgentTool {
+    fn narrate(
+        &self,
+        tool_call: &ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        let target_type = tool_call
+            .arguments
+            .get("target")
+            .and_then(|target| target.get("type"))
+            .and_then(serde_json::Value::as_str)?;
+        self.provider_for(target_type)
+            .and_then(|tool| tool.narrate(tool_call, phase, locale))
+    }
+
+    fn name(&self) -> &str {
+        "spawn_agent"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Spawn Agent")
+    }
+
+    fn description(&self) -> &str {
+        "Delegate work to another agent target. Set target.type to one of the advertised target types; background returns a task_id for generic task tools, and foreground waits for the result."
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Human-readable name for local subagent or first-party handoff runs. Optional for external A2A targets."
+                },
+                "instructions": {
+                    "type": "string",
+                    "description": "Instructions for the delegated agent. Do not include credentials or bearer tokens."
+                },
+                "target": {
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": self.target_types(),
+                            "description": "Delegation target type. Use subagent for same-agent child sessions, agent for configured first-party handoffs, or external_a2a for configured remote A2A agents."
+                        },
+                        "id": {
+                            "type": "string",
+                            "description": "Configured first-party handoff target id. Also accepted as an alias for external_a2a target.external_agent_id."
+                        },
+                        "external_agent_id": {
+                            "type": "string",
+                            "description": "Configured external A2A agent id."
+                        }
+                    },
+                    "required": ["type"],
+                    "additionalProperties": false
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["background", "foreground", "wait"],
+                    "description": "Execution mode. Use background to return immediately with a task_id. Use foreground to block for local targets; external_a2a also accepts legacy wait."
+                },
+                "blueprint": {
+                    "type": "string",
+                    "description": "Subagent-only blueprint ID to spawn a specialist agent with its own tools and model."
+                },
+                "config": {
+                    "type": "object",
+                    "description": "Subagent-only blueprint configuration. Only valid when blueprint is set."
+                },
+                "public_context": {
+                    "type": "object",
+                    "description": "Agent-handoff-only non-secret structured context to include with the instructions."
+                },
+                "wait_timeout_secs": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 86400,
+                    "description": "External-A2A-only foreground/wait timeout."
+                },
+                "wake_on_completion": {
+                    "type": "boolean",
+                    "description": "External-A2A-only control for background completion wake-ups."
+                }
+            },
+            "required": ["instructions", "target"],
+            "additionalProperties": false
+        })
+    }
+
+    fn hints(&self) -> crate::tool_types::ToolHints {
+        let mut hints = crate::tool_types::ToolHints::default().with_long_running(true);
+        if self.provider_for("external_a2a").is_some() {
+            hints = hints.with_open_world(true);
+        }
+        hints
+    }
+
+    async fn execute(&self, _arguments: serde_json::Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "spawn_agent requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: serde_json::Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let target_type = match arguments
+            .get("target")
+            .and_then(|target| target.get("type"))
+            .and_then(serde_json::Value::as_str)
+        {
+            Some(target_type) => target_type,
+            None => {
+                return ToolExecutionResult::tool_error("Missing required parameter: target.type");
+            }
+        };
+
+        let Some(provider) = self.provider_for(target_type) else {
+            let supported = self.target_types().join(", ");
+            return ToolExecutionResult::tool_error(format!(
+                "Unsupported spawn_agent target.type: \"{target_type}\". Supported target types: {supported}"
+            ));
+        };
+
+        provider
+            .execute_with_context(self.normalize_arguments(arguments), context)
+            .await
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
 /// Compose the model-visible system prompt from the stable base prompt and
 /// collected capability contributions. Keep the base prompt first so changes in
 /// dynamic capabilities (for example AGENTS.md reads or environment context)
@@ -2324,6 +2526,7 @@ pub async fn collect_capabilities_with_configs(
     let facts_ctx = FactsContext::new(ctx.session_id);
     let compaction_on = compaction_is_enabled(capability_configs, registry);
     let mut agent_handoff_spawn_config: Option<serde_json::Value> = None;
+    let mut spawn_agent_providers: Vec<SpawnAgentTargetProvider> = Vec::new();
 
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_ref.as_str();
@@ -2421,7 +2624,16 @@ pub async fn collect_capabilities_with_configs(
             }
 
             // Collect tools and hooks (config-aware: capabilities can adapt based on per-agent config)
-            tools.extend(effective.tools_with_config(&cap_config.config));
+            for tool in effective.tools_with_config(&cap_config.config) {
+                if cap_id == A2A_AGENT_DELEGATION_CAPABILITY_ID && tool.name() == "spawn_agent" {
+                    spawn_agent_providers.push(SpawnAgentTargetProvider {
+                        target_type: "external_a2a",
+                        tool,
+                    });
+                } else {
+                    tools.push(tool);
+                }
+            }
             tool_definition_hooks
                 .extend(effective.tool_definition_hooks_with_context(ctx, &cap_config.config));
             tool_call_hooks.extend(effective.tool_call_hooks());
@@ -2433,6 +2645,9 @@ pub async fn collect_capabilities_with_configs(
             // Collect tool definitions, propagating capability category if not already set
             let cap_category = effective.category();
             for def in effective.tool_definitions() {
+                if cap_id == A2A_AGENT_DELEGATION_CAPABILITY_ID && def.name() == "spawn_agent" {
+                    continue;
+                }
                 let def = match (def.category(), cap_category) {
                     (None, Some(cat)) => def.with_category(cat),
                     _ => def,
@@ -2527,28 +2742,28 @@ pub async fn collect_capabilities_with_configs(
         }
     }
 
-    // EVE-677 migration slices: expose the new unified delegation surface for
-    // single-provider sessions without colliding with existing `spawn_agent`
-    // owners (currently external A2A). Once all providers share one dispatcher,
-    // these conditional adapters can retire with the legacy spawn tools.
-    if !tools.iter().any(|tool| tool.name() == "spawn_agent")
-        && applied_ids.iter().any(|id| id == SUBAGENTS_CAPABILITY_ID)
-    {
-        let tool = SpawnSubagentAsAgentTool;
-        let def = tool
-            .to_definition()
-            .with_category("Core")
-            .with_capability_attribution(SUBAGENTS_CAPABILITY_ID, Some("Subagents"));
-        tools.push(Box::new(tool));
-        tool_definitions.push(def);
-    } else if !tools.iter().any(|tool| tool.name() == "spawn_agent")
-        && let Some(config) = agent_handoff_spawn_config.as_ref()
-    {
-        let tool = SpawnAgentHandoffTool::new(config);
+    // EVE-677 migration: known delegation providers now share one model-facing
+    // `spawn_agent` dispatcher so subagents, first-party handoffs, and external
+    // A2A agents can coexist in the same session. Unknown third-party
+    // `spawn_agent` owners still win to avoid changing their contract.
+    if applied_ids.iter().any(|id| id == SUBAGENTS_CAPABILITY_ID) {
+        spawn_agent_providers.push(SpawnAgentTargetProvider {
+            target_type: "subagent",
+            tool: Box::new(SpawnSubagentAsAgentTool),
+        });
+    }
+    if let Some(config) = agent_handoff_spawn_config.as_ref() {
+        spawn_agent_providers.push(SpawnAgentTargetProvider {
+            target_type: "agent",
+            tool: Box::new(SpawnAgentHandoffTool::new(config)),
+        });
+    }
+    if !tools.iter().any(|tool| tool.name() == "spawn_agent") && !spawn_agent_providers.is_empty() {
+        let tool = UnifiedSpawnAgentTool::new(spawn_agent_providers);
         let def = tool
             .to_definition()
             .with_category("Orchestration")
-            .with_capability_attribution(AGENT_HANDOFF_CAPABILITY_ID, Some("Agent Handoff"));
+            .with_capability_attribution("agent_delegation", Some("Agent Delegation"));
         tools.push(Box::new(tool));
         tool_definitions.push(def);
     }
@@ -4790,6 +5005,84 @@ mod tests {
         assert_eq!(
             spawn_agent.parameters()["properties"]["target"]["properties"]["type"]["enum"],
             serde_json::json!(["agent"])
+        );
+    }
+
+    #[tokio::test]
+    async fn test_spawn_agent_dispatcher_combines_known_target_providers() {
+        let mut registry = CapabilityRegistry::new();
+        registry.register(SubagentCapability);
+        registry.register(AgentHandoffCapability);
+
+        let agent_id = crate::typed_id::AgentId::new();
+        let harness_id = crate::typed_id::HarnessId::new();
+        let configs = vec![
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new(SUBAGENTS_CAPABILITY_ID),
+                config: serde_json::json!({}),
+            },
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new(AGENT_HANDOFF_CAPABILITY_ID),
+                config: serde_json::json!({
+                    "targets": [{
+                        "id": "aws_operator",
+                        "name": "AWS Operator",
+                        "agent_id": agent_id,
+                        "harness_id": harness_id
+                    }]
+                }),
+            },
+        ];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+        let spawn_agent_defs: Vec<_> = collected
+            .tool_definitions
+            .iter()
+            .filter(|tool| tool.name() == "spawn_agent")
+            .collect();
+
+        assert_eq!(spawn_agent_defs.len(), 1);
+        assert_eq!(
+            spawn_agent_defs[0].parameters()["properties"]["target"]["properties"]["type"]["enum"],
+            serde_json::json!(["subagent", "agent"])
+        );
+    }
+
+    #[cfg(feature = "a2a")]
+    #[tokio::test]
+    async fn test_spawn_agent_dispatcher_includes_external_a2a_provider() {
+        let mut registry = CapabilityRegistry::new();
+        registry.register(SubagentCapability);
+        registry.register(A2aAgentDelegationCapability);
+
+        let configs = vec![
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new(SUBAGENTS_CAPABILITY_ID),
+                config: serde_json::json!({}),
+            },
+            AgentCapabilityConfig {
+                capability_ref: CapabilityId::new(A2A_AGENT_DELEGATION_CAPABILITY_ID),
+                config: serde_json::json!({
+                    "agents": [{
+                        "id": "local_app",
+                        "name": "Local App",
+                        "base_url": "https://example.com"
+                    }]
+                }),
+            },
+        ];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+        let spawn_agent_defs: Vec<_> = collected
+            .tool_definitions
+            .iter()
+            .filter(|tool| tool.name() == "spawn_agent")
+            .collect();
+
+        assert_eq!(spawn_agent_defs.len(), 1);
+        assert_eq!(
+            spawn_agent_defs[0].parameters()["properties"]["target"]["properties"]["type"]["enum"],
+            serde_json::json!(["subagent", "external_a2a"])
         );
     }
 
