@@ -1472,7 +1472,9 @@ fn generate_recovery_token() -> (String, String) {
 }
 
 /// True when this account authenticates with a local password (vs OAuth-only).
-/// Password reset and verification only make sense for password accounts.
+/// Verification only applies to password accounts because OAuth providers own
+/// their own email proof. Password reset can add a password to OAuth-only
+/// accounts after the user proves inbox control with the emailed token.
 fn is_local_password_user(user: &crate::storage::models::UserRow) -> bool {
     user.password_hash.is_some()
         || user.auth_provider.as_deref() == Some("local")
@@ -1566,9 +1568,11 @@ async fn deliver_account_email(
 
 /// POST /v1/auth/forgot-password - Begin a password reset.
 ///
-/// Enumeration-safe: always returns 200 `{ "ok": true }`. If a local password
-/// account exists for the email, a single-use reset token (1h TTL) is created
-/// and emailed. OAuth-only accounts are skipped silently.
+/// Enumeration-safe: always returns 200 `{ "ok": true }`. If an account exists
+/// for the email, a single-use reset token (1h TTL) is created and emailed.
+/// Completing the reset sets a local password, including for OAuth-created
+/// accounts, so users never land in a "check your inbox" flow that sends no
+/// email for an existing account.
 pub async fn forgot_password(
     State(state): State<BuiltinAuthBackend>,
     Json(req): Json<EmailOnlyRequest>,
@@ -1588,9 +1592,7 @@ pub async fn forgot_password(
     {
         return Ok(OkResponse::ok());
     }
-    if let Ok(Some(user)) = state.db.get_user_by_email(&req.email).await
-        && is_local_password_user(&user)
-    {
+    if let Ok(Some(user)) = state.db.get_user_by_email(&req.email).await {
         let (raw_token, token_hash) = generate_recovery_token();
         let expires_at = Utc::now()
             + Duration::from_std(PASSWORD_RESET_TTL).unwrap_or_else(|_| Duration::hours(1));
@@ -2346,13 +2348,43 @@ mod oauth_state_tests {
     use crate::auth::config::AuthConfig;
     use crate::storage::StorageBackend;
     use crate::storage::models::CreateUserRow;
+    use async_trait::async_trait;
+    use everruns_core::{EmailMessage, EmailResult, EmailSender, PlatformDefinition, SentEmail};
     use std::sync::Arc;
+    use std::sync::Mutex;
 
     fn test_backend() -> BuiltinAuthBackend {
         BuiltinAuthBackend::new(
             AuthConfig::default(),
             Arc::new(StorageBackend::in_memory()),
             Arc::new(crate::platform::oss_platform_definition()),
+        )
+    }
+
+    #[derive(Default)]
+    struct RecordingEmailSender {
+        messages: Mutex<Vec<EmailMessage>>,
+    }
+
+    #[async_trait]
+    impl EmailSender for RecordingEmailSender {
+        async fn send_email(&self, message: EmailMessage) -> EmailResult<SentEmail> {
+            self.messages.lock().unwrap().push(message);
+            Ok(SentEmail {
+                provider: "recording",
+                id: "recording".to_string(),
+            })
+        }
+    }
+
+    fn backend_with_email_sender(
+        sender: Arc<RecordingEmailSender>,
+    ) -> (BuiltinAuthBackend, Arc<StorageBackend>) {
+        let db = Arc::new(StorageBackend::in_memory());
+        let platform = PlatformDefinition::builder().email_sender(sender).build();
+        (
+            BuiltinAuthBackend::new(AuthConfig::default(), db.clone(), Arc::new(platform)),
+            db,
         )
     }
 
@@ -2443,6 +2475,24 @@ mod oauth_state_tests {
             })
             .await
             .expect("create user");
+        user.id
+    }
+
+    async fn seed_oauth_only_user(db: &StorageBackend, email: &str) -> Uuid {
+        let user = db
+            .create_user(CreateUserRow {
+                email: email.to_string(),
+                name: "OAuth User".to_string(),
+                avatar_url: None,
+                roles: vec!["user".to_string()],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: Some("google".to_string()),
+                auth_provider_id: Some("google-sub-1".to_string()),
+                external_id: None,
+            })
+            .await
+            .expect("create OAuth-only user");
         user.id
     }
 
@@ -2688,6 +2738,29 @@ mod oauth_state_tests {
         .await
         .expect("enumeration-safe success");
         assert!(resp.0.ok);
+    }
+
+    #[tokio::test]
+    async fn forgot_password_sends_reset_email_for_oauth_only_account() {
+        let sender = Arc::new(RecordingEmailSender::default());
+        let (state, db) = backend_with_email_sender(sender.clone());
+        seed_oauth_only_user(&db, "oauth-only@example.com").await;
+
+        let resp = forgot_password(
+            State(state),
+            Json(EmailOnlyRequest {
+                email: "oauth-only@example.com".to_string(),
+                captcha_token: None,
+            }),
+        )
+        .await
+        .expect("enumeration-safe success");
+        assert!(resp.0.ok);
+
+        let messages = sender.messages.lock().unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].subject, "Reset your Everruns password");
+        assert_eq!(messages[0].to[0].email, "oauth-only@example.com");
     }
 
     #[tokio::test]
