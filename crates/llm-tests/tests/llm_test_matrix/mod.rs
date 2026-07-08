@@ -266,6 +266,89 @@ macro_rules! skip_if_quota {
     }};
 }
 
+/// Substrings that mark a *transient* live-transport failure (network blip,
+/// streaming-decode hiccup, timeout) rather than a real, reproducible error.
+/// These tests hit real provider endpoints, so a single transport hiccup should
+/// be retried, not reported as a regression — e.g. the observed flake
+/// `LLM error: Stream error: Transport error: error decoding response body`.
+pub fn is_transient_transport_error(err: &str) -> bool {
+    let e = err.to_ascii_lowercase();
+    [
+        "transport error",
+        "stream error",
+        "error decoding response body",
+        "connection reset",
+        "connection closed",
+        "connection error",
+        "connection refused",
+        "timed out",
+        "timeout",
+        "broken pipe",
+        "incomplete message",
+        "unexpected eof",
+        "tls",
+    ]
+    .iter()
+    .any(|s| e.contains(s))
+}
+
+/// Run a live turn with bounded retries against real-model non-determinism and
+/// transient transport failures. `$run` is a block that builds a runner and
+/// awaits a turn, evaluating to a `TurnResult`; it is re-run up to `$max` times.
+///
+/// Returns `None` when the provider is out of quota (caller should skip), or
+/// `Some(result)` for the first attempt that satisfies the `$ok` predicate —
+/// otherwise the last attempt after exhausting retries, so the caller's own
+/// assertions still produce a precise failure message. Retries fire when a turn
+/// hit a transient transport error or `$ok` was not yet met.
+///
+/// Exported via `#[macro_export]` so every test binary that includes this
+/// shared module can use it. `is_quota_exhausted`, `is_transient_transport_error`,
+/// and `TurnResult` are referenced unqualified and resolve at each call site
+/// (the test files already glob-import this module and `TurnResult`).
+#[macro_export]
+macro_rules! run_live_turn {
+    ($config:expr, $max:expr, $ok:expr, $run:block) => {{
+        let ok_fn = $ok;
+        let mut outcome: Option<TurnResult> = None;
+        for attempt in 1..=$max {
+            let result: TurnResult = $run;
+            if !result.success {
+                if let Some(err) = result.error.as_deref() {
+                    if is_quota_exhausted(err) {
+                        eprintln!("SKIP: {} out of quota: {}", $config.label(), err);
+                        outcome = None;
+                        break;
+                    }
+                }
+            }
+            if ok_fn(&result) {
+                outcome = Some(result);
+                break;
+            }
+            let transient = !result.success
+                && result
+                    .error
+                    .as_deref()
+                    .is_some_and(is_transient_transport_error);
+            eprintln!(
+                "{}: attempt {attempt}/{} not acceptable \
+                 (success={}, transient_transport={}, tool_calls={}, iterations={}, error={:?}); {}",
+                $config.label(),
+                $max,
+                result.success,
+                transient,
+                result.tool_calls_count,
+                result.iterations,
+                result.error,
+                if attempt < $max { "retrying" } else { "giving up" },
+            );
+            outcome = Some(result);
+        }
+        outcome
+    }};
+}
+
 // ============================================================================
 // Unified driver registry
 // ============================================================================
