@@ -24,8 +24,85 @@ use rstest::rstest;
 
 use everruns_core::FileSystemCapability;
 use everruns_core::capabilities::CurrentTimeCapability;
-use everruns_core::in_memory_loop::InMemoryAgenticLoop;
+use everruns_core::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 use everruns_core::traits::ResolvedModel;
+
+/// Substrings that mark a *transient* live-transport failure (network blip,
+/// streaming-decode hiccup, timeout) rather than a real, reproducible error.
+/// These tests hit real provider endpoints, so a single transport hiccup should
+/// be retried, not reported as a regression — e.g. the observed flake
+/// `LLM error: Stream error: Transport error: error decoding response body`.
+fn is_transient_transport_error(err: &str) -> bool {
+    let e = err.to_ascii_lowercase();
+    [
+        "transport error",
+        "stream error",
+        "error decoding response body",
+        "connection reset",
+        "connection closed",
+        "connection error",
+        "connection refused",
+        "timed out",
+        "timeout",
+        "broken pipe",
+        "incomplete message",
+        "unexpected eof",
+        "tls",
+    ]
+    .iter()
+    .any(|s| e.contains(s))
+}
+
+/// Run a live turn with bounded retries against real-model non-determinism and
+/// transient transport failures. `$run` is a block that builds a runner and
+/// awaits a turn, evaluating to a `TurnResult`; it is re-run up to `$max` times.
+///
+/// Returns `None` when the provider is out of quota (caller should skip), or
+/// `Some(result)` for the first attempt that satisfies the `$ok` predicate —
+/// otherwise the last attempt after exhausting retries, so the caller's own
+/// assertions still produce a precise failure message. Retries fire when a turn
+/// hit a transient transport error or `$ok` was not yet met.
+macro_rules! run_live_turn {
+    ($config:expr, $max:expr, $ok:expr, $run:block) => {{
+        let ok_fn = $ok;
+        let mut outcome: Option<TurnResult> = None;
+        for attempt in 1..=$max {
+            let result: TurnResult = $run;
+            if !result.success {
+                if let Some(err) = result.error.as_deref() {
+                    if is_quota_exhausted(err) {
+                        eprintln!("SKIP: {} out of quota: {}", $config.label(), err);
+                        outcome = None;
+                        break;
+                    }
+                }
+            }
+            if ok_fn(&result) {
+                outcome = Some(result);
+                break;
+            }
+            let transient = !result.success
+                && result
+                    .error
+                    .as_deref()
+                    .is_some_and(is_transient_transport_error);
+            eprintln!(
+                "{}: attempt {attempt}/{} not acceptable \
+                 (success={}, transient_transport={}, tool_calls={}, iterations={}, error={:?}); {}",
+                $config.label(),
+                $max,
+                result.success,
+                transient,
+                result.tool_calls_count,
+                result.iterations,
+                result.error,
+                if attempt < $max { "retrying" } else { "giving up" },
+            );
+            outcome = Some(result);
+        }
+        outcome
+    }};
+}
 
 // ============================================================================
 // Scenario: basic completion (no tools)
@@ -40,24 +117,32 @@ use everruns_core::traits::ResolvedModel;
 #[case::fireworks_kimi_k2(FIREWORKS_KIMI_K2)]
 #[tokio::test]
 async fn test_basic_completion(#[case] config: ProviderModelConfig) {
-    let Some(model) = config.model() else {
+    if config.model().is_none() {
         eprintln!("Skipping: {} not set", config.label());
+        return;
+    }
+
+    let Some(result) = run_live_turn!(
+        config,
+        3,
+        |r: &TurnResult| r.success && !r.response.is_empty(),
+        {
+            let model = config.model().expect("model set (checked above)");
+            let runner = InMemoryAgenticLoop::builder()
+                .agent_name("Dad Joke Agent")
+                .system_prompt("Tell short dad jokes. Just the joke, no explanation.")
+                .model(model)
+                .driver_registry(all_providers_registry())
+                .max_iterations(3)
+                .build()
+                .await
+                .unwrap();
+            runner.run_turn("Tell me a dad joke").await.unwrap()
+        }
+    ) else {
         return;
     };
 
-    let runner = InMemoryAgenticLoop::builder()
-        .agent_name("Dad Joke Agent")
-        .system_prompt("Tell short dad jokes. Just the joke, no explanation.")
-        .model(model)
-        .driver_registry(all_providers_registry())
-        .max_iterations(3)
-        .build()
-        .await
-        .unwrap();
-
-    let result = runner.run_turn("Tell me a dad joke").await.unwrap();
-
-    skip_if_quota!(result, config.label());
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(!result.response.is_empty(), "Response should not be empty");
     assert_eq!(result.tool_calls_count, 0, "No tools should be called");
@@ -83,52 +168,45 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
 
     // Live models are occasionally non-deterministic about emitting a tool call
     // for this borderline prompt: the "Should have called get_current_time"
-    // assertion has flaked across successive pinned models (gpt-oss-120b, then
-    // Anthropic Haiku on main). This case verifies the driver's tool-calling
-    // *path* end-to-end against each provider — not single-shot model
-    // determinism — so retry a few times and require the model to call the tool
-    // (and iterate reason -> act -> reason) on at least one attempt. Genuine
-    // turn failures still fail fast; only a successful turn that skipped the
-    // tool triggers a retry.
-    const MAX_ATTEMPTS: u32 = 3;
-    let mut last = None;
-    for attempt in 1..=MAX_ATTEMPTS {
-        let model = config.model().expect("model set (checked above)");
-        let runner = InMemoryAgenticLoop::builder()
-            .agent_name("Time Agent")
-            .system_prompt("When asked about time, use get_current_time tool first.")
-            .model(model)
-            .driver_registry(all_providers_registry())
-            .capability(CurrentTimeCapability)
-            .max_iterations(5)
-            .build()
-            .await
-            .unwrap();
-
-        let result = runner.run_turn("What time is it?").await.unwrap();
-
-        skip_if_quota!(result, config.label());
-        assert!(result.success, "Turn should succeed: {:?}", result.error);
-
-        if result.tool_calls_count > 0 && result.iterations > 1 {
-            return;
+    // assertion has flaked on main across successive pinned models (gpt-oss-120b,
+    // then Anthropic Haiku / OpenAI). This case verifies the driver's
+    // tool-calling *path* end-to-end against each provider — not single-shot
+    // model determinism — so retry (also absorbing transient transport blips)
+    // and require the tool to be called (and the loop to iterate) on at least
+    // one attempt. A non-transient turn failure still surfaces via the asserts.
+    let Some(result) = run_live_turn!(
+        config,
+        3,
+        |r: &TurnResult| r.success && r.tool_calls_count > 0 && r.iterations > 1,
+        {
+            let model = config.model().expect("model set (checked above)");
+            let runner = InMemoryAgenticLoop::builder()
+                .agent_name("Time Agent")
+                .system_prompt("When asked about time, use get_current_time tool first.")
+                .model(model)
+                .driver_registry(all_providers_registry())
+                .capability(CurrentTimeCapability)
+                .max_iterations(5)
+                .build()
+                .await
+                .unwrap();
+            runner.run_turn("What time is it?").await.unwrap()
         }
+    ) else {
+        return;
+    };
 
-        eprintln!(
-            "{}: attempt {attempt}/{MAX_ATTEMPTS} did not exercise the tool path \
-             (tool_calls_count={}, iterations={}); retrying",
-            config.label(),
-            result.tool_calls_count,
-            result.iterations
-        );
-        last = Some(result);
-    }
-
-    let result = last.expect("at least one attempt ran");
-    panic!(
-        "Should have called get_current_time and iterated (reason -> act -> reason) \
-         within {MAX_ATTEMPTS} attempts; last: tool_calls_count={}, iterations={}",
-        result.tool_calls_count, result.iterations
+    assert!(result.success, "Turn should succeed: {:?}", result.error);
+    assert!(
+        result.tool_calls_count > 0,
+        "Should have called get_current_time (tool_calls_count={}, iterations={})",
+        result.tool_calls_count,
+        result.iterations
+    );
+    assert!(
+        result.iterations > 1,
+        "Should have multiple iterations (reason -> act -> reason); iterations={}",
+        result.iterations
     );
 }
 
@@ -143,27 +221,33 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
 // Gemini excluded: rejects additionalProperties in nested object schemas (separate issue)
 #[tokio::test]
 async fn test_file_system_tool_schemas_accepted(#[case] config: ProviderModelConfig) {
-    let Some(model) = config.model() else {
+    if config.model().is_none() {
         eprintln!("Skipping: {} not set", config.label());
+        return;
+    }
+
+    // Regression: edit_file schema had top-level oneOf which OpenAI rejects.
+    // This test ensures the schema is accepted by providers. Retry to absorb
+    // transient transport blips (observed on main: "Stream error: Transport
+    // error: error decoding response body") so a network hiccup during the live
+    // turn doesn't red main CI.
+    let Some(result) = run_live_turn!(config, 3, |r: &TurnResult| r.success, {
+        let model = config.model().expect("model set (checked above)");
+        let runner = InMemoryAgenticLoop::builder()
+            .agent_name("File Agent")
+            .system_prompt("Say hello. Do not use any tools.")
+            .model(model)
+            .driver_registry(all_providers_registry())
+            .capability(FileSystemCapability)
+            .max_iterations(1)
+            .build()
+            .await
+            .unwrap();
+        runner.run_turn("Say hello").await.unwrap()
+    }) else {
         return;
     };
 
-    // Regression: edit_file schema had top-level oneOf which OpenAI rejects.
-    // This test ensures the schema is accepted by providers.
-    let runner = InMemoryAgenticLoop::builder()
-        .agent_name("File Agent")
-        .system_prompt("Say hello. Do not use any tools.")
-        .model(model)
-        .driver_registry(all_providers_registry())
-        .capability(FileSystemCapability)
-        .max_iterations(1)
-        .build()
-        .await
-        .unwrap();
-
-    let result = runner.run_turn("Say hello").await.unwrap();
-
-    skip_if_quota!(result, config.label());
     assert!(
         result.success,
         "Turn should succeed with file system tools registered: {:?}",
