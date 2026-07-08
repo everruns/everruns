@@ -89,14 +89,13 @@ on-demand from `ProviderConfig`. All real built-in providers require API keys;
 via `ProviderMetadata`). See `crates/core/src/driver_registry.rs` for
 `DriverRegistry` and `DriverDescriptor`.
 
-### Egress Boundary
+### Host-Owned Transport
 
-Provider drivers and model discovery must route outbound HTTP through
-`EgressService` (see `specs/egress.md`). Drivers still own provider-specific
-request construction, streaming parse logic, retry classification, and error
-mapping, but they should not create direct external HTTP clients as the final
-transport. This keeps workers and control-plane processes compatible with a
-future remote Egress Gateway and airgapped deployments.
+Provider drivers and model discovery use direct provider HTTP clients. They are
+host-owned platform services: provider endpoints and credentials come from
+deployment/org provider configuration, not from agent-authored URLs or
+tenant/agent egress policy. Drivers still own provider-specific request
+construction, streaming parse logic, retry classification, and error mapping.
 
 ### Message Types
 

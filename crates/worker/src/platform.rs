@@ -21,10 +21,9 @@ pub fn default_platform_definition_for_grade(grade: DeploymentGrade) -> Platform
     PlatformDefinition::builder()
         .capability_registry(CapabilityRegistry::with_builtins_for_grade(grade))
         .driver_registry(crate::create_driver_registry())
-        // Honor the host-wide system allowlist in distributed workers too, so
-        // EVERRUNS_SYSTEM_ALLOWLIST_ENABLED applies to worker egress (LLM, MCP,
-        // capabilities) the same as the control plane. Disabled by default.
-        .egress_service(Arc::new(DirectEgressService::from_env()))
+        // Honor EVERRUNS_SYSTEM_ALLOWLIST_ENABLED for tenant/agent runtime
+        // egress (capabilities, MCP, integrations) in distributed workers too.
+        .egress_service(Arc::new(DirectEgressService::for_runtime_traffic_from_env()))
         .utility_llm_service(SystemUtilityLlmConfig::from_env().into_service())
         .build()
 }

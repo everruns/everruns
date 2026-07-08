@@ -1381,10 +1381,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
                 vec![]
             } else {
-                let egress = self
-                    .egress_service
-                    .clone()
-                    .unwrap_or_else(|| Arc::new(everruns_core::DirectEgressService::from_env()));
+                let egress = self.egress_service.clone().unwrap_or_else(|| {
+                    Arc::new(everruns_core::DirectEgressService::for_runtime_traffic_from_env())
+                });
                 build_scoped_mcp_tool_definitions(
                     &effective,
                     Some(session.id),

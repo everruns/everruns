@@ -53,7 +53,7 @@ Server-wide via environment variables:
 | `BOT_AUTH_AGENT_FQDN` | no | FQDN for `Signature-Agent` header (key discovery) |
 | `BOT_AUTH_VALIDITY_SECS` | no | signature validity window, default 300 |
 
-When `BOT_AUTH_SIGNING_KEY_SEED` is set, all `web_fetch` requests are signed by fetchkit on both paths: signing happens before each hop is handed to the transport (re-signed per redirect hop), so it applies equally when the hop crosses the egress boundary. Egress-routed hops additionally request `EgressSigning::PlatformDefault`, a no-op until a platform egress signer exists; when one lands, signing policy should consolidate behind `EgressService` so web_fetch, LLM drivers, and integrations share one outbound signing path (see `specs/egress.md`).
+When `BOT_AUTH_SIGNING_KEY_SEED` is set, all `web_fetch` requests are signed by fetchkit on both paths: signing happens before each hop is handed to the transport (re-signed per redirect hop), so it applies equally when the hop crosses the egress boundary. Egress-routed hops additionally request `EgressSigning::PlatformDefault`, a no-op until a platform egress signer exists; when one lands, signing policy should consolidate behind `EgressService` for tenant/agent runtime fetches (see `specs/egress.md`).
 
 Generate a seed: `python3 -c "import os, base64; print(base64.urlsafe_b64encode(os.urandom(32)).rstrip(b'=').decode())"`
 
