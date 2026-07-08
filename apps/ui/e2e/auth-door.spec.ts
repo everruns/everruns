@@ -60,6 +60,23 @@ test.describe("Unified auth door", () => {
     await expect(page.getByLabel("Email")).toBeFocused();
   });
 
+  test("password phase offers signup with the typed address carried over", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByLabel("Email").fill("newcomer@acme.com");
+    await page.getByRole("button", { name: "Continue with email" }).click();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Enter your password" }),
+    ).toBeVisible();
+    // A new user who mistook login for signup is never stuck here.
+    const signup = page.getByRole("link", { name: "Create an account" });
+    await expect(signup).toHaveAttribute("href", "/signup?email=newcomer%40acme.com");
+    await signup.click();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Create your account" }),
+    ).toBeVisible();
+    await expect(page.getByLabel("Email")).toHaveValue("newcomer@acme.com");
+  });
+
   test("bad credentials render the calm generic error with a reset path", async ({ page }) => {
     await page.route("**/v1/auth/login", (route) =>
       route.fulfill({ status: 401, json: { error: "Invalid email or password" } }),
@@ -105,7 +122,15 @@ test.describe("Unified auth door", () => {
     await page.getByLabel("Password", { exact: true }).fill("longenoughpass1");
     await page.getByRole("button", { name: "Create account" }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Check your email" })).toBeVisible();
-    await expect(page.getByText("can be registered")).toBeVisible();
+    // Full-sentence assertion: guards every word boundary in the copy — the
+    // JSX pipeline once ate the space after the email, and a substring match
+    // let it through.
+    await expect(
+      page.getByText(
+        "If new@acme.com can be registered, we've sent a confirmation link. " +
+          "Click it to verify your email and get started — the link signs you in.",
+      ),
+    ).toBeVisible();
     expect(registered).toBe(true);
   });
 

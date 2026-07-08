@@ -10,7 +10,7 @@
 
 import { useState, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,10 +31,13 @@ function providerLabel(provider: string): string {
 export default function SignupPage() {
   usePageTitle("Create your account");
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: config, isLoading: configLoading } = useAuthConfig();
   const registerMutation = useRegister();
 
-  const [email, setEmail] = useState("");
+  // Prefilled when arriving from the login door's password screen, where the
+  // address was already typed.
+  const [email, setEmail] = useState(() => searchParams.get("email") ?? "");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
@@ -95,9 +98,9 @@ export default function SignupPage() {
           Check your email
         </h1>
         <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
-          If <b className="font-medium text-foreground">{submittedEmail}</b> can be registered,
-          we&apos;ve sent a confirmation link. Click it to verify your email and get started — the
-          link signs you in.
+          If <b className="font-medium text-foreground">{submittedEmail}</b>
+          {" can be registered, we've sent a confirmation link. Click it to verify"}
+          {" your email and get started — the link signs you in."}
         </p>
         <p className="mt-6 text-[13px] text-muted-foreground">
           Wrong address?{" "}
