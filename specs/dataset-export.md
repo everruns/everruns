@@ -63,7 +63,7 @@ Body:
 
 ```json
 {
-  "format": "trajectory" | "sft",
+  "format": "trajectory" | "sft" | "atif",
   "filters": { "pass": true, "min_score": 0.5 },
   "redaction": { "redact_content": false }
 }
@@ -94,6 +94,12 @@ synchronous.
 - `trajectory` (generic, canonical):
   `{ source_key, eval_run_id, case_id, case_name, session_id, reward: { pass, score, scorers: [{name, value, pass, reason}] }, messages: [...model-view messages...], metadata: { model, turns, input_tokens, output_tokens, latency_ms } }`
 - `sft`: `{ source_key, messages: [{role, content}], reward: { pass, score, scorers } }` — chat-message shape loadable by common SFT pipelines, with reward in a sidecar field so verifiable-reward filtering happens before training.
+- `atif`: one complete ATIF-v1.7 trajectory object per line, folded from the
+  case session's **event log** (per-iteration agent steps, tool observations,
+  per-step metrics — not the model-view messages), with reward and case
+  identity in root `extra` (`extra.reward = { pass, score, scorers }`,
+  `extra.source_key`, ...). Same policy gate, filters, scrubbing, and
+  redaction as the other formats. See `specs/atif-adoption.md`.
 
 Scorer identities are not persisted on the result (only the ordered
 `Vec<Score>`), but the runner emits exactly one score per scorer in definition

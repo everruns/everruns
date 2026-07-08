@@ -15,7 +15,7 @@ use everruns_core::eval::EvalRun;
 use everruns_core::message_retriever::MessageRetriever;
 use uuid::Uuid;
 
-use super::dataset::{self, ExportEvalRunDatasetRequest};
+use super::dataset::{self, DatasetFormat, ExportEvalRunDatasetRequest};
 use crate::storage::StorageBackend;
 use crate::storage::message_store::DbMessageRetriever;
 use crate::storage::models::UpdateEvalRunDatasetRow;
@@ -36,6 +36,13 @@ pub async fn build_dataset_ndjson(
     // the exact per-run compaction config is a documented follow-up.
     let retriever = DbMessageRetriever::new(db.clone());
     let compaction = CompactionConfig::default();
+    // The ATIF format folds the raw event log (per-iteration steps, tool
+    // observations, per-step metrics) rather than reconstructed messages, so
+    // it reads events directly. See specs/atif-adoption.md.
+    let event_service = crate::services::EventService::new(
+        db.clone(),
+        crate::event_delivery::EventDelivery::in_memory(),
+    );
 
     let mut body = String::new();
     let mut count: u64 = 0;
@@ -48,12 +55,27 @@ pub async fn build_dataset_ndjson(
         let Some(session_id) = result.session_id else {
             continue;
         };
-        let stored = retriever
-            .load(session_id)
-            .await
-            .map_err(|e| anyhow::anyhow!("load session messages: {e}"))?;
-        let messages = build_model_view_messages(&stored, &compaction, None).messages;
-        let record = dataset::build_record(req.format, run, result, &messages, &req.redaction);
+        let record = if req.format == DatasetFormat::Atif {
+            let events = event_service
+                .list(session_id.uuid(), None, None, &[], &[], None, None)
+                .await
+                .map_err(|e| anyhow::anyhow!("load session events: {e}"))?;
+            crate::atif::build_case_record(
+                run,
+                result,
+                &events,
+                crate::atif::AtifOptions {
+                    redact_content: req.redaction.redact_content,
+                },
+            )
+        } else {
+            let stored = retriever
+                .load(session_id)
+                .await
+                .map_err(|e| anyhow::anyhow!("load session messages: {e}"))?;
+            let messages = build_model_view_messages(&stored, &compaction, None).messages;
+            dataset::build_record(req.format, run, result, &messages, &req.redaction)
+        };
         let line = serde_json::to_string(&record)?;
         body.push_str(&line);
         body.push('\n');

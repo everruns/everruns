@@ -53,12 +53,12 @@ the existing dataset formats), plus case identity (`source_key`, `eval_run_id`,
 - **Session export** (✅ shipped): `GET /v1/sessions/{id}/export?format=atif`
   returns one ATIF JSON document (see `specs/session-export.md`; default JSONL
   unchanged).
-- **Dataset export** (◑ follow-up PR): `format: "atif"` on the eval dataset
+- **Dataset export** (✅ shipped): `format: "atif"` on the eval dataset
   export produces NDJSON with one complete ATIF trajectory per case (see
   `specs/dataset-export.md`). Unlike the message-based formats, ATIF folds the
   raw event log (per-iteration steps and observations), not the compaction
   model view. Same policy gate, filters, and redaction controls.
-- **Import** (◑ follow-up PR): `POST /v1/evals/{eval_id}/atif_import` accepts
+- **Import** (✅ shipped): `POST /v1/evals/{eval_id}/atif_import` accepts
   NDJSON or JSON (array, single object, or `{ "trajectories": [...] }`) and
   upserts eval cases: user steps → the case `conversation` (multi-turn
   preserved), the final agent message → a reference excerpt in the case
@@ -74,10 +74,10 @@ the existing dataset formats), plus case identity (`source_key`, `eval_run_id`,
 - Secret scrubbing (the dataset-export scrubber) is always on for every
   produced ATIF document, on every export surface; `redact_content` blanks
   message/reasoning/argument/observation content while preserving structure.
-- Import (follow-up) follows the OKF importer posture
-  (`specs/okf-adoption.md`): org-scoped through the eval lookup, gated by
-  `EVAL_MANAGE`, body capped, malformed input rejected with 400, no cross-org
-  existence leaks.
+- Import follows the OKF importer posture (`specs/okf-adoption.md`):
+  org-scoped through the eval lookup, gated by `EVAL_MANAGE`, body capped
+  (4 MiB, 200 trajectories, 64 KiB per message), malformed input rejected with
+  400, no cross-org existence leaks.
 
 ## Delivery Plan
 
@@ -86,10 +86,9 @@ reflects what has shipped on `main`.
 
 1. ✅ **Serializer + session export** — `crates/server/src/atif.rs` fold,
    `?format=atif` on session export, this spec, index/cross-link updates.
-2. ◑ **Dataset export + import** — `format: "atif"` on the eval dataset
+2. ✅ **Dataset export + import** — `format: "atif"` on the eval dataset
    export, `POST /v1/evals/{eval_id}/atif_import`, and the related spec
-   updates (`specs/dataset-export.md`, `specs/evals.md`). Ships as a
-   follow-up PR; endpoints above marked ◑ do not exist on `main` yet.
+   updates (`specs/dataset-export.md`, `specs/evals.md`).
 
 ## Non-goals (v1)
 

@@ -1,9 +1,10 @@
 // ATIF (Agent Trajectory Interchange Format) adoption. See specs/atif-adoption.md.
 //
 // This module is the single place that folds a session's event log into an
-// ATIF-v1.7 trajectory JSON document (Harbor RFC 0001). It is pure over
-// `&[Event]` so every export path (session export today; eval dataset export
-// as a follow-up) and the tests share one folding implementation.
+// ATIF-v1.7 trajectory JSON document (Harbor RFC 0001), and the inverse parser
+// used by the eval-case importer. It is pure over `&[Event]` so both export
+// paths (session export, eval dataset export) and the tests share one folding
+// implementation.
 //
 // Folding rules (see the mapping table in specs/atif-adoption.md):
 // - `input.message`             → one "user" step
@@ -31,7 +32,8 @@ use serde_json::{Map, Value, json};
 
 use crate::domains::evals::dataset::{REDACTED, sanitize_value};
 
-/// Pinned ATIF schema version produced by exports.
+/// Pinned ATIF schema version produced by exports. Imports tolerate any
+/// `ATIF-*` version (unknown fields are ignored by construction).
 pub const ATIF_SCHEMA_VERSION: &str = "ATIF-v1.7";
 
 // ============================================================================
@@ -50,8 +52,8 @@ pub struct AtifOptions {
 /// Fold a session's events into one ATIF trajectory document.
 ///
 /// `root_extra` lets callers attach provenance/reward at the ATIF extension
-/// point (`extra`); ATIF itself has no reward field, so callers that carry
-/// reward (the eval dataset export) put it there.
+/// point (`extra`); ATIF itself has no reward field, so the dataset export
+/// puts reward there (see `build_case_record`).
 pub fn build_trajectory(
     session_id: Option<&str>,
     events: &[Event],
@@ -95,6 +97,33 @@ pub fn build_trajectory(
     // was already applied structurally during the fold, so scrub-only here.
     sanitize_value(&mut value, false);
     value
+}
+
+/// Build one dataset NDJSON record for an eval case: a complete ATIF
+/// trajectory with reward and case identity in root `extra`.
+pub fn build_case_record(
+    run: &everruns_core::eval::EvalRun,
+    result: &everruns_core::eval::EvalCaseResult,
+    events: &[Event],
+    options: AtifOptions,
+) -> Value {
+    let mut extra = Map::new();
+    extra.insert(
+        "reward".to_string(),
+        crate::domains::evals::dataset::reward(result),
+    );
+    extra.insert(
+        "source_key".to_string(),
+        json!(crate::domains::evals::dataset::source_key(run, result)),
+    );
+    extra.insert("eval_run_id".to_string(), json!(run.public_id.to_string()));
+    extra.insert(
+        "case_id".to_string(),
+        json!(result.eval_case_id.to_string()),
+    );
+    extra.insert("case_name".to_string(), json!(result.case_name));
+    let session_id = result.session_id.map(|s| s.to_string());
+    build_trajectory(session_id.as_deref(), events, extra, options)
 }
 
 /// Aggregated token totals across agent steps.
@@ -503,6 +532,185 @@ fn flatten_content_parts(parts: &[ContentPart]) -> String {
 }
 
 // ============================================================================
+// Import (ATIF → eval case drafts)
+// ============================================================================
+
+/// Import body cap (NDJSON or JSON). Sized like other untrusted-import caps
+/// (see specs/okf-adoption.md security notes).
+pub const MAX_IMPORT_BYTES: usize = 4 * 1024 * 1024;
+/// Max trajectories accepted per import call.
+pub const MAX_IMPORT_TRAJECTORIES: usize = 200;
+/// Per-string content cap applied to imported messages.
+const MAX_IMPORT_CONTENT_CHARS: usize = 64 * 1024;
+/// Reference excerpt length carried into the case description.
+const MAX_REFERENCE_CHARS: usize = 2000;
+
+/// A parsed, validated case draft derived from one ATIF trajectory.
+#[derive(Debug, Clone)]
+pub struct AtifCaseDraft {
+    /// Natural key within the target eval (used for idempotent upsert).
+    pub name: String,
+    pub description: String,
+    /// User steps, in order — one input message each.
+    pub conversation: Vec<everruns_core::eval::EvalInputMessage>,
+}
+
+/// Parse an import body that is either a JSON array of trajectories, a single
+/// trajectory object, an object with a `trajectories` array, or NDJSON with
+/// one trajectory per line.
+pub fn parse_import_body(body: &str) -> Result<Vec<Value>, String> {
+    if body.len() > MAX_IMPORT_BYTES {
+        return Err(format!(
+            "import body exceeds the {MAX_IMPORT_BYTES}-byte limit"
+        ));
+    }
+    let trajectories: Vec<Value> = match serde_json::from_str::<Value>(body) {
+        Ok(Value::Array(items)) => items,
+        Ok(Value::Object(mut obj)) => match obj.remove("trajectories") {
+            Some(Value::Array(items)) => items,
+            Some(_) => return Err("`trajectories` must be an array".to_string()),
+            None => vec![Value::Object(obj)],
+        },
+        Ok(_) => return Err("import body must be a JSON object, array, or NDJSON".to_string()),
+        // Not a single JSON document — treat as NDJSON, one object per line.
+        Err(_) => {
+            let mut items = Vec::new();
+            for (i, line) in body.lines().enumerate() {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let value: Value = serde_json::from_str(line)
+                    .map_err(|e| format!("invalid JSON on line {}: {e}", i + 1))?;
+                items.push(value);
+            }
+            items
+        }
+    };
+    if trajectories.is_empty() {
+        return Err("import contains no trajectories".to_string());
+    }
+    if trajectories.len() > MAX_IMPORT_TRAJECTORIES {
+        return Err(format!(
+            "import exceeds the {MAX_IMPORT_TRAJECTORIES}-trajectory limit"
+        ));
+    }
+    Ok(trajectories)
+}
+
+/// Map one ATIF trajectory to an eval-case draft.
+///
+/// Tolerates unknown fields and any `ATIF-*` schema version; requires
+/// `schema_version`, a non-empty `steps` array, and at least one user step.
+pub fn trajectory_to_case_draft(trajectory: &Value, index: usize) -> Result<AtifCaseDraft, String> {
+    let at = |msg: &str| format!("trajectory {}: {msg}", index + 1);
+
+    let obj = trajectory
+        .as_object()
+        .ok_or_else(|| at("must be a JSON object"))?;
+    let version = obj
+        .get("schema_version")
+        .and_then(Value::as_str)
+        .ok_or_else(|| at("missing schema_version"))?;
+    if !version.starts_with("ATIF-") {
+        return Err(at(&format!("unsupported schema_version '{version}'")));
+    }
+    let steps = obj
+        .get("steps")
+        .and_then(Value::as_array)
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| at("missing or empty steps"))?;
+
+    let mut conversation = Vec::new();
+    let mut reference: Option<String> = None;
+    for step in steps {
+        let source = step.get("source").and_then(Value::as_str).unwrap_or("");
+        let text = step_message_text(step);
+        match source {
+            "user" if !text.trim().is_empty() => {
+                conversation.push(everruns_core::eval::EvalInputMessage {
+                    content: truncate_chars(&text, MAX_IMPORT_CONTENT_CHARS),
+                });
+            }
+            "agent" if !text.trim().is_empty() => reference = Some(text),
+            _ => {}
+        }
+    }
+    if conversation.is_empty() {
+        return Err(at("has no user steps to build a conversation from"));
+    }
+
+    let extra = obj.get("extra").and_then(Value::as_object);
+    let name = extra
+        .and_then(|e| e.get("case_name").and_then(Value::as_str))
+        .or_else(|| extra.and_then(|e| e.get("source_key").and_then(Value::as_str)))
+        .or_else(|| obj.get("trajectory_id").and_then(Value::as_str))
+        .or_else(|| obj.get("session_id").and_then(Value::as_str))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| truncate_chars(s, 200))
+        .unwrap_or_else(|| format!("atif-case-{}", index + 1));
+
+    let agent_label = obj.get("agent").and_then(Value::as_object).map(|a| {
+        format!(
+            "{} {}",
+            a.get("name").and_then(Value::as_str).unwrap_or("unknown"),
+            a.get("version").and_then(Value::as_str).unwrap_or(""),
+        )
+    });
+    let mut description = format!(
+        "Imported from ATIF trajectory{}.",
+        agent_label
+            .map(|l| format!(" produced by {}", l.trim_end()))
+            .unwrap_or_default()
+    );
+    if let Some(reward) = extra.and_then(|e| e.get("reward")) {
+        description.push_str(&format!(
+            "\nSource reward: {}",
+            serde_json::to_string(reward).unwrap_or_default()
+        ));
+    }
+    // ATIF carries no assertion semantics, so the final agent message is kept
+    // as a human reference rather than auto-synthesized into a brittle scorer.
+    if let Some(reference) = reference {
+        description.push_str("\n\nReference final agent message:\n");
+        description.push_str(&truncate_chars(&reference, MAX_REFERENCE_CHARS));
+    }
+
+    Ok(AtifCaseDraft {
+        name,
+        description,
+        conversation,
+    })
+}
+
+/// Extract the text of an ATIF step `message` (string or ContentPart array).
+fn step_message_text(step: &Value) -> String {
+    match step.get("message") {
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Array(parts)) => parts
+            .iter()
+            .filter_map(|p| {
+                if p.get("type").and_then(Value::as_str) == Some("text") {
+                    p.get("text").and_then(Value::as_str).map(str::to_string)
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("\n"),
+        _ => String::new(),
+    }
+}
+
+fn truncate_chars(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        s.to_string()
+    } else {
+        s.chars().take(max).collect()
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -724,5 +932,171 @@ mod tests {
             json!("call_1")
         );
         assert_eq!(steps[0]["message"], json!(REDACTED));
+    }
+
+    #[test]
+    fn case_record_carries_reward_and_identity_in_extra() {
+        use everruns_core::eval::{
+            CaseResultStatus, EvalCaseResult, EvalRun, EvalRunSource, EvalRunStatus,
+        };
+        use everruns_core::typed_id::{EvalCaseId, EvalResultId, EvalRunId};
+
+        let session = SessionId::new();
+        let run = EvalRun {
+            public_id: EvalRunId::new(),
+            internal_id: uuid::Uuid::nil(),
+            org_id: 1,
+            target: None,
+            model_override: None,
+            filter_tags: None,
+            status: EvalRunStatus::Completed,
+            source: EvalRunSource::Internal,
+            attribution: None,
+            triggered_by: "test".to_string(),
+            started_at: None,
+            completed_at: None,
+            summary: None,
+            results: vec![],
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let result = EvalCaseResult {
+            public_id: EvalResultId::new(),
+            internal_id: uuid::Uuid::nil(),
+            eval_case_id: EvalCaseId::new(),
+            case_name: Some("case-one".to_string()),
+            session_id: Some(session),
+            target: None,
+            target_snapshot: None,
+            status: CaseResultStatus::Passed,
+            scores: Some(json!([{"pass": true, "value": 1.0, "reason": "ok"}])),
+            metadata: None,
+            turns: Some(1),
+            latency_ms: Some(10),
+            input_tokens: Some(1),
+            output_tokens: Some(2),
+            error_message: None,
+            artifacts: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+
+        let record = build_case_record(
+            &run,
+            &result,
+            &sample_events(session),
+            AtifOptions::default(),
+        );
+        assert_eq!(record["schema_version"], json!(ATIF_SCHEMA_VERSION));
+        assert_eq!(record["extra"]["reward"]["pass"], json!(true));
+        assert_eq!(record["extra"]["reward"]["score"], json!(1.0));
+        assert_eq!(record["extra"]["case_name"], json!("case-one"));
+        assert!(
+            record["extra"]["source_key"]
+                .as_str()
+                .unwrap()
+                .contains('/')
+        );
+        assert_eq!(record["session_id"], json!(session.to_string()));
+    }
+
+    // ------------------------------------------------------------------
+    // Import parsing
+    // ------------------------------------------------------------------
+
+    fn sample_trajectory() -> Value {
+        json!({
+            "schema_version": "ATIF-v1.7",
+            "session_id": "session_abc",
+            "agent": {"name": "yolop", "version": "0.3.0"},
+            "steps": [
+                {"step_id": 1, "source": "user", "message": "What is 2+2?"},
+                {"step_id": 2, "source": "agent", "message": "4"},
+            ],
+            "extra": {"reward": {"pass": true, "score": 1.0}},
+            "unknown_future_field": {"ignored": true},
+        })
+    }
+
+    #[test]
+    fn parse_accepts_array_object_and_ndjson() {
+        let t = sample_trajectory();
+
+        let array_body = serde_json::to_string(&json!([t])).unwrap();
+        assert_eq!(parse_import_body(&array_body).unwrap().len(), 1);
+
+        let single_body = serde_json::to_string(&t).unwrap();
+        assert_eq!(parse_import_body(&single_body).unwrap().len(), 1);
+
+        let wrapped = serde_json::to_string(&json!({"trajectories": [t, t]})).unwrap();
+        assert_eq!(parse_import_body(&wrapped).unwrap().len(), 2);
+
+        let ndjson = format!(
+            "{}\n{}\n",
+            serde_json::to_string(&t).unwrap(),
+            serde_json::to_string(&t).unwrap()
+        );
+        assert_eq!(parse_import_body(&ndjson).unwrap().len(), 2);
+    }
+
+    #[test]
+    fn parse_rejects_empty_and_oversized() {
+        assert!(parse_import_body("[]").is_err());
+        assert!(parse_import_body("not json at all").is_err());
+        let big = "x".repeat(MAX_IMPORT_BYTES + 1);
+        assert!(parse_import_body(&big).is_err());
+    }
+
+    #[test]
+    fn draft_maps_user_steps_and_reference() {
+        let draft = trajectory_to_case_draft(&sample_trajectory(), 0).unwrap();
+        assert_eq!(draft.name, "session_abc");
+        assert_eq!(draft.conversation.len(), 1);
+        assert_eq!(draft.conversation[0].content, "What is 2+2?");
+        assert!(draft.description.contains("Reference final agent message"));
+        assert!(draft.description.contains('4'));
+        assert!(draft.description.contains("yolop"));
+        assert!(draft.description.contains("reward"));
+    }
+
+    #[test]
+    fn draft_prefers_extra_case_name_and_tolerates_content_parts() {
+        let t = json!({
+            "schema_version": "ATIF-v1.9",
+            "agent": {"name": "x", "version": "1"},
+            "steps": [
+                {"step_id": 1, "source": "user",
+                 "message": [{"type": "text", "text": "part one"}, {"type": "text", "text": "part two"}]},
+            ],
+            "extra": {"case_name": "named-case"},
+        });
+        let draft = trajectory_to_case_draft(&t, 3).unwrap();
+        assert_eq!(draft.name, "named-case");
+        assert_eq!(draft.conversation[0].content, "part one\npart two");
+    }
+
+    #[test]
+    fn draft_rejects_missing_version_and_missing_user_steps() {
+        assert!(trajectory_to_case_draft(&json!({"steps": []}), 0).is_err());
+        let no_user = json!({
+            "schema_version": "ATIF-v1.7",
+            "steps": [{"step_id": 1, "source": "agent", "message": "hello"}],
+        });
+        assert!(trajectory_to_case_draft(&no_user, 0).is_err());
+        let bad_version = json!({
+            "schema_version": "OTHER-v1",
+            "steps": [{"step_id": 1, "source": "user", "message": "hi"}],
+        });
+        assert!(trajectory_to_case_draft(&bad_version, 0).is_err());
+    }
+
+    #[test]
+    fn draft_falls_back_to_indexed_name() {
+        let t = json!({
+            "schema_version": "ATIF-v1.7",
+            "steps": [{"step_id": 1, "source": "user", "message": "hi"}],
+        });
+        let draft = trajectory_to_case_draft(&t, 4).unwrap();
+        assert_eq!(draft.name, "atif-case-5");
     }
 }

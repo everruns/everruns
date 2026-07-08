@@ -25,6 +25,10 @@ pub enum DatasetFormat {
     /// Chat-message shape loadable by common SFT pipelines, with reward carried
     /// in a sidecar field for verifiable-reward filtering before training.
     Sft,
+    /// One complete ATIF (Agent Trajectory Interchange Format) trajectory per
+    /// line, folded from the case session's event log, with reward and case
+    /// identity in root `extra`. See `specs/atif-adoption.md`.
+    Atif,
 }
 
 /// Selection filters applied per case. `org_id` is never part of this — it is
@@ -178,7 +182,7 @@ pub fn source_key(run: &EvalRun, result: &EvalCaseResult) -> String {
 /// identity. Current eval-case scorer definitions are mutable, so historical
 /// results must keep stable positional labels instead of joining against current
 /// scorer kinds at export time.
-fn reward(result: &EvalCaseResult) -> Value {
+pub(crate) fn reward(result: &EvalCaseResult) -> Value {
     let scores = result.scores.as_ref().and_then(Value::as_array);
     let scorers: Vec<Value> = scores
         .map(|arr| {
@@ -277,7 +281,10 @@ pub fn build_record(
     redaction: &RedactionOptions,
 ) -> Value {
     let mut record = match format {
-        DatasetFormat::Trajectory => json!({
+        // ATIF is event-based and built by `crate::atif::build_case_record`;
+        // the export job never routes it here. Fall back to the canonical
+        // trajectory shape defensively rather than panicking.
+        DatasetFormat::Trajectory | DatasetFormat::Atif => json!({
             "source_key": source_key(run, result),
             "eval_run_id": run.public_id.to_string(),
             "case_id": result.eval_case_id.to_string(),
