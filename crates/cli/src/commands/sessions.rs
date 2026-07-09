@@ -12,11 +12,13 @@ use std::collections::HashMap;
 pub enum SessionsCommand {
     /// Create a new session
     Create {
-        /// Harness ID or name (e.g. harness_xxx or "generic"). Omit to use org default.
+        /// Harness ID or name (e.g. harness_xxx or "generic"). Omit to derive
+        /// from the agent (when given), else the org default.
         #[arg(long, short = 'H')]
         harness: Option<String>,
 
-        /// Agent ID (optional, e.g. agent_xxx)
+        /// Agent ID or name (optional, e.g. agent_xxx or "support"). When set
+        /// without --harness, the session runs on the agent's harness.
         #[arg(long, short)]
         agent: Option<String>,
 
@@ -383,7 +385,15 @@ fn build_create_session_body(args: CreateSessionArgs) -> Result<serde_json::Valu
             body.insert("harness_name".to_string(), serde_json::json!(h));
         }
     }
-    insert_opt_string(&mut body, "agent_id", args.agent_id);
+    // Accept an agent id or name; a bare name resolves server-side and the
+    // session inherits the agent's harness when no harness is supplied.
+    if let Some(a) = args.agent_id {
+        if is_prefixed_id(&a, "agent") {
+            body.insert("agent_id".to_string(), serde_json::json!(a));
+        } else {
+            body.insert("agent_name".to_string(), serde_json::json!(a));
+        }
+    }
     insert_opt_string(&mut body, "agent_identity_id", args.agent_identity_id);
     insert_opt_string(&mut body, "title", args.title);
     insert_opt_string(&mut body, "locale", args.locale);
@@ -1305,7 +1315,7 @@ mod tests {
     fn test_build_create_session_body_new_fields() {
         let body = build_create_session_body(CreateSessionArgs {
             harness: Some("generic".into()),
-            agent_id: Some("agent_abc".into()),
+            agent_id: Some("agent_00000000000000000000000000000001".into()),
             title: Some("Debug".into()),
             locale: Some("uk-UA".into()),
             model_id: Some("model_abc".into()),
@@ -1322,7 +1332,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(body["harness_name"], "generic");
-        assert_eq!(body["agent_id"], "agent_abc");
+        assert_eq!(body["agent_id"], "agent_00000000000000000000000000000001");
         assert_eq!(body["agent_identity_id"], "identity_abc");
         assert_eq!(body["locale"], "uk-UA");
         assert_eq!(body["system_prompt"], "Be concise");
@@ -1366,6 +1376,50 @@ mod tests {
             "harness_00000000000000000000000000000001"
         );
         assert!(body.get("harness_name").is_none());
+    }
+
+    #[test]
+    fn test_build_create_session_body_detects_agent_id_vs_name() {
+        // A strict prefixed id maps to `agent_id`; anything else is an agent name.
+        let by_id = build_create_session_body(CreateSessionArgs {
+            harness: None,
+            agent_id: Some("agent_00000000000000000000000000000001".into()),
+            title: None,
+            locale: None,
+            model_id: None,
+            agent_identity_id: None,
+            system_prompt: None,
+            tags: vec![],
+            raw_capabilities: vec![],
+            raw_hints: vec![],
+            raw_hints_json: None,
+            network_allow: vec![],
+            network_block: vec![],
+            max_iterations: None,
+        })
+        .unwrap();
+        assert_eq!(by_id["agent_id"], "agent_00000000000000000000000000000001");
+        assert!(by_id.get("agent_name").is_none());
+
+        let by_name = build_create_session_body(CreateSessionArgs {
+            harness: None,
+            agent_id: Some("support".into()),
+            title: None,
+            locale: None,
+            model_id: None,
+            agent_identity_id: None,
+            system_prompt: None,
+            tags: vec![],
+            raw_capabilities: vec![],
+            raw_hints: vec![],
+            raw_hints_json: None,
+            network_allow: vec![],
+            network_block: vec![],
+            max_iterations: None,
+        })
+        .unwrap();
+        assert_eq!(by_name["agent_name"], "support");
+        assert!(by_name.get("agent_id").is_none());
     }
 
     #[test]
