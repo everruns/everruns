@@ -45,6 +45,7 @@ The `Session` entity is extended with a subagent nesting guard:
 | Field | Type | Description |
 |-------|------|-------------|
 | `parent_session_id` | SessionId? | Parent session (null for top-level sessions) |
+| `root_session_id` | SessionId? | Root of this session's delegation tree (EVE-680). A top-level session is its own root; a subagent child inherits its parent's root. Denormalized (migration 094) so a whole tree is one indexed query; mirrored onto `session_tasks.root_session_id` and filterable via `GET /v1/tasks?root_session_id=`. Tree-observability groundwork; does not change the current nesting guard. |
 
 `subagent_name`, `subagent_task`, and `subagent_status` were retired in
 migration 059. Lifecycle state is now tracked via `SessionTask` records

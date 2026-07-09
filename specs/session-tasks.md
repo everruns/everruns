@@ -330,7 +330,7 @@ a registry policy rather than per-capability cleanup.
 ## API
 
 ```
-GET  /v1/tasks                                  — org-scoped list (state/kind/created_after, newest-first, bounded limit)
+GET  /v1/tasks                                  — org-scoped list (state/kind/created_after/root_session_id, newest-first, bounded limit)
 GET  /v1/sessions/{session_id}/tasks            — list (filter by state/kind)
 GET  /v1/sessions/{session_id}/tasks/{task_id}  — snapshot + recent thread
 POST /v1/sessions/{session_id}/tasks/{task_id}/messages — inbound message
@@ -344,6 +344,15 @@ filters and a bounded `limit` (default 100, max 500). The org is taken from the
 authenticated caller, never from input; scoping is a semijoin on
 `sessions.org_id` (the authoritative tenant boundary), backed by the
 `session_tasks (created_at DESC)` index.
+
+The optional `root_session_id` filter (EVE-680) narrows the list to a single
+delegation tree — the root session's own tasks plus every descendant's. A
+session's tree root is denormalized onto `sessions.root_session_id` (a top-level
+session is its own root; a subagent child inherits its parent's root, set at
+session creation and backfilled by migration 093) and mirrored onto
+`session_tasks.root_session_id` at task creation, so the whole tree is one
+indexed lookup with no parent-chain walk. The filter parses to a session id and
+stays inside the org semijoin, so it never crosses the tenant boundary.
 
 Message posts and cancels both invoke the kind's `TaskExecutor` best-effort
 after the durable registry write: the message is recorded and the cancel intent

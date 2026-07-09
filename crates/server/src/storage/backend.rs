@@ -3352,12 +3352,14 @@ impl StorageBackend {
     /// optional kind/state/age filters and a bounded limit. Org scoping is the
     /// authoritative multitenancy boundary (a semijoin on `sessions.org_id`):
     /// a task is only returned when its owning session belongs to the org.
+    #[allow(clippy::too_many_arguments)]
     pub async fn list_org_session_tasks(
         &self,
         org_id: i64,
         kind: Option<&str>,
         state: Option<&str>,
         created_after: Option<DateTime<Utc>>,
+        root_session_id: Option<SessionId>,
         limit: i64,
     ) -> Result<Vec<SessionTaskRow>> {
         dispatch!(
@@ -3367,6 +3369,7 @@ impl StorageBackend {
             kind,
             state,
             created_after,
+            root_session_id,
             limit
         )
     }

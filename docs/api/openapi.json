@@ -13606,6 +13606,15 @@
             }
           },
           {
+            "name": "root_session_id",
+            "in": "query",
+            "description": "Only tasks whose owning session's delegation-tree root is this session",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "description": "Max tasks, newest first (default 100, max 500)",

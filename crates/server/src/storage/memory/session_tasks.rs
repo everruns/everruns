@@ -13,7 +13,15 @@ impl InMemoryDatabase {
     /// Insert a task. Idempotent on `id`: when the row already exists it is
     /// returned unchanged and the `bool` is false.
     pub async fn create_session_task(&self, task: &SessionTask) -> Result<(SessionTaskRow, bool)> {
-        let row = SessionTaskRow::from_task(task)?;
+        let mut row = SessionTaskRow::from_task(task)?;
+        // EVE-680: denormalize the owning session's tree root onto the task,
+        // mirroring the Postgres subquery. Read sessions before locking tasks to
+        // keep a consistent lock order.
+        row.root_session_id = self
+            .sessions
+            .read()
+            .get(&task.session_id)
+            .and_then(|s| s.root_session_id);
         let mut tasks = self.session_tasks.write();
         if let Some(existing) = tasks.get(&row.id) {
             // Idempotency is scoped to the owning session: an id that exists
@@ -67,12 +75,14 @@ impl InMemoryDatabase {
     /// PostgreSQL repository: org scoping is the authoritative multitenancy
     /// boundary — a task is only returned when its owning session belongs to
     /// the org.
+    #[allow(clippy::too_many_arguments)]
     pub async fn list_org_session_tasks(
         &self,
         org_id: i64,
         kind: Option<&str>,
         state: Option<&str>,
         created_after: Option<chrono::DateTime<chrono::Utc>>,
+        root_session_id: Option<SessionId>,
         limit: i64,
     ) -> Result<Vec<SessionTaskRow>> {
         // Sessions owned by the org — the multitenancy boundary, mirroring the
@@ -93,6 +103,7 @@ impl InMemoryDatabase {
                     && kind.is_none_or(|k| row.kind == k)
                     && state.is_none_or(|s| row.state == s)
                     && created_after.is_none_or(|c| row.created_at >= c)
+                    && root_session_id.is_none_or(|r| row.root_session_id == Some(r))
             })
             .cloned()
             .collect();
@@ -356,6 +367,7 @@ mod tests {
         let row = SessionTaskRow {
             id: id.to_string(),
             session_id,
+            root_session_id: Some(session_id),
             kind: "background_tool".to_string(),
             display_name: "t".to_string(),
             spec: serde_json::json!({}),

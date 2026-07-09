@@ -77,6 +77,7 @@ pub struct ListOrgTasksQuery {
     pub state: Option<String>,
     pub kind: Option<String>,
     pub created_after: Option<String>,
+    pub root_session_id: Option<String>,
     pub limit: Option<u32>,
 }
 
@@ -88,6 +89,7 @@ pub struct ListOrgTasksQuery {
         ("state" = Option<String>, Query, description = "Filter by state"),
         ("kind" = Option<String>, Query, description = "Filter by kind"),
         ("created_after" = Option<String>, Query, description = "Only tasks created at/after this RFC3339 timestamp"),
+        ("root_session_id" = Option<String>, Query, description = "Only tasks whose owning session's delegation-tree root is this session"),
         ("limit" = Option<u32>, Query, description = "Max tasks, newest first (default 100, max 500)"),
     ),
     responses(
@@ -105,6 +107,7 @@ pub async fn list_org_tasks(
             state: query.state,
             kind: query.kind,
             created_after: query.created_after,
+            root_session_id: query.root_session_id,
             limit: query.limit,
         }
         .run(&state.ctx(&org))

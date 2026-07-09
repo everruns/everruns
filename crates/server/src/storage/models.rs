@@ -744,6 +744,12 @@ pub struct SessionRow {
     // -- Subagent nesting fields --
     #[sqlx(default)]
     pub parent_session_id: Option<SessionId>,
+    /// Root of this session's delegation tree (EVE-680). A top-level session is
+    /// its own root; a subagent child inherits its parent's root. Denormalized
+    /// so a whole tree is one indexed query. Set by the storage layer at
+    /// creation; `#[sqlx(default)]` because most SELECTs don't project it.
+    #[sqlx(default)]
+    pub root_session_id: Option<SessionId>,
     // -- Fork lineage fields (specs/forking-sessions.md) --
     #[sqlx(default)]
     pub forked_from_session_id: Option<SessionId>,
@@ -2163,6 +2169,12 @@ pub struct UpsertSessionResourceRow {
 pub struct SessionTaskRow {
     pub id: String,
     pub session_id: SessionId,
+    /// Root of the owning session's delegation tree (EVE-680). Denormalized
+    /// from `sessions.root_session_id` at insert so `GET /v1/tasks` can filter a
+    /// whole tree's work by a local column. DB-only — not part of the core
+    /// `SessionTask`; `#[sqlx(default)]` so queries that omit it still map.
+    #[sqlx(default)]
+    pub root_session_id: Option<SessionId>,
     pub kind: String,
     pub display_name: String,
     pub spec: serde_json::Value,
@@ -2192,6 +2204,9 @@ impl SessionTaskRow {
         Ok(Self {
             id: task.id.clone(),
             session_id: task.session_id,
+            // Populated at the storage insert from the owning session's root;
+            // the core task carries no root, so default to None here.
+            root_session_id: None,
             kind: task.kind.clone(),
             display_name: task.display_name.clone(),
             spec: task.spec.clone(),

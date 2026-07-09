@@ -10,10 +10,10 @@ use anyhow::Result;
 use everruns_core::SessionId;
 use everruns_core::session_task::{SessionTask, SessionTaskUpdate, apply_task_update};
 
-const TASK_COLUMNS: &str = "id, session_id, kind, display_name, spec, state, state_detail, \
-     progress, input_request, cancel_requested_at, summary, result_path, artifacts, error, \
-     attempt, worker_id, heartbeat_at, links, wake_policy, created_at, started_at, finished_at, \
-     updated_at";
+const TASK_COLUMNS: &str = "id, session_id, root_session_id, kind, display_name, spec, state, \
+     state_detail, progress, input_request, cancel_requested_at, summary, result_path, artifacts, \
+     error, attempt, worker_id, heartbeat_at, links, wake_policy, created_at, started_at, \
+     finished_at, updated_at";
 
 const MESSAGE_COLUMNS: &str =
     "id, task_id, session_id, direction, content, in_reply_to, created_at";
@@ -29,10 +29,14 @@ impl Database {
                 id, session_id, kind, display_name, spec, state, state_detail,
                 progress, input_request, cancel_requested_at, summary, result_path,
                 artifacts, error, attempt, worker_id, heartbeat_at, links,
-                wake_policy, created_at, started_at, finished_at, updated_at
+                wake_policy, created_at, started_at, finished_at, updated_at,
+                root_session_id
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-                    $15, $16, $17, $18, $19, $20, $21, $22, $23)
+                    $15, $16, $17, $18, $19, $20, $21, $22, $23,
+                    -- EVE-680: denormalize the owning session's tree root so the
+                    -- org task list can filter a whole tree by a local column.
+                    (SELECT root_session_id FROM sessions WHERE id = $2))
             ON CONFLICT (id) DO NOTHING
             RETURNING {TASK_COLUMNS}
             "#
@@ -128,12 +132,14 @@ impl Database {
     /// optional kind/state/age filters and a bounded limit. The org boundary is
     /// a semijoin on `sessions.org_id` — the authoritative multitenancy scope —
     /// so a task only appears when its owning session belongs to the org.
+    #[allow(clippy::too_many_arguments)]
     pub async fn list_org_session_tasks(
         &self,
         org_id: i64,
         kind: Option<&str>,
         state: Option<&str>,
         created_after: Option<chrono::DateTime<chrono::Utc>>,
+        root_session_id: Option<SessionId>,
         limit: i64,
     ) -> Result<Vec<SessionTaskRow>> {
         let rows = sqlx::query_as::<_, SessionTaskRow>(sqlx::AssertSqlSafe(format!(
@@ -144,14 +150,16 @@ impl Database {
               AND ($2::text IS NULL OR kind = $2)
               AND ($3::text IS NULL OR state = $3)
               AND ($4::timestamptz IS NULL OR created_at >= $4)
+              AND ($5::uuid IS NULL OR root_session_id = $5)
             ORDER BY created_at DESC, id DESC
-            LIMIT $5
+            LIMIT $6
             "#
         )))
         .bind(org_id)
         .bind(kind)
         .bind(state)
         .bind(created_after)
+        .bind(root_session_id.map(|id| id.uuid()))
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
