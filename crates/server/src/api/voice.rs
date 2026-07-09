@@ -523,6 +523,7 @@ pub async fn create_agent_voice_session(
         harness_id: None,
         harness_name: None,
         agent_id: Some(agent_id),
+        agent_name: None,
         agent_identity_id: None,
         title: Some("Voice session".to_string()),
         locale: None,

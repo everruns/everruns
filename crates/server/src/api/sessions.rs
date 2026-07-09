@@ -40,8 +40,9 @@ use utoipa::{IntoParams, ToSchema};
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateSessionRequest {
     /// ID of the harness for this session (format: harness_{32-hex}).
-    /// If omitted, the org default harness is used. New orgs default that to Generic.
-    /// Mutually exclusive with `harness_name`.
+    /// If omitted, the harness is derived from the agent (when one is supplied),
+    /// else the org default harness, else the built-in fallback. New orgs default
+    /// that to Generic. Mutually exclusive with `harness_name`.
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "harness_01933b5a00007000800000000000001")]
     pub harness_id: Option<HarnessId>,
@@ -52,9 +53,17 @@ pub struct CreateSessionRequest {
     #[schema(example = "generic")]
     pub harness_name: Option<String>,
     /// ID of the agent to work in this session (optional, format: agent_{32-hex}).
+    /// When supplied without a harness, the session inherits the agent's harness.
+    /// Mutually exclusive with `agent_name`.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub agent_id: Option<AgentId>,
+    /// Name of the agent to work in this session (optional).
+    /// Alternative to `agent_id` — looked up by name within the org.
+    /// Mutually exclusive with `agent_id`.
+    #[serde(default)]
+    #[schema(example = "support")]
+    pub agent_name: Option<String>,
     /// Optional resident agent identity used for unattended/background execution.
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001")]
@@ -1176,6 +1185,7 @@ mod tests {
             &db,
             42,
             None,
+            None,
             Some("generic"),
         )
         .await
@@ -1202,10 +1212,62 @@ mod tests {
             &db,
             42,
             None,
+            None,
             Some("generic"),
         )
         .await
         .unwrap();
         assert_eq!(harness_id, default_harness_id);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_session_harness_id_prefers_agent_over_org_default() {
+        // Agent-first (D4): with no explicit request harness, the agent's harness
+        // wins over the org default.
+        let db = StorageBackend::in_memory();
+        let default_harness_id: HarnessId = TEST_HARNESS_ID.parse().unwrap();
+        let agent_harness_id: HarnessId =
+            "harness_550e8400e29b41d4a716446655440009".parse().unwrap();
+
+        db.patch_organization_settings(
+            42,
+            UpdateOrganizationSettings {
+                default_harness_id: UpdateField::Set(default_harness_id),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let harness_id = crate::domains::sessions::queries::resolve_session_harness_id(
+            &db,
+            42,
+            None,
+            Some(agent_harness_id),
+            Some("generic"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(harness_id, agent_harness_id);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_session_harness_id_request_overrides_agent() {
+        // Explicit request harness wins over the agent's harness (D4 override).
+        let db = StorageBackend::in_memory();
+        let requested: HarnessId = TEST_HARNESS_ID.parse().unwrap();
+        let agent_harness_id: HarnessId =
+            "harness_550e8400e29b41d4a716446655440009".parse().unwrap();
+
+        let harness_id = crate::domains::sessions::queries::resolve_session_harness_id(
+            &db,
+            42,
+            Some(requested),
+            Some(agent_harness_id),
+            Some("generic"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(harness_id, requested);
     }
 }

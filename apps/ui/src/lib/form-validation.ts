@@ -55,6 +55,7 @@ export const agentFormSchema = z.object({
   display_name: optionalString(),
   description: optionalString(),
   system_prompt: requiredString("System prompt"),
+  harness_id: requiredString("Harness"),
   default_model_id: optionalString(),
   tags: z.preprocess(trimInput, z.string()).optional().default(""),
 });

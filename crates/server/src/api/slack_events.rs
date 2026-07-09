@@ -649,6 +649,7 @@ async fn process_slack_message(
                 harness_id: Some(app.harness_id),
                 harness_name: None,
                 agent_id: app.agent_id,
+                agent_name: None,
                 title: Some(title),
                 locale: None,
                 tags: desired_tags.clone(),

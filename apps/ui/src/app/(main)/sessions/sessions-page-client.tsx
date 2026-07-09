@@ -105,14 +105,17 @@ export default function SessionsPageClient() {
   };
 
   const handleCreateSession = async () => {
-    if (!newSessionHarnessId) {
+    // Agent-first: when an agent is chosen, the server derives the harness from
+    // it, so the harness picker is hidden and no harness is sent. A no-agent
+    // session still requires an explicit harness.
+    if (!newSessionAgentId && !newSessionHarnessId) {
       console.error("No harness selected");
       return;
     }
     try {
       const session = await createSession.mutateAsync({
         request: {
-          harness_id: newSessionHarnessId,
+          harness_id: newSessionAgentId ? undefined : newSessionHarnessId,
           agent_id: newSessionAgentId || undefined,
           agent_identity_id: newSessionAgentIdentityId || undefined,
         },
@@ -264,18 +267,11 @@ export default function SessionsPageClient() {
           <DialogHeader>
             <DialogTitle>New Session</DialogTitle>
             <DialogDescription>
-              Select a harness and optionally an agent to start a new conversation.
+              Pick an agent to run on its harness, or choose a harness directly for a no-agent
+              session.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
-            <div className="space-y-2">
-              <Label>Harness (required)</Label>
-              <HarnessSelect
-                value={newSessionHarnessId}
-                onValueChange={setNewSessionHarnessId}
-                placeholder="Select a harness"
-              />
-            </div>
             <div className="space-y-2">
               <Label>Agent (optional)</Label>
               <AgentSelect
@@ -286,6 +282,16 @@ export default function SessionsPageClient() {
                 allLabel="No agent"
               />
             </div>
+            {!newSessionAgentId && (
+              <div className="space-y-2">
+                <Label>Harness (required)</Label>
+                <HarnessSelect
+                  value={newSessionHarnessId}
+                  onValueChange={setNewSessionHarnessId}
+                  placeholder="Select a harness"
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Agent identity (background runs)</Label>
               <AgentIdentitySelect
@@ -300,7 +306,7 @@ export default function SessionsPageClient() {
             </Button>
             <Button
               onClick={handleCreateSession}
-              disabled={!newSessionHarnessId || createSession.isPending}
+              disabled={(!newSessionAgentId && !newSessionHarnessId) || createSession.isPending}
             >
               {createSession.isPending ? "Creating..." : "Create Session"}
             </Button>

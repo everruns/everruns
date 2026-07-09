@@ -673,6 +673,7 @@ async fn resolve_session(
                 harness_id: Some(app.harness_id),
                 harness_name: None,
                 agent_id: app.agent_id,
+                agent_name: None,
                 agent_identity_id: app.agent_identity_id,
                 title: Some(format!("FCP session for {}", app.name)),
                 locale: None,
