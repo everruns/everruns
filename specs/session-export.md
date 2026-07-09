@@ -54,5 +54,12 @@ Same as `GET /v1/sessions/{session_id}` — requires `SESSION_VIEW`.
 
 ## UI
 
-Download button on the `SessionCard` component (sessions list page). Icon: `Download` from lucide-react.
-Clicking triggers a browser download of the JSONL file via `fetch` + blob URL.
+Download menu on the `SessionCard` component (sessions list page). Icon: `Download` from lucide-react.
+The menu offers "Export JSONL" (default, `{session_id}.jsonl`) and "Export ATIF"
+(`{session_id}.atif.json`); both download via `fetch` + blob URL.
+
+ATIF limit alerts surface on the shared toast surface (notifications provider):
+HTTP 413 (document over the server size cap) shows an error toast with the
+server message when parseable, and a non-zero `X-Atif-Images-Omitted` response
+header still downloads but shows an informational toast. Both signals are
+optional — against servers without them the flow behaves like JSONL export.

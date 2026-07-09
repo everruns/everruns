@@ -41,12 +41,23 @@ type NotificationState = {
 
 type ToastNotification = Notification & { toast_id: string };
 
+export interface LocalToastInput {
+  title: string;
+  body: string;
+}
+
 interface NotificationsContextValue {
   notifications: Notification[];
   unviewedCount: number;
   isEnabled: boolean;
   markViewed: (notificationId: string) => Promise<void>;
   openNotification: (notification: Notification) => void;
+  /**
+   * Show a client-local toast on the shared toast surface. Local toasts are
+   * ephemeral: they never enter the durable notification list or bell count,
+   * and never call the server.
+   */
+  notify: (input: LocalToastInput) => void;
 }
 
 const NotificationsContext = createContext<NotificationsContextValue | undefined>(undefined);
@@ -187,6 +198,29 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       setToastQueue((prev) => prev.filter((item) => item.toast_id !== toast_id));
     }, 5000);
   }, []);
+
+  const localToastSeqRef = useRef(0);
+  const notify = useCallback(
+    (input: LocalToastInput) => {
+      localToastSeqRef.current += 1;
+      const now = new Date().toISOString();
+      // viewed_at is pre-set so a click never triggers markViewed (there is no
+      // server-side notification behind a local toast), and href is absent so
+      // the click is a no-op beyond dismissing.
+      enqueueToast({
+        id: `local-${localToastSeqRef.current}`,
+        kind: "local",
+        title: input.title,
+        body: input.body,
+        payload: {},
+        occurrence_count: 1,
+        viewed_at: now,
+        created_at: now,
+        updated_at: now,
+      });
+    },
+    [enqueueToast],
+  );
 
   const markViewed = useCallback(async (notificationId: string) => {
     setState((prev) => updateViewedInState(prev, notificationId));
@@ -335,8 +369,9 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       isEnabled,
       markViewed,
       openNotification,
+      notify,
     }),
-    [isEnabled, markViewed, notifications, openNotification, unviewedCount],
+    [isEnabled, markViewed, notifications, notify, openNotification, unviewedCount],
   );
 
   return (

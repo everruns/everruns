@@ -29,7 +29,10 @@ import { AgentFilterMenu } from "@/components/agent/agent-filter-menu";
 import { AgentIdentitySelect } from "@/components/agent-identity/agent-identity-select";
 import { Label } from "@/components/ui/label";
 import { Plus, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
-import { exportSessionJsonl } from "@/lib/api/sessions";
+import { downloadSessionExport } from "@/lib/session-export";
+import { useOptionalNotificationsContext } from "@/providers/notifications-provider";
+import { useLocale } from "@/providers/locale-provider";
+import type { SessionExportFormat } from "@/lib/api/sessions";
 import type { ModelWithProvider, Agent } from "@/lib/api/types";
 import { getDisplayName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
 import { useOrganization } from "@/hooks/use-organizations";
@@ -48,6 +51,8 @@ const PAGE_SIZE = 20;
 
 export default function SessionsPageClient() {
   const router = useRouter();
+  const { locale } = useLocale();
+  const notificationsContext = useOptionalNotificationsContext();
   const [page, setPage] = useState(0);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [newSessionDialogOpen, setNewSessionDialogOpen] = useState(false);
@@ -140,10 +145,8 @@ export default function SessionsPageClient() {
     }
   };
 
-  const handleExport = (sessionId: string) => {
-    exportSessionJsonl(sessionId).catch((err) => {
-      console.error("Failed to export session:", err);
-    });
+  const handleExport = (sessionId: string, format: SessionExportFormat) => {
+    void downloadSessionExport(sessionId, format, locale, notificationsContext?.notify);
   };
 
   const filterLabel = selectedAgentId

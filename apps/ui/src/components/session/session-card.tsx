@@ -14,10 +14,19 @@ import { Badge } from "@/components/ui/badge";
 import { EntityCard } from "@/components/ui/entity-card";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuPositioner,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { cn, shortenId } from "@/lib/utils";
 import { formatRelativeTime, formatTokens } from "@/lib/formatting";
 import { CopyButton } from "@/components/ui/copy-button";
+import { useLocale } from "@/providers/locale-provider";
 import type { Session, SessionStatus, ModelWithProvider, TokenUsage } from "@/lib/api/types";
+import type { SessionExportFormat } from "@/lib/api/sessions";
 import { getEntityReferenceClassName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
 import { joinTags } from "@/lib/tags";
 
@@ -44,8 +53,8 @@ export interface SessionCardProps {
   onDelete?: (sessionId: string, sessionTitle: string) => void;
   /** Callback to toggle pin state */
   onTogglePin?: (sessionId: string, pinned: boolean) => void;
-  /** Callback to export session as JSONL */
-  onExport?: (sessionId: string) => void;
+  /** Callback to export the session in the chosen format */
+  onExport?: (sessionId: string, format: SessionExportFormat) => void;
 }
 
 /**
@@ -148,6 +157,7 @@ export function SessionCard({
   onTogglePin,
   onExport,
 }: SessionCardProps) {
+  const { t } = useLocale();
   const statusInfo = getStatusInfo(session.status);
   const displayTitle = session.title || `Session ${shortenId(session.id)}`;
   // Show preview from session (first user message), explicit summary prop, or nothing
@@ -198,19 +208,27 @@ export function SessionCard({
             </Badge>
           )}
           {onExport && (
-            <Tooltip>
-              <TooltipTrigger
+            <DropdownMenu>
+              <DropdownMenuTrigger
                 className={cn(
                   "p-0.5 rounded transition-colors flex-shrink-0",
                   "text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/80",
                 )}
-                aria-label="Export session as JSONL"
-                onClick={() => onExport(session.id)}
+                aria-label={t("export_session")}
               >
                 <Download className="w-3.5 h-3.5" />
-              </TooltipTrigger>
-              <TooltipContent>Export JSONL</TooltipContent>
-            </Tooltip>
+              </DropdownMenuTrigger>
+              <DropdownMenuPositioner align="end">
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => onExport(session.id, "jsonl")}>
+                    {t("export_jsonl")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onExport(session.id, "atif")}>
+                    {t("export_atif")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenuPositioner>
+            </DropdownMenu>
           )}
           {onTogglePin && (
             <Tooltip>
