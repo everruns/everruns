@@ -266,21 +266,36 @@ struct RuntimeExecutionCapabilities {
 fn subagent_nesting_policy_from_configs(
     resolved_capability_configs: &[everruns_core::capability_types::AgentCapabilityConfig],
 ) -> everruns_core::SubagentNestingPolicy {
-    let configured_depth = resolved_capability_configs
-        .iter()
-        .find(|config| {
-            config.capability_id() == everruns_core::capabilities::SUBAGENTS_CAPABILITY_ID
-        })
+    let subagents_config = resolved_capability_configs.iter().find(|config| {
+        config.capability_id() == everruns_core::capabilities::SUBAGENTS_CAPABILITY_ID
+    });
+
+    let configured_depth = subagents_config
         .and_then(|config| {
             config
                 .config
                 .get("max_subagent_depth")
                 .or_else(|| config.config.get("max_depth"))
-                .and_then(|value| value.as_u64())
-                .and_then(|value| u32::try_from(value).ok())
-        });
+        })
+        .and_then(|value| value.as_u64())
+        .and_then(|value| u32::try_from(value).ok());
+    let configured_max_active = subagents_config
+        .and_then(|config| {
+            config
+                .config
+                .get("max_active_descendant_tasks")
+                .or_else(|| config.config.get("max_concurrent_descendant_tasks"))
+        })
+        .and_then(|value| value.as_u64())
+        .and_then(|value| u32::try_from(value).ok());
+    let configured_max_total = subagents_config
+        .and_then(|config| config.config.get("max_total_descendant_tasks"))
+        .and_then(|value| value.as_u64())
+        .and_then(|value| u32::try_from(value).ok());
 
-    everruns_core::SubagentNestingPolicy::default().with_agent_override(configured_depth)
+    everruns_core::SubagentNestingPolicy::default()
+        .with_agent_override(configured_depth)
+        .with_agent_task_caps_override(configured_max_active, configured_max_total)
 }
 
 /// Collect and finalize user-hook specs for a session from its resolved

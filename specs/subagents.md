@@ -13,6 +13,8 @@ the `SubagentTaskExecutor`.
     a detached watcher settles the task and the OnTerminal wake policy notifies the parent
   - mode: "foreground" blocks the parent tool call until the child idles (original Phase 1 behavior)
   - Governed nesting: subagents may spawn subagents up to max_subagent_depth
+  - Root-tree task caps: a root session has bounded live and total descendant
+    subagent tasks
   - Human-readable names by default ("Test Runner" not "test-runner")
   - message_task / cancel_task unify steering and cancellation via the task registry
   - Subagent inherits parent's harness and agent configuration
@@ -206,7 +208,7 @@ The child session does **not** inherit:
 - Session-level capabilities (only agent capabilities apply)
 - Active turn state
 
-## Nesting Governance
+## Spawn Governance
 
 Subagent delegation walks the current session's `parent_session_id` chain and allows the spawn only when the new child depth is less than or equal to `max_subagent_depth`. Top-level sessions are depth 0; direct children are depth 1.
 
@@ -214,7 +216,26 @@ The default maximum depth is 2, enabling A -> B -> C while rejecting a depth-3 c
 
 When the cap is exceeded, the tool returns a `ToolError` naming the attempted depth and configured cap.
 
-**Rationale:** Bounded nesting covers coordinator/delegator patterns without opening unbounded recursive delegation.
+Subagent spawning also counts existing descendant subagent tasks by walking the
+root session's task tree (`TASK_KIND_SUBAGENT` records and their
+`links.child_session_id`). A new spawn is rejected before child creation when
+it would exceed either:
+
+- `max_active_descendant_tasks` (default 16): non-terminal descendant tasks
+  under the root session, including `queued`, `running`, and `awaiting_input`
+  tasks.
+- `max_total_descendant_tasks` (default 200): all descendant subagent task
+  records under the root session, including terminal records until retention
+  prunes them.
+
+Both caps are configurable on the `subagents` capability. `max_depth` remains
+an alias for `max_subagent_depth`; `max_concurrent_descendant_tasks` is an alias
+for `max_active_descendant_tasks`. Cap errors return `ToolError` messages that
+name the configured limit and attempted count.
+
+**Rationale:** Bounded nesting covers coordinator/delegator patterns, while
+root-tree task caps bound wide fan-out and repeated retry loops even when depth
+is shallow.
 
 ## Security Considerations
 
@@ -223,7 +244,7 @@ When the cap is exceeded, the tool returns a `ToolError` naming the attempted de
 | Capability escalation | Subagent inherits parent capabilities exactly; no additional capabilities |
 | Context isolation | Separate message history; child cannot read parent messages |
 | Resource exhaustion | Foreground: 300s timeout on `wait_for_idle`. Background: 6h overall watcher cap; max iterations per child session; orphaned watchers are failed by the session task reaper on stale heartbeats |
-| Runaway nesting | `max_subagent_depth` enforced by bounded parent-chain walk at spawn time |
+| Runaway nesting/fan-out | `max_subagent_depth` enforced by bounded parent-chain walk; root-tree active and total descendant task caps are enforced before child session creation |
 | Org boundary | Child session inherits org_id; standard multitenancy enforcement applies |
 
 ## UI

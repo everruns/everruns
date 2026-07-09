@@ -1088,13 +1088,21 @@ pub trait LeasedResourceStore: Send + Sync {
 /// Default maximum child depth for subagent delegation. Top-level sessions are
 /// depth 0, their children are depth 1, and grandchildren are depth 2.
 pub const DEFAULT_MAX_SUBAGENT_DEPTH: u32 = 2;
+pub const DEFAULT_MAX_ACTIVE_DESCENDANT_SUBAGENT_TASKS: u32 = 16;
+pub const DEFAULT_MAX_TOTAL_DESCENDANT_SUBAGENT_TASKS: u32 = 200;
 
-/// Resolved subagent nesting policy for a tool execution context.
+/// Resolved subagent spawn governance policy for a tool execution context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SubagentNestingPolicy {
     pub platform_default: u32,
     pub org_override: Option<u32>,
     pub agent_override: Option<u32>,
+    pub platform_default_max_active_descendant_tasks: u32,
+    pub org_override_max_active_descendant_tasks: Option<u32>,
+    pub agent_override_max_active_descendant_tasks: Option<u32>,
+    pub platform_default_max_total_descendant_tasks: u32,
+    pub org_override_max_total_descendant_tasks: Option<u32>,
+    pub agent_override_max_total_descendant_tasks: Option<u32>,
 }
 
 impl Default for SubagentNestingPolicy {
@@ -1103,6 +1111,14 @@ impl Default for SubagentNestingPolicy {
             platform_default: DEFAULT_MAX_SUBAGENT_DEPTH,
             org_override: None,
             agent_override: None,
+            platform_default_max_active_descendant_tasks:
+                DEFAULT_MAX_ACTIVE_DESCENDANT_SUBAGENT_TASKS,
+            org_override_max_active_descendant_tasks: None,
+            agent_override_max_active_descendant_tasks: None,
+            platform_default_max_total_descendant_tasks:
+                DEFAULT_MAX_TOTAL_DESCENDANT_SUBAGENT_TASKS,
+            org_override_max_total_descendant_tasks: None,
+            agent_override_max_total_descendant_tasks: None,
         }
     }
 }
@@ -1112,6 +1128,18 @@ impl SubagentNestingPolicy {
         self.agent_override
             .or(self.org_override)
             .unwrap_or(self.platform_default)
+    }
+
+    pub fn max_active_descendant_tasks(self) -> u32 {
+        self.agent_override_max_active_descendant_tasks
+            .or(self.org_override_max_active_descendant_tasks)
+            .unwrap_or(self.platform_default_max_active_descendant_tasks)
+    }
+
+    pub fn max_total_descendant_tasks(self) -> u32 {
+        self.agent_override_max_total_descendant_tasks
+            .or(self.org_override_max_total_descendant_tasks)
+            .unwrap_or(self.platform_default_max_total_descendant_tasks)
     }
 
     pub fn with_platform_default(mut self, depth: u32) -> Self {
@@ -1126,6 +1154,16 @@ impl SubagentNestingPolicy {
 
     pub fn with_agent_override(mut self, depth: Option<u32>) -> Self {
         self.agent_override = depth;
+        self
+    }
+
+    pub fn with_agent_task_caps_override(
+        mut self,
+        max_active: Option<u32>,
+        max_total: Option<u32>,
+    ) -> Self {
+        self.agent_override_max_active_descendant_tasks = max_active;
+        self.agent_override_max_total_descendant_tasks = max_total;
         self
     }
 }

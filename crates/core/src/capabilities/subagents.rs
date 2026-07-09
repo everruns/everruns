@@ -17,7 +17,7 @@
 // tracking), an unspecified mode degrades to foreground so results are not lost.
 //
 // Subagent naming: human-readable ("Test Runner"), unique per parent, case-insensitive.
-// Nesting governance: child depth must not exceed max_subagent_depth.
+// Spawn governance: child depth and root-tree task fan-out are bounded.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::platform_store::PlatformStore;
@@ -33,6 +33,7 @@ use crate::traits::{SessionFileSystem, SessionStore, SpawnClaimResult, ToolConte
 use crate::typed_id::{SessionId, WorkspaceId};
 use async_trait::async_trait;
 use serde_json::{Value, json};
+use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
 
 pub const SUBAGENTS_CAPABILITY_ID: &str = "subagents";
@@ -94,6 +95,26 @@ impl Capability for SubagentCapability {
                     "minimum": 0,
                     "maximum": 16,
                     "description": "Alias for max_subagent_depth."
+                },
+                "max_active_descendant_tasks": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1024,
+                    "default": crate::traits::DEFAULT_MAX_ACTIVE_DESCENDANT_SUBAGENT_TASKS,
+                    "description": "Maximum non-terminal descendant subagent tasks allowed under one root session. Counts queued, running, and awaiting_input tasks."
+                },
+                "max_concurrent_descendant_tasks": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1024,
+                    "description": "Alias for max_active_descendant_tasks."
+                },
+                "max_total_descendant_tasks": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000,
+                    "default": crate::traits::DEFAULT_MAX_TOTAL_DESCENDANT_SUBAGENT_TASKS,
+                    "description": "Maximum descendant subagent task records allowed under one root session before rejecting new spawns."
                 }
             }
         }))
@@ -111,6 +132,28 @@ impl Capability for SubagentCapability {
                 return Err(format!("{key} must be <= 16"));
             }
         }
+        for key in [
+            "max_active_descendant_tasks",
+            "max_concurrent_descendant_tasks",
+        ] {
+            let Some(value) = config.get(key) else {
+                continue;
+            };
+            let Some(max_active) = value.as_u64() else {
+                return Err(format!("{key} must be a non-negative integer"));
+            };
+            if max_active > 1024 {
+                return Err(format!("{key} must be <= 1024"));
+            }
+        }
+        if let Some(value) = config.get("max_total_descendant_tasks") {
+            let Some(max_total) = value.as_u64() else {
+                return Err("max_total_descendant_tasks must be a non-negative integer".to_string());
+            };
+            if max_total > 10_000 {
+                return Err("max_total_descendant_tasks must be <= 10000".to_string());
+            }
+        }
         Ok(())
     }
 
@@ -123,7 +166,7 @@ impl Capability for SubagentCapability {
     }
 }
 
-const SUBAGENT_SYSTEM_PROMPT: &str = "Spawn subagents for independent parallel work or separate context; avoid immediate sequential steps. Spawns are background by default: you get a task_id, keep working, and are notified on completion (monitor with get_task/wait_task). Use mode \"foreground\" only when blocked on the result. Nested subagents are allowed up to max_subagent_depth. Use blueprints for specialist tools/model.";
+const SUBAGENT_SYSTEM_PROMPT: &str = "Spawn subagents for independent parallel work or separate context; avoid immediate sequential steps. Spawns are background by default: you get a task_id, keep working, and are notified on completion (monitor with get_task/wait_task). Use mode \"foreground\" only when blocked on the result. Nested subagents are allowed up to max_subagent_depth and root-tree task caps. Use blueprints for specialist tools/model.";
 const RESULT_SCHEMA_SPEC_KEY: &str = "result_schema";
 const MESSAGE_SCHEMA_SPEC_KEY: &str = "message_schema";
 
@@ -351,6 +394,120 @@ async fn current_subagent_depth(
     }
 
     Ok(depth)
+}
+
+async fn root_session_for_subagent_tree(
+    session_store: &dyn SessionStore,
+    session: &crate::session::Session,
+) -> Result<SessionId, ToolExecutionResult> {
+    let mut root_id = session.id;
+    let mut cursor = session.parent_session_id;
+    let mut seen = HashSet::new();
+    seen.insert(session.id);
+
+    while let Some(parent_id) = cursor {
+        if !seen.insert(parent_id) {
+            return Err(ToolExecutionResult::tool_error(format!(
+                "Cannot enforce subagent descendant task caps: session parent cycle detected at {parent_id}."
+            )));
+        }
+
+        let parent = match session_store.get_session(parent_id).await {
+            Ok(Some(parent)) => parent,
+            Ok(None) => {
+                return Err(ToolExecutionResult::tool_error(format!(
+                    "Cannot enforce subagent descendant task caps: parent session {parent_id} was not found."
+                )));
+            }
+            Err(error) => return Err(ToolExecutionResult::internal_error(error)),
+        };
+        root_id = parent.id;
+        cursor = parent.parent_session_id;
+    }
+
+    Ok(root_id)
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+struct DescendantTaskCounts {
+    active: u32,
+    total: u32,
+}
+
+async fn descendant_subagent_task_counts(
+    registry: &dyn crate::session_task::SessionTaskRegistry,
+    root_session_id: SessionId,
+    max_active: u32,
+    max_total: u32,
+) -> Result<DescendantTaskCounts, ToolExecutionResult> {
+    let mut counts = DescendantTaskCounts::default();
+    let mut queue = VecDeque::from([root_session_id]);
+    let mut visited_sessions = HashSet::from([root_session_id]);
+
+    while let Some(session_id) = queue.pop_front() {
+        let tasks = registry
+            .list(
+                session_id,
+                Some(&SessionTaskFilter {
+                    kind: Some(TASK_KIND_SUBAGENT.to_string()),
+                    state: None,
+                }),
+            )
+            .await
+            .map_err(ToolExecutionResult::internal_error)?;
+
+        for task in tasks {
+            counts.total = counts.total.saturating_add(1);
+            if !task.state.is_terminal() {
+                counts.active = counts.active.saturating_add(1);
+            }
+
+            if let Some(child_session_id) = task.links.child_session_id
+                && visited_sessions.insert(child_session_id)
+            {
+                queue.push_back(child_session_id);
+            }
+
+            if counts.active >= max_active || counts.total >= max_total {
+                return Ok(counts);
+            }
+        }
+    }
+
+    Ok(counts)
+}
+
+async fn enforce_subagent_task_caps(
+    session_store: &dyn SessionStore,
+    session: &crate::session::Session,
+    context: &ToolContext,
+) -> Result<(), ToolExecutionResult> {
+    let Some(registry) = context.session_task_registry.as_ref() else {
+        return Ok(());
+    };
+    let policy = context.subagent_nesting_policy;
+    let max_active = policy.max_active_descendant_tasks();
+    let max_total = policy.max_total_descendant_tasks();
+    let root_session_id = root_session_for_subagent_tree(session_store, session).await?;
+    let counts =
+        descendant_subagent_task_counts(registry.as_ref(), root_session_id, max_active, max_total)
+            .await?;
+
+    if counts.active >= max_active {
+        let attempted = counts.active.saturating_add(1);
+        return Err(ToolExecutionResult::tool_error(format!(
+            "Subagent active descendant task cap exceeded: spawning this subagent would create {attempted} non-terminal descendant tasks under root session {root_session_id}, but max_active_descendant_tasks is {max_active}."
+        )));
+    }
+
+    if counts.total >= max_total {
+        let attempted = counts.total.saturating_add(1);
+        return Err(ToolExecutionResult::tool_error(format!(
+            "Subagent total descendant task cap exceeded: spawning this subagent would create {attempted} descendant task records under root session {root_session_id}, but max_total_descendant_tasks is {max_total}."
+        )));
+    }
+
+    Ok(())
 }
 
 async fn enforce_subagent_depth_cap(
@@ -1170,6 +1327,15 @@ async fn spawn_create_and_wait(
         uuid::Uuid,
     )>,
 ) -> ToolExecutionResult {
+    let Some(session_store) = context.session_store.as_ref() else {
+        return ToolExecutionResult::tool_error("Subagent spawn requires session_store context");
+    };
+    if let Err(error) =
+        enforce_subagent_task_caps(session_store.as_ref(), parent_session, context).await
+    {
+        return error;
+    }
+
     // Create child session, linking it to the parent for tree depth enforcement.
     let child_session = match store
         .create_session(
@@ -2265,6 +2431,165 @@ mod tests {
             "got: {message}"
         );
         assert!(message.contains("depth 1"), "got: {message}");
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_subagent_rejects_when_active_descendant_cap_is_full() {
+        let store = Arc::new(MockPlatformStore::new());
+        *store.wait_for_idle_status.lock().unwrap() = "waiting_for_tool_results".to_string();
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let context = spawn_context(&store, Some(registry)).with_subagent_nesting_policy(
+            crate::traits::SubagentNestingPolicy::default()
+                .with_agent_task_caps_override(Some(1), Some(200)),
+        );
+
+        let first = spawn(
+            &context,
+            json!({"name": "First", "instructions": "go", "mode": "background"}),
+        )
+        .await;
+        assert!(
+            matches!(first, ToolExecutionResult::Success(_)),
+            "expected first spawn success, got {first:?}"
+        );
+
+        let second = spawn(
+            &context,
+            json!({"name": "Second", "instructions": "go", "mode": "background"}),
+        )
+        .await;
+        let ToolExecutionResult::ToolError(message) = second else {
+            panic!("expected active cap ToolError, got {second:?}");
+        };
+        assert!(
+            message.contains("max_active_descendant_tasks is 1"),
+            "got: {message}"
+        );
+        assert!(
+            message.contains("2 non-terminal descendant tasks"),
+            "got: {message}"
+        );
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_subagent_counts_grandchildren_for_active_descendant_cap() {
+        let store = Arc::new(MockPlatformStore::new());
+        *store.wait_for_idle_status.lock().unwrap() = "waiting_for_tool_results".to_string();
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let policy = crate::traits::SubagentNestingPolicy::default()
+            .with_agent_override(Some(4))
+            .with_agent_task_caps_override(Some(2), Some(200));
+        let root_context =
+            spawn_context(&store, Some(registry.clone())).with_subagent_nesting_policy(policy);
+
+        let first = spawn(
+            &root_context,
+            json!({"name": "B", "instructions": "go", "mode": "background"}),
+        )
+        .await;
+        let ToolExecutionResult::Success(first_value) = first else {
+            panic!("expected first spawn success, got {first:?}");
+        };
+        let b_id: crate::typed_id::SessionId = first_value["subagent_id"]
+            .as_str()
+            .expect("subagent_id")
+            .parse()
+            .expect("valid session id");
+
+        let b_context = spawn_context_for_session(&store, Some(registry.clone()), b_id)
+            .with_subagent_nesting_policy(policy);
+        let second = spawn(
+            &b_context,
+            json!({"name": "C", "instructions": "go", "mode": "background"}),
+        )
+        .await;
+        let ToolExecutionResult::Success(second_value) = second else {
+            panic!("expected second spawn success, got {second:?}");
+        };
+        let c_id: crate::typed_id::SessionId = second_value["subagent_id"]
+            .as_str()
+            .expect("subagent_id")
+            .parse()
+            .expect("valid session id");
+
+        let c_context = spawn_context_for_session(&store, Some(registry), c_id)
+            .with_subagent_nesting_policy(policy);
+        let third = spawn(
+            &c_context,
+            json!({"name": "D", "instructions": "go", "mode": "background"}),
+        )
+        .await;
+        let ToolExecutionResult::ToolError(message) = third else {
+            panic!("expected active cap ToolError, got {third:?}");
+        };
+        assert!(
+            message.contains("max_active_descendant_tasks is 2"),
+            "got: {message}"
+        );
+        assert!(message.contains("root session"), "got: {message}");
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_subagent_total_descendant_cap_counts_terminal_tasks() {
+        let store = Arc::new(MockPlatformStore::new());
+        *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let context = spawn_context(&store, Some(registry)).with_subagent_nesting_policy(
+            crate::traits::SubagentNestingPolicy::default()
+                .with_agent_task_caps_override(Some(16), Some(1)),
+        );
+
+        let first = spawn(
+            &context,
+            json!({"name": "First", "instructions": "go", "mode": "foreground"}),
+        )
+        .await;
+        assert!(
+            matches!(first, ToolExecutionResult::Success(_)),
+            "expected first spawn success, got {first:?}"
+        );
+
+        let second = spawn(
+            &context,
+            json!({"name": "Second", "instructions": "go", "mode": "foreground"}),
+        )
+        .await;
+        let ToolExecutionResult::ToolError(message) = second else {
+            panic!("expected total cap ToolError, got {second:?}");
+        };
+        assert!(
+            message.contains("max_total_descendant_tasks is 1"),
+            "got: {message}"
+        );
+        assert!(
+            message.contains("2 descendant task records"),
+            "got: {message}"
+        );
+    }
+
+    #[test]
+    fn subagents_config_validates_descendant_task_caps() {
+        let capability = SubagentCapability;
+        assert!(
+            capability
+                .validate_config(&json!({
+                    "max_active_descendant_tasks": 16,
+                    "max_total_descendant_tasks": 200
+                }))
+                .is_ok()
+        );
+        assert_eq!(
+            capability
+                .validate_config(&json!({"max_active_descendant_tasks": 1025}))
+                .unwrap_err(),
+            "max_active_descendant_tasks must be <= 1024"
+        );
+        assert_eq!(
+            capability
+                .validate_config(&json!({"max_total_descendant_tasks": 10001}))
+                .unwrap_err(),
+            "max_total_descendant_tasks must be <= 10000"
+        );
     }
 
     #[tokio::test]
