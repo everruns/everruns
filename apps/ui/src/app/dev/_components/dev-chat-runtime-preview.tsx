@@ -61,6 +61,7 @@ export function DevChatRuntimeScene({
   const agent: Agent = {
     id: "agent_dev_preview",
     name: "platform-chat",
+    harness_id: "harness_test",
     display_name: "Platform Chat",
     description: "Fixture agent for runtime chat previews.",
     system_prompt: "You are a precise coding assistant.",

@@ -92,6 +92,7 @@ jest.mock("@/hooks/use-policies", () => ({
 const malformedAgent: Agent = {
   id: "agent_123",
   name: "test-agent",
+  harness_id: "harness_test",
   display_name: "Test Agent",
   description: "Agent description",
   system_prompt: "You are helpful.",

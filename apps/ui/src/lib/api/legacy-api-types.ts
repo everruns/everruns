@@ -49,6 +49,8 @@ export interface Agent {
   display_name: string | null;
   description: string | null;
   system_prompt: string;
+  /** Base execution harness this agent runs on. Required; defaults to the org's built-in `generic` harness. */
+  harness_id: string;
   default_model_id: string | null;
   default_version_id?: string | null;
   forked_from_agent_id?: string | null;
@@ -152,6 +154,10 @@ export interface CreateAgentRequest {
   display_name?: string;
   description?: string;
   system_prompt: string;
+  /** Base execution harness (id). Mutually exclusive with `harness_name`. Omit both to default to the org's built-in `generic` harness. */
+  harness_id?: string;
+  /** Base execution harness (name), resolved within the org. Mutually exclusive with `harness_id`. */
+  harness_name?: string;
   default_model_id?: string;
   tags?: string[];
   /** Capabilities with per-agent configuration */
@@ -170,6 +176,10 @@ export interface UpdateAgentRequest {
   display_name?: string;
   description?: string;
   system_prompt?: string;
+  /** Base execution harness (id). Omit to leave unchanged; never clearable to null. Mutually exclusive with `harness_name`. */
+  harness_id?: string;
+  /** Base execution harness (name), resolved within the org. Mutually exclusive with `harness_id`. */
+  harness_name?: string;
   default_model_id?: string;
   tags?: string[];
   /** Capabilities with per-agent configuration */
@@ -3839,10 +3849,14 @@ export interface ResourceStats {
 }
 
 export interface CreateSessionRequest {
-  /** Harness ID for this session. If omitted, org base harness is used. */
+  /** Harness ID for this session. If omitted, the harness is derived from the agent (when one is supplied), else the org default harness. */
   harness_id?: string;
-  /** Agent ID to work in this session (optional) */
+  /** Harness name, resolved within the org. Mutually exclusive with `harness_id`. */
+  harness_name?: string;
+  /** Agent ID to work in this session (optional). Mutually exclusive with `agent_name`. */
   agent_id?: string;
+  /** Agent name to work in this session (optional). Mutually exclusive with `agent_id`. */
+  agent_name?: string;
   agent_identity_id?: string;
   title?: string;
   locale?: string;

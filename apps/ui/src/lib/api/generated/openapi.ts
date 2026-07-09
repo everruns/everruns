@@ -5834,6 +5834,8 @@ export interface components {
     CreateSessionRequest: {
       /**
        * @description ID of the agent to work in this session (optional, format: agent_{32-hex}).
+       *     When supplied without a harness, the session inherits the agent's harness.
+       *     Mutually exclusive with `agent_name`.
        * @example agent_01933b5a00007000800000000000001
        */
       agent_id?: string | null;
@@ -5842,6 +5844,13 @@ export interface components {
        * @example identity_01933b5a00007000800000000000001
        */
       agent_identity_id?: string | null;
+      /**
+       * @description Name of the agent to work in this session (optional).
+       *     Alternative to `agent_id` — looked up by name within the org.
+       *     Mutually exclusive with `agent_id`.
+       * @example support
+       */
+      agent_name?: string | null;
       /**
        * @description Session-level capabilities (additive to agent capabilities).
        *     Applied after agent capabilities when building RuntimeAgent.
@@ -5859,8 +5868,9 @@ export interface components {
       capabilities?: components["schemas"]["AgentCapabilityConfig"][];
       /**
        * @description ID of the harness for this session (format: harness_{32-hex}).
-       *     If omitted, the org default harness is used. New orgs default that to Generic.
-       *     Mutually exclusive with `harness_name`.
+       *     If omitted, the harness is derived from the agent (when one is supplied),
+       *     else the org default harness, else the built-in fallback. New orgs default
+       *     that to Generic. Mutually exclusive with `harness_name`.
        * @example harness_01933b5a00007000800000000000001
        */
       harness_id?: string | null;
