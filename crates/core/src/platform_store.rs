@@ -705,11 +705,15 @@ pub mod tests {
             if id == self.session.id {
                 return Ok(Some(self.session.clone()));
             }
-            Ok(self
+            if let Some(session) = self
                 .extra_sessions
                 .lock()
                 .ok()
-                .and_then(|sessions| sessions.get(&id).cloned()))
+                .and_then(|sessions| sessions.get(&id).cloned())
+            {
+                return Ok(Some(session));
+            }
+            Ok(Some(self.session.clone()))
         }
         async fn get_session_context_report(&self, id: SessionId) -> Result<SessionContextReport> {
             Ok(SessionContextReport {
