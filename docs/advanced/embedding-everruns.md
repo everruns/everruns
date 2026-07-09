@@ -131,6 +131,12 @@ fn platform() -> PlatformDefinition {
 
 When you build from scratch, only the components you register exist. Seeded providers, models, harnesses, and agents are filtered against that definition.
 
+For in-process hosts, `InProcessRuntimeBuilder::new()` already starts with
+`CapabilityRegistry::runtime_builtins()`. Supplying a custom
+`PlatformDefinition` replaces that default. Use `runtime_builtins()` as your
+base registry when you want the standard embedded-runtime capability surface and
+then add or remove capabilities for your host.
+
 ## Custom LLM Provider Drivers
 
 Built-in providers are registered with their crate's `register_driver`

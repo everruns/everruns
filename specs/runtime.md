@@ -289,6 +289,16 @@ embedded-turn coverage.
 
 Capabilities continue to live in `everruns-core`.
 
+`InProcessRuntimeBuilder::new()` starts from
+`CapabilityRegistry::runtime_builtins()`, a curated registry containing only
+capabilities usable with the runtime's default in-process host services. The
+default registry intentionally excludes hosted Everruns product capabilities,
+demos/tests, and capabilities whose tools require optional host backends such as
+`platform_store`, `session_task_registry`, `schedule_store`, SQL databases,
+provider credentials, or knowledge stores. Embedders that provide those
+services can still build an explicit `PlatformDefinition` and register the
+larger platform capability set or any selected capability manually.
+
 `everruns-runtime` must provide the supporting stores those capabilities expect
 through `ToolContext`, including:
 
