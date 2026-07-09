@@ -69,6 +69,41 @@ async fn create_session_with_owner_and_tags(
     .unwrap()
 }
 
+async fn create_child_session(
+    db: &Arc<StorageBackend>,
+    parent: &SessionRow,
+    agent_id: Option<AgentId>,
+) -> SessionRow {
+    db.create_session(CreateSessionRow {
+        workspace_id: None,
+        org_id: parent.org_id,
+        app_id: parent.app_id,
+        harness_id: parent.harness_id,
+        agent_id,
+        agent_identity_id: parent.agent_identity_id,
+        owner_principal_id: parent.owner_principal_id,
+        resolved_owner_user_id: parent.resolved_owner_user_id,
+        title: Some("Budget test child session".into()),
+        locale: parent.locale.clone(),
+        tags: parent.tags.clone(),
+        model_id: parent.model_id,
+        capabilities: serde_json::json!({}),
+        tools: serde_json::json!([]),
+        mcp_servers: serde_json::json!([]),
+        system_prompt: None,
+        initial_files: serde_json::json!({}),
+        hints: None,
+        network_access: None,
+        max_iterations: None,
+        parallel_tool_calls: None,
+        blueprint_id: None,
+        blueprint_config: None,
+        parent_session_id: Some(parent.id),
+    })
+    .await
+    .unwrap()
+}
+
 fn make_budget_row(limit: f64, balance: f64, soft_limit: Option<f64>, currency: &str) -> BudgetRow {
     BudgetRow {
         id: uuid::Uuid::now_v7(),
@@ -1146,6 +1181,103 @@ async fn test_list_budgets_for_session_hierarchy_includes_app_and_channel_from_t
 }
 
 #[tokio::test]
+async fn test_child_session_uses_root_session_budget_pool() {
+    let (svc, db) = make_service();
+    let root = create_session_with_owner(&db, 1, None, None).await;
+    let child = create_child_session(&db, &root, None).await;
+    let grandchild = create_child_session(&db, &child, None).await;
+    let root_subject_id = root.id.to_string();
+    let child_subject_id = child.id.to_string();
+    let grandchild_subject_id = grandchild.id.to_string();
+
+    db.create_budget(CreateBudgetRow {
+        org_id: root.org_id,
+        subject_type: "session".into(),
+        subject_id: root_subject_id.clone(),
+        currency: "tokens".into(),
+        limit: 100.0,
+        soft_limit: None,
+        period: None,
+        metadata: None,
+    })
+    .await
+    .unwrap();
+    db.create_budget(CreateBudgetRow {
+        org_id: child.org_id,
+        subject_type: "session".into(),
+        subject_id: child_subject_id.clone(),
+        currency: "tokens".into(),
+        limit: 1.0,
+        soft_limit: None,
+        period: None,
+        metadata: None,
+    })
+    .await
+    .unwrap();
+
+    let budgets = svc
+        .list_budgets_for_session_hierarchy(grandchild.org_id, &grandchild_subject_id, None)
+        .await;
+    let session_subjects: Vec<&str> = budgets
+        .iter()
+        .filter(|budget| budget.subject_type == "session")
+        .map(|budget| budget.subject_id.as_str())
+        .collect();
+
+    assert_eq!(session_subjects, vec![root_subject_id.as_str()]);
+    assert!(
+        !session_subjects.contains(&child_subject_id.as_str()),
+        "descendant-local budgets must not split the shared root pool"
+    );
+}
+
+#[tokio::test]
+async fn test_check_budgets_for_child_respects_exhausted_root_budget() {
+    let (svc, db) = make_service();
+    let root = create_session_with_owner(&db, 1, None, None).await;
+    let child = create_child_session(&db, &root, None).await;
+    let root_subject_id = root.id.to_string();
+    let child_subject_id = child.id.to_string();
+
+    let budget = db
+        .create_budget(CreateBudgetRow {
+            org_id: root.org_id,
+            subject_type: "session".into(),
+            subject_id: root_subject_id,
+            currency: "tokens".into(),
+            limit: 100.0,
+            soft_limit: None,
+            period: None,
+            metadata: None,
+        })
+        .await
+        .unwrap();
+    db.create_budget_ledger_entry(CreateBudgetLedgerRow {
+        budget_id: budget.id,
+        amount: 100.0,
+        meter_source: "llm_tokens".into(),
+        ref_type: None,
+        ref_id: None,
+        session_id: Some(child.id.uuid()),
+        description: None,
+    })
+    .await
+    .unwrap();
+    db.set_budget_status(budget.id, "exhausted").await.unwrap();
+
+    let result = svc
+        .check_budgets_for_session(child.org_id, &child_subject_id, None)
+        .await;
+
+    assert!(result.should_stop());
+    assert_eq!(
+        result.budget_id,
+        Some(everruns_core::typed_id::BudgetId::from_uuid(budget.id))
+    );
+    assert_eq!(result.error_code.as_deref(), Some("budget_exhausted"));
+}
+
+#[tokio::test]
 async fn test_period_resets_balance_after_window_elapses() {
     let (svc, db) = make_service();
     // Zero-second sliding window — rollover triggers on the next check
@@ -1349,6 +1481,68 @@ fn test_row_to_ledger_entry_dto() {
     assert_eq!(dto.amount, 5.5);
     assert_eq!(dto.meter_source, "llm_tokens");
     assert_eq!(dto.description, Some("test".into()));
+}
+
+// ========================================================================
+// Delegation tree budget pool
+// ========================================================================
+
+#[tokio::test]
+async fn test_llm_generation_from_child_debits_root_session_budget() {
+    let db = make_db();
+    let svc = BudgetService::new(db.clone());
+
+    let root = create_session_with_owner(&db, 1, None, None).await;
+    let child = create_child_session(&db, &root, None).await;
+    let root_subject_id = root.id.to_string();
+
+    let budget = db
+        .create_budget(CreateBudgetRow {
+            org_id: root.org_id,
+            subject_type: "session".into(),
+            subject_id: root_subject_id,
+            currency: "tokens".into(),
+            limit: 1_000.0,
+            soft_limit: None,
+            period: None,
+            metadata: None,
+        })
+        .await
+        .unwrap();
+
+    let data = LlmGenerationData::success(
+        vec![],
+        vec![],
+        Some("child spent tokens".into()),
+        vec![],
+        "gpt-5.4-mini".into(),
+        Some("openai".into()),
+        Some(TokenUsage::new(100, 50)),
+        Some(42),
+        Some(10),
+    );
+    let event = Event::new(child.id, EventContext::empty(), data);
+
+    svc.on_event(&event).await;
+
+    let ledger_entries = db
+        .list_usage_ledger_for_budget(budget.id, 10, 0)
+        .await
+        .unwrap();
+    assert_eq!(
+        ledger_entries.len(),
+        1,
+        "child generation should debit the root session budget"
+    );
+    assert_eq!(ledger_entries[0].session_id, Some(child.id.uuid()));
+    assert_eq!(ledger_entries[0].amount, 150.0);
+
+    let updated = db
+        .get_budget(root.org_id, budget.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.balance, 850.0);
 }
 
 // ========================================================================

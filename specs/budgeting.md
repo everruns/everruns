@@ -106,7 +106,7 @@ INSERT usage_journal row
   │
   ▼
 Look up session → find active budgets in hierarchy
-  (session → agent → user → org)
+  (root session → app_channel → app → agent → user → org)
   │
   ▼ (for each matching budget)
 compute_debit(currency, tokens, cache tokens, model, provider, provider_cost_usd)
@@ -134,7 +134,12 @@ Execute action (set budget status)
 
 **Post-hoc enforcement**: Budget checks happen after each metered event, not before. This avoids blocking the LLM hot path. Minor overshoot on the last generation is acceptable and expected.
 
-**Worker integration**: The worker checks `BudgetCheckResult` between atoms via gRPC. When a budget is `paused` or `exhausted`, the turn loop stops scheduling the next atom. Current implementation resolves all four hierarchy levels (`session`, `agent`, `user`, `org`) from the session owner and org context before checking.
+For subagent delegation trees, the session budget layer resolves to the
+tree's `root_session_id`: a child or grandchild checks and debits the root
+session's budget pool, while usage journal and ledger rows still retain the
+actual child session id for attribution.
+
+**Worker integration**: The worker checks `BudgetCheckResult` between atoms via gRPC. When a budget is `paused` or `exhausted`, the turn loop stops scheduling the next atom. Current implementation resolves the full hierarchy (`root session`, `app_channel`, `app`, `agent`, `user`, `org`) from the session owner and org context before checking.
 
 ## Soft Enforcement: Pause
 
