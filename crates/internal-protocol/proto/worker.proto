@@ -440,7 +440,7 @@ message Session {
     optional Uuid resolved_owner_user_id = 17;
     // Captured immutable agent version for runtime provenance
     optional Uuid agent_version_id = 18;
-    // Parent session ID for subagent and agent handoff sessions (nesting guard).
+    // Parent session ID for subagent and agent handoff sessions (depth tracking).
     optional Uuid parent_session_id = 19;
     optional string blueprint_id = 23;
     optional string blueprint_config_json = 24;

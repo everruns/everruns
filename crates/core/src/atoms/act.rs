@@ -269,6 +269,8 @@ where
     /// subagent delegation claims a slot before creating the child and settles after
     /// completion, enabling reattach on reclaim.
     subagent_spawn_store: Option<Arc<dyn crate::traits::SubagentSpawnStore>>,
+    /// Resolved subagent nesting policy for this turn.
+    subagent_nesting_policy: crate::traits::SubagentNestingPolicy,
     /// Post-act hooks that run after tool execution completes.
     /// Hooks inspect the result and may emit events (e.g. tool.call_requested).
     hooks: Vec<Box<dyn PostActHook>>,
@@ -330,6 +332,7 @@ where
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
             subagent_spawn_store: None,
+            subagent_nesting_policy: crate::traits::SubagentNestingPolicy::default(),
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
@@ -376,6 +379,7 @@ where
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
             subagent_spawn_store: None,
+            subagent_nesting_policy: crate::traits::SubagentNestingPolicy::default(),
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
@@ -639,6 +643,15 @@ where
         store: Arc<dyn crate::traits::SubagentSpawnStore>,
     ) -> Self {
         self.subagent_spawn_store = Some(store);
+        self
+    }
+
+    /// Set the resolved subagent nesting policy for tool contexts.
+    pub fn with_subagent_nesting_policy(
+        mut self,
+        policy: crate::traits::SubagentNestingPolicy,
+    ) -> Self {
+        self.subagent_nesting_policy = policy;
         self
     }
 
@@ -1602,6 +1615,7 @@ where
         if let Some(ref store) = self.subagent_spawn_store {
             tool_context.subagent_spawn_store = Some(store.clone());
         }
+        tool_context.subagent_nesting_policy = self.subagent_nesting_policy;
         if let Some(ref handle) = self.reasoning_effort_handle {
             tool_context.reasoning_effort_handle = Some(handle.clone());
         }

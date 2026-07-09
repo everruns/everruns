@@ -227,8 +227,8 @@ pub use traits::{
     ResolvedModel, SecretInfo, SessionFileStore, SessionFileSystem, SessionFileSystemFactory,
     SessionFileSystemFactoryContext, SessionMutator, SessionResourceRegistry, SessionSqlDbStoreRef,
     SessionStorageStore, SessionStore, SpawnClaimResult, StreamHeartbeater, StreamProgress,
-    SubagentSpawnStore, ToolCallClaimResult, ToolContext, ToolExecutor, UserConnectionResolver,
-    WorkspaceScopedFileSystem,
+    SubagentNestingPolicy, SubagentSpawnStore, ToolCallClaimResult, ToolContext, ToolExecutor,
+    UserConnectionResolver, WorkspaceScopedFileSystem,
 };
 pub use user_facing_error::{
     ErrorDisclosure, UserFacingError, UserFacingErrorContext, UserFacingErrorFields,

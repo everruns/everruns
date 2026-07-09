@@ -251,7 +251,7 @@ Generated dynamically from `CapabilityRegistry::blueprints()`. Each entry shows 
 | Prompt injection via config | Config validated against typed JSON Schema. No free-form prompt override. |
 | Model cost | `Fixed` prevents host from running expensive models for cheap work. |
 | Tool leakage | Blueprint tools only instantiated in child's `act_activity`. Host's `act_activity` never loads them. |
-| Nesting | Same constraint as subagents — blueprint children cannot spawn subagents or blueprints. |
+| Nesting | Same governed-depth constraint as subagents. |
 | Resource exhaustion | `max_turns` limit on blueprint. Same 300s timeout as subagents. |
 | Blueprint impersonation | `blueprint_id` validated against registry at spawn time. Invalid IDs rejected. |
 
@@ -346,7 +346,7 @@ Child session runs with Haiku, 3 GitHub tools, scout prompt. Host gets back a su
 | Durable execution | Same (PostgreSQL workflow) | Same |
 | Event stream | Same (SSE events on child session) | Same |
 | Lifecycle | Same (spawn/get/message tools) | Same |
-| Nesting prevention | Same (cannot spawn children) | Same |
+| Nesting governance | Same `max_subagent_depth` policy | Same |
 | Use case | Parallel work with same capabilities | Specialist delegation with different capabilities |
 
 ## Changes Required

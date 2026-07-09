@@ -513,7 +513,7 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .await
         .expect("get spawned subagent")
         .expect("spawned subagent exists");
-    // parent_session_id is set on spawn (nesting guard); name/status now live on the task record.
+    // parent_session_id is set on spawn for delegation tree tracking; name/status now live on the task record.
     assert_eq!(subagent.parent_session_id, Some(parent_id));
 
     let target_agent = adapter

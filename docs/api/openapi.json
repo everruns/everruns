@@ -28077,7 +28077,7 @@
                     "string",
                     "null"
                   ],
-                  "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the subagent nesting guard."
+                  "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed to compute governed subagent delegation depth."
                 },
                 "preview": {
                   "type": [
@@ -29006,7 +29006,7 @@
                         "string",
                         "null"
                       ],
-                      "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the subagent nesting guard."
+                      "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed to compute governed subagent delegation depth."
                     },
                     "preview": {
                       "type": [
@@ -31577,7 +31577,7 @@
               "string",
               "null"
             ],
-            "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the subagent nesting guard."
+            "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed to compute governed subagent delegation depth."
           },
           "preview": {
             "type": [
@@ -37927,7 +37927,7 @@
                   "string",
                   "null"
                 ],
-                "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the subagent nesting guard."
+                "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed to compute governed subagent delegation depth."
               },
               "preview": {
                 "type": [
