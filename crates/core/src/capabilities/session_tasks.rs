@@ -704,17 +704,18 @@ pub(crate) mod tests {
 
         async fn list(
             &self,
-            _session_id: SessionId,
+            session_id: SessionId,
             filter: Option<&SessionTaskFilter>,
         ) -> crate::error::Result<Vec<SessionTask>> {
             let tasks = self.tasks.lock().unwrap();
             Ok(tasks
                 .values()
                 .filter(|task| {
-                    filter.is_none_or(|f| {
-                        f.kind.as_deref().is_none_or(|kind| task.kind == kind)
-                            && f.state.is_none_or(|state| task.state == state)
-                    })
+                    task.session_id == session_id
+                        && filter.is_none_or(|f| {
+                            f.kind.as_deref().is_none_or(|kind| task.kind == kind)
+                                && f.state.is_none_or(|state| task.state == state)
+                        })
                 })
                 .cloned()
                 .collect())

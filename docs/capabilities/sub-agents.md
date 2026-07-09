@@ -50,7 +50,7 @@ Use the generic `session_tasks` tools to monitor and steer subagents after spawn
 
 ## Notes
 
-- **Governed nesting** — subagents can spawn nested subagents up to `max_subagent_depth` (default 2); set it to 0 to block subagent spawning.
+- **Governed spawning** — subagents can spawn nested subagents up to `max_subagent_depth` (default 2); set it to 0 to block subagent spawning. Each root session also has `max_active_descendant_tasks` (default 16) and `max_total_descendant_tasks` (default 200) caps to bound wide fan-out and repeated spawn loops.
 - **Shared budget pool** — nested subagents spend from the root session's session-scoped budget.
 - **Background mode (default)** — spawning returns immediately with a `task_id`. The final result lands on the task record (`summary` via `get_task`), and the parent session is woken when the subagent reaches a terminal state. Background runs are capped at 6 hours.
 - **Foreground mode** — `mode: "foreground"` blocks until the subagent completes and returns its result inline. Foreground execution has a 5-minute timeout.
