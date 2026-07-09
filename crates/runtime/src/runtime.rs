@@ -209,7 +209,8 @@ impl Default for InProcessRuntimeBuilder {
 }
 
 impl InProcessRuntimeBuilder {
-    /// Create a builder with built-in capabilities and no implicit LLM driver.
+    /// Create a builder with runtime-safe built-in capabilities and no implicit
+    /// LLM driver.
     ///
     /// Embedders must either:
     /// - call [`Self::llm_sim`] for deterministic local examples/tests, or
@@ -218,7 +219,7 @@ impl InProcessRuntimeBuilder {
     pub fn new() -> Self {
         Self {
             platform_definition: PlatformDefinition::builder()
-                .capability_registry(CapabilityRegistry::with_builtins())
+                .capability_registry(CapabilityRegistry::runtime_builtins())
                 .driver_registry(DriverRegistry::new())
                 .session_file_system_factory(Arc::new(InMemorySessionFileSystemFactory))
                 .build(),

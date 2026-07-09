@@ -1260,6 +1260,62 @@ impl CapabilityRegistry {
         Self::with_builtins_for_grade(DeploymentGrade::from_env())
     }
 
+    /// Create a registry with capabilities that are usable in the public
+    /// in-process runtime with its default host services.
+    ///
+    /// This intentionally excludes hosted Everruns product capabilities,
+    /// demos/tests, and capabilities whose tools require optional host backends
+    /// such as `platform_store`, `session_task_registry`, `schedule_store`, SQL
+    /// databases, provider credentials, or knowledge stores. Embedders can
+    /// still opt into those capabilities by supplying an explicit
+    /// [`PlatformDefinition`](crate::PlatformDefinition) with the required
+    /// backends.
+    pub fn runtime_builtins() -> Self {
+        let mut registry = Self::new();
+
+        registry.register(AgentInstructionsCapability);
+        registry.register(HumanIntentCapability);
+        registry.register(NoopCapability);
+        registry.register(CurrentTimeCapability);
+        registry.register(MessageMetadataCapability);
+        registry.register(FileSystemCapability);
+        registry.register(SessionStorageCapability);
+        registry.register(SessionCapability);
+        registry.register(StatelessTodoListCapability);
+        #[cfg(feature = "web-fetch")]
+        registry.register(WebFetchCapability::from_env());
+        registry.register(BashkitShellCapability);
+        registry.register(BtwCapability);
+        registry.register(InfinityContextCapability);
+        registry.register(budgeting::BudgetingCapability);
+        registry.register(SelfBudgetCapability);
+        registry.register(CompactionCapability);
+        registry.register(ErrorDisclosureCapability);
+        registry.register(OpenAiToolSearchCapability::new());
+        registry.register(ClaudeToolSearchCapability::new());
+        registry.register(ToolSearchCapability::new());
+        registry.register(AutoToolSearchCapability::new());
+        registry.register(PromptCachingCapability::new());
+        registry.register(ParallelToolCallsCapability);
+        registry.register(SkillsCapability);
+        registry.register(SystemCommandsCapability);
+        registry.register(tool_output_persistence::ToolOutputPersistenceCapability);
+        registry.register(tool_output_distillation::ToolOutputDistillationCapability);
+        registry.register(LoopDetectionCapability);
+        registry.register(ToolCallRepairCapability);
+        registry.register(PromptCanaryGuardrailCapability);
+        registry.register(GuardrailsCapability);
+        registry.register(user_hooks::UserHooksCapability);
+
+        let internal_flags = crate::InternalFeatureFlags::from_env();
+        if internal_flags.lua {
+            registry.register(LuaCapability);
+            registry.register(LuaCodeModeCapability);
+        }
+
+        registry
+    }
+
     /// Create a registry with built-in capabilities for a specific deployment grade
     ///
     /// Experimental capabilities are included via integration plugins in dev environments.
@@ -3037,6 +3093,49 @@ mod tests {
         ids
     }
 
+    /// Capabilities present in the default in-process runtime registry.
+    fn expected_runtime_builtin_ids() -> BTreeSet<&'static str> {
+        let mut ids = [
+            "agent_instructions",
+            "human_intent",
+            "budgeting",
+            "self_budget",
+            "noop",
+            "current_time",
+            "session_file_system",
+            "session_storage",
+            "session",
+            "stateless_todo_list",
+            "bashkit_shell",
+            "btw",
+            "infinity_context",
+            "compaction",
+            "message_metadata",
+            "openai_tool_search",
+            "claude_tool_search",
+            "tool_search",
+            "auto_tool_search",
+            "prompt_caching",
+            "parallel_tool_calls",
+            "skills",
+            "system_commands",
+            "tool_output_persistence",
+            "tool_output_distillation",
+            "loop_detection",
+            "tool_call_repair",
+            "error_disclosure",
+            "prompt_canary_guardrail",
+            "guardrails",
+            "user_hooks",
+        ]
+        .into_iter()
+        .collect::<BTreeSet<_>>();
+        if cfg!(feature = "web-fetch") {
+            ids.insert("web_fetch");
+        }
+        ids
+    }
+
     /// Full set for dev: base + experimental delegation capabilities.
     fn expected_dev_builtin_ids() -> BTreeSet<&'static str> {
         let mut ids = expected_core_builtin_ids();
@@ -3080,6 +3179,46 @@ mod tests {
         assert!(!registry.has("docker_container"));
         assert!(!registry.has("agent_handoff"));
         assert!(!registry.has("a2a_agent_delegation"));
+    }
+
+    #[test]
+    fn test_capability_registry_runtime_builtins() {
+        let _lock = lock_env();
+        unsafe { std::env::remove_var("FEATURE_LUA") };
+        let registry = CapabilityRegistry::runtime_builtins();
+        assert_eq!(registry_ids(&registry), expected_runtime_builtin_ids());
+        assert!(registry.has("session_file_system"));
+        #[cfg(feature = "web-fetch")]
+        assert!(registry.has("web_fetch"));
+        assert!(registry.has("bashkit_shell"));
+
+        for platform_only in [
+            "platform_management",
+            "model_scout",
+            "openrouter_workspace",
+            "openrouter_server_tools",
+            "session_tasks",
+            "session_schedule",
+            "subagents",
+            "background_execution",
+            "session_sql_database",
+            "knowledge_base",
+            "knowledge_index",
+            "sample_data",
+            "data_knowledge",
+            "fake_aws",
+            "fake_crm",
+            "fake_financial",
+            "fake_warehouse",
+            "test_math",
+            "test_weather",
+            "research",
+        ] {
+            assert!(
+                !registry.has(platform_only),
+                "`{platform_only}` should not be in the runtime default registry"
+            );
+        }
     }
 
     #[test]

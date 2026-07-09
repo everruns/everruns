@@ -15,6 +15,11 @@
 //! - reuse runtime-owned host phase execution from durable or server-backed hosts
 //! - map `plan_next_host_turn(...)` onto their own queue, retry, or in-memory host
 //!
+//! `InProcessRuntimeBuilder::new()` starts from a runtime-safe built-in
+//! capability registry. Hosted Everruns product capabilities and capabilities
+//! that require optional host backends can still be enabled by supplying an
+//! explicit [`PlatformDefinition`](everruns_core::PlatformDefinition).
+//!
 //! For a runnable example, see:
 //!
 //! ```text

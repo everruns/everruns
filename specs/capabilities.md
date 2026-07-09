@@ -911,10 +911,23 @@ See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` 
 1. Implement the `Capability` trait (see `crates/core/src/capabilities/mod.rs` for trait definition)
 2. Declare `pub const <SCREAMING_SNAKE>_CAPABILITY_ID: &str = "<id>";` in the module and return it from `fn id()` (see **Built-in Capability ID Constants** above)
 3. Re-export the constant and the struct from `crates/core/src/capabilities/mod.rs`
-4. Register in `CapabilityRegistry::with_builtins()` (same file)
+4. Choose the registry preset deliberately:
+   - Register in `CapabilityRegistry::runtime_builtins()` only when the capability is usable with `everruns-runtime`'s default in-process host services.
+   - Register in `CapabilityRegistry::with_builtins_for_grade()` when the capability is part of the hosted Everruns platform catalog, a product/demo capability, or requires optional host services not present in the runtime default.
+   - Register in both only when both statements are true.
+   - Use integration inventory registration for external integration crates that should appear only when their crate is linked.
 5. Add tool implementations if needed (implement `Tool` trait from `crates/core/src/tools.rs`)
 6. No database migration required — capability ID validated at runtime
-7. Update documentation at `docs/capabilities/` — add a page for the new capability and update the overview table in `docs/capabilities/index.md`
+7. Add or update registry tests that prove the capability appears in the intended preset(s) and is absent from inappropriate preset(s)
+8. Update documentation at `docs/capabilities/` — add a page for the new capability and update the overview table in `docs/capabilities/index.md`
+
+Runtime-default eligibility is based on host services, not risk level. A high-risk
+capability may be runtime-usable when it runs entirely through runtime-provided
+services such as the session filesystem or egress service. A low-risk capability
+must still stay out of `runtime_builtins()` if its tools need optional services
+such as `platform_store`, `session_task_registry`, `schedule_store`, session SQL
+databases, provider credentials, or knowledge stores. See `specs/runtime.md` for
+the embedded runtime contract.
 
 ### Capability Mount Points
 
