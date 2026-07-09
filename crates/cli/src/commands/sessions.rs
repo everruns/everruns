@@ -2,7 +2,7 @@
 
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::{Context, Result};
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use everruns_sdk::{CreateBudgetRequest, Everruns};
 use futures::StreamExt;
 use std::collections::HashMap;
@@ -102,7 +102,7 @@ pub enum SessionsCommand {
         session: String,
     },
 
-    /// Export session messages as JSONL
+    /// Export session messages as JSONL or an ATIF trajectory
     Export {
         /// Session ID (e.g. session_xxx)
         session: String,
@@ -110,7 +110,31 @@ pub enum SessionsCommand {
         /// Output file path (defaults to stdout)
         #[arg(long, short)]
         output: Option<String>,
+
+        /// Export format: `jsonl` (one message per line, default) or `atif`
+        /// (a single ATIF trajectory JSON document)
+        #[arg(long, value_enum, default_value_t = ExportFormat::Jsonl)]
+        format: ExportFormat,
     },
+}
+
+/// Session export wire format selected by `sessions export --format`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+pub enum ExportFormat {
+    /// Newline-delimited JSON, one message per line.
+    Jsonl,
+    /// A single ATIF (Agent Trajectory Interchange Format) JSON document.
+    Atif,
+}
+
+impl ExportFormat {
+    /// The `format` query-parameter value understood by the export API.
+    fn as_query_value(self) -> &'static str {
+        match self {
+            ExportFormat::Jsonl => "jsonl",
+            ExportFormat::Atif => "atif",
+        }
+    }
 }
 
 pub async fn run(
@@ -175,7 +199,13 @@ pub async fn run(
         SessionsCommand::Export {
             session,
             output: file_path,
-        } => export(client, output, quiet, session, file_path).await,
+            format,
+        } => {
+            export(
+                client, api_url, api_key, org_id, output, quiet, session, file_path, format,
+            )
+            .await
+        }
     }
 }
 
@@ -940,30 +970,90 @@ fn truncate_str(s: &str, max: usize) -> String {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn export(
     client: &Everruns,
+    api_url: &str,
+    api_key: &str,
+    org_id: Option<&str>,
     output: OutputFormat,
     quiet: bool,
     session_id: String,
     file_path: Option<String>,
+    format: ExportFormat,
 ) -> Result<()> {
-    let body = client
-        .sessions()
-        .export(&session_id)
-        .await
-        .context("Failed to export session")?;
+    // JSONL stays on the SDK path (unchanged default). ATIF isn't exposed by
+    // the SDK's `export()` yet, so hit the export endpoint directly with the
+    // `format` query parameter. See EVE-685.
+    let body = match format {
+        ExportFormat::Jsonl => client
+            .sessions()
+            .export(&session_id)
+            .await
+            .context("Failed to export session")?,
+        ExportFormat::Atif => export_raw(api_url, api_key, org_id, &session_id, format).await?,
+    };
 
     if let Some(path) = file_path {
         std::fs::write(&path, &body).with_context(|| format!("Failed to write to {}", path))?;
         if output.is_text() && !quiet {
-            let line_count = body.lines().count();
-            eprintln!("Exported {} messages to {}", line_count, path);
+            // JSONL is line-per-message; ATIF is a single JSON document, so a
+            // line count would be misleading. Report bytes for ATIF instead.
+            match format {
+                ExportFormat::Jsonl => {
+                    eprintln!("Exported {} messages to {}", body.lines().count(), path)
+                }
+                ExportFormat::Atif => {
+                    eprintln!(
+                        "Exported ATIF trajectory ({} bytes) to {}",
+                        body.len(),
+                        path
+                    )
+                }
+            }
         }
     } else {
         print!("{}", body);
     }
 
     Ok(())
+}
+
+/// Fetch a session export directly from `GET /v1/sessions/{id}/export` with an
+/// explicit `format`, for formats the SDK client does not yet expose.
+async fn export_raw(
+    api_url: &str,
+    api_key: &str,
+    org_id: Option<&str>,
+    session_id: &str,
+    format: ExportFormat,
+) -> Result<String> {
+    let http = reqwest::Client::new();
+    // `format` is a fixed enum-derived token (`jsonl`/`atif`), so it is safe to
+    // interpolate directly into the query string.
+    let mut req = http
+        .get(format!(
+            "{}/v1/sessions/{}/export?format={}",
+            api_url.trim_end_matches('/'),
+            session_id,
+            format.as_query_value(),
+        ))
+        .header("Authorization", format!("Bearer {}", api_key));
+    let env_org = std::env::var("EVERRUNS_ORG_ID").ok();
+    if let Some(org) = org_id.or(env_org.as_deref()) {
+        req = req.header("X-Org-Id", org);
+    }
+
+    let resp = req.send().await.context("Failed to export session")?;
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Export session failed ({}): {}", status, body);
+    }
+
+    resp.text()
+        .await
+        .context("Failed to read session export response")
 }
 
 fn capitalize_first(s: &str) -> String {
@@ -1308,5 +1398,36 @@ mod tests {
         assert_eq!(format_budget_amount(2000000.0, "tokens"), "2000000 tokens");
         assert_eq!(format_budget_amount(50.0, "credits"), "50 credits");
         assert_eq!(format_budget_amount(100.0, "gems"), "100 gems");
+    }
+
+    #[test]
+    fn export_format_maps_to_api_query_value() {
+        assert_eq!(ExportFormat::Jsonl.as_query_value(), "jsonl");
+        assert_eq!(ExportFormat::Atif.as_query_value(), "atif");
+    }
+
+    #[test]
+    fn export_command_parses_format_flag_and_defaults_to_jsonl() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Wrapper {
+            #[command(subcommand)]
+            cmd: SessionsCommand,
+        }
+
+        // Default (no --format) is JSONL, preserving prior behavior.
+        let parsed = Wrapper::parse_from(["x", "export", "session_123"]);
+        match parsed.cmd {
+            SessionsCommand::Export { format, .. } => assert_eq!(format, ExportFormat::Jsonl),
+            _ => panic!("expected export command"),
+        }
+
+        // Explicit --format atif is accepted.
+        let parsed = Wrapper::parse_from(["x", "export", "session_123", "--format", "atif"]);
+        match parsed.cmd {
+            SessionsCommand::Export { format, .. } => assert_eq!(format, ExportFormat::Atif),
+            _ => panic!("expected export command"),
+        }
     }
 }
