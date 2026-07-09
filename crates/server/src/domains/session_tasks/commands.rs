@@ -93,6 +93,11 @@ pub struct ListOrgTasks {
     /// Optional age filter: only tasks created at or after this RFC3339 timestamp.
     #[serde(default)]
     pub created_after: Option<String>,
+    /// Optional delegation-tree filter (EVE-680): only tasks whose owning
+    /// session's root is this session's prefixed public id. Returns a whole
+    /// subagent tree's work in one query.
+    #[serde(default)]
+    pub root_session_id: Option<String>,
     /// Max tasks to return, newest first. Defaults to 100, capped at 500.
     #[serde(default)]
     pub limit: Option<u32>,
@@ -141,6 +146,10 @@ impl Command for ListOrgTasks {
             ),
             None => None,
         };
+        let root_session_id = match self.root_session_id.as_deref().filter(|s| !s.is_empty()) {
+            Some(raw) => Some(q::parse_session_id(raw)?),
+            None => None,
+        };
         let limit = self.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT) as i64;
         let state = state.map(|s| s.to_string());
 
@@ -151,6 +160,7 @@ impl Command for ListOrgTasks {
                 kind.as_deref(),
                 state.as_deref(),
                 created_after,
+                root_session_id,
                 limit,
             )
             .await
@@ -573,9 +583,131 @@ mod tests {
         .id
     }
 
+    /// Create a subagent child session whose `parent_session_id` is `parent`,
+    /// returning its ID. Used to build a delegation tree in tests.
+    async fn create_child_session(
+        db: &Arc<StorageBackend>,
+        parent: everruns_core::SessionId,
+    ) -> everruns_core::SessionId {
+        db.create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            title: Some("child session".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: Some(parent),
+            workspace_id: None,
+        })
+        .await
+        .unwrap()
+        .id
+    }
+
     // -------------------------------------------------------------------------
     // ListOrgTasks — cross-session, org-scoped listing (EVE-583)
     // -------------------------------------------------------------------------
+
+    /// EVE-680: a subagent child inherits its parent's `root_session_id`, and
+    /// `ListOrgTasks { root_session_id }` returns exactly one delegation tree's
+    /// tasks — the root's own plus every descendant's — and nothing from a
+    /// sibling tree.
+    #[tokio::test]
+    async fn list_org_tasks_filters_by_root_session() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = test_ctx(db.clone());
+        let registry = q::registry_for_ctx(&ctx);
+
+        // Tree 1: root A → child B (a subagent). B must inherit A as its root.
+        let sess_a = create_session(&db).await;
+        let sess_b = create_child_session(&db, sess_a).await;
+        let child = db
+            .get_session(DEFAULT_ORG_ID, sess_b)
+            .await
+            .unwrap()
+            .expect("child session exists");
+        assert_eq!(
+            child.root_session_id,
+            Some(sess_a),
+            "subagent child must inherit its parent's tree root"
+        );
+        let root = db
+            .get_session(DEFAULT_ORG_ID, sess_a)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            root.root_session_id,
+            Some(sess_a),
+            "a top-level session is its own root"
+        );
+
+        // Tree 2: an independent root C — its tasks must not appear when
+        // filtering on tree 1's root.
+        let sess_c = create_session(&db).await;
+
+        for (sess, name) in [(sess_a, "A-root"), (sess_b, "B-child"), (sess_c, "C-root")] {
+            registry
+                .create(CreateSessionTask {
+                    session_id: sess,
+                    id: None,
+                    kind: TASK_KIND_SUBAGENT.to_string(),
+                    display_name: name.to_string(),
+                    spec: serde_json::json!({}),
+                    state: SessionTaskState::Running,
+                    links: TaskLinks::default(),
+                    wake_policy: TaskWakePolicy::Silent,
+                })
+                .await
+                .unwrap();
+        }
+
+        // Filter on tree 1's root: the root's task and the child's task, never C.
+        let tree1 = ListOrgTasks {
+            root_session_id: Some(sess_a.to_string()),
+            ..Default::default()
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let names: std::collections::HashSet<_> =
+            tree1.iter().map(|t| t.display_name.clone()).collect();
+        assert_eq!(
+            names,
+            ["A-root".to_string(), "B-child".to_string()]
+                .into_iter()
+                .collect(),
+            "root filter must return the whole tree (root + descendants) and only that tree"
+        );
+
+        // An invalid session id is a bad request, mirroring other id filters.
+        let bad = ListOrgTasks {
+            root_session_id: Some("not-a-session".to_string()),
+            ..Default::default()
+        }
+        .execute(&ctx)
+        .await;
+        assert!(
+            matches!(bad.unwrap_err().kind, CommandErrorKind::BadRequest(_)),
+            "invalid root_session_id must be a bad request"
+        );
+    }
 
     /// Org-scoped listing must return every task across the caller's org while
     /// never leaking tasks owned by another org, and must honor kind/state/limit

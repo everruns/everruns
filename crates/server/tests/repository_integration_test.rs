@@ -3163,7 +3163,7 @@ async fn list_org_session_tasks_pg() {
 
     // Org A listing: contains both A tasks, never the B task.
     let a_all = backend
-        .list_org_session_tasks(TEST_ORG_ID, None, None, None, 500)
+        .list_org_session_tasks(TEST_ORG_ID, None, None, None, None, 500)
         .await
         .expect("list org A");
     let a_all_ids = ids(&a_all);
@@ -3176,7 +3176,7 @@ async fn list_org_session_tasks_pg() {
 
     // Org B listing: contains only the B task, never A's.
     let b_all = backend
-        .list_org_session_tasks(org_b, None, None, None, 500)
+        .list_org_session_tasks(org_b, None, None, None, None, 500)
         .await
         .expect("list org B");
     let b_all_ids = ids(&b_all);
@@ -3185,7 +3185,7 @@ async fn list_org_session_tasks_pg() {
 
     // Kind filter (org A): only the subagent task.
     let a_subs = backend
-        .list_org_session_tasks(TEST_ORG_ID, Some("subagent"), None, None, 500)
+        .list_org_session_tasks(TEST_ORG_ID, Some("subagent"), None, None, None, 500)
         .await
         .expect("list org A subagents");
     let a_subs_ids = ids(&a_subs);
@@ -3194,7 +3194,7 @@ async fn list_org_session_tasks_pg() {
 
     // State filter (org A): only the queued task.
     let a_queued = backend
-        .list_org_session_tasks(TEST_ORG_ID, None, Some("queued"), None, 500)
+        .list_org_session_tasks(TEST_ORG_ID, None, Some("queued"), None, None, 500)
         .await
         .expect("list org A queued");
     let a_queued_ids = ids(&a_queued);
@@ -3204,7 +3204,7 @@ async fn list_org_session_tasks_pg() {
     // created_after in the future excludes our just-created tasks.
     let future = Utc::now() + chrono::Duration::hours(1);
     let a_future = backend
-        .list_org_session_tasks(TEST_ORG_ID, None, None, Some(future), 500)
+        .list_org_session_tasks(TEST_ORG_ID, None, None, Some(future), None, 500)
         .await
         .expect("list org A future");
     let a_future_ids = ids(&a_future);
@@ -3212,8 +3212,25 @@ async fn list_org_session_tasks_pg() {
 
     // Limit is honored.
     let a_limited = backend
-        .list_org_session_tasks(TEST_ORG_ID, None, None, None, 1)
+        .list_org_session_tasks(TEST_ORG_ID, None, None, None, None, 1)
         .await
         .expect("list org A limited");
     assert!(a_limited.len() <= 1, "limit must bound the result set");
+
+    // root_session_id filter (EVE-680): session_a is its own root (no parent),
+    // so filtering on it returns exactly A's two tasks and never B's — and the
+    // org boundary still applies alongside the root filter.
+    let a_root = backend
+        .list_org_session_tasks(TEST_ORG_ID, None, None, None, Some(session_a), 500)
+        .await
+        .expect("list org A by root");
+    let a_root_ids = ids(&a_root);
+    assert!(
+        a_root_ids.contains(&a_sub) && a_root_ids.contains(&a_bg),
+        "root filter must return the whole tree's tasks"
+    );
+    assert!(
+        !a_root_ids.contains(&b_sub),
+        "root filter must never cross the org boundary"
+    );
 }

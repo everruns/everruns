@@ -45,6 +45,19 @@ impl InMemoryDatabase {
                 },
             );
         }
+        // EVE-680: root of this session's delegation tree. A top-level session
+        // is its own root; a subagent child inherits its parent's root. Mirrors
+        // the Postgres path; the read guard is released before the insert below.
+        let root_session_id = match input.parent_session_id {
+            Some(parent) => self
+                .sessions
+                .read()
+                .get(&parent)
+                .and_then(|p| p.root_session_id)
+                .unwrap_or(parent),
+            None => id,
+        };
+
         let row = SessionRow {
             id,
             org_id: input.org_id,
@@ -83,6 +96,7 @@ impl InMemoryDatabase {
             total_estimated_cost_usd: 0.0,
             total_cost_usd: 0.0,
             parent_session_id: input.parent_session_id,
+            root_session_id: Some(root_session_id),
             forked_from_session_id: None,
             forked_from_sequence: None,
             blueprint_id: input.blueprint_id,

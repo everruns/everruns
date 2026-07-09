@@ -51,12 +51,30 @@ impl Database {
             .await?;
         }
 
+        // EVE-680: resolve this session's delegation-tree root. A top-level
+        // session (no parent) is its own root; a subagent child inherits its
+        // parent's root. Looked up within the same tx so the denormalized
+        // pointer stays consistent with the parent chain. The parent row is
+        // guaranteed to exist (parent_session_id is itself an FK) and to carry a
+        // root post-migration; the fallbacks are defensive.
+        let root_session_id: uuid::Uuid = match input.parent_session_id {
+            Some(parent) => sqlx::query_scalar::<_, Option<uuid::Uuid>>(
+                "SELECT root_session_id FROM sessions WHERE id = $1",
+            )
+            .bind(parent.uuid())
+            .fetch_optional(&mut *tx)
+            .await?
+            .flatten()
+            .unwrap_or_else(|| parent.uuid()),
+            None => session_id,
+        };
+
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            INSERT INTO sessions (id, org_id, app_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, blueprint_id, blueprint_config, parent_session_id, workspace_id, parallel_tool_calls, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, 'started')
+            INSERT INTO sessions (id, org_id, app_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, blueprint_id, blueprint_config, parent_session_id, workspace_id, parallel_tool_calls, root_session_id, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, 'started')
             RETURNING id, org_id, workspace_id, app_id, harness_id, agent_id, agent_version_id, agent_config_hash, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, parallel_tool_calls, status, created_at, updated_at, started_at, finished_at,
-                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id,
+                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd, parent_session_id, root_session_id,
                       blueprint_id, blueprint_config
             "#,
         )
@@ -85,6 +103,7 @@ impl Database {
         .bind(input.parent_session_id.map(|id| id.uuid()))
         .bind(workspace_id)
         .bind(input.parallel_tool_calls)
+        .bind(root_session_id)
         .fetch_one(&mut *tx)
         .await?;
 
