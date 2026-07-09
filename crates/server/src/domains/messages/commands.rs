@@ -125,6 +125,10 @@ inventory::submit! { CommandDescriptor::of::<ListMessages>() }
 #[derive(Debug, Serialize)]
 pub struct ExportSessionJsonl {
     pub body: String,
+    /// Image content parts flattened to `"[image]"` markers in the ATIF
+    /// document (always 0 for the JSONL format, which keeps parts verbatim).
+    /// Surfaced by the HTTP route as the `X-Atif-Images-Omitted` header.
+    pub atif_images_omitted: usize,
 }
 
 /// Output format for session export.
@@ -190,9 +194,12 @@ impl Command for ExportSessionMessages {
                 serde_json::Map::new(),
                 crate::atif::AtifOptions::default(),
             );
-            let body =
-                serde_json::to_string(&trajectory).map_err(|e| CommandError::internal(e.into()))?;
-            return Ok(ExportSessionJsonl { body });
+            let body = serde_json::to_string(&trajectory.document)
+                .map_err(|e| CommandError::internal(e.into()))?;
+            return Ok(ExportSessionJsonl {
+                body,
+                atif_images_omitted: trajectory.images_omitted,
+            });
         }
 
         let messages = q::message_service(ctx)?
@@ -208,7 +215,10 @@ impl Command for ExportSessionMessages {
             body.push('\n');
         }
 
-        Ok(ExportSessionJsonl { body })
+        Ok(ExportSessionJsonl {
+            body,
+            atif_images_omitted: 0,
+        })
     }
 }
 

@@ -174,6 +174,10 @@ pub struct AppState {
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
     pub auth: AuthState,
+    /// Response-size cap for the ATIF session export, in bytes. Production
+    /// always uses `crate::atif::ATIF_EXPORT_MAX_BYTES`; tests shrink it via
+    /// `with_atif_export_max_bytes` to exercise the 413 path cheaply.
+    pub atif_export_max_bytes: usize,
 }
 
 impl AppState {
@@ -194,7 +198,15 @@ impl AppState {
                 event_delivery,
             )),
             auth,
+            atif_export_max_bytes: crate::atif::ATIF_EXPORT_MAX_BYTES,
         }
+    }
+
+    /// Test-only override of the ATIF export size cap (kept small so 413
+    /// coverage does not need to allocate a 50 MiB document).
+    pub fn with_atif_export_max_bytes(mut self, max_bytes: usize) -> Self {
+        self.atif_export_max_bytes = max_bytes;
+        self
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
@@ -314,8 +326,12 @@ pub struct ExportSessionQuery {
 /// Default (`format=jsonl`): all materialized messages (user, agent) as
 /// newline-delimited JSON, one complete JSON object per line; delta events are
 /// excluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document
-/// folded from the session's event log (see `specs/atif-adoption.md`).
-/// The response includes `Content-Disposition: attachment` for browser download.
+/// folded from the session's event log (see `specs/atif-adoption.md`); when
+/// image content parts were flattened to `"[image]"` markers, the response
+/// carries an `X-Atif-Images-Omitted` header with the total count, and
+/// documents over the 50 MiB `ATIF_EXPORT_MAX_BYTES` cap are rejected with
+/// 413. The response includes `Content-Disposition: attachment` for browser
+/// download.
 #[utoipa::path(
     get,
     path = "/v1/sessions/{session_id}/export",
@@ -324,10 +340,11 @@ pub struct ExportSessionQuery {
         ("format" = Option<String>, Query, description = "Output format: jsonl (default) or atif")
     ),
     responses(
-        (status = 200, description = "JSONL file with one message per line, or one ATIF trajectory JSON document", content_type = "application/x-ndjson"),
+        (status = 200, description = "JSONL file with one message per line, or one ATIF trajectory JSON document (with X-Atif-Images-Omitted header when image parts were flattened to markers)", content_type = "application/x-ndjson"),
         (status = 400, description = "Invalid ID format"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Session not found"),
+        (status = 413, description = "ATIF document exceeds the 50 MiB export cap; segmented export is a planned follow-up", body = ErrorResponse),
         (status = 500, description = "Internal server error")
     ),
     tag = "sessions"
@@ -344,10 +361,34 @@ pub async fn export_session_jsonl(
     }
     .run(&state.ctx(&org))
     .await?;
+    // THREAT[TM-DOS-026]: the ATIF export is a single synchronous JSON
+    // document; cap the response body so a huge event log cannot produce an
+    // unbounded response. See `crate::atif::ATIF_EXPORT_MAX_BYTES`.
+    if query.format == SessionExportFormat::Atif && export.body.len() > state.atif_export_max_bytes
+    {
+        return Err(ErrorResponse::new(format!(
+            "ATIF export for session {} is {} bytes, over the {}-byte limit; segmented export is not available yet",
+            session_id,
+            export.body.len(),
+            state.atif_export_max_bytes,
+        ))
+        .with_code("atif_export_too_large")
+        .into_response(StatusCode::PAYLOAD_TOO_LARGE));
+    }
     let (content_type, filename) = match query.format {
         SessionExportFormat::Jsonl => ("application/x-ndjson", format!("{}.jsonl", session_id)),
         SessionExportFormat::Atif => ("application/json", format!("{}.atif.json", session_id)),
     };
+    // Lossiness signal: set only when image parts were flattened to markers,
+    // so clients can tell a lossy ATIF export from a complete one without
+    // parsing the body.
+    let mut lossiness_header = Vec::new();
+    if export.atif_images_omitted > 0 {
+        lossiness_header.push((
+            axum::http::HeaderName::from_static("x-atif-images-omitted"),
+            export.atif_images_omitted.to_string(),
+        ));
+    }
     Ok((
         StatusCode::OK,
         [
@@ -357,6 +398,7 @@ pub async fn export_session_jsonl(
                 format!("attachment; filename=\"{}\"", filename),
             ),
         ],
+        axum::response::AppendHeaders(lossiness_header),
         export.body,
     ))
 }

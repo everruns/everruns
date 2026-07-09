@@ -36,6 +36,16 @@ use crate::domains::evals::dataset::{REDACTED, sanitize_value};
 /// `ATIF-*` version (unknown fields are ignored by construction).
 pub const ATIF_SCHEMA_VERSION: &str = "ATIF-v1.7";
 
+/// Hard cap on a single serialized ATIF session-export document, in bytes.
+///
+/// The session export (`?format=atif`) is a synchronous single-document
+/// response, so an unbounded fold of a very large event log could pin server
+/// memory and saturate the response path (TM-DOS-026). Documents over this
+/// cap are rejected with HTTP 413 at the export route. Segmented export via
+/// ATIF `continued_trajectory_ref` is the planned follow-up for sessions
+/// that exceed it.
+pub const ATIF_EXPORT_MAX_BYTES: usize = 50 * 1024 * 1024;
+
 // ============================================================================
 // Trajectory building (export)
 // ============================================================================
@@ -49,6 +59,17 @@ pub struct AtifOptions {
     pub redact_content: bool,
 }
 
+/// A built trajectory document plus fold facts that callers surface
+/// out-of-band (e.g. the `X-Atif-Images-Omitted` header on session export).
+#[derive(Debug)]
+pub struct BuiltTrajectory {
+    pub document: Value,
+    /// Image content parts flattened to `"[image]"` markers across the whole
+    /// document (step messages and observation content). Also recorded inside
+    /// the document as root `extra.images_omitted` when non-zero.
+    pub images_omitted: usize,
+}
+
 /// Fold a session's events into one ATIF trajectory document.
 ///
 /// `root_extra` lets callers attach provenance/reward at the ATIF extension
@@ -59,15 +80,18 @@ pub fn build_trajectory(
     events: &[Event],
     mut root_extra: Map<String, Value>,
     options: AtifOptions,
-) -> Value {
+) -> BuiltTrajectory {
     let mut fold = Fold::new(options.redact_content);
     for event in events {
         fold.push(event);
     }
-    let (steps, turns, totals, model_name) = fold.finish();
+    let (steps, turns, totals, model_name, images_omitted) = fold.finish();
 
     if !turns.is_empty() {
         root_extra.insert("turns".to_string(), Value::Array(turns));
+    }
+    if images_omitted > 0 {
+        root_extra.insert("images_omitted".to_string(), json!(images_omitted));
     }
 
     let mut agent = Map::new();
@@ -96,7 +120,10 @@ pub fn build_trajectory(
     // Always-on secret scrubbing over every exported string. Content redaction
     // was already applied structurally during the fold, so scrub-only here.
     sanitize_value(&mut value, false);
-    value
+    BuiltTrajectory {
+        document: value,
+        images_omitted,
+    }
 }
 
 /// Build one dataset NDJSON record for an eval case: a complete ATIF
@@ -123,7 +150,7 @@ pub fn build_case_record(
     );
     extra.insert("case_name".to_string(), json!(result.case_name));
     let session_id = result.session_id.map(|s| s.to_string());
-    build_trajectory(session_id.as_deref(), events, extra, options)
+    build_trajectory(session_id.as_deref(), events, extra, options).document
 }
 
 /// Aggregated token totals across agent steps.
@@ -231,6 +258,8 @@ struct Fold {
     open: Option<AgentStepAcc>,
     pending_thinking: Option<String>,
     last_model: Option<String>,
+    /// Image content parts flattened to `"[image]"` markers so far.
+    images_omitted: usize,
 }
 
 impl Fold {
@@ -243,6 +272,7 @@ impl Fold {
             open: None,
             pending_thinking: None,
             last_model: None,
+            images_omitted: 0,
         }
     }
 
@@ -258,17 +288,35 @@ impl Fold {
         match &event.data {
             EventData::InputMessage(data) => {
                 self.flush();
-                let text = self.content_or_redacted(flatten_message_text(&data.message));
-                self.steps.push(json!({
-                    "timestamp": timestamp(event),
-                    "source": "user",
-                    "message": text,
-                }));
+                let mut omitted = Vec::new();
+                let text = self.content_or_redacted(flatten_message_text(
+                    &data.message,
+                    self.redact,
+                    &mut omitted,
+                ));
+                self.images_omitted += omitted.len();
+                let mut step = Map::new();
+                step.insert("timestamp".to_string(), json!(timestamp(event)));
+                step.insert("source".to_string(), json!("user"));
+                step.insert("message".to_string(), json!(text));
+                let mut extra = Map::new();
+                append_omitted_images(&mut extra, omitted);
+                if !extra.is_empty() {
+                    step.insert("extra".to_string(), Value::Object(extra));
+                }
+                self.steps.push(Value::Object(step));
             }
             EventData::OutputMessageCompleted(data) => {
                 self.flush();
                 let mut acc = AgentStepAcc::new(event.ts);
-                acc.message = self.content_or_redacted(flatten_message_text(&data.message));
+                let mut omitted = Vec::new();
+                acc.message = self.content_or_redacted(flatten_message_text(
+                    &data.message,
+                    self.redact,
+                    &mut omitted,
+                ));
+                self.images_omitted += omitted.len();
+                append_omitted_images(&mut acc.extra, omitted);
                 acc.reasoning = data
                     .message
                     .thinking
@@ -363,15 +411,17 @@ impl Fold {
                 }
             }
             EventData::ToolCompleted(data) => {
+                let mut omitted = Vec::new();
                 let content = if let Some(err) = &data.error {
                     format!("[error] {err}")
                 } else {
                     data.result
                         .as_ref()
-                        .map(|parts| flatten_content_parts(parts))
+                        .map(|parts| flatten_content_parts(parts, self.redact, &mut omitted))
                         .unwrap_or_default()
                 };
                 let content = self.content_or_redacted(content);
+                self.images_omitted += omitted.len();
                 let mut extra = Map::new();
                 extra.insert("tool_name".to_string(), json!(data.tool_name));
                 extra.insert("status".to_string(), json!(data.status));
@@ -379,6 +429,7 @@ impl Fold {
                     extra.insert("duration_ms".to_string(), json!(d));
                 }
                 let acc = self.open.get_or_insert_with(|| AgentStepAcc::new(event.ts));
+                append_omitted_images(&mut acc.extra, omitted);
                 acc.observations.push(json!({
                     "source_call_id": data.tool_call_id,
                     "content": content,
@@ -489,14 +540,20 @@ impl Fold {
     }
 
     /// Finish the fold: flush the trailing step and assign 1-based step ids.
-    fn finish(mut self) -> (Vec<Value>, Vec<Value>, Totals, Option<String>) {
+    fn finish(mut self) -> (Vec<Value>, Vec<Value>, Totals, Option<String>, usize) {
         self.flush();
         for (i, step) in self.steps.iter_mut().enumerate() {
             if let Value::Object(map) = step {
                 map.insert("step_id".to_string(), json!(i + 1));
             }
         }
-        (self.steps, self.turns, self.totals, self.last_model)
+        (
+            self.steps,
+            self.turns,
+            self.totals,
+            self.last_model,
+            self.images_omitted,
+        )
     }
 }
 
@@ -505,30 +562,89 @@ fn timestamp(event: &Event) -> String {
 }
 
 /// Flatten a message's text-bearing content to one string. Tool calls and
-/// results are represented elsewhere in the step; images become a marker.
-fn flatten_message_text(message: &Message) -> String {
+/// results are represented elsewhere in the step; images become a marker and
+/// their locator record is appended to `omitted`.
+fn flatten_message_text(message: &Message, redact: bool, omitted: &mut Vec<Value>) -> String {
     let mut parts: Vec<String> = Vec::new();
     for part in &message.content {
         match part {
             ContentPart::Text(t) => parts.push(t.text.clone()),
-            ContentPart::Image(_) | ContentPart::ImageFile(_) => parts.push("[image]".to_string()),
+            ContentPart::Image(_) | ContentPart::ImageFile(_) => {
+                parts.push("[image]".to_string());
+                omitted.extend(omitted_image_ref(part, redact));
+            }
             ContentPart::ToolCall(_) | ContentPart::ToolResult(_) => {}
         }
     }
     parts.join("\n")
 }
 
-/// Flatten tool-result content parts to a single observation string.
-fn flatten_content_parts(parts: &[ContentPart]) -> String {
+/// Flatten tool-result content parts to a single observation string. Images
+/// become a marker and their locator record is appended to `omitted`.
+fn flatten_content_parts(parts: &[ContentPart], redact: bool, omitted: &mut Vec<Value>) -> String {
     let mut out: Vec<String> = Vec::new();
     for part in parts {
         match part {
             ContentPart::Text(t) => out.push(t.text.clone()),
-            ContentPart::Image(_) | ContentPart::ImageFile(_) => out.push("[image]".to_string()),
+            ContentPart::Image(_) | ContentPart::ImageFile(_) => {
+                out.push("[image]".to_string());
+                omitted.extend(omitted_image_ref(part, redact));
+            }
             other => out.push(serde_json::to_string(other).unwrap_or_default()),
         }
     }
     out.join("\n")
+}
+
+/// Locator record for an image content part flattened to a `"[image]"`
+/// marker: url / file_id / media_type / filename, as present on the part.
+/// Never raw bytes — base64 payloads are dropped entirely. `redact` blanks
+/// the content-bearing locators (url, filename) while keeping the structural
+/// ones (file_id, media_type), mirroring `AtifOptions::redact_content`.
+fn omitted_image_ref(part: &ContentPart, redact: bool) -> Option<Value> {
+    let redacted = |s: &str| {
+        if redact {
+            REDACTED.to_string()
+        } else {
+            s.to_string()
+        }
+    };
+    match part {
+        ContentPart::Image(image) => {
+            let mut m = Map::new();
+            if let Some(url) = &image.url {
+                m.insert("url".to_string(), json!(redacted(url)));
+            }
+            if let Some(media_type) = &image.media_type {
+                m.insert("media_type".to_string(), json!(media_type));
+            }
+            Some(Value::Object(m))
+        }
+        ContentPart::ImageFile(file) => {
+            let mut m = Map::new();
+            m.insert("file_id".to_string(), json!(file.image_id.to_string()));
+            if let Some(filename) = &file.filename {
+                m.insert("filename".to_string(), json!(redacted(filename)));
+            }
+            Some(Value::Object(m))
+        }
+        _ => None,
+    }
+}
+
+/// Append omitted-image locator records to a step's `extra.omitted_images`,
+/// creating or extending the array. No-op (and no key) when `omitted` is
+/// empty, so image-free steps carry no extra keys.
+fn append_omitted_images(extra: &mut Map<String, Value>, omitted: Vec<Value>) {
+    if omitted.is_empty() {
+        return;
+    }
+    match extra.get_mut("omitted_images") {
+        Some(Value::Array(existing)) => existing.extend(omitted),
+        _ => {
+            extra.insert("omitted_images".to_string(), Value::Array(omitted));
+        }
+    }
 }
 
 // ============================================================================
@@ -805,12 +921,13 @@ mod tests {
     #[test]
     fn folds_events_into_atif_steps() {
         let session = SessionId::new();
-        let value = build_trajectory(
+        let built = build_trajectory(
             Some("session_x"),
             &sample_events(session),
             Map::new(),
             AtifOptions::default(),
         );
+        let value = built.document;
 
         assert_eq!(value["schema_version"], json!(ATIF_SCHEMA_VERSION));
         assert_eq!(value["session_id"], json!("session_x"));
@@ -896,7 +1013,7 @@ mod tests {
                 },
             ),
         ];
-        let value = build_trajectory(None, &events, Map::new(), AtifOptions::default());
+        let value = build_trajectory(None, &events, Map::new(), AtifOptions::default()).document;
         let steps = value["steps"].as_array().unwrap();
         assert_eq!(steps.len(), 2);
         assert_eq!(steps[1]["source"], json!("agent"));
@@ -918,7 +1035,8 @@ mod tests {
             AtifOptions {
                 redact_content: true,
             },
-        );
+        )
+        .document;
         let serialized = serde_json::to_string(&value).unwrap();
         assert!(!serialized.contains("hi there"));
         assert!(!serialized.contains("sunny"));
@@ -932,6 +1050,118 @@ mod tests {
             json!("call_1")
         );
         assert_eq!(steps[0]["message"], json!(REDACTED));
+    }
+
+    #[test]
+    fn images_flatten_to_markers_and_record_refs() {
+        use everruns_core::message::{ImageContentPart, ImageFileContentPart};
+        use everruns_core::typed_id::ImageId;
+
+        let session = SessionId::new();
+        let image_id = ImageId::new();
+        let mut user = Message::user("look at this");
+        user.content
+            .push(ContentPart::Image(ImageContentPart::from_url(
+                "https://example.com/cat.png",
+            )));
+        user.content
+            .push(ContentPart::ImageFile(ImageFileContentPart::with_filename(
+                image_id, "cat.png",
+            )));
+
+        let tool_call = ToolCall {
+            id: "call_img".to_string(),
+            name: "screenshot".to_string(),
+            arguments: json!({}),
+        };
+        let events = vec![
+            event(session, InputMessageData::new(user)),
+            event(
+                session,
+                OutputMessageCompletedData::new(Message::assistant_with_tools(
+                    "taking a screenshot",
+                    vec![tool_call],
+                )),
+            ),
+            event(
+                session,
+                ToolCompletedData::success(
+                    "call_img".to_string(),
+                    "screenshot".to_string(),
+                    vec![
+                        ContentPart::text("done"),
+                        ContentPart::Image(ImageContentPart::from_base64("aGVsbG8=", "image/png")),
+                    ],
+                    Some(5),
+                ),
+            ),
+        ];
+
+        let built = build_trajectory(
+            Some("session_x"),
+            &events,
+            Map::new(),
+            AtifOptions::default(),
+        );
+        assert_eq!(built.images_omitted, 3);
+        let value = built.document;
+        assert_eq!(value["extra"]["images_omitted"], json!(3));
+
+        // User step: markers stay in the text, locator refs land in step extra.
+        let steps = value["steps"].as_array().unwrap();
+        assert_eq!(steps[0]["message"], json!("look at this\n[image]\n[image]"));
+        let user_refs = steps[0]["extra"]["omitted_images"].as_array().unwrap();
+        assert_eq!(user_refs.len(), 2);
+        assert_eq!(user_refs[0], json!({"url": "https://example.com/cat.png"}));
+        assert_eq!(user_refs[1]["file_id"], json!(image_id.to_string()));
+        assert_eq!(user_refs[1]["filename"], json!("cat.png"));
+
+        // Observation content keeps the marker; the base64 payload is dropped
+        // and the ref is recorded on the owning agent step.
+        let s1 = &steps[1];
+        assert_eq!(
+            s1["observation"]["results"][0]["content"],
+            json!("done\n[image]")
+        );
+        assert_eq!(
+            s1["extra"]["omitted_images"],
+            json!([{"media_type": "image/png"}])
+        );
+        let serialized = serde_json::to_string(&value).unwrap();
+        assert!(
+            !serialized.contains("aGVsbG8="),
+            "raw image bytes must never be exported"
+        );
+
+        // Redaction blanks content-bearing locators, keeps structural ones.
+        let redacted = build_trajectory(
+            Some("session_x"),
+            &events,
+            Map::new(),
+            AtifOptions {
+                redact_content: true,
+            },
+        )
+        .document;
+        let refs = &redacted["steps"][0]["extra"]["omitted_images"];
+        assert_eq!(refs[0]["url"], json!(REDACTED));
+        assert_eq!(refs[1]["file_id"], json!(image_id.to_string()));
+        assert_eq!(refs[1]["filename"], json!(REDACTED));
+    }
+
+    #[test]
+    fn zero_image_session_carries_no_omission_keys() {
+        let session = SessionId::new();
+        let built = build_trajectory(
+            Some("session_x"),
+            &sample_events(session),
+            Map::new(),
+            AtifOptions::default(),
+        );
+        assert_eq!(built.images_omitted, 0);
+        let serialized = serde_json::to_string(&built.document).unwrap();
+        assert!(!serialized.contains("omitted_images"));
+        assert!(!serialized.contains("images_omitted"));
     }
 
     #[test]

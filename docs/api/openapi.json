@@ -11543,7 +11543,7 @@
           "sessions"
         ],
         "summary": "Export session messages as a JSONL file (default) or as an ATIF trajectory",
-        "description": "Default (`format=jsonl`): all materialized messages (user, agent) as\nnewline-delimited JSON, one complete JSON object per line; delta events are\nexcluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document\nfolded from the session's event log (see `specs/atif-adoption.md`).\nThe response includes `Content-Disposition: attachment` for browser download.",
+        "description": "Default (`format=jsonl`): all materialized messages (user, agent) as\nnewline-delimited JSON, one complete JSON object per line; delta events are\nexcluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document\nfolded from the session's event log (see `specs/atif-adoption.md`); when\nimage content parts were flattened to `\"[image]\"` markers, the response\ncarries an `X-Atif-Images-Omitted` header with the total count, and\ndocuments over the 50 MiB `ATIF_EXPORT_MAX_BYTES` cap are rejected with\n413. The response includes `Content-Disposition: attachment` for browser\ndownload.",
         "operationId": "export_session_jsonl",
         "parameters": [
           {
@@ -11567,7 +11567,7 @@
         ],
         "responses": {
           "200": {
-            "description": "JSONL file with one message per line, or one ATIF trajectory JSON document",
+            "description": "JSONL file with one message per line, or one ATIF trajectory JSON document (with X-Atif-Images-Omitted header when image parts were flattened to markers)",
             "content": {
               "application/x-ndjson": {}
             }
@@ -11580,6 +11580,16 @@
           },
           "404": {
             "description": "Session not found"
+          },
+          "413": {
+            "description": "ATIF document exceeds the 50 MiB export cap; segmented export is a planned follow-up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
             "description": "Internal server error"

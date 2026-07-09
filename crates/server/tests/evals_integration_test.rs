@@ -1029,6 +1029,9 @@ async fn test_session_export_atif_format() {
         .to_string();
     assert!(disposition.contains(&format!("{}.atif.json", session_id)));
 
+    // Text-only session: the lossiness header must be absent, not "0".
+    assert!(response.headers().get("x-atif-images-omitted").is_none());
+
     let body = response.text();
     let trajectory: serde_json::Value = serde_json::from_str(&body).expect("single JSON document");
     assert_eq!(trajectory["schema_version"], json!("ATIF-v1.7"));
@@ -1046,4 +1049,173 @@ async fn test_session_export_atif_format() {
         response.headers().get("content-type").unwrap(),
         "application/x-ndjson"
     );
+}
+
+/// Seed a bare session (principal + session row) owned by the test org and
+/// insert the given raw `(event_type, data)` events, oldest first.
+async fn seed_session_with_raw_events(
+    server: &TestServer,
+    events: Vec<(&str, serde_json::Value)>,
+) -> SessionId {
+    use uuid::Uuid;
+
+    let principal = server
+        .db
+        .create_principal(CreatePrincipalRow {
+            id: everruns_core::PrincipalId::new(),
+            org_id: TEST_ORG_ID,
+            kind: "system".to_string(),
+            subject_id: Some(Uuid::now_v7()),
+            parent_principal_id: None,
+            resolved_user_id: None,
+            metadata: json!({ "source": "atif_export_test" }),
+        })
+        .await
+        .expect("create principal");
+
+    let session = server
+        .db
+        .create_session(CreateSessionRow {
+            org_id: TEST_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: principal.id,
+            resolved_owner_user_id: None,
+            title: Some("ATIF export test".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: json!([]),
+            tools: json!([]),
+            mcp_servers: json!({}),
+            system_prompt: None,
+            initial_files: json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            workspace_id: None,
+        })
+        .await
+        .expect("create session");
+
+    for (event_type, data) in events {
+        server
+            .db
+            .create_event(CreateEventRow {
+                session_id: session.id,
+                event_type: event_type.to_string(),
+                ts: chrono::Utc::now(),
+                context: json!({}),
+                data,
+                metadata: None,
+                tags: None,
+            })
+            .await
+            .expect("seed event");
+    }
+
+    session.id
+}
+
+#[tokio::test]
+async fn test_session_export_atif_images_omitted_header() {
+    use everruns_core::events::InputMessageData;
+    use everruns_core::message::{ContentPart, ImageContentPart, ImageFileContentPart, Message};
+    use everruns_core::typed_id::ImageId;
+
+    let server = TestServer::in_memory().await;
+    let image_id = ImageId::new();
+    let mut message = Message::user("look at this");
+    message
+        .content
+        .push(ContentPart::Image(ImageContentPart::from_url(
+            "https://example.com/cat.png",
+        )));
+    message
+        .content
+        .push(ContentPart::ImageFile(ImageFileContentPart::with_filename(
+            image_id, "cat.png",
+        )));
+    let session_id = seed_session_with_raw_events(
+        &server,
+        vec![(
+            "input.message",
+            serde_json::to_value(InputMessageData::new(message)).expect("serialize input event"),
+        )],
+    )
+    .await;
+
+    let response = server
+        .get(&format!("/v1/sessions/{}/export?format=atif", session_id))
+        .await
+        .assert_status(StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get("x-atif-images-omitted")
+            .expect("lossiness header"),
+        "2"
+    );
+    let trajectory = response.json_value();
+    assert_eq!(trajectory["extra"]["images_omitted"], json!(2));
+    let step = &trajectory["steps"][0];
+    assert!(step["message"].as_str().unwrap().contains("[image]"));
+    let refs = step["extra"]["omitted_images"].as_array().expect("refs");
+    assert_eq!(refs[0]["url"], json!("https://example.com/cat.png"));
+    assert_eq!(refs[1]["file_id"], json!(image_id.to_string()));
+    assert_eq!(refs[1]["filename"], json!("cat.png"));
+
+    // The default JSONL export never carries the ATIF lossiness header.
+    let response = server
+        .get(&format!("/v1/sessions/{}/export", session_id))
+        .await
+        .assert_status(StatusCode::OK);
+    assert!(response.headers().get("x-atif-images-omitted").is_none());
+}
+
+#[tokio::test]
+async fn test_session_export_atif_over_cap_returns_413() {
+    use everruns_core::events::InputMessageData;
+    use everruns_core::message::Message;
+
+    // Tiny injected cap; production uses `ATIF_EXPORT_MAX_BYTES` (50 MiB).
+    let server = TestServer::in_memory_with_atif_export_cap(64).await;
+    let session_id = seed_session_with_raw_events(
+        &server,
+        vec![(
+            "input.message",
+            serde_json::to_value(InputMessageData::new(Message::user("hello world")))
+                .expect("serialize input event"),
+        )],
+    )
+    .await;
+
+    let response = server
+        .get(&format!("/v1/sessions/{}/export?format=atif", session_id))
+        .await
+        .assert_status(StatusCode::PAYLOAD_TOO_LARGE);
+    let body = response.json_value();
+    assert_eq!(body["status"], json!(413));
+    assert_eq!(body["code"], json!("atif_export_too_large"));
+    let detail = body["detail"].as_str().expect("detail");
+    assert!(
+        detail.contains("64-byte limit"),
+        "detail must name the limit: {detail}"
+    );
+    assert!(
+        detail.contains(&session_id.to_string()),
+        "detail must name the session: {detail}"
+    );
+
+    // The cap guards only the single-document ATIF path; JSONL is untouched.
+    server
+        .get(&format!("/v1/sessions/{}/export", session_id))
+        .await
+        .assert_status(StatusCode::OK);
 }
