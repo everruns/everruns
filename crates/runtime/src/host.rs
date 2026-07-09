@@ -8,7 +8,8 @@ use everruns_core::atoms::{
     ReasonInput, ReasonResult,
 };
 use everruns_core::capabilities::{
-    SystemPromptContext, collect_capabilities_with_configs, report_result_tool_for_child_session,
+    SystemPromptContext, collect_capabilities_with_configs, report_progress_tool_for_child_session,
+    report_result_tool_for_child_session,
 };
 use everruns_core::events::{
     EventContext, EventRequest, OutputMessageCompletedData, SessionActivatedData, SessionIdledData,
@@ -1210,6 +1211,20 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
         .await?
     {
         tool_registry.register_boxed(Box::new(tool.with_file_store(adapter.file_store())));
+    }
+    if input
+        .tool_definitions
+        .iter()
+        .any(|definition| definition.name() == "report_progress")
+        && let Some(registry) = adapter.session_task_registry()
+        && let Some(tool) = report_progress_tool_for_child_session(
+            input.context.session_id,
+            adapter.session_store(org_id).as_ref(),
+            registry.as_ref(),
+        )
+        .await?
+    {
+        tool_registry.register_boxed(Box::new(tool));
     }
 
     // Register the session's MCP tools as first-class registry tools, so they

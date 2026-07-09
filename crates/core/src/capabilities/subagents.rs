@@ -22,9 +22,10 @@
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::platform_store::PlatformStore;
 use crate::session_task::{
-    CreateSessionTask, SessionTask, SessionTaskFilter, SessionTaskState, SessionTaskUpdate,
-    TASK_KIND_SUBAGENT, TaskError, TaskExecutor, TaskExecutorPlugin, TaskLinks, TaskMessage,
-    TaskWakePolicy, task_message_text, task_result_path,
+    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskState,
+    SessionTaskUpdate, TASK_KIND_SUBAGENT, TaskError, TaskExecutor, TaskExecutorPlugin, TaskLinks,
+    TaskMessage, TaskMessageDirection, TaskMessagePart, TaskWakePolicy, task_message_text,
+    task_result_path,
 };
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
@@ -87,6 +88,7 @@ impl Capability for SubagentCapability {
 
 const SUBAGENT_SYSTEM_PROMPT: &str = "Spawn subagents only for independent workstreams that benefit from parallelism or a separate context window; do not delegate immediate sequential steps. Spawns are background by default: you get a task_id, keep working, and are notified on completion (monitor with get_task/wait_task). Use mode \"foreground\" only when you cannot proceed without the result. No nested subagents. Use blueprints for specialist agents with their own tools and model.";
 const RESULT_SCHEMA_SPEC_KEY: &str = "result_schema";
+const MESSAGE_SCHEMA_SPEC_KEY: &str = "message_schema";
 
 /// Execution mode for subagent delegation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -152,19 +154,33 @@ fn declared_result_schema(task: &SessionTask) -> Option<&Value> {
         .filter(|schema| schema.is_object())
 }
 
-fn normalize_result_schema(arguments: &Value) -> Result<Option<Value>, ToolExecutionResult> {
-    let Some(schema) = arguments
-        .get(RESULT_SCHEMA_SPEC_KEY)
-        .filter(|v| !v.is_null())
-    else {
+fn declared_message_schema(task: &SessionTask) -> Option<&Value> {
+    task.spec
+        .get(MESSAGE_SCHEMA_SPEC_KEY)
+        .filter(|schema| schema.is_object())
+}
+
+fn normalize_optional_schema(
+    arguments: &Value,
+    key: &str,
+) -> Result<Option<Value>, ToolExecutionResult> {
+    let Some(schema) = arguments.get(key).filter(|v| !v.is_null()) else {
         return Ok(None);
     };
     if !schema.is_object() {
-        return Err(ToolExecutionResult::tool_error(
-            "result_schema must be a JSON Schema object when provided.",
-        ));
+        return Err(ToolExecutionResult::tool_error(format!(
+            "{key} must be a JSON Schema object when provided.",
+        )));
     }
     Ok(Some(schema.clone()))
+}
+
+fn normalize_result_schema(arguments: &Value) -> Result<Option<Value>, ToolExecutionResult> {
+    normalize_optional_schema(arguments, RESULT_SCHEMA_SPEC_KEY)
+}
+
+fn normalize_message_schema(arguments: &Value) -> Result<Option<Value>, ToolExecutionResult> {
+    normalize_optional_schema(arguments, MESSAGE_SCHEMA_SPEC_KEY)
 }
 
 fn json_schema_type_matches(expected: &str, value: &Value) -> bool {
@@ -180,12 +196,7 @@ fn json_schema_type_matches(expected: &str, value: &Value) -> bool {
     }
 }
 
-fn validate_against_result_schema(
-    schema: &Value,
-    value: &Value,
-    path: &str,
-    errors: &mut Vec<String>,
-) {
+fn validate_against_schema(schema: &Value, value: &Value, path: &str, errors: &mut Vec<String>) {
     if let Some(enum_values) = schema.get("enum").and_then(Value::as_array)
         && !enum_values.iter().any(|candidate| candidate == value)
     {
@@ -235,7 +246,7 @@ fn validate_against_result_schema(
 
         for (key, property_schema) in properties {
             if let Some(property_value) = object.get(key) {
-                validate_against_result_schema(
+                validate_against_schema(
                     property_schema,
                     property_value,
                     &format!("{path}.{key}"),
@@ -247,14 +258,14 @@ fn validate_against_result_schema(
 
     if let (Some(array), Some(item_schema)) = (value.as_array(), schema.get("items")) {
         for (index, item) in array.iter().enumerate() {
-            validate_against_result_schema(item_schema, item, &format!("{path}[{index}]"), errors);
+            validate_against_schema(item_schema, item, &format!("{path}[{index}]"), errors);
         }
     }
 }
 
-fn result_schema_validation_errors(schema: &Value, value: &Value) -> Vec<String> {
+fn schema_validation_errors(schema: &Value, value: &Value) -> Vec<String> {
     let mut errors = Vec::new();
-    validate_against_result_schema(schema, value, "$", &mut errors);
+    validate_against_schema(schema, value, "$", &mut errors);
     errors
 }
 
@@ -416,7 +427,7 @@ impl Tool for ReportResultTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let errors = result_schema_validation_errors(&self.result_schema, &arguments);
+        let errors = schema_validation_errors(&self.result_schema, &arguments);
         if !errors.is_empty() {
             return ToolExecutionResult::tool_error(format!(
                 "report_result arguments do not match result_schema: {}",
@@ -473,6 +484,95 @@ impl Tool for ReportResultTool {
     }
 }
 
+/// Context-bound tool injected into a child subagent when its parent task
+/// declares `message_schema`.
+pub struct ReportProgressTool {
+    parent_session_id: SessionId,
+    task_id: String,
+    message_schema: Value,
+}
+
+impl ReportProgressTool {
+    pub fn new(parent_session_id: SessionId, task_id: String, message_schema: Value) -> Self {
+        Self {
+            parent_session_id,
+            task_id,
+            message_schema,
+        }
+    }
+}
+
+#[async_trait]
+impl Tool for ReportProgressTool {
+    fn name(&self) -> &str {
+        "report_progress"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Report Progress")
+    }
+
+    fn description(&self) -> &str {
+        "Post a structured progress message for this subagent task. The call arguments must match the declared message schema."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        self.message_schema.clone()
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "report_progress requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let errors = schema_validation_errors(&self.message_schema, &arguments);
+        if !errors.is_empty() {
+            return ToolExecutionResult::tool_error(format!(
+                "report_progress arguments do not match message_schema: {}",
+                errors.join("; ")
+            ));
+        }
+
+        let Some(registry) = context.session_task_registry.as_ref() else {
+            return ToolExecutionResult::tool_error(
+                "report_progress requires session_task_registry context",
+            );
+        };
+
+        let message = NewTaskMessage {
+            direction: TaskMessageDirection::Outbound,
+            content: vec![TaskMessagePart::Data {
+                data: arguments.clone(),
+            }],
+            in_reply_to: None,
+            expected_attempt: None,
+        };
+        let stored = match registry
+            .record_message(self.parent_session_id, &self.task_id, message)
+            .await
+        {
+            Ok(stored) => stored,
+            Err(error) => return ToolExecutionResult::internal_error(error),
+        };
+
+        ToolExecutionResult::success(json!({
+            "status": "posted",
+            "task_id": self.task_id,
+            "message_id": stored.id,
+        }))
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
 pub async fn report_result_tool_for_child_session(
     child_session_id: SessionId,
     session_store: &dyn SessionStore,
@@ -511,6 +611,45 @@ pub async fn report_result_tool_for_child_session(
     Ok(Some(ReportResultTool::new(
         parent_session_id,
         parent.workspace_id,
+        task.id.clone(),
+        schema.clone(),
+    )))
+}
+
+pub async fn report_progress_tool_for_child_session(
+    child_session_id: SessionId,
+    session_store: &dyn SessionStore,
+    task_registry: &dyn crate::session_task::SessionTaskRegistry,
+) -> crate::error::Result<Option<ReportProgressTool>> {
+    let Some(child) = session_store.get_session(child_session_id).await? else {
+        return Ok(None);
+    };
+    let Some(parent_session_id) = child.parent_session_id else {
+        return Ok(None);
+    };
+
+    let tasks = task_registry
+        .list(
+            parent_session_id,
+            Some(&SessionTaskFilter {
+                kind: Some(TASK_KIND_SUBAGENT.to_string()),
+                state: None,
+            }),
+        )
+        .await?;
+
+    let Some(task) = tasks
+        .into_iter()
+        .find(|task| task.links.child_session_id == Some(child_session_id))
+    else {
+        return Ok(None);
+    };
+    let Some(schema) = declared_message_schema(&task) else {
+        return Ok(None);
+    };
+
+    Ok(Some(ReportProgressTool::new(
+        parent_session_id,
         task.id.clone(),
         schema.clone(),
     )))
@@ -587,6 +726,10 @@ impl Tool for SpawnSubagentAsAgentTool {
                 "result_schema": {
                     "type": "object",
                     "description": "Optional JSON Schema for the subagent's final structured result. When set, the child receives report_result and must call it before the task can succeed."
+                },
+                "message_schema": {
+                    "type": "object",
+                    "description": "Optional JSON Schema for structured progress messages. When set, the child receives report_progress and valid calls post data messages to the task thread."
                 }
             },
             "required": ["name", "instructions", "target"],
@@ -679,6 +822,7 @@ async fn spawn_agent_subagent_impl(
         .map(|s| s.to_string());
     let config_param = arguments.get("config").filter(|v| !v.is_null()).cloned();
     let result_schema = normalize_result_schema(&arguments)?;
+    let message_schema = normalize_message_schema(&arguments)?;
 
     // Reject config without blueprint
     if config_param.is_some() && blueprint_param.is_none() {
@@ -864,6 +1008,7 @@ async fn spawn_agent_subagent_impl(
                     &blueprint_param,
                     &config_param,
                     &result_schema,
+                    &message_schema,
                     mode,
                     Some((
                         spawn_store.as_ref(),
@@ -887,6 +1032,7 @@ async fn spawn_agent_subagent_impl(
         &blueprint_param,
         &config_param,
         &result_schema,
+        &message_schema,
         mode,
         None,
     )
@@ -933,6 +1079,7 @@ async fn spawn_create_and_wait(
     blueprint_param: &Option<String>,
     config_param: &Option<Value>,
     result_schema: &Option<Value>,
+    message_schema: &Option<Value>,
     mode: SpawnMode,
     settle_ctx: Option<(
         &dyn crate::traits::SubagentSpawnStore,
@@ -977,6 +1124,11 @@ async fn spawn_create_and_wait(
     {
         spec.insert(RESULT_SCHEMA_SPEC_KEY.to_string(), schema.clone());
     }
+    if let Some(schema) = message_schema
+        && let Some(spec) = task_spec.as_object_mut()
+    {
+        spec.insert(MESSAGE_SCHEMA_SPEC_KEY.to_string(), schema.clone());
+    }
 
     if let Some(ref task_registry) = context.session_task_registry
         && let Ok(created) = task_registry
@@ -991,9 +1143,10 @@ async fn spawn_create_and_wait(
                     child_session_id: Some(child_session.id),
                     ..Default::default()
                 },
-                wake_policy: match mode {
-                    SpawnMode::Background => TaskWakePolicy::OnTerminal,
-                    SpawnMode::Foreground => TaskWakePolicy::Silent,
+                wake_policy: match (mode, message_schema.is_some()) {
+                    (SpawnMode::Background, true) => TaskWakePolicy::OnActivity,
+                    (SpawnMode::Background, false) => TaskWakePolicy::OnTerminal,
+                    (SpawnMode::Foreground, _) => TaskWakePolicy::Silent,
                 },
             })
             .await
@@ -1599,6 +1752,7 @@ mod tests {
         assert!(props.contains_key("blueprint"));
         assert!(props.contains_key("config"));
         assert!(props.contains_key("result_schema"));
+        assert!(props.contains_key("message_schema"));
         assert!(!required.contains(&json!("blueprint")));
         assert!(!required.contains(&json!("config")));
         assert_eq!(
@@ -2062,6 +2216,125 @@ mod tests {
             panic!("expected validation error, got {result:?}");
         };
         assert!(message.contains("$.answer is required"), "got: {message}");
+        assert!(message.contains("$.extra is not allowed"), "got: {message}");
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_subagent_stores_message_schema_and_wakes_on_activity() {
+        let store = Arc::new(MockPlatformStore::new());
+        *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let context = spawn_context(&store, Some(registry.clone()));
+
+        let result = SpawnSubagentAsAgentTool
+            .execute_with_context(
+                json!({
+                    "name": "Runner",
+                    "instructions": "go",
+                    "target": {"type": "subagent"},
+                    "message_schema": {
+                        "type": "object",
+                        "properties": {"step": {"type": "string"}},
+                        "required": ["step"],
+                        "additionalProperties": false
+                    }
+                }),
+                &context,
+            )
+            .await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success, got {result:?}");
+        };
+        let task_id = value["task_id"].as_str().expect("task_id");
+        let task = registry
+            .get(context.session_id, task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(task.spec["message_schema"]["required"], json!(["step"]));
+        assert_eq!(task.wake_policy, TaskWakePolicy::OnActivity);
+    }
+
+    #[tokio::test]
+    async fn report_progress_posts_structured_outbound_message() {
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let parent_session_id = crate::typed_id::SessionId::new();
+        let task = registry
+            .create(CreateSessionTask {
+                session_id: parent_session_id,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: "Runner".to_string(),
+                spec: json!({
+                    "message_schema": {
+                        "type": "object",
+                        "properties": {"step": {"type": "string"}},
+                        "required": ["step"],
+                        "additionalProperties": false
+                    }
+                }),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::OnActivity,
+            })
+            .await
+            .unwrap();
+
+        let tool = ReportProgressTool::new(
+            parent_session_id,
+            task.id.clone(),
+            task.spec["message_schema"].clone(),
+        );
+        let mut context = ToolContext::new(crate::typed_id::SessionId::new());
+        context.session_task_registry = Some(registry.clone());
+
+        let result = tool
+            .execute_with_context(json!({"step": "tests-running"}), &context)
+            .await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success, got {result:?}");
+        };
+        assert_eq!(value["status"], "posted");
+
+        let messages = registry
+            .list_messages(parent_session_id, &task.id, None, None)
+            .await
+            .unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].direction, TaskMessageDirection::Outbound);
+        assert_eq!(
+            messages[0].content,
+            vec![TaskMessagePart::Data {
+                data: json!({"step": "tests-running"})
+            }]
+        );
+    }
+
+    #[tokio::test]
+    async fn report_progress_rejects_invalid_message_schema_payload() {
+        let tool = ReportProgressTool::new(
+            crate::typed_id::SessionId::new(),
+            "task_test".to_string(),
+            json!({
+                "type": "object",
+                "properties": {"step": {"type": "string"}},
+                "required": ["step"],
+                "additionalProperties": false
+            }),
+        );
+        let result = tool
+            .execute_with_context(
+                json!({"step": 42, "extra": true}),
+                &ToolContext::new(SessionId::new()),
+            )
+            .await;
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("expected validation error, got {result:?}");
+        };
+        assert!(
+            message.contains("$.step has the wrong JSON type"),
+            "got: {message}"
+        );
         assert!(message.contains("$.extra is not allowed"), "got: {message}");
     }
 
