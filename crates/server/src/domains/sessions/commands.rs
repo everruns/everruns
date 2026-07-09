@@ -1,7 +1,7 @@
 use super::queries as q;
 use super::types::{
-    CancelStatus, CancelTurnResponse, CreateSessionRequest, ForkSessionRequest,
-    GetOrCreateChatSessionRequest, SessionStatsResponse, UpdateSessionRequest,
+    AddSessionParticipantRequest, CancelStatus, CancelTurnResponse, CreateSessionRequest,
+    ForkSessionRequest, GetOrCreateChatSessionRequest, SessionStatsResponse, UpdateSessionRequest,
 };
 use crate::domains::common::*;
 use everruns_core::events::{
@@ -10,8 +10,11 @@ use everruns_core::events::{
 };
 use everruns_core::model_profiles::get_model_profile;
 use everruns_core::provider::DriverId;
-use everruns_core::typed_id::{AgentId, MessageId, TurnId};
-use everruns_core::{ANONYMOUS_USER_ID, Message, Session, SessionContextReport};
+use everruns_core::typed_id::{AgentId, MessageId, SessionParticipantId, TurnId};
+use everruns_core::{
+    ANONYMOUS_USER_ID, Message, Session, SessionContextReport, SessionParticipant,
+    SessionParticipantKind, SessionParticipantRole,
+};
 use serde::Deserialize;
 use std::str::FromStr;
 use utoipa::ToSchema;
@@ -216,6 +219,197 @@ impl Command for CreateSession {
 }
 
 inventory::submit! { CommandDescriptor::of::<CreateSession>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ListSessionParticipants {
+    /// Session whose participant history should be returned.
+    pub session_id: String,
+}
+
+impl Command for ListSessionParticipants {
+    type Output = Vec<SessionParticipant>;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "list_session_participants",
+            category: "sessions",
+            description: "List the participant history for a session.",
+            method: "GET",
+            path: "/v1/sessions/{session_id}/participants",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_VIEW)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
+        let session_id = q::parse_session_id(&self.session_id)?;
+        ensure_session_exists(ctx, session_id).await?;
+
+        let rows = ctx
+            .db
+            .list_session_participants(ctx.org_id(), session_id)
+            .await
+            .map_err(classify_anyhow)?;
+        Ok(rows.into_iter().map(|row| row.to_core()).collect())
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ListSessionParticipants>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AddSessionParticipant {
+    /// Session that receives the participant.
+    pub session_id: String,
+    /// Participant to add.
+    #[serde(flatten)]
+    pub req: AddSessionParticipantRequest,
+}
+
+impl Command for AddSessionParticipant {
+    type Output = SessionParticipant;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "add_session_participant",
+            category: "sessions",
+            description: "Add a member participant to a session.",
+            method: "POST",
+            path: "/v1/sessions/{session_id}/participants",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
+        let session_id = q::parse_session_id(&self.session_id)?;
+        let session = ensure_session_exists(ctx, session_id).await?;
+        let role = self.req.role.unwrap_or(SessionParticipantRole::Member);
+        if role == SessionParticipantRole::Host {
+            return Err(CommandError::bad_request(
+                "Host participant is managed by session creation",
+            ));
+        }
+
+        let (agent_id, agent_version_id) = match self.req.kind {
+            SessionParticipantKind::Agent => {
+                let agent_id = self
+                    .req
+                    .agent_id
+                    .ok_or_else(|| CommandError::bad_request("agent_id is required"))?;
+                let agent = ctx
+                    .db
+                    .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
+                    .await
+                    .map_err(classify_anyhow)?
+                    .ok_or_else(|| CommandError::not_found("Agent"))?;
+                (Some(agent.id), agent.default_version_id)
+            }
+            SessionParticipantKind::User => {
+                if self.req.agent_id.is_some() {
+                    return Err(CommandError::bad_request(
+                        "User participants cannot include agent_id",
+                    ));
+                }
+                (None, None)
+            }
+        };
+
+        let row = ctx
+            .db
+            .create_session_participant(crate::storage::models::CreateSessionParticipantRow {
+                org_id: ctx.org_id(),
+                session_id,
+                kind: self.req.kind,
+                agent_id,
+                agent_version_id,
+                principal_id: session.owner_principal_id,
+                role,
+                joined_at: None,
+            })
+            .await
+            .map_err(classify_anyhow)?;
+
+        Ok(row.to_core())
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<AddSessionParticipant>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct LeaveSessionParticipant {
+    /// Session that owns the participant.
+    pub session_id: String,
+    /// Participant row to mark as left.
+    pub participant_id: String,
+}
+
+impl Command for LeaveSessionParticipant {
+    type Output = SessionParticipant;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "leave_session_participant",
+            category: "sessions",
+            description: "Mark a session member participant as having left.",
+            method: "DELETE",
+            path: "/v1/sessions/{session_id}/participants/{participant_id}",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
+        let session_id = q::parse_session_id(&self.session_id)?;
+        ensure_session_exists(ctx, session_id).await?;
+        let participant_id: SessionParticipantId = self
+            .participant_id
+            .parse()
+            .map_err(|e| CommandError::bad_request(format!("Invalid participant ID: {e}")))?;
+
+        let participants = ctx
+            .db
+            .list_session_participants(ctx.org_id(), session_id)
+            .await
+            .map_err(classify_anyhow)?;
+        let participant = participants
+            .iter()
+            .find(|row| row.id == participant_id)
+            .ok_or_else(|| CommandError::not_found("Participant"))?;
+        if participant.role == SessionParticipantRole::Host.to_string()
+            && participant.left_at.is_none()
+        {
+            return Err(CommandError::conflict(
+                "Host participant cannot leave through this endpoint",
+            ));
+        }
+
+        ctx.db
+            .leave_session_participant(ctx.org_id(), session_id, participant_id)
+            .await
+            .map_err(classify_anyhow)?
+            .map(|row| row.to_core())
+            .ok_or_else(|| CommandError::not_found("Participant"))
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<LeaveSessionParticipant>() }
+
+async fn ensure_session_exists(
+    ctx: &Ctx,
+    session_id: everruns_core::typed_id::SessionId,
+) -> Result<crate::storage::models::SessionRow, CommandError> {
+    ctx.db
+        .get_session(ctx.org_id(), session_id)
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Session"))
+}
 
 /// Fork a session into a new, independent session (specs/forking-sessions.md).
 #[derive(Debug, Deserialize, ToSchema)]
@@ -738,6 +932,127 @@ mod tests {
             .await
             .expect_err("agent_id + agent_name is rejected");
         assert_eq!(err.status().as_u16(), 400);
+    }
+
+    #[tokio::test]
+    async fn participant_commands_list_add_and_leave_history() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = test_ctx(db.clone(), 10);
+        let harness_id = seed_harness(&ctx).await;
+        let host_public_id = AgentId::new();
+        let host_agent = db
+            .create_agent(
+                DEFAULT_ORG_ID,
+                crate::storage::models::CreateAgentRow {
+                    public_id: host_public_id.to_string(),
+                    name: "participant-host".to_string(),
+                    display_name: None,
+                    description: None,
+                    system_prompt: "You are helpful.".to_string(),
+                    default_model_id: None,
+                    harness_id,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    tools: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    max_iterations: None,
+                    parallel_tool_calls: None,
+                },
+            )
+            .await
+            .expect("create host agent");
+        let member_public_id = AgentId::new();
+        let member_agent = db
+            .create_agent(
+                DEFAULT_ORG_ID,
+                crate::storage::models::CreateAgentRow {
+                    public_id: member_public_id.to_string(),
+                    name: "participant-member".to_string(),
+                    display_name: None,
+                    description: None,
+                    system_prompt: "You are helpful.".to_string(),
+                    default_model_id: None,
+                    harness_id,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    tools: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    max_iterations: None,
+                    parallel_tool_calls: None,
+                },
+            )
+            .await
+            .expect("create member agent");
+
+        let mut req = create_request(harness_id);
+        req.agent_id = Some(host_public_id);
+        let session = CreateSession(req)
+            .execute(&ctx)
+            .await
+            .expect("create session with host agent");
+
+        let initial = ListSessionParticipants {
+            session_id: session.id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .expect("list initial participants");
+        assert_eq!(initial.len(), 2);
+        let host = initial
+            .iter()
+            .find(|participant| participant.role == SessionParticipantRole::Host)
+            .expect("host participant");
+        assert_eq!(host.kind, SessionParticipantKind::Agent);
+        assert_eq!(host.agent_id, Some(host_agent.id));
+
+        let added = AddSessionParticipant {
+            session_id: session.id.to_string(),
+            req: AddSessionParticipantRequest {
+                kind: SessionParticipantKind::Agent,
+                agent_id: Some(member_public_id),
+                role: None,
+            },
+        }
+        .execute(&ctx)
+        .await
+        .expect("add member participant");
+        assert_eq!(added.role, SessionParticipantRole::Member);
+        assert_eq!(added.agent_id, Some(member_agent.id));
+
+        let left = LeaveSessionParticipant {
+            session_id: session.id.to_string(),
+            participant_id: added.id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .expect("leave member participant");
+        assert!(left.left_at.is_some());
+
+        let history = ListSessionParticipants {
+            session_id: session.id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .expect("list participant history");
+        assert_eq!(history.len(), 3);
+        assert!(
+            history
+                .iter()
+                .find(|participant| participant.id == added.id)
+                .and_then(|participant| participant.left_at)
+                .is_some()
+        );
+
+        let err = LeaveSessionParticipant {
+            session_id: session.id.to_string(),
+            participant_id: host.id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .expect_err("host cannot leave through member endpoint");
+        assert_eq!(err.status().as_u16(), 409);
     }
 }
 

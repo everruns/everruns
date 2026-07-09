@@ -12061,6 +12061,156 @@
         "x-cost-tier": "paid"
       }
     },
+    "/v1/sessions/{session_id}/participants": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /v1/sessions/{session_id}/participants - List session participants",
+        "operationId": "list_session_participants",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session participant history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionParticipant"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /v1/sessions/{session_id}/participants - Add a session participant",
+        "operationId": "add_session_participant",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddSessionParticipantRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Participant added successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionParticipant"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid participant request"
+          },
+          "404": {
+            "description": "Session or agent not found"
+          },
+          "409": {
+            "description": "Participant conflicts with current membership"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "x-cost-tier": "paid"
+      }
+    },
+    "/v1/sessions/{session_id}/participants/{participant_id}": {
+      "delete": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "DELETE /v1/sessions/{session_id}/participants/{participant_id} - Leave a participant",
+        "operationId": "leave_session_participant",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "participant_id",
+            "in": "path",
+            "description": "Participant ID (prefixed, e.g., part_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Participant left successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionParticipant"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid ID"
+          },
+          "404": {
+            "description": "Session or participant not found"
+          },
+          "409": {
+            "description": "Host participant cannot leave through this endpoint"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/pin": {
       "put": {
         "tags": [
@@ -14838,6 +14988,38 @@
           "channel": {
             "$ref": "#/components/schemas/AppChannel",
             "description": "The created api_endpoint channel."
+          }
+        }
+      },
+      "AddSessionParticipantRequest": {
+        "type": "object",
+        "description": "Request to add a participant to a session.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Agent to add when `kind` is `agent`.",
+            "example": "agent_01933b5a00007000800000000000001"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionParticipantKind",
+            "description": "Participant kind to add."
+          },
+          "role": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SessionParticipantRole",
+                "description": "Participant role. Omit for ordinary members. Host assignment is managed by session creation."
+              }
+            ]
           }
         }
       },
@@ -31876,6 +32058,84 @@
             ]
           }
         }
+      },
+      "SessionParticipant": {
+        "type": "object",
+        "description": "Session participant - an agent or user that has joined a session.",
+        "required": [
+          "id",
+          "session_id",
+          "kind",
+          "principal_id",
+          "role",
+          "joined_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Present for agent participants.",
+            "example": "agent_01933b5a00007000800000000000001"
+          },
+          "agent_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Immutable agent version captured for an agent participant when known.",
+            "example": "agentver_01933b5a00007000800000000000001"
+          },
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the participant row (format: part_{32-hex}).",
+            "example": "part_01933b5a00007000800000000000001"
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionParticipantKind"
+          },
+          "left_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "principal_id": {
+            "type": "string",
+            "description": "Principal that joined the session.",
+            "example": "principal_01933b5a000070008000000000000001"
+          },
+          "role": {
+            "$ref": "#/components/schemas/SessionParticipantRole"
+          },
+          "session_id": {
+            "type": "string",
+            "description": "Session this participant belongs to.",
+            "example": "session_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "SessionParticipantKind": {
+        "type": "string",
+        "description": "Kind of actor participating in a session.",
+        "enum": [
+          "agent",
+          "user"
+        ]
+      },
+      "SessionParticipantRole": {
+        "type": "string",
+        "description": "Role a participant has inside a session.",
+        "enum": [
+          "host",
+          "member"
+        ]
       },
       "SessionRef": {
         "type": "object",

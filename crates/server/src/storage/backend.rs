@@ -10,7 +10,7 @@ use everruns_core::message_filter::MessageQuery;
 use everruns_core::typed_id::{
     AgentId, AgentIdentityId, EventId, HarnessId, KnowledgeBaseId, KnowledgeEntryId,
     KnowledgeIndexId, LeasedResourceId, MemoryId, MessageId, NotificationId, PrincipalId,
-    ScheduleId, SessionId, WorkspaceId,
+    ScheduleId, SessionId, SessionParticipantId, WorkspaceId,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -780,6 +780,21 @@ impl StorageBackend {
         session_id: SessionId,
     ) -> Result<Vec<SessionParticipantRow>> {
         dispatch!(self, list_session_participants, org_id, session_id)
+    }
+
+    pub async fn leave_session_participant(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        participant_id: SessionParticipantId,
+    ) -> Result<Option<SessionParticipantRow>> {
+        dispatch!(
+            self,
+            leave_session_participant,
+            org_id,
+            session_id,
+            participant_id
+        )
     }
 
     pub async fn list_reporting_outbox(
