@@ -69,6 +69,24 @@ the existing dataset formats), plus case identity (`source_key`, `eval_run_id`,
   `extra.source_key` → `trajectory_id` → `session_id`), so re-import
   converges.
 
+## Limits
+
+- **Images are never exported raw.** Every image content part is flattened to
+  an `"[image]"` marker in step/observation text, and the fold records what
+  was omitted: locators only (url / file_id / media_type / filename as
+  present on the part, never bytes) in step-level `extra.omitted_images[]`,
+  plus a root `extra.images_omitted` total. Both keys appear only when at
+  least one image was omitted.
+- **Session export size cap.** `?format=atif` returns one synchronous JSON
+  document and enforces `ATIF_EXPORT_MAX_BYTES` (50 MiB, defined in
+  `crates/server/src/atif.rs`); larger documents are rejected with HTTP 413
+  (standard error JSON, code `atif_export_too_large`). Segmented export via
+  ATIF `continued_trajectory_ref` is the planned follow-up for sessions over
+  the cap. The default JSONL export is not affected.
+- **Lossiness header.** Successful ATIF session exports set
+  `X-Atif-Images-Omitted: <N>` only when N > 0, so clients can detect a lossy
+  export without parsing the body.
+
 ## Security
 
 - Secret scrubbing (the dataset-export scrubber) is always on for every
@@ -94,7 +112,10 @@ reflects what has shipped on `main`.
 
 - `subagent_trajectories` (session tasks are not folded into embedded
   subagent trajectories yet).
-- ATIF image content parts (images are flattened to markers).
+- ATIF image content parts (images are flattened to markers with locator
+  records — see Limits).
+- Segmented export (`continued_trajectory_ref`) for sessions over the size
+  cap.
 - Importing trajectories as *results* (the existing external-run import in
   `specs/evals.md` covers scored results; ATIF import produces cases).
 
