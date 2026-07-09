@@ -201,6 +201,15 @@ pub struct AuthConfig {
     /// — never an on-screen signal). Requires a configured email sender;
     /// self-host default is off, keeping instant-session signup.
     pub signup_email_confirm: bool,
+    /// When true, a newly registered / first-time-OAuth user is auto-added to
+    /// `DEFAULT_ORG_ID` as a member. This is the single-tenant convenience
+    /// (one shared org for a single-binary / small self-host). It MUST stay off
+    /// for any multi-tenant deployment: there a fresh signup must own no org so
+    /// the zero-org onboarding flow creates the user's own org — otherwise every
+    /// tenant lands in the same shared organization. Default off; opt in with
+    /// `AUTH_AUTO_JOIN_DEFAULT_ORG=true`. Does not affect the admin-mode
+    /// bootstrap owner, which always seeds the default org.
+    pub auto_join_default_org: bool,
 }
 
 /// Cloudflare Turnstile keys for the auth surface.
@@ -228,6 +237,7 @@ impl Default for AuthConfig {
             session_max_age: Duration::from_secs(30 * 24 * 60 * 60), // 30 days
             turnstile: None,
             signup_email_confirm: false,
+            auto_join_default_org: false,
         }
     }
 }
@@ -400,6 +410,12 @@ impl AuthConfig {
             .map(|s| s.to_lowercase() == "true" || s == "1")
             .unwrap_or(false);
 
+        // Off by default: multi-tenant-safe. Single-binary / small self-host
+        // opts in to the shared default org via AUTH_AUTO_JOIN_DEFAULT_ORG=true.
+        let auto_join_default_org = std::env::var("AUTH_AUTO_JOIN_DEFAULT_ORG")
+            .map(|s| s.to_lowercase() == "true" || s == "1")
+            .unwrap_or(false);
+
         let session_max_age = std::env::var("AUTH_SESSION_MAX_AGE")
             .ok()
             .and_then(|s| s.parse().ok())
@@ -435,6 +451,7 @@ impl AuthConfig {
             session_max_age,
             turnstile,
             signup_email_confirm,
+            auto_join_default_org,
         };
 
         // Fail fast on conflicting auth-config combinations so operators see

@@ -819,33 +819,39 @@ pub async fn register(
             AuthError::unauthorized(GENERIC_REGISTRATION_FAILED)
         })?;
 
-    // Add user to default organization
-    let _ = state
-        .db
-        .add_organization_member(DEFAULT_ORG_ID, user.id, "member")
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to add user to default org: {}", e);
-            // Continue anyway - user is created, they just might not have org membership
-        });
+    // Add user to the default organization — single-tenant convenience only.
+    // Gated on `auto_join_default_org` (off by default): in a multi-tenant
+    // deployment a fresh signup must own no org so the zero-org onboarding flow
+    // creates the user's own org, instead of every tenant landing in the shared
+    // default organization. See `specs/authentication.md`.
+    if state.config.auto_join_default_org {
+        let _ = state
+            .db
+            .add_organization_member(DEFAULT_ORG_ID, user.id, "member")
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to add user to default org: {}", e);
+                // Continue anyway - user is created, they just might not have org membership
+            });
 
-    // Harness-seed safety net: the async seed task (500 ms delay, see
-    // `seed::spawn_seed_task_with_platform_definition`) may not have
-    // provisioned DEFAULT_ORG_ID's built-in harnesses yet when a user
-    // registers immediately after server startup. Re-run the provisioner
-    // using the *platform definition*'s harness set (NOT the OSS default)
-    // so a custom `PlatformDefinition` is never overridden — that was the
-    // security concern addressed by PR #1462. The call is idempotent: if
-    // seeding has already completed, every harness is "unchanged". See
-    // EVE-390 and `specs/authentication.md`.
-    if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
-        &state.db,
-        DEFAULT_ORG_ID,
-        state.platform_definition.built_in_harnesses(),
-    )
-    .await
-    {
-        tracing::warn!(error = %e, "Failed to ensure default org harnesses (non-fatal)");
+        // Harness-seed safety net: the async seed task (500 ms delay, see
+        // `seed::spawn_seed_task_with_platform_definition`) may not have
+        // provisioned DEFAULT_ORG_ID's built-in harnesses yet when a user
+        // registers immediately after server startup. Re-run the provisioner
+        // using the *platform definition*'s harness set (NOT the OSS default)
+        // so a custom `PlatformDefinition` is never overridden — that was the
+        // security concern addressed by PR #1462. The call is idempotent: if
+        // seeding has already completed, every harness is "unchanged". See
+        // EVE-390 and `specs/authentication.md`.
+        if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
+            &state.db,
+            DEFAULT_ORG_ID,
+            state.platform_definition.built_in_harnesses(),
+        )
+        .await
+        {
+            tracing::warn!(error = %e, "Failed to ensure default org harnesses (non-fatal)");
+        }
     }
 
     // Email verification: on successful signup, issue a single-use verification
@@ -1405,28 +1411,34 @@ async fn oauth_callback_inner(
                     AuthError::unauthorized("OAuth authentication failed")
                 })?;
 
-            // Add newly created user to default organization
-            let _ = state
-                .db
-                .add_organization_member(DEFAULT_ORG_ID, created_user.id, "member")
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to add OAuth user to default org: {}", e);
-                    // Continue anyway
-                });
+            // Add newly created user to the default organization — single-tenant
+            // convenience only, gated on `auto_join_default_org` (off by default).
+            // In a multi-tenant deployment a first-time-OAuth user must own no org
+            // so zero-org onboarding creates their own. See `register` and
+            // `specs/authentication.md`.
+            if state.config.auto_join_default_org {
+                let _ = state
+                    .db
+                    .add_organization_member(DEFAULT_ORG_ID, created_user.id, "member")
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Failed to add OAuth user to default org: {}", e);
+                        // Continue anyway
+                    });
 
-            // Harness-seed safety net (see equivalent comment in `register` and
-            // EVE-390). Drive the provisioner from `platform_definition`, not
-            // `oss_built_in_harnesses()`, so a custom platform definition is
-            // never overridden on OAuth signup.
-            if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
-                &state.db,
-                DEFAULT_ORG_ID,
-                state.platform_definition.built_in_harnesses(),
-            )
-            .await
-            {
-                tracing::warn!(error = %e, "Failed to ensure default org harnesses (non-fatal)");
+                // Harness-seed safety net (see equivalent comment in `register` and
+                // EVE-390). Drive the provisioner from `platform_definition`, not
+                // `oss_built_in_harnesses()`, so a custom platform definition is
+                // never overridden on OAuth signup.
+                if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
+                    &state.db,
+                    DEFAULT_ORG_ID,
+                    state.platform_definition.built_in_harnesses(),
+                )
+                .await
+                {
+                    tracing::warn!(error = %e, "Failed to ensure default org harnesses (non-fatal)");
+                }
             }
 
             created_user
@@ -2487,6 +2499,93 @@ mod oauth_state_tests {
             .unwrap()
             .expect("user created");
         assert_eq!(user.name, "Ada Lovelace");
+    }
+
+    // Multi-tenant safety: with auto_join_default_org off (the default), a fresh
+    // signup owns NO org, so zero-org onboarding creates the user's own org
+    // instead of dumping every tenant into the shared default organization.
+    #[tokio::test]
+    async fn register_does_not_join_default_org_by_default() {
+        let state = full_mode_backend();
+        let db = state.db.clone();
+        register(
+            State(state.clone()),
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(RegisterRequest {
+                email: "solo@example.com".to_string(),
+                password: "password12345".to_string(),
+                name: None,
+                captcha_token: None,
+            }),
+        )
+        .await
+        .expect("register should succeed");
+
+        let user = db
+            .get_user_by_email("solo@example.com")
+            .await
+            .unwrap()
+            .expect("user created");
+        let orgs = db.list_user_organizations(user.id).await.unwrap();
+        assert!(
+            orgs.is_empty(),
+            "fresh signup must have zero org memberships by default, got {orgs:?}"
+        );
+    }
+
+    // Single-tenant opt-in: AUTH_AUTO_JOIN_DEFAULT_ORG=true restores the shared
+    // default-org membership for a single-binary / small self-host.
+    #[tokio::test]
+    async fn register_joins_default_org_when_opted_in() {
+        use crate::storage::models::CreateOrganizationRow;
+        let config = AuthConfig {
+            mode: AuthMode::Full,
+            auto_join_default_org: true,
+            ..Default::default()
+        };
+        let db = Arc::new(StorageBackend::in_memory());
+        // Membership can only attach if the default org exists.
+        db.create_organization_with_id(
+            DEFAULT_ORG_ID,
+            CreateOrganizationRow {
+                public_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
+                name: "Default Organization".to_string(),
+                created_by: None,
+            },
+        )
+        .await
+        .expect("seed default org");
+        let state = BuiltinAuthBackend::new(
+            config,
+            db.clone(),
+            Arc::new(crate::platform::oss_platform_definition()),
+        );
+        register(
+            State(state.clone()),
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(RegisterRequest {
+                email: "joiner@example.com".to_string(),
+                password: "password12345".to_string(),
+                name: None,
+                captcha_token: None,
+            }),
+        )
+        .await
+        .expect("register should succeed");
+
+        let user = db
+            .get_user_by_email("joiner@example.com")
+            .await
+            .unwrap()
+            .expect("user created");
+        assert!(
+            db.is_organization_member(DEFAULT_ORG_ID, user.id)
+                .await
+                .unwrap(),
+            "opted-in signup should join the default org"
+        );
     }
 
     async fn seed_local_user(db: &StorageBackend, email: &str, password: &str) -> Uuid {
