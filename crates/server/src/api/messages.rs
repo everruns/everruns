@@ -319,6 +319,18 @@ pub struct ExportSessionQuery {
     /// Output format: `jsonl` (default) or `atif`.
     #[serde(default)]
     pub format: SessionExportFormat,
+    /// ATIF only. When `true`, return the session as a chain of byte-bounded
+    /// segments (each a standalone ATIF-v1.7 document under the size cap)
+    /// instead of one document. A segment with more steps remaining carries a
+    /// root `continued_trajectory_ref` URL embedding the next `cursor`; the
+    /// final/only segment omits it. Ignored for `jsonl`.
+    #[serde(default)]
+    pub segmented: bool,
+    /// ATIF segmented export only: opaque continuation cursor from the previous
+    /// segment's `continued_trajectory_ref`. Omit for the first segment. A
+    /// malformed or foreign cursor is rejected with 400.
+    #[serde(default)]
+    pub cursor: Option<String>,
 }
 
 /// Export session messages as a JSONL file (default) or as an ATIF trajectory
@@ -337,14 +349,16 @@ pub struct ExportSessionQuery {
     path = "/v1/sessions/{session_id}/export",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)"),
-        ("format" = Option<String>, Query, description = "Output format: jsonl (default) or atif")
+        ("format" = Option<String>, Query, description = "Output format: jsonl (default) or atif"),
+        ("segmented" = Option<bool>, Query, description = "ATIF only: return byte-bounded segments linked by continued_trajectory_ref instead of one document"),
+        ("cursor" = Option<String>, Query, description = "ATIF segmented export: opaque continuation cursor from the previous segment")
     ),
     responses(
-        (status = 200, description = "JSONL file with one message per line, or one ATIF trajectory JSON document (with X-Atif-Images-Omitted header when image parts were flattened to markers)", content_type = "application/x-ndjson"),
-        (status = 400, description = "Invalid ID format"),
+        (status = 200, description = "JSONL file with one message per line, or one ATIF trajectory JSON document (with X-Atif-Images-Omitted header when image parts were flattened to markers). With segmented=true, one ATIF segment linked forward by continued_trajectory_ref.", content_type = "application/x-ndjson"),
+        (status = 400, description = "Invalid ID format, or malformed/foreign segmented-export cursor"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Session not found"),
-        (status = 413, description = "ATIF document exceeds the 50 MiB export cap; segmented export is a planned follow-up", body = ErrorResponse),
+        (status = 413, description = "ATIF document exceeds the 50 MiB export cap; retry with segmented=true for a recoverable chunked export", body = ErrorResponse),
         (status = 500, description = "Internal server error")
     ),
     tag = "sessions"
@@ -354,7 +368,15 @@ pub async fn export_session_jsonl(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
     axum::extract::Query(query): axum::extract::Query<ExportSessionQuery>,
-) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+) -> Result<axum::response::Response, (StatusCode, Json<ErrorResponse>)> {
+    // Opt-in segmented ATIF export: a recoverable, byte-bounded chain of
+    // standalone ATIF documents for sessions that would 413 as one document.
+    // Each segment is bounded to `atif_export_max_bytes` by the builder, so this
+    // path never 413s (a single giant step is returned alone; see atif.rs).
+    if query.format == SessionExportFormat::Atif && query.segmented {
+        return segmented_atif_response(&state, &org, session_id, query.cursor).await;
+    }
+
     let export = ExportSessionMessages {
         session_id: session_id.clone(),
         format: query.format,
@@ -367,7 +389,7 @@ pub async fn export_session_jsonl(
     if query.format == SessionExportFormat::Atif && export.body.len() > state.atif_export_max_bytes
     {
         return Err(ErrorResponse::new(format!(
-            "ATIF export for session {} is {} bytes, over the {}-byte limit; segmented export is not available yet",
+            "ATIF export for session {} is {} bytes, over the {}-byte limit; retry with &segmented=true to export it as a chain of bounded segments linked by continued_trajectory_ref",
             session_id,
             export.body.len(),
             state.atif_export_max_bytes,
@@ -400,7 +422,69 @@ pub async fn export_session_jsonl(
         ],
         axum::response::AppendHeaders(lossiness_header),
         export.body,
-    ))
+    )
+        .into_response())
+}
+
+/// Serve one segment of a segmented ATIF export. The session is resolved
+/// org-scoped from the path; the opaque `cursor` only selects a step offset
+/// within that session (a malformed or foreign cursor → 400). Each segment is
+/// bounded to the export size cap by the builder, so no 413 guard is needed.
+async fn segmented_atif_response(
+    state: &AppState,
+    org: &ResolvedOrg,
+    session_id: String,
+    cursor: Option<String>,
+) -> Result<axum::response::Response, (StatusCode, Json<ErrorResponse>)> {
+    let ctx = state.ctx(org);
+    let link_base = format!("/v1/sessions/{session_id}/export");
+    let segment = crate::domains::messages::export_session_segment(
+        &ctx,
+        &session_id,
+        cursor.as_deref(),
+        state.atif_export_max_bytes,
+        &link_base,
+    )
+    .await?;
+
+    // Per-segment out-of-band signals so a client can walk the chain and detect
+    // lossiness without parsing each body: the images-omitted count for THIS
+    // segment, whether more segments follow, and the next opaque cursor. The
+    // authoritative continuation link is `continued_trajectory_ref` in the body.
+    let mut extra_headers: Vec<(axum::http::HeaderName, String)> = vec![(
+        axum::http::HeaderName::from_static("x-atif-segment-index"),
+        segment.segment_index.to_string(),
+    )];
+    if segment.images_omitted > 0 {
+        extra_headers.push((
+            axum::http::HeaderName::from_static("x-atif-images-omitted"),
+            segment.images_omitted.to_string(),
+        ));
+    }
+    if let Some(next) = &segment.next_cursor {
+        extra_headers.push((
+            axum::http::HeaderName::from_static("x-atif-next-cursor"),
+            next.clone(),
+        ));
+    }
+    let filename = format!("{}.atif.seg{}.json", session_id, segment.segment_index);
+
+    Ok((
+        StatusCode::OK,
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                "application/json".to_string(),
+            ),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{}\"", filename),
+            ),
+        ],
+        axum::response::AppendHeaders(extra_headers),
+        segment.body,
+    )
+        .into_response())
 }
 
 // ============================================

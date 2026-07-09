@@ -11563,17 +11563,35 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "segmented",
+            "in": "query",
+            "description": "ATIF only: return byte-bounded segments linked by continued_trajectory_ref instead of one document",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "ATIF segmented export: opaque continuation cursor from the previous segment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "JSONL file with one message per line, or one ATIF trajectory JSON document (with X-Atif-Images-Omitted header when image parts were flattened to markers)",
+            "description": "JSONL file with one message per line, or one ATIF trajectory JSON document (with X-Atif-Images-Omitted header when image parts were flattened to markers). With segmented=true, one ATIF segment linked forward by continued_trajectory_ref.",
             "content": {
               "application/x-ndjson": {}
             }
           },
           "400": {
-            "description": "Invalid ID format"
+            "description": "Invalid ID format, or malformed/foreign segmented-export cursor"
           },
           "403": {
             "description": "Forbidden"
@@ -11582,7 +11600,7 @@
             "description": "Session not found"
           },
           "413": {
-            "description": "ATIF document exceeds the 50 MiB export cap; segmented export is a planned follow-up",
+            "description": "ATIF document exceeds the 50 MiB export cap; retry with segmented=true for a recoverable chunked export",
             "content": {
               "application/json": {
                 "schema": {
