@@ -173,6 +173,7 @@ async fn run_case(
                 harness_id: None,
                 harness_name: None,
                 agent_id: None,
+                agent_name: None,
                 agent_identity_id: None,
                 title: Some(format!("Health check: {}", case.name)),
                 locale: None,

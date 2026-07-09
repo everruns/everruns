@@ -298,6 +298,7 @@ async fn execute_case_inner(
                 harness_id: None, // Already resolved
                 harness_name: None,
                 agent_id: None,
+                agent_name: None,
                 agent_identity_id: None,
                 title: Some(format!("Eval: {}", case_row.name)),
                 locale: None,

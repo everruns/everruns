@@ -78,6 +78,11 @@ impl Command for CreateSession {
                 "Cannot specify both harness_id and harness_name",
             ));
         }
+        if req.agent_id.is_some() && req.agent_name.is_some() {
+            return Err(CommandError::bad_request(
+                "Cannot specify both agent_id and agent_name",
+            ));
+        }
 
         // Enforce per-org session cap before the heavier creation work. Sessions
         // are hard-deleted, so the count reflects only live rows.
@@ -92,6 +97,39 @@ impl Command for CreateSession {
                 "Session limit reached (max {max})"
             )));
         }
+
+        // Resolve the agent first (by id or name) so its harness can seed the
+        // session harness when no explicit harness is supplied (agent-first
+        // creation). The agent's harness is a default, not an override: an
+        // explicit request harness still wins (D4).
+        let (agent_internal_id, agent_public_id, agent_harness_id) =
+            if let Some(agent_id) = req.agent_id {
+                let row = ctx
+                    .db
+                    .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
+                    .await
+                    .map_err(classify_anyhow)?
+                    .ok_or_else(|| CommandError::not_found("Agent"))?;
+                let public_id: AgentId = row
+                    .public_id
+                    .parse()
+                    .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
+                (Some(row.id.uuid()), Some(public_id), Some(row.harness_id))
+            } else if let Some(name) = req.agent_name.as_deref() {
+                let row = ctx
+                    .db
+                    .get_agent_by_name(ctx.org_id(), name)
+                    .await
+                    .map_err(classify_anyhow)?
+                    .ok_or_else(|| CommandError::not_found("Agent"))?;
+                let public_id: AgentId = row
+                    .public_id
+                    .parse()
+                    .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
+                (Some(row.id.uuid()), Some(public_id), Some(row.harness_id))
+            } else {
+                (None, None, None)
+            };
 
         if let Some(name) = req.harness_name.clone() {
             crate::api::validation::validate_harness_name(&name).map_err(validation_error)?;
@@ -123,6 +161,7 @@ impl Command for CreateSession {
             &ctx.db,
             ctx.org_id(),
             req.harness_id,
+            agent_harness_id,
             ctx.fallback_harness_name.as_deref(),
         )
         .await
@@ -142,22 +181,6 @@ impl Command for CreateSession {
                 .map_err(classify_anyhow)?
                 .ok_or_else(|| CommandError::not_found("Model"))?;
         }
-
-        let (agent_internal_id, agent_public_id) = if let Some(agent_id) = req.agent_id {
-            let row = ctx
-                .db
-                .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
-                .await
-                .map_err(classify_anyhow)?
-                .ok_or_else(|| CommandError::not_found("Agent"))?;
-            let public_id: AgentId = row
-                .public_id
-                .parse()
-                .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
-            (Some(row.id.uuid()), Some(public_id))
-        } else {
-            (None, None)
-        };
 
         if let Some(prompt) = req.system_prompt.as_ref() {
             crate::api::validation::validate_agent_system_prompt(prompt)
@@ -528,6 +551,7 @@ mod tests {
             harness_id: Some(harness_id),
             harness_name: None,
             agent_id: None,
+            agent_name: None,
             agent_identity_id: None,
             title: Some("Test Session".to_string()),
             locale: None,
@@ -623,6 +647,97 @@ mod tests {
             .expect("owner-caller spawn with a parent link should succeed");
 
         assert_eq!(session.parent_session_id, Some(parent));
+    }
+
+    async fn seed_agent(ctx: &Ctx, harness_id: HarnessId, name: &str) -> AgentId {
+        let public_id = format!("agent_{}", Uuid::now_v7().simple());
+        let row = ctx
+            .db
+            .create_agent(
+                ctx.org_id(),
+                crate::storage::models::CreateAgentRow {
+                    public_id: public_id.clone(),
+                    name: name.to_string(),
+                    display_name: None,
+                    description: None,
+                    system_prompt: "You are helpful.".to_string(),
+                    default_model_id: None,
+                    harness_id,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    tools: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    max_iterations: None,
+                    parallel_tool_calls: None,
+                },
+            )
+            .await
+            .expect("seed agent");
+        row.public_id.parse().expect("agent public id")
+    }
+
+    #[tokio::test]
+    async fn create_session_from_agent_inherits_agent_harness() {
+        // Agent-first: a session created with only an agent runs on the agent's
+        // own harness (D4), and an explicit request harness still overrides it.
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = test_ctx(db.clone(), 10);
+        let agent_harness = seed_harness(&ctx).await;
+        let override_harness = CreateHarness(CreateHarnessRequest {
+            name: "override-harness".to_string(),
+            display_name: None,
+            description: None,
+            system_prompt: Some("prompt".to_string()),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&ctx)
+        .await
+        .expect("seed override harness")
+        .id;
+        let agent_id = seed_agent(&ctx, agent_harness, "support").await;
+
+        // 1. agent only, no harness → inherits the agent's harness.
+        let mut req = create_request(agent_harness);
+        req.harness_id = None;
+        req.agent_id = Some(agent_id);
+        let session = CreateSession(req)
+            .execute(&ctx)
+            .await
+            .expect("create session from agent");
+        assert_eq!(session.harness_id, agent_harness);
+
+        // 2. explicit request harness overrides the agent's harness.
+        let mut req = create_request(override_harness);
+        req.agent_id = Some(agent_id);
+        let session = CreateSession(req)
+            .execute(&ctx)
+            .await
+            .expect("create session with explicit harness override");
+        assert_eq!(session.harness_id, override_harness);
+    }
+
+    #[tokio::test]
+    async fn create_session_rejects_both_agent_id_and_agent_name() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = test_ctx(db, 10);
+        let harness_id = seed_harness(&ctx).await;
+        let mut req = create_request(harness_id);
+        req.agent_id = Some(AgentId::new());
+        req.agent_name = Some("support".to_string());
+
+        let err = CreateSession(req)
+            .execute(&ctx)
+            .await
+            .expect_err("agent_id + agent_name is rejected");
+        assert_eq!(err.status().as_u16(), 400);
     }
 }
 

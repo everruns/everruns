@@ -795,6 +795,7 @@ async fn find_or_create_session(
                         harness_id: Some(app.harness_id),
                         harness_name: None,
                         agent_id: app.agent_id,
+                        agent_name: None,
                         agent_identity_id: app.agent_identity_id,
                         title: Some(title),
                         locale: None,

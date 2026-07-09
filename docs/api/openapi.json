@@ -18311,7 +18311,7 @@
               "string",
               "null"
             ],
-            "description": "ID of the agent to work in this session (optional, format: agent_{32-hex}).",
+            "description": "ID of the agent to work in this session (optional, format: agent_{32-hex}).\nWhen supplied without a harness, the session inherits the agent's harness.\nMutually exclusive with `agent_name`.",
             "example": "agent_01933b5a00007000800000000000001"
           },
           "agent_identity_id": {
@@ -18321,6 +18321,14 @@
             ],
             "description": "Optional resident agent identity used for unattended/background execution.",
             "example": "identity_01933b5a00007000800000000000001"
+          },
+          "agent_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name of the agent to work in this session (optional).\nAlternative to `agent_id` — looked up by name within the org.\nMutually exclusive with `agent_id`.",
+            "example": "support"
           },
           "capabilities": {
             "type": "array",
@@ -18344,7 +18352,7 @@
               "string",
               "null"
             ],
-            "description": "ID of the harness for this session (format: harness_{32-hex}).\nIf omitted, the org default harness is used. New orgs default that to Generic.\nMutually exclusive with `harness_name`.",
+            "description": "ID of the harness for this session (format: harness_{32-hex}).\nIf omitted, the harness is derived from the agent (when one is supplied),\nelse the org default harness, else the built-in fallback. New orgs default\nthat to Generic. Mutually exclusive with `harness_name`.",
             "example": "harness_01933b5a00007000800000000000001"
           },
           "harness_name": {
