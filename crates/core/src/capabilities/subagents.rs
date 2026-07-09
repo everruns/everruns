@@ -24,11 +24,12 @@ use crate::platform_store::PlatformStore;
 use crate::session_task::{
     CreateSessionTask, SessionTask, SessionTaskFilter, SessionTaskState, SessionTaskUpdate,
     TASK_KIND_SUBAGENT, TaskError, TaskExecutor, TaskExecutorPlugin, TaskLinks, TaskMessage,
-    TaskWakePolicy, task_message_text,
+    TaskWakePolicy, task_message_text, task_result_path,
 };
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{SpawnClaimResult, ToolContext};
+use crate::traits::{SessionFileSystem, SessionStore, SpawnClaimResult, ToolContext};
+use crate::typed_id::{SessionId, WorkspaceId};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -85,6 +86,7 @@ impl Capability for SubagentCapability {
 }
 
 const SUBAGENT_SYSTEM_PROMPT: &str = "Spawn subagents only for independent workstreams that benefit from parallelism or a separate context window; do not delegate immediate sequential steps. Spawns are background by default: you get a task_id, keep working, and are notified on completion (monitor with get_task/wait_task). Use mode \"foreground\" only when you cannot proceed without the result. No nested subagents. Use blueprints for specialist agents with their own tools and model.";
+const RESULT_SCHEMA_SPEC_KEY: &str = "result_schema";
 
 /// Execution mode for subagent delegation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,6 +144,118 @@ fn terminal_subagent_task_state(
         crate::session::SubagentStatus::Cancelled => SessionTaskState::Canceled,
         _ => SessionTaskState::Failed,
     }
+}
+
+fn declared_result_schema(task: &SessionTask) -> Option<&Value> {
+    task.spec
+        .get(RESULT_SCHEMA_SPEC_KEY)
+        .filter(|schema| schema.is_object())
+}
+
+fn normalize_result_schema(arguments: &Value) -> Result<Option<Value>, ToolExecutionResult> {
+    let Some(schema) = arguments
+        .get(RESULT_SCHEMA_SPEC_KEY)
+        .filter(|v| !v.is_null())
+    else {
+        return Ok(None);
+    };
+    if !schema.is_object() {
+        return Err(ToolExecutionResult::tool_error(
+            "result_schema must be a JSON Schema object when provided.",
+        ));
+    }
+    Ok(Some(schema.clone()))
+}
+
+fn json_schema_type_matches(expected: &str, value: &Value) -> bool {
+    match expected {
+        "object" => value.is_object(),
+        "array" => value.is_array(),
+        "string" => value.is_string(),
+        "boolean" => value.is_boolean(),
+        "integer" => value.as_i64().is_some() || value.as_u64().is_some(),
+        "number" => value.is_number(),
+        "null" => value.is_null(),
+        _ => true,
+    }
+}
+
+fn validate_against_result_schema(
+    schema: &Value,
+    value: &Value,
+    path: &str,
+    errors: &mut Vec<String>,
+) {
+    if let Some(enum_values) = schema.get("enum").and_then(Value::as_array)
+        && !enum_values.iter().any(|candidate| candidate == value)
+    {
+        errors.push(format!("{path} is not one of the allowed enum values"));
+    }
+
+    if let Some(const_value) = schema.get("const")
+        && const_value != value
+    {
+        errors.push(format!("{path} does not match the required const value"));
+    }
+
+    if let Some(type_value) = schema.get("type") {
+        let matches = match type_value {
+            Value::String(expected) => json_schema_type_matches(expected, value),
+            Value::Array(types) => types
+                .iter()
+                .filter_map(Value::as_str)
+                .any(|expected| json_schema_type_matches(expected, value)),
+            _ => true,
+        };
+        if !matches {
+            errors.push(format!("{path} has the wrong JSON type"));
+            return;
+        }
+    }
+
+    if let (Some(object), Some(properties)) = (
+        value.as_object(),
+        schema.get("properties").and_then(Value::as_object),
+    ) {
+        if let Some(required) = schema.get("required").and_then(Value::as_array) {
+            for key in required.iter().filter_map(Value::as_str) {
+                if !object.contains_key(key) {
+                    errors.push(format!("{path}.{key} is required"));
+                }
+            }
+        }
+
+        if schema.get("additionalProperties") == Some(&Value::Bool(false)) {
+            for key in object.keys() {
+                if !properties.contains_key(key) {
+                    errors.push(format!("{path}.{key} is not allowed"));
+                }
+            }
+        }
+
+        for (key, property_schema) in properties {
+            if let Some(property_value) = object.get(key) {
+                validate_against_result_schema(
+                    property_schema,
+                    property_value,
+                    &format!("{path}.{key}"),
+                    errors,
+                );
+            }
+        }
+    }
+
+    if let (Some(array), Some(item_schema)) = (value.as_array(), schema.get("items")) {
+        for (index, item) in array.iter().enumerate() {
+            validate_against_result_schema(item_schema, item, &format!("{path}[{index}]"), errors);
+        }
+    }
+}
+
+fn result_schema_validation_errors(schema: &Value, value: &Value) -> Vec<String> {
+    let mut errors = Vec::new();
+    validate_against_result_schema(schema, value, "$", &mut errors);
+    errors
 }
 
 // =============================================================================
@@ -210,10 +324,7 @@ async fn finish_subagent_task(
 }
 
 /// Find the session task tracking a subagent by its child session id.
-async fn find_subagent_task(
-    context: &ToolContext,
-    child_id: crate::typed_id::SessionId,
-) -> Option<SessionTask> {
+async fn find_subagent_task(context: &ToolContext, child_id: SessionId) -> Option<SessionTask> {
     let registry = context.session_task_registry.as_ref()?;
     let tasks = registry
         .list(
@@ -228,6 +339,181 @@ async fn find_subagent_task(
     tasks
         .into_iter()
         .find(|task| task.links.child_session_id == Some(child_id))
+}
+
+async fn get_subagent_task(context: &ToolContext, task_id: &str) -> Option<SessionTask> {
+    context
+        .session_task_registry
+        .as_ref()?
+        .get(context.session_id, task_id)
+        .await
+        .ok()
+        .flatten()
+}
+
+/// Context-bound tool injected into a child subagent when its parent task
+/// declares `result_schema`.
+pub struct ReportResultTool {
+    parent_session_id: SessionId,
+    parent_workspace_id: WorkspaceId,
+    task_id: String,
+    result_schema: Value,
+    file_store: Option<Arc<dyn SessionFileSystem>>,
+}
+
+impl ReportResultTool {
+    pub fn new(
+        parent_session_id: SessionId,
+        parent_workspace_id: WorkspaceId,
+        task_id: String,
+        result_schema: Value,
+    ) -> Self {
+        Self {
+            parent_session_id,
+            parent_workspace_id,
+            task_id,
+            result_schema,
+            file_store: None,
+        }
+    }
+
+    pub fn with_file_store(mut self, file_store: Arc<dyn SessionFileSystem>) -> Self {
+        self.file_store = Some(file_store);
+        self
+    }
+
+    fn result_path(&self) -> String {
+        task_result_path(&self.task_id)
+    }
+}
+
+#[async_trait]
+impl Tool for ReportResultTool {
+    fn name(&self) -> &str {
+        "report_result"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Report Result")
+    }
+
+    fn description(&self) -> &str {
+        "Submit the final structured result for this subagent task. The call arguments must match the declared result schema."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        self.result_schema.clone()
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "report_result requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let errors = result_schema_validation_errors(&self.result_schema, &arguments);
+        if !errors.is_empty() {
+            return ToolExecutionResult::tool_error(format!(
+                "report_result arguments do not match result_schema: {}",
+                errors.join("; ")
+            ));
+        }
+
+        let Some(registry) = context.session_task_registry.as_ref() else {
+            return ToolExecutionResult::tool_error(
+                "report_result requires session_task_registry context",
+            );
+        };
+        let Some(file_store) = self.file_store.as_ref().or(context.file_store.as_ref()) else {
+            return ToolExecutionResult::tool_error("report_result requires file_store context");
+        };
+
+        let path = self.result_path();
+        let content = match serde_json::to_string_pretty(&arguments) {
+            Ok(content) => content,
+            Err(error) => return ToolExecutionResult::internal_error(error),
+        };
+        let parent_workspace_key = SessionId::from_uuid(self.parent_workspace_id.uuid());
+        if let Err(error) = file_store
+            .write_file(parent_workspace_key, &path, &content, "utf-8")
+            .await
+        {
+            return ToolExecutionResult::internal_error(error);
+        }
+
+        if let Err(error) = registry
+            .update(
+                self.parent_session_id,
+                &self.task_id,
+                SessionTaskUpdate {
+                    result_path: Some(path.clone()),
+                    summary: Some(truncate_summary(&content)),
+                    ..Default::default()
+                },
+            )
+            .await
+        {
+            return ToolExecutionResult::internal_error(error);
+        }
+
+        ToolExecutionResult::success(json!({
+            "status": "recorded",
+            "task_id": self.task_id,
+            "result_path": path,
+        }))
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+pub async fn report_result_tool_for_child_session(
+    child_session_id: SessionId,
+    session_store: &dyn SessionStore,
+    task_registry: &dyn crate::session_task::SessionTaskRegistry,
+) -> crate::error::Result<Option<ReportResultTool>> {
+    let Some(child) = session_store.get_session(child_session_id).await? else {
+        return Ok(None);
+    };
+    let Some(parent_session_id) = child.parent_session_id else {
+        return Ok(None);
+    };
+    let Some(parent) = session_store.get_session(parent_session_id).await? else {
+        return Ok(None);
+    };
+
+    let tasks = task_registry
+        .list(
+            parent_session_id,
+            Some(&SessionTaskFilter {
+                kind: Some(TASK_KIND_SUBAGENT.to_string()),
+                state: None,
+            }),
+        )
+        .await?;
+
+    let Some(task) = tasks
+        .into_iter()
+        .find(|task| task.links.child_session_id == Some(child_session_id))
+    else {
+        return Ok(None);
+    };
+    let Some(schema) = declared_result_schema(&task) else {
+        return Ok(None);
+    };
+
+    Ok(Some(ReportResultTool::new(
+        parent_session_id,
+        parent.workspace_id,
+        task.id.clone(),
+        schema.clone(),
+    )))
 }
 
 // =============================================================================
@@ -297,6 +583,10 @@ impl Tool for SpawnSubagentAsAgentTool {
                 "config": {
                     "type": "object",
                     "description": "Blueprint-specific configuration. Only valid when `blueprint` is set. Validated against the blueprint's config schema."
+                },
+                "result_schema": {
+                    "type": "object",
+                    "description": "Optional JSON Schema for the subagent's final structured result. When set, the child receives report_result and must call it before the task can succeed."
                 }
             },
             "required": ["name", "instructions", "target"],
@@ -388,6 +678,7 @@ async fn spawn_agent_subagent_impl(
         .filter(|s| !s.trim().is_empty())
         .map(|s| s.to_string());
     let config_param = arguments.get("config").filter(|v| !v.is_null()).cloned();
+    let result_schema = normalize_result_schema(&arguments)?;
 
     // Reject config without blueprint
     if config_param.is_some() && blueprint_param.is_none() {
@@ -572,6 +863,7 @@ async fn spawn_agent_subagent_impl(
                     &instructions,
                     &blueprint_param,
                     &config_param,
+                    &result_schema,
                     mode,
                     Some((
                         spawn_store.as_ref(),
@@ -594,6 +886,7 @@ async fn spawn_agent_subagent_impl(
         &instructions,
         &blueprint_param,
         &config_param,
+        &result_schema,
         mode,
         None,
     )
@@ -639,6 +932,7 @@ async fn spawn_create_and_wait(
     instructions: &str,
     blueprint_param: &Option<String>,
     config_param: &Option<Value>,
+    result_schema: &Option<Value>,
     mode: SpawnMode,
     settle_ctx: Option<(
         &dyn crate::traits::SubagentSpawnStore,
@@ -673,6 +967,17 @@ async fn spawn_create_and_wait(
     // inline, so a wake would be noise.
     let mut task_id: Option<String> = None;
     let mut task_attempt: i32 = 1;
+    let mut task_spec = json!({
+        "instructions": instructions,
+        "blueprint_id": blueprint_param,
+        "mode": mode.as_str(),
+    });
+    if let Some(schema) = result_schema
+        && let Some(spec) = task_spec.as_object_mut()
+    {
+        spec.insert(RESULT_SCHEMA_SPEC_KEY.to_string(), schema.clone());
+    }
+
     if let Some(ref task_registry) = context.session_task_registry
         && let Ok(created) = task_registry
             .create(CreateSessionTask {
@@ -680,11 +985,7 @@ async fn spawn_create_and_wait(
                 id: None,
                 kind: TASK_KIND_SUBAGENT.to_string(),
                 display_name: name.to_string(),
-                spec: json!({
-                    "instructions": instructions,
-                    "blueprint_id": blueprint_param,
-                    "mode": mode.as_str(),
-                }),
+                spec: task_spec,
                 state: SessionTaskState::Running,
                 links: TaskLinks {
                     child_session_id: Some(child_session.id),
@@ -819,15 +1120,31 @@ async fn run_subagent_wait_and_settle(
         Ok(text) => text,
         Err(error) => return error,
     };
+    let result = foreground_result_value(context, task_id.as_deref())
+        .await
+        .unwrap_or_else(|| json!(result_text));
 
     ToolExecutionResult::success(json!({
         "subagent_id": child_id.to_string(),
         "name": name,
         "status": status,
-        "result": result_text,
+        "result": result,
         "task_id": task_id,
         "blueprint": blueprint_param,
     }))
+}
+
+async fn foreground_result_value(context: &ToolContext, task_id: Option<&str>) -> Option<Value> {
+    let task = get_subagent_task(context, task_id?).await?;
+    declared_result_schema(&task)?;
+    let result_path = task.result_path.as_deref()?;
+    let file_store = context.file_store.as_ref()?;
+    let file = file_store
+        .read_file(context.workspace_fs_key(), result_path)
+        .await
+        .ok()
+        .flatten()?;
+    serde_json::from_str(file.content.as_deref()?).ok()
 }
 
 /// Collect the child's final message and, when `status` is terminal, settle
@@ -877,8 +1194,8 @@ async fn settle_subagent_outcome(
 
     // Update the session task only when the child reached a terminal state.
     if let Some(subagent_status) = terminal_status {
-        let task_state = terminal_subagent_task_state(&subagent_status);
-        let task_error = if task_state == SessionTaskState::Failed {
+        let mut task_state = terminal_subagent_task_state(&subagent_status);
+        let mut task_error = if task_state == SessionTaskState::Failed {
             Some(TaskError {
                 kind: status.to_string(),
                 message: format!("Subagent session ended with status: {status}"),
@@ -886,14 +1203,23 @@ async fn settle_subagent_outcome(
         } else {
             None
         };
-        finish_subagent_task(
-            context,
-            task_id,
-            task_state,
-            Some(truncate_summary(&result_text)),
-            task_error,
-        )
-        .await;
+        let mut summary = Some(truncate_summary(&result_text));
+        if task_state == SessionTaskState::Succeeded
+            && let Some(task_id) = task_id
+            && let Some(task) = get_subagent_task(context, task_id).await
+            && declared_result_schema(&task).is_some()
+            && task.result_path.is_none()
+        {
+            task_state = SessionTaskState::Failed;
+            task_error = Some(TaskError {
+                kind: "no_result".to_string(),
+                message:
+                    "Subagent completed without calling report_result for its result_schema task."
+                        .to_string(),
+            });
+            summary = Some("Subagent completed without reporting a structured result.".to_string());
+        }
+        finish_subagent_task(context, task_id, task_state, summary, task_error).await;
     }
 
     Ok(result_text)
@@ -1272,6 +1598,7 @@ mod tests {
         let props = schema["properties"].as_object().unwrap();
         assert!(props.contains_key("blueprint"));
         assert!(props.contains_key("config"));
+        assert!(props.contains_key("result_schema"));
         assert!(!required.contains(&json!("blueprint")));
         assert!(!required.contains(&json!("config")));
         assert_eq!(
@@ -1346,7 +1673,12 @@ mod tests {
 
     use crate::capabilities::session_tasks::tests::InMemorySessionTaskRegistry;
     use crate::platform_store::tests::MockPlatformStore;
+    use crate::session_file::SessionFile;
     use crate::session_task::SessionTaskRegistry;
+    use crate::traits::SessionFileSystem;
+    use chrono::Utc;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
 
     /// SessionStore view over the mock platform store (nesting guard lookup).
     struct MockSessionStore(Arc<MockPlatformStore>);
@@ -1406,6 +1738,137 @@ mod tests {
             tokio::time::sleep(std::time::Duration::from_millis(25)).await;
         }
         panic!("task {task_id} did not reach {state:?}");
+    }
+
+    #[derive(Default)]
+    struct MemoryFileStore {
+        files: Mutex<HashMap<(uuid::Uuid, String), String>>,
+    }
+
+    #[async_trait]
+    impl SessionFileSystem for MemoryFileStore {
+        async fn read_file(
+            &self,
+            session_id: crate::typed_id::SessionId,
+            path: &str,
+        ) -> crate::error::Result<Option<SessionFile>> {
+            let content = self
+                .files
+                .lock()
+                .unwrap()
+                .get(&(session_id.uuid(), path.to_string()))
+                .cloned();
+            Ok(content.map(|content| SessionFile {
+                id: uuid::Uuid::new_v4(),
+                session_id: session_id.uuid(),
+                path: path.to_string(),
+                name: path.rsplit('/').next().unwrap_or(path).to_string(),
+                content: Some(content.clone()),
+                encoding: "utf-8".to_string(),
+                is_directory: false,
+                is_readonly: false,
+                size_bytes: content.len() as i64,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            }))
+        }
+
+        async fn write_file(
+            &self,
+            session_id: crate::typed_id::SessionId,
+            path: &str,
+            content: &str,
+            _encoding: &str,
+        ) -> crate::error::Result<SessionFile> {
+            self.files
+                .lock()
+                .unwrap()
+                .insert((session_id.uuid(), path.to_string()), content.to_string());
+            Ok(SessionFile {
+                id: uuid::Uuid::new_v4(),
+                session_id: session_id.uuid(),
+                path: path.to_string(),
+                name: path.rsplit('/').next().unwrap_or(path).to_string(),
+                content: Some(content.to_string()),
+                encoding: "utf-8".to_string(),
+                is_directory: false,
+                is_readonly: false,
+                size_bytes: content.len() as i64,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            })
+        }
+
+        async fn delete_file(
+            &self,
+            session_id: crate::typed_id::SessionId,
+            path: &str,
+            _recursive: bool,
+        ) -> crate::error::Result<bool> {
+            Ok(self
+                .files
+                .lock()
+                .unwrap()
+                .remove(&(session_id.uuid(), path.to_string()))
+                .is_some())
+        }
+
+        async fn list_directory(
+            &self,
+            _session_id: crate::typed_id::SessionId,
+            _path: &str,
+        ) -> crate::error::Result<Vec<crate::session_file::FileInfo>> {
+            Ok(vec![])
+        }
+
+        async fn stat_file(
+            &self,
+            session_id: crate::typed_id::SessionId,
+            path: &str,
+        ) -> crate::error::Result<Option<crate::session_file::FileStat>> {
+            let content = self
+                .files
+                .lock()
+                .unwrap()
+                .get(&(session_id.uuid(), path.to_string()))
+                .cloned();
+            Ok(content.map(|content| crate::session_file::FileStat {
+                path: path.to_string(),
+                name: path.rsplit('/').next().unwrap_or(path).to_string(),
+                is_directory: false,
+                is_readonly: false,
+                size_bytes: content.len() as i64,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            }))
+        }
+
+        async fn grep_files(
+            &self,
+            _session_id: crate::typed_id::SessionId,
+            _pattern: &str,
+            _path_pattern: Option<&str>,
+        ) -> crate::error::Result<Vec<crate::session_file::GrepMatch>> {
+            Ok(vec![])
+        }
+
+        async fn create_directory(
+            &self,
+            session_id: crate::typed_id::SessionId,
+            path: &str,
+        ) -> crate::error::Result<crate::session_file::FileInfo> {
+            Ok(crate::session_file::FileInfo {
+                id: uuid::Uuid::new_v4(),
+                session_id: session_id.uuid(),
+                path: path.to_string(),
+                name: path.rsplit('/').next().unwrap_or(path).to_string(),
+                is_directory: true,
+                is_readonly: false,
+                size_bytes: 0,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            })
+        }
     }
 
     #[tokio::test]
@@ -1471,6 +1934,135 @@ mod tests {
         assert_eq!(task.kind, TASK_KIND_SUBAGENT);
         assert_eq!(task.spec["mode"], "foreground");
         assert!(task.links.child_session_id.is_some());
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_subagent_stores_result_schema_on_task() {
+        let store = Arc::new(MockPlatformStore::new());
+        *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let context = spawn_context(&store, Some(registry.clone()));
+
+        let result = SpawnSubagentAsAgentTool
+            .execute_with_context(
+                json!({
+                    "name": "Runner",
+                    "instructions": "go",
+                    "target": {"type": "subagent"},
+                    "mode": "foreground",
+                    "result_schema": {
+                        "type": "object",
+                        "properties": {"answer": {"type": "string"}},
+                        "required": ["answer"],
+                        "additionalProperties": false
+                    }
+                }),
+                &context,
+            )
+            .await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success, got {result:?}");
+        };
+        let task_id = value["task_id"].as_str().expect("task_id");
+        let task = registry
+            .get(context.session_id, task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(task.spec["result_schema"]["required"], json!(["answer"]));
+        assert_eq!(task.state, SessionTaskState::Failed);
+        assert_eq!(
+            task.error.as_ref().map(|e| e.kind.as_str()),
+            Some("no_result")
+        );
+    }
+
+    #[tokio::test]
+    async fn report_result_writes_result_file_and_updates_task() {
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let file_store = Arc::new(MemoryFileStore::default());
+        let parent_session_id = crate::typed_id::SessionId::new();
+        let parent_workspace_id = crate::typed_id::WorkspaceId::from_uuid(parent_session_id.uuid());
+        let task = registry
+            .create(CreateSessionTask {
+                session_id: parent_session_id,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: "Runner".to_string(),
+                spec: json!({
+                    "result_schema": {
+                        "type": "object",
+                        "properties": {"answer": {"type": "string"}},
+                        "required": ["answer"],
+                        "additionalProperties": false
+                    }
+                }),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+
+        let tool = ReportResultTool::new(
+            parent_session_id,
+            parent_workspace_id,
+            task.id.clone(),
+            task.spec["result_schema"].clone(),
+        )
+        .with_file_store(file_store.clone());
+        let mut context = ToolContext::new(crate::typed_id::SessionId::new());
+        context.session_task_registry = Some(registry.clone());
+
+        let result = tool
+            .execute_with_context(json!({"answer": "done"}), &context)
+            .await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success, got {result:?}");
+        };
+        assert_eq!(value["result_path"], task_result_path(&task.id));
+
+        let task = registry
+            .get(parent_session_id, &task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        let result_path = task.result_path.as_deref().expect("result_path");
+        let file = file_store
+            .read_file(
+                SessionId::from_uuid(parent_workspace_id.uuid()),
+                result_path,
+            )
+            .await
+            .unwrap()
+            .expect("result file");
+        assert_eq!(
+            serde_json::from_str::<Value>(file.content.as_deref().unwrap()).unwrap(),
+            json!({"answer": "done"})
+        );
+    }
+
+    #[tokio::test]
+    async fn report_result_rejects_invalid_result_schema_payload() {
+        let tool = ReportResultTool::new(
+            crate::typed_id::SessionId::new(),
+            crate::typed_id::WorkspaceId::from_uuid(uuid::Uuid::new_v4()),
+            "task_test".to_string(),
+            json!({
+                "type": "object",
+                "properties": {"answer": {"type": "string"}},
+                "required": ["answer"],
+                "additionalProperties": false
+            }),
+        );
+        let result = tool
+            .execute_with_context(json!({"extra": true}), &ToolContext::new(SessionId::new()))
+            .await;
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("expected validation error, got {result:?}");
+        };
+        assert!(message.contains("$.answer is required"), "got: {message}");
+        assert!(message.contains("$.extra is not allowed"), "got: {message}");
     }
 
     #[tokio::test]

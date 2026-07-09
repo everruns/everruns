@@ -3,6 +3,7 @@
 // the public everruns-runtime host contract.
 
 use async_trait::async_trait;
+use everruns_core::capabilities::report_result_tool_for_child_session;
 use everruns_core::error::Result;
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver, PaymentAuthority,
@@ -11,7 +12,7 @@ use everruns_core::traits::{
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{
     Agent, CapabilityRegistry, DriverRegistry, EgressService, Harness, Session, SessionStatus,
-    UtilityLlmService,
+    Tool, UtilityLlmService,
 };
 use everruns_mcp::{
     McpClient, McpConnection, McpConnectionResolver, McpEndpoint, McpExecutor, NoAuthProvider,
@@ -134,12 +135,26 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             .adapters
             .load_turn_context(org_id, session_id.uuid())
             .await?;
+        let mut mcp_tool_definitions = context.mcp_tool_definitions;
+        if let Some(registry) = self.adapters.session_task_registry() {
+            let session_store: Arc<dyn SessionStore> =
+                Arc::new(AdapterSessionStore::new(self.adapters.clone(), org_id));
+            if let Some(tool) = report_result_tool_for_child_session(
+                session_id,
+                session_store.as_ref(),
+                registry.as_ref(),
+            )
+            .await?
+            {
+                mcp_tool_definitions.push(tool.to_definition());
+            }
+        }
         Ok(RuntimeHostTurnContext {
             agent: context.agent,
             session: context.session,
             messages: context.messages,
             model: context.model,
-            mcp_tool_definitions: context.mcp_tool_definitions,
+            mcp_tool_definitions,
         })
     }
 

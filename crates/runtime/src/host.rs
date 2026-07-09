@@ -7,7 +7,9 @@ use everruns_core::atoms::{
     ActAtom, ActInput, ActResult, Atom, InputAtom, InputAtomInput, InputAtomResult, ReasonAtom,
     ReasonInput, ReasonResult,
 };
-use everruns_core::capabilities::{SystemPromptContext, collect_capabilities_with_configs};
+use everruns_core::capabilities::{
+    SystemPromptContext, collect_capabilities_with_configs, report_result_tool_for_child_session,
+};
 use everruns_core::events::{
     EventContext, EventRequest, OutputMessageCompletedData, SessionActivatedData, SessionIdledData,
     TurnCompletedData, TurnFailedData, TurnStartedData,
@@ -1194,6 +1196,21 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     )
     .await?;
     let mut tool_registry = execution_capabilities.tool_registry;
+
+    if input
+        .tool_definitions
+        .iter()
+        .any(|definition| definition.name() == "report_result")
+        && let Some(registry) = adapter.session_task_registry()
+        && let Some(tool) = report_result_tool_for_child_session(
+            input.context.session_id,
+            adapter.session_store(org_id).as_ref(),
+            registry.as_ref(),
+        )
+        .await?
+    {
+        tool_registry.register_boxed(Box::new(tool.with_file_store(adapter.file_store())));
+    }
 
     // Register the session's MCP tools as first-class registry tools, so they
     // execute through the regular `ToolExecutor` path and are visible to
