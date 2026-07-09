@@ -330,6 +330,8 @@ pub mod tests {
                     description: Some("test agent".to_string()),
                     system_prompt: "You are helpful.".to_string(),
                     default_model_id: None,
+
+                    harness_id: crate::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
                     default_version_id: None,
                     forked_from_agent_id: None,
                     forked_from_version_id: None,

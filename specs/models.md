@@ -14,6 +14,7 @@ See `crates/core/src/agent.rs` for full field definitions.
 
 Key design points:
 - All entity IDs use the dual-ID pattern (internal UUID PK + external public_id). See `specs/id-schema.md`.
+- `harness_id` is required and points to the active harness that supplies the agent's base execution environment. Creating an agent without an explicit harness defaults to the org's built-in `generic` harness.
 - `capabilities` field stores enabled capability references (resolved at runtime from registry)
 - `default_version_id` selects the immutable AgentVersion used by default deployments when `FEATURE_AGENT_VERSIONS` is enabled. See `specs/agent-versions.md`.
 - `status`: `active`, `archived`, or `deleted`

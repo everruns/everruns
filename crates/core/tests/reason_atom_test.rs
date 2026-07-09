@@ -85,6 +85,8 @@ async fn setup_test_environment() -> (
         description: None,
         system_prompt: "You are a helpful assistant.".to_string(),
         default_model_id: None,
+
+        harness_id: HarnessId::from_uuid(uuid::Uuid::nil()),
         default_version_id: None,
         forked_from_agent_id: None,
         forked_from_version_id: None,
@@ -2315,6 +2317,8 @@ async fn test_prompt_canary_guardrail_replaces_leaked_output() {
             description: None,
             system_prompt: leak_prompt.to_string(),
             default_model_id: None,
+
+            harness_id: HarnessId::from_uuid(uuid::Uuid::nil()),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -2486,6 +2490,8 @@ async fn test_prompt_canary_guardrail_replaces_leaked_thinking() {
             description: None,
             system_prompt: leak_prompt.to_string(),
             default_model_id: None,
+
+            harness_id: HarnessId::from_uuid(uuid::Uuid::nil()),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,

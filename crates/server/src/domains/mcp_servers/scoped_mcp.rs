@@ -374,6 +374,7 @@ mod tests {
             description: None,
             system_prompt: "agent".to_string(),
             default_model_id: None,
+            harness_id: everruns_core::HarnessId::from_uuid(uuid::Uuid::nil()),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,

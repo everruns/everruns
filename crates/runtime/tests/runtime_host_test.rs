@@ -585,6 +585,7 @@ fn agent(agent_id: AgentId, capabilities: Vec<AgentCapabilityConfig>) -> Agent {
         description: None,
         system_prompt: "Use tools when needed.".into(),
         default_model_id: None,
+        harness_id: HarnessId::from_uuid(Uuid::nil()),
         default_version_id: None,
         forked_from_agent_id: None,
         forked_from_version_id: None,

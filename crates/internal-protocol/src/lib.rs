@@ -448,6 +448,11 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
         .default_model_id
         .as_ref()
         .map(|u| prefixed_id("model", u));
+    let harness_id_str = value
+        .harness_id
+        .as_ref()
+        .map(|u| prefixed_id("harness", u))
+        .ok_or(ConversionError::MissingField("harness_id"))?;
 
     let json = serde_json::json!({
         "id": id_str,
@@ -456,6 +461,7 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
         "description": if value.description.is_empty() { None } else { Some(&value.description) },
         "system_prompt": value.system_prompt,
         "default_model_id": model_id_str,
+        "harness_id": harness_id_str,
         "tags": tags,
         "capabilities": capabilities,
         "status": value.status,
@@ -489,6 +495,7 @@ pub fn schema_agent_to_proto(value: &everruns_core::Agent) -> proto::Agent {
             .collect(),
         display_name: value.display_name.clone(),
         parallel_tool_calls: value.parallel_tool_calls,
+        harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
     }
 }
 
@@ -1866,6 +1873,7 @@ mod tests {
             description: Some("Test description".to_string()),
             system_prompt: "You are a helpful assistant".to_string(),
             default_model_id: None,
+            harness_id: everruns_core::HarnessId::new(),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -1933,6 +1941,7 @@ mod tests {
             description: None,
             system_prompt: "You are a helpful assistant".to_string(),
             default_model_id: None,
+            harness_id: everruns_core::HarnessId::new(),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,

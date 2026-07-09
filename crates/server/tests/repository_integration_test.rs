@@ -49,6 +49,15 @@ async fn create_test_backend() -> StorageBackend {
 /// Test organization ID (default org)
 const TEST_ORG_ID: i64 = 1;
 
+async fn ensure_test_harness_id(backend: &StorageBackend) -> everruns_core::HarnessId {
+    org_init::initialize_org_harnesses(backend, TEST_ORG_ID)
+        .await
+        .expect("initialize built-in harnesses");
+    org_init::generic_harness_id(backend, TEST_ORG_ID)
+        .await
+        .expect("generic harness id")
+}
+
 async fn create_test_principal(
     backend: &StorageBackend,
     org_id: i64,
@@ -127,6 +136,8 @@ async fn test_agent_crud() {
                 description: Some("Test description".to_string()),
                 system_prompt: "Test prompt".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -206,6 +217,8 @@ async fn test_agent_upsert_initial_files() {
                 description: None,
                 system_prompt: "prompt".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([
                     {"path": "/AGENTS.md", "content": "old", "encoding": "utf-8", "is_readonly": false}
@@ -234,6 +247,8 @@ async fn test_agent_upsert_initial_files() {
                 description: None,
                 system_prompt: "prompt".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([
                     {"path": "/AGENTS.md", "content": "new", "encoding": "utf-8", "is_readonly": false}
@@ -384,6 +399,8 @@ async fn test_agent_get_by_name() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -599,6 +616,8 @@ async fn test_session_crud() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -798,6 +817,8 @@ async fn test_event_crud() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -893,6 +914,8 @@ async fn test_event_exclude_types() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -996,6 +1019,8 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -1093,6 +1118,8 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -1206,6 +1233,8 @@ async fn test_event_filter_types() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -1512,6 +1541,8 @@ async fn test_session_file_crud() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -1708,6 +1739,8 @@ async fn test_agent_capabilities() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -1979,6 +2012,8 @@ async fn test_session_usage_tracking() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -2083,6 +2118,8 @@ async fn test_session_previews() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),

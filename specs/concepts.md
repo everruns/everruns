@@ -4,11 +4,11 @@ Everruns is a durable agentic harness engine. This document describes the core e
 
 ## High Level
 
-Harness and Agent are **configuration containers** — they hold capabilities and define behavior. At runtime, their configuration merges into a **RuntimeAgent** which executes inside a Session.
+Harness and Agent are **configuration containers** — they hold capabilities and define behavior. Each Agent stores the Harness it runs on by default. At runtime, their configuration merges into a **RuntimeAgent** which executes inside a Session.
 
 ```mermaid
 graph LR
-    Harness -->|has| Agent
+    Agent -->|uses| Harness
     Harness -->|has| Capability
     Agent -->|has| Capability
 
@@ -33,7 +33,7 @@ graph LR
     class App deploy
 ```
 
-- **Solid arrows** — configuration ownership: Harness has Agents and Capabilities, Agent has Capabilities
+- **Solid arrows** — configuration references: Agent uses a Harness, Harness has Capabilities, Agent has Capabilities
 - **Dashed arrows** — runtime assembly: each entity produces an `AgentConfigOverlay`, overlays fold into a single effective config, which resolves into a RuntimeAgent (see [AgentConfigOverlay](#agentconfigoverlay))
 - **Purple** — deployment: App binds Harness + Agent to an external channel and creates sessions from incoming messages
 
@@ -50,6 +50,7 @@ Top-level entity that represents a setup for agent execution. Defines infrastruc
 Domain-specific or task-specific configuration for the agentic loop. Defines system prompt, default LLM model, and enabled capabilities.
 
 - Many agents in the system
+- Each agent has exactly one assigned harness (`harness_id`), defaulting to the org's built-in `generic` harness at creation when omitted
 - A session may or may not have an agent assigned
 - Agents can be assigned or changed during a session's lifetime
 - Agent has capabilities with position ordering
@@ -100,7 +101,7 @@ See `crates/core/src/config_layer.rs` for implementation.
 
 **Overlay chain:**
 
-Harnesses support single-parent inheritance. `HarnessStore::get_harness_chain()` returns the full inheritance chain (root-to-leaf). Each harness in the chain becomes its own overlay, folded alongside the optional agent and session overlays.
+Harnesses support single-parent inheritance. An Agent stores the leaf harness it uses by default; `HarnessStore::get_harness_chain()` returns that harness's full inheritance chain (root-to-leaf). Each harness in the chain becomes its own overlay, folded alongside the optional agent and session overlays.
 
 ```
  harness_root   harness_child   harness_leaf     agent       session
