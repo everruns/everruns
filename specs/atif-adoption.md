@@ -52,7 +52,9 @@ the existing dataset formats), plus case identity (`source_key`, `eval_run_id`,
 
 - **Session export** (✅ shipped): `GET /v1/sessions/{id}/export?format=atif`
   returns one ATIF JSON document (see `specs/session-export.md`; default JSONL
-  unchanged).
+  unchanged). Reachable from all three consumer surfaces: the API, the UI
+  ("Export ATIF"), and the CLI (`everruns sessions export --format atif`,
+  default `jsonl`).
 - **Dataset export** (✅ shipped): `format: "atif"` on the eval dataset
   export produces NDJSON with one complete ATIF trajectory per case (see
   `specs/dataset-export.md`). Unlike the message-based formats, ATIF folds the
