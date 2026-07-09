@@ -198,6 +198,14 @@ Results are modeled apart from status:
 - **Human summary**: short `summary` on the record.
 - **Artifacts**: typed links (file, PR, child session) on the record.
 
+Task kinds may require a structured result by storing `spec.result_schema` as a
+JSON Schema. For subagent tasks, that schema injects a child-only
+`report_result` tool. The tool validates its arguments, writes the JSON object
+to `result_path`, and updates the task record. If a schema-bound subagent
+reaches a successful terminal child status without a recorded `result_path`, the
+task settles as `failed` with `error.kind = "no_result"`. Tasks without
+`spec.result_schema` keep their existing summary-only behavior.
+
 ### Retention (TTL)
 
 Terminal task records are pruned on a global TTL (EVE-580). The retention pass

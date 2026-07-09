@@ -323,7 +323,10 @@ pub use skills_scoped::{
 pub use stateless_todo_list::{
     STATELESS_TODO_LIST_CAPABILITY_ID, StatelessTodoListCapability, WriteTodosTool,
 };
-pub use subagents::{SUBAGENTS_CAPABILITY_ID, SpawnSubagentAsAgentTool, SubagentCapability};
+pub use subagents::{
+    ReportResultTool, SUBAGENTS_CAPABILITY_ID, SpawnSubagentAsAgentTool, SubagentCapability,
+    report_result_tool_for_child_session,
+};
 // Blueprint types are exported directly from the trait definitions above
 pub use bashkit_shell::{
     BASHKIT_SHELL_CAPABILITY_ID, BashTool, BashkitShellCapability, SessionFileSystemAdapter,
@@ -1878,6 +1881,10 @@ impl Tool for UnifiedSpawnAgentTool {
                 "config": {
                     "type": "object",
                     "description": "Subagent-only blueprint configuration. Only valid when blueprint is set."
+                },
+                "result_schema": {
+                    "type": "object",
+                    "description": "Subagent-only JSON Schema for the child agent's final structured result. When set, the child must call report_result before the task can succeed."
                 },
                 "public_context": {
                     "type": "object",

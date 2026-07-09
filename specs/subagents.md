@@ -100,10 +100,20 @@ The retired direct creation entry point is no longer advertised to models.
 | `mode` | string | No | `background` (default) or `foreground` |
 | `blueprint` | string | No | Optional blueprint ID for a specialist child agent. |
 | `config` | object | No | Blueprint-specific configuration. Only valid with `blueprint`. |
+| `result_schema` | object | No | JSON Schema for the child session's final machine result. |
 
 **Returns (background):** `task_id` and `status: "running"` immediately; the final result lands on the task record (`summary`) and the parent is woken on the terminal transition.
 
 **Returns (foreground):** Last assistant message from the child session plus a `task_id` for the session task record.
+
+When `result_schema` is present, the child session receives a `report_result`
+tool whose parameters are the declared schema. A valid `report_result` call
+writes the JSON object to `/.tasks/{task_id}/result.json` in the parent task
+workspace and records `result_path` on the task. A child that reaches a
+successful terminal status without reporting the result settles the task as
+`failed` with `error.kind = "no_result"`. Foreground spawns return the reported
+JSON object inline; without `result_schema`, foreground spawns keep returning
+the last assistant message.
 
 **Behavior (both modes):**
 1. Creates child session with `parent_session_id` set to current session
