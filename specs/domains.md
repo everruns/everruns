@@ -102,11 +102,13 @@ Protocol-agnostic error type. HTTP adapters convert to `(StatusCode, Json<ErrorR
 MCP dispatch calls `.to_string()`.
 
 ```rust
-pub enum CommandError {
-    BadRequest(String),     // 400
-    Forbidden(String),      // 403
-    NotFound(String),       // 404
-    Conflict(String),       // 409
+// `struct CommandError` wraps a `CommandErrorKind` (crates/server/src/domains/common.rs):
+pub enum CommandErrorKind {
+    BadRequest(String),      // 400
+    Unprocessable(String),   // 422
+    Forbidden(String),       // 403
+    NotFound(String),        // 404
+    Conflict(String),        // 409
     Internal(anyhow::Error), // 500
 }
 ```
@@ -380,11 +382,11 @@ the logic. Once all callers are migrated, the service file is removed.
 
 ### Status
 
-All user-facing domains have been migrated. The 30 directories under `crates/server/src/domains/` each own their HTTP/MCP/gRPC surface via commands. Several domains retain an internal `service.rs` alongside `commands.rs` for orchestration that spans multiple commands — that's intentional and not a migration backlog.
+All user-facing domains have been migrated. The 39 directories under `crates/server/src/domains/` each own their HTTP/MCP/gRPC surface via commands. Several domains retain an internal `service.rs` alongside `commands.rs` for orchestration that spans multiple commands — that's intentional and not a migration backlog.
 
 **Fully migrated (commands + queries only):** `agents`, `harnesses`, `apps`, `mcp_servers`, `agent_identities`, `skills`, `capabilities`, `audit_logs`, `schedules`, `events`, `images`, `tool_results`, `users`, `organizations`, `system`, `session_databases`, `session_storage`.
 
-**Commands + internal `service.rs`:** `sessions`, `messages`, `budgets`, `evals`, `llm_models`, `llm_providers`, `notifications`, `session_files`, `session_sandbox`, `session_resources`.
+**Commands + internal `service.rs`:** `sessions`, `messages`, `budgets`, `evals`, `models`, `providers`, `notifications`, `session_files`, `session_sandbox`, `session_resources`.
 
 **Internal-only (no user-facing commands):** `session_git`, `session_commands`, `session_schedules`.
 

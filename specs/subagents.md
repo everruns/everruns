@@ -50,7 +50,7 @@ The `Session` entity is extended with subagent tree metadata:
 | `root_session_id` | SessionId? | Root of this session's delegation tree (EVE-680). A top-level session is its own root; a subagent child inherits its parent's root. Denormalized (migration 094) so a whole tree is one indexed query; mirrored onto `session_tasks.root_session_id` and filterable via `GET /v1/tasks?root_session_id=`. |
 
 `subagent_name`, `subagent_task`, and `subagent_status` were retired in
-migration 059. Lifecycle state is now tracked via `SessionTask` records
+migration 062. Lifecycle state is now tracked via `SessionTask` records
 (`TASK_KIND_SUBAGENT`) owned by the parent session; use `list_tasks` /
 `get_task` to read subagent status.
 
@@ -80,7 +80,7 @@ Terminal subagent statuses are derived from the child's terminal **turn event** 
 
 ### Database Migration
 
-See `crates/server/migrations/009_subagents.sql` for schema changes.
+See `crates/server/migrations/007_v0.8.6.sql` for schema changes.
 
 ## Tools
 

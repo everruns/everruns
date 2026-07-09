@@ -362,9 +362,9 @@ The session Resources API returns leased-resource metadata to users and the UI, 
 - Session resources are still gated by the existing org/session ownership check before rows are listed.
 
 Code references:
-- [`crates/core/src/leased_resource.rs`](/Users/mykhailochalyi/.codex/worktrees/baaf/everruns/crates/core/src/leased_resource.rs)
-- [`integrations/browserless/src/session_tools.rs`](/Users/mykhailochalyi/.codex/worktrees/baaf/everruns/integrations/browserless/src/session_tools.rs)
-- [`integrations/daytona/src/state.rs`](/Users/mykhailochalyi/.codex/worktrees/baaf/everruns/integrations/daytona/src/state.rs)
+- [`crates/core/src/leased_resource.rs`](crates/core/src/leased_resource.rs)
+- [`integrations/browserless/src/session_tools.rs`](integrations/browserless/src/session_tools.rs)
+- [`integrations/daytona/src/state.rs`](integrations/daytona/src/state.rs)
 
 ## 5. Session Filesystem (TM-FS)
 

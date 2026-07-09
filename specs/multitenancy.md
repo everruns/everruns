@@ -194,43 +194,16 @@ login/signup via `return_to` (specs/authentication.md) and resume acceptance.
 
 ### Database Schema
 
-```sql
--- Organizations
-CREATE TABLE organizations (
-    org_id BIGSERIAL PRIMARY KEY,
-    public_id TEXT UNIQUE NOT NULL,
-    name TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+The org tables and org-scoping columns live in the migrations
+(`crates/server/migrations/`): `organizations` and `organization_members` are
+created in `001_base_schema.sql`; `org_id` FK columns and their composite
+indexes are added to the org-scoped tables (`agents`, `providers`, `models`, …)
+in `003_v0.8.0.sql`; the `llm_providers`/`llm_models` → `providers`/`models`
+rename lands in `061_rename_providers_models.sql`. Shape in brief:
 
-    CONSTRAINT organizations_public_id_format
-        CHECK (public_id ~ '^org_[0-9a-f]{32}$')
-);
-
-CREATE INDEX idx_organizations_public_id ON organizations(public_id);
-
--- Organization Members
-CREATE TABLE organization_members (
-    org_id BIGINT NOT NULL REFERENCES organizations(org_id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (org_id, user_id)
-);
-
-CREATE INDEX idx_organization_members_user_id ON organization_members(user_id);
-
--- Add org_id to existing tables
-ALTER TABLE agents ADD COLUMN org_id BIGINT NOT NULL REFERENCES organizations(org_id);
-ALTER TABLE llm_providers ADD COLUMN org_id BIGINT NOT NULL REFERENCES organizations(org_id);
-ALTER TABLE llm_models ADD COLUMN org_id BIGINT NOT NULL REFERENCES organizations(org_id);
-ALTER TABLE api_keys ADD COLUMN org_id BIGINT NOT NULL REFERENCES organizations(org_id);
-
--- Composite indexes for org-scoped queries
-CREATE INDEX idx_agents_org_id ON agents(org_id);
-CREATE INDEX idx_llm_providers_org_id ON llm_providers(org_id);
-CREATE INDEX idx_llm_models_org_id ON llm_models(org_id);
-CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
-```
+- `organizations` — `org_id BIGSERIAL` PK, `public_id` (`org_<32-hex>`), `name`, timestamps.
+- `organization_members` — `(org_id, user_id)` PK join table.
+- Every org-scoped table carries a non-null `org_id` FK to `organizations(org_id)` with a composite `idx_<table>_org_id` index for the mandatory `WHERE org_id = $org_id` query rule.
 
 ### API Design
 

@@ -122,7 +122,7 @@ if blueprint param present:
        - agent_id = None (blueprint replaces the agent)
        - blueprint_id = blueprint.id
        - blueprint_config = validated config
-       - subagent_name, subagent_task = as today
+       - lifecycle tracked via a SessionTask record (kind = subagent)
     4. PlatformStore.send_message(child_session_id, task)
     5. wait_for_idle(300s)
     6. Return result
@@ -376,7 +376,7 @@ Add `AgentBlueprint` and `BlueprintModel` structs.
 
 Add `blueprints()` and `blueprint(id)` methods that aggregate across all registered capabilities.
 
-### SpawnSubagentTool (`crates/core/src/capabilities/subagents.rs`)
+### SpawnSubagentAsAgentTool (`crates/core/src/capabilities/subagents.rs`)
 
 - Add `blueprint` and `config` params to schema
 - New branch: when blueprint is set, validate config, create session with `blueprint_id`/`blueprint_config`/`agent_id=None`

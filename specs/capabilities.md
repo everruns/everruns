@@ -952,7 +952,7 @@ Virtual mounts (`MountSource::Virtual`) serve content from an in-memory `Virtual
 - **Write protection**: Writes/deletes to virtual paths return a readonly error.
 - **Eviction**: Virtual mount entries for a session are evicted from the registry on session delete.
 - **Lazy reconstruction**: Content is deterministic (compiled in), so the registry can be reconstructed from session capabilities on server restart.
-- **Implementation**: See `crates/server/src/services/virtual_mount_registry.rs` for `VirtualMountRegistry` and `crates/core/src/capability_types.rs` for `VirtualFileTree`.
+- **Implementation**: See `crates/server/src/domains/session_files/virtual_mount_registry.rs` for `VirtualMountRegistry` and `crates/core/src/capability_types.rs` for `VirtualFileTree`.
 
 #### Mount Application Flow
 

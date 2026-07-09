@@ -296,7 +296,7 @@ live while the parent turn waits; background is a mode, not a different entity.
 Naming cleanup: `task` parameters that carry instruction text were renamed to
 `instructions` so "task" unambiguously means the lifecycle object. The
 `sessions.subagent_task`, `subagent_name`, and `subagent_status` DB columns
-were retired in migration 059.
+were retired in migration 062.
 
 ## Wake-ups
 
@@ -427,7 +427,7 @@ No backward compatibility is required; data migrates forward once:
   decision (specs/events.md). The `task` → `instructions` parameter rename is done for
   model-facing delegation parameters. The
   `sessions.subagent_*` columns (`subagent_name`, `subagent_task`, `subagent_status`)
-  were retired in migration 059; `parent_session_id` is kept as delegation tree
+  were retired in migration 062; `parent_session_id` is kept as delegation tree
   metadata and is now set at session creation time.
 - Durability: `attempt`/`worker_id`/`heartbeat_at` are stored. The orphan
   reconciler (`session_task_reaper` durable activity, every 60 s) finds tasks

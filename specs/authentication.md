@@ -204,7 +204,7 @@ email/password signup is an explicit, enumeration-safe two-step flow:
 Self-service recovery for local (password) accounts. Two endpoints:
 
 - `POST /v1/auth/forgot-password` `{ email }` — always returns `200 { "ok": true }` regardless of whether the email exists (account-enumeration safe). For an existing local account it creates a single-use reset token (1-hour TTL) and emails a `{FRONTEND_URL}/reset-password?token=…` link. OAuth-only accounts are skipped silently. Email delivery is best-effort: a disabled/unconfigured sender or a transport failure is logged, never surfaced.
-- `POST /v1/auth/reset-password` `{ token, password }` — consumes the token (atomic single-use), enforces the same 8-character minimum as registration, updates the password hash, and **revokes all of the user's refresh tokens** so any sessions established before the reset are invalidated. Invalid/expired/used tokens return a generic `400`.
+- `POST /v1/auth/reset-password` `{ token, password }` — consumes the token (atomic single-use), enforces the same 12-character minimum as registration, updates the password hash, and **revokes all of the user's refresh tokens** so any sessions established before the reset are invalidated. Invalid/expired/used tokens return a generic `400`.
 
 Token model: the raw token is emailed once and never stored; only its SHA-256 hash is persisted (`password_reset_tokens`, migration 089). Single-use is enforced via `used_at` set in one atomic `UPDATE … WHERE used_at IS NULL AND expires_at > now()`.
 
@@ -561,7 +561,7 @@ See `crates/server/src/auth/builtin.rs`. Wraps JWT + password + personal access 
 
 ### External Identity Support
 
-Migration `004_external_identity.sql` adds nullable `external_id` columns to `users` and `organizations` tables, mapping external provider IDs to internal IDs. OSS: unused (NULL). SaaS: populated by auth backend sync.
+Nullable `external_id` columns on the `users` and `organizations` tables (added in `001_base_schema.sql` and `007_v0.8.6.sql`) map external provider IDs to internal IDs. OSS: unused (NULL). SaaS: populated by auth backend sync.
 
 See `crates/server/src/storage/` for lookup/upsert methods: `get_user_by_external_id()`, `get_organization_by_external_id()`, `upsert_org_by_external_id()`, `ensure_membership()`.
 
