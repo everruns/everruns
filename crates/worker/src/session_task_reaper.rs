@@ -526,8 +526,8 @@ mod tests {
     use async_trait::async_trait;
     use everruns_core::session_task::{
         CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
-        SessionTaskState, TaskExecutor, TaskLinks, TaskMessage, TaskWakePolicy, apply_task_update,
-        new_session_task,
+        SessionTaskState, TASK_KIND_SUBAGENT, TaskExecutor, TaskLinks, TaskMessage, TaskWakePolicy,
+        apply_task_update, new_session_task,
     };
     use everruns_core::{Result as CoreResult, SessionId};
     use std::collections::HashMap;
@@ -936,6 +936,84 @@ mod tests {
             updated.attempt, 2,
             "orphan reap must supersede the executor's attempt"
         );
+    }
+
+    #[tokio::test]
+    async fn reaper_fails_orphaned_depth_two_subagent_task() {
+        let registry = Arc::new(MockRegistry::default());
+        let root_session_id = SessionId::new();
+        let child_session_id = SessionId::new();
+        let grandchild_session_id = SessionId::new();
+
+        let parent_task = registry
+            .create(CreateSessionTask {
+                session_id: root_session_id,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: "Child".to_string(),
+                spec: serde_json::json!({"mode": "background"}),
+                state: SessionTaskState::Running,
+                links: TaskLinks {
+                    child_session_id: Some(child_session_id),
+                    ..Default::default()
+                },
+                wake_policy: TaskWakePolicy::OnTerminal,
+            })
+            .await
+            .unwrap();
+
+        let grandchild_task = registry
+            .create(CreateSessionTask {
+                session_id: child_session_id,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: "Grandchild".to_string(),
+                spec: serde_json::json!({"mode": "background"}),
+                state: SessionTaskState::Running,
+                links: TaskLinks {
+                    child_session_id: Some(grandchild_session_id),
+                    ..Default::default()
+                },
+                wake_policy: TaskWakePolicy::OnTerminal,
+            })
+            .await
+            .unwrap();
+
+        // Simulate the nested background watcher disappearing after it had
+        // heartbeated. The storage query that detects stale heartbeats is
+        // covered elsewhere; this proves the depth-2 subagent task goes through
+        // the same terminal update path as any other orphan.
+        let orphans = vec![(child_session_id, grandchild_task.id.clone())];
+        let input = SessionTaskReaperInput::default();
+        let result = run_reaper(orphans, registry.clone(), &input).await;
+
+        assert_eq!(result["reaped"], 1);
+        assert_eq!(result["reattached"], 0);
+        assert_eq!(result["skipped"], 0);
+
+        let updated_grandchild = registry
+            .get(child_session_id, &grandchild_task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated_grandchild.kind, TASK_KIND_SUBAGENT);
+        assert_eq!(updated_grandchild.state, SessionTaskState::Failed);
+        assert_eq!(
+            updated_grandchild.error.as_ref().map(|e| e.kind.as_str()),
+            Some("orphaned")
+        );
+        assert_eq!(
+            updated_grandchild.attempt, 2,
+            "orphan reap must fence the stale nested watcher attempt"
+        );
+
+        let unchanged_parent = registry
+            .get(root_session_id, &parent_task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(unchanged_parent.state, SessionTaskState::Running);
+        assert_eq!(unchanged_parent.attempt, 1);
     }
 
     #[tokio::test]
