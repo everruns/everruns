@@ -384,9 +384,9 @@ the logic. Once all callers are migrated, the service file is removed.
 
 All user-facing domains have been migrated. The 39 directories under `crates/server/src/domains/` each own their HTTP/MCP/gRPC surface via commands. Several domains retain an internal `service.rs` alongside `commands.rs` for orchestration that spans multiple commands — that's intentional and not a migration backlog.
 
-**Fully migrated (commands + queries only):** `agents`, `harnesses`, `apps`, `mcp_servers`, `agent_identities`, `skills`, `capabilities`, `audit_logs`, `schedules`, `events`, `images`, `tool_results`, `users`, `organizations`, `system`, `session_databases`, `session_storage`.
+**Fully migrated (commands only, no internal `service.rs`):** `agents`, `harnesses`, `apps`, `mcp_servers`, `agent_identities`, `skills`, `capabilities`, `audit_logs`, `schedules`, `events`, `images`, `tool_results`, `users`, `organizations`, `system`, `session_databases`, `session_storage`, `knowledge_bases`, `knowledge_indexes`, `memory`, `payments`, `plugins`, `session_tasks`, `workspaces`.
 
-**Commands + internal `service.rs`:** `sessions`, `messages`, `budgets`, `evals`, `models`, `providers`, `notifications`, `session_files`, `session_sandbox`, `session_resources`.
+**Commands + internal `service.rs`:** `sessions`, `messages`, `budgets`, `evals`, `models`, `providers`, `notifications`, `session_files`, `session_sandbox`, `session_resources`, `observers`, `reporting`, `session_commands`, `session_git`, `session_schedules`.
 
 **Internal-only (no user-facing commands):** `session_git`, `session_commands`, `session_schedules`.
 

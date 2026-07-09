@@ -387,7 +387,7 @@ No backward compatibility is required; data migrates forward once:
   field-for-field). Remaining kinds stay as resources.
 - `subagent_results` folds into `session_tasks` and is dropped.
 - `sessions.subagent_status`/`subagent_task`/`subagent_name` were dropped
-  (migration 059); `parent_session_id` stays as delegation tree metadata.
+  (migration 062); `parent_session_id` stays as delegation tree metadata.
 - `subagent.*` event types are superseded by `task.*` events.
 - `get_subagents`, `get_agent_runs`, `wait_agent`, `message_agent`,
   `message_subagent`, `cancel_agent` — **retired (done)**. These per-kind tools have

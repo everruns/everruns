@@ -5,7 +5,7 @@
 This document defines the **Workspace** — an org-scoped, named, durable
 working area that contains an agent's active state for a task. A Workspace
 holds the files an agent reads and writes during execution, exposed at the
-`/workspace` mount point. Capabilities (`file_system`, `virtual_bash`) read
+`/workspace` mount point. Capabilities (`session_file_system`, `bashkit_shell`) read
 and write through the `WorkspaceFileSystem` seam.
 
 Workspaces are addressable entities (`wsp_<32-hex>`). Sessions attach to a
