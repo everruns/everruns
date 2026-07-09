@@ -2867,8 +2867,12 @@ export interface paths {
      * @description Default (`format=jsonl`): all materialized messages (user, agent) as
      *     newline-delimited JSON, one complete JSON object per line; delta events are
      *     excluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document
-     *     folded from the session's event log (see `specs/atif-adoption.md`).
-     *     The response includes `Content-Disposition: attachment` for browser download.
+     *     folded from the session's event log (see `specs/atif-adoption.md`); when
+     *     image content parts were flattened to `"[image]"` markers, the response
+     *     carries an `X-Atif-Images-Omitted` header with the total count, and
+     *     documents over the 50 MiB `ATIF_EXPORT_MAX_BYTES` cap are rejected with
+     *     413. The response includes `Content-Disposition: attachment` for browser
+     *     download.
      */
     get: operations["export_session_jsonl"];
     put?: never;
@@ -26470,7 +26474,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description JSONL file with one message per line, or one ATIF trajectory JSON document */
+      /** @description JSONL file with one message per line, or one ATIF trajectory JSON document (with X-Atif-Images-Omitted header when image parts were flattened to markers) */
       200: {
         headers: {
           [name: string]: unknown;
@@ -26499,6 +26503,15 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description ATIF document exceeds the 50 MiB export cap; segmented export is a planned follow-up */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
       };
       /** @description Internal server error */
       500: {
