@@ -825,7 +825,7 @@ mod tests {
         );
     }
 
-    /// Handoff tasks are also parent-steered (via message_agent_handoff), so the
+    /// Handoff tasks are also parent-steered through generic task tools, so the
     /// HTTP message endpoint must reject them exactly like subagent tasks.
     #[tokio::test]
     async fn post_message_to_agent_handoff_task_returns_bad_request() {

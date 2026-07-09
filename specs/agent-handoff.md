@@ -7,7 +7,7 @@ Agent through an authorization and connection gate. Unlike blueprints, the
 target is a normal Agent resource with its own prompt, capabilities, MCP
 servers, mounted data, model defaults, and future identity bindings.
 
-The source agent receives only handoff tools. It does not receive the target
+The source agent receives only handoff target access through `spawn_agent`. It does not receive the target
 agent's tools and never receives provider credentials.
 
 ## Capability
@@ -68,25 +68,13 @@ Parameters:
 | `mode` | no | `background` by default when task tracking is available; `foreground` blocks for the result. |
 | `public_context` | no | Non-secret structured context appended to the child task. |
 
-Behavior matches `start_agent_handoff` for authorization, child-session
-creation, task kind, and result handling. Background mode creates an
+Authorization, child-session creation, task kind, and result handling match the
+original handoff contract. Background mode creates an
 `agent_handoff` task with `wake_policy = on_terminal`, sends the initial
 instructions from a detached watcher, heartbeats the task while waiting, and
 settles the task with the child session's terminal status and last assistant
 message. If task tracking is unavailable, an omitted mode degrades to
 `foreground`; explicit `background` is rejected.
-
-### `start_agent_handoff`
-
-Starts a child session using the configured target Agent.
-
-Parameters:
-
-| Field | Required | Description |
-|---|---:|---|
-| `target` | yes | Target key from capability config. |
-| `task` | yes | Work request for the target agent. Must not contain credentials. |
-| `public_context` | no | Non-secret structured context appended to the child task. |
 
 Behavior:
 
@@ -100,23 +88,17 @@ Behavior:
    `subagent`) with `links.child_session_id` set and `spec` carrying
    `target_id`/`external_agent_id`/`mode`.
 7. Send the task to the child session.
-8. Block until the child session idles and return its last assistant message.
+8. In foreground mode, block until the child session idles and return its last assistant message.
 
-`start_agent_handoff` remains during the EVE-677 migration and is wait-only.
+### Monitoring and Steering
 
-### `get_agent_handoffs`
-
-Lists handoffs for the current session by reading the session task registry for
-tasks of kind `agent_handoff`. Because handoffs have their own kind,
-`list_tasks(kind="subagent")` and this listing are disjoint — plain
-`spawn_subagent` tasks are never reported as handoffs. Each task's
-`display_name`/`state` supply the handoff name/status,
-`links.child_session_id` the child session, and `spec.target_id`/
-`external_agent_id` the target.
-
-### `message_agent_handoff`
-
-Sends follow-up input to a child handoff session and waits for it to idle.
+Use the generic task tools after spawning. `list_tasks(kind="agent_handoff")`
+lists handoffs for the current session. `get_task` reads handoff state and
+result, `message_task` sends follow-up input to the child session,
+`cancel_task` requests cooperative cancellation, and `wait_task` waits for a
+terminal or interrupted state. Because handoffs have their own kind,
+`list_tasks(kind="subagent")` and `list_tasks(kind="agent_handoff")` are
+disjoint.
 
 ## Security Contract
 
@@ -165,12 +147,10 @@ Create an RDS database named app-db in us-east-1.
 5. Add a Fake AWS connection in Settings → Connections. Any non-empty key is
    accepted by the fake provider for local testing.
 6. Retry the user request. The welcome agent should call
-   `spawn_agent` with `target.type = "agent"` (or legacy
-   `start_agent_handoff` during migration), and the child AWS Operator session
+   `spawn_agent` with `target.type = "agent"`, and the child AWS Operator session
    should receive the task and use its own fake AWS tools.
 
-Background mode is available through `spawn_agent`; legacy
-`start_agent_handoff` remains wait-only during migration.
+Background and foreground modes are both available through `spawn_agent`.
 
 Focused verification:
 

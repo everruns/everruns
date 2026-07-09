@@ -8,7 +8,7 @@ events and a message channel — see
 the `SubagentTaskExecutor`.
 
 <!-- Design Decisions:
-  - 1 creation tool: spawn_subagent (get/message/cancel handled by generic session_tasks tools)
+  - 1 delegation tool: spawn_agent(target.type = "subagent")
   - Background execution is the default: spawn returns immediately with a task_id;
     a detached watcher settles the task and the OnTerminal wake policy notifies the parent
   - mode: "foreground" blocks the parent tool call until the child idles (original Phase 1 behavior)
@@ -29,7 +29,7 @@ Inspired by Claude Code's Agent tool, Cursor's sub-agents, and OpenAI Codex's mu
 
 | Principle | Rationale |
 |-----------|-----------|
-| Single creation tool | Minimal surface area. `spawn_subagent` covers creation; lifecycle is managed via generic task tools. |
+| Single delegation tool | Minimal surface area. `spawn_agent(target.type = "subagent")` covers creation; lifecycle is managed via generic task tools. |
 | Background-first | Parallelism is the point of subagents: spawn returns a `task_id` immediately and the parent keeps working; the task's `OnTerminal` wake policy notifies it on completion. `mode: "foreground"` opts back into block-and-return for results the parent cannot proceed without. |
 | No nesting | Prevents runaway resource consumption and simplifies reasoning about execution depth. |
 | Human-readable names | "Test Runner" is more natural than `test-runner` in conversation. |
@@ -81,28 +81,25 @@ See `crates/server/migrations/009_subagents.sql` for schema changes.
 
 ## Tools
 
-### spawn_agent (`target.type = "subagent"`)
+### `spawn_agent` (`target.type = "subagent"`)
 
-During the unified delegation migration, sessions with `subagents` enabled
-advertise `subagent` in the shared `spawn_agent` dispatcher's `target.type`
-enum. The dispatcher routes to the same behavior as `spawn_subagent`: it creates
-a child session with `parent_session_id` set, creates a `TASK_KIND_SUBAGENT`
-task, defaults to background mode, and supports `mode: "foreground"` for
-blocking execution.
+Sessions with `subagents` enabled advertise `subagent` in the shared
+`spawn_agent` dispatcher's `target.type` enum. The dispatcher creates a child
+session with `parent_session_id` set, creates a `TASK_KIND_SUBAGENT` task,
+defaults to background mode, and supports `mode: "foreground"` for blocking
+execution. The dispatcher can advertise other active known delegation providers
+alongside `subagent` (for example first-party handoff or external A2A).
 
-The dispatcher can advertise other active known delegation providers alongside
-`subagent` (for example first-party handoff or external A2A). Once all legacy
-references are migrated, `spawn_subagent` can retire.
-
-### spawn_subagent
-
-Creates a child session and sends the instructions as the first user message. Runs in the background by default and returns immediately; `mode: "foreground"` blocks until the child idles. Returns a `task_id` that can be used with the generic session task tools.
+The retired direct creation entry point is no longer advertised to models.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | Yes | Human-readable name for the subagent |
 | `instructions` | string | Yes | Instructions sent as first user message |
+| `target.type` | string | Yes | Must be `subagent` |
 | `mode` | string | No | `background` (default) or `foreground` |
+| `blueprint` | string | No | Optional blueprint ID for a specialist child agent. |
+| `config` | object | No | Blueprint-specific configuration. Only valid with `blueprint`. |
 
 **Returns (background):** `task_id` and `status: "running"` immediately; the final result lands on the task record (`summary`) and the parent is woken on the terminal transition.
 
@@ -131,7 +128,7 @@ Creates a child session and sends the instructions as the first user message. Ru
 ### Monitoring and steering subagents
 
 Use the generic `session_tasks` tools after spawning. The `task_id` is returned
-by `spawn_agent(target.type = "subagent")` and by `spawn_subagent`.
+by `spawn_agent(target.type = "subagent")`.
 
 | Tool | Description |
 |------|-------------|
@@ -156,7 +153,7 @@ by `spawn_agent(target.type = "subagent")` and by `spawn_subagent`.
 ```
 Parent Agent                          System                           Child Session
      │                                  │                                  │
-     │  spawn_subagent("Runner", instructions)  │                          │
+     │  spawn_agent(target.type="subagent")      │                          │
      │─────────────────────────────────>│                                  │
      │                                  │  create session(parent_id=...)   │
      │                                  │─────────────────────────────────>│
@@ -189,7 +186,7 @@ The child session does **not** inherit:
 
 ## Nesting Prevention
 
-`spawn_subagent` checks `parent_session.parent_session_id`. If the current session already has a parent (is itself a subagent), the tool returns a `ToolError`:
+Subagent delegation checks `parent_session.parent_session_id`. If the current session already has a parent (is itself a subagent), the tool returns a `ToolError`:
 
 ```
 "Subagents cannot spawn subagents. Only top-level sessions can create subagents."
@@ -222,7 +219,7 @@ The `subagents` feature string is contributed when the subagent tools are availa
 
 ## Phase 1b (Future)
 
-Background mode shipped (default; see `spawn_subagent` above) — completion is
+Background mode shipped (default; see `spawn_agent` above) — completion is
 delivered through the task registry's `OnTerminal` wake policy rather than a
 subagent-specific mechanism. Remaining candidates:
 

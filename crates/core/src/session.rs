@@ -280,7 +280,7 @@ pub struct Session {
 
     // -- Subagent nesting fields --
     /// Parent session that spawned this subagent. NULL for top-level sessions.
-    /// Used as the nesting guard in spawn_subagent.
+    /// Used as the subagent nesting guard.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub parent_session_id: Option<SessionId>,

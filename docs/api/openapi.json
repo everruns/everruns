@@ -28030,7 +28030,7 @@
                     "string",
                     "null"
                   ],
-                  "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the nesting guard in spawn_subagent."
+                  "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the subagent nesting guard."
                 },
                 "preview": {
                   "type": [
@@ -28953,7 +28953,7 @@
                         "string",
                         "null"
                       ],
-                      "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the nesting guard in spawn_subagent."
+                      "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the subagent nesting guard."
                     },
                     "preview": {
                       "type": [
@@ -31524,7 +31524,7 @@
               "string",
               "null"
             ],
-            "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the nesting guard in spawn_subagent."
+            "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the subagent nesting guard."
           },
           "preview": {
             "type": [
@@ -37846,7 +37846,7 @@
                   "string",
                   "null"
                 ],
-                "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the nesting guard in spawn_subagent."
+                "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the subagent nesting guard."
               },
               "preview": {
                 "type": [

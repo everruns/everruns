@@ -809,7 +809,7 @@ pub struct CreateSessionRow {
     pub blueprint_id: Option<String>,
     /// Validated blueprint config (JSONB in DB).
     pub blueprint_config: Option<serde_json::Value>,
-    /// Parent session ID for subagent nesting guard (set by spawn_subagent).
+    /// Parent session ID for subagent nesting guard.
     pub parent_session_id: Option<everruns_core::SessionId>,
     /// Internal id of an existing workspace to attach this session to. When
     /// `None`, `create_session` auto-creates a default 1:1 workspace whose id

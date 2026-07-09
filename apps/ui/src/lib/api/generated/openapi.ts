@@ -11265,7 +11265,7 @@ export interface components {
         parallel_tool_calls?: boolean | null;
         /**
          * @description Parent session that spawned this subagent. NULL for top-level sessions.
-         *     Used as the nesting guard in spawn_subagent.
+         *     Used as the subagent nesting guard.
          */
         parent_session_id?: string | null;
         /**
@@ -11847,7 +11847,7 @@ export interface components {
         parallel_tool_calls?: boolean | null;
         /**
          * @description Parent session that spawned this subagent. NULL for top-level sessions.
-         *     Used as the nesting guard in spawn_subagent.
+         *     Used as the subagent nesting guard.
          */
         parent_session_id?: string | null;
         /**
@@ -13501,7 +13501,7 @@ export interface components {
       parallel_tool_calls?: boolean | null;
       /**
        * @description Parent session that spawned this subagent. NULL for top-level sessions.
-       *     Used as the nesting guard in spawn_subagent.
+       *     Used as the subagent nesting guard.
        */
       parent_session_id?: string | null;
       /**
@@ -16951,7 +16951,7 @@ export interface components {
       parallel_tool_calls?: boolean | null;
       /**
        * @description Parent session that spawned this subagent. NULL for top-level sessions.
-       *     Used as the nesting guard in spawn_subagent.
+       *     Used as the subagent nesting guard.
        */
       parent_session_id?: string | null;
       /**
