@@ -37,6 +37,7 @@ mod reporting;
 mod schedules;
 mod session_files;
 mod session_git;
+mod session_participants;
 mod session_resources;
 mod session_storage;
 mod session_tasks;
@@ -55,7 +56,8 @@ use chrono::{DateTime, Utc};
 use everruns_core::{
     AgentId, AgentIdentityId, AgentVersionId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId,
     HarnessId, ImageId, LeasedResourceId, McpServerId, MessageId, ModelId, NotificationId,
-    PluginMarketplaceId, PrincipalId, ProviderId, ScheduleId, SessionId, SkillId,
+    PluginMarketplaceId, PrincipalId, ProviderId, ScheduleId, SessionId, SessionParticipantId,
+    SkillId,
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -103,6 +105,7 @@ pub struct InMemoryDatabase {
     agents: RwLock<HashMap<AgentId, AgentRow>>,
     agent_versions: RwLock<HashMap<AgentVersionId, AgentVersionRow>>,
     sessions: RwLock<HashMap<SessionId, SessionRow>>,
+    session_participants: RwLock<HashMap<SessionParticipantId, SessionParticipantRow>>,
     events: RwLock<HashMap<EventId, EventRow>>,
     providers: RwLock<HashMap<ProviderId, ProviderRow>>,
     models: RwLock<HashMap<ModelId, ModelRow>>,
@@ -259,6 +262,7 @@ impl Default for InMemoryDatabase {
             agents: RwLock::new(HashMap::new()),
             agent_versions: RwLock::new(HashMap::new()),
             sessions: RwLock::new(HashMap::new()),
+            session_participants: RwLock::new(HashMap::new()),
             events: RwLock::new(HashMap::new()),
             providers: RwLock::new(HashMap::new()),
             models: RwLock::new(HashMap::new()),

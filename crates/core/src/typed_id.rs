@@ -336,6 +336,13 @@ impl IdMarker for SessionIdMarker {
     const PREFIX: &'static str = "session";
 }
 
+/// Marker for Session Participant IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SessionParticipantIdMarker;
+impl IdMarker for SessionParticipantIdMarker {
+    const PREFIX: &'static str = "part";
+}
+
 /// Marker for Message IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MessageIdMarker;
@@ -621,6 +628,8 @@ pub type AgentIdentityId = TypedId<AgentIdentityIdMarker>;
 pub type PrincipalId = TypedId<PrincipalIdMarker>;
 /// Session ID
 pub type SessionId = TypedId<SessionIdMarker>;
+/// Session Participant ID
+pub type SessionParticipantId = TypedId<SessionParticipantIdMarker>;
 /// Message ID
 pub type MessageId = TypedId<MessageIdMarker>;
 /// Event ID

@@ -107,6 +107,42 @@ impl Database {
         .fetch_one(&mut *tx)
         .await?;
 
+        if let Some(agent_id) = row.agent_id {
+            sqlx::query(
+                r#"
+                INSERT INTO session_participants (
+                    id, org_id, session_id, kind, agent_id, agent_version_id,
+                    principal_id, role, joined_at
+                )
+                VALUES (uuidv7(), $1, $2, 'agent', $3, $4, $5, 'host', $6)
+                "#,
+            )
+            .bind(row.org_id)
+            .bind(row.id.uuid())
+            .bind(agent_id.uuid())
+            .bind(row.agent_version_id.map(|id| id.uuid()))
+            .bind(row.owner_principal_id)
+            .bind(row.created_at)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        sqlx::query(
+            r#"
+            INSERT INTO session_participants (
+                id, org_id, session_id, kind, agent_id, agent_version_id,
+                principal_id, role, joined_at
+            )
+            VALUES (uuidv7(), $1, $2, 'user', NULL, NULL, $3, 'member', $4)
+            "#,
+        )
+        .bind(row.org_id)
+        .bind(row.id.uuid())
+        .bind(row.owner_principal_id)
+        .bind(row.created_at)
+        .execute(&mut *tx)
+        .await?;
+
         tx.commit().await?;
 
         // Reporting outbox enqueue is best-effort (see specs/reporting.md).

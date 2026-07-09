@@ -767,6 +767,21 @@ impl StorageBackend {
         dispatch!(self, create_session, input)
     }
 
+    pub async fn create_session_participant(
+        &self,
+        input: CreateSessionParticipantRow,
+    ) -> Result<SessionParticipantRow> {
+        dispatch!(self, create_session_participant, input)
+    }
+
+    pub async fn list_session_participants(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Result<Vec<SessionParticipantRow>> {
+        dispatch!(self, list_session_participants, org_id, session_id)
+    }
+
     pub async fn list_reporting_outbox(
         &self,
         org_id: i64,

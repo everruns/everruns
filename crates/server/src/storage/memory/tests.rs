@@ -3,7 +3,10 @@ use super::*;
 use crate::api::common::Pagination;
 use chrono::Utc;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
-use everruns_core::{AgentId, DEFAULT_ORG_ID, HarnessId, SessionId};
+use everruns_core::{
+    AgentId, DEFAULT_ORG_ID, HarnessId, PrincipalId, SessionId, SessionParticipantKind,
+    SessionParticipantRole,
+};
 
 /// Default pagination for tests (large enough to not truncate).
 fn default_pagination() -> Pagination {
@@ -12,6 +15,35 @@ fn default_pagination() -> Pagination {
 
 fn test_harness_id() -> HarnessId {
     HarnessId::from_uuid(uuid::Uuid::nil())
+}
+
+fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
+    CreateSessionRow {
+        workspace_id: None,
+        org_id: DEFAULT_ORG_ID,
+        app_id: None,
+        harness_id: None,
+        agent_id,
+        agent_identity_id: None,
+        owner_principal_id: PrincipalId::from_seed(1),
+        resolved_owner_user_id: None,
+        title: None,
+        locale: None,
+        tags: vec![],
+        model_id: None,
+        capabilities: serde_json::json!([]),
+        tools: serde_json::json!([]),
+        mcp_servers: serde_json::json!({}),
+        system_prompt: None,
+        initial_files: serde_json::Value::Array(vec![]),
+        hints: None,
+        network_access: None,
+        max_iterations: None,
+        parallel_tool_calls: None,
+        blueprint_id: None,
+        blueprint_config: None,
+        parent_session_id: None,
+    }
 }
 
 #[tokio::test]
@@ -233,6 +265,89 @@ async fn test_set_session_fork_lineage_roundtrip() {
         .unwrap()
         .unwrap();
     assert_eq!(reloaded_parent.forked_from_session_id, None);
+}
+
+#[tokio::test]
+async fn test_create_session_seeds_agent_and_user_participants() {
+    let db = InMemoryDatabase::new();
+    let agent_id = AgentId::new();
+
+    let session = db
+        .create_session(test_session_input(Some(agent_id)))
+        .await
+        .unwrap();
+    let participants = db
+        .list_session_participants(DEFAULT_ORG_ID, session.id)
+        .await
+        .unwrap();
+
+    assert_eq!(participants.len(), 2);
+    assert_eq!(session.agent_id, Some(agent_id));
+
+    let host = participants
+        .iter()
+        .map(SessionParticipantRow::to_core)
+        .find(|participant| participant.role == SessionParticipantRole::Host)
+        .unwrap();
+    assert_eq!(host.kind, SessionParticipantKind::Agent);
+    assert_eq!(host.agent_id, Some(agent_id));
+    assert_eq!(host.principal_id, PrincipalId::from_seed(1));
+
+    let user = participants
+        .iter()
+        .map(SessionParticipantRow::to_core)
+        .find(|participant| participant.kind == SessionParticipantKind::User)
+        .unwrap();
+    assert_eq!(user.role, SessionParticipantRole::Member);
+    assert_eq!(user.agent_id, None);
+    assert_eq!(user.principal_id, PrincipalId::from_seed(1));
+}
+
+#[tokio::test]
+async fn test_create_session_without_agent_seeds_user_participant_only() {
+    let db = InMemoryDatabase::new();
+
+    let session = db.create_session(test_session_input(None)).await.unwrap();
+    let participants = db
+        .list_session_participants(DEFAULT_ORG_ID, session.id)
+        .await
+        .unwrap();
+
+    assert_eq!(participants.len(), 1);
+    let participant = participants[0].to_core();
+    assert_eq!(participant.kind, SessionParticipantKind::User);
+    assert_eq!(participant.role, SessionParticipantRole::Member);
+    assert_eq!(participant.agent_id, None);
+}
+
+#[tokio::test]
+async fn test_create_session_participant_rejects_second_active_host() {
+    let db = InMemoryDatabase::new();
+    let agent_id = AgentId::new();
+
+    let session = db
+        .create_session(test_session_input(Some(agent_id)))
+        .await
+        .unwrap();
+
+    let err = db
+        .create_session_participant(CreateSessionParticipantRow {
+            org_id: DEFAULT_ORG_ID,
+            session_id: session.id,
+            kind: SessionParticipantKind::Agent,
+            agent_id: Some(AgentId::new()),
+            agent_version_id: None,
+            principal_id: PrincipalId::from_seed(1),
+            role: SessionParticipantRole::Host,
+            joined_at: None,
+        })
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("session already has an active host participant")
+    );
 }
 
 #[tokio::test]

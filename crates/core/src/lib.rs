@@ -487,7 +487,10 @@ pub use payment::{
 };
 pub use principal::{Principal, PrincipalKind, PrincipalStatus, PrincipalSummary};
 pub use provider::{Provider, ProviderStatus, ProviderTraceConfig};
-pub use session::{Session, SessionStatus, SubagentStatus};
+pub use session::{
+    Session, SessionParticipant, SessionParticipantKind, SessionParticipantRole, SessionStatus,
+    SubagentStatus,
+};
 pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, InitialFile, SessionFile};
 pub use session_resource::{
     RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
@@ -514,7 +517,7 @@ pub use typed_id::{
     IdParseError, ImageId, KnowledgeBaseId, KnowledgeEntryId, LeasedResourceId, McpServerId,
     MemoryId, MessageId, ModelId, NotificationId, OrgId, PaymentAccountId, PaymentAttemptId,
     PaymentPolicyId, PluginInstallId, PluginMarketplaceId, PrincipalId, ProviderId, ScheduleId,
-    SessionId, SkillId, TurnId, TypedId, WorkspaceId,
+    SessionId, SessionParticipantId, SkillId, TurnId, TypedId, WorkspaceId,
 };
 
 // Audit logging re-exports

@@ -62,7 +62,10 @@ Working instance of an agentic loop. Configured by its harness and situationally
 
 - Many sessions in the system
 - Each session has an assigned harness
-- Agent is optional and can change over the session's lifetime
+- Agent is optional and can change over the session's lifetime. `session.agent_id`
+  is the denormalized pointer to the active host agent.
+- Session participants record the agents and users attached to a session. At
+  most one active agent participant may have the `host` role.
 - Sessions can have own capabilities, additive to agent capabilities
 - Sessions can override the LLM model
 - Status: `started` → `active` → `idle` (sessions work indefinitely)
