@@ -197,6 +197,9 @@ The child session inherits:
 - **Harness**: Same harness as parent session
 - **Agent**: Same agent configuration (model, system prompt, capabilities)
 - **Organization**: Same org scope (multitenancy)
+- **Budget pool**: Session-scoped budgets resolve to the delegation tree's
+  `root_session_id`, so every descendant turn spends from the root session's
+  shared budget. Ledger attribution still records the child session that spent.
 
 The child session does **not** inherit:
 - Message history (clean context window)
