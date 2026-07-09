@@ -52,14 +52,16 @@ Last-resort validation limits to guard against abuse. API returns generic `400 B
 
 ### Session
 
-An instance of agentic loop execution. Sessions are top-level entities under organizations, with an agent assigned to work in each session.
+An instance of agentic loop execution. Sessions are top-level entities under organizations, with an optional host agent assigned to work in each session.
 
 See `crates/core/src/session.rs` for full field definitions.
 
 See `specs/localization.md` for locale/timezone resolution and durable preference rules.
 
 Key design points:
-- Sessions are direct children of organizations (not agents). The `agent_id` specifies which agent is assigned.
+- Sessions are direct children of organizations (not agents). The `agent_id` column is a denormalized pointer to the active host agent for existing reads.
+- `session_participants` records the users and agents associated with the session. Existing sessions are backfilled with an owner user participant and, when `agent_id` is present, a host agent participant.
+- The database enforces at most one active host agent participant per session.
 - `agent_version_id` captures the immutable AgentVersion used for runtime execution when agent versions are enabled.
 - `app_id` is a nullable internal backreference set only when the server creates a session from an App channel. User/API, MCP, and platform-management session creation paths cannot set it.
 - `locale` is an optional session-level BCP 47 tag (for example `uk-UA`). The worker carries it through turn loading and prompt construction so scheduled runs, resumed runs, and subagents can inherit localized behavior.

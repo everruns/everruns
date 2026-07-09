@@ -103,6 +103,7 @@ impl InMemoryDatabase {
             blueprint_config: input.blueprint_config,
         };
         self.sessions.write().insert(id, row.clone());
+        self.insert_initial_session_participants(&row).await?;
         self.enqueue_reporting_outbox(
             row.org_id,
             "session",

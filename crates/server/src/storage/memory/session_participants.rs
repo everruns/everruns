@@ -1,0 +1,149 @@
+use super::super::models::*;
+use super::InMemoryDatabase;
+use anyhow::{Result, bail};
+use everruns_core::{
+    SessionId, SessionParticipantId, SessionParticipantKind, SessionParticipantRole,
+};
+
+impl InMemoryDatabase {
+    pub(crate) async fn insert_initial_session_participants(
+        &self,
+        session: &SessionRow,
+    ) -> Result<()> {
+        if let Some(agent_id) = session.agent_id {
+            self.insert_session_participant_unchecked(SessionParticipantRow {
+                id: SessionParticipantId::new(),
+                org_id: session.org_id,
+                session_id: session.id,
+                kind: SessionParticipantKind::Agent.to_string(),
+                agent_id: Some(agent_id),
+                agent_version_id: session.agent_version_id,
+                principal_id: session.owner_principal_id,
+                role: SessionParticipantRole::Host.to_string(),
+                joined_at: session.created_at,
+                left_at: None,
+                created_at: session.created_at,
+                updated_at: session.created_at,
+            })?;
+        }
+
+        self.insert_session_participant_unchecked(SessionParticipantRow {
+            id: SessionParticipantId::new(),
+            org_id: session.org_id,
+            session_id: session.id,
+            kind: SessionParticipantKind::User.to_string(),
+            agent_id: None,
+            agent_version_id: None,
+            principal_id: session.owner_principal_id,
+            role: SessionParticipantRole::Member.to_string(),
+            joined_at: session.created_at,
+            left_at: None,
+            created_at: session.created_at,
+            updated_at: session.created_at,
+        })?;
+
+        Ok(())
+    }
+
+    pub async fn create_session_participant(
+        &self,
+        input: CreateSessionParticipantRow,
+    ) -> Result<SessionParticipantRow> {
+        self.validate_session_participant(&input)?;
+
+        let now = Self::now();
+        let joined_at = input.joined_at.unwrap_or(now);
+        let row = SessionParticipantRow {
+            id: SessionParticipantId::new(),
+            org_id: input.org_id,
+            session_id: input.session_id,
+            kind: input.kind.to_string(),
+            agent_id: input.agent_id,
+            agent_version_id: input.agent_version_id,
+            principal_id: input.principal_id,
+            role: input.role.to_string(),
+            joined_at,
+            left_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+
+        self.insert_session_participant_unchecked(row.clone())?;
+        Ok(row)
+    }
+
+    pub async fn list_session_participants(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Result<Vec<SessionParticipantRow>> {
+        let mut rows: Vec<_> = self
+            .session_participants
+            .read()
+            .values()
+            .filter(|row| row.org_id == org_id && row.session_id == session_id)
+            .cloned()
+            .collect();
+        rows.sort_by_key(|row| (row.joined_at, row.created_at, row.id.uuid()));
+        Ok(rows)
+    }
+
+    fn validate_session_participant(&self, input: &CreateSessionParticipantRow) -> Result<()> {
+        let session = self
+            .sessions
+            .read()
+            .get(&input.session_id)
+            .cloned()
+            .filter(|session| session.org_id == input.org_id);
+        if session.is_none() {
+            bail!("session not found");
+        }
+
+        match input.kind {
+            SessionParticipantKind::Agent if input.agent_id.is_none() => {
+                bail!("agent participants require agent_id")
+            }
+            SessionParticipantKind::User
+                if input.agent_id.is_some() || input.agent_version_id.is_some() =>
+            {
+                bail!("user participants cannot reference an agent")
+            }
+            _ => {}
+        }
+
+        if input.role == SessionParticipantRole::Host && input.kind != SessionParticipantKind::Agent
+        {
+            bail!("host participants must be agents");
+        }
+
+        if input.role == SessionParticipantRole::Host {
+            let has_active_host = self.session_participants.read().values().any(|row| {
+                row.session_id == input.session_id
+                    && row.kind == "agent"
+                    && row.role == "host"
+                    && row.left_at.is_none()
+            });
+            if has_active_host {
+                bail!("session already has an active host participant");
+            }
+        }
+
+        Ok(())
+    }
+
+    fn insert_session_participant_unchecked(&self, row: SessionParticipantRow) -> Result<()> {
+        if row.role == "host" {
+            let has_active_host = self.session_participants.read().values().any(|existing| {
+                existing.session_id == row.session_id
+                    && existing.kind == "agent"
+                    && existing.role == "host"
+                    && existing.left_at.is_none()
+            });
+            if has_active_host {
+                bail!("session already has an active host participant");
+            }
+        }
+        self.session_participants.write().insert(row.id, row);
+        Ok(())
+    }
+}

@@ -32,6 +32,7 @@ mod reporting;
 mod schedules;
 mod session_files;
 mod session_git;
+mod session_participants;
 mod session_resources;
 mod session_storage;
 mod session_tasks;

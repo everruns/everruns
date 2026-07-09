@@ -4,7 +4,8 @@ use chrono::{DateTime, Utc};
 use everruns_core::{
     AgentId, AgentIdentityId, EventId, HarnessId, ImageId, LeasedResourceId, McpServerId,
     MessageId, ModelId, NotificationId, PrincipalId, ProviderId, ScheduleId, ServiceKind,
-    SessionId, SkillId,
+    SessionId, SessionParticipant, SessionParticipantId, SessionParticipantKind,
+    SessionParticipantRole, SkillId,
 };
 use everruns_durable::UpdateField;
 use sqlx::FromRow;
@@ -825,6 +826,50 @@ pub struct CreateSessionRow {
     /// equals the new session id (the equality invariant). When `Some`, the
     /// session attaches to that workspace and no new workspace is created.
     pub workspace_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct SessionParticipantRow {
+    pub id: SessionParticipantId,
+    pub org_id: i64,
+    pub session_id: SessionId,
+    pub kind: String,
+    pub agent_id: Option<AgentId>,
+    pub agent_version_id: Option<everruns_core::AgentVersionId>,
+    pub principal_id: PrincipalId,
+    pub role: String,
+    pub joined_at: DateTime<Utc>,
+    pub left_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl SessionParticipantRow {
+    pub fn to_core(&self) -> SessionParticipant {
+        SessionParticipant {
+            id: self.id,
+            session_id: self.session_id,
+            kind: SessionParticipantKind::from(self.kind.as_str()),
+            agent_id: self.agent_id,
+            agent_version_id: self.agent_version_id,
+            principal_id: self.principal_id,
+            role: SessionParticipantRole::from(self.role.as_str()),
+            joined_at: self.joined_at,
+            left_at: self.left_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateSessionParticipantRow {
+    pub org_id: i64,
+    pub session_id: SessionId,
+    pub kind: SessionParticipantKind,
+    pub agent_id: Option<AgentId>,
+    pub agent_version_id: Option<everruns_core::AgentVersionId>,
+    pub principal_id: PrincipalId,
+    pub role: SessionParticipantRole,
+    pub joined_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Default)]
