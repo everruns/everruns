@@ -72,6 +72,7 @@ const mockUseDeleteAgent = jest.fn();
 const mockUseDestroyAgent = jest.fn();
 const mockUseCapabilities = jest.fn();
 const mockUseAgentNameAvailability = jest.fn();
+const mockUseHarnesses = jest.fn();
 
 jest.mock("@/hooks", () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
@@ -80,6 +81,7 @@ jest.mock("@/hooks", () => ({
   useDestroyAgent: () => mockUseDestroyAgent(),
   useCapabilities: () => mockUseCapabilities(),
   useAgentNameAvailability: (...args: unknown[]) => mockUseAgentNameAvailability(...args),
+  useHarnesses: () => mockUseHarnesses(),
   usePageTitle: () => undefined,
 }));
 
@@ -128,6 +130,10 @@ describe("EditAgentPage", () => {
     mockUseDeleteAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
     mockUseDestroyAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
     mockUseCapabilities.mockReturnValue({ data: [], isLoading: false });
+    mockUseHarnesses.mockReturnValue({
+      data: [{ id: "harness_test", name: "generic", display_name: "Generic" }],
+      isLoading: false,
+    });
     mockUseAgentNameAvailability.mockReturnValue({
       isChecking: false,
       isAvailable: true,
