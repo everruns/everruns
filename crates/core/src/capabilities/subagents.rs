@@ -123,7 +123,7 @@ impl Capability for SubagentCapability {
     }
 }
 
-const SUBAGENT_SYSTEM_PROMPT: &str = "Spawn subagents only for independent workstreams that benefit from parallelism or a separate context window; do not delegate immediate sequential steps. Spawns are background by default: you get a task_id, keep working, and are notified on completion (monitor with get_task/wait_task). Use mode \"foreground\" only when you cannot proceed without the result. Nested subagents are allowed only within the configured max_subagent_depth. Use blueprints for specialist agents with their own tools and model.";
+const SUBAGENT_SYSTEM_PROMPT: &str = "Spawn subagents for independent parallel work or separate context; avoid immediate sequential steps. Spawns are background by default: you get a task_id, keep working, and are notified on completion (monitor with get_task/wait_task). Use mode \"foreground\" only when blocked on the result. Nested subagents are allowed up to max_subagent_depth. Use blueprints for specialist tools/model.";
 const RESULT_SCHEMA_SPEC_KEY: &str = "result_schema";
 const MESSAGE_SCHEMA_SPEC_KEY: &str = "message_schema";
 
