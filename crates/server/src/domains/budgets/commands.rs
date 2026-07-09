@@ -47,7 +47,9 @@ pub struct BudgetDeleteResult {
     pub deleted: bool,
 }
 
-#[derive(Debug, Serialize)]
+/// Result of resuming budgets paused for a session.
+#[derive(Debug, Serialize, ToSchema)]
+#[schema(as = ResumeSessionResponse)]
 pub struct ResumeSessionBudgetsResult {
     pub resumed_budgets: usize,
     pub session_id: String,

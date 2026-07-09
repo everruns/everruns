@@ -503,9 +503,6 @@ pub async fn end_call(
     path = "/v1/agents/{agent_id}/voice/sessions",
     request_body = VoiceCallRequest,
     responses((status = 201, description = "Agent session and realtime call created", body = VoiceSessionResponse<VoiceCallResponse>)),
-    extensions(
-        ("x-cost-tier" = json!("paid")),
-    ),
     tag = "voice"
 )]
 pub async fn create_agent_voice_session(
@@ -557,9 +554,6 @@ pub async fn create_agent_voice_session(
     responses(
         (status = 200, description = "Platform chat session and realtime call created", body = VoiceSessionResponse<VoiceCallResponse>),
         (status = 404, description = "Platform Chat (global_chat) or voice feature is disabled for the org"),
-    ),
-    extensions(
-        ("x-cost-tier" = json!("paid")),
     ),
     tag = "voice"
 )]

@@ -538,9 +538,6 @@ pub async fn session_config(
         ),
         (status = 500, description = "Internal server error")
     ),
-    extensions(
-        ("x-cost-tier" = json!("paid")),
-    ),
     tag = "sessions"
 )]
 pub async fn create_session(
@@ -586,7 +583,6 @@ fn strip_internal_only_fields(req: &mut CreateSessionRequest) {
         (status = 409, description = "Parent session is mid-turn and cannot be forked", body = ErrorResponse),
         (status = 500, description = "Internal server error")
     ),
-    extensions(("x-cost-tier" = json!("paid"))),
     tag = "sessions"
 )]
 pub async fn fork_session(
@@ -804,7 +800,6 @@ pub async fn list_session_participants(
         (status = 409, description = "Participant conflicts with current membership"),
         (status = 500, description = "Internal server error")
     ),
-    extensions(("x-cost-tier" = json!("paid"))),
     tag = "sessions"
 )]
 pub async fn add_session_participant(
