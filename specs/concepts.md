@@ -51,7 +51,7 @@ Domain-specific or task-specific configuration for the agentic loop. Defines sys
 
 - Many agents in the system
 - Each agent has exactly one assigned harness (`harness_id`), defaulting to the org's built-in `generic` harness at creation when omitted
-- A session may or may not have an agent assigned
+- A session may or may not have an agent assigned; creating a session from an agent runs it on the agent's harness (agent-first creation)
 - Agents can be assigned or changed during a session's lifetime
 - Agent has capabilities with position ordering
 - Agent references a default LLM model
@@ -62,10 +62,9 @@ Working instance of an agentic loop. Configured by its harness and situationally
 
 - Many sessions in the system
 - Each session has an assigned harness
-- Agent is optional and can change over the session's lifetime. `session.agent_id`
-  is the denormalized pointer to the active host agent.
-- Session participants record the agents and users attached to a session. At
-  most one active agent participant may have the `host` role.
+- Session creation is agent-first: `POST /v1/sessions { agent_id | agent_name }` resolves the harness from the agent, so you address the agent and the runtime follows. Precedence when resolving the session harness: an explicit request harness wins, then the agent's harness, then the org default, then the built-in fallback
+- Agent is optional and can change over the session's lifetime; a no-agent session still requires (or defaults) a harness directly. `session.agent_id` is the denormalized pointer to the active host agent.
+- Session participants record the agents and users attached to a session. At most one active agent participant may have the `host` role.
 - Sessions can have own capabilities, additive to agent capabilities
 - Sessions can override the LLM model
 - Status: `started` → `active` → `idle` (sessions work indefinitely)

@@ -52,7 +52,7 @@ Organization management.
 Agent CRUD. Create from TOML/YAML/JSON/Markdown files or CLI flags.
 
 - `create --file <path> [--initial-files-dir <dir>] [--writable]` — send file to server import API; the CLI normalizes TOML to JSON and otherwise forwards the file as-is. Upserts when `id:` is present in the definition. If `--file` is omitted and `./agent.toml` exists, the CLI uses it automatically unless inline creation flags are present. `--initial-files-dir` recursively collects non-hidden text files from the directory and injects them as read-only `initial_files`. `--writable` makes collected files writable. Alternatively, `initial_files` can be specified directly in the definition as a list of relative paths — each entry is resolved relative to the agent file's parent directory, directories are walked recursively, and files are collected with the same security rules as `--initial-files-dir`.
-- `create --name <n> --system-prompt <s> [--description <d>] [--model <m>] [--tag <t>]` — create from CLI flags
+- `create --name <n> --system-prompt <s> [--description <d>] [--model <m>] [--tag <t>]` — create from CLI flags. The agent's base harness is set from the file definition's `harness_id` / `harness_name` key (file path); omitting it defaults to the org's built-in `generic` harness. A typed `--harness` flag on the flag path rides with the external Rust SDK release.
 - `update --file <path> [--initial-files-dir <dir>] [--writable]` — send file to server import API; TOML is normalized client-side, and `./agent.toml` is used automatically when `--file` is omitted, no inline update flags are present, and no positional `<id>` is provided. Requires `id:` in the definition for upsert. `--initial-files-dir` and definition `initial_files` work the same as in create.
 - `update <id> --name <n> --system-prompt <s> [--description <d>] [--model <m>] [--tag <t>]` — update from CLI flags
 - `list`
@@ -73,7 +73,8 @@ The hard-deny floor is checked on **every** path component, not just the root. S
 
 Session management.
 
-- `create [--harness <id|name>] [--agent <id>] [--agent-identity <id>] [--title <t>] [--locale <tag>] [--model <m>] [--system-prompt <s>] [--tag <t>] [--capability <ref[=json]>] [--hint <key=json>] [--hints-json <json>] [--network-allow <pattern>] [--network-block <pattern>] [--max-iterations <n>] [--budget-limit <[currency:]limit>] [--budget-soft-limit <[currency:]limit>]`
+- `create [--harness <id|name>] [--agent <id|name>] [--agent-identity <id>] [--title <t>] [--locale <tag>] [--model <m>] [--system-prompt <s>] [--tag <t>] [--capability <ref[=json]>] [--hint <key=json>] [--hints-json <json>] [--network-allow <pattern>] [--network-block <pattern>] [--max-iterations <n>] [--budget-limit <[currency:]limit>] [--budget-soft-limit <[currency:]limit>]`
+  - `--agent` accepts an agent id (`agent_…`) or a name; a bare name resolves server-side. When `--agent` is given and `--harness` is omitted, the session runs on the agent's harness (agent-first). An explicit `--harness` still overrides it.
   - `--capability` is repeatable. Format: `REF` or `REF=JSON_CONFIG`. The CLI sends these as session-level capabilities additive to the agent and harness.
   - `--hint` is repeatable. Format: `KEY=JSON_VALUE`. `--hints-json` accepts a JSON object. Duplicate hint keys are rejected.
   - `--network-allow` and `--network-block` are repeatable network access patterns. See [`network-access.md`](network-access.md).
