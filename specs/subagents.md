@@ -12,7 +12,7 @@ the `SubagentTaskExecutor`.
   - Background execution is the default: spawn returns immediately with a task_id;
     a detached watcher settles the task and the OnTerminal wake policy notifies the parent
   - mode: "foreground" blocks the parent tool call until the child idles (original Phase 1 behavior)
-  - No nesting: subagents cannot spawn subagents
+  - Governed nesting: subagents may spawn subagents up to max_subagent_depth
   - Human-readable names by default ("Test Runner" not "test-runner")
   - message_task / cancel_task unify steering and cancellation via the task registry
   - Subagent inherits parent's harness and agent configuration
@@ -31,7 +31,7 @@ Inspired by Claude Code's Agent tool, Cursor's sub-agents, and OpenAI Codex's mu
 |-----------|-----------|
 | Single delegation tool | Minimal surface area. `spawn_agent(target.type = "subagent")` covers creation; lifecycle is managed via generic task tools. |
 | Background-first | Parallelism is the point of subagents: spawn returns a `task_id` immediately and the parent keeps working; the task's `OnTerminal` wake policy notifies it on completion. `mode: "foreground"` opts back into block-and-return for results the parent cannot proceed without. |
-| No nesting | Prevents runaway resource consumption and simplifies reasoning about execution depth. |
+| Governed nesting | Allows coordinator -> worker -> specialist flows while bounding runaway delegation. |
 | Human-readable names | "Test Runner" is more natural than `test-runner` in conversation. |
 | Inherit parent config | Subagent uses same harness, agent, and model. No capability escalation. |
 | Generic lifecycle tools | `list_tasks`, `get_task`, `message_task`, `cancel_task` work for all task kinds including subagents. |
@@ -40,12 +40,12 @@ Inspired by Claude Code's Agent tool, Cursor's sub-agents, and OpenAI Codex's mu
 
 ### Session Extensions
 
-The `Session` entity is extended with a subagent nesting guard:
+The `Session` entity is extended with subagent tree metadata:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `parent_session_id` | SessionId? | Parent session (null for top-level sessions) |
-| `root_session_id` | SessionId? | Root of this session's delegation tree (EVE-680). A top-level session is its own root; a subagent child inherits its parent's root. Denormalized (migration 094) so a whole tree is one indexed query; mirrored onto `session_tasks.root_session_id` and filterable via `GET /v1/tasks?root_session_id=`. Tree-observability groundwork; does not change the current nesting guard. |
+| `parent_session_id` | SessionId? | Parent session (null for top-level sessions). Used to compute delegation depth. |
+| `root_session_id` | SessionId? | Root of this session's delegation tree (EVE-680). A top-level session is its own root; a subagent child inherits its parent's root. Denormalized (migration 094) so a whole tree is one indexed query; mirrored onto `session_tasks.root_session_id` and filterable via `GET /v1/tasks?root_session_id=`. |
 
 `subagent_name`, `subagent_task`, and `subagent_status` were retired in
 migration 059. Lifecycle state is now tracked via `SessionTask` records
@@ -203,17 +203,15 @@ The child session does **not** inherit:
 - Session-level capabilities (only agent capabilities apply)
 - Active turn state
 
-## Nesting Prevention
+## Nesting Governance
 
-Subagent delegation checks `parent_session.parent_session_id`. If the current session already has a parent (is itself a subagent), the tool returns a `ToolError`:
+Subagent delegation walks the current session's `parent_session_id` chain and allows the spawn only when the new child depth is less than or equal to `max_subagent_depth`. Top-level sessions are depth 0; direct children are depth 1.
 
-```
-"Subagents cannot spawn subagents. Only top-level sessions can create subagents."
-```
+The default maximum depth is 2, enabling A -> B -> C while rejecting a depth-3 child. Setting `max_subagent_depth` to 0 restores the previous hard block on spawning subagents. The policy is resolved as platform default, then org override, then agent/capability override; the current authored override is exposed through the `subagents` capability config.
 
-This is a hard constraint enforced at the tool execution layer, not a configuration option.
+When the cap is exceeded, the tool returns a `ToolError` naming the attempted depth and configured cap.
 
-**Rationale:** Unbounded nesting creates exponential resource consumption and makes debugging impractical. A single level of delegation covers the vast majority of use cases.
+**Rationale:** Bounded nesting covers coordinator/delegator patterns without opening unbounded recursive delegation.
 
 ## Security Considerations
 
@@ -222,7 +220,7 @@ This is a hard constraint enforced at the tool execution layer, not a configurat
 | Capability escalation | Subagent inherits parent capabilities exactly; no additional capabilities |
 | Context isolation | Separate message history; child cannot read parent messages |
 | Resource exhaustion | Foreground: 300s timeout on `wait_for_idle`. Background: 6h overall watcher cap; max iterations per child session; orphaned watchers are failed by the session task reaper on stale heartbeats |
-| Runaway nesting | Hard block on subagents spawning subagents |
+| Runaway nesting | `max_subagent_depth` enforced by bounded parent-chain walk at spawn time |
 | Org boundary | Child session inherits org_id; standard multitenancy enforcement applies |
 
 ## UI

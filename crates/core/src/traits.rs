@@ -1085,6 +1085,51 @@ pub trait LeasedResourceStore: Send + Sync {
 // ToolContext - Runtime context for tool execution
 // ============================================================================
 
+/// Default maximum child depth for subagent delegation. Top-level sessions are
+/// depth 0, their children are depth 1, and grandchildren are depth 2.
+pub const DEFAULT_MAX_SUBAGENT_DEPTH: u32 = 2;
+
+/// Resolved subagent nesting policy for a tool execution context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SubagentNestingPolicy {
+    pub platform_default: u32,
+    pub org_override: Option<u32>,
+    pub agent_override: Option<u32>,
+}
+
+impl Default for SubagentNestingPolicy {
+    fn default() -> Self {
+        Self {
+            platform_default: DEFAULT_MAX_SUBAGENT_DEPTH,
+            org_override: None,
+            agent_override: None,
+        }
+    }
+}
+
+impl SubagentNestingPolicy {
+    pub fn max_subagent_depth(self) -> u32 {
+        self.agent_override
+            .or(self.org_override)
+            .unwrap_or(self.platform_default)
+    }
+
+    pub fn with_platform_default(mut self, depth: u32) -> Self {
+        self.platform_default = depth;
+        self
+    }
+
+    pub fn with_org_override(mut self, depth: Option<u32>) -> Self {
+        self.org_override = depth;
+        self
+    }
+
+    pub fn with_agent_override(mut self, depth: Option<u32>) -> Self {
+        self.agent_override = depth;
+        self
+    }
+}
+
 /// Type alias for the session SQL DB store trait object.
 pub type SessionSqlDbStoreRef = Arc<dyn crate::session_sqldb::SessionSqlDbStore>;
 
@@ -1522,6 +1567,9 @@ pub struct ToolContext {
     /// on parent worker reclaim.
     pub subagent_spawn_store: Option<Arc<dyn SubagentSpawnStore>>,
 
+    /// Resolved subagent nesting policy for this turn.
+    pub subagent_nesting_policy: SubagentNestingPolicy,
+
     /// Optional live reasoning-effort handle (EVE-595). When set, a tool can
     /// change the reasoning effort mid-turn; subsequent LLM steps in the same
     /// `run_turn` re-read it and use the new effort.
@@ -1580,6 +1628,7 @@ impl ToolContext {
             budget_checker: None,
             payment_authority: None,
             subagent_spawn_store: None,
+            subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
         }
     }
@@ -1621,6 +1670,7 @@ impl ToolContext {
             budget_checker: None,
             payment_authority: None,
             subagent_spawn_store: None,
+            subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
         }
     }
@@ -1665,6 +1715,7 @@ impl ToolContext {
             budget_checker: None,
             payment_authority: None,
             subagent_spawn_store: None,
+            subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
         }
     }
@@ -1710,6 +1761,7 @@ impl ToolContext {
             budget_checker: None,
             payment_authority: None,
             subagent_spawn_store: None,
+            subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
         }
     }
@@ -1801,6 +1853,7 @@ impl ToolContext {
             budget_checker: None,
             payment_authority: None,
             subagent_spawn_store: None,
+            subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
         }
     }
@@ -1937,6 +1990,12 @@ impl ToolContext {
         self
     }
 
+    /// Set the resolved subagent nesting policy.
+    pub fn with_subagent_nesting_policy(mut self, policy: SubagentNestingPolicy) -> Self {
+        self.subagent_nesting_policy = policy;
+        self
+    }
+
     /// Emit a `tool.progress` event if an event emitter and context are available.
     ///
     /// This is a best-effort helper: failures are logged but not propagated,
@@ -2035,6 +2094,7 @@ impl std::fmt::Debug for ToolContext {
             .field("tool_registry", &self.tool_registry.is_some())
             .field("payment_authority", &self.payment_authority.is_some())
             .field("subagent_spawn_store", &self.subagent_spawn_store.is_some())
+            .field("subagent_nesting_policy", &self.subagent_nesting_policy)
             .field("org_id", &self.org_id)
             .finish()
     }

@@ -193,7 +193,7 @@ pub trait PlatformStore: Send + Sync {
     /// of inheriting from `harness_id`/`agent_id`. `blueprint_config` is
     /// validated config for the blueprint (JSON, optional).
     /// `parent_session_id` links child subagent/handoff sessions to their parent
-    /// (used as the subagent nesting guard).
+    /// (used to compute governed subagent delegation depth).
     #[allow(clippy::too_many_arguments)]
     async fn create_session(
         &self,
@@ -282,6 +282,7 @@ pub mod tests {
         pub app: App,
         pub app_channel: AppChannel,
         pub session: Session,
+        pub extra_sessions: std::sync::Mutex<std::collections::HashMap<SessionId, Session>>,
         /// Records the `harness_id` argument of every `create_session`
         /// call so tests can assert which harness a child session was
         /// created against. See `start_handoff_uses_target_harness_not_parent`.
@@ -433,6 +434,7 @@ pub mod tests {
                         blueprint_config: None,
                     }
                 },
+                extra_sessions: std::sync::Mutex::new(std::collections::HashMap::new()),
                 created_session_harness_ids: std::sync::Mutex::new(Vec::new()),
                 wait_for_idle_status: std::sync::Mutex::new("idle".to_string()),
             }
@@ -694,9 +696,23 @@ pub mod tests {
             s.blueprint_id = blueprint_id.map(|b| b.to_string());
             s.blueprint_config = blueprint_config.cloned();
             s.parent_session_id = parent_session_id;
+            if let Ok(mut sessions) = self.extra_sessions.lock() {
+                sessions.insert(s.id, s.clone());
+            }
             Ok(s)
         }
-        async fn get_session_by_id(&self, _id: SessionId) -> Result<Option<Session>> {
+        async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>> {
+            if id == self.session.id {
+                return Ok(Some(self.session.clone()));
+            }
+            if let Some(session) = self
+                .extra_sessions
+                .lock()
+                .ok()
+                .and_then(|sessions| sessions.get(&id).cloned())
+            {
+                return Ok(Some(session));
+            }
             Ok(Some(self.session.clone()))
         }
         async fn get_session_context_report(&self, id: SessionId) -> Result<SessionContextReport> {

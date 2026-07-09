@@ -17,7 +17,7 @@
 // tracking), an unspecified mode degrades to foreground so results are not lost.
 //
 // Subagent naming: human-readable ("Test Runner"), unique per parent, case-insensitive.
-// Nesting prevention: rejects spawn if current session has parent_session_id set.
+// Nesting governance: child depth must not exceed max_subagent_depth.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::platform_store::PlatformStore;
@@ -77,6 +77,43 @@ impl Capability for SubagentCapability {
         vec!["subagents"]
     }
 
+    fn config_schema(&self) -> Option<Value> {
+        Some(json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "max_subagent_depth": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 16,
+                    "default": crate::traits::DEFAULT_MAX_SUBAGENT_DEPTH,
+                    "description": "Maximum child depth allowed from a top-level session. Top-level sessions are depth 0; setting 0 blocks all subagent spawning."
+                },
+                "max_depth": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 16,
+                    "description": "Alias for max_subagent_depth."
+                }
+            }
+        }))
+    }
+
+    fn validate_config(&self, config: &Value) -> Result<(), String> {
+        for key in ["max_subagent_depth", "max_depth"] {
+            let Some(value) = config.get(key) else {
+                continue;
+            };
+            let Some(depth) = value.as_u64() else {
+                return Err(format!("{key} must be a non-negative integer"));
+            };
+            if depth > 16 {
+                return Err(format!("{key} must be <= 16"));
+            }
+        }
+        Ok(())
+    }
+
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(SUBAGENT_SYSTEM_PROMPT)
     }
@@ -86,7 +123,7 @@ impl Capability for SubagentCapability {
     }
 }
 
-const SUBAGENT_SYSTEM_PROMPT: &str = "Spawn subagents only for independent workstreams that benefit from parallelism or a separate context window; do not delegate immediate sequential steps. Spawns are background by default: you get a task_id, keep working, and are notified on completion (monitor with get_task/wait_task). Use mode \"foreground\" only when you cannot proceed without the result. No nested subagents. Use blueprints for specialist agents with their own tools and model.";
+const SUBAGENT_SYSTEM_PROMPT: &str = "Spawn subagents for independent parallel work or separate context; avoid immediate sequential steps. Spawns are background by default: you get a task_id, keep working, and are notified on completion (monitor with get_task/wait_task). Use mode \"foreground\" only when blocked on the result. Nested subagents are allowed up to max_subagent_depth. Use blueprints for specialist tools/model.";
 const RESULT_SCHEMA_SPEC_KEY: &str = "result_schema";
 const MESSAGE_SCHEMA_SPEC_KEY: &str = "message_schema";
 
@@ -285,6 +322,53 @@ fn get_session_store(
         .ok_or_else(|| {
             ToolExecutionResult::tool_error("Subagent tools require session_store context")
         })
+}
+
+async fn current_subagent_depth(
+    session_store: &dyn SessionStore,
+    session: &crate::session::Session,
+    max_subagent_depth: u32,
+) -> Result<u32, ToolExecutionResult> {
+    let mut depth = 0_u32;
+    let mut cursor = session.parent_session_id;
+
+    while let Some(parent_id) = cursor {
+        depth = depth.saturating_add(1);
+        if depth > max_subagent_depth {
+            return Ok(depth);
+        }
+
+        let parent = match session_store.get_session(parent_id).await {
+            Ok(Some(parent)) => parent,
+            Ok(None) => {
+                return Err(ToolExecutionResult::tool_error(format!(
+                    "Cannot enforce max_subagent_depth: parent session {parent_id} was not found."
+                )));
+            }
+            Err(error) => return Err(ToolExecutionResult::internal_error(error)),
+        };
+        cursor = parent.parent_session_id;
+    }
+
+    Ok(depth)
+}
+
+async fn enforce_subagent_depth_cap(
+    session_store: &dyn SessionStore,
+    session: &crate::session::Session,
+    context: &ToolContext,
+) -> Result<(), ToolExecutionResult> {
+    let max_subagent_depth = context.subagent_nesting_policy.max_subagent_depth();
+    let current_depth = current_subagent_depth(session_store, session, max_subagent_depth).await?;
+    let child_depth = current_depth.saturating_add(1);
+
+    if child_depth > max_subagent_depth {
+        return Err(ToolExecutionResult::tool_error(format!(
+            "Subagent nesting depth cap exceeded: spawning this subagent would create depth {child_depth}, but max_subagent_depth is {max_subagent_depth}."
+        )));
+    }
+
+    Ok(())
 }
 
 /// Extract the last assistant/agent message content from a list of messages.
@@ -831,17 +915,15 @@ async fn spawn_agent_subagent_impl(
         ));
     }
 
-    // Nesting check: reject if current session is already a subagent
+    // Nesting check: allow governed nesting up to the resolved depth cap.
     let parent_session = match session_store.get_session(context.session_id).await {
         Ok(Some(s)) => s,
         Ok(None) => return Ok(ToolExecutionResult::tool_error("Current session not found")),
         Err(e) => return Err(ToolExecutionResult::internal_error(e)),
     };
 
-    if parent_session.parent_session_id.is_some() {
-        return Ok(ToolExecutionResult::tool_error(
-            "Subagents cannot spawn other subagents (nesting not allowed).",
-        ));
+    if let Err(error) = enforce_subagent_depth_cap(session_store, &parent_session, context).await {
+        return Ok(error);
     }
 
     // Validate blueprint exists and is allowed for this parent session.
@@ -1088,7 +1170,7 @@ async fn spawn_create_and_wait(
         uuid::Uuid,
     )>,
 ) -> ToolExecutionResult {
-    // Create child session, linking it to the parent (nesting guard).
+    // Create child session, linking it to the parent for tree depth enforcement.
     let child_session = match store
         .create_session(
             parent_session.harness_id,
@@ -1737,6 +1819,18 @@ mod tests {
     }
 
     #[test]
+    fn subagent_nesting_policy_resolves_platform_org_agent_precedence() {
+        let platform = crate::traits::SubagentNestingPolicy::default().with_platform_default(4);
+        assert_eq!(platform.max_subagent_depth(), 4);
+
+        let org = platform.with_org_override(Some(3));
+        assert_eq!(org.max_subagent_depth(), 3);
+
+        let agent = org.with_agent_override(Some(1));
+        assert_eq!(agent.max_subagent_depth(), 1);
+    }
+
+    #[test]
     fn spawn_agent_subagent_schema_advertises_only_subagent_target() {
         let tool = SpawnSubagentAsAgentTool;
         let schema = tool.parameters_schema();
@@ -1834,7 +1928,7 @@ mod tests {
     use std::collections::HashMap;
     use std::sync::Mutex;
 
-    /// SessionStore view over the mock platform store (nesting guard lookup).
+    /// SessionStore view over the mock platform store (depth-policy lookup).
     struct MockSessionStore(Arc<MockPlatformStore>);
 
     #[async_trait]
@@ -1851,7 +1945,15 @@ mod tests {
         store: &Arc<MockPlatformStore>,
         registry: Option<Arc<InMemorySessionTaskRegistry>>,
     ) -> ToolContext {
-        let mut context = ToolContext::new(store.session.id);
+        spawn_context_for_session(store, registry, store.session.id)
+    }
+
+    fn spawn_context_for_session(
+        store: &Arc<MockPlatformStore>,
+        registry: Option<Arc<InMemorySessionTaskRegistry>>,
+        session_id: crate::typed_id::SessionId,
+    ) -> ToolContext {
+        let mut context = ToolContext::new(session_id);
         context.platform_store = Some(store.clone());
         context.session_store = Some(Arc::new(MockSessionStore(store.clone())));
         if let Some(registry) = registry {
@@ -2088,6 +2190,81 @@ mod tests {
         assert_eq!(task.kind, TASK_KIND_SUBAGENT);
         assert_eq!(task.spec["mode"], "foreground");
         assert!(task.links.child_session_id.is_some());
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_subagent_allows_depth_two_and_rejects_depth_three_by_default() {
+        let store = Arc::new(MockPlatformStore::new());
+        *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let root_context = spawn_context(&store, Some(registry.clone()));
+
+        let first = spawn(
+            &root_context,
+            json!({"name": "B", "instructions": "go", "mode": "background"}),
+        )
+        .await;
+        let ToolExecutionResult::Success(first_value) = first else {
+            panic!("expected first spawn success, got {first:?}");
+        };
+        let b_id: crate::typed_id::SessionId = first_value["subagent_id"]
+            .as_str()
+            .expect("subagent_id")
+            .parse()
+            .expect("valid session id");
+
+        let b_context = spawn_context_for_session(&store, Some(registry.clone()), b_id);
+        let second = spawn(
+            &b_context,
+            json!({"name": "C", "instructions": "go", "mode": "background"}),
+        )
+        .await;
+        let ToolExecutionResult::Success(second_value) = second else {
+            panic!("expected second spawn success, got {second:?}");
+        };
+        let c_id: crate::typed_id::SessionId = second_value["subagent_id"]
+            .as_str()
+            .expect("subagent_id")
+            .parse()
+            .expect("valid session id");
+
+        let c_context = spawn_context_for_session(&store, Some(registry), c_id);
+        let third = spawn(
+            &c_context,
+            json!({"name": "D", "instructions": "go", "mode": "background"}),
+        )
+        .await;
+        let ToolExecutionResult::ToolError(message) = third else {
+            panic!("expected depth cap ToolError, got {third:?}");
+        };
+        assert!(
+            message.contains("max_subagent_depth is 2"),
+            "got: {message}"
+        );
+        assert!(message.contains("depth 3"), "got: {message}");
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_subagent_depth_zero_restores_hard_block() {
+        let store = Arc::new(MockPlatformStore::new());
+        let mut context = spawn_context(&store, None).with_subagent_nesting_policy(
+            crate::traits::SubagentNestingPolicy::default().with_agent_override(Some(0)),
+        );
+        context.session_task_registry = Some(Arc::new(InMemorySessionTaskRegistry::default()));
+
+        let result = spawn(
+            &context,
+            json!({"name": "Blocked", "instructions": "go", "mode": "background"}),
+        )
+        .await;
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("expected depth cap ToolError, got {result:?}");
+        };
+        assert!(
+            message.contains("max_subagent_depth is 0"),
+            "got: {message}"
+        );
+        assert!(message.contains("depth 1"), "got: {message}");
     }
 
     #[tokio::test]

@@ -260,6 +260,27 @@ struct RuntimeExecutionCapabilities {
     post_tool_hooks: Vec<Arc<dyn everruns_core::PostToolExecHook>>,
     pre_tool_hooks: Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>>,
     tool_call_hooks: Vec<Arc<dyn everruns_core::ToolCallHook>>,
+    subagent_nesting_policy: everruns_core::SubagentNestingPolicy,
+}
+
+fn subagent_nesting_policy_from_configs(
+    resolved_capability_configs: &[everruns_core::capability_types::AgentCapabilityConfig],
+) -> everruns_core::SubagentNestingPolicy {
+    let configured_depth = resolved_capability_configs
+        .iter()
+        .find(|config| {
+            config.capability_id() == everruns_core::capabilities::SUBAGENTS_CAPABILITY_ID
+        })
+        .and_then(|config| {
+            config
+                .config
+                .get("max_subagent_depth")
+                .or_else(|| config.config.get("max_depth"))
+                .and_then(|value| value.as_u64())
+                .and_then(|value| u32::try_from(value).ok())
+        });
+
+    everruns_core::SubagentNestingPolicy::default().with_agent_override(configured_depth)
 }
 
 /// Collect and finalize user-hook specs for a session from its resolved
@@ -367,6 +388,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
             tool_call_hooks: Vec::new(),
+            subagent_nesting_policy: everruns_core::SubagentNestingPolicy::default(),
         });
     }
 
@@ -506,6 +528,9 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         post_tool_hooks,
         pre_tool_hooks,
         tool_call_hooks,
+        subagent_nesting_policy: subagent_nesting_policy_from_configs(
+            &resolved.resolved_capability_configs,
+        ),
     })
 }
 
@@ -1265,7 +1290,8 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
             .with_capability_registry(adapter.capability_registry())
             .with_post_tool_hooks(execution_capabilities.post_tool_hooks)
             .with_pre_tool_hooks(execution_capabilities.pre_tool_hooks)
-            .with_tool_call_hooks(execution_capabilities.tool_call_hooks);
+            .with_tool_call_hooks(execution_capabilities.tool_call_hooks)
+            .with_subagent_nesting_policy(execution_capabilities.subagent_nesting_policy);
 
     if let Some(storage_store) = adapter.storage_store() {
         atom = atom.with_storage_store(storage_store);
