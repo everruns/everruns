@@ -3923,6 +3923,11 @@ export interface components {
        */
       forked_from_version_id?: string | null;
       /**
+       * @description Harness that supplies the base execution environment for this agent.
+       * @example harness_01933b5a00007000800000000000001
+       */
+      harness_id: string;
+      /**
        * @description External identifier (agent_<32-hex>). Shown as "id" in API.
        *     Client-supplied or auto-generated.
        * @example agent_01933b5a000070008000000000000001
@@ -5115,6 +5120,17 @@ export interface components {
        * @example Customer Support Agent
        */
       display_name?: string | null;
+      /**
+       * @description Harness ID used as this agent's base execution environment. If omitted,
+       *     the org's built-in `generic` harness is used.
+       * @example harness_01933b5a00007000800000000000001
+       */
+      harness_id?: string | null;
+      /**
+       * @description Addressable harness name. Alternative to `harness_id`.
+       * @example generic
+       */
+      harness_name?: string | null;
       /**
        * @description Client-supplied agent ID (format: agent_{32-hex}).
        *     If not provided, one is auto-generated.
@@ -8211,6 +8227,11 @@ export interface components {
          */
         forked_from_version_id?: string | null;
         /**
+         * @description Harness that supplies the base execution environment for this agent.
+         * @example harness_01933b5a00007000800000000000001
+         */
+        harness_id: string;
+        /**
          * @description External identifier (agent_<32-hex>). Shown as "id" in API.
          *     Client-supplied or auto-generated.
          * @example agent_01933b5a000070008000000000000001
@@ -11269,7 +11290,7 @@ export interface components {
         parallel_tool_calls?: boolean | null;
         /**
          * @description Parent session that spawned this subagent. NULL for top-level sessions.
-         *     Used as the subagent nesting guard.
+         *     Used to compute governed subagent delegation depth.
          */
         parent_session_id?: string | null;
         /**
@@ -11578,6 +11599,11 @@ export interface components {
          */
         forked_from_version_id?: string | null;
         /**
+         * @description Harness that supplies the base execution environment for this agent.
+         * @example harness_01933b5a00007000800000000000001
+         */
+        harness_id: string;
+        /**
          * @description External identifier (agent_<32-hex>). Shown as "id" in API.
          *     Client-supplied or auto-generated.
          * @example agent_01933b5a000070008000000000000001
@@ -11851,7 +11877,7 @@ export interface components {
         parallel_tool_calls?: boolean | null;
         /**
          * @description Parent session that spawned this subagent. NULL for top-level sessions.
-         *     Used as the subagent nesting guard.
+         *     Used to compute governed subagent delegation depth.
          */
         parent_session_id?: string | null;
         /**
@@ -13505,7 +13531,7 @@ export interface components {
       parallel_tool_calls?: boolean | null;
       /**
        * @description Parent session that spawned this subagent. NULL for top-level sessions.
-       *     Used as the subagent nesting guard.
+       *     Used to compute governed subagent delegation depth.
        */
       parent_session_id?: string | null;
       /**
@@ -14699,6 +14725,16 @@ export interface components {
        */
       display_name?: string | null;
       /**
+       * @description Harness ID used as this agent's base execution environment. Omit to leave unchanged.
+       * @example harness_01933b5a00007000800000000000001
+       */
+      harness_id?: string | null;
+      /**
+       * @description Addressable harness name. Alternative to `harness_id`; omit to leave unchanged.
+       * @example generic
+       */
+      harness_name?: string | null;
+      /**
        * @description Starter files copied into each new session for this agent.
        * @example [
        *       {
@@ -15667,6 +15703,11 @@ export interface components {
        */
       forked_from_version_id?: string | null;
       /**
+       * @description Harness that supplies the base execution environment for this agent.
+       * @example harness_01933b5a00007000800000000000001
+       */
+      harness_id: string;
+      /**
        * @description External identifier (agent_<32-hex>). Shown as "id" in API.
        *     Client-supplied or auto-generated.
        * @example agent_01933b5a000070008000000000000001
@@ -16556,6 +16597,11 @@ export interface components {
        */
       forked_from_version_id?: string | null;
       /**
+       * @description Harness that supplies the base execution environment for this agent.
+       * @example harness_01933b5a00007000800000000000001
+       */
+      harness_id: string;
+      /**
        * @description External identifier (agent_<32-hex>). Shown as "id" in API.
        *     Client-supplied or auto-generated.
        * @example agent_01933b5a000070008000000000000001
@@ -16955,7 +17001,7 @@ export interface components {
       parallel_tool_calls?: boolean | null;
       /**
        * @description Parent session that spawned this subagent. NULL for top-level sessions.
-       *     Used as the subagent nesting guard.
+       *     Used to compute governed subagent delegation depth.
        */
       parent_session_id?: string | null;
       /**
@@ -26464,6 +26510,10 @@ export interface operations {
       query?: {
         /** @description Output format: jsonl (default) or atif */
         format?: string;
+        /** @description ATIF only: return byte-bounded segments linked by continued_trajectory_ref instead of one document */
+        segmented?: boolean;
+        /** @description ATIF segmented export: opaque continuation cursor from the previous segment */
+        cursor?: string;
       };
       header?: never;
       path: {
@@ -26474,7 +26524,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description JSONL file with one message per line, or one ATIF trajectory JSON document (with X-Atif-Images-Omitted header when image parts were flattened to markers) */
+      /** @description JSONL file with one message per line, or one ATIF trajectory JSON document (with X-Atif-Images-Omitted header when image parts were flattened to markers). With segmented=true, one ATIF segment linked forward by continued_trajectory_ref. */
       200: {
         headers: {
           [name: string]: unknown;
@@ -26483,7 +26533,7 @@ export interface operations {
           "application/x-ndjson": unknown;
         };
       };
-      /** @description Invalid ID format */
+      /** @description Invalid ID format, or malformed/foreign segmented-export cursor */
       400: {
         headers: {
           [name: string]: unknown;
@@ -26504,7 +26554,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description ATIF document exceeds the 50 MiB export cap; segmented export is a planned follow-up */
+      /** @description ATIF document exceeds the 50 MiB export cap; retry with segmented=true for a recoverable chunked export */
       413: {
         headers: {
           [name: string]: unknown;
@@ -28140,6 +28190,8 @@ export interface operations {
         kind?: string;
         /** @description Only tasks created at/after this RFC3339 timestamp */
         created_after?: string;
+        /** @description Only tasks whose owning session's delegation-tree root is this session */
+        root_session_id?: string;
         /** @description Max tasks, newest first (default 100, max 500) */
         limit?: number;
       };
