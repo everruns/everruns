@@ -198,6 +198,17 @@ const messages = {
     atif_export_title: "ATIF export",
     atif_export_failed_title: "ATIF export failed",
     atif_export_too_large: "This session is too large for ATIF export.",
+    atif_export_segmented_prompt:
+      "This session is too large for a single ATIF file. Download it in parts instead?",
+    atif_export_download_parts: "Download in parts",
+    atif_export_segmented_limit:
+      "ATIF export stopped at the {count}-part safety limit; the session is unexpectedly large.",
+    atif_parts_exported_one: "Exported {count} ATIF part",
+    atif_parts_exported_few: "Exported {count} ATIF parts",
+    atif_parts_exported_many: "Exported {count} ATIF parts",
+    atif_export_stopped_one: "ATIF export stopped after {count} part",
+    atif_export_stopped_few: "ATIF export stopped after {count} parts",
+    atif_export_stopped_many: "ATIF export stopped after {count} parts",
     atif_images_omitted_one: "{count} image was omitted from the ATIF export",
     atif_images_omitted_few: "{count} images were omitted from the ATIF export",
     atif_images_omitted_many: "{count} images were omitted from the ATIF export",
@@ -394,6 +405,17 @@ const messages = {
     atif_export_title: "Експорт ATIF",
     atif_export_failed_title: "Не вдалося експортувати ATIF",
     atif_export_too_large: "Ця сесія завелика для експорту ATIF.",
+    atif_export_segmented_prompt:
+      "Ця сесія завелика для одного файлу ATIF. Завантажити її частинами?",
+    atif_export_download_parts: "Завантажити частинами",
+    atif_export_segmented_limit:
+      "Експорт ATIF зупинено на межі безпеки в {count} частин; сесія неочікувано велика.",
+    atif_parts_exported_one: "Експортовано {count} частину ATIF",
+    atif_parts_exported_few: "Експортовано {count} частини ATIF",
+    atif_parts_exported_many: "Експортовано {count} частин ATIF",
+    atif_export_stopped_one: "Експорт ATIF зупинено після {count} частини",
+    atif_export_stopped_few: "Експорт ATIF зупинено після {count} частин",
+    atif_export_stopped_many: "Експорт ATIF зупинено після {count} частин",
     atif_images_omitted_one: "{count} зображення пропущено під час експорту ATIF",
     atif_images_omitted_few: "{count} зображення пропущено під час експорту ATIF",
     atif_images_omitted_many: "{count} зображень пропущено під час експорту ATIF",
@@ -483,6 +505,44 @@ export function formatAtifImagesOmitted(locale: SupportedLocale, count: number):
     {
       count,
     },
+  );
+}
+
+export function formatAtifPartsExported(locale: SupportedLocale, count: number): string {
+  if (locale === "uk") {
+    const form = getUkrainianPluralForm(count);
+    if (form === "one") {
+      return formatMessage(locale, "atif_parts_exported_one", { count });
+    }
+    if (form === "few") {
+      return formatMessage(locale, "atif_parts_exported_few", { count });
+    }
+    return formatMessage(locale, "atif_parts_exported_many", { count });
+  }
+
+  return formatMessage(
+    locale,
+    count === 1 ? "atif_parts_exported_one" : "atif_parts_exported_many",
+    { count },
+  );
+}
+
+export function formatAtifExportStopped(locale: SupportedLocale, count: number): string {
+  if (locale === "uk") {
+    const form = getUkrainianPluralForm(count);
+    if (form === "one") {
+      return formatMessage(locale, "atif_export_stopped_one", { count });
+    }
+    if (form === "few") {
+      return formatMessage(locale, "atif_export_stopped_few", { count });
+    }
+    return formatMessage(locale, "atif_export_stopped_many", { count });
+  }
+
+  return formatMessage(
+    locale,
+    count === 1 ? "atif_export_stopped_one" : "atif_export_stopped_many",
+    { count },
   );
 }
 

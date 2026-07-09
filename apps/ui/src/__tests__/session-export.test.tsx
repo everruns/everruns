@@ -142,6 +142,33 @@ function mockResponse({
   } as unknown as Response;
 }
 
+// A standalone ATIF segment document. When `cursor` is provided, it carries a
+// root `continued_trajectory_ref` pointing at the next segment (mirroring the
+// server contract); the final segment omits it.
+function atifSegment(cursor?: string): string {
+  const doc: Record<string, unknown> = { atif_version: "1.7", messages: [] };
+  if (cursor) {
+    doc.continued_trajectory_ref = `/v1/sessions/${SESSION_ID}/export?format=atif&segmented=true&cursor=${cursor}`;
+  }
+  return JSON.stringify(doc);
+}
+
+// A 413 whose RFC-9457 detail advertises segmentation (new server).
+function tooLargeSegmentedResponse() {
+  return mockResponse({
+    ok: false,
+    status: 413,
+    statusText: "Payload Too Large",
+    body: JSON.stringify({
+      title: "Payload Too Large",
+      status: 413,
+      code: "atif_export_too_large",
+      detail:
+        "ATIF document is over the 10485760-byte limit; use &segmented=true to download it in parts",
+    }),
+  });
+}
+
 describe("downloadSessionExport", () => {
   const fetchMock = jest.fn();
   let downloads: string[] = [];
@@ -262,5 +289,127 @@ describe("downloadSessionExport", () => {
     expect(downloads).toEqual([]);
     expect(notify).not.toHaveBeenCalled();
     expect(consoleErrorSpy).toHaveBeenCalled();
+  });
+
+  it("offers a segmented download on a segmentation-capable 413 and walks all parts", async () => {
+    fetchMock
+      .mockResolvedValueOnce(tooLargeSegmentedResponse())
+      .mockResolvedValueOnce(mockResponse({ body: atifSegment("c1") }))
+      .mockResolvedValueOnce(mockResponse({ body: atifSegment("c2") }))
+      .mockResolvedValueOnce(mockResponse({ body: atifSegment() }));
+    const notify = jest.fn();
+
+    await downloadSessionExport(SESSION_ID, "atif", "en", notify);
+
+    // The offer is a single toast with an action; nothing downloads yet.
+    expect(downloads).toEqual([]);
+    expect(notify).toHaveBeenCalledTimes(1);
+    const offer = notify.mock.calls[0][0];
+    expect(offer.title).toBe("ATIF export");
+    expect(offer.body).toBe(
+      "This session is too large for a single ATIF file. Download it in parts instead?",
+    );
+    expect(offer.action.label).toBe("Download in parts");
+
+    // Confirm → the segmented walk runs.
+    await offer.action.onClick();
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      `/api/v1/sessions/${SESSION_ID}/export?format=atif&segmented=true`,
+      { credentials: "include" },
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      `/api/v1/sessions/${SESSION_ID}/export?format=atif&segmented=true&cursor=c1`,
+      { credentials: "include" },
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      `/api/v1/sessions/${SESSION_ID}/export?format=atif&segmented=true&cursor=c2`,
+      { credentials: "include" },
+    );
+    expect(downloads).toEqual([
+      `${SESSION_ID}.atif.part1.json`,
+      `${SESSION_ID}.atif.part2.json`,
+      `${SESSION_ID}.atif.part3.json`,
+    ]);
+    expect(notify).toHaveBeenLastCalledWith({
+      title: "ATIF export",
+      body: "Exported 3 ATIF parts",
+    });
+  });
+
+  it("aggregates omitted images across segments into one info toast", async () => {
+    fetchMock
+      .mockResolvedValueOnce(tooLargeSegmentedResponse())
+      .mockResolvedValueOnce(
+        mockResponse({ headers: { "X-Atif-Images-Omitted": "2" }, body: atifSegment("c1") }),
+      )
+      .mockResolvedValueOnce(
+        mockResponse({ headers: { "X-Atif-Images-Omitted": "3" }, body: atifSegment() }),
+      );
+    const notify = jest.fn();
+
+    await downloadSessionExport(SESSION_ID, "atif", "en", notify);
+    await notify.mock.calls[0][0].action.onClick();
+
+    expect(downloads).toEqual([`${SESSION_ID}.atif.part1.json`, `${SESSION_ID}.atif.part2.json`]);
+    expect(notify).toHaveBeenCalledWith({ title: "ATIF export", body: "Exported 2 ATIF parts" });
+    expect(notify).toHaveBeenLastCalledWith({
+      title: "ATIF export",
+      body: "5 images were omitted from the ATIF export",
+    });
+  });
+
+  it("stops with an error toast when a mid-walk segment returns a bad cursor (400)", async () => {
+    fetchMock
+      .mockResolvedValueOnce(tooLargeSegmentedResponse())
+      .mockResolvedValueOnce(mockResponse({ body: atifSegment("c1") }))
+      .mockResolvedValueOnce(
+        mockResponse({
+          ok: false,
+          status: 400,
+          statusText: "Bad Request",
+          body: JSON.stringify({ code: "atif_cursor_invalid", detail: "invalid cursor" }),
+        }),
+      );
+    const notify = jest.fn();
+
+    await downloadSessionExport(SESSION_ID, "atif", "en", notify);
+    await notify.mock.calls[0][0].action.onClick();
+
+    // First part saved, then the walk halts on the bad cursor.
+    expect(downloads).toEqual([`${SESSION_ID}.atif.part1.json`]);
+    expect(notify).toHaveBeenLastCalledWith({
+      title: "ATIF export failed",
+      body: "ATIF export stopped after 1 part",
+    });
+  });
+
+  it("falls back to a plain error toast when a 413 does not advertise segmentation", async () => {
+    // Old server: same too-large `code`, but the detail does not mention
+    // segmentation, so no "Download in parts" offer is made.
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({
+        ok: false,
+        status: 413,
+        statusText: "Payload Too Large",
+        body: JSON.stringify({
+          code: "atif_export_too_large",
+          detail: "ATIF document exceeds the 10 MiB export cap",
+        }),
+      }),
+    );
+    const notify = jest.fn();
+
+    await downloadSessionExport(SESSION_ID, "atif", "en", notify);
+
+    expect(downloads).toEqual([]);
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith({
+      title: "ATIF export failed",
+      body: "ATIF document exceeds the 10 MiB export cap",
+    });
   });
 });

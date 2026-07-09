@@ -39,11 +39,22 @@ type NotificationState = {
   initialized: boolean;
 };
 
-type ToastNotification = Notification & { toast_id: string };
+export interface LocalToastAction {
+  label: string;
+  /** May be async; the toast dismisses immediately, work continues in the background. */
+  onClick: () => void | Promise<void>;
+}
+
+type ToastNotification = Notification & { toast_id: string; action?: LocalToastAction };
 
 export interface LocalToastInput {
   title: string;
   body: string;
+  /**
+   * Optional action button. Toasts with an action persist (no auto-dismiss) so
+   * the user has time to decide; they clear on action or manual dismiss.
+   */
+  action?: LocalToastAction;
 }
 
 interface NotificationsContextValue {
@@ -189,15 +200,20 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
   isVisibleRef.current = isVisible;
   isFocusedRef.current = isFocused;
 
-  const enqueueToast = useCallback((notification: Notification) => {
-    if (toastIdsRef.current.has(notification.id)) return;
-    toastIdsRef.current.add(notification.id);
-    const toast_id = `${notification.id}:${Date.now()}`;
-    setToastQueue((prev) => [...prev, { ...notification, toast_id }]);
-    window.setTimeout(() => {
-      setToastQueue((prev) => prev.filter((item) => item.toast_id !== toast_id));
-    }, 5000);
-  }, []);
+  const enqueueToast = useCallback(
+    (notification: Notification, options?: { action?: LocalToastAction; persist?: boolean }) => {
+      if (toastIdsRef.current.has(notification.id)) return;
+      toastIdsRef.current.add(notification.id);
+      const toast_id = `${notification.id}:${Date.now()}`;
+      setToastQueue((prev) => [...prev, { ...notification, toast_id, action: options?.action }]);
+      if (!options?.persist) {
+        window.setTimeout(() => {
+          setToastQueue((prev) => prev.filter((item) => item.toast_id !== toast_id));
+        }, 5000);
+      }
+    },
+    [],
+  );
 
   const localToastSeqRef = useRef(0);
   const notify = useCallback(
@@ -207,17 +223,20 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
       // viewed_at is pre-set so a click never triggers markViewed (there is no
       // server-side notification behind a local toast), and href is absent so
       // the click is a no-op beyond dismissing.
-      enqueueToast({
-        id: `local-${localToastSeqRef.current}`,
-        kind: "local",
-        title: input.title,
-        body: input.body,
-        payload: {},
-        occurrence_count: 1,
-        viewed_at: now,
-        created_at: now,
-        updated_at: now,
-      });
+      enqueueToast(
+        {
+          id: `local-${localToastSeqRef.current}`,
+          kind: "local",
+          title: input.title,
+          body: input.body,
+          payload: {},
+          occurrence_count: 1,
+          viewed_at: now,
+          created_at: now,
+          updated_at: now,
+        },
+        input.action ? { action: input.action, persist: true } : undefined,
+      );
     },
     [enqueueToast],
   );
@@ -404,6 +423,22 @@ export function NotificationsProvider({ children }: { children: ReactNode }) {
                   <X className="h-4 w-4" />
                 </button>
               </div>
+              {toast.action && (
+                <div className="mt-2 flex justify-end">
+                  <button
+                    type="button"
+                    className="inline-flex h-7 items-center px-2.5 text-sm font-medium text-primary underline-offset-4 hover:underline"
+                    onClick={() => {
+                      void toast.action?.onClick();
+                      setToastQueue((prev) =>
+                        prev.filter((item) => item.toast_id !== toast.toast_id),
+                      );
+                    }}
+                  >
+                    {toast.action.label}
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>
