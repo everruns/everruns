@@ -2109,7 +2109,10 @@ mod tests {
         assert_eq!(sanitized, capabilities);
     }
 
-    fn test_ctx(caller: Caller, db: Arc<StorageBackend>) -> Ctx {
+    async fn test_ctx(caller: Caller, db: Arc<StorageBackend>) -> Ctx {
+        crate::org_init::initialize_org_harnesses(&db, caller.org_id)
+            .await
+            .expect("initialize built-in harnesses for session service tests");
         let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
         Ctx::new(
             caller,
@@ -2212,7 +2215,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(1);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "app-backref-harness".to_string(),
@@ -2322,7 +2325,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(1);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "fork-harness".to_string(),
@@ -2435,7 +2438,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(1);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "harness".to_string(),
@@ -2475,6 +2478,8 @@ mod tests {
             description: None,
             system_prompt: "Agent prompt".to_string(),
             default_model_id: None,
+            harness_id: None,
+            harness_name: None,
             tags: vec![],
             capabilities: vec![],
             initial_files: vec![
@@ -2543,7 +2548,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(1);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let parent = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "parent".to_string(),
@@ -2631,7 +2636,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(1);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "harness".to_string(),
@@ -2658,6 +2663,8 @@ mod tests {
             description: None,
             system_prompt: "Agent prompt".to_string(),
             default_model_id: None,
+            harness_id: None,
+            harness_name: None,
             tags: vec![],
             capabilities: vec![],
             initial_files: vec![],
@@ -2740,7 +2747,7 @@ mod tests {
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
         let other_org_id = create_second_org(&db).await;
-        let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone());
+        let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone()).await;
 
         let other_harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "other-harness".to_string(),
@@ -2780,7 +2787,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
         let other_org_id = create_second_org(&db).await;
         let other_model_id = create_model(&db, other_org_id, "cross-org-model").await;
 
@@ -2823,7 +2830,7 @@ mod tests {
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
         let other_org_id = create_second_org(&db).await;
-        let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone());
+        let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone()).await;
 
         let other_harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "other-harness".to_string(),
@@ -2850,6 +2857,8 @@ mod tests {
             description: None,
             system_prompt: "Other".to_string(),
             default_model_id: None,
+            harness_id: None,
+            harness_name: None,
             tags: vec![],
             capabilities: vec![AgentCapabilityConfig::new("session_schedule")],
             initial_files: vec![],
@@ -3094,7 +3103,7 @@ mod tests {
         let file_service = WorkspaceFileService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
         let other_org_id = create_second_org(&db).await;
-        let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone());
+        let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone()).await;
 
         let other_harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "other-harness".to_string(),
@@ -3121,6 +3130,8 @@ mod tests {
             description: None,
             system_prompt: "Other".to_string(),
             default_model_id: None,
+            harness_id: None,
+            harness_name: None,
             tags: vec![],
             capabilities: vec![AgentCapabilityConfig::new("sample_data")],
             initial_files: vec![],
@@ -3191,7 +3202,7 @@ mod tests {
         let session_service = SessionService::new(db.clone());
         let file_service = WorkspaceFileService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let memory = CreateMemory {
             name: "Repo Memory".to_string(),
@@ -3281,7 +3292,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let memory = CreateMemory {
             name: "Read-only Repo".to_string(),
@@ -3346,7 +3357,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "harness".to_string(),
@@ -3401,7 +3412,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "harness".to_string(),
@@ -3463,7 +3474,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "harness".to_string(),
@@ -3513,7 +3524,7 @@ mod tests {
     async fn app_session_creation_enforces_total_session_cap() {
         let db = Arc::new(StorageBackend::in_memory());
         let caller = Caller::internal(DEFAULT_ORG_ID);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "app-session-cap-harness".to_string(),
@@ -3591,7 +3602,7 @@ mod tests {
 
         let db = Arc::new(StorageBackend::in_memory());
         let caller = Caller::internal(DEFAULT_ORG_ID);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "cap-test-harness".to_string(),

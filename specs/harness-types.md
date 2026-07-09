@@ -24,6 +24,7 @@ The `name` field works like a GitHub repository name: lowercase alphanumeric wit
 ### Name-based access
 
 - **GET /v1/harnesses/{id_or_name}** — Accepts either a prefixed ID (`harness_...`) or a stable name (`generic`). The server tries parsing as ID first, then falls back to name lookup.
+- **POST /v1/agents / PATCH /v1/agents/{id}** — Accepts `harness_name` as an alternative to `harness_id`. The two fields are mutually exclusive. Agent create defaults to the org's built-in `generic` harness when both are omitted; update leaves the existing harness unchanged when both are omitted.
 - **POST /v1/sessions** — Accepts `harness_name` as an alternative to `harness_id`. The two fields are mutually exclusive.
 - **CLI** — `everruns sessions create --harness generic` accepts both IDs and names. Non-ID values are resolved via `GET /v1/harnesses/{name}` before session creation.
 

@@ -406,6 +406,7 @@ impl InMemoryAgenticLoopBuilder {
             description: None,
             system_prompt: self.system_prompt,
             default_model_id: None,
+            harness_id,
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,

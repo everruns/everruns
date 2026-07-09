@@ -258,6 +258,7 @@ pub struct AgentBuilder {
     description: Option<String>,
     system_prompt: String,
     default_model_id: Option<ModelId>,
+    harness_id: HarnessId,
     tags: Vec<String>,
     capabilities: Vec<AgentCapabilityConfig>,
     initial_files: Vec<everruns_core::InitialFile>,
@@ -281,6 +282,7 @@ impl AgentBuilder {
             description: None,
             system_prompt: system_prompt.into(),
             default_model_id: None,
+            harness_id: HarnessId::new(),
             tags: Vec::new(),
             capabilities: Vec::new(),
             initial_files: Vec::new(),
@@ -328,6 +330,11 @@ impl AgentBuilder {
 
     pub fn default_model_id(mut self, default_model_id: ModelId) -> Self {
         self.default_model_id = Some(default_model_id);
+        self
+    }
+
+    pub fn harness_id(mut self, harness_id: HarnessId) -> Self {
+        self.harness_id = harness_id;
         self
     }
 
@@ -431,6 +438,7 @@ impl AgentBuilder {
             description: self.description,
             system_prompt: self.system_prompt,
             default_model_id: self.default_model_id,
+            harness_id: self.harness_id,
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,

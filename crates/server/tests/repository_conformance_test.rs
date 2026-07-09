@@ -10,7 +10,8 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use everruns_core::message_filter::MessageQuery;
-use everruns_core::{AgentId, DEFAULT_ORG_ID, PrincipalId};
+use everruns_core::{AgentId, DEFAULT_ORG_ID, HarnessId, PrincipalId};
+use everruns_server::org_init;
 use everruns_server::storage::{
     CreateAgentRow, CreateBudgetRow, CreateEventRow, CreatePrincipalRow, CreateProviderRow,
     CreateSessionRow, CreateUsageJournalRow, CreateUsageLedgerRow, Database, MESSAGE_SAFETY_LIMIT,
@@ -69,7 +70,7 @@ fn session_input(owner_principal_id: PrincipalId, label: &str) -> CreateSessionR
     }
 }
 
-fn agent_input(name: String) -> CreateAgentRow {
+fn agent_input(name: String, harness_id: HarnessId) -> CreateAgentRow {
     CreateAgentRow {
         public_id: AgentId::new().to_string(),
         name,
@@ -77,6 +78,7 @@ fn agent_input(name: String) -> CreateAgentRow {
         description: None,
         system_prompt: "You are a conformance test agent.".to_string(),
         default_model_id: None,
+        harness_id,
         tags: vec![],
         initial_files: json!([]),
         tools: json!([]),
@@ -105,7 +107,7 @@ async fn assert_one_outbox(
     assert_eq!(rows[0].status, "pending");
 }
 
-async fn run_repository_conformance(repo: &dyn Repository, label: &str) {
+async fn run_repository_conformance(repo: &dyn Repository, label: &str, harness_id: HarnessId) {
     let principal_id = create_test_principal(repo, label).await;
 
     let session = repo
@@ -191,12 +193,12 @@ async fn run_repository_conformance(repo: &dyn Repository, label: &str) {
 
     let agent_name = format!("conf-agent-{label}-{}", Uuid::now_v7());
     let (created_agent, was_created) = repo
-        .upsert_agent_by_name(DEFAULT_ORG_ID, agent_input(agent_name.clone()))
+        .upsert_agent_by_name(DEFAULT_ORG_ID, agent_input(agent_name.clone(), harness_id))
         .await
         .expect("create agent by name");
     assert!(was_created);
     let (updated_agent, was_created) = repo
-        .upsert_agent_by_name(DEFAULT_ORG_ID, agent_input(agent_name))
+        .upsert_agent_by_name(DEFAULT_ORG_ID, agent_input(agent_name, harness_id))
         .await
         .expect("update agent by name");
     assert!(!was_created);
@@ -311,11 +313,18 @@ async fn run_repository_conformance(repo: &dyn Repository, label: &str) {
 #[tokio::test]
 async fn in_memory_repository_conformance() {
     let backend = StorageBackend::in_memory();
-    run_repository_conformance(&backend, "memory").await;
+    let harness_id = HarnessId::from_uuid(Uuid::nil());
+    run_repository_conformance(&backend, "memory", harness_id).await;
 }
 
 #[tokio::test]
 async fn postgres_repository_conformance() {
     let backend = create_postgres_backend().await;
-    run_repository_conformance(&backend, "postgres").await;
+    org_init::initialize_org_harnesses(&backend, DEFAULT_ORG_ID)
+        .await
+        .expect("initialize built-in harnesses");
+    let harness_id = org_init::generic_harness_id(&backend, DEFAULT_ORG_ID)
+        .await
+        .expect("generic harness id");
+    run_repository_conformance(&backend, "postgres", harness_id).await;
 }

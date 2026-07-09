@@ -409,6 +409,7 @@ pub struct AgentRow {
     pub description: Option<String>,
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,
+    pub harness_id: HarnessId,
     #[sqlx(default)]
     pub default_version_id: Option<everruns_core::AgentVersionId>,
     #[sqlx(default)]
@@ -518,6 +519,7 @@ pub struct CreateAgentRow {
     pub description: Option<String>,
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,
+    pub harness_id: HarnessId,
     pub tags: Vec<String>,
     /// Starter files copied into new sessions (JSONB in DB)
     pub initial_files: serde_json::Value,
@@ -540,6 +542,7 @@ pub struct UpdateAgent {
     pub description: Option<String>,
     pub system_prompt: Option<String>,
     pub default_model_id: Option<ModelId>,
+    pub harness_id: Option<HarnessId>,
     pub default_version_id: Option<everruns_core::AgentVersionId>,
     pub forked_from_agent_id: Option<AgentId>,
     pub forked_from_version_id: Option<everruns_core::AgentVersionId>,

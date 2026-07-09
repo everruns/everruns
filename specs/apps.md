@@ -213,7 +213,7 @@ Apps are the publish surface for Harnesses and Agents. To avoid forcing users to
 - Harness detail → `/apps/new?harness_id={harness_id}`
 - Agent detail → `/apps/new?agent_id={agent_id}`
 
-The create form is a streamlined draft form: an **App details** section (name, description) and a **Deployment** section (required Harness, optional Agent). Channel and agent-identity configuration are deferred to the detail page, so creation always yields a draft. The form reads `harness_id` and `agent_id` from the query string to seed its selectors. Because a Harness is required, the harness shortcut yields a directly submittable draft; the agent shortcut still requires the user to pick a harness.
+The create form is a streamlined draft form: an **App details** section (name, description) and a **Deployment** section (required Harness, optional Agent). Channel and agent-identity configuration are deferred to the detail page, so creation always yields a draft. The form reads `harness_id` and `agent_id` from the query string to seed its selectors. Because a Harness is required, the harness shortcut yields a directly submittable draft; the agent shortcut should prefill the Agent's `harness_id` after loading the Agent, and only require a manual harness pick if that lookup is unavailable.
 
 ## Data Model
 

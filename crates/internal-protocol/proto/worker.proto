@@ -364,6 +364,7 @@ message Agent {
     repeated string capability_ids = 11;
     optional string display_name = 12;
     optional bool parallel_tool_calls = 13;
+    optional Uuid harness_id = 14;
 }
 
 message GetAgentRequest {

@@ -113,6 +113,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             description: None,
             system_prompt: "Use tools when needed.".into(),
             default_model_id: None,
+            harness_id,
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,

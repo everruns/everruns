@@ -14821,6 +14821,7 @@
           "id",
           "name",
           "system_prompt",
+          "harness_id",
           "status",
           "created_at",
           "updated_at"
@@ -14904,6 +14905,11 @@
             ],
             "description": "Source version for a forked agent.",
             "example": "agentver_01933b5a00007000800000000000001"
+          },
+          "harness_id": {
+            "type": "string",
+            "description": "Harness that supplies the base execution environment for this agent.",
+            "example": "harness_01933b5a00007000800000000000001"
           },
           "id": {
             "type": "string",
@@ -17085,6 +17091,22 @@
             ],
             "description": "Human-readable display name shown in UI.\nFalls back to `name` when absent.",
             "example": "Customer Support Agent"
+          },
+          "harness_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Harness ID used as this agent's base execution environment. If omitted,\nthe org's built-in `generic` harness is used.",
+            "example": "harness_01933b5a00007000800000000000001"
+          },
+          "harness_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Addressable harness name. Alternative to `harness_id`.",
+            "example": "generic"
           },
           "id": {
             "type": [
@@ -22383,6 +22405,7 @@
                 "id",
                 "name",
                 "system_prompt",
+                "harness_id",
                 "status",
                 "created_at",
                 "updated_at"
@@ -22466,6 +22489,11 @@
                   ],
                   "description": "Source version for a forked agent.",
                   "example": "agentver_01933b5a00007000800000000000001"
+                },
+                "harness_id": {
+                  "type": "string",
+                  "description": "Harness that supplies the base execution environment for this agent.",
+                  "example": "harness_01933b5a00007000800000000000001"
                 },
                 "id": {
                   "type": "string",
@@ -28429,6 +28457,7 @@
                         "id",
                         "name",
                         "system_prompt",
+                        "harness_id",
                         "status",
                         "created_at",
                         "updated_at"
@@ -28512,6 +28541,11 @@
                           ],
                           "description": "Source version for a forked agent.",
                           "example": "agentver_01933b5a00007000800000000000001"
+                        },
+                        "harness_id": {
+                          "type": "string",
+                          "description": "Harness that supplies the base execution environment for this agent.",
+                          "example": "harness_01933b5a00007000800000000000001"
                         },
                         "id": {
                           "type": "string",
@@ -33916,6 +33950,22 @@
             "description": "Human-readable display name shown in UI.",
             "example": "Updated Support Agent"
           },
+          "harness_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Harness ID used as this agent's base execution environment. Omit to leave unchanged.",
+            "example": "harness_01933b5a00007000800000000000001"
+          },
+          "harness_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Addressable harness name. Alternative to `harness_id`; omit to leave unchanged.",
+            "example": "generic"
+          },
           "initial_files": {
             "type": [
               "array",
@@ -35744,6 +35794,7 @@
               "id",
               "name",
               "system_prompt",
+              "harness_id",
               "status",
               "created_at",
               "updated_at"
@@ -35827,6 +35878,11 @@
                 ],
                 "description": "Source version for a forked agent.",
                 "example": "agentver_01933b5a00007000800000000000001"
+              },
+              "harness_id": {
+                "type": "string",
+                "description": "Harness that supplies the base execution environment for this agent.",
+                "example": "harness_01933b5a00007000800000000000001"
               },
               "id": {
                 "type": "string",
@@ -37146,6 +37202,7 @@
                   "id",
                   "name",
                   "system_prompt",
+                  "harness_id",
                   "status",
                   "created_at",
                   "updated_at"
@@ -37229,6 +37286,11 @@
                     ],
                     "description": "Source version for a forked agent.",
                     "example": "agentver_01933b5a00007000800000000000001"
+                  },
+                  "harness_id": {
+                    "type": "string",
+                    "description": "Harness that supplies the base execution environment for this agent.",
+                    "example": "harness_01933b5a00007000800000000000001"
                   },
                   "id": {
                     "type": "string",

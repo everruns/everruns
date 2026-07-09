@@ -562,6 +562,8 @@ mod tests {
             description: None,
             system_prompt: "Use tools.".into(),
             default_model_id: None,
+
+            harness_id: crate::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,

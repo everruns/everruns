@@ -147,6 +147,7 @@ async fn main() -> anyhow::Result<()> {
         description: Some("A helpful weather assistant".to_string()),
         system_prompt: "You are a helpful weather assistant. Use the get_weather tool to answer weather questions.".to_string(),
         default_model_id: None,
+        harness_id,
         default_version_id: None,
         forked_from_agent_id: None,
         forked_from_version_id: None,

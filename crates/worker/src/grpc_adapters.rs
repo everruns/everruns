@@ -1132,6 +1132,12 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         .as_ref()
         .map(|u| proto_uuid_to_uuid(Some(u)))
         .transpose()?;
+    let harness_id = proto_agent
+        .harness_id
+        .as_ref()
+        .map(|u| proto_uuid_to_uuid(Some(u)))
+        .transpose()?
+        .ok_or_else(|| anyhow::anyhow!("proto Agent missing harness_id"))?;
 
     let status = match proto_agent.status.to_lowercase().as_str() {
         "active" => everruns_core::AgentStatus::Active,
@@ -1148,6 +1154,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         description: non_empty_string(proto_agent.description),
         system_prompt: proto_agent.system_prompt,
         default_model_id: default_model_id.map(|u| u.into()),
+        harness_id: harness_id.into(),
         default_version_id: None,
         forked_from_agent_id: None,
         forked_from_version_id: None,
