@@ -223,3 +223,69 @@ impl Command for ExportSessionMessages {
 }
 
 inventory::submit! { CommandDescriptor::of::<ExportSessionMessages>() }
+
+/// One byte-bounded segment of a segmented ATIF session export, ready for the
+/// HTTP route.
+#[derive(Debug)]
+pub struct SegmentExport {
+    /// Serialized standalone ATIF-v1.7 document for this segment.
+    pub body: String,
+    /// Images flattened to markers within this segment (per-segment
+    /// `X-Atif-Images-Omitted`).
+    pub images_omitted: usize,
+    /// Opaque cursor for the next segment, or `None` on the final/only segment.
+    pub next_cursor: Option<String>,
+    /// 0-based index of this segment in the chain.
+    pub segment_index: usize,
+}
+
+/// Build one segment of a segmented ATIF export.
+///
+/// Deliberately NOT a registered `Command`: segmentation is an HTTP-only
+/// concern, so it is kept off the MCP/CLI scripting catalog (which exposes the
+/// whole-document `export_session_messages`). It still reuses the same
+/// org-scoped session resolution and event fetch as `ExportSessionMessages`, so
+/// tenant scoping is identical — the session is resolved from the path and the
+/// cursor only selects a step offset within THAT session.
+pub async fn export_session_segment(
+    ctx: &Ctx,
+    session_id_str: &str,
+    cursor: Option<&str>,
+    max_bytes: usize,
+    link_base: &str,
+) -> Result<SegmentExport, CommandError> {
+    let session_id = q::parse_session_id(session_id_str)?;
+    q::session_service(ctx)?
+        .get(&ctx.caller, session_id.uuid(), None)
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Session"))?;
+
+    let event_service = crate::services::EventService::new(
+        ctx.db.clone(),
+        crate::event_delivery::EventDelivery::in_memory(),
+    );
+    let events = event_service
+        .list(session_id.uuid(), None, None, &[], &[], None, None)
+        .await
+        .map_err(classify_anyhow)?;
+
+    let segment = crate::atif::build_segment(
+        &session_id.to_string(),
+        &events,
+        crate::atif::AtifOptions::default(),
+        cursor,
+        max_bytes,
+        link_base,
+    )
+    .map_err(|e| CommandError::bad_request(e.to_string()).with_code("atif_cursor_invalid"))?;
+
+    let body =
+        serde_json::to_string(&segment.document).map_err(|e| CommandError::internal(e.into()))?;
+    Ok(SegmentExport {
+        body,
+        images_omitted: segment.images_omitted,
+        next_cursor: segment.next_cursor,
+        segment_index: segment.segment_index,
+    })
+}

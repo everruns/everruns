@@ -51,8 +51,12 @@ the existing dataset formats), plus case identity (`source_key`, `eval_run_id`,
 ## Surfaces
 
 - **Session export** (✅ shipped): `GET /v1/sessions/{id}/export?format=atif`
-  returns one ATIF JSON document (see `specs/session-export.md`; default JSONL
-  unchanged). Reachable from all three consumer surfaces: the API, the UI
+  returns one ATIF JSON document; `&segmented=true` returns a forward-linked
+  chain of byte-bounded segments for sessions over the size cap (see
+  `specs/session-export.md` and the Limits section; default JSONL unchanged).
+  The MCP/CLI `export_session_messages` surface is whole-document only —
+  segmentation is an HTTP-route concern and is not exposed to the scripting
+  catalog. Reachable from all three consumer surfaces: the API, the UI
   ("Export ATIF"), and the CLI (`everruns sessions export --format atif`,
   default `jsonl`).
 - **Dataset export** (✅ shipped): `format: "atif"` on the eval dataset
@@ -79,15 +83,47 @@ the existing dataset formats), plus case identity (`source_key`, `eval_run_id`,
   present on the part, never bytes) in step-level `extra.omitted_images[]`,
   plus a root `extra.images_omitted` total. Both keys appear only when at
   least one image was omitted.
-- **Session export size cap.** `?format=atif` returns one synchronous JSON
-  document and enforces `ATIF_EXPORT_MAX_BYTES` (50 MiB, defined in
+- **Session export size cap.** Plain `?format=atif` returns one synchronous
+  JSON document and enforces `ATIF_EXPORT_MAX_BYTES` (50 MiB, defined in
   `crates/server/src/atif.rs`); larger documents are rejected with HTTP 413
-  (standard error JSON, code `atif_export_too_large`). Segmented export via
-  ATIF `continued_trajectory_ref` is the planned follow-up for sessions over
-  the cap. The default JSONL export is not affected.
+  (standard error JSON, code `atif_export_too_large`, with `detail` pointing at
+  `&segmented=true`). The default JSONL export is not affected.
+- **Segmented export (recoverable path for large sessions).**
+  `?format=atif&segmented=true` returns the session as a forward-linked chain of
+  byte-bounded segments instead of one document, so a session over the cap stays
+  exportable. Contract:
+  - Each segment is a **standalone, valid ATIF-v1.7 document** with the same
+    `schema_version` and `session_id`, a per-segment `trajectory_id`
+    (`{session_id}#segment-{index}`), a prefix window of the session's `steps[]`
+    with **absolute `step_id`s preserved**, and per-segment `final_metrics`
+    (summed over that segment's steps). Concatenating every segment's `steps[]`
+    in order reproduces the whole-document `steps[]`.
+  - A segment with more steps remaining carries the RFC's
+    **`continued_trajectory_ref`** (a root string, per Harbor RFC 0001): the
+    export URL for the next segment, embedding an opaque `cursor`. The
+    final/only segment omits it — that is how a reader detects the end.
+  - The **cursor** is opaque (`base64url(JSON)` of the session id + next step
+    offset). It is validated on every request: malformed, foreign-session, or
+    out-of-range cursors are rejected with HTTP 400 (code `atif_cursor_invalid`),
+    never a panic. The session is always resolved org-scoped from the path; the
+    cursor only selects a step offset within that session, so it cannot widen
+    scope.
+  - Root `extra` carries per-segment bookkeeping: `segment_index`,
+    `continued_trajectory_ref` (mirrored), and `images_omitted` for **this**
+    segment. The session-level `turns` roll-up is carried once, on the final
+    segment.
+  - **Byte bounding.** Segments are packed greedily and stop before the
+    serialized segment would exceed `ATIF_EXPORT_MAX_BYTES`; each segment holds
+    at least one step. **Caveat:** a single step whose own serialization exceeds
+    the cap is returned alone and may exceed the cap — the only way to make
+    progress without dropping data (no 413, no infinite loop).
+  - Secret scrubbing is applied to **every** segment, same as the whole-doc
+    path. Response headers `X-Atif-Segment-Index`, `X-Atif-Images-Omitted` (when
+    N > 0, per segment), and `X-Atif-Next-Cursor` (when more remain) let a client
+    walk the chain and detect lossiness without parsing each body.
 - **Lossiness header.** Successful ATIF session exports set
-  `X-Atif-Images-Omitted: <N>` only when N > 0, so clients can detect a lossy
-  export without parsing the body.
+  `X-Atif-Images-Omitted: <N>` only when N > 0 (per segment on the segmented
+  path), so clients can detect a lossy export without parsing the body.
 
 ## Security
 
@@ -109,6 +145,9 @@ reflects what has shipped on `main`.
 2. ✅ **Dataset export + import** — `format: "atif"` on the eval dataset
    export, `POST /v1/evals/{eval_id}/atif_import`, and the related spec
    updates (`specs/dataset-export.md`, `specs/evals.md`).
+3. ✅ **Segmented session export** — `?format=atif&segmented=true` with
+   `continued_trajectory_ref` linking + opaque cursor, for sessions over the
+   size cap (see Limits).
 
 ## Non-goals (v1)
 
@@ -116,8 +155,6 @@ reflects what has shipped on `main`.
   subagent trajectories yet).
 - ATIF image content parts (images are flattened to markers with locator
   records — see Limits).
-- Segmented export (`continued_trajectory_ref`) for sessions over the size
-  cap.
 - Importing trajectories as *results* (the existing external-run import in
   `specs/evals.md` covers scored results; ATIF import produces cases).
 

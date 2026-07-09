@@ -41,9 +41,10 @@ pub const ATIF_SCHEMA_VERSION: &str = "ATIF-v1.7";
 /// The session export (`?format=atif`) is a synchronous single-document
 /// response, so an unbounded fold of a very large event log could pin server
 /// memory and saturate the response path (TM-DOS-026). Documents over this
-/// cap are rejected with HTTP 413 at the export route. Segmented export via
-/// ATIF `continued_trajectory_ref` is the planned follow-up for sessions
-/// that exceed it.
+/// cap are rejected with HTTP 413 at the export route; the recoverable path is
+/// segmented export (`?format=atif&segmented=true`, see `build_segment`), which
+/// bounds every response to this cap and links segments via ATIF
+/// `continued_trajectory_ref`.
 pub const ATIF_EXPORT_MAX_BYTES: usize = 50 * 1024 * 1024;
 
 // ============================================================================
@@ -81,11 +82,14 @@ pub fn build_trajectory(
     mut root_extra: Map<String, Value>,
     options: AtifOptions,
 ) -> BuiltTrajectory {
-    let mut fold = Fold::new(options.redact_content);
-    for event in events {
-        fold.push(event);
-    }
-    let (steps, turns, totals, model_name, images_omitted) = fold.finish();
+    let folded = fold_events(events, options.redact_content);
+    let FoldOutput {
+        steps,
+        turns,
+        totals,
+        model_name,
+        images_omitted,
+    } = folded;
 
     if !turns.is_empty() {
         root_extra.insert("turns".to_string(), Value::Array(turns));
@@ -94,6 +98,63 @@ pub fn build_trajectory(
         root_extra.insert("images_omitted".to_string(), json!(images_omitted));
     }
 
+    let final_metrics = totals.to_final_metrics(steps.len());
+    let mut value = assemble_document(
+        session_id,
+        None,
+        model_name,
+        final_metrics,
+        steps,
+        root_extra,
+    );
+    // Always-on secret scrubbing over every exported string. Content redaction
+    // was already applied structurally during the fold, so scrub-only here.
+    sanitize_value(&mut value, false);
+    BuiltTrajectory {
+        document: value,
+        images_omitted,
+    }
+}
+
+/// Raw fold outputs shared by the whole-document and segmented export paths.
+/// `steps` already carry their absolute 1-based `step_id`.
+struct FoldOutput {
+    steps: Vec<Value>,
+    turns: Vec<Value>,
+    totals: Totals,
+    model_name: Option<String>,
+    images_omitted: usize,
+}
+
+/// Fold an event slice into ATIF pieces once. The single event→step mapping
+/// (`Fold`) is shared by every export surface; callers assemble the outer
+/// document (whole-doc or one segment) from these pieces.
+fn fold_events(events: &[Event], redact: bool) -> FoldOutput {
+    let mut fold = Fold::new(redact);
+    for event in events {
+        fold.push(event);
+    }
+    let (steps, turns, totals, model_name, images_omitted) = fold.finish();
+    FoldOutput {
+        steps,
+        turns,
+        totals,
+        model_name,
+        images_omitted,
+    }
+}
+
+/// Assemble one ATIF root document from already-folded steps. `trajectory_id`
+/// is set only for segments (the whole-doc export has none). Not scrubbed here
+/// — callers run `sanitize_value` after assembly.
+fn assemble_document(
+    session_id: Option<&str>,
+    trajectory_id: Option<&str>,
+    model_name: Option<String>,
+    final_metrics: Value,
+    steps: Vec<Value>,
+    root_extra: Map<String, Value>,
+) -> Value {
     let mut agent = Map::new();
     agent.insert("name".to_string(), json!("everruns"));
     agent.insert("version".to_string(), json!(env!("CARGO_PKG_VERSION")));
@@ -106,24 +167,16 @@ pub fn build_trajectory(
     if let Some(sid) = session_id {
         root.insert("session_id".to_string(), json!(sid));
     }
+    if let Some(tid) = trajectory_id {
+        root.insert("trajectory_id".to_string(), json!(tid));
+    }
     root.insert("agent".to_string(), Value::Object(agent));
-    root.insert(
-        "final_metrics".to_string(),
-        totals.to_final_metrics(steps.len()),
-    );
+    root.insert("final_metrics".to_string(), final_metrics);
     root.insert("steps".to_string(), Value::Array(steps));
     if !root_extra.is_empty() {
         root.insert("extra".to_string(), Value::Object(root_extra));
     }
-
-    let mut value = Value::Object(root);
-    // Always-on secret scrubbing over every exported string. Content redaction
-    // was already applied structurally during the fold, so scrub-only here.
-    sanitize_value(&mut value, false);
-    BuiltTrajectory {
-        document: value,
-        images_omitted,
-    }
+    Value::Object(root)
 }
 
 /// Build one dataset NDJSON record for an eval case: a complete ATIF
@@ -151,6 +204,322 @@ pub fn build_case_record(
     extra.insert("case_name".to_string(), json!(result.case_name));
     let session_id = result.session_id.map(|s| s.to_string());
     build_trajectory(session_id.as_deref(), events, extra, options).document
+}
+
+// ============================================================================
+// Segmented export (large sessions over the size cap)
+// ============================================================================
+//
+// The whole-document export (`?format=atif`) is a single synchronous JSON body
+// capped at `ATIF_EXPORT_MAX_BYTES` (413 over the cap). Segmented export
+// (`?format=atif&segmented=true`) is the recoverable path: it folds the same
+// event log into steps once and hands them out in byte-bounded segments, each a
+// standalone ATIF-v1.7 document. When steps remain, a segment carries the RFC's
+// `continued_trajectory_ref` (a string reference — Harbor RFC 0001 defines it as
+// a scalar pointer to the continuation file) pointing at the next segment's URL,
+// which embeds an opaque `cursor`. Concatenating every segment's `steps[]` in
+// order reproduces the whole-document `steps[]` (absolute `step_id`s preserved).
+
+/// Opaque continuation cursor for segmented ATIF export.
+///
+/// Encodes the session id it was minted for plus the absolute step offset
+/// (0-based index into the full folded step list) where the next segment
+/// begins. It is base64url(JSON) — not encrypted, but tamper-evident by
+/// construction: the session binding is re-checked against the path session on
+/// decode (a cursor forged for another session is rejected), and the offset is
+/// bounds-checked against the resolved session's own step count. It therefore
+/// cannot widen scope (the session is always resolved org-scoped from the path)
+/// or drive unbounded work (the offset only indexes into that session's steps).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SegmentCursor {
+    session_id: String,
+    /// Absolute 0-based step offset where the next segment starts.
+    offset: usize,
+}
+
+/// Cursor schema tag, bumped if the wire shape changes.
+const CURSOR_VERSION: u8 = 1;
+/// Hard cap on an accepted cursor's base64 length, so a bogus giant `cursor=`
+/// query value is rejected before any allocation/parsing work (TM-DOS/TM-API).
+const MAX_CURSOR_BYTES: usize = 4096;
+
+impl SegmentCursor {
+    fn encode(&self) -> String {
+        use base64::Engine;
+        let payload = json!({
+            "v": CURSOR_VERSION,
+            "sid": self.session_id,
+            "off": self.offset,
+        });
+        base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .encode(serde_json::to_vec(&payload).unwrap_or_default())
+    }
+
+    /// Decode and validate a cursor for `expected_session`. Returns the absolute
+    /// step offset. Any malformed input, version mismatch, or session mismatch
+    /// is a caller error (surfaced as HTTP 400), never a panic.
+    fn decode(raw: &str, expected_session: &str) -> Result<usize, CursorError> {
+        use base64::Engine;
+        if raw.len() > MAX_CURSOR_BYTES {
+            return Err(CursorError("cursor is too long"));
+        }
+        let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(raw.as_bytes())
+            .map_err(|_| CursorError("cursor is not valid base64url"))?;
+        let value: Value =
+            serde_json::from_slice(&bytes).map_err(|_| CursorError("cursor is not valid JSON"))?;
+        let obj = value
+            .as_object()
+            .ok_or(CursorError("cursor is malformed"))?;
+        if obj.get("v").and_then(Value::as_u64) != Some(CURSOR_VERSION as u64) {
+            return Err(CursorError("unsupported cursor version"));
+        }
+        let sid = obj
+            .get("sid")
+            .and_then(Value::as_str)
+            .ok_or(CursorError("cursor is missing a session"))?;
+        // THREAT[TM-TENANT]: the cursor's session must match the path session.
+        // Scope is always the path session (resolved org-scoped by the caller);
+        // this check just rejects a cursor minted for a different session so a
+        // stale/confused cursor cannot silently read another trajectory.
+        if sid != expected_session {
+            return Err(CursorError("cursor does not belong to this session"));
+        }
+        let offset = obj
+            .get("off")
+            .and_then(Value::as_u64)
+            .ok_or(CursorError("cursor is missing an offset"))?;
+        usize::try_from(offset).map_err(|_| CursorError("cursor offset is out of range"))
+    }
+}
+
+/// A rejected cursor. Rendered as an HTTP 400 by the export route; never a panic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CursorError(pub &'static str);
+
+impl std::fmt::Display for CursorError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
+impl std::error::Error for CursorError {}
+
+/// One byte-bounded segment of a segmented ATIF export.
+#[derive(Debug)]
+pub struct SegmentedTrajectory {
+    /// A standalone, valid ATIF-v1.7 document holding this segment's steps.
+    pub document: Value,
+    /// Images flattened to markers within THIS segment's steps (per-segment
+    /// `X-Atif-Images-Omitted` semantics; mirrored in root `extra.images_omitted`).
+    pub images_omitted: usize,
+    /// Opaque cursor selecting the next segment, or `None` on the final/only
+    /// segment. When present it is also embedded in the document's
+    /// `continued_trajectory_ref` URL.
+    pub next_cursor: Option<String>,
+    /// 0-based index of this segment in the chain.
+    pub segment_index: usize,
+}
+
+/// Build one segment of a segmented ATIF export.
+///
+/// `cursor` is `None` for the first segment, or the opaque cursor returned by
+/// the previous segment. `max_bytes` bounds the serialized segment: steps are
+/// added greedily until the next step would push the segment over the cap, and
+/// every segment holds at least one step. A single step whose own serialization
+/// exceeds `max_bytes` is returned alone as its segment (and may exceed the cap
+/// — the only way to make progress without dropping data). `link_base` is the
+/// absolute request path used to build `continued_trajectory_ref`
+/// (e.g. `/v1/sessions/{id}/export`); the query is appended by this function.
+///
+/// Errors only on a bad `cursor` (→ HTTP 400).
+pub fn build_segment(
+    session_id: &str,
+    events: &[Event],
+    options: AtifOptions,
+    cursor: Option<&str>,
+    max_bytes: usize,
+    link_base: &str,
+) -> Result<SegmentedTrajectory, CursorError> {
+    let folded = fold_events(events, options.redact_content);
+    let all_steps = folded.steps;
+    let total = all_steps.len();
+
+    // Resolve the start offset from the cursor (validated, session-bound).
+    let start = match cursor {
+        None => 0,
+        Some(raw) => {
+            let off = SegmentCursor::decode(raw, session_id)?;
+            // An offset at/after the end is only valid when it is exactly the
+            // end (an empty session, or a client re-fetching past the tail).
+            if off > total {
+                return Err(CursorError("cursor offset is past the end of the session"));
+            }
+            off
+        }
+    };
+
+    // Segment index is derivable from the offset only when segments are uniform,
+    // which they are not (byte-bounded). Recompute it by replaying the greedy
+    // packing from 0 up to `start` so the index is exact and cheap.
+    let segment_index = segment_index_for_offset(&all_steps, start, max_bytes);
+
+    // Pack steps [start..end] greedily under the byte budget. `start == total`
+    // (empty session, or a cursor at the tail) yields an empty final segment
+    // with no continuation, mirroring the whole-doc export of an empty session.
+    let end = if start < total {
+        pack_end(&all_steps, start, max_bytes)
+    } else {
+        start
+    };
+    let has_more = end < total;
+
+    let segment_steps: Vec<Value> = all_steps[start..end].to_vec();
+    let images_omitted = count_omitted_images(&segment_steps);
+
+    let mut root_extra = Map::new();
+    root_extra.insert("segment_index".to_string(), json!(segment_index));
+    if images_omitted > 0 {
+        root_extra.insert("images_omitted".to_string(), json!(images_omitted));
+    }
+    // The session-level turn roll-up is global; carry it once, on the final
+    // segment, so it is not duplicated across the chain.
+    if !has_more && !folded.turns.is_empty() {
+        root_extra.insert("turns".to_string(), Value::Array(folded.turns));
+    }
+
+    let next_cursor = has_more.then(|| {
+        SegmentCursor {
+            session_id: session_id.to_string(),
+            offset: end,
+        }
+        .encode()
+    });
+
+    let final_metrics = segment_final_metrics(&segment_steps);
+    let trajectory_id = format!("{session_id}#segment-{segment_index}");
+    let mut document = assemble_document(
+        Some(session_id),
+        Some(&trajectory_id),
+        folded.model_name,
+        final_metrics,
+        segment_steps,
+        root_extra,
+    );
+    // Same always-on secret scrubbing as the whole-doc path, per segment. Run
+    // it BEFORE inserting the continuation link so the scrubber cannot corrupt
+    // the opaque base64url cursor (which is machine-generated, not user content
+    // — it carries nothing to scrub).
+    sanitize_value(&mut document, false);
+    if let Some(cursor) = &next_cursor {
+        let reference = json!(continuation_ref(link_base, cursor));
+        if let Value::Object(map) = &mut document {
+            // Per Harbor RFC 0001, `continued_trajectory_ref` is a root string
+            // field; also mirror it into `extra` as segment bookkeeping.
+            map.insert("continued_trajectory_ref".to_string(), reference.clone());
+            if let Some(Value::Object(extra)) = map.get_mut("extra") {
+                extra.insert("continued_trajectory_ref".to_string(), reference);
+            }
+        }
+    }
+
+    Ok(SegmentedTrajectory {
+        document,
+        images_omitted,
+        next_cursor,
+        segment_index,
+    })
+}
+
+/// The `continued_trajectory_ref` value: the export path with the segmented
+/// query and the opaque cursor. A relative reference so it works regardless of
+/// host/scheme; consumers resolve it against the request origin.
+fn continuation_ref(link_base: &str, cursor: &str) -> String {
+    format!("{link_base}?format=atif&segmented=true&cursor={cursor}")
+}
+
+/// Greedily choose the exclusive end index for a segment starting at `start`.
+/// Always returns at least `start + 1` (one step per segment). A step that
+/// alone exceeds `max_bytes` is still returned alone.
+fn pack_end(steps: &[Value], start: usize, max_bytes: usize) -> usize {
+    debug_assert!(start < steps.len(), "callers guarantee at least one step");
+    // Document scaffold overhead (schema_version, agent, final_metrics keys,
+    // trajectory_id, extra, continued_trajectory_ref). A generous fixed reserve
+    // keeps packing O(n) without serializing the whole doc per candidate; the
+    // reserve is far below the 50 MiB production cap and the final segment is
+    // never re-checked because at least one step is always emitted.
+    const SCAFFOLD_RESERVE: usize = 4096;
+    let budget = max_bytes.saturating_sub(SCAFFOLD_RESERVE);
+
+    let mut end = start + 1;
+    let mut used = step_bytes(&steps[start]);
+    while end < steps.len() {
+        let next = step_bytes(&steps[end]) + 1; // +1 for the array comma
+        if used + next > budget {
+            break;
+        }
+        used += next;
+        end += 1;
+    }
+    end
+}
+
+/// Serialized byte length of one step (used for byte-budget packing).
+fn step_bytes(step: &Value) -> usize {
+    serde_json::to_vec(step).map(|v| v.len()).unwrap_or(0)
+}
+
+/// Replay greedy packing from offset 0 to derive the 0-based segment index that
+/// begins at `start`. Cheap: one pass over the prefix's step sizes.
+fn segment_index_for_offset(steps: &[Value], start: usize, max_bytes: usize) -> usize {
+    let mut index = 0;
+    let mut cursor = 0;
+    while cursor < start {
+        cursor = pack_end(steps, cursor, max_bytes);
+        index += 1;
+    }
+    index
+}
+
+/// Count image markers (`extra.omitted_images[]` entries) across a segment's
+/// steps, for per-segment `images_omitted` bookkeeping.
+fn count_omitted_images(steps: &[Value]) -> usize {
+    steps
+        .iter()
+        .filter_map(|s| s.get("extra"))
+        .filter_map(|e| e.get("omitted_images"))
+        .filter_map(Value::as_array)
+        .map(Vec::len)
+        .sum()
+}
+
+/// Per-segment `final_metrics`, summed over the segment's own agent steps. A
+/// segment is a standalone trajectory, so its `final_metrics` describe only its
+/// steps (not the whole session).
+fn segment_final_metrics(steps: &[Value]) -> Value {
+    let mut totals = Totals::default();
+    for step in steps {
+        let Some(metrics) = step.get("metrics").and_then(Value::as_object) else {
+            continue;
+        };
+        totals.any = true;
+        totals.prompt += metrics
+            .get("prompt_tokens")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        totals.completion += metrics
+            .get("completion_tokens")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        totals.cached += metrics
+            .get("cached_tokens")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        if let Some(cost) = metrics.get("cost_usd").and_then(Value::as_f64) {
+            *totals.cost_usd.get_or_insert(0.0) += cost;
+        }
+    }
+    totals.to_final_metrics(steps.len())
 }
 
 /// Aggregated token totals across agent steps.
@@ -1328,5 +1697,290 @@ mod tests {
         });
         let draft = trajectory_to_case_draft(&t, 4).unwrap();
         assert_eq!(draft.name, "atif-case-5");
+    }
+
+    // ------------------------------------------------------------------
+    // Segmented export
+    // ------------------------------------------------------------------
+
+    const LINK_BASE: &str = "/v1/sessions/session_x/export";
+
+    /// A session with `n` distinct user messages → `n` user steps.
+    fn many_input_events(session: SessionId, n: usize) -> Vec<Event> {
+        (0..n)
+            .map(|i| {
+                event(
+                    session,
+                    InputMessageData::new(Message::user(format!("message number {i}"))),
+                )
+            })
+            .collect()
+    }
+
+    /// Walk the whole segmented chain, concatenating every segment's steps.
+    /// Returns (all_steps_in_order, segment_docs).
+    fn walk_segments(
+        session_id: &str,
+        events: &[Event],
+        max_bytes: usize,
+    ) -> (Vec<Value>, Vec<Value>) {
+        let mut steps = Vec::new();
+        let mut docs = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let seg = build_segment(
+                session_id,
+                events,
+                AtifOptions::default(),
+                cursor.as_deref(),
+                max_bytes,
+                LINK_BASE,
+            )
+            .expect("segment builds");
+            steps.extend(seg.document["steps"].as_array().unwrap().iter().cloned());
+            docs.push(seg.document.clone());
+            match seg.next_cursor {
+                Some(c) => cursor = Some(c),
+                None => break,
+            }
+            // Guard against an accidental infinite loop in the test itself.
+            assert!(docs.len() < 10_000, "segment walk did not terminate");
+        }
+        (steps, docs)
+    }
+
+    #[test]
+    fn segments_split_link_and_reconstruct_whole_document() {
+        let session = SessionId::new();
+        let session_id = "session_x";
+        let events = many_input_events(session, 10);
+
+        // Tiny cap (below the scaffold reserve) → one step per segment, so the
+        // chain has as many segments as steps: exercises linking end to end.
+        let (walked, docs) = walk_segments(session_id, &events, 256);
+
+        assert!(docs.len() >= 2, "expected multiple segments");
+        assert_eq!(docs.len(), 10, "tiny cap packs one step per segment");
+
+        // Every non-final segment links forward; the final one does not.
+        for (i, doc) in docs.iter().enumerate() {
+            assert_eq!(doc["schema_version"], json!(ATIF_SCHEMA_VERSION));
+            assert_eq!(doc["session_id"], json!(session_id));
+            assert_eq!(
+                doc["trajectory_id"],
+                json!(format!("{session_id}#segment-{i}"))
+            );
+            assert_eq!(doc["extra"]["segment_index"], json!(i));
+            let is_final = i == docs.len() - 1;
+            assert_eq!(
+                doc.get("continued_trajectory_ref").is_some(),
+                !is_final,
+                "continuation present iff not the final segment (segment {i})",
+            );
+        }
+        // Final segment carries the (empty here) session turn roll-up slot only
+        // and no continuation.
+        assert!(
+            docs.last()
+                .unwrap()
+                .get("continued_trajectory_ref")
+                .is_none()
+        );
+
+        // The stitched steps equal the whole-document export's steps, with
+        // absolute, sequential step_ids preserved.
+        let whole = build_trajectory(
+            Some(session_id),
+            &events,
+            Map::new(),
+            AtifOptions::default(),
+        )
+        .document;
+        assert_eq!(&walked, whole["steps"].as_array().unwrap());
+        for (i, step) in walked.iter().enumerate() {
+            assert_eq!(step["step_id"], json!(i + 1));
+        }
+
+        // The continuation ref embeds the segmented flag and a cursor param.
+        let first_ref = docs[0]["continued_trajectory_ref"].as_str().unwrap();
+        assert!(first_ref.starts_with(LINK_BASE));
+        assert!(first_ref.contains("segmented=true"));
+        assert!(first_ref.contains("cursor="));
+    }
+
+    #[test]
+    fn segments_pack_multiple_steps_when_budget_allows() {
+        let session = SessionId::new();
+        let session_id = "session_x";
+        let events = many_input_events(session, 12);
+        // Above the scaffold reserve → each segment packs several steps, and
+        // there is still more than one segment.
+        let (walked, docs) = walk_segments(session_id, &events, 4096 + 400);
+        assert!(docs.len() >= 2, "expected multiple segments");
+        assert!(
+            docs[0]["steps"].as_array().unwrap().len() > 1,
+            "first segment should pack more than one step under a larger cap",
+        );
+        assert_eq!(walked.len(), 12);
+        for (i, step) in walked.iter().enumerate() {
+            assert_eq!(step["step_id"], json!(i + 1));
+        }
+    }
+
+    #[test]
+    fn cursor_round_trips_and_binds_session() {
+        let cursor = SegmentCursor {
+            session_id: "session_abc".to_string(),
+            offset: 7,
+        };
+        let encoded = cursor.encode();
+        assert_eq!(SegmentCursor::decode(&encoded, "session_abc").unwrap(), 7);
+        // Bound to the session it was minted for.
+        assert!(SegmentCursor::decode(&encoded, "session_other").is_err());
+    }
+
+    #[test]
+    fn bad_cursor_is_rejected_not_panicked() {
+        let session = SessionId::new();
+        let session_id = "session_x";
+        let events = many_input_events(session, 3);
+        let build = |cursor: &str| {
+            build_segment(
+                session_id,
+                &events,
+                AtifOptions::default(),
+                Some(cursor),
+                256,
+                LINK_BASE,
+            )
+        };
+        assert!(build("not-base64!!!").is_err());
+        assert!(build("").is_err());
+        // Valid base64 but not JSON.
+        {
+            use base64::Engine;
+            let junk = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(b"not json");
+            assert!(build(&junk).is_err());
+        }
+        // Foreign-session cursor is rejected (cannot widen scope).
+        let foreign = SegmentCursor {
+            session_id: "someone_elses_session".to_string(),
+            offset: 1,
+        }
+        .encode();
+        assert!(build(&foreign).is_err());
+        // Offset past the end is rejected.
+        let past_end = SegmentCursor {
+            session_id: session_id.to_string(),
+            offset: 999,
+        }
+        .encode();
+        assert!(build(&past_end).is_err());
+        // Oversized cursor rejected before parsing.
+        assert!(build(&"A".repeat(MAX_CURSOR_BYTES + 1)).is_err());
+    }
+
+    #[test]
+    fn final_segment_has_no_continuation_when_it_fits() {
+        let session = SessionId::new();
+        let session_id = "session_x";
+        let events = many_input_events(session, 2);
+        // Large cap → the whole session fits in one segment.
+        let seg = build_segment(
+            session_id,
+            &events,
+            AtifOptions::default(),
+            None,
+            ATIF_EXPORT_MAX_BYTES,
+            LINK_BASE,
+        )
+        .unwrap();
+        assert!(seg.next_cursor.is_none());
+        assert!(seg.document.get("continued_trajectory_ref").is_none());
+        assert_eq!(seg.document["steps"].as_array().unwrap().len(), 2);
+        assert_eq!(seg.segment_index, 0);
+    }
+
+    #[test]
+    fn single_oversized_step_returned_alone_over_cap() {
+        let session = SessionId::new();
+        let session_id = "session_x";
+        // One user message far larger than the (tiny) cap.
+        let big = "x".repeat(50_000);
+        let events = vec![
+            event(session, InputMessageData::new(Message::user(big))),
+            event(session, InputMessageData::new(Message::user("small"))),
+        ];
+        // Cap of 1 KiB: the giant step cannot fit but must still be emitted
+        // alone rather than 413 or loop forever.
+        let (walked, docs) = walk_segments(session_id, &events, 1024);
+        assert_eq!(docs.len(), 2, "one segment per step under the tiny cap");
+        assert_eq!(walked.len(), 2);
+        // The oversized first segment is allowed to exceed the cap.
+        let first_len = serde_json::to_vec(&docs[0]).unwrap().len();
+        assert!(
+            first_len > 1024,
+            "the giant single-step segment may exceed the cap ({first_len} bytes)",
+        );
+    }
+
+    #[test]
+    fn scrubbing_is_applied_per_segment() {
+        let session = SessionId::new();
+        let session_id = "session_x";
+        // Put a secret in the second message so it lands in a later segment.
+        let events = vec![
+            event(session, InputMessageData::new(Message::user("hello"))),
+            event(
+                session,
+                InputMessageData::new(Message::user("token sk-abcdef0123456789ABCDEF here")),
+            ),
+        ];
+        let (_, docs) = walk_segments(session_id, &events, 256);
+        assert_eq!(docs.len(), 2);
+        for doc in &docs {
+            let serialized = serde_json::to_string(doc).unwrap();
+            assert!(
+                !serialized.contains("sk-abcdef0123456789ABCDEF"),
+                "secret must be scrubbed in every segment",
+            );
+        }
+        // And the secret-bearing segment shows the redaction marker.
+        assert!(serde_json::to_string(&docs[1]).unwrap().contains(REDACTED));
+    }
+
+    #[test]
+    fn empty_session_yields_one_empty_final_segment() {
+        let session_id = "session_x";
+        let events: Vec<Event> = vec![];
+        let seg = build_segment(
+            session_id,
+            &events,
+            AtifOptions::default(),
+            None,
+            ATIF_EXPORT_MAX_BYTES,
+            LINK_BASE,
+        )
+        .unwrap();
+        assert!(seg.next_cursor.is_none());
+        assert_eq!(seg.document["steps"].as_array().unwrap().len(), 0);
+        assert_eq!(seg.segment_index, 0);
+        // A cursor exactly at the end is accepted and yields the empty tail.
+        let at_end = SegmentCursor {
+            session_id: session_id.to_string(),
+            offset: 0,
+        }
+        .encode();
+        assert!(
+            build_segment(
+                session_id,
+                &events,
+                AtifOptions::default(),
+                Some(&at_end),
+                ATIF_EXPORT_MAX_BYTES,
+                LINK_BASE,
+            )
+            .is_ok()
+        );
     }
 }

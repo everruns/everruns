@@ -22,6 +22,16 @@ trajectory JSON document instead (Content-Type `application/json`, filename
 secret scrubbing. See `specs/atif-adoption.md`. The default (`jsonl`) behavior
 is unchanged.
 
+Documents over the server size cap are rejected with HTTP 413. Add
+`&segmented=true` to get the recoverable path: a forward-linked chain of
+byte-bounded segments (each a standalone ATIF-v1.7 document) instead of one
+document. Follow each segment's root `continued_trajectory_ref` URL — which
+carries an opaque `cursor` query param — until a segment omits it (the final
+one). A malformed or foreign cursor is rejected with HTTP 400. Segment
+bookkeeping (`X-Atif-Segment-Index`, `X-Atif-Next-Cursor`, per-segment
+`X-Atif-Images-Omitted`) is mirrored in headers. See the segmented-export
+contract in `specs/atif-adoption.md`.
+
 ### JSONL line schema
 
 ```json
