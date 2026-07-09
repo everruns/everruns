@@ -269,19 +269,15 @@ cancel_task             — sets cancel intent
 wait_task               — generic foreground wait; subsumes wait_agent
 ```
 
-Spawning is converging on the unified `spawn_agent` surface while some legacy
-per-capability entry points remain during migration. Known delegation providers
-now share one `spawn_agent` dispatcher; its `target.type` enum reflects the
-active providers (`subagent`, `agent`, and/or `external_a2a`). Legacy
-`spawn_subagent` and `start_agent_handoff` remain available until the migration
-completes. Every spawn creates a task and returns its `task_id`. Blocking
+Delegation spawning uses the unified `spawn_agent` surface. Known delegation
+providers share one dispatcher; its `target.type` enum reflects the active
+providers (`subagent`, `agent`, and/or `external_a2a`). Every spawn creates a
+task and returns its `task_id`. Blocking
 (foreground) spawns also create task records: same object, and the UI shows it
 live while the parent turn waits; background is a mode, not a different entity.
 
-Naming cleanup: `task` parameters that carry instruction text
-(`subagent_task`, `spawn_subagent(task:)`) have been renamed to `instructions` so
-"task" unambiguously means the lifecycle object. This rename is done for the
-model-facing tool parameters (`spawn_subagent`, `spawn_agent`, `handoff`);
+Naming cleanup: `task` parameters that carry instruction text were renamed to
+`instructions` so "task" unambiguously means the lifecycle object. The
 `sessions.subagent_task`, `subagent_name`, and `subagent_status` DB columns
 were retired in migration 059.
 
@@ -342,9 +338,8 @@ if the ACL cannot be computed the executor call is skipped with a `warn`.
 Specifically:
 - `POST …/messages`: rejected with 400 for `subagent`- and `agent_handoff`-kind
   tasks — both are steered exclusively by the parent agent (via the
-  `message_task` / `message_agent_handoff` tools); `links.child_session_id`
-  exposes the child session for direct addressing. For
-  all other kinds the message is recorded durably, the task is re-fetched (it
+  `message_task` tool); `links.child_session_id` exposes the child session for
+  direct addressing. For all other kinds the message is recorded durably, the task is re-fetched (it
   may have transitioned to `running` if the message answered an input request),
   and `executor.deliver` is called. For kinds without a registered executor the
   message is still recorded (delivery = no-op).
@@ -373,6 +368,8 @@ No backward compatibility is required; data migrates forward once:
   been removed; all listing, waiting, messaging, and cancellation now routes
   through the generic tools (`list_tasks`, `get_task`, `message_task`,
   `cancel_task`, `wait_task`).
+- Direct delegation entry points for subagents and first-party handoffs are
+  retired; use `spawn_agent(target.type = "subagent" | "agent")` instead.
 - `GET /v1/sessions/{id}/resources` keeps serving infrastructure resources.
 
 ## Implementation notes (v1)
@@ -401,8 +398,8 @@ No backward compatibility is required; data migrates forward once:
   (`agent_run:{run_id}` keys). Legacy `subagent.*` events are still
   emitted for external consumers, but the CLI now renders the `task.*`
   lifecycle instead; retiring the legacy emission awaits a compatibility
-  decision (specs/events.md). The `task` → `instructions` parameter rename is done (model-facing
-  tool parameters `spawn_subagent`, `spawn_agent`, `handoff`). The
+  decision (specs/events.md). The `task` → `instructions` parameter rename is done for
+  model-facing delegation parameters. The
   `sessions.subagent_*` columns (`subagent_name`, `subagent_task`, `subagent_status`)
   were retired in migration 059; `parent_session_id` is kept as the nesting guard
   and is now set at session creation time.

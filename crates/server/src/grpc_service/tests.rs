@@ -424,9 +424,8 @@ async fn start_grpc_test_server(
 
 #[tokio::test]
 async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
-    use everruns_core::capabilities::{AgentHandoffCapability, Capability, SubagentCapability};
     use everruns_core::platform_store::PlatformStore;
-    use everruns_core::tools::ToolExecutionResult;
+    use everruns_core::tools::{Tool, ToolExecutionResult};
 
     let service = test_worker_service_with_completing_runner().await;
     let parent = create_grpc_test_session(&service).await;
@@ -487,23 +486,20 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
     context.platform_store = Some(adapter.clone());
     context.session_store = Some(adapter.clone());
 
-    let spawn_tool = SubagentCapability
-        .tools()
-        .into_iter()
-        .find(|tool| tool.name() == "spawn_subagent")
-        .expect("spawn_subagent tool");
+    let spawn_tool = everruns_core::capabilities::SpawnSubagentAsAgentTool;
     let spawn_result = spawn_tool
         .execute_with_context(
             serde_json::json!({
                 "name": "gRPC Subagent",
-                "instructions": "Exercise spawn_subagent through the gRPC platform adapter",
+                "instructions": "Exercise spawn_agent subagent delegation through the gRPC platform adapter",
+                "target": { "type": "subagent" },
                 "mode": "foreground"
             }),
             &context,
         )
         .await;
     let ToolExecutionResult::Success(spawn_value) = spawn_result else {
-        panic!("spawn_subagent should succeed over grpc, got {spawn_result:?}");
+        panic!("spawn_agent subagent target should succeed over grpc, got {spawn_result:?}");
     };
     assert_eq!(spawn_value["status"], "completed");
     assert_eq!(spawn_value["result"], "Child completed through gRPC");
@@ -540,25 +536,23 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
             "required_scopes": ["fake_aws:rds:create"]
         }]
     });
-    let handoff_tool = AgentHandoffCapability
-        .tools_with_config(&handoff_config)
-        .into_iter()
-        .find(|tool| tool.name() == "start_agent_handoff")
-        .expect("start_agent_handoff tool");
+    let handoff_tool = everruns_core::capabilities::SpawnAgentHandoffTool::new(&handoff_config);
 
     context.connection_resolver = Some(Arc::new(AllowingConnectionResolver));
     let handoff_result = handoff_tool
         .execute_with_context(
             serde_json::json!({
-                "target": "target",
-                "instructions": "Exercise start_agent_handoff through the gRPC platform adapter",
+                "name": "gRPC Handoff Target",
+                "instructions": "Exercise spawn_agent handoff delegation through the gRPC platform adapter",
+                "target": { "type": "agent", "id": "target" },
+                "mode": "foreground",
                 "public_context": { "ticket": "EVE-538" }
             }),
             &context,
         )
         .await;
     let ToolExecutionResult::Success(handoff_value) = handoff_result else {
-        panic!("start_agent_handoff should succeed over grpc, got {handoff_result:?}");
+        panic!("spawn_agent handoff target should succeed over grpc, got {handoff_result:?}");
     };
     assert_eq!(handoff_value["status"], "completed");
     assert_eq!(handoff_value["result"], "Child completed through gRPC");

@@ -266,7 +266,7 @@ where
     /// `AtMostOnce` tools.
     durable_tool_result_store: Option<Arc<dyn DurableToolResultStore>>,
     /// Durable spawn handle store for subagent reattach (EVE-535). When present,
-    /// `spawn_subagent` claims a slot before creating the child and settles after
+    /// subagent delegation claims a slot before creating the child and settles after
     /// completion, enabling reattach on reclaim.
     subagent_spawn_store: Option<Arc<dyn crate::traits::SubagentSpawnStore>>,
     /// Post-act hooks that run after tool execution completes.

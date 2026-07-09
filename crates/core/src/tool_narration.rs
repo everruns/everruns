@@ -582,8 +582,8 @@ pub fn narrate_secret_store(
     }
 }
 
-/// `spawn_subagent` narration.
-pub fn narrate_spawn_subagent(
+/// Subagent delegation narration.
+pub fn narrate_subagent_spawn(
     arguments: &Value,
     phase: ToolNarrationPhase,
     locale: Option<&str>,

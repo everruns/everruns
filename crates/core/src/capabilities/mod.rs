@@ -168,8 +168,7 @@ pub use a2a_delegation::{A2aAgentDelegationCapability, SpawnAgentTool};
 #[cfg(feature = "ui-capabilities")]
 pub use a2ui::{A2UI_CAPABILITY_ID, A2UiCapability};
 pub use agent_handoff::{
-    AGENT_HANDOFF_CAPABILITY_ID, AgentHandoffCapability, GetAgentHandoffsTool,
-    MessageAgentHandoffTool, SpawnAgentHandoffTool, StartAgentHandoffTool,
+    AGENT_HANDOFF_CAPABILITY_ID, AgentHandoffCapability, SpawnAgentHandoffTool,
 };
 pub use agent_instructions::{
     AGENT_INSTRUCTIONS_CAPABILITY_ID, AGENTS_MD_PATH, AgentInstructionsCapability,
@@ -1032,7 +1031,8 @@ pub trait Capability: Send + Sync {
     /// Returns agent blueprints contributed by this capability.
     ///
     /// Blueprints are pre-built agent definitions with private tools, baked-in prompts,
-    /// and fixed/default models. They are spawned via `spawn_subagent(blueprint: "<id>")`.
+    /// and fixed/default models. They are spawned via `spawn_agent` with a subagent target
+    /// and `blueprint`.
     /// Blueprint tools never appear in the host agent's tool list.
     ///
     /// By default, returns an empty vector (no blueprints).
@@ -1170,7 +1170,7 @@ pub enum BlueprintModel {
 /// Pre-built agent definition with private tools, baked-in prompt, and model selection.
 ///
 /// Contributed by capabilities via `agent_blueprints()`. Spawned via
-/// `spawn_subagent(blueprint: "<id>")`. Blueprint tools never appear in the
+/// `spawn_agent` with a subagent target and `blueprint`. Blueprint tools never appear in the
 /// host agent's tool list — they exist only inside the spawned child session.
 pub struct AgentBlueprint {
     /// Unique identifier (e.g. `"github_scout"`)

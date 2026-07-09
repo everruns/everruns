@@ -193,7 +193,7 @@ pub trait PlatformStore: Send + Sync {
     /// of inheriting from `harness_id`/`agent_id`. `blueprint_config` is
     /// validated config for the blueprint (JSON, optional).
     /// `parent_session_id` links child subagent/handoff sessions to their parent
-    /// (used as the nesting guard in spawn_subagent).
+    /// (used as the subagent nesting guard).
     #[allow(clippy::too_many_arguments)]
     async fn create_session(
         &self,

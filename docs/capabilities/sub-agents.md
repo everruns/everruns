@@ -23,21 +23,24 @@ returns a `task_id` for the generic session task tools and moves Everruns toward
 one delegation surface across subagents, first-party agent handoffs, and
 external A2A agents.
 
-### `spawn_subagent`
-
-Create and start a new subagent. By default the subagent runs in the background: the tool returns immediately with a `task_id`, the parent agent keeps working, and the session is notified when the subagent finishes. Use the `task_id` with the generic session task tools to monitor, message, or cancel the subagent.
+Create and start a new subagent by calling `spawn_agent` with
+`target.type: "subagent"`. By default the subagent runs in the background: the
+tool returns immediately with a `task_id`, the parent agent keeps working, and
+the session is notified when the subagent finishes. Use the `task_id` with the
+generic session task tools to monitor, message, or cancel the subagent.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `name` | string | yes | Human-readable name for the subagent. Must be unique within the session. |
 | `instructions` | string | yes | Instructions for what the subagent should do. This becomes the subagent's initial prompt. |
+| `target.type` | string | yes | Must be `subagent`. |
 | `mode` | string | no | `background` (default) returns immediately with a `task_id`; `foreground` blocks until the subagent completes and returns its result inline. |
 | `blueprint` | string | no | Optional specialist blueprint ID, such as `github_scout`, that supplies its own prompt, model, and private tools. |
 | `config` | object | no | Blueprint-specific configuration. Only valid when `blueprint` is set. |
 
 ## Managing subagents after spawn
 
-Use the generic `session_tasks` tools to monitor and steer subagents after spawning. The `task_id` is returned by `spawn_subagent`.
+Use the generic `session_tasks` tools to monitor and steer subagents after spawning. The `task_id` is returned by `spawn_agent`.
 
 - `list_tasks` with `kind: "subagent"` — list all subagent tasks and their status
 - `get_task` with the task ID — get detailed status and result for a specific subagent

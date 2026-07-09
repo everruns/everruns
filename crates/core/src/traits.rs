@@ -1518,7 +1518,7 @@ pub struct ToolContext {
     pub payment_authority: Option<Arc<dyn PaymentAuthority>>,
 
     /// Optional durable spawn handle store for subagent reattach (EVE-535).
-    /// When set, `spawn_subagent` uses claim/settle to prevent duplicate spawning
+    /// When set, subagent delegation uses claim/settle to prevent duplicate spawning
     /// on parent worker reclaim.
     pub subagent_spawn_store: Option<Arc<dyn SubagentSpawnStore>>,
 

@@ -1,9 +1,9 @@
 // Subagent Capability
 //
-// Decision: 1 creation tool — spawn_subagent.
-// - spawn_subagent creates a child session with parent_session_id set
+// Decision: 1 delegation tool — spawn_agent(target.type = "subagent").
+// - subagent delegation creates a child session with parent_session_id set
 //
-// Blueprint support: spawn_subagent accepts optional `blueprint` and `config`
+// Blueprint support: the subagent target accepts optional `blueprint` and `config`
 // params. When blueprint is set, the child session uses the blueprint's
 // RuntimeAgent (own prompt, tools, model) instead of inheriting parent's.
 //
@@ -80,13 +80,13 @@ impl Capability for SubagentCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(SpawnSubagentTool)]
+        vec![]
     }
 }
 
 const SUBAGENT_SYSTEM_PROMPT: &str = "Spawn subagents only for independent workstreams that benefit from parallelism or a separate context window; do not delegate immediate sequential steps. Spawns are background by default: you get a task_id, keep working, and are notified on completion (monitor with get_task/wait_task). Use mode \"foreground\" only when you cannot proceed without the result. No nested subagents. Use blueprints for specialist agents with their own tools and model.";
 
-/// Execution mode for spawn_subagent.
+/// Execution mode for subagent delegation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SpawnMode {
     /// Return immediately; a detached watcher settles the task and the
@@ -231,99 +231,7 @@ async fn find_subagent_task(
 }
 
 // =============================================================================
-// Tool: spawn_subagent
-// =============================================================================
-
-pub struct SpawnSubagentTool;
-
-#[async_trait]
-impl Tool for SpawnSubagentTool {
-    fn narrate(
-        &self,
-        tool_call: &crate::tool_types::ToolCall,
-        phase: crate::tool_narration::ToolNarrationPhase,
-        locale: Option<&str>,
-    ) -> Option<String> {
-        Some(crate::tool_narration::narrate_spawn_subagent(
-            &tool_call.arguments,
-            phase,
-            locale,
-        ))
-    }
-
-    fn name(&self) -> &str {
-        "spawn_subagent"
-    }
-
-    fn display_name(&self) -> Option<&str> {
-        Some("Spawn Subagent")
-    }
-
-    fn description(&self) -> &str {
-        "Spawn a named subagent to handle a specific task in its own context window. Runs in the background by default and returns a task_id immediately; set mode to \"foreground\" to block until it completes. Use `blueprint` to spawn a specialist agent with its own tools and model."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "description": "Human-readable name for the subagent (e.g. 'Test Runner', 'Auth Explorer'). Must be unique within this session."
-                },
-                "instructions": {
-                    "type": "string",
-                    "description": "Instructions for the subagent — what it should do."
-                },
-                "mode": {
-                    "type": "string",
-                    "enum": ["background", "foreground"],
-                    "description": "Execution mode. \"background\" (default) returns immediately with a task_id — monitor with get_task/wait_task; the session is notified when the subagent finishes. \"foreground\" blocks until the subagent completes and returns its result inline."
-                },
-                "blueprint": {
-                    "type": "string",
-                    "description": "Blueprint ID to spawn a specialist agent with its own tools and model. Omit to inherit parent's configuration."
-                },
-                "config": {
-                    "type": "object",
-                    "description": "Blueprint-specific configuration. Only valid when `blueprint` is set. Validated against the blueprint's config schema."
-                }
-            },
-            "required": ["name", "instructions"],
-            "additionalProperties": false
-        })
-    }
-
-    fn hints(&self) -> ToolHints {
-        ToolHints::default().with_long_running(true)
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error(
-            "spawn_subagent requires context. This tool must be executed with session context.",
-        )
-    }
-
-    async fn execute_with_context(
-        &self,
-        arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        spawn_subagent_impl(arguments, context)
-            .await
-            .unwrap_or_else(|e| e)
-    }
-
-    fn requires_context(&self) -> bool {
-        true
-    }
-}
-
 /// Unified delegation wrapper for the subagent target of `spawn_agent`.
-///
-/// This is injected by capability collection for subagent-only sessions so the
-/// new unified tool surface can ship before all delegation providers are merged
-/// into one dispatcher. `spawn_subagent` remains available during the migration.
 pub struct SpawnSubagentAsAgentTool;
 
 #[async_trait]
@@ -334,7 +242,7 @@ impl Tool for SpawnSubagentAsAgentTool {
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
     ) -> Option<String> {
-        Some(crate::tool_narration::narrate_spawn_subagent(
+        Some(crate::tool_narration::narrate_subagent_spawn(
             &tool_call.arguments,
             phase,
             locale,
@@ -417,7 +325,7 @@ impl Tool for SpawnSubagentAsAgentTool {
                 "spawn_agent target.type must be \"subagent\" for the subagents capability",
             );
         }
-        spawn_subagent_impl(arguments, context)
+        spawn_agent_subagent_impl(arguments, context)
             .await
             .unwrap_or_else(|e| e)
     }
@@ -463,7 +371,7 @@ fn resolve_spawn_mode(
     }
 }
 
-async fn spawn_subagent_impl(
+async fn spawn_agent_subagent_impl(
     arguments: Value,
     context: &ToolContext,
 ) -> Result<ToolExecutionResult, ToolExecutionResult> {
@@ -712,7 +620,7 @@ fn background_running_result(
 }
 
 // =============================================================================
-// Helpers for SpawnSubagentTool
+// Helpers for subagent delegation
 // =============================================================================
 
 /// Create a new child session, then either wait for completion (foreground)
@@ -1350,39 +1258,6 @@ mod tests {
     }
 
     #[test]
-    fn spawn_subagent_schema_has_required_fields() {
-        let tool = SpawnSubagentTool;
-        let schema = tool.parameters_schema();
-        let required = schema["required"].as_array().unwrap();
-        assert!(required.contains(&json!("name")));
-        assert!(required.contains(&json!("instructions")));
-    }
-
-    #[test]
-    fn spawn_subagent_schema_has_blueprint_fields() {
-        let tool = SpawnSubagentTool;
-        let schema = tool.parameters_schema();
-        let props = schema["properties"].as_object().unwrap();
-        assert!(props.contains_key("blueprint"));
-        assert!(props.contains_key("config"));
-        // blueprint and config should NOT be required
-        let required = schema["required"].as_array().unwrap();
-        assert!(!required.contains(&json!("blueprint")));
-        assert!(!required.contains(&json!("config")));
-    }
-
-    #[test]
-    fn spawn_subagent_schema_has_optional_mode_enum() {
-        let tool = SpawnSubagentTool;
-        let schema = tool.parameters_schema();
-        let mode = &schema["properties"]["mode"];
-        assert_eq!(mode["type"], "string");
-        assert_eq!(mode["enum"], json!(["background", "foreground"]));
-        let required = schema["required"].as_array().unwrap();
-        assert!(!required.contains(&json!("mode")));
-    }
-
-    #[test]
     fn spawn_agent_subagent_schema_advertises_only_subagent_target() {
         let tool = SpawnSubagentAsAgentTool;
         let schema = tool.parameters_schema();
@@ -1394,15 +1269,15 @@ mod tests {
         assert!(required.contains(&json!("target")));
         assert!(required.contains(&json!("name")));
         assert!(required.contains(&json!("instructions")));
-    }
-
-    #[tokio::test]
-    async fn spawn_subagent_without_context_returns_error() {
-        let tool = SpawnSubagentTool;
-        let result = tool
-            .execute(json!({"name": "Test", "instructions": "test"}))
-            .await;
-        assert!(matches!(result, ToolExecutionResult::ToolError(_)));
+        let props = schema["properties"].as_object().unwrap();
+        assert!(props.contains_key("blueprint"));
+        assert!(props.contains_key("config"));
+        assert!(!required.contains(&json!("blueprint")));
+        assert!(!required.contains(&json!("config")));
+        assert_eq!(
+            schema["properties"]["mode"]["enum"],
+            json!(["background", "foreground"])
+        );
     }
 
     // =========================================================================
@@ -1500,7 +1375,15 @@ mod tests {
     }
 
     async fn spawn(context: &ToolContext, args: Value) -> ToolExecutionResult {
-        SpawnSubagentTool.execute_with_context(args, context).await
+        let mut args = args;
+        if let Some(object) = args.as_object_mut() {
+            object
+                .entry("target")
+                .or_insert_with(|| json!({"type": "subagent"}));
+        }
+        SpawnSubagentAsAgentTool
+            .execute_with_context(args, context)
+            .await
     }
 
     /// Poll the registry until the subagent task reaches `state` (the
@@ -1526,7 +1409,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn spawn_subagent_rejects_invalid_mode() {
+    async fn spawn_agent_subagent_rejects_invalid_mode() {
         let context = ToolContext::new(crate::typed_id::SessionId::new());
         let result = spawn(
             &context,
