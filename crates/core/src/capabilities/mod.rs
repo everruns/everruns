@@ -324,7 +324,8 @@ pub use stateless_todo_list::{
     STATELESS_TODO_LIST_CAPABILITY_ID, StatelessTodoListCapability, WriteTodosTool,
 };
 pub use subagents::{
-    ReportResultTool, SUBAGENTS_CAPABILITY_ID, SpawnSubagentAsAgentTool, SubagentCapability,
+    ReportProgressTool, ReportResultTool, SUBAGENTS_CAPABILITY_ID, SpawnSubagentAsAgentTool,
+    SubagentCapability, report_progress_tool_for_child_session,
     report_result_tool_for_child_session,
 };
 // Blueprint types are exported directly from the trait definitions above
@@ -1885,6 +1886,10 @@ impl Tool for UnifiedSpawnAgentTool {
                 "result_schema": {
                     "type": "object",
                     "description": "Subagent-only JSON Schema for the child agent's final structured result. When set, the child must call report_result before the task can succeed."
+                },
+                "message_schema": {
+                    "type": "object",
+                    "description": "Subagent-only JSON Schema for structured progress messages. When set, the child receives report_progress and valid calls post data messages to the task thread."
                 },
                 "public_context": {
                     "type": "object",

@@ -114,6 +114,10 @@ TaskMessage {
 - For subagents the channel carries only cross-boundary messages — the child
   transcript is not mirrored; `links.child_session_id` points at the full
   conversation.
+- Schema-bound subagents can post structured progress with a child-only
+  `report_progress` tool. Valid calls append outbound messages containing a
+  single `data` part; invalid payloads return a validation error so the child
+  can retry.
 
 ## Contracts
 
@@ -205,6 +209,11 @@ to `result_path`, and updates the task record. If a schema-bound subagent
 reaches a successful terminal child status without a recorded `result_path`, the
 task settles as `failed` with `error.kind = "no_result"`. Tasks without
 `spec.result_schema` keep their existing summary-only behavior.
+
+Subagent tasks may also declare `spec.message_schema` as a JSON Schema. That
+schema injects a child-only `report_progress` tool; valid calls are recorded as
+outbound task messages with `data` content, and background tasks use
+`wake_policy: on_activity` so those messages wake the parent session.
 
 ### Retention (TTL)
 

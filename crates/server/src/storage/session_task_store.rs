@@ -188,6 +188,11 @@ impl DbSessionTaskRegistry {
         if task.wake_policy != TaskWakePolicy::OnActivity {
             return;
         }
+        let message_text = if message_text.trim().is_empty() {
+            "structured progress update"
+        } else {
+            message_text
+        };
         let text = format!(
             "Task \"{}\" ({}) sent a message: {}",
             task.display_name, task.id, message_text
@@ -445,7 +450,9 @@ impl SessionTaskRegistry for DbSessionTaskRegistry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::session_task::{TaskInputRequest, TaskLinks, TaskWakePolicy};
+    use everruns_core::session_task::{
+        TaskInputRequest, TaskLinks, TaskMessagePart, TaskWakePolicy,
+    };
     use std::sync::Mutex;
 
     // -------------------------------------------------------------------------
@@ -915,6 +922,26 @@ mod tests {
         assert_eq!(calls.len(), 1, "Should wake on outbound message");
         assert!(calls[0].1.contains("task says hi"));
 
+        // Data-only outbound messages still get a readable wake prompt.
+        registry
+            .record_message(
+                session_id,
+                &task.id,
+                NewTaskMessage {
+                    direction: TaskMessageDirection::Outbound,
+                    content: vec![TaskMessagePart::Data {
+                        data: serde_json::json!({"step": "halfway"}),
+                    }],
+                    in_reply_to: None,
+                    expected_attempt: None,
+                },
+            )
+            .await
+            .unwrap();
+        let calls = waker.recorded();
+        assert_eq!(calls.len(), 2, "Should wake on data-only outbound message");
+        assert!(calls[1].1.contains("structured progress update"));
+
         // Awaiting input: another wake.
         registry
             .update(
@@ -932,8 +959,8 @@ mod tests {
             .await
             .unwrap();
         let calls = waker.recorded();
-        assert_eq!(calls.len(), 2, "Should wake on awaiting_input transition");
-        assert!(calls[1].1.contains("Approve?"));
+        assert_eq!(calls.len(), 3, "Should wake on awaiting_input transition");
+        assert!(calls[2].1.contains("Approve?"));
 
         // Second awaiting_input update (idempotent input_request churn from
         // polling): no extra wake because state is already awaiting_input.
@@ -954,7 +981,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             waker.recorded().len(),
-            2,
+            3,
             "No duplicate wake for repeated awaiting_input"
         );
 
@@ -979,7 +1006,7 @@ mod tests {
         let calls = waker.recorded();
         assert_eq!(
             calls.len(),
-            3,
+            4,
             "Should also wake on terminal for OnActivity"
         );
     }

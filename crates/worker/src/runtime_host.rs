@@ -3,7 +3,9 @@
 // the public everruns-runtime host contract.
 
 use async_trait::async_trait;
-use everruns_core::capabilities::report_result_tool_for_child_session;
+use everruns_core::capabilities::{
+    report_progress_tool_for_child_session, report_result_tool_for_child_session,
+};
 use everruns_core::error::Result;
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver, PaymentAuthority,
@@ -140,6 +142,15 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             let session_store: Arc<dyn SessionStore> =
                 Arc::new(AdapterSessionStore::new(self.adapters.clone(), org_id));
             if let Some(tool) = report_result_tool_for_child_session(
+                session_id,
+                session_store.as_ref(),
+                registry.as_ref(),
+            )
+            .await?
+            {
+                mcp_tool_definitions.push(tool.to_definition());
+            }
+            if let Some(tool) = report_progress_tool_for_child_session(
                 session_id,
                 session_store.as_ref(),
                 registry.as_ref(),

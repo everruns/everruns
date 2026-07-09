@@ -101,6 +101,7 @@ The retired direct creation entry point is no longer advertised to models.
 | `blueprint` | string | No | Optional blueprint ID for a specialist child agent. |
 | `config` | object | No | Blueprint-specific configuration. Only valid with `blueprint`. |
 | `result_schema` | object | No | JSON Schema for the child session's final machine result. |
+| `message_schema` | object | No | JSON Schema for structured progress messages from the child session. |
 
 **Returns (background):** `task_id` and `status: "running"` immediately; the final result lands on the task record (`summary`) and the parent is woken on the terminal transition.
 
@@ -115,6 +116,13 @@ successful terminal status without reporting the result settles the task as
 JSON object inline; without `result_schema`, foreground spawns keep returning
 the last assistant message.
 
+When `message_schema` is present, the child session receives a
+`report_progress` tool whose parameters are the declared schema. A valid
+`report_progress` call appends an outbound task message with a `data` part to
+the parent task's message thread. Background subagent tasks with
+`message_schema` use `wake_policy: on_activity` so progress messages wake the
+parent; tasks without `message_schema` keep completion-only wake-ups.
+
 **Behavior (both modes):**
 1. Creates child session with `parent_session_id` set to current session
 2. Inherits the parent session locale when present
@@ -128,7 +136,7 @@ the last assistant message.
 
 **Background:**
 4. Detaches a watcher (same pattern as `spawn_background` runs) and returns immediately; the watcher sends `instructions` as the first user message — deferred so local hosts, where `send_message` runs the child turn synchronously, do not block the spawn call
-5. The task is created with `wake_policy: on_terminal`; the watcher heartbeats the task registry (attempt-fenced) so the session task reaper can fail an orphaned watcher after worker loss
+5. The task is created with `wake_policy: on_terminal`, or `on_activity` when `message_schema` is present; the watcher heartbeats the task registry (attempt-fenced) so the session task reaper can fail an orphaned watcher after worker loss
 6. The watcher waits in slices until the child reaches a terminal turn status (overall cap 6 h), then settles the task and the durable spawn handle; the registry-level wake policy delivers the completion message to the parent (specs/session-tasks.md, Wake-ups)
 7. Local/embedded hosts (everruns-runtime) may report a bare `idle` after their synchronous turn — the watcher settles it as `completed`; hosted adapters never return bare `idle`
 8. `SubagentTaskExecutor::reconcile` (invoked from `wait_task`'s poll loop) probes the child's terminal turn status and settles the task if the watcher died, so `wait_task` converges even after worker loss
