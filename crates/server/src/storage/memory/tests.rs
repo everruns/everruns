@@ -351,6 +351,45 @@ async fn test_create_session_participant_rejects_second_active_host() {
 }
 
 #[tokio::test]
+async fn test_leave_session_participant_preserves_history() {
+    let db = InMemoryDatabase::new();
+    let session = db.create_session(test_session_input(None)).await.unwrap();
+    let member = db
+        .create_session_participant(CreateSessionParticipantRow {
+            org_id: DEFAULT_ORG_ID,
+            session_id: session.id,
+            kind: SessionParticipantKind::Agent,
+            agent_id: Some(AgentId::new()),
+            agent_version_id: None,
+            principal_id: PrincipalId::from_seed(1),
+            role: SessionParticipantRole::Member,
+            joined_at: None,
+        })
+        .await
+        .unwrap();
+
+    let left = db
+        .leave_session_participant(DEFAULT_ORG_ID, session.id, member.id)
+        .await
+        .unwrap()
+        .expect("participant should exist");
+    assert!(left.left_at.is_some());
+
+    let participants = db
+        .list_session_participants(DEFAULT_ORG_ID, session.id)
+        .await
+        .unwrap();
+    assert_eq!(participants.len(), 2);
+    assert_eq!(
+        participants
+            .iter()
+            .find(|row| row.id == member.id)
+            .and_then(|row| row.left_at),
+        left.left_at
+    );
+}
+
+#[tokio::test]
 async fn test_session_aggregate_stats_by_agent_and_harness() {
     let db = InMemoryDatabase::new();
 

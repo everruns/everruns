@@ -88,6 +88,28 @@ impl InMemoryDatabase {
         Ok(rows)
     }
 
+    pub async fn leave_session_participant(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        participant_id: SessionParticipantId,
+    ) -> Result<Option<SessionParticipantRow>> {
+        let mut participants = self.session_participants.write();
+        let Some(row) = participants.get_mut(&participant_id) else {
+            return Ok(None);
+        };
+        if row.org_id != org_id || row.session_id != session_id {
+            return Ok(None);
+        }
+
+        let now = Self::now();
+        if row.left_at.is_none() {
+            row.left_at = Some(now);
+        }
+        row.updated_at = now;
+        Ok(Some(row.clone()))
+    }
+
     fn validate_session_participant(&self, input: &CreateSessionParticipantRow) -> Result<()> {
         let session = self
             .sessions

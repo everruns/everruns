@@ -5,8 +5,9 @@
 use crate::auth::{AuthState, ResolvedOrg, rate_limit::OrgRateLimiter};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::sessions::{
-    CancelSession, CreateSession, DeleteSession, ForkSession, GetOrCreateChatSession, GetSession,
-    GetSessionContextReport, GetSessionStats, ListSessions, PinSession, SESSION_MANAGE,
+    AddSessionParticipant, CancelSession, CreateSession, DeleteSession, ForkSession,
+    GetOrCreateChatSession, GetSession, GetSessionContextReport, GetSessionStats,
+    LeaveSessionParticipant, ListSessionParticipants, ListSessions, PinSession, SESSION_MANAGE,
     SESSION_VIEW, SessionService, UnpinSession, UpdateSessionCmd,
 };
 use crate::services::EventService;
@@ -23,7 +24,8 @@ use everruns_core::typed_id::{
 };
 use everruns_core::{
     BuiltInHarnessRole, Caller, PlatformDefinition, ResourceConfigResponse, ScopedMcpServers,
-    Session, SessionContextReport, ToolDefinition, evaluate_policies_with, is_mcp_tool,
+    Session, SessionContextReport, SessionParticipant, SessionParticipantKind,
+    SessionParticipantRole, ToolDefinition, evaluate_policies_with, is_mcp_tool,
 };
 use everruns_worker::AgentRunner;
 
@@ -310,6 +312,20 @@ pub struct UpdateSessionRequest {
     pub tags: Option<Vec<String>>,
 }
 
+/// Request to add a participant to a session.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct AddSessionParticipantRequest {
+    /// Participant kind to add.
+    pub kind: SessionParticipantKind,
+    /// Agent to add when `kind` is `agent`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
+    pub agent_id: Option<AgentId>,
+    /// Participant role. Omit for ordinary members. Host assignment is managed by session creation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<SessionParticipantRole>,
+}
+
 /// Request body for the `get_or_create_chat_session` operation.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct GetOrCreateChatSessionRequest {
@@ -432,6 +448,14 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/sessions/stats", get(get_session_stats))
         // Session CRUD
         .route("/v1/sessions", post(create_session).get(list_sessions))
+        .route(
+            "/v1/sessions/{session_id}/participants",
+            get(list_session_participants).post(add_session_participant),
+        )
+        .route(
+            "/v1/sessions/{session_id}/participants/{participant_id}",
+            axum::routing::delete(leave_session_participant),
+        )
         .route(
             "/v1/sessions/{session_id}",
             get(get_session)
@@ -736,6 +760,96 @@ pub async fn get_session(
     let session = GetSession { session_id }.run(&state.ctx(&org)).await?;
 
     Ok(Json(urls.wrap(session)))
+}
+
+/// GET /v1/sessions/{session_id}/participants - List session participants
+#[utoipa::path(
+    get,
+    path = "/v1/sessions/{session_id}/participants",
+    params(
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
+    ),
+    responses(
+        (status = 200, description = "Session participant history", body = Vec<SessionParticipant>),
+        (status = 400, description = "Invalid session ID"),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn list_session_participants(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> ApiResult<Vec<SessionParticipant>> {
+    Ok(Json(
+        ListSessionParticipants { session_id }
+            .run(&state.ctx(&org))
+            .await?,
+    ))
+}
+
+/// POST /v1/sessions/{session_id}/participants - Add a session participant
+#[utoipa::path(
+    post,
+    path = "/v1/sessions/{session_id}/participants",
+    params(
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
+    ),
+    request_body = AddSessionParticipantRequest,
+    responses(
+        (status = 201, description = "Participant added successfully", body = SessionParticipant),
+        (status = 400, description = "Invalid participant request"),
+        (status = 404, description = "Session or agent not found"),
+        (status = 409, description = "Participant conflicts with current membership"),
+        (status = 500, description = "Internal server error")
+    ),
+    extensions(("x-cost-tier" = json!("paid"))),
+    tag = "sessions"
+)]
+pub async fn add_session_participant(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+    Json(req): Json<AddSessionParticipantRequest>,
+) -> Result<(StatusCode, Json<SessionParticipant>), (StatusCode, Json<ErrorResponse>)> {
+    let participant = AddSessionParticipant { session_id, req }
+        .run(&state.ctx(&org))
+        .await?;
+
+    Ok((StatusCode::CREATED, Json(participant)))
+}
+
+/// DELETE /v1/sessions/{session_id}/participants/{participant_id} - Leave a participant
+#[utoipa::path(
+    delete,
+    path = "/v1/sessions/{session_id}/participants/{participant_id}",
+    params(
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)"),
+        ("participant_id" = String, Path, description = "Participant ID (prefixed, e.g., part_...)")
+    ),
+    responses(
+        (status = 200, description = "Participant left successfully", body = SessionParticipant),
+        (status = 400, description = "Invalid ID"),
+        (status = 404, description = "Session or participant not found"),
+        (status = 409, description = "Host participant cannot leave through this endpoint"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn leave_session_participant(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((session_id, participant_id)): Path<(String, String)>,
+) -> ApiResult<SessionParticipant> {
+    Ok(Json(
+        LeaveSessionParticipant {
+            session_id,
+            participant_id,
+        }
+        .run(&state.ctx(&org))
+        .await?,
+    ))
 }
 
 /// GET /v1/sessions/{session_id}/context-report - Latest context breakdown

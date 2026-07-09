@@ -1,6 +1,7 @@
 use super::super::models::*;
 use super::Database;
 use anyhow::Result;
+use everruns_core::{SessionId, SessionParticipantId};
 
 impl Database {
     pub async fn create_session_participant(
@@ -36,7 +37,7 @@ impl Database {
     pub async fn list_session_participants(
         &self,
         org_id: i64,
-        session_id: everruns_core::SessionId,
+        session_id: SessionId,
     ) -> Result<Vec<SessionParticipantRow>> {
         sqlx::query_as::<_, SessionParticipantRow>(
             r#"
@@ -50,6 +51,30 @@ impl Database {
         .bind(org_id)
         .bind(session_id.uuid())
         .fetch_all(&self.pool)
+        .await
+        .map_err(Into::into)
+    }
+
+    pub async fn leave_session_participant(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        participant_id: SessionParticipantId,
+    ) -> Result<Option<SessionParticipantRow>> {
+        sqlx::query_as::<_, SessionParticipantRow>(
+            r#"
+            UPDATE session_participants
+            SET left_at = COALESCE(left_at, NOW()),
+                updated_at = NOW()
+            WHERE org_id = $1 AND session_id = $2 AND id = $3
+            RETURNING id, org_id, session_id, kind, agent_id, agent_version_id,
+                      principal_id, role, joined_at, left_at, created_at, updated_at
+            "#,
+        )
+        .bind(org_id)
+        .bind(session_id.uuid())
+        .bind(participant_id.uuid())
+        .fetch_optional(&self.pool)
         .await
         .map_err(Into::into)
     }
