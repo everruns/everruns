@@ -298,6 +298,92 @@ This is modelled and enforced in code, not just prose:
   registry of surfaced-but-broken affordances). Both are asserted empty; any
   new dead end fails CI.
 
+The flow map below is derived from the `EDGES` table in `machine.ts`; edge
+labels carry the affordance and, where an edge is guarded, the account states it
+actually advances (`worksFor`). Unlabelled guards mean the edge works for every
+account state — a guard that omits a reachable account state is exactly how a
+trap is encoded, so the omissions are the load-bearing part. Account states:
+**S0** `none`, **S1** `local_unverified`, **S2** `local_verified`, **S3**
+`oauth_only`. This is an illustrative snapshot; `machine.ts` + `machine.test.ts`
+remain the source of truth — regenerate it when the transition table changes.
+
+```mermaid
+flowchart TD
+  subgraph UI["UI screens"]
+    loginEmail["login.email"]
+    loginPw["login.password"]
+    signupForm["signup.form"]
+    checkEmail["signup.check_email"]
+    forgotForm["forgot.form"]
+    forgotSent["forgot.sent"]
+    resetForm["reset.form"]
+    resetInvalid["reset.invalid"]
+    verifyPending["verify.pending"]
+    verifyFailedEmail["verify.failed_with_email"]
+    verifyFailedNoEmail["verify.failed_no_email"]
+    appGated["app.gated_on_verify"]
+  end
+
+  subgraph BE["Backend outcomes"]
+    confPending["backend.confirmation_pending"]
+    oauthPerm["oauth.rejected_permanent · 409"]
+    oauthPolicy["oauth.rejected_policy · 403"]
+  end
+
+  subgraph EXT["External · inbox / token"]
+    verifyLink["email.verify_link · 24h"]
+    resetLink["email.reset_link · 1h"]
+  end
+
+  authed(["✓ authenticated"])
+  verified(["✓ email_verified"])
+
+  %% Login door
+  loginEmail -->|"Continue with email"| loginPw
+  loginEmail -->|"Continue with Google · S0,S3"| authed
+  loginPw -->|"submit password · S1,S2"| authed
+  loginPw -->|"reset your password · S1,S2"| resetForm
+  loginPw -->|"Create an account"| signupForm
+  loginPw -->|"Back"| loginEmail
+
+  %% Signup door (outcome depends on AUTH_SIGNUP_EMAIL_CONFIRM)
+  signupForm -->|"Create account · instant · S0"| authed
+  signupForm -->|"Create account · confirm"| confPending
+  confPending -->|"Check your email"| checkEmail
+  checkEmail -->|"verification link emailed · S0,S1"| verifyLink
+  checkEmail -->|"Log in"| loginEmail
+  checkEmail -->|"Use a different email"| signupForm
+
+  %% Verification link in the inbox (single-use)
+  verifyLink -->|"click valid · S0,S1"| authed
+  verifyLink -->|"click valid · S1"| verified
+  verifyLink -->|"click expired"| verifyFailedEmail
+
+  %% Password reset
+  resetForm -->|"Set new password · S1,S2"| authed
+  resetForm -->|"Expired → request new"| resetInvalid
+  resetInvalid -->|"Request a new link"| forgotForm
+  forgotForm -->|"Send reset link"| forgotSent
+  forgotSent -->|"reset link emailed · S1,S2"| resetLink
+  forgotSent -->|"Back to sign in"| loginEmail
+  resetLink -->|"click valid · S1,S2"| resetForm
+  resetLink -->|"click expired"| resetInvalid
+
+  %% Email verification resends (all keep an unverified user moving)
+  verifyPending -->|"emailed link / Resend · S1"| verifyLink
+  verifyFailedEmail -->|"Resend link · S1"| verifyLink
+  verifyFailedNoEmail -->|"Enter email → resend · S1"| verifyLink
+  verifyFailedNoEmail -->|"Back to sign in"| loginEmail
+  appGated -->|"Verify-email banner · resend · S1"| verifyLink
+
+  %% OAuth rejections (copy now names the way through)
+  oauthPerm -->|"use your original method"| loginEmail
+  oauthPolicy -->|"try a different account / email"| loginEmail
+
+  classDef goal fill:#0b8457,stroke:#063,color:#fff;
+  class authed,verified goal;
+```
+
 Backend transitions themselves (confirm-mode `ConfirmationSent` vs `Session`,
 single-use/expiry token semantics, enumeration parity) are additionally
 enforced by the Rust tests in `crates/server/src/auth/routes.rs`.
