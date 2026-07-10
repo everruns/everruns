@@ -85,8 +85,8 @@ paths such as `/AGENTS.md`, `/outputs/…`, `/.agents/skills/…`) and the
 `/workspace` view of the same backend; `/workspace` wins by longest-prefix, so
 `/workspace/foo` ≡ `/foo`. Splitting `/outputs`, `/.agents/skills`, or volumes
 onto *different* backends later is `MountFs::with_mount(...)` — the resolver does
-not change. The model-facing namespace is a stable `/workspace` even for a
-host-rooted backend; host-absolute display is opt-in rendering, not addressing.
+not change. Routing and presentation are separate: the primary backend owns its
+visible path identity even when wrapped in `MountFs`.
 
 For host-filesystem sessions with multiple registered workspace roots, the
 primary root keeps the same layout and relative-path behavior:
@@ -161,7 +161,7 @@ store, so that logic is private to `everruns_runtime::RealDiskFileStore`
   re-checks containment.
 - The root is shared behind a handle, so an embedder's worktree switch via
   `RealDiskFileStore::set_host_root` is seen by every clone of the store at once
-  while the model-facing `/workspace` stays stable.
+  and the visible absolute root updates with it.
 - `WorkspaceRootSet::set_primary_host_root` and `RealDiskFileStore::set_host_root`
   repoint only the primary root. Additional roots are fixed for the session
   lifetime.
@@ -176,9 +176,10 @@ Each backend owns its `display_path`/`display_root`:
   paths under that root as aliases — so embedders can show
   `/Users/alex/project/src/lib.rs` while `/workspace/src/lib.rs` stays a valid
   input.
-- `MountFs` forces the `/workspace` view on top, so behind the resolver (the
-  production wiring) the model always sees a stable `/workspace` regardless of
-  backend.
+- `MountFs` preserves the primary backend's display root and paths. A real-disk
+  primary rooted at `/repo` therefore displays `/repo` and `/repo/file.rs` both
+  directly and through `MountFs`; an in-memory primary continues to display
+  `/workspace` because that is its own identity.
 - For additional mounted roots, returned file paths include the stable mounted
   prefix, e.g. `/workspace/roots/backend/Cargo.toml`.
 

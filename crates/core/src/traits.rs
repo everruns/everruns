@@ -438,8 +438,9 @@ pub trait SessionFileSystem: Send + Sync {
 
     /// Convert a canonical session path into a human-facing path.
     ///
-    /// The default renders the `/workspace` alias; host-backed stores and
-    /// [`MountFs`](crate::mount_fs::MountFs) override it.
+    /// The default renders the `/workspace` alias. Host-backed stores override
+    /// it, and decorators such as [`MountFs`](crate::mount_fs::MountFs) must
+    /// preserve the primary backend's path identity.
     fn display_path(&self, path: &str) -> String {
         crate::session_path::to_display_path(path)
     }
@@ -449,9 +450,9 @@ pub trait SessionFileSystem: Send + Sync {
     /// against the filesystem's current directory.
     ///
     /// This is how a shell seeds its working directory: a resolver like
-    /// [`MountFs`] returns the virtual path (`/workspace/sub`), so the shell and
-    /// the file tools address one namespace without the shell re-implementing
-    /// any `/workspace` handling. The default is the flat VFS session form.
+    /// [`MountFs`] returns a path in the primary backend's visible namespace, so
+    /// the shell and file tools share the same identity. The default is the flat
+    /// VFS session form.
     ///
     /// [`MountFs`]: crate::mount_fs::MountFs
     fn resolve_path(&self, input: &str) -> String {

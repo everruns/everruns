@@ -2274,10 +2274,8 @@ mod tests {
 
     #[tokio::test]
     async fn read_file_uses_store_display_path() {
-        // The file tool renders via the store's `display_path`. In production the
-        // store is `MountFs`, which presents the stable `/workspace` view even
-        // over a host-display backend (EVE-660) — so the host root never leaks
-        // into model-facing output.
+        // The file tool renders via the store's `display_path`; MountFs preserves
+        // the primary backend's visible identity (EVE-660).
         let store = Arc::new(MockFileStore::with_display_root("/host/repo"));
         store.add_text_file("/notes.txt", "hello");
         let context = make_context(store);

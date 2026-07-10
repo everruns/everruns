@@ -197,7 +197,7 @@ impl RealDiskFileStore {
 #[async_trait]
 impl SessionFileSystem for RealDiskFileStore {
     /// A real-disk store shows where files actually live: the host-absolute root.
-    /// (Behind `MountFs` the model still sees a stable `/workspace`.)
+    /// Filesystem decorators preserve this identity.
     fn display_root(&self) -> String {
         self.paths.display_root()
     }
