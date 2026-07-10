@@ -34,7 +34,7 @@ use everruns_core::{
         MEMORY_CAPABILITY_ID, RiskLevel, SystemPromptContext, collect_capabilities_with_configs,
         compute_features, resolve_capability_configs,
     },
-    is_declarative_capability,
+    is_declarative_capability, is_mcp_capability, is_plugin_capability, is_skill_capability,
     memory::{MemoryConfig, MemoryMountAccess},
     merge_capabilities, merge_initial_files, normalize_initial_file_path,
     parse_declarative_capability_id,
@@ -532,6 +532,21 @@ impl SessionService {
             &session_capabilities,
         )
         .await?;
+
+        // EVE-709: reject sessions whose harness/agent/session require a built-in
+        // capability that is not available in this deployment (e.g. a feature-gated
+        // `container_sandbox` when `FEATURE_CONTAINER_SANDBOX` is off). Without this
+        // gate the missing capability's tools are silently dropped and the session
+        // degrades into a different execution environment (e.g. bash), so the user
+        // believes isolated work ran when it did not. Fail clearly instead.
+        self.require_available_capabilities(
+            org_id,
+            harness_id.uuid(),
+            agent_id.map(|id| id.uuid()),
+            &session_capabilities,
+        )
+        .await?;
+
         let mut scoped_mcp_layers = vec![&effective_harness.mcp_servers];
         if let Some(ref agent_mcp_servers) = agent_mcp_servers {
             scoped_mcp_layers.push(agent_mcp_servers);
@@ -1916,6 +1931,56 @@ impl SessionService {
         }
 
         Ok(mounts)
+    }
+
+    /// EVE-709: reject session creation when a required built-in capability is not
+    /// available in this deployment.
+    ///
+    /// The effective capability set (harness chain + agent + session) may name
+    /// built-in capabilities that are feature-gated (e.g. `container_sandbox`
+    /// behind `FEATURE_CONTAINER_SANDBOX`). When such a capability is disabled it
+    /// is absent from the registry, its tools never register, and the session
+    /// silently runs without them — degrading into a different execution
+    /// environment. Rather than degrade silently, fail with a clear error naming
+    /// the unavailable capabilities.
+    ///
+    /// Only plain built-in references are checked. Namespaced refs
+    /// (`declarative:`, `plugin:`, `skill:`, `mcp:`) resolve from org data rather
+    /// than the registry, so their absence from the registry is expected and is
+    /// validated separately by `validate_capability_refs`.
+    async fn require_available_capabilities(
+        &self,
+        org_id: i64,
+        harness_id: Uuid,
+        agent_id: Option<Uuid>,
+        session_capabilities: &[AgentCapabilityConfig],
+    ) -> Result<()> {
+        let capability_ids = self
+            .collect_session_capability_ids(org_id, harness_id, agent_id, session_capabilities)
+            .await?;
+
+        let mut missing: Vec<String> = capability_ids
+            .into_iter()
+            .filter(|id| {
+                !is_declarative_capability(id)
+                    && !is_plugin_capability(id)
+                    && !is_skill_capability(id)
+                    && !is_mcp_capability(id)
+                    && !self.capability_registry.has(id)
+            })
+            .collect();
+
+        if missing.is_empty() {
+            return Ok(());
+        }
+
+        missing.sort();
+        missing.dedup();
+        Err(BadRequestError::new(format!(
+            "Harness requires capabilities unavailable in this deployment: {}",
+            missing.join(", ")
+        ))
+        .into())
     }
 
     async fn require_admin_for_high_risk_session_capabilities(
@@ -3568,6 +3633,66 @@ mod tests {
         fn risk_level(&self) -> RiskLevel {
             RiskLevel::High
         }
+    }
+
+    // EVE-709: a harness declaring a built-in capability that is not registered in
+    // this deployment (e.g. feature-gated `container_sandbox`) must fail session
+    // creation with a clear error rather than silently dropping the capability's
+    // tools and degrading into a different execution environment.
+    #[tokio::test]
+    async fn create_rejects_harness_with_unavailable_builtin_capability() {
+        let db = Arc::new(StorageBackend::in_memory());
+        // Empty registry stands in for a deployment where `container_sandbox` is
+        // feature-gated off, so it is absent from the capability registry.
+        let registry = CapabilityRegistry::new();
+        let session_service = SessionService::with_registry(db.clone(), registry);
+        let owner = Caller::internal(DEFAULT_ORG_ID);
+
+        let harness = db
+            .create_harness(
+                owner.org_id,
+                CreateHarnessRow {
+                    name: "coding-container".to_string(),
+                    display_name: Some("Coding (Container)".to_string()),
+                    description: None,
+                    system_prompt: Some("coding".to_string()),
+                    parent_harness_id: None,
+                    default_model_id: None,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    embedder_metadata: serde_json::json!({}),
+                    is_built_in: false,
+                },
+            )
+            .await
+            .unwrap();
+        db.set_harness_capabilities(
+            harness.id.uuid(),
+            vec![("container_sandbox".to_string(), 0, serde_json::json!({}))],
+        )
+        .await
+        .unwrap();
+
+        // Owner (admin) so the high-risk capability gate does not fire first.
+        let err = session_service
+            .create(
+                &owner,
+                harness.id.uuid(),
+                None,
+                None,
+                build_create_request(harness.id, None, None),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("capabilities unavailable in this deployment")
+                && err.to_string().contains("container_sandbox"),
+            "unexpected error: {err}"
+        );
     }
 
     #[tokio::test]
