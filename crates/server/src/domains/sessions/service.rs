@@ -15,7 +15,7 @@ use crate::errors::{BadRequestError, ResourceLimitError, ResourceNotFoundError};
 use crate::max_iterations;
 use crate::org_init;
 use crate::server::ResourceLimitsConfig;
-use crate::services::PrincipalService;
+use crate::services::{PrincipalService, row_to_principal};
 use crate::storage::{
     StorageBackend,
     models::{
@@ -27,8 +27,9 @@ use everruns_core::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use everruns_core::{
     AgentCapabilityConfig, AgentId, AgentVersionPolicy, Caller, CapabilityRegistry,
     DeclarativeCapabilityDefinition, FeatureFlags, HarnessId, InitialFile, ModelId, MountAccess,
-    MountEntry, MountPoint, MountSource, OrgRole, Permission, Policy, PrincipalId, Rule, Session,
-    SessionFile, SessionId, SessionStatus, TokenUsage, WorkspaceId,
+    MountEntry, MountPoint, MountSource, OrgRole, Permission, Policy, PrincipalId,
+    PrincipalSummary, Rule, Session, SessionFile, SessionId, SessionStatus, TokenUsage,
+    WorkspaceId,
     capabilities::{
         MEMORY_CAPABILITY_ID, RiskLevel, SystemPromptContext, collect_capabilities_with_configs,
         compute_features, resolve_capability_configs,
@@ -89,6 +90,15 @@ pub struct SessionService {
     session_sandbox_service: Option<Arc<SessionSandboxService>>,
     caps: OrgCaps,
     resource_limits: ResourceLimitsConfig,
+}
+
+#[derive(Default)]
+struct SessionListHydration {
+    owners: HashMap<PrincipalId, PrincipalSummary>,
+    effective_owners: HashMap<Uuid, PrincipalSummary>,
+    agent_public_ids: HashMap<AgentId, AgentId>,
+    agent_capability_ids: HashMap<AgentId, Vec<String>>,
+    harness_capability_ids: HashMap<HarnessId, Vec<String>>,
 }
 
 impl SessionService {
@@ -1106,19 +1116,12 @@ impl SessionService {
             .map(|r| Self::row_to_session(r, org_public_id, fallback))
             .collect();
 
-        for session in &mut sessions {
-            self.hydrate_ownership(org_id, session).await?;
+        if sessions.is_empty() {
+            return Ok((sessions, total));
         }
 
-        // Populate features before resolving agent IDs (needs internal UUIDs)
-        for session in &mut sessions {
-            self.populate_features(org_id, session).await?;
-        }
-
-        // Resolve agent internal UUIDs to public IDs
-        for session in &mut sessions {
-            self.resolve_session_agent_id(org_id, session).await?;
-        }
+        let hydration = self.load_session_list_hydration(org_id, &sessions).await?;
+        self.apply_session_list_hydration(&mut sessions, &hydration);
 
         // Fetch previews for all sessions in batch queries
         let session_ids: Vec<Uuid> = sessions.iter().map(|s| s.id.uuid()).collect();
@@ -1146,6 +1149,185 @@ impl SessionService {
         }
 
         Ok((sessions, total))
+    }
+
+    async fn load_session_list_hydration(
+        &self,
+        org_id: i64,
+        sessions: &[Session],
+    ) -> Result<SessionListHydration> {
+        // THREAT[TM-TENANT-001]: every batch loader receives the caller's org_id;
+        // capability-table reads additionally join through their org-scoped owner.
+        let principal_ids: Vec<PrincipalId> = sessions
+            .iter()
+            .map(|session| session.owner_principal_id)
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        let resolved_user_ids: Vec<Uuid> = sessions
+            .iter()
+            .filter_map(|session| session.resolved_owner_user_id)
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        let principal_rows = self
+            .db
+            .get_principals_for_session_list(org_id, &principal_ids, &resolved_user_ids)
+            .await?;
+
+        let mut hydration = SessionListHydration::default();
+        for row in principal_rows {
+            let principal = row_to_principal(row);
+            if principal.status != everruns_core::PrincipalStatus::Deleted {
+                hydration.owners.insert(principal.id, principal.summary());
+            }
+            if principal.kind == everruns_core::PrincipalKind::User
+                && let Some(user_id) = principal.subject_id
+            {
+                hydration
+                    .effective_owners
+                    .insert(user_id, principal.summary());
+            }
+        }
+
+        let agent_ids: Vec<AgentId> = sessions
+            .iter()
+            .filter_map(|session| session.agent_id)
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        if !agent_ids.is_empty() {
+            let agent_rows = self.db.get_agents_by_ids(org_id, &agent_ids).await?;
+            let existing_agent_ids: Vec<AgentId> = agent_rows.iter().map(|row| row.id).collect();
+            for row in agent_rows {
+                if let Ok(public_id) = row.public_id.parse::<AgentId>() {
+                    hydration.agent_public_ids.insert(row.id, public_id);
+                }
+            }
+            for row in self
+                .db
+                .get_agent_capabilities_by_agent_ids(org_id, &existing_agent_ids)
+                .await?
+            {
+                let capability_ids = hydration
+                    .agent_capability_ids
+                    .entry(row.agent_id)
+                    .or_default();
+                if !capability_ids.contains(&row.capability_id) {
+                    capability_ids.push(row.capability_id);
+                }
+            }
+        }
+
+        let harness_ids: HashSet<HarnessId> =
+            sessions.iter().map(|session| session.harness_id).collect();
+        hydration.harness_capability_ids = self
+            .load_session_list_harness_capability_ids(org_id, harness_ids)
+            .await?;
+
+        Ok(hydration)
+    }
+
+    async fn load_session_list_harness_capability_ids(
+        &self,
+        org_id: i64,
+        root_ids: HashSet<HarnessId>,
+    ) -> Result<HashMap<HarnessId, Vec<String>>> {
+        let root_id_list: Vec<HarnessId> = root_ids.iter().copied().collect();
+        let rows_by_id: HashMap<HarnessId, _> = self
+            .db
+            .get_harness_ancestry_by_ids(org_id, &root_id_list)
+            .await?
+            .into_iter()
+            .map(|row| (row.id, row))
+            .collect();
+
+        let loaded_ids: Vec<HarnessId> = rows_by_id.keys().copied().collect();
+        let mut layer_capability_ids: HashMap<HarnessId, Vec<String>> = HashMap::new();
+        for row in self
+            .db
+            .get_harness_capabilities_by_harness_ids(org_id, &loaded_ids)
+            .await?
+        {
+            layer_capability_ids
+                .entry(row.harness_id)
+                .or_default()
+                .push(row.capability_id);
+        }
+
+        let mut effective_by_root = HashMap::new();
+        for root_id in root_ids {
+            if !rows_by_id.contains_key(&root_id) {
+                continue;
+            }
+            let mut chain = Vec::new();
+            let mut visited = HashSet::new();
+            let mut cursor = Some(root_id);
+            while let Some(id) = cursor {
+                if !visited.insert(id) {
+                    anyhow::bail!("Harness inheritance cycle detected");
+                }
+                let row = rows_by_id
+                    .get(&id)
+                    .ok_or_else(|| ResourceNotFoundError::new("Parent harness"))?;
+                chain.push(id);
+                cursor = row.parent_harness_id;
+            }
+
+            let mut capability_ids = Vec::new();
+            for id in chain.into_iter().rev() {
+                for capability_id in layer_capability_ids.get(&id).into_iter().flatten() {
+                    if !capability_ids.contains(capability_id) {
+                        capability_ids.push(capability_id.clone());
+                    }
+                }
+            }
+            effective_by_root.insert(root_id, capability_ids);
+        }
+
+        Ok(effective_by_root)
+    }
+
+    fn apply_session_list_hydration(
+        &self,
+        sessions: &mut [Session],
+        hydration: &SessionListHydration,
+    ) {
+        for session in sessions {
+            session.owner = hydration.owners.get(&session.owner_principal_id).cloned();
+            session.effective_owner = session
+                .resolved_owner_user_id
+                .and_then(|id| hydration.effective_owners.get(&id).cloned());
+
+            let agent_internal_id = session.agent_id;
+            let mut capability_ids = hydration
+                .harness_capability_ids
+                .get(&session.harness_id)
+                .cloned()
+                .unwrap_or_default();
+            if let Some(agent_id) = agent_internal_id
+                && let Some(agent_capability_ids) = hydration.agent_capability_ids.get(&agent_id)
+            {
+                for capability_id in agent_capability_ids {
+                    if !capability_ids.contains(capability_id) {
+                        capability_ids.push(capability_id.clone());
+                    }
+                }
+            }
+            for capability in &session.capabilities {
+                let capability_id = capability.capability_id().to_string();
+                if !capability_ids.contains(&capability_id) {
+                    capability_ids.push(capability_id);
+                }
+            }
+            session.features = compute_features(&capability_ids, &self.capability_registry);
+
+            if let Some(agent_id) = agent_internal_id
+                && let Some(public_id) = hydration.agent_public_ids.get(&agent_id)
+            {
+                session.agent_id = Some(*public_id);
+            }
+        }
     }
 
     pub async fn update(
@@ -1611,24 +1793,18 @@ impl SessionService {
     ) -> Result<Vec<String>> {
         let mut capability_ids = Vec::new();
 
-        if self
-            .resolve_effective_harness(org_id, HarnessId::from_uuid(harness_id))
-            .await?
-            .is_some()
-        {
-            capability_ids.extend(
-                self.resolve_effective_harness(org_id, HarnessId::from_uuid(harness_id))
-                    .await?
-                    .map(|harness| {
-                        harness
-                            .capabilities
-                            .into_iter()
-                            .map(|cap| cap.capability_id().to_string())
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default(),
-            );
-        }
+        capability_ids.extend(
+            self.resolve_effective_harness(org_id, HarnessId::from_uuid(harness_id))
+                .await?
+                .map(|harness| {
+                    harness
+                        .capabilities
+                        .into_iter()
+                        .map(|cap| cap.capability_id().to_string())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default(),
+        );
 
         if let Some(agent_id) = agent_id
             && self
@@ -2059,7 +2235,7 @@ mod tests {
     use crate::services::{CapabilityService, PrincipalService};
     use crate::storage::{
         CreateHarnessRow, CreateMemoryFileRow, CreateModelRow, CreateOrganizationRow,
-        CreateProviderRow, StorageBackend,
+        CreateProviderRow, StorageBackend, UpdateAgent,
     };
     use everruns_core::capabilities::Capability;
     use everruns_core::{Caller, DEFAULT_ORG_ID, InitialFile, OrgRole};
@@ -2162,6 +2338,450 @@ mod tests {
             parallel_tool_calls: None,
             parent_session_id: None,
         }
+    }
+
+    #[tokio::test]
+    async fn session_list_lookup_count_is_independent_of_page_size() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
+
+        let parent = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "list-parent-harness".to_string(),
+            display_name: Some("List Parent Harness".to_string()),
+            description: None,
+            system_prompt: Some("parent".to_string()),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "list-child-harness".to_string(),
+            display_name: Some("List Child Harness".to_string()),
+            description: None,
+            system_prompt: Some("child".to_string()),
+            parent_harness_id: Some(parent.id),
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+            id: None,
+            name: "list-agent".to_string(),
+            display_name: Some("List Agent".to_string()),
+            description: None,
+            system_prompt: "agent".to_string(),
+            default_model_id: None,
+            harness_id: None,
+            harness_name: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            tools: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let service = SessionService::new(db.clone());
+
+        for index in 0..20 {
+            let mut request = build_create_request(harness.id, Some(agent.public_id), None);
+            request.title = Some(format!("List session {index}"));
+            service
+                .create(
+                    &caller,
+                    harness.id.uuid(),
+                    Some(agent.internal_id),
+                    Some(agent.public_id),
+                    request,
+                )
+                .await
+                .unwrap();
+        }
+
+        db.reset_session_list_lookup_count();
+        let (one, _) = service
+            .list(
+                &caller,
+                None,
+                Some(everruns_core::ANONYMOUS_USER_ID),
+                None,
+                Pagination {
+                    limit: 1,
+                    offset: 0,
+                },
+            )
+            .await
+            .unwrap();
+        let one_lookup_count = db.session_list_lookup_count();
+        assert_eq!(one.len(), 1);
+
+        db.reset_session_list_lookup_count();
+        let (twenty, _) = service
+            .list(
+                &caller,
+                None,
+                Some(everruns_core::ANONYMOUS_USER_ID),
+                None,
+                Pagination {
+                    limit: 20,
+                    offset: 0,
+                },
+            )
+            .await
+            .unwrap();
+        let twenty_lookup_count = db.session_list_lookup_count();
+        assert_eq!(twenty.len(), 20);
+
+        assert_eq!(
+            twenty_lookup_count, one_lookup_count,
+            "session-list storage lookups must stay bounded as page size grows"
+        );
+        assert_eq!(
+            twenty_lookup_count, 9,
+            "session-list hydration should use the fixed batch-query budget"
+        );
+
+        db.set_session_list_lookup_delay_ms(2);
+        db.reset_session_list_lookup_count();
+        let legacy_started = tokio::time::Instant::now();
+        let (legacy_rows, _) = db
+            .list_sessions(
+                DEFAULT_ORG_ID,
+                None,
+                None,
+                Pagination {
+                    limit: 20,
+                    offset: 0,
+                },
+            )
+            .await
+            .unwrap();
+        let mut legacy_sessions: Vec<Session> = legacy_rows
+            .into_iter()
+            .map(|row| SessionService::row_to_session(row, &caller.org_public_id, None))
+            .collect();
+        for session in &mut legacy_sessions {
+            service
+                .hydrate_ownership(DEFAULT_ORG_ID, session)
+                .await
+                .unwrap();
+        }
+        for session in &mut legacy_sessions {
+            service
+                .resolve_effective_harness(DEFAULT_ORG_ID, session.harness_id)
+                .await
+                .unwrap();
+            service
+                .populate_features(DEFAULT_ORG_ID, session)
+                .await
+                .unwrap();
+        }
+        for session in &mut legacy_sessions {
+            service
+                .resolve_session_agent_id(DEFAULT_ORG_ID, session)
+                .await
+                .unwrap();
+        }
+        let legacy_ids: Vec<Uuid> = legacy_sessions
+            .iter()
+            .map(|session| session.id.uuid())
+            .collect();
+        db.get_session_previews(&legacy_ids).await.unwrap();
+        db.get_session_output_previews(&legacy_ids).await.unwrap();
+        db.list_pinned_session_ids(everruns_core::ANONYMOUS_USER_ID, DEFAULT_ORG_ID)
+            .await
+            .unwrap();
+        let legacy_elapsed = legacy_started.elapsed();
+        let legacy_lookup_count = db.session_list_lookup_count();
+
+        db.reset_session_list_lookup_count();
+        let batched_started = tokio::time::Instant::now();
+        service
+            .list(
+                &caller,
+                None,
+                Some(everruns_core::ANONYMOUS_USER_ID),
+                None,
+                Pagination {
+                    limit: 20,
+                    offset: 0,
+                },
+            )
+            .await
+            .unwrap();
+        let batched_elapsed = batched_started.elapsed();
+        let batched_lookup_count = db.session_list_lookup_count();
+        db.set_session_list_lookup_delay_ms(0);
+
+        eprintln!(
+            "sessions-list benchmark (20 rows, 2ms simulated DB latency): before={legacy_lookup_count} lookups/{legacy_elapsed:?}, after={batched_lookup_count} lookups/{batched_elapsed:?}"
+        );
+        assert_eq!(legacy_lookup_count, 244);
+        assert_eq!(batched_lookup_count, 9);
+        assert!(
+            batched_elapsed * 5 < legacy_elapsed,
+            "batched hydration should be materially faster under cross-cloud latency"
+        );
+    }
+
+    #[tokio::test]
+    async fn session_list_batch_hydration_preserves_response_fields() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
+
+        let parent = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "hydration-parent".to_string(),
+            display_name: Some("Hydration Parent".to_string()),
+            description: None,
+            system_prompt: Some("parent".to_string()),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![AgentCapabilityConfig::new("session_file_system")],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "hydration-child".to_string(),
+            display_name: Some("Hydration Child".to_string()),
+            description: None,
+            system_prompt: Some("child".to_string()),
+            parent_harness_id: Some(parent.id),
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![AgentCapabilityConfig::new("session_tasks")],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+            id: None,
+            name: "hydration-agent".to_string(),
+            display_name: Some("Hydration Agent".to_string()),
+            description: None,
+            system_prompt: "agent".to_string(),
+            default_model_id: None,
+            harness_id: None,
+            harness_name: None,
+            tags: vec![],
+            capabilities: vec![AgentCapabilityConfig::new("session_schedule")],
+            initial_files: vec![],
+            tools: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let service = SessionService::new(db.clone());
+
+        let mut agent_request = build_create_request(harness.id, Some(agent.public_id), None);
+        agent_request.title = Some("agent session".to_string());
+        agent_request.capabilities = vec![AgentCapabilityConfig::new("session_storage")];
+        let agent_session = service
+            .create(
+                &caller,
+                harness.id.uuid(),
+                Some(agent.internal_id),
+                Some(agent.public_id),
+                agent_request,
+            )
+            .await
+            .unwrap();
+        let no_agent_session = service
+            .create(
+                &caller,
+                harness.id.uuid(),
+                None,
+                None,
+                build_create_request(harness.id, None, None),
+            )
+            .await
+            .unwrap();
+
+        for (event_type, text) in [
+            ("input.message", "input preview"),
+            ("output.message.completed", "output preview"),
+        ] {
+            db.create_event(CreateEventRow {
+                session_id: agent_session.id,
+                event_type: event_type.to_string(),
+                ts: chrono::Utc::now(),
+                context: serde_json::json!({}),
+                data: serde_json::json!({
+                    "message": {"content": [{"type": "text", "text": text}]}
+                }),
+                metadata: None,
+                tags: None,
+            })
+            .await
+            .unwrap();
+        }
+        db.pin_session(
+            everruns_core::ANONYMOUS_USER_ID,
+            agent_session.id,
+            DEFAULT_ORG_ID,
+        )
+        .await
+        .unwrap();
+
+        db.update_agent(
+            DEFAULT_ORG_ID,
+            AgentId::from_uuid(agent.internal_id),
+            UpdateAgent {
+                status: Some("deleted".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let missing_agent_id = AgentId::new();
+        let missing_owner_id = PrincipalId::new();
+        let missing_reference_session = db
+            .create_session(CreateSessionRow {
+                workspace_id: None,
+                org_id: DEFAULT_ORG_ID,
+                app_id: None,
+                harness_id: Some(harness.id),
+                agent_id: Some(missing_agent_id),
+                agent_identity_id: None,
+                owner_principal_id: missing_owner_id,
+                resolved_owner_user_id: None,
+                title: Some("missing references".to_string()),
+                locale: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                system_prompt: None,
+                initial_files: serde_json::json!([]),
+                hints: None,
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+                blueprint_id: None,
+                blueprint_config: None,
+                parent_session_id: None,
+            })
+            .await
+            .unwrap();
+
+        let (sessions, total) = service
+            .list(
+                &caller,
+                None,
+                Some(everruns_core::ANONYMOUS_USER_ID),
+                None,
+                Pagination {
+                    limit: 20,
+                    offset: 0,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(total, 3);
+        assert_eq!(sessions.len(), 3);
+        assert!(
+            sessions
+                .windows(2)
+                .all(|pair| pair[0].created_at >= pair[1].created_at)
+        );
+
+        let listed_agent = sessions
+            .iter()
+            .find(|session| session.id == agent_session.id)
+            .unwrap();
+        assert_eq!(listed_agent.agent_id, Some(agent.public_id));
+        assert!(listed_agent.owner.is_some());
+        assert_eq!(listed_agent.preview.as_deref(), Some("input preview"));
+        assert_eq!(
+            listed_agent.output_preview.as_deref(),
+            Some("output preview")
+        );
+        assert_eq!(listed_agent.is_pinned, Some(true));
+        for feature in ["file_system", "session_tasks", "schedules", "key_value"] {
+            assert!(
+                listed_agent.features.iter().any(|value| value == feature),
+                "missing feature {feature}: {:?}",
+                listed_agent.features
+            );
+        }
+
+        let listed_no_agent = sessions
+            .iter()
+            .find(|session| session.id == no_agent_session.id)
+            .unwrap();
+        assert_eq!(listed_no_agent.agent_id, None);
+        assert_eq!(listed_no_agent.is_pinned, Some(false));
+        assert!(
+            listed_no_agent
+                .features
+                .iter()
+                .any(|value| value == "file_system")
+        );
+        assert!(
+            listed_no_agent
+                .features
+                .iter()
+                .any(|value| value == "session_tasks")
+        );
+
+        let listed_missing = sessions
+            .iter()
+            .find(|session| session.id == missing_reference_session.id)
+            .unwrap();
+        assert_eq!(listed_missing.agent_id, Some(missing_agent_id));
+        assert!(listed_missing.owner.is_none());
+
+        let (empty_page, empty_total) = service
+            .list(
+                &caller,
+                None,
+                Some(everruns_core::ANONYMOUS_USER_ID),
+                None,
+                Pagination {
+                    limit: 20,
+                    offset: 100,
+                },
+            )
+            .await
+            .unwrap();
+        assert!(empty_page.is_empty());
+        assert_eq!(empty_total, 3);
     }
 
     async fn create_second_org(db: &StorageBackend) -> i64 {

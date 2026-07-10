@@ -125,6 +125,22 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn get_agents_by_ids(&self, org_id: i64, ids: &[AgentId]) -> Result<Vec<AgentRow>> {
+        let ids: Vec<Uuid> = ids.iter().map(|id| id.uuid()).collect();
+        Ok(sqlx::query_as::<_, AgentRow>(
+            r#"
+            SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, harness_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
+            FROM agents
+            WHERE org_id = $1 AND id = ANY($2)
+            "#,
+        )
+        .bind(org_id)
+        .bind(&ids)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
     /// Look up the owning org for an agent by its public_id, without scoping
     /// to a caller-supplied org. Used exclusively by the cross-org resolver
     /// (see specs/multitenancy.md). Callers MUST gate the result on user
@@ -638,6 +654,27 @@ impl Database {
         .await?;
 
         Ok(rows)
+    }
+
+    pub async fn get_agent_capabilities_by_agent_ids(
+        &self,
+        org_id: i64,
+        agent_ids: &[AgentId],
+    ) -> Result<Vec<AgentCapabilityRow>> {
+        let agent_ids: Vec<Uuid> = agent_ids.iter().map(|id| id.uuid()).collect();
+        Ok(sqlx::query_as::<_, AgentCapabilityRow>(
+            r#"
+            SELECT ac.id, ac.agent_id, ac.capability_id, ac.position, ac.config, ac.created_at
+            FROM agent_capabilities ac
+            JOIN agents a ON a.id = ac.agent_id
+            WHERE a.org_id = $1 AND ac.agent_id = ANY($2)
+            ORDER BY ac.agent_id, ac.position ASC
+            "#,
+        )
+        .bind(org_id)
+        .bind(&agent_ids)
+        .fetch_all(&self.pool)
+        .await?)
     }
 
     /// Set capabilities for an agent (replaces existing capabilities)
