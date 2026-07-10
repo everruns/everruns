@@ -2779,7 +2779,11 @@ impl ReasonAtom {
             );
         }
 
-        // 18. Store and emit output.message.completed event with metadata and usage
+        // 18. Store and emit output.message.completed event with metadata and usage.
+        // Strip any synthetic `[time …]` annotation the model echoed from the
+        // message_metadata model view before persisting/returning it (EVE-710),
+        // so exact-output replies are not polluted by the injected prefix.
+        let text = crate::capabilities::strip_leading_timestamp_annotations(&text);
         let has_tool_calls = !tool_calls.is_empty();
         let mut assistant_message = if has_tool_calls {
             Message::assistant_with_tools(&text, tool_calls.clone())
@@ -2885,6 +2889,8 @@ impl ReasonAtom {
             .await;
 
         // Build the assistant message from accumulated text and persist via event.
+        // Strip any echoed `[time …]` annotation the model produced (EVE-710).
+        let accumulated = crate::capabilities::strip_leading_timestamp_annotations(&accumulated);
         let assistant_message = Message::assistant(&accumulated);
         let output_message_id = assistant_message.id;
         self.event_emitter
