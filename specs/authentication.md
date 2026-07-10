@@ -432,11 +432,15 @@ See `crates/server/migrations/001_base_schema.sql` for `users`, `personal_access
 
 For `auth=none` mode, a well-known anonymous user is seeded via `crates/server/src/seed.rs`. Constants in `crates/core/src/organization.rs`: `ANONYMOUS_USER_ID`, `ANONYMOUS_USER_EMAIL`, `ANONYMOUS_USER_NAME`. The anonymous user has admin role and belongs to the default organization.
 
+#### Default-Org Membership (single-tenant only)
+
+`register` and `oauth_callback` add a brand-new user to `DEFAULT_ORG_ID` **only when `AuthConfig.auto_join_default_org` is set** (`AUTH_AUTO_JOIN_DEFAULT_ORG=true`). It is **off by default**, because auto-joining the shared default org is a single-tenant convenience (single-binary / small self-host where everyone shares one org). In any multi-tenant deployment it MUST stay off: a fresh signup must own **no** org so the zero-org onboarding flow creates the user's *own* org — otherwise every tenant lands in `DEFAULT_ORG_ID` together (a tenant-isolation failure). The admin-mode bootstrap owner is unaffected: `login` always seeds the admin into the default org regardless of this flag.
+
 #### Default-Org Harness-Seed Guarantee
 
 The server's background seed task (`seed::spawn_seed_task_with_platform_definition`) provisions the platform-defined built-in harnesses for every organization — including `DEFAULT_ORG_ID` — using the active `PlatformDefinition`. The task runs asynchronously with a 500 ms initial delay, so there is a window on cold boot where a user could register via `register` or `oauth_callback` before `DEFAULT_ORG_ID` has its harnesses.
 
-To close that window, both handlers re-run `initialize_org_harnesses_with_definitions(db, DEFAULT_ORG_ID, platform_definition.built_in_harnesses())` as a safety net after adding the user to the default org. Invariants:
+When default-org auto-join is enabled (above), both handlers re-run `initialize_org_harnesses_with_definitions(db, DEFAULT_ORG_ID, platform_definition.built_in_harnesses())` as a safety net after adding the user to the default org (the re-run is gated together with the membership). Invariants:
 
 - **Correctness**: every newly-signed-up user lands in an org that has built-in harnesses, even if the async seed task has not completed. The provisioner is idempotent (upsert keyed on harness name), so the second call is a no-op once seeding is done.
 - **No operator override**: the safety net drives from `state.platform_definition.built_in_harnesses()` (the operator-configured set), **not** from `oss_built_in_harnesses()`. This preserves the fix from PR #1462 — public signup cannot reintroduce OSS harnesses that a custom `PlatformDefinition` removed. Tracked as threat-model entry `TM-AUTH-016` in `specs/threat-model.md` and originally surfaced in EVE-390.
