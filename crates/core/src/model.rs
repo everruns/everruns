@@ -249,6 +249,40 @@ pub struct ReasoningEffortConfig {
     pub default: ReasoningEffort,
 }
 
+/// Speed level for models that expose a latency/price service tier.
+/// Wire values map 1:1 to the OpenAI `service_tier` request parameter:
+/// `flex` (slower, cheaper), `default` (standard), `priority` (faster,
+/// premium). `auto` is deliberately not offered — omitting the field
+/// preserves the provider's default routing.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum Speed {
+    Flex,
+    Default,
+    Priority,
+}
+
+/// Named speed value for UI display
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct SpeedValue {
+    /// The API value (e.g., "flex", "priority")
+    pub value: Speed,
+    /// Display name (e.g., "Flex", "Fast")
+    pub name: String,
+}
+
+/// Speed configuration for a model
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct SpeedConfig {
+    /// Available speed values for this model
+    pub values: Vec<SpeedValue>,
+    /// Default speed for this model
+    pub default: Speed,
+}
+
 /// Vendor / brand that authored a model. Independent of the provider type
 /// that serves it (the same model may be offered by several providers or
 /// gateways). Primarily drives UI iconography.
@@ -339,6 +373,10 @@ pub struct ModelProfile {
     /// Reasoning effort configuration (for reasoning models)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning_effort: Option<ReasoningEffortConfig>,
+    /// Speed (service tier) configuration, for models served with
+    /// selectable latency/price tiers (OpenAI `service_tier`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed: Option<SpeedConfig>,
     /// Whether the model supports tool_search (deferred tool loading).
     /// When true, the driver can use namespaces and defer_loading to reduce
     /// token usage for large tool sets. Currently supported by GPT-5.4 and newer.

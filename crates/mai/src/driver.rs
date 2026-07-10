@@ -564,6 +564,7 @@ mod tests {
 
     fn dummy_config() -> LlmCallConfig {
         LlmCallConfig {
+            speed: None,
             model: "mai-code-1-flash".into(),
             temperature: None,
             max_tokens: None,

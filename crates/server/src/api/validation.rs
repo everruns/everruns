@@ -436,6 +436,7 @@ mod tests {
             model_id: None,
             locale: Some("uk_UA".to_string()),
             reasoning: None,
+            speed: None,
             error_disclosure: None,
             hints: None,
         };

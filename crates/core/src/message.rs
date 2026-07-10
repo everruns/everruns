@@ -203,6 +203,12 @@ pub struct Controls {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reasoning: Option<ReasoningConfig>,
 
+    /// Speed (service tier) for this message turn: "flex", "default", or
+    /// "priority". Only sent to providers whose model profile advertises a
+    /// speed config (OpenAI `service_tier`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub speed: Option<String>,
+
     /// Error disclosure override for this turn: "generic", "standard", or
     /// "detailed". Clamped to at most the mode allowed by the agent's
     /// `error_disclosure` capability (capability absent => "standard"), so a

@@ -543,6 +543,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 .as_ref()
                 .filter(|e| !e.eq_ignore_ascii_case("none"))
                 .cloned(),
+            service_tier: config.speed.clone(),
             metadata,
         };
 
@@ -835,6 +836,10 @@ struct OpenAiRequest {
     parallel_tool_calls: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<String>,
+    /// Speed selector: OpenAI service tier ("flex", "default", "priority").
+    /// Omitted when `None` so the provider keeps its default ("auto") routing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    service_tier: Option<String>,
     /// Metadata for tracking API usage (up to 16 key-value pairs).
     /// Useful for correlating requests with session_id, agent_id, org_id, etc.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1135,6 +1140,7 @@ mod tests {
         // OpenAI streaming API requires stream_options.include_usage=true
         // to return token usage in the response
         let request = OpenAiRequest {
+            service_tier: None,
             model: "gpt-4o".to_string(),
             messages: vec![OpenAiMessage {
                 role: "user".to_string(),
@@ -1167,6 +1173,7 @@ mod tests {
         metadata.insert("agent_id".to_string(), "agent_xyz789".to_string());
 
         let request = OpenAiRequest {
+            service_tier: None,
             model: "gpt-4o".to_string(),
             messages: vec![OpenAiMessage {
                 role: "user".to_string(),
@@ -1467,6 +1474,7 @@ mod tests {
         // When reasoning_effort is "none", it should be filtered out
         // to avoid "Unrecognized request argument" errors on non-thinking models
         let request = OpenAiRequest {
+            service_tier: None,
             model: "gpt-4o-mini".to_string(),
             messages: vec![OpenAiMessage {
                 role: "user".to_string(),
@@ -1497,6 +1505,7 @@ mod tests {
     #[test]
     fn test_reasoning_effort_high_is_included() {
         let request = OpenAiRequest {
+            service_tier: None,
             model: "o3-mini".to_string(),
             messages: vec![OpenAiMessage {
                 role: "user".to_string(),
@@ -1528,6 +1537,7 @@ mod tests {
     fn test_request_serializes_parallel_tool_calls() {
         fn build(flag: Option<bool>) -> serde_json::Value {
             let request = OpenAiRequest {
+                service_tier: None,
                 model: "gpt-4o-mini".to_string(),
                 messages: vec![OpenAiMessage {
                     role: "user".to_string(),
@@ -1552,6 +1562,37 @@ mod tests {
         // Present and preserved for Some(_).
         assert_eq!(build(Some(true))["parallel_tool_calls"], true);
         assert_eq!(build(Some(false))["parallel_tool_calls"], false);
+    }
+
+    /// The speed selector serializes as `service_tier` only when set, so the
+    /// provider's default ("auto") routing applies when unset.
+    #[test]
+    fn test_request_serializes_service_tier() {
+        fn build(tier: Option<&str>) -> serde_json::Value {
+            let request = OpenAiRequest {
+                service_tier: tier.map(str::to_string),
+                model: "gpt-4o-mini".to_string(),
+                messages: vec![OpenAiMessage {
+                    role: "user".to_string(),
+                    content: Some(OpenAiContent::Text("Hello".to_string())),
+                    tool_calls: None,
+                    tool_call_id: None,
+                }],
+                temperature: None,
+                max_tokens: None,
+                stream: true,
+                stream_options: None,
+                tools: None,
+                parallel_tool_calls: None,
+                reasoning_effort: None,
+                metadata: None,
+            };
+            serde_json::to_value(&request).unwrap()
+        }
+
+        assert!(build(None).get("service_tier").is_none());
+        assert_eq!(build(Some("flex"))["service_tier"], "flex");
+        assert_eq!(build(Some("priority"))["service_tier"], "priority");
     }
 
     // ------------------------------------------------------------------

@@ -17,7 +17,8 @@
 use crate::driver_registry::ServiceKind;
 use crate::model::{
     CostTier, DriverId, Modality, ModelCost, ModelLimits, ModelModalities, ModelProfile,
-    ModelVendor, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
+    ModelVendor, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue, Speed, SpeedConfig,
+    SpeedValue,
 };
 
 // Helper functions for creating reasoning effort configurations
@@ -161,6 +162,59 @@ fn reasoning_effort_anthropic_adaptive_thinking() -> ReasoningEffortConfig {
             effort(ReasoningEffort::Xhigh, "Max"),
         ],
         default: ReasoningEffort::High,
+    }
+}
+
+// Helper functions for creating speed (service tier) configurations.
+//
+// Availability is sourced from the tier tables on the official pricing page
+// (developers.openai.com/api/docs/pricing): a model gets a speed config only
+// when it has a Flex and/or Priority pricing row. Codex-family, chat-latest,
+// and deep-research models have no tier rows and therefore no speed config.
+// Display names follow Codex's speed selector ("Fast" for priority).
+
+fn speed(value: Speed, name: &str) -> SpeedValue {
+    SpeedValue {
+        value,
+        name: name.into(),
+    }
+}
+
+/// Speed for models with both flex and priority pricing rows
+/// (gpt-5, gpt-5-mini, gpt-5.1, gpt-5.2, gpt-5.4, gpt-5.4-mini, gpt-5.5,
+/// gpt-5.6 series, o3, o4-mini).
+fn speed_flex_priority() -> SpeedConfig {
+    SpeedConfig {
+        values: vec![
+            speed(Speed::Flex, "Flex"),
+            speed(Speed::Default, "Standard"),
+            speed(Speed::Priority, "Fast"),
+        ],
+        default: Speed::Default,
+    }
+}
+
+/// Speed for models with only a flex pricing row
+/// (gpt-5-nano, gpt-5.4-nano, gpt-5.4-pro, gpt-5.5-pro).
+fn speed_flex_only() -> SpeedConfig {
+    SpeedConfig {
+        values: vec![
+            speed(Speed::Flex, "Flex"),
+            speed(Speed::Default, "Standard"),
+        ],
+        default: Speed::Default,
+    }
+}
+
+/// Speed for models with only a priority pricing row
+/// (gpt-4o, gpt-4o-mini, gpt-4.1 family).
+fn speed_priority_only() -> SpeedConfig {
+    SpeedConfig {
+        values: vec![
+            speed(Speed::Default, "Standard"),
+            speed(Speed::Priority, "Fast"),
+        ],
+        default: Speed::Default,
     }
 }
 
@@ -423,6 +477,12 @@ pub fn get_model_profile(provider_type: &DriverId, model_id: &str) -> Option<Mod
     if !matches!(provider_type, DriverId::OpenAI | DriverId::Anthropic) {
         profile.tool_search = false;
     }
+    // Speed (service tier) is an OpenAI-platform billing feature. Azure has
+    // its own capacity model and gateways (OpenRouter) do their own routing,
+    // so only the first-party OpenAI surface keeps the selector.
+    if !matches!(provider_type, DriverId::OpenAI) {
+        profile.speed = None;
+    }
     Some(profile)
 }
 
@@ -533,6 +593,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text, Modality::Audio],
             }),
             reasoning_effort: Some(reasoning_effort_realtime()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: true,
@@ -568,6 +629,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text, Modality::Audio],
             }),
             reasoning_effort: None,
+            speed: Some(speed_priority_only()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -603,6 +665,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: Some(speed_priority_only()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -638,6 +701,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -673,6 +737,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -708,6 +773,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_high_only()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -743,6 +809,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -778,6 +845,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
+            speed: Some(speed_flex_priority()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -813,6 +881,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_high_only()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -848,6 +917,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
+            speed: Some(speed_flex_priority()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -884,6 +954,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: Some(speed_priority_only()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -919,6 +990,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: Some(speed_priority_only()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -954,6 +1026,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: Some(speed_priority_only()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -991,6 +1064,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
+            speed: Some(speed_flex_priority()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1026,6 +1100,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
+            speed: Some(speed_flex_priority()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1061,6 +1136,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
+            speed: Some(speed_flex_only()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1096,6 +1172,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_high_only()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1131,6 +1208,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1167,6 +1245,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
+            speed: Some(speed_flex_priority()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1202,6 +1281,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1237,6 +1317,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1273,6 +1354,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1309,6 +1391,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
+            speed: Some(speed_flex_priority()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1344,6 +1427,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt52_pro()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1379,6 +1463,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1415,6 +1500,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1465,6 +1551,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt55()),
+            speed: Some(speed_flex_priority()),
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
@@ -1505,6 +1592,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt55()),
+            speed: Some(speed_flex_priority()),
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
@@ -1545,6 +1633,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt55()),
+            speed: Some(speed_flex_priority()),
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
@@ -1585,6 +1674,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt55()),
+            speed: Some(speed_flex_priority()),
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
@@ -1620,6 +1710,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt52_pro()),
+            speed: Some(speed_flex_only()),
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
@@ -1663,6 +1754,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
+            speed: Some(speed_flex_priority()),
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
@@ -1698,6 +1790,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
+            speed: Some(speed_flex_priority()),
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
@@ -1733,6 +1826,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
+            speed: Some(speed_flex_only()),
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
@@ -1773,6 +1867,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt52_pro()),
+            speed: Some(speed_flex_only()),
             tool_search: true,
             supported_parameters: Vec::new(),
             supports_phases: true,
@@ -1809,6 +1904,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1844,6 +1940,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1879,6 +1976,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1915,6 +2013,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1950,6 +2049,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1985,6 +2085,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2040,6 +2141,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2077,6 +2179,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2108,6 +2211,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2141,6 +2245,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2178,6 +2283,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2215,6 +2321,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2257,6 +2364,7 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2364,6 +2472,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2406,6 +2515,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2446,6 +2556,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2483,6 +2594,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2543,6 +2655,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2578,6 +2691,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2614,6 +2728,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2649,6 +2764,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2684,6 +2800,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2720,6 +2837,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2756,6 +2874,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2791,6 +2910,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2827,6 +2947,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_anthropic_extended_thinking()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2863,6 +2984,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2898,6 +3020,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2933,6 +3056,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -2968,6 +3092,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -3003,6 +3128,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -3060,6 +3186,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -3100,6 +3227,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -3140,6 +3268,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -3180,6 +3309,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text, Modality::Image],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -3220,6 +3350,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -3260,6 +3391,7 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -3303,6 +3435,7 @@ fn llmsim_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()), // Same as GPT-5.2
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -3484,6 +3617,28 @@ mod tests {
                     effort.default
                 );
             }
+
+            if let Some(speed) = &p.speed {
+                assert!(!speed.values.is_empty(), "{id}: empty speed set");
+                let mut seen: Vec<&Speed> = Vec::new();
+                for v in &speed.values {
+                    assert!(
+                        !v.name.trim().is_empty(),
+                        "{id}: speed value with empty display name"
+                    );
+                    assert!(
+                        !seen.contains(&&v.value),
+                        "{id}: duplicate speed value {:?}",
+                        v.value
+                    );
+                    seen.push(&v.value);
+                }
+                assert!(
+                    speed.values.iter().any(|v| v.value == speed.default),
+                    "{id}: speed default {:?} is not among its values",
+                    speed.default
+                );
+            }
         }
     }
 
@@ -3595,6 +3750,62 @@ mod tests {
         let profile = get_model_profile(&DriverId::AzureOpenAI, "gpt-4o");
         assert!(profile.is_some());
         assert_eq!(profile.unwrap().name, "GPT-4o");
+    }
+
+    // Speed (service tier) availability follows the tier tables on the
+    // official pricing page; see the speed_* helper docs.
+
+    #[test]
+    fn test_speed_config_matches_pricing_tiers() {
+        let speeds = |model: &str| -> Vec<Speed> {
+            get_model_profile(&DriverId::OpenAI, model)
+                .unwrap()
+                .speed
+                .map(|s| s.values.into_iter().map(|v| v.value).collect())
+                .unwrap_or_default()
+        };
+        use Speed::*;
+        // Flex + priority pricing rows.
+        for model in ["gpt-5.2", "gpt-5.6-sol", "gpt-5.4", "o3", "o4-mini"] {
+            assert_eq!(speeds(model), vec![Flex, Default, Priority], "{model}");
+        }
+        // Flex-only pricing rows.
+        for model in ["gpt-5-nano", "gpt-5.4-pro", "gpt-5.5-pro"] {
+            assert_eq!(speeds(model), vec![Flex, Default], "{model}");
+        }
+        // Priority-only pricing rows (legacy priority launch set).
+        for model in ["gpt-4o", "gpt-4.1"] {
+            assert_eq!(speeds(model), vec![Default, Priority], "{model}");
+        }
+        // No tier rows: codex family, chat-latest, most pro/o1 models.
+        for model in ["gpt-5.2-codex", "gpt-5-chat-latest", "gpt-5-pro", "o1"] {
+            assert_eq!(speeds(model), vec![], "{model}");
+        }
+    }
+
+    #[test]
+    fn test_speed_masked_for_non_openai_surfaces() {
+        assert!(
+            get_model_profile(&DriverId::OpenAI, "gpt-5.2")
+                .unwrap()
+                .speed
+                .is_some()
+        );
+        // Service tiers are OpenAI-platform billing; other surfaces reaching
+        // the same model must not advertise the selector.
+        for provider in [
+            DriverId::AzureOpenAI,
+            DriverId::OpenRouter,
+            DriverId::OpenAICompletions,
+        ] {
+            assert!(
+                get_model_profile(&provider, "gpt-5.2")
+                    .unwrap()
+                    .speed
+                    .is_none(),
+                "{provider:?}"
+            );
+        }
     }
 
     // GPT-5 model tests

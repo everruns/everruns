@@ -27,6 +27,7 @@ async fn fireworks_chat_streams_response() {
     let driver = FireworksChatDriver::new(api_key());
 
     let config = LlmCallConfig {
+        speed: None,
         model: LIVE_MODEL.to_string(),
         temperature: Some(0.0),
         // Generous budget: reasoning models can spend tokens on

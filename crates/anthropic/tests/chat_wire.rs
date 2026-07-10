@@ -21,6 +21,7 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn config(model: &str) -> LlmCallConfig {
     LlmCallConfig {
+        speed: None,
         model: model.to_string(),
         temperature: None,
         max_tokens: None,

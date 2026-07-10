@@ -17463,6 +17463,13 @@
                 "description": "Reasoning configuration"
               }
             ]
+          },
+          "speed": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Speed (service tier) for this message turn: \"flex\", \"default\", or\n\"priority\". Only sent to providers whose model profile advertises a\nspeed config (OpenAI `service_tier`)."
           }
         }
       },
@@ -27881,6 +27888,17 @@
             ],
             "description": "Release date (YYYY-MM-DD format)"
           },
+          "speed": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SpeedConfig",
+                "description": "Speed (service tier) configuration, for models served with\nselectable latency/price tiers (OpenAI `service_tier`)."
+              }
+            ]
+          },
           "structured_output": {
             "type": "boolean",
             "description": "Whether the model supports structured output (JSON mode)"
@@ -33179,6 +33197,54 @@
               "type": "string"
             },
             "description": "Non-fatal warnings (style, deprecated patterns, optional fields missing). Emitted alongside a `valid` result."
+          }
+        }
+      },
+      "Speed": {
+        "type": "string",
+        "description": "Speed level for models that expose a latency/price service tier.\nWire values map 1:1 to the OpenAI `service_tier` request parameter:\n`flex` (slower, cheaper), `default` (standard), `priority` (faster,\npremium). `auto` is deliberately not offered — omitting the field\npreserves the provider's default routing.",
+        "enum": [
+          "flex",
+          "default",
+          "priority"
+        ]
+      },
+      "SpeedConfig": {
+        "type": "object",
+        "description": "Speed configuration for a model",
+        "required": [
+          "values",
+          "default"
+        ],
+        "properties": {
+          "default": {
+            "$ref": "#/components/schemas/Speed",
+            "description": "Default speed for this model"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpeedValue"
+            },
+            "description": "Available speed values for this model"
+          }
+        }
+      },
+      "SpeedValue": {
+        "type": "object",
+        "description": "Named speed value for UI display",
+        "required": [
+          "value",
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name (e.g., \"Flex\", \"Fast\")"
+          },
+          "value": {
+            "$ref": "#/components/schemas/Speed",
+            "description": "The API value (e.g., \"flex\", \"priority\")"
           }
         }
       },

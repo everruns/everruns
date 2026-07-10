@@ -67,6 +67,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
                 "How many trailing zeros does 2024! (factorial) have? Work it out carefully, then state the final count as a plain number.",
             )],
             controls: Some(Controls {
+                speed: None,
                 model_id: None,
                 locale: None,
                 reasoning: Some(ReasoningConfig {
@@ -203,6 +204,7 @@ async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
                 role: MessageRole::User,
                 content: vec![ContentPart::text("What's the current time in UTC?")],
                 controls: Some(Controls {
+                    speed: None,
                     model_id: None,
                     locale: None,
                     reasoning: Some(ReasoningConfig {

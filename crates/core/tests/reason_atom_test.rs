@@ -1127,6 +1127,7 @@ async fn test_driver_registry_integration() {
 
     let messages = vec![LlmMessage::text(LlmMessageRole::User, "Hello")];
     let call_config = LlmCallConfig {
+        speed: None,
         model: "test".to_string(),
         temperature: None,
         max_tokens: None,
