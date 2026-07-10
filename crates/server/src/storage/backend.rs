@@ -78,6 +78,19 @@ macro_rules! dispatch {
     };
 }
 
+/// Normalize an email address for storage and lookup: trim surrounding
+/// whitespace and lowercase it.
+///
+/// Email mailboxes are treated case-insensitively, matching the rate-limit keys
+/// (`auth::routes`) and org-invitation matching (TM-TENANT-011 / TM-AUTH-023).
+/// Applying it at this delegating boundary means every writer (register, OAuth
+/// callback, admin bootstrap, seeding) and every `get_user_by_email` lookup
+/// (login, forgot/resend, verify) resolves `Alice@Example.com` and
+/// `alice@example.com` to a single account (EVE-704).
+pub fn normalize_email(email: &str) -> String {
+    email.trim().to_lowercase()
+}
+
 /// Storage backend that can be either PostgreSQL or in-memory
 #[derive(Clone)]
 pub enum StorageBackend {
@@ -175,6 +188,10 @@ impl StorageBackend {
     // ============================================
 
     pub async fn create_user(&self, input: CreateUserRow) -> Result<UserRow> {
+        let input = CreateUserRow {
+            email: normalize_email(&input.email),
+            ..input
+        };
         dispatch!(self, create_user, input)
     }
 
@@ -185,11 +202,16 @@ impl StorageBackend {
         id: Uuid,
         input: CreateUserRow,
     ) -> Result<Option<UserRow>> {
+        let input = CreateUserRow {
+            email: normalize_email(&input.email),
+            ..input
+        };
         dispatch!(self, create_user_with_id, id, input)
     }
 
     pub async fn get_user_by_email(&self, email: &str) -> Result<Option<UserRow>> {
-        dispatch!(self, get_user_by_email, email)
+        let email = normalize_email(email);
+        dispatch!(self, get_user_by_email, &email)
     }
 
     pub async fn get_user(&self, id: Uuid) -> Result<Option<UserRow>> {
@@ -4566,5 +4588,61 @@ mod retention_tests {
                 .is_some(),
             "live task artifact untouched"
         );
+    }
+}
+
+#[cfg(test)]
+mod email_normalization_tests {
+    use super::*;
+
+    fn user_input(email: &str) -> CreateUserRow {
+        CreateUserRow {
+            email: email.to_string(),
+            name: "Test".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: Some("hash".to_string()),
+            email_verified: true,
+            auth_provider: Some("local".to_string()),
+            auth_provider_id: None,
+            external_id: None,
+        }
+    }
+
+    #[test]
+    fn normalize_email_trims_and_lowercases() {
+        assert_eq!(normalize_email("  Alice@Example.COM "), "alice@example.com");
+        assert_eq!(normalize_email("bob@x.io"), "bob@x.io");
+    }
+
+    // EVE-704: writes are stored lowercased and lookups are case-insensitive, so
+    // one mailbox maps to one account regardless of the casing a caller uses.
+    #[tokio::test]
+    async fn stores_and_looks_up_email_case_insensitively() {
+        let db = StorageBackend::in_memory();
+        let created = db
+            .create_user(user_input("Alice@Example.com"))
+            .await
+            .unwrap();
+        assert_eq!(
+            created.email, "alice@example.com",
+            "email stored lowercased"
+        );
+
+        for variant in [
+            "alice@example.com",
+            "ALICE@EXAMPLE.COM",
+            " Alice@Example.com ",
+        ] {
+            let found = db
+                .get_user_by_email(variant)
+                .await
+                .unwrap()
+                .expect("case/whitespace variant resolves to the same account");
+            assert_eq!(
+                found.id, created.id,
+                "variant {variant:?} resolved wrong user"
+            );
+        }
     }
 }
