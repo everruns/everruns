@@ -5,8 +5,8 @@ use super::types::{
 };
 use crate::domains::common::*;
 use everruns_core::events::{
-    EventContext, EventData, EventRequest, InputMessageData, LLM_GENERATION, TurnCancelledData,
-    deserialize_event_data,
+    EventContext, EventData, EventRequest, InputMessageData, LLM_GENERATION, SessionIdledData,
+    TurnCancelledData, deserialize_event_data,
 };
 use everruns_core::model_profiles::get_model_profile;
 use everruns_core::provider::DriverId;
@@ -785,6 +785,85 @@ mod tests {
         .id
     }
 
+    // Minimal runner whose `cancel_run` succeeds without a real durable backend,
+    // so `CancelSession` can be exercised against the in-memory store.
+    struct CancelTestRunner;
+
+    #[async_trait::async_trait]
+    impl everruns_worker::AgentRunner for CancelTestRunner {
+        async fn start_run(
+            &self,
+            _org_id: i64,
+            _session_id: SessionId,
+            _harness_id: HarnessId,
+            _agent_id: Option<AgentId>,
+            _input_message_id: MessageId,
+            _request_id: Option<String>,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn resume_after_tool_results(&self, _session_id: SessionId) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn cancel_run(&self, _session_id: SessionId) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn is_running(&self, _session_id: SessionId) -> bool {
+            false
+        }
+
+        async fn active_count(&self) -> usize {
+            0
+        }
+    }
+
+    // EVE-708: cancelling an active turn must settle the session back to `idle`.
+    // The durable workflow is marked cancelled and the worker short-circuits before
+    // the runtime's idle transition, so `CancelSession` itself must idle the session
+    // or it stays `active` forever, blocking clean follow-up turns.
+    #[tokio::test]
+    async fn cancel_active_session_transitions_to_idle() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = test_ctx(db.clone(), 100).with_runner(Arc::new(CancelTestRunner));
+        let harness_id = seed_harness(&ctx).await;
+
+        let session = CreateSession(create_request(harness_id))
+            .execute(&ctx)
+            .await
+            .expect("create session");
+
+        // Simulate an in-flight turn.
+        q::session_service(&ctx)
+            .unwrap()
+            .update_status(&ctx.caller, session.id.uuid(), "active".to_string())
+            .await
+            .expect("mark active");
+
+        let response = CancelSession {
+            session_id: session.id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .expect("cancel");
+        assert!(
+            matches!(response.status, CancelStatus::Cancelled),
+            "expected an active cancel, got {:?}",
+            response.status
+        );
+
+        let after = q::get_session(&ctx, session.id, None)
+            .await
+            .expect("reload session");
+        assert_eq!(
+            after.status,
+            everruns_core::SessionStatus::Idle,
+            "cancelled session must settle to idle"
+        );
+    }
+
     #[tokio::test]
     async fn session_creation_rejected_at_limit_and_allowed_below() {
         let db = Arc::new(StorageBackend::in_memory());
@@ -1363,6 +1442,36 @@ impl Command for CancelSession {
             if let Err(error) = event_service.emit(user_message_event).await {
                 tracing::warn!(session_id = %session_id, error = %error, "Failed to emit user cancellation message");
             }
+
+            // EVE-708: emit the `session.idled` lifecycle event for parity with the
+            // normal turn-completion path. The cancelled workflow short-circuits in
+            // the worker before the runtime reaches its `session.idled` emission, so
+            // without this the lifecycle would silently stop at `turn.cancelled`.
+            let idled_event = EventRequest::new(
+                session_id,
+                EventContext::turn(turn_id, input_message_id),
+                SessionIdledData {
+                    turn_id,
+                    iterations: None,
+                    usage: None,
+                },
+            );
+            if let Err(error) = event_service.emit(idled_event).await {
+                tracing::warn!(session_id = %session_id, error = %error, "Failed to emit session.idled event");
+            }
+        }
+
+        // EVE-708: settle the session status. Cancelling marks the durable workflow
+        // `Cancelled`, which makes the worker fail the task and return early — so the
+        // runtime turn loop never reaches `TurnAction::Complete` and never transitions
+        // the session back to `idle`. Session status is a stored column that is not
+        // derived from events, so we must set it here or the session stays `active`
+        // indefinitely, blocking clean follow-up turns.
+        if let Err(error) = q::session_service(ctx)?
+            .update_status(&ctx.caller, session_id.uuid(), "idle".to_string())
+            .await
+        {
+            tracing::warn!(session_id = %session_id, error = %error, "Failed to set session idle after cancel");
         }
 
         Ok(CancelTurnResponse {

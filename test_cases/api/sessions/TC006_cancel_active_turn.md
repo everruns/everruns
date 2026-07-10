@@ -67,3 +67,4 @@ Verify that an active turn can be cancelled and the session returns to idle stat
 | Step 4: HTTP status | 200 |
 | Step 5: session `status` | `"idle"` |
 | Events contain cancellation | `turn.cancelled` or `turn.completed` event |
+| Events contain lifecycle settle | `session.idled` event emitted after `turn.cancelled` |
