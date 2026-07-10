@@ -470,7 +470,7 @@ fn authorizer(action: AuthAction) -> Authorization {
 | TM-TOOL-018 | MCP server SSRF via configured server URL | High | MCP server URLs are validated on create/update (static) and re-validated at execution time with DNS resolution via `validate_url_dns_pinned`; every resolved IP is checked against the blocked ranges, closing the DNS-rebinding gap | MITIGATED |
 | TM-TOOL-019 | MCP `query`/`execute` positional-arg rewrite injection | Low | Rewriter only inserts compile-time `--<flag>` tokens at statement-start boundaries, respects quotes/escapes/comments, and never modifies or reorders user bytes. Flag names come from the command registry, not user input. See EVE-323. | MITIGATED |
 | TM-TOOL-020 | Skill `` !`command` `` activation RCE on worker host | High | `ActivateSkillFromVfsTool::execute_with_context` never invokes `preprocess_command_injections` — the trust gate is forced off because no non-user-spoofable provenance signal exists on `SessionFile` today. Expansion is also capped at `MAX_COMMAND_PLACEHOLDERS_PER_SKILL` (32) with concurrency ≤ 4 in the expansion function itself. See EVE-388. | MITIGATED |
-| TM-TOOL-021 | Agent handoff credential leakage or unauthorized target delegation | High | `agent_handoff` delegates only to configured target Agent ids through `spawn_agent(target.type="agent")`, requires server-side `UserConnectionResolver` checks before start, never accepts credentials in tool args/config/task metadata, records only non-secret target/provider/scope labels in `session_tasks`, and routes follow-up control through `message_task` for the parent-owned task. Provider tools must still enforce scoped grants before real external writes. | MITIGATED |
+| TM-TOOL-021 | Agent handoff credential leakage or unauthorized target delegation | High | `agent_handoff` delegates only to configured target Agent ids through `spawn_agent(target.type="agent")`, requires server-side `UserConnectionResolver` checks before start, never accepts credentials in tool args/config/task metadata, records only non-secret target/provider/scope labels in `session_tasks`, and keeps invite-mode joins in the current session behind duplicate capability/mount conflict checks. Child-session follow-up control routes through `message_task` for the parent-owned task. Provider tools must still enforce scoped grants before real external writes. | MITIGATED |
 | TM-TOOL-022 | Cross-tenant MCP credential reach via guardrail `mcp` check | High | The guardrails `mcp` check (specs/guardrails.md) names a `server`/`tool` to call over the scoped-MCP client. The check resolves connections through the host's per-session `McpConnectionResolver`, which only resolves servers scoped to the current session/org; a tenant's guardrail config can only reach that tenant's servers and never another tenant's MCP credentials. A misconfigured/unknown server fails open (allow) rather than blocking. The verdict parser reads only `verdict`/`reason`, so a poisoned endpoint response cannot widen behavior beyond the fail-open baseline. | MITIGATED |
 
 ### Mitigation Details
@@ -504,8 +504,9 @@ Follow-up work (tracked on EVE-388): (a) add a platform-controlled provenance fi
 
 **TM-TOOL-021 — Agent Handoff Delegation Gate:**
 `agent_handoff` is a high-risk orchestration tool because one agent can start a
-child session using another configured Agent's tools and data. The mitigation is
-to keep authority explicit and non-secret:
+child session using another configured Agent's tools and data, or invite another
+configured Agent to respond inside the current session. The mitigation is to
+keep authority explicit and non-secret:
 
 1. Source agents can only target ids listed in their `agent_handoff` config.
 2. Required provider connections are resolved server-side through
@@ -516,7 +517,11 @@ to keep authority explicit and non-secret:
    are excluded.
 4. Follow-up control uses `message_task` against the parent-owned
    `agent_handoff` task, whose `links.child_session_id` is set by the server.
-5. This gate proves the user has the required connection before delegation.
+5. Invite mode adds the target as a current-session member participant instead
+   of creating a task. Before joining, it rejects duplicate capability
+   configuration and mounted-resource conflicts so the shared environment is
+   not silently overwritten.
+6. This gate proves the user has the required connection before delegation.
    Real provider write tools still need scoped grant enforcement before mutating
    external infrastructure.
 

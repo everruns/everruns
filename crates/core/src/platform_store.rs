@@ -11,7 +11,7 @@ use crate::app::{App, AppChannel, ChannelType};
 use crate::capability_dto::CapabilityInfo;
 use crate::error::Result;
 use crate::harness::Harness;
-use crate::session::Session;
+use crate::session::{Session, SessionParticipant};
 use crate::typed_id::{AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -209,6 +209,13 @@ pub trait PlatformStore: Send + Sync {
     /// Get a session by ID.
     async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>>;
 
+    /// Add an agent as a member participant in an existing session.
+    async fn add_agent_session_participant(
+        &self,
+        session_id: SessionId,
+        agent_id: AgentId,
+    ) -> Result<SessionParticipant>;
+
     /// Get the latest estimated context breakdown for a session.
     async fn get_session_context_report(&self, id: SessionId) -> Result<SessionContextReport>;
 
@@ -283,6 +290,7 @@ pub mod tests {
         pub app_channel: AppChannel,
         pub session: Session,
         pub extra_sessions: std::sync::Mutex<std::collections::HashMap<SessionId, Session>>,
+        pub joined_participants: std::sync::Mutex<Vec<SessionParticipant>>,
         /// Records the `harness_id` argument of every `create_session`
         /// call so tests can assert which harness a child session was
         /// created against. See `start_handoff_uses_target_harness_not_parent`.
@@ -435,6 +443,7 @@ pub mod tests {
                     }
                 },
                 extra_sessions: std::sync::Mutex::new(std::collections::HashMap::new()),
+                joined_participants: std::sync::Mutex::new(Vec::new()),
                 created_session_harness_ids: std::sync::Mutex::new(Vec::new()),
                 wait_for_idle_status: std::sync::Mutex::new("idle".to_string()),
             }
@@ -714,6 +723,27 @@ pub mod tests {
                 return Ok(Some(session));
             }
             Ok(Some(self.session.clone()))
+        }
+        async fn add_agent_session_participant(
+            &self,
+            session_id: SessionId,
+            agent_id: AgentId,
+        ) -> Result<SessionParticipant> {
+            let participant = SessionParticipant {
+                id: crate::typed_id::SessionParticipantId::new(),
+                session_id,
+                kind: crate::session::SessionParticipantKind::Agent,
+                agent_id: Some(agent_id),
+                agent_version_id: self.agent.default_version_id,
+                principal_id: self.session.owner_principal_id,
+                role: crate::session::SessionParticipantRole::Member,
+                joined_at: chrono::Utc::now(),
+                left_at: None,
+            };
+            if let Ok(mut participants) = self.joined_participants.lock() {
+                participants.push(participant.clone());
+            }
+            Ok(participant)
         }
         async fn get_session_context_report(&self, id: SessionId) -> Result<SessionContextReport> {
             Ok(SessionContextReport {

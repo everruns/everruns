@@ -8,6 +8,8 @@
 
 use super::util::{get_platform_store, require_str_nonblank as require_str};
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext};
+use crate::config_layer::{AgentConfigOverlay, normalize_initial_file_path};
+use crate::harness::Harness;
 use crate::session::SubagentStatus;
 use crate::session_task::{
     CreateSessionTask, SessionTask, SessionTaskState, SessionTaskUpdate, TASK_KIND_AGENT_HANDOFF,
@@ -337,6 +339,7 @@ impl AgentHandoffTargetConfig {
 enum SpawnAgentHandoffMode {
     Background,
     Foreground,
+    Invite,
 }
 
 impl SpawnAgentHandoffMode {
@@ -345,9 +348,10 @@ impl SpawnAgentHandoffMode {
             None => None,
             Some("background") => Some(Self::Background),
             Some("foreground") => Some(Self::Foreground),
+            Some("invite") => Some(Self::Invite),
             Some(other) => {
                 return Err(format!(
-                    "Invalid mode: \"{other}\". Valid modes: background, foreground."
+                    "Invalid mode: \"{other}\". Valid modes: background, foreground, invite."
                 ));
             }
         };
@@ -367,8 +371,118 @@ impl SpawnAgentHandoffMode {
         match self {
             Self::Background => "background",
             Self::Foreground => "foreground",
+            Self::Invite => "invite",
         }
     }
+}
+
+fn capability_conflict_message(
+    host: &AgentConfigOverlay,
+    guest: &AgentConfigOverlay,
+) -> Option<String> {
+    guest.capabilities.iter().find_map(|guest_cap| {
+        host.capabilities
+            .iter()
+            .find(|host_cap| host_cap.capability_id() == guest_cap.capability_id())
+            .and_then(|host_cap| {
+                (host_cap.config != guest_cap.config).then(|| {
+                    format!(
+                        "capability `{}` has different host and guest configuration",
+                        guest_cap.capability_id()
+                    )
+                })
+            })
+    })
+}
+
+fn initial_file_conflict_message(
+    host: &AgentConfigOverlay,
+    guest: &AgentConfigOverlay,
+) -> Option<String> {
+    guest.initial_files.iter().find_map(|guest_file| {
+        let guest_path = normalize_initial_file_path(&guest_file.path);
+        host.initial_files
+            .iter()
+            .find(|host_file| normalize_initial_file_path(&host_file.path) == guest_path)
+            .and_then(|host_file| {
+                (host_file != guest_file)
+                    .then(|| format!("mount `{guest_path}` has different host and guest contents"))
+            })
+    })
+}
+
+fn mcp_conflict_message(host: &AgentConfigOverlay, guest: &AgentConfigOverlay) -> Option<String> {
+    guest.mcp_servers.iter().find_map(|(name, guest_server)| {
+        host.mcp_servers.get(name).and_then(|host_server| {
+            (host_server != guest_server)
+                .then(|| format!("MCP server `{name}` has different host and guest configuration"))
+        })
+    })
+}
+
+fn invite_conflict_message(
+    host: &AgentConfigOverlay,
+    guest: &AgentConfigOverlay,
+) -> Option<String> {
+    capability_conflict_message(host, guest)
+        .or_else(|| initial_file_conflict_message(host, guest))
+        .or_else(|| mcp_conflict_message(host, guest))
+}
+
+async fn harness_overlay(
+    store: &dyn crate::platform_store::PlatformStore,
+    harness_id: HarnessId,
+) -> Result<AgentConfigOverlay, ToolExecutionResult> {
+    let harness = store
+        .get_harness(harness_id)
+        .await
+        .map_err(ToolExecutionResult::internal_error)?
+        .ok_or_else(|| {
+            ToolExecutionResult::tool_error(format!("Harness not found: {harness_id}"))
+        })?;
+    Ok(AgentConfigOverlay::from(&harness))
+}
+
+async fn invite_mode_overlays(
+    store: &dyn crate::platform_store::PlatformStore,
+    parent_session: &crate::session::Session,
+    target: &AgentHandoffTargetConfig,
+) -> Result<(AgentConfigOverlay, AgentConfigOverlay), ToolExecutionResult> {
+    let mut host_layers = vec![harness_overlay(store, parent_session.harness_id).await?];
+    if let Some(agent_id) = parent_session.agent_id {
+        let host_agent = store
+            .get_agent_by_id(agent_id)
+            .await
+            .map_err(ToolExecutionResult::internal_error)?
+            .ok_or_else(|| {
+                ToolExecutionResult::tool_error(format!("Host agent not found: {agent_id}"))
+            })?;
+        host_layers.push(AgentConfigOverlay::from(&host_agent));
+    }
+    host_layers.push(AgentConfigOverlay::from(parent_session));
+
+    let target_harness: Harness = store
+        .get_harness(target.harness_id)
+        .await
+        .map_err(ToolExecutionResult::internal_error)?
+        .ok_or_else(|| {
+            ToolExecutionResult::tool_error(format!("Harness not found: {}", target.harness_id))
+        })?;
+    let target_agent = store
+        .get_agent_by_id(target.agent_id)
+        .await
+        .map_err(ToolExecutionResult::internal_error)?
+        .ok_or_else(|| {
+            ToolExecutionResult::tool_error(format!("Target agent not found: {}", target.agent_id))
+        })?;
+
+    Ok((
+        AgentConfigOverlay::fold(host_layers),
+        AgentConfigOverlay::fold([
+            AgentConfigOverlay::from(&target_harness),
+            AgentConfigOverlay::from(&target_agent),
+        ]),
+    ))
 }
 
 fn child_task(task: &str, public_context: Option<&Value>) -> String {
@@ -640,7 +754,7 @@ impl Tool for SpawnAgentHandoffTool {
     }
 
     fn description(&self) -> &str {
-        "Delegate work to a configured first-party target agent. Set target.type to \"agent\" and target.id to a configured handoff target id. Runs in the background by default when task tracking is available; set mode to \"foreground\" to block for the result."
+        "Delegate work to a configured first-party target agent. Set target.type to \"agent\" and target.id to a configured handoff target id. Runs in the background by default when task tracking is available; set mode to \"foreground\" to block for the result or \"invite\" to add the target as a member of the current session."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -673,8 +787,8 @@ impl Tool for SpawnAgentHandoffTool {
                 },
                 "mode": {
                     "type": "string",
-                    "enum": ["background", "foreground"],
-                    "description": "Execution mode. \"background\" (default when task tracking is available) returns immediately with a task_id; \"foreground\" blocks until the handoff completes."
+                    "enum": ["background", "foreground", "invite"],
+                    "description": "Execution mode. \"background\" (default when task tracking is available) returns immediately with a task_id; \"foreground\" blocks until the handoff completes; \"invite\" adds the target agent as a member participant in this session."
                 },
                 "public_context": {
                     "type": "object",
@@ -761,6 +875,38 @@ impl Tool for SpawnAgentHandoffTool {
             );
         }
 
+        if mode == SpawnAgentHandoffMode::Invite {
+            let (host_overlay, guest_overlay) =
+                match invite_mode_overlays(store, &parent_session, target).await {
+                    Ok(overlays) => overlays,
+                    Err(error) => return error,
+                };
+            if let Some(conflict) = invite_conflict_message(&host_overlay, &guest_overlay) {
+                return ToolExecutionResult::tool_error(format!(
+                    "Invite-mode handoff cannot join target \"{}\": {conflict}. Use background or foreground mode for targets that need their own environment.",
+                    target.id
+                ));
+            }
+
+            let participant = match store
+                .add_agent_session_participant(context.session_id, target.agent_id)
+                .await
+            {
+                Ok(participant) => participant,
+                Err(error) => return ToolExecutionResult::internal_error(error),
+            };
+
+            return ToolExecutionResult::success(json!({
+                "participant_id": participant.id,
+                "target": target.id,
+                "target_agent_id": target.agent_id,
+                "name": name,
+                "status": "joined",
+                "mode": "invite",
+                "message": "Target agent joined this session and can respond when addressed.",
+            }));
+        }
+
         let child_session = match store
             .create_session(
                 target.harness_id,
@@ -801,6 +947,9 @@ impl Tool for SpawnAgentHandoffTool {
                     wake_policy: match mode {
                         SpawnAgentHandoffMode::Background => TaskWakePolicy::OnTerminal,
                         SpawnAgentHandoffMode::Foreground => TaskWakePolicy::Silent,
+                        SpawnAgentHandoffMode::Invite => {
+                            unreachable!("invite mode returns before child-session task creation")
+                        }
                     },
                 })
                 .await
@@ -918,6 +1067,9 @@ impl Tool for SpawnAgentHandoffTool {
                     "result": result,
                     "mode": "foreground",
                 }))
+            }
+            SpawnAgentHandoffMode::Invite => {
+                unreachable!("invite mode returns before child-session execution")
             }
         }
     }
@@ -1167,6 +1319,10 @@ mod tests {
             json!(["type", "id"])
         );
         assert_eq!(
+            schema["properties"]["mode"]["enum"],
+            json!(["background", "foreground", "invite"])
+        );
+        assert_eq!(
             schema["required"],
             json!(["name", "instructions", "target"])
         );
@@ -1326,6 +1482,96 @@ mod tests {
 
         assert_eq!(task.state, SessionTaskState::Succeeded);
         assert_eq!(task.summary.as_deref(), Some("Hi!"));
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_handoff_invite_adds_member_participant() {
+        let store = Arc::new(MockPlatformStore::new());
+        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let tool = spawn_agent_tool(&config);
+        let context = context(store.clone(), None);
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "name": "AWS Operator Invite",
+                    "instructions": "Join this incident session",
+                    "target": { "type": "agent", "id": "aws_operator" },
+                    "mode": "invite"
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success, got {result:?}");
+        };
+        assert_eq!(value["mode"], "invite");
+        assert_eq!(value["status"], "joined");
+        assert_eq!(value["target"], "aws_operator");
+        assert!(value["participant_id"].as_str().is_some());
+
+        assert!(
+            store
+                .created_session_harness_ids
+                .lock()
+                .expect("recorder lock")
+                .is_empty(),
+            "invite mode must not create a child session"
+        );
+        let participants = store
+            .joined_participants
+            .lock()
+            .expect("participants lock")
+            .clone();
+        assert_eq!(participants.len(), 1);
+        assert_eq!(participants[0].agent_id, Some(store.agent.public_id));
+        assert_eq!(
+            participants[0].role,
+            crate::session::SessionParticipantRole::Member
+        );
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_handoff_invite_rejects_capability_conflict() {
+        let mut store_value = MockPlatformStore::new();
+        store_value.session.capabilities = vec![crate::AgentCapabilityConfig::with_config(
+            "web_fetch",
+            json!({"max_bytes": 1024}),
+        )];
+        store_value.agent.capabilities = vec![crate::AgentCapabilityConfig::with_config(
+            "web_fetch",
+            json!({"max_bytes": 2048}),
+        )];
+        let store = Arc::new(store_value);
+        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let tool = spawn_agent_tool(&config);
+        let context = context(store.clone(), None);
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "name": "AWS Operator Invite",
+                    "instructions": "Join this incident session",
+                    "target": { "type": "agent", "id": "aws_operator" },
+                    "mode": "invite"
+                }),
+                &context,
+            )
+            .await;
+
+        assert!(matches!(result, ToolExecutionResult::ToolError(message)
+                if message.contains("Invite-mode handoff cannot join target")
+                    && message.contains("capability `web_fetch`")
+                    && message.contains("Use background or foreground mode")));
+        assert!(
+            store
+                .joined_participants
+                .lock()
+                .expect("participants lock")
+                .is_empty(),
+            "conflicting invite must not join the participant"
+        );
     }
 
     /// Regression for the confused-deputy issue this PR fixes: the child
