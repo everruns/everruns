@@ -8,7 +8,7 @@
 // the email itself, never on-screen). Without confirm mode (self-host, no
 // email sender) signup keeps the instant session.
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,13 @@ import { OAuthProviderIcon } from "@/components/auth/oauth-provider-icon";
 import { TurnstileWidget } from "@/components/auth/turnstile-widget";
 import { useAuthConfig, useRegister } from "@/hooks/use-auth";
 import { getOAuthUrl } from "@/lib/api/auth";
+import {
+  buildLoginHref,
+  consumeReturnTo,
+  isBackendNavigationPath,
+  persistReturnTo,
+  sanitizeReturnTo,
+} from "@/lib/auth-redirect";
 import { usePageTitle } from "@/hooks";
 import { Check, Loader2, Mail } from "lucide-react";
 
@@ -44,6 +51,24 @@ export default function SignupPage() {
   const [oauthPending, setOauthPending] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
 
+  const returnTo = sanitizeReturnTo(searchParams.get("return_to"));
+
+  useEffect(() => {
+    persistReturnTo(returnTo);
+  }, [returnTo]);
+
+  const getPostAuthTarget = (): string => {
+    return returnTo || consumeReturnTo() || "/dashboard";
+  };
+
+  const navigateAfterAuth = (target: string) => {
+    if (isBackendNavigationPath(target)) {
+      window.location.assign(target);
+      return;
+    }
+    router.push(target);
+  };
+
   const handleCaptchaVerify = useCallback((token: string) => setCaptchaToken(token), []);
   const handleCaptchaReset = useCallback(() => setCaptchaToken(null), []);
 
@@ -53,6 +78,7 @@ export default function SignupPage() {
   const handleOAuth = (provider: string) => {
     if (oauthPending) return;
     setOauthPending(true);
+    persistReturnTo(returnTo);
     window.location.assign(getOAuthUrl(provider));
   };
 
@@ -68,13 +94,14 @@ export default function SignupPage() {
       return;
     }
     const captcha_token = captchaToken ?? undefined;
+    persistReturnTo(returnTo);
     try {
       await registerMutation.mutateAsync({ email, password, captcha_token });
       if (config?.signup_email_confirm) {
         // Confirm mode: no session yet — the emailed link signs you in.
         setSubmittedEmail(email);
       } else {
-        router.push("/dashboard");
+        navigateAfterAuth(getPostAuthTarget());
       }
     } catch {
       if (config?.signup_email_confirm) {
@@ -114,7 +141,10 @@ export default function SignupPage() {
         </p>
         <p className="mt-2 text-[13px] text-muted-foreground">
           Already have an account?{" "}
-          <Link href="/login" className="font-medium text-primary hover:underline">
+          <Link
+            href={buildLoginHref(returnTo)}
+            className="font-medium text-primary hover:underline"
+          >
             Log in
           </Link>
         </p>
@@ -142,7 +172,10 @@ export default function SignupPage() {
           New registrations are currently disabled on this deployment.
         </p>
         <p className="mt-6 text-sm text-muted-foreground">
-          <Link href="/login" className="font-medium text-primary hover:underline">
+          <Link
+            href={buildLoginHref(returnTo)}
+            className="font-medium text-primary hover:underline"
+          >
             Back to log in
           </Link>
         </p>
@@ -163,7 +196,7 @@ export default function SignupPage() {
       </h1>
       <p className="mt-[10px] text-sm text-muted-foreground">
         Already have one?{" "}
-        <Link href="/login" className="font-medium text-primary hover:underline">
+        <Link href={buildLoginHref(returnTo)} className="font-medium text-primary hover:underline">
           Log in
         </Link>
       </p>

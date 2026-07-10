@@ -13,6 +13,7 @@ import { CommandPaletteContext, useCommandPaletteState } from "@/hooks/use-comma
 import {
   getLoginRedirectPath,
   isBackendNavigationPath,
+  RETURN_TO_STORAGE_KEY,
   sanitizeReturnTo,
 } from "@/lib/auth-redirect";
 import { useAuth } from "@/providers/auth-provider";
@@ -65,8 +66,8 @@ function MainLayoutInner({ children }: MainLayoutProps) {
   // After OAuth login, check sessionStorage for a pending return_to redirect
   useEffect(() => {
     if (!authLoading && !authUnavailable && isAuthenticated) {
-      const pendingReturnTo = sanitizeReturnTo(sessionStorage.getItem("everruns_return_to"));
-      sessionStorage.removeItem("everruns_return_to");
+      const pendingReturnTo = sanitizeReturnTo(sessionStorage.getItem(RETURN_TO_STORAGE_KEY));
+      sessionStorage.removeItem(RETURN_TO_STORAGE_KEY);
       if (pendingReturnTo) {
         // Backend paths (e.g. /oauth/authorize, /api/v1/auth/cli/callback,
         // or /v1/... when frontend and backend share an origin) need a

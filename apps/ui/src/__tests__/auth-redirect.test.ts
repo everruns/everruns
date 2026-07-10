@@ -1,4 +1,12 @@
-import { getLoginRedirectPath, sanitizeReturnTo } from "@/lib/auth-redirect";
+import {
+  buildLoginHref,
+  buildSignupHref,
+  consumeReturnTo,
+  getLoginRedirectPath,
+  persistReturnTo,
+  RETURN_TO_STORAGE_KEY,
+  sanitizeReturnTo,
+} from "@/lib/auth-redirect";
 
 describe("getLoginRedirectPath", () => {
   it("preserves the current path and query in return_to", () => {
@@ -55,5 +63,44 @@ describe("sanitizeReturnTo", () => {
     expect(sanitizeReturnTo(null)).toBeNull();
     expect(sanitizeReturnTo(undefined)).toBeNull();
     expect(sanitizeReturnTo("")).toBeNull();
+  });
+});
+
+describe("buildSignupHref", () => {
+  it("includes sanitized return_to and email when provided", () => {
+    expect(buildSignupHref("/invite/abc123", "new@example.com")).toBe(
+      "/signup?email=new%40example.com&return_to=%2Finvite%2Fabc123",
+    );
+  });
+
+  it("omits unsafe return_to values", () => {
+    expect(buildSignupHref("https://evil.com", "new@example.com")).toBe(
+      "/signup?email=new%40example.com",
+    );
+  });
+});
+
+describe("buildLoginHref", () => {
+  it("includes sanitized return_to when provided", () => {
+    expect(buildLoginHref("/invite/abc123")).toBe("/login?return_to=%2Finvite%2Fabc123");
+  });
+});
+
+describe("return_to session storage", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it("persists and consumes sanitized return_to values", () => {
+    persistReturnTo("/invite/token123");
+    expect(sessionStorage.getItem(RETURN_TO_STORAGE_KEY)).toBe("/invite/token123");
+    expect(consumeReturnTo()).toBe("/invite/token123");
+    expect(sessionStorage.getItem(RETURN_TO_STORAGE_KEY)).toBeNull();
+  });
+
+  it("ignores unsafe return_to values", () => {
+    persistReturnTo("//evil.com");
+    expect(sessionStorage.getItem(RETURN_TO_STORAGE_KEY)).toBeNull();
+    expect(consumeReturnTo()).toBeNull();
   });
 });
