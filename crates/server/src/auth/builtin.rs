@@ -270,10 +270,15 @@ impl BuiltinAuthBackend {
         })?;
         let is_platform_user = platform_user_from_roles(&roles);
 
+        // EVE-715: derive identity fields (name, email) from the freshly-loaded DB
+        // user row rather than the JWT claims. Profile updates write the DB but do
+        // not mint a new token, so claim-sourced values go stale until re-login.
+        // The PAT and caller-resolution paths already read fresh; this keeps the
+        // JWT/MCP paths consistent (and complements EVE-703's DB-sourced roles).
         Ok(AuthUser {
             id: user_id,
-            email: claims.email,
-            name: claims.name,
+            email: user.email,
+            name: user.name,
             roles,
             is_platform_user,
             auth_method,
@@ -793,6 +798,112 @@ mod tests {
             assert!(
                 !user.is_platform_user,
                 "MCP platform access must be derived from DB roles, not JWT roles"
+            );
+        }
+    }
+
+    // EVE-715: profile-name updates must surface on the next request within the
+    // same access-token session. `/v1/auth/me` builds `UserInfoResponse.name` from
+    // `AuthUser.name`, which comes from `auth_user_from_claims`. Because profile
+    // updates write the DB but do not mint a new token, the name must be sourced
+    // from the freshly-loaded DB user row, not the (now stale) JWT claim.
+    mod jwt_fresh_profile_name {
+        use super::super::super::backend::AuthBackend;
+        use super::super::*;
+        use crate::storage::StorageBackend;
+        use crate::storage::models::{CreateUserRow, UpdateUser};
+
+        const MCP_RESOURCE: &str = "https://app.example.com/mcp";
+
+        async fn backend_with_named_user(name: &str) -> (BuiltinAuthBackend, uuid::Uuid) {
+            let db = Arc::new(StorageBackend::in_memory());
+            let backend = BuiltinAuthBackend::new(
+                AuthConfig::default(),
+                db.clone(),
+                Arc::new(crate::platform::oss_platform_definition()),
+            );
+            let user = db
+                .create_user(CreateUserRow {
+                    email: "profile@example.com".to_string(),
+                    name: name.to_string(),
+                    avatar_url: None,
+                    roles: vec!["user".to_string()],
+                    password_hash: None,
+                    email_verified: true,
+                    auth_provider: None,
+                    auth_provider_id: None,
+                    external_id: None,
+                })
+                .await
+                .expect("create user");
+            (backend, user.id)
+        }
+
+        #[tokio::test]
+        async fn access_token_reflects_db_name_after_profile_update() {
+            let (backend, user_id) = backend_with_named_user("Original Name").await;
+            // Token minted with the original name; a profile rename does not reissue it.
+            let token = backend
+                .jwt_service
+                .generate_access_token(user_id, "profile@example.com", "Original Name", &[])
+                .expect("generate token");
+
+            let before = backend.validate_token(&token).await.expect("validate");
+            assert_eq!(before.name, "Original Name");
+
+            backend
+                .db
+                .update_user(
+                    user_id,
+                    UpdateUser {
+                        name: Some("Updated Name".to_string()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .expect("rename user");
+
+            // Same access token, next request: name must reflect the DB write.
+            let after = backend.validate_token(&token).await.expect("validate");
+            assert_eq!(
+                after.name, "Updated Name",
+                "auth_user_from_claims must source name from the fresh DB user row"
+            );
+        }
+
+        #[tokio::test]
+        async fn mcp_token_reflects_db_name_after_profile_update() {
+            let (backend, user_id) = backend_with_named_user("Original Name").await;
+            let token = backend
+                .jwt_service
+                .generate_mcp_access_token(
+                    user_id,
+                    "profile@example.com",
+                    "Original Name",
+                    &[],
+                    MCP_RESOURCE,
+                )
+                .expect("generate mcp token");
+
+            backend
+                .db
+                .update_user(
+                    user_id,
+                    UpdateUser {
+                        name: Some("Updated Name".to_string()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .expect("rename user");
+
+            let after = backend
+                .validate_mcp_token(&token, MCP_RESOURCE)
+                .await
+                .expect("validate mcp");
+            assert_eq!(
+                after.name, "Updated Name",
+                "MCP path must also source name from the fresh DB user row"
             );
         }
     }
