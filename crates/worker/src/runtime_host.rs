@@ -4,7 +4,7 @@
 
 use async_trait::async_trait;
 use everruns_core::capabilities::{
-    report_progress_tool_for_child_session, report_result_tool_for_child_session,
+    report_result_tool_for_child_session, report_task_progress_tool_for_child_session,
 };
 use everruns_core::error::Result;
 use everruns_core::traits::{
@@ -164,7 +164,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
             {
                 mcp_tool_definitions.push(tool.to_definition());
             }
-            if let Some(tool) = report_progress_tool_for_child_session(
+            if let Some(tool) = report_task_progress_tool_for_child_session(
                 session_id,
                 session_store.as_ref(),
                 registry.as_ref(),
