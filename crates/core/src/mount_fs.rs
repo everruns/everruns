@@ -309,7 +309,7 @@ fn join_backend_path(backend_root: &str, rest: &str) -> String {
 #[async_trait]
 impl SessionFileSystem for MountFs {
     fn display_root(&self) -> String {
-        WORKSPACE_MOUNT.to_string()
+        self.primary.display_root()
     }
 
     fn resolve_path(&self, input: &str) -> String {
@@ -317,16 +317,23 @@ impl SessionFileSystem for MountFs {
         // `.`/`..` collapse, leading `..` clamps at root. This is the namespace
         // the shell sees — `/workspace` is just the default cwd, and any path
         // is reachable from the root mount.
-        normalize_virtual(input, &self.cwd())
+        let virtual_path = normalize_virtual(input, &self.cwd());
+        match self.resolve(&virtual_path) {
+            Ok(resolved) if resolved.primary_workspace => {
+                resolved.backend.display_path(&resolved.backend_path)
+            }
+            _ => virtual_path,
+        }
     }
 
     fn display_path(&self, path: &str) -> String {
-        if path == WORKSPACE_MOUNT || path.starts_with("/workspace/") {
-            return normalize_virtual(path, "/");
+        let virtual_path = normalize_virtual(path, "/");
+        match self.resolve(&virtual_path) {
+            Ok(resolved) if resolved.primary_workspace => {
+                resolved.backend.display_path(&resolved.backend_path)
+            }
+            _ => virtual_path,
         }
-        // `path` is a backend keyspace path (e.g. `/foo`); render it under the
-        // workspace mount.
-        crate::session_path::to_display_path(path)
     }
 
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
@@ -652,12 +659,13 @@ mod tests {
     }
 
     #[test]
-    fn display_is_the_workspace_view() {
+    fn display_uses_the_primary_backends_identity() {
         let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
         let fs = MountFs::new(backend);
         assert_eq!(fs.display_root(), "/workspace");
         assert_eq!(fs.display_path("/src/lib.rs"), "/workspace/src/lib.rs");
         assert_eq!(fs.display_path("/"), "/workspace");
+        assert_eq!(fs.resolve_path("src/lib.rs"), "/workspace/src/lib.rs");
     }
 
     #[tokio::test]
@@ -703,6 +711,10 @@ mod tests {
         assert_eq!(stat.path, "/workspace/roots/backend/Cargo.toml");
         assert_eq!(
             fs.display_path(&stat.path),
+            "/workspace/roots/backend/Cargo.toml"
+        );
+        assert_eq!(
+            fs.resolve_path("/workspace/roots/backend/Cargo.toml"),
             "/workspace/roots/backend/Cargo.toml"
         );
     }
