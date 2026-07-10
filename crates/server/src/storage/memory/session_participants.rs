@@ -72,6 +72,57 @@ impl InMemoryDatabase {
         Ok(row)
     }
 
+    pub async fn ensure_active_user_session_participant(
+        &self,
+        input: CreateSessionParticipantRow,
+    ) -> Result<SessionParticipantRow> {
+        if input.kind != SessionParticipantKind::User
+            || input.role != SessionParticipantRole::Member
+            || input.agent_id.is_some()
+            || input.agent_version_id.is_some()
+        {
+            bail!("active user participant upsert requires a user member shape");
+        }
+
+        if let Some(existing) = self
+            .session_participants
+            .read()
+            .values()
+            .find(|row| {
+                row.org_id == input.org_id
+                    && row.session_id == input.session_id
+                    && row.kind == SessionParticipantKind::User.to_string()
+                    && row.principal_id == input.principal_id
+                    && row.left_at.is_none()
+            })
+            .cloned()
+        {
+            return Ok(existing);
+        }
+
+        self.validate_session_participant(&input)?;
+
+        let now = Self::now();
+        let joined_at = input.joined_at.unwrap_or(now);
+        let row = SessionParticipantRow {
+            id: SessionParticipantId::new(),
+            org_id: input.org_id,
+            session_id: input.session_id,
+            kind: SessionParticipantKind::User.to_string(),
+            agent_id: None,
+            agent_version_id: None,
+            principal_id: input.principal_id,
+            role: SessionParticipantRole::Member.to_string(),
+            joined_at,
+            left_at: None,
+            created_at: now,
+            updated_at: now,
+        };
+
+        self.insert_session_participant_unchecked(row.clone())?;
+        Ok(row)
+    }
+
     pub async fn list_session_participants(
         &self,
         org_id: i64,
@@ -150,6 +201,18 @@ impl InMemoryDatabase {
             }
         }
 
+        if input.kind == SessionParticipantKind::User {
+            let has_active_user = self.session_participants.read().values().any(|row| {
+                row.session_id == input.session_id
+                    && row.kind == "user"
+                    && row.principal_id == input.principal_id
+                    && row.left_at.is_none()
+            });
+            if has_active_user {
+                bail!("session already has an active user participant for this principal");
+            }
+        }
+
         Ok(())
     }
 
@@ -163,6 +226,17 @@ impl InMemoryDatabase {
             });
             if has_active_host {
                 bail!("session already has an active host participant");
+            }
+        }
+        if row.kind == "user" {
+            let has_active_user = self.session_participants.read().values().any(|existing| {
+                existing.session_id == row.session_id
+                    && existing.kind == "user"
+                    && existing.principal_id == row.principal_id
+                    && existing.left_at.is_none()
+            });
+            if has_active_user {
+                bail!("session already has an active user participant for this principal");
             }
         }
         self.session_participants.write().insert(row.id, row);
