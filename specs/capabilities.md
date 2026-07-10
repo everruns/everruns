@@ -137,6 +137,19 @@ Capabilities are defined in **everruns-core** and resolved at the **API layer**:
 - The Agent Loop remains focused on execution
 - RuntimeAgent is built with merged system prompt and tools from capabilities
 
+#### Deployment Availability (session creation)
+
+Some built-in capabilities are feature-gated (e.g. `container_sandbox` behind
+`FEATURE_CONTAINER_SANDBOX`). When a gate is off the capability is absent from
+the registry and its tools never register. Session creation therefore rejects
+requests whose effective capability set (harness chain + agent + session) names
+a **built-in** capability that is not available in this deployment, rather than
+silently dropping its tools and degrading into a different execution environment
+(e.g. a `coding-container` session quietly running in the bash workspace). The
+check runs in `SessionService::create` and only applies to plain built-in
+references; namespaced refs (`declarative:`, `plugin:`, `skill:`, `mcp:`) resolve
+from org data and are validated separately.
+
 ### Data Model
 
 #### Capability (Public DTO)
