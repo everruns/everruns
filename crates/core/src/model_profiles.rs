@@ -167,11 +167,12 @@ fn reasoning_effort_anthropic_adaptive_thinking() -> ReasoningEffortConfig {
 
 // Helper functions for creating speed (service tier) configurations.
 //
-// Availability is sourced from the tier tables on the official pricing page
-// (developers.openai.com/api/docs/pricing): a model gets a speed config only
-// when it has a Flex and/or Priority pricing row. Codex-family, chat-latest,
-// and deep-research models have no tier rows and therefore no speed config.
-// Display names follow Codex's speed selector ("Fast" for priority).
+// Availability is sourced from OpenAI's official tier tables: the API pricing
+// page for Flex, the Priority processing page for first-party priority models,
+// and the specialized pricing table for Codex priority. A model gets a speed
+// config only when it has a Flex and/or Priority row. Chat-latest,
+// deep-research, and unlisted variants have no speed config. Display names
+// follow Codex's speed selector ("Fast" for priority).
 
 fn speed(value: Speed, name: &str) -> SpeedValue {
     SpeedValue {
@@ -181,8 +182,7 @@ fn speed(value: Speed, name: &str) -> SpeedValue {
 }
 
 /// Speed for models with both flex and priority pricing rows
-/// (gpt-5, gpt-5-mini, gpt-5.1, gpt-5.2, gpt-5.4, gpt-5.4-mini, gpt-5.5,
-/// gpt-5.6 series, o3, o4-mini).
+/// (gpt-5.4, gpt-5.4-mini, gpt-5.5, gpt-5.6 series).
 fn speed_flex_priority() -> SpeedConfig {
     SpeedConfig {
         values: vec![
@@ -195,7 +195,7 @@ fn speed_flex_priority() -> SpeedConfig {
 }
 
 /// Speed for models with only a flex pricing row
-/// (gpt-5-nano, gpt-5.4-nano, gpt-5.4-pro, gpt-5.5-pro).
+/// (gpt-5.4-nano, gpt-5.4-pro, gpt-5.5-pro).
 fn speed_flex_only() -> SpeedConfig {
     SpeedConfig {
         values: vec![
@@ -207,7 +207,9 @@ fn speed_flex_only() -> SpeedConfig {
 }
 
 /// Speed for models with only a priority pricing row
-/// (gpt-4o, gpt-4o-mini, gpt-4.1 family).
+/// (gpt-4o, gpt-4o-mini, gpt-4.1 family, gpt-5/gpt-5-mini,
+/// gpt-5-codex, gpt-5.1/gpt-5.1-codex, gpt-5.2, gpt-5.3-codex,
+/// o3, o4-mini).
 fn speed_priority_only() -> SpeedConfig {
     SpeedConfig {
         values: vec![
@@ -845,7 +847,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
-            speed: Some(speed_flex_priority()),
+            speed: Some(speed_priority_only()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -917,7 +919,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_standard()),
-            speed: Some(speed_flex_priority()),
+            speed: Some(speed_priority_only()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1064,7 +1066,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
-            speed: Some(speed_flex_priority()),
+            speed: Some(speed_priority_only()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1100,7 +1102,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
-            speed: Some(speed_flex_priority()),
+            speed: Some(speed_priority_only()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1136,7 +1138,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
-            speed: Some(speed_flex_only()),
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1208,7 +1210,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt5_pre51()),
-            speed: None,
+            speed: Some(speed_priority_only()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1245,7 +1247,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
-            speed: Some(speed_flex_priority()),
+            speed: Some(speed_priority_only()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1281,7 +1283,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt51()),
-            speed: None,
+            speed: Some(speed_priority_only()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1391,7 +1393,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
-            speed: Some(speed_flex_priority()),
+            speed: Some(speed_priority_only()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -1500,7 +1502,7 @@ fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
                 output: vec![Modality::Text],
             }),
             reasoning_effort: Some(reasoning_effort_gpt52()),
-            speed: None,
+            speed: Some(speed_priority_only()),
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
@@ -3752,8 +3754,8 @@ mod tests {
         assert_eq!(profile.unwrap().name, "GPT-4o");
     }
 
-    // Speed (service tier) availability follows the tier tables on the
-    // official pricing page; see the speed_* helper docs.
+    // Speed (service tier) availability follows OpenAI's official tier tables;
+    // see the speed_* helper docs.
 
     #[test]
     fn test_speed_config_matches_pricing_tiers() {
@@ -3766,19 +3768,51 @@ mod tests {
         };
         use Speed::*;
         // Flex + priority pricing rows.
-        for model in ["gpt-5.2", "gpt-5.6-sol", "gpt-5.4", "o3", "o4-mini"] {
+        for model in [
+            "gpt-5.6-sol",
+            "gpt-5.6-terra",
+            "gpt-5.6-luna",
+            "gpt-5.5",
+            "gpt-5.4",
+            "gpt-5.4-mini",
+        ] {
             assert_eq!(speeds(model), vec![Flex, Default, Priority], "{model}");
         }
         // Flex-only pricing rows.
-        for model in ["gpt-5-nano", "gpt-5.4-pro", "gpt-5.5-pro"] {
+        for model in ["gpt-5.5-pro", "gpt-5.4-nano", "gpt-5.4-pro"] {
             assert_eq!(speeds(model), vec![Flex, Default], "{model}");
         }
-        // Priority-only pricing rows (legacy priority launch set).
-        for model in ["gpt-4o", "gpt-4.1"] {
+        // Priority-only pricing rows.
+        for model in [
+            "gpt-4o",
+            "gpt-4o-mini",
+            "gpt-4.1",
+            "gpt-4.1-mini",
+            "gpt-4.1-nano",
+            "gpt-5",
+            "gpt-5-mini",
+            "gpt-5-codex",
+            "gpt-5.1",
+            "gpt-5.1-codex",
+            "gpt-5.2",
+            "gpt-5.3-codex",
+            "o3",
+            "o4-mini",
+        ] {
             assert_eq!(speeds(model), vec![Default, Priority], "{model}");
         }
-        // No tier rows: codex family, chat-latest, most pro/o1 models.
-        for model in ["gpt-5.2-codex", "gpt-5-chat-latest", "gpt-5-pro", "o1"] {
+        // No tier rows: unlisted variants, chat-latest, deep research, and o1.
+        for model in [
+            "gpt-5-nano",
+            "gpt-5-pro",
+            "gpt-5.1-codex-mini",
+            "gpt-5.1-codex-max",
+            "gpt-5.2-pro",
+            "gpt-5.2-codex",
+            "gpt-5-chat-latest",
+            "o3-deep-research",
+            "o1",
+        ] {
             assert_eq!(speeds(model), vec![], "{model}");
         }
     }
