@@ -12,7 +12,10 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
+  SelectSeparator,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -44,6 +47,7 @@ export function ChatComposer({
   dropZoneProps,
   handlePaste,
   selectedModelId,
+  recentModels,
   onModelChange,
   modelTriggerLabel,
   defaultModelOptionLabel,
@@ -78,6 +82,7 @@ export function ChatComposer({
   dropZoneProps: React.HTMLAttributes<HTMLDivElement>;
   handlePaste: React.ClipboardEventHandler<HTMLTextAreaElement>;
   selectedModelId: string;
+  recentModels: Model[];
   onModelChange: (value: string) => void;
   modelTriggerLabel: string;
   defaultModelOptionLabel: string;
@@ -218,6 +223,20 @@ export function ChatComposer({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">{defaultModelOptionLabel}</SelectItem>
+                  {recentModels.length > 0 && (
+                    <>
+                      <SelectSeparator />
+                      <SelectGroup>
+                        <SelectLabel>{t("recent")}</SelectLabel>
+                        {recentModels.map((model) => (
+                          <SelectItem key={`recent-${model.id}`} value={model.id}>
+                            {model.display_name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                      <SelectSeparator />
+                    </>
+                  )}
                   {models
                     .filter((m) => m.enabled)
                     .map((model) => (

@@ -124,6 +124,7 @@ export default function DevChatComponentsPage() {
                   dropZoneProps={{}}
                   handlePaste={() => undefined}
                   selectedModelId={selectedModelId}
+                  recentModels={devModels.slice(0, 2)}
                   onModelChange={setSelectedModelId}
                   modelTriggerLabel={
                     devModels.find((model) => model.id === selectedModelId)?.display_name ??
