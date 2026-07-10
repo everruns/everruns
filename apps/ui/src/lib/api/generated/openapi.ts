@@ -5722,6 +5722,12 @@ export interface components {
         });
     /** @description Request to create a message */
     CreateMessageRequest: {
+      /**
+       * @description Optional active agent participant to address for this turn. When omitted,
+       *     the session host remains the responder.
+       * @example part_01933b5a00007000800000000000001
+       */
+      addressed_participant_id?: string | null;
       controls?: null | components["schemas"]["Controls"];
       external_actor?: null | components["schemas"]["ExternalActor"];
       /** @description The message to create. Example shape is defined on `InputMessage`. */

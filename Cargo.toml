@@ -48,7 +48,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.17.5"
+version = "0.17.6"
 edition = "2024"
 # Published crate MSRV: Rust 2024 plus current published dependency floors.
 rust-version = "1.94.0"
@@ -149,11 +149,11 @@ futures-util = "0.3"
 
 # Everruns SDK
 everruns-sdk = "0.1.10"
-everruns-core = { path = "crates/core", version = "0.17.5" }
+everruns-core = { path = "crates/core", version = "0.17.6" }
 everruns-observability = { path = "crates/observability", version = "0.17.1" }
-everruns-mcp = { path = "crates/mcp", version = "0.17.5" }
+everruns-mcp = { path = "crates/mcp", version = "0.17.6" }
 everruns-openai = { path = "crates/openai", version = "0.17.0" }
-everruns-runtime = { path = "crates/runtime", version = "0.17.5" }
+everruns-runtime = { path = "crates/runtime", version = "0.17.6" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }
