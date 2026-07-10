@@ -3,6 +3,9 @@
 // `return_to` is the single public login-page contract for auth resume — see
 // specs/authentication.md. Paths must be relative to the frontend origin.
 
+/** Session storage key for preserving return_to across OAuth and signup flows. */
+export const RETURN_TO_STORAGE_KEY = "everruns_return_to";
+
 type SearchInput = URLSearchParams | string | null | undefined;
 
 function getSearchString(search: SearchInput): string {
@@ -63,4 +66,53 @@ const BACKEND_PATH_PREFIXES = ["/oauth/", "/api/", "/v1/"] as const;
 
 export function isBackendNavigationPath(path: string): boolean {
   return BACKEND_PATH_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
+function buildAuthPath(
+  basePath: "/login" | "/signup",
+  returnTo: string | null | undefined,
+  email?: string | null,
+): string {
+  const params = new URLSearchParams();
+  if (email) {
+    params.set("email", email);
+  }
+  const sanitized = sanitizeReturnTo(returnTo);
+  if (sanitized) {
+    params.set("return_to", sanitized);
+  }
+  const query = params.toString();
+  return query ? `${basePath}?${query}` : basePath;
+}
+
+/** Build a signup href that preserves a sanitized return_to and optional email. */
+export function buildSignupHref(
+  returnTo: string | null | undefined,
+  email?: string | null,
+): string {
+  return buildAuthPath("/signup", returnTo, email);
+}
+
+/** Build a login href that preserves a sanitized return_to and optional email. */
+export function buildLoginHref(returnTo: string | null | undefined, email?: string | null): string {
+  return buildAuthPath("/login", returnTo, email);
+}
+
+/** Persist a sanitized return_to in sessionStorage for post-auth resume. */
+export function persistReturnTo(value: string | null | undefined): void {
+  const sanitized = sanitizeReturnTo(value);
+  if (!sanitized || typeof sessionStorage === "undefined") {
+    return;
+  }
+  sessionStorage.setItem(RETURN_TO_STORAGE_KEY, sanitized);
+}
+
+/** Read and clear a stored return_to from sessionStorage. */
+export function consumeReturnTo(): string | null {
+  if (typeof sessionStorage === "undefined") {
+    return null;
+  }
+  const stored = sanitizeReturnTo(sessionStorage.getItem(RETURN_TO_STORAGE_KEY));
+  sessionStorage.removeItem(RETURN_TO_STORAGE_KEY);
+  return stored;
 }

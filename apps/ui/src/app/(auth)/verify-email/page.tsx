@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { useVerifyEmail, useResendVerification } from "@/hooks/use-auth";
+import { consumeReturnTo, isBackendNavigationPath } from "@/lib/auth-redirect";
 import { usePageTitle } from "@/hooks";
 import { Check, Loader2, Mail } from "lucide-react";
 
@@ -165,9 +166,19 @@ export default function VerifyEmailPage() {
         <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
           Thanks for confirming your email address. You can pick up right where you left off.
         </p>
-        {/* In a browser without a session, /dashboard bounces to /login with
-            return_to — so this works in both the original and a fresh browser. */}
-        <Button className="mt-7" onClick={() => router.push("/dashboard")}>
+        {/* Resume a stored invite/deep-link target when present; otherwise fall
+            back to dashboard (which may continue onboarding for zero-org users). */}
+        <Button
+          className="mt-7"
+          onClick={() => {
+            const target = consumeReturnTo() || "/dashboard";
+            if (isBackendNavigationPath(target)) {
+              window.location.assign(target);
+              return;
+            }
+            router.push(target);
+          }}
+        >
           Continue
         </Button>
       </AuthShell>

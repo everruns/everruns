@@ -20,11 +20,14 @@ import { useAuthConfig, useLogin } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks";
 import { ApiError } from "@/lib/api/client";
 import { getOAuthUrl, login } from "@/lib/api/auth";
-import { isBackendNavigationPath, sanitizeReturnTo } from "@/lib/auth-redirect";
+import {
+  isBackendNavigationPath,
+  sanitizeReturnTo,
+  buildSignupHref,
+  RETURN_TO_STORAGE_KEY,
+  persistReturnTo,
+} from "@/lib/auth-redirect";
 import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
-
-// Session storage key for preserving return_to across OAuth redirects
-const RETURN_TO_KEY = "everruns_return_to";
 
 // OAuth provider display names (logos come from OAuthProviderIcon)
 const oauthProviders: Record<string, { name: string }> = {
@@ -99,8 +102,8 @@ export default function LoginPage() {
   const getRedirectTarget = (): string => {
     // Check URL param first, then sessionStorage (for OAuth flow).
     // Both are sanitized so a poisoned sessionStorage can't redirect off-origin.
-    const stored = sanitizeReturnTo(sessionStorage.getItem(RETURN_TO_KEY));
-    sessionStorage.removeItem(RETURN_TO_KEY);
+    const stored = sanitizeReturnTo(sessionStorage.getItem(RETURN_TO_STORAGE_KEY));
+    sessionStorage.removeItem(RETURN_TO_STORAGE_KEY);
     return returnTo || stored || "/dashboard";
   };
 
@@ -170,9 +173,9 @@ export default function LoginPage() {
     if (oauthPending) return;
     setOauthPending(true);
     // Persist return_to in sessionStorage so it survives the OAuth redirect chain
-    const target = returnTo || sessionStorage.getItem(RETURN_TO_KEY);
+    const target = returnTo || sessionStorage.getItem(RETURN_TO_STORAGE_KEY);
     if (target) {
-      sessionStorage.setItem(RETURN_TO_KEY, target);
+      persistReturnTo(target);
     }
     window.location.assign(getOAuthUrl(provider));
   };
@@ -288,7 +291,7 @@ export default function LoginPage() {
           <p className="mt-5 text-[13px] text-muted-foreground">
             New to Everruns?{" "}
             <Link
-              href={`/signup?email=${encodeURIComponent(email)}`}
+              href={buildSignupHref(returnTo, email)}
               className="font-medium text-primary hover:underline"
             >
               Create an account
@@ -315,7 +318,10 @@ export default function LoginPage() {
           <>
             {" "}
             New to Everruns?{" "}
-            <Link href="/signup" className="font-medium text-primary hover:underline">
+            <Link
+              href={buildSignupHref(returnTo)}
+              className="font-medium text-primary hover:underline"
+            >
               Create an account
             </Link>
           </>
