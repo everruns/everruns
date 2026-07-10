@@ -40,7 +40,7 @@ import {
 } from "@/hooks/use-mcp-servers";
 import { usePolicies } from "@/hooks/use-policies";
 import { usePageTitle } from "@/hooks";
-import { Plus, Trash2, Key, X } from "lucide-react";
+import { Plus, Trash2, Key, X, Pencil } from "lucide-react";
 import type {
   McpServer,
   CreateMcpServerRequest,
@@ -50,6 +50,7 @@ import type {
 import {
   apiKeySecretSchema,
   getFieldErrors,
+  mcpServerEditFormSchema,
   mcpServerFormSchema,
   type FieldErrors,
 } from "@/lib/form-validation";
@@ -94,6 +95,7 @@ function protocolModeLabel(mode?: McpProtocolMode): string {
 function McpServerRow({
   server,
   canDestroy,
+  onEdit,
   onDelete,
   onArchive,
   onSetApiKey,
@@ -101,6 +103,7 @@ function McpServerRow({
 }: {
   server: McpServer;
   canDestroy: boolean;
+  onEdit: (server: McpServer) => void;
   onDelete: (server: McpServer) => void;
   onArchive: (server: McpServer) => void;
   onSetApiKey: (server: McpServer) => void;
@@ -141,6 +144,12 @@ function McpServerRow({
             <Button variant="outline" size="sm" onClick={() => onSetApiKey(server)}>
               <Key className="h-4 w-4 mr-1" />
               {server.api_key_set ? "Update Key" : "Set Key"}
+            </Button>
+          )}
+          {!isArchived && !isDeleted && (
+            <Button variant="outline" size="sm" onClick={() => onEdit(server)}>
+              <Pencil className="h-4 w-4 mr-1" />
+              Edit
             </Button>
           )}
           {!isArchived && !isDeleted && (
@@ -429,6 +438,161 @@ function AddMcpServerDialog({
               }
             >
               {createServer.isPending ? "Creating..." : "Create Server"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditMcpServerDialog({
+  server,
+  open,
+  onOpenChange,
+}: {
+  server: McpServer | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [url, setUrl] = useState("");
+  const [protocolMode, setProtocolMode] = useState<McpProtocolMode>("auto");
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+
+  const updateServer = useUpdateMcpServer(server?.id ?? "");
+
+  // Prefill the form with the current values whenever the dialog opens.
+  useEffect(() => {
+    if (!open || !server) return;
+    setName(server.name);
+    setDescription(server.description ?? "");
+    setUrl(server.url);
+    setProtocolMode(server.protocol_mode ?? "auto");
+    setFieldErrors({});
+    updateServer.reset();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, server]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!server) return;
+
+    const parsed = mcpServerEditFormSchema.safeParse({
+      name,
+      description,
+      url,
+      protocol_mode: protocolMode,
+    });
+    if (!parsed.success) {
+      setFieldErrors(getFieldErrors(parsed.error));
+      return;
+    }
+    setFieldErrors({});
+
+    try {
+      await updateServer.mutateAsync({
+        name: parsed.data.name,
+        // Send the trimmed string (may be empty) so clearing the field persists;
+        // the backend treats an omitted field as "no change".
+        description: description.trim(),
+        url: parsed.data.url,
+        protocol_mode: parsed.data.protocol_mode,
+      });
+      onOpenChange(false);
+    } catch {
+      // Error is surfaced below via updateServer.error.
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit MCP Server</DialogTitle>
+          <DialogDescription>
+            Update the name, description, URL, and protocol compatibility for this MCP server.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="edit-name">Name</Label>
+            <Input
+              id="edit-name"
+              value={name}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                setName(e.target.value);
+                setFieldErrors((prev) => ({ ...prev, name: undefined }));
+              }}
+              aria-invalid={!!fieldErrors.name}
+              placeholder="atlassian-mcp-server"
+              required
+            />
+            {fieldErrors.name && <p className="text-xs text-destructive">{fieldErrors.name}</p>}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-description">Description (optional)</Label>
+            <Textarea
+              id="edit-description"
+              value={description}
+              onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => {
+                setDescription(e.target.value);
+                setFieldErrors((prev) => ({ ...prev, description: undefined }));
+              }}
+              aria-invalid={!!fieldErrors.description}
+              placeholder="Atlassian MCP Server for Jira and Confluence"
+              rows={2}
+            />
+            {fieldErrors.description && (
+              <p className="text-xs text-destructive">{fieldErrors.description}</p>
+            )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-url">URL</Label>
+            <Input
+              id="edit-url"
+              value={url}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                setUrl(e.target.value);
+                setFieldErrors((prev) => ({ ...prev, url: undefined }));
+              }}
+              aria-invalid={!!fieldErrors.url}
+              placeholder="https://mcp.atlassian.com/v1/mcp"
+              required
+            />
+            {fieldErrors.url && <p className="text-xs text-destructive">{fieldErrors.url}</p>}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="edit-protocol-mode">Protocol compatibility</Label>
+            <Select
+              value={protocolMode}
+              onValueChange={(value) => setProtocolMode(value as McpProtocolMode)}
+            >
+              <SelectTrigger id="edit-protocol-mode">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">Auto (negotiate)</SelectItem>
+                <SelectItem value="rc">RC 2026 — stateless</SelectItem>
+                <SelectItem value="stable">Stable 2025-06-18</SelectItem>
+                <SelectItem value="legacy">Legacy 2025-03-26</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Authentication ({server?.auth_mode ?? "none"}) is managed separately. Use the Set Key
+            action to update an API key.
+          </p>
+          {updateServer.error && (
+            <p className="text-sm text-destructive">Error: {updateServer.error.message}</p>
+          )}
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={updateServer.isPending || !name || !url}>
+              {updateServer.isPending ? "Saving..." : "Save"}
             </Button>
           </DialogFooter>
         </form>
@@ -743,6 +907,7 @@ export default function McpServersPage() {
   const [search, setSearch] = useState("");
   const [statusTab, setStatusTab] = useState<StatusTab>("active");
   const [addServerOpen, setAddServerOpen] = useState(false);
+  const [editServer, setEditServer] = useState<McpServer | null>(null);
   const [apiKeyServer, setApiKeyServer] = useState<McpServer | null>(null);
   const [headersServer, setHeadersServer] = useState<McpServer | null>(null);
   const [pendingDeleteServer, setPendingDeleteServer] = useState<McpServer | null>(null);
@@ -891,6 +1056,7 @@ export default function McpServersPage() {
                         key={server.id}
                         server={server}
                         canDestroy={canDestroy}
+                        onEdit={setEditServer}
                         onDelete={setPendingDeleteServer}
                         onArchive={setPendingArchiveServer}
                         onSetApiKey={setApiKeyServer}
@@ -957,6 +1123,11 @@ export default function McpServersPage() {
 
       {/* Dialogs */}
       <AddMcpServerDialog open={addServerOpen} onOpenChange={setAddServerOpen} />
+      <EditMcpServerDialog
+        server={editServer}
+        open={editServer !== null}
+        onOpenChange={(open) => !open && setEditServer(null)}
+      />
       <ManageHeadersDialog
         server={headersServer}
         open={headersServer !== null}
