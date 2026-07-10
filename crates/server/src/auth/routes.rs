@@ -95,8 +95,9 @@ fn email_domain_allowed(email: &str, allowed_domains: &[String]) -> bool {
 /// identity must be rejected.
 ///
 /// Google: must report `email_verified` and, when `allowed_domains` is set,
-/// the email domain must be in that list. GitHub does not currently support
-/// per-provider gates here.
+/// the email domain must be in that list. GitHub: must report `email_verified`
+/// (derived from the real provider flag, not hardcoded — see EVE-702) so an
+/// attacker cannot pre-empt an account with an unverified GitHub address.
 fn oauth_identity_rejection_reason(
     provider: super::oauth::OAuthProvider,
     config: &super::config::AuthConfig,
@@ -119,7 +120,12 @@ fn oauth_identity_rejection_reason(
             }
             None
         }
-        super::oauth::OAuthProvider::GitHub => None,
+        super::oauth::OAuthProvider::GitHub => {
+            if !user_info.email_verified {
+                return Some("email_unverified");
+            }
+            None
+        }
     }
 }
 
@@ -2244,6 +2250,37 @@ mod tests {
         );
     }
 
+    // EVE-702: GitHub identities with an unverified email are rejected, mirroring
+    // Google, so a hardcoded email_verified=true can no longer pre-empt accounts.
+    #[test]
+    fn test_github_rejects_unverified_email() {
+        let config = AuthConfig::default();
+        let user = make_google_user("user@example.com", false);
+        assert_eq!(
+            oauth_identity_rejection_reason(
+                super::super::oauth::OAuthProvider::GitHub,
+                &config,
+                &user
+            ),
+            Some("email_unverified")
+        );
+    }
+
+    // EVE-702: a verified GitHub email passes the gate.
+    #[test]
+    fn test_github_accepts_verified_email() {
+        let config = AuthConfig::default();
+        let user = make_google_user("user@example.com", true);
+        assert!(
+            oauth_identity_rejection_reason(
+                super::super::oauth::OAuthProvider::GitHub,
+                &config,
+                &user
+            )
+            .is_none()
+        );
+    }
+
     // EVE-451: No allowed_domains config means any verified domain is accepted.
     #[test]
     fn test_google_accepts_any_verified_domain_when_unrestricted() {
@@ -2276,34 +2313,9 @@ mod tests {
         );
     }
 
-    // EVE-451: GitHub flow currently has no per-provider gates here.
-    #[test]
-    fn test_github_has_no_provider_gates() {
-        let mut config = AuthConfig::default();
-        config.mode = AuthMode::Full;
-        config.github = Some(crate::auth::config::GitHubOAuthConfig {
-            base: crate::auth::config::OAuthProviderConfig {
-                client_id: "id".to_string(),
-                client_secret: "secret".to_string(),
-                redirect_uri: "http://localhost/callback".to_string(),
-            },
-        });
-        let user = super::super::oauth::OAuthUserInfo {
-            provider_id: "gh-1".to_string(),
-            email: "user@example.com".to_string(),
-            name: "User".to_string(),
-            avatar_url: None,
-            email_verified: false,
-        };
-        assert!(
-            oauth_identity_rejection_reason(
-                super::super::oauth::OAuthProvider::GitHub,
-                &config,
-                &user
-            )
-            .is_none()
-        );
-    }
+    // EVE-702 replaced EVE-451's "GitHub has no gates" assertion: GitHub now
+    // gates on email_verified. See test_github_rejects_unverified_email and
+    // test_github_accepts_verified_email above.
 
     #[test]
     fn test_oauth_providers_visible_when_oauth_enabled() {
