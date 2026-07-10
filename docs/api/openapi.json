@@ -946,7 +946,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResourceStatsResponse"
+                  "$ref": "#/components/schemas/ResourceStats"
                 }
               }
             }
@@ -1371,8 +1371,7 @@
               }
             }
           }
-        },
-        "x-cost-tier": "paid"
+        }
       }
     },
     "/v1/apps": {
@@ -5559,7 +5558,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResourceStatsResponse"
+                  "$ref": "#/components/schemas/ResourceStats"
                 }
               }
             }
@@ -7064,7 +7063,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListResponse_MemoryResponse"
+                  "$ref": "#/components/schemas/ListResponse_Memory"
                 }
               }
             }
@@ -7093,7 +7092,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryResponse"
+                  "$ref": "#/components/schemas/Memory"
                 }
               }
             }
@@ -7145,7 +7144,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryResponse"
+                  "$ref": "#/components/schemas/Memory"
                 }
               }
             }
@@ -7228,7 +7227,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryResponse"
+                  "$ref": "#/components/schemas/Memory"
                 }
               }
             }
@@ -7396,7 +7395,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListResponse_GrepResultEntry"
+                  "$ref": "#/components/schemas/ListResponse_MemoryGrepResult"
                 }
               }
             }
@@ -7764,7 +7763,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryResponse"
+                  "$ref": "#/components/schemas/Memory"
                 }
               }
             }
@@ -10681,8 +10680,7 @@
           "500": {
             "description": "Internal server error"
           }
-        },
-        "x-cost-tier": "paid"
+        }
       }
     },
     "/v1/sessions/chat": {
@@ -10763,8 +10761,7 @@
           "404": {
             "description": "Platform Chat (global_chat) or voice feature is disabled for the org"
           }
-        },
-        "x-cost-tier": "paid"
+        }
       }
     },
     "/v1/sessions/stats": {
@@ -11683,8 +11680,7 @@
           "500": {
             "description": "Internal server error"
           }
-        },
-        "x-cost-tier": "paid"
+        }
       }
     },
     "/v1/sessions/{session_id}/git/branches": {
@@ -12057,8 +12053,7 @@
           "500": {
             "description": "Internal server error"
           }
-        },
-        "x-cost-tier": "paid"
+        }
       }
     },
     "/v1/sessions/{session_id}/participants": {
@@ -12154,8 +12149,7 @@
           "500": {
             "description": "Internal server error"
           }
-        },
-        "x-cost-tier": "paid"
+        }
       }
     },
     "/v1/sessions/{session_id}/participants/{participant_id}": {
@@ -14026,7 +14020,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListResponse_WorkspaceResponse"
+                  "$ref": "#/components/schemas/ListResponse_Workspace"
                 }
               }
             }
@@ -14055,7 +14049,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkspaceResponse"
+                  "$ref": "#/components/schemas/Workspace"
                 }
               }
             }
@@ -14107,7 +14101,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkspaceResponse"
+                  "$ref": "#/components/schemas/Workspace"
                 }
               }
             }
@@ -14190,7 +14184,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkspaceResponse"
+                  "$ref": "#/components/schemas/Workspace"
                 }
               }
             }
@@ -14787,7 +14781,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeleteResponse"
+                  "$ref": "#/components/schemas/DeleteFileResponse"
                 }
               }
             }
@@ -15520,6 +15514,18 @@
           }
         }
       },
+      "ApiKeyConnectionRequest": {
+        "type": "object",
+        "description": "Request body for API-key-based connections (e.g., Brave Search)",
+        "required": [
+          "api_key"
+        ],
+        "properties": {
+          "api_key": {
+            "type": "string"
+          }
+        }
+      },
       "App": {
         "type": "object",
         "description": "App configuration for deploying agents to channels.\nAn app binds a harness and optional agent to distribution channels with a\npublish lifecycle.",
@@ -16220,6 +16226,149 @@
           }
         }
       },
+      "Budget": {
+        "type": "object",
+        "description": "Budget — a spending cap for a subject in a currency.\nAPI response DTO.",
+        "required": [
+          "id",
+          "organization_id",
+          "subject_type",
+          "subject_id",
+          "currency",
+          "limit",
+          "balance",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "balance": {
+            "type": "number",
+            "format": "double",
+            "description": "Current remaining balance (limit minus consumed)."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency: \"usd\", \"tokens\", \"credits\", or custom."
+          },
+          "id": {
+            "type": "string",
+            "example": "bdgt_01933b5a00007000800000000000001"
+          },
+          "limit": {
+            "type": "number",
+            "format": "double",
+            "description": "Hard limit — budget ceiling."
+          },
+          "metadata": {
+            "description": "Arbitrary metadata."
+          },
+          "organization_id": {
+            "type": "string"
+          },
+          "period": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BudgetPeriod",
+                "description": "Optional period for recurring budgets."
+              }
+            ]
+          },
+          "period_started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the current period started (used to detect period rollover for\n`Duration` / `Rolling` periods, and to display \"resets at\" in the UI).\n`None` for budgets without a period."
+          },
+          "soft_limit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Soft limit — triggers pause/warn when balance drops below this."
+          },
+          "status": {
+            "$ref": "#/components/schemas/BudgetStatus"
+          },
+          "subject_id": {
+            "type": "string",
+            "description": "Public ID of the subject entity."
+          },
+          "subject_type": {
+            "$ref": "#/components/schemas/BudgetSubjectType"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "BudgetCheckResult": {
+        "type": "object",
+        "description": "Result of checking all budgets for a session.",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "Most restrictive action across all budgets."
+          },
+          "balance": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Remaining balance on the most restrictive budget."
+          },
+          "budget_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Budget that triggered the action."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Currency of the most restrictive budget."
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Stable error code for user-facing budget failures."
+          },
+          "error_fields": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Structured interpolation fields for localized error rendering."
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable message (set when action != \"continue\")."
+          }
+        }
+      },
       "BudgetEventData": {
         "type": "object",
         "description": "Data for budget lifecycle events (warning, paused, exhausted, resumed).",
@@ -16264,6 +16413,92 @@
             "description": "Soft limit threshold (present for warning/paused events)."
           }
         }
+      },
+      "BudgetPeriod": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Sliding window of a configurable number of seconds.",
+            "required": [
+              "seconds",
+              "type"
+            ],
+            "properties": {
+              "seconds": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "duration"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Rolling window described as a humanized string (\"5h\", \"24h\", \"30d\").",
+            "required": [
+              "window",
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "rolling"
+                ]
+              },
+              "window": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Calendar-aligned (`hour`, `day`, `week`, `month`, `year`).",
+            "required": [
+              "unit",
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "calendar"
+                ]
+              },
+              "unit": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "Budget period configuration for recurring budgets.\n\nPeriods drive automatic balance reset:\n- `Duration` is a fixed-length sliding window (e.g. last 5 hours, last 30 days)\n  measured from `Budget::period_started_at`. When the window elapses the\n  balance is reset to `limit` and the window restarts.\n- `Calendar` aligns to a calendar boundary (`hour | day | week | month | year`)\n  in UTC. The balance resets when the next boundary is crossed.\n- `Rolling` is preserved for backwards compatibility and parses common\n  shorthand (`24h`, `5h`, `7d`, `30d`) into a `Duration`-equivalent reset\n  policy."
+      },
+      "BudgetStatus": {
+        "type": "string",
+        "description": "Budget status.",
+        "enum": [
+          "active",
+          "paused",
+          "exhausted",
+          "disabled"
+        ]
+      },
+      "BudgetSubjectType": {
+        "type": "string",
+        "description": "Subject type: what entity this budget constrains.",
+        "enum": [
+          "session",
+          "agent",
+          "user",
+          "organization",
+          "app",
+          "app_channel"
+        ]
       },
       "BuiltinTool": {
         "type": "object",
@@ -16907,6 +17142,39 @@
           }
         }
       },
+      "Connection": {
+        "type": "object",
+        "description": "Connection info returned in API responses (never includes token)",
+        "required": [
+          "provider",
+          "connection_type",
+          "connected_at"
+        ],
+        "properties": {
+          "connected_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "connection_type": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "provider_username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scopes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "ContentPart": {
         "oneOf": [
           {
@@ -17533,6 +17801,62 @@
             "type": "string",
             "description": "Branch name (e.g., \"feature-xyz\")",
             "example": "feature/refund-flow"
+          }
+        }
+      },
+      "CreateBudgetRequest": {
+        "type": "object",
+        "description": "Request body for creating a spending budget.",
+        "required": [
+          "subject_type",
+          "subject_id",
+          "currency",
+          "limit"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string",
+            "description": "Unit in which usage and the limit are measured.",
+            "example": "usd"
+          },
+          "limit": {
+            "type": "number",
+            "format": "double",
+            "description": "Hard spending ceiling for the budget.",
+            "example": 100.0
+          },
+          "metadata": {
+            "description": "Free-form metadata attached to this resource."
+          },
+          "period": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BudgetPeriod",
+                "description": "Optional recurring reset period for the budget balance."
+              }
+            ]
+          },
+          "soft_limit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Optional threshold that triggers a warning or pause before exhaustion.",
+            "example": 20.0
+          },
+          "subject_id": {
+            "type": "string",
+            "description": "Public identifier of the constrained resource.",
+            "example": "agent_01933b5a00007000800000000000001"
+          },
+          "subject_type": {
+            "type": "string",
+            "description": "Kind of resource constrained by the budget.",
+            "example": "agent"
           }
         }
       },
@@ -18976,15 +19300,7 @@
           }
         }
       },
-      "DeleteQuery": {
-        "type": "object",
-        "properties": {
-          "recursive": {
-            "type": "boolean"
-          }
-        }
-      },
-      "DeleteResponse": {
+      "DeleteFileResponse": {
         "type": "object",
         "description": "Response for delete operation",
         "required": [
@@ -18992,6 +19308,14 @@
         ],
         "properties": {
           "deleted": {
+            "type": "boolean"
+          }
+        }
+      },
+      "DeleteQuery": {
+        "type": "object",
+        "properties": {
+          "recursive": {
             "type": "boolean"
           }
         }
@@ -20826,22 +21150,6 @@
           }
         }
       },
-      "GrepResultEntry": {
-        "type": "object",
-        "required": [
-          "path",
-          "size_bytes"
-        ],
-        "properties": {
-          "path": {
-            "type": "string"
-          },
-          "size_bytes": {
-            "type": "integer",
-            "format": "int64"
-          }
-        }
-      },
       "GuardrailAction": {
         "type": "string",
         "description": "Effective action of a hit after applying the config mode.",
@@ -22468,6 +22776,65 @@
           "cleanup_failed"
         ]
       },
+      "LedgerEntry": {
+        "type": "object",
+        "description": "Immutable ledger entry recording resource consumption or credit against a budget.",
+        "required": [
+          "id",
+          "budget_id",
+          "amount",
+          "meter_source",
+          "created_at"
+        ],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "format": "double",
+            "description": "Positive = debit (consumption), negative = credit (top-up/refund)."
+          },
+          "budget_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "meter_source": {
+            "type": "string",
+            "description": "Which meter produced this: \"llm_tokens\", \"tool_calls\", etc."
+          },
+          "ref_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Reference entity ID."
+          },
+          "ref_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Reference entity type: \"llm_generation\", \"tool_execution\", \"manual\"."
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Session context for this entry."
+          }
+        }
+      },
       "ListAppRunsQuery": {
         "type": "object",
         "description": "Query parameters for listing recent app invocation runs — a relative\ntime window and an optional bucketing hint for the dashboard.",
@@ -23223,35 +23590,6 @@
           }
         }
       },
-      "ListResponse_GrepResultEntry": {
-        "type": "object",
-        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
-        "required": [
-          "data"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": [
-                "path",
-                "size_bytes"
-              ],
-              "properties": {
-                "path": {
-                  "type": "string"
-                },
-                "size_bytes": {
-                  "type": "integer",
-                  "format": "int64"
-                }
-              }
-            },
-            "description": "Array of items returned by the list operation."
-          }
-        }
-      },
       "ListResponse_Harness": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -23946,56 +24284,7 @@
           }
         }
       },
-      "ListResponse_MemoryFileInfo": {
-        "type": "object",
-        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
-        "required": [
-          "data"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": [
-                "path",
-                "is_directory",
-                "size_bytes",
-                "created_at",
-                "updated_at"
-              ],
-              "properties": {
-                "content_hash": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "created_at": {
-                  "type": "string",
-                  "format": "date-time"
-                },
-                "is_directory": {
-                  "type": "boolean"
-                },
-                "path": {
-                  "type": "string"
-                },
-                "size_bytes": {
-                  "type": "integer",
-                  "format": "int64"
-                },
-                "updated_at": {
-                  "type": "string",
-                  "format": "date-time"
-                }
-              }
-            },
-            "description": "Array of items returned by the list operation."
-          }
-        }
-      },
-      "ListResponse_MemoryResponse": {
+      "ListResponse_Memory": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
         "required": [
@@ -24107,6 +24396,84 @@
                   "format": "date-time",
                   "description": "Timestamp when this resource was last updated (RFC 3339).",
                   "example": "2026-05-25T08:00:00Z"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_MemoryFileInfo": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "is_directory",
+                "size_bytes",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "content_hash": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "is_directory": {
+                  "type": "boolean"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "size_bytes": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_MemoryGrepResult": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "size_bytes"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "size_bytes": {
+                  "type": "integer",
+                  "format": "int64"
                 }
               }
             },
@@ -25869,7 +26236,7 @@
           }
         }
       },
-      "ListResponse_WorkspaceResponse": {
+      "ListResponse_Workspace": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
         "required": [
@@ -26683,85 +27050,7 @@
           }
         }
       },
-      "MemoryFile": {
-        "type": "object",
-        "required": [
-          "path",
-          "content",
-          "encoding",
-          "size_bytes",
-          "created_at",
-          "updated_at"
-        ],
-        "properties": {
-          "content": {
-            "type": "string",
-            "description": "Text or base64-encoded content; check `encoding`."
-          },
-          "content_hash": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "encoding": {
-            "type": "string",
-            "description": "\"text\" or \"base64\"."
-          },
-          "path": {
-            "type": "string"
-          },
-          "size_bytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
-      "MemoryFileInfo": {
-        "type": "object",
-        "required": [
-          "path",
-          "is_directory",
-          "size_bytes",
-          "created_at",
-          "updated_at"
-        ],
-        "properties": {
-          "content_hash": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "is_directory": {
-            "type": "boolean"
-          },
-          "path": {
-            "type": "string"
-          },
-          "size_bytes": {
-            "type": "integer",
-            "format": "int64"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      },
-      "MemoryResponse": {
+      "Memory": {
         "type": "object",
         "description": "Response body for memory.",
         "required": [
@@ -26864,6 +27153,100 @@
             "format": "date-time",
             "description": "Timestamp when this resource was last updated (RFC 3339).",
             "example": "2026-05-25T08:00:00Z"
+          }
+        }
+      },
+      "MemoryFile": {
+        "type": "object",
+        "required": [
+          "path",
+          "content",
+          "encoding",
+          "size_bytes",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "Text or base64-encoded content; check `encoding`."
+          },
+          "content_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "encoding": {
+            "type": "string",
+            "description": "\"text\" or \"base64\"."
+          },
+          "path": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "MemoryFileInfo": {
+        "type": "object",
+        "required": [
+          "path",
+          "is_directory",
+          "size_bytes",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "content_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "is_directory": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "MemoryGrepResult": {
+        "type": "object",
+        "required": [
+          "path",
+          "size_bytes"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -28649,6 +29032,10 @@
             "description": "Total number of items matching the query (across all pages).",
             "minimum": 0
           }
+        },
+        "x-sdk-response-wrapper": {
+          "kind": "list",
+          "model": "#/components/schemas/CapabilityInfo"
         }
       },
       "PaginatedResponse_WithUrls_ResourceWithCounts_Agent": {
@@ -28957,6 +29344,10 @@
             "description": "Total number of items matching the query (across all pages).",
             "minimum": 0
           }
+        },
+        "x-sdk-response-wrapper": {
+          "kind": "list",
+          "model": "#/components/schemas/Agent"
         }
       },
       "PaginatedResponse_WithUrls_Session": {
@@ -29370,6 +29761,10 @@
             "description": "Total number of items matching the query (across all pages).",
             "minimum": 0
           }
+        },
+        "x-sdk-response-wrapper": {
+          "kind": "list",
+          "model": "#/components/schemas/Session"
         }
       },
       "PaymentAccount": {
@@ -30849,7 +31244,7 @@
           }
         }
       },
-      "ResourceStatsResponse": {
+      "ResourceStats": {
         "type": "object",
         "description": "Response body for resource stats.",
         "required": [
@@ -31000,6 +31395,23 @@
             "description": "Sessions currently paused waiting for client-side tool results.",
             "example": 2,
             "minimum": 0
+          }
+        }
+      },
+      "ResumeSessionResponse": {
+        "type": "object",
+        "description": "Result of resuming budgets paused for a session.",
+        "required": [
+          "resumed_budgets",
+          "session_id"
+        ],
+        "properties": {
+          "resumed_budgets": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "session_id": {
+            "type": "string"
           }
         }
       },
@@ -33908,6 +34320,26 @@
           }
         }
       },
+      "TopUpRequest": {
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "format": "double",
+            "description": "Amount credited back to the budget balance."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages."
+          }
+        }
+      },
       "TranscriptRepairAction": {
         "type": "string",
         "description": "Action taken during transcript repair for a dangling tool call.",
@@ -34456,6 +34888,39 @@
                 "description": "Lifecycle status (draft or archived). Use publish/unpublish endpoints for publishing."
               }
             ]
+          }
+        }
+      },
+      "UpdateBudgetRequest": {
+        "type": "object",
+        "description": "Request body for changing a spending budget.",
+        "properties": {
+          "limit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Replacement hard spending ceiling.",
+            "example": 150.0
+          },
+          "metadata": {
+            "description": "Free-form metadata attached to this resource."
+          },
+          "soft_limit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Replacement soft threshold, or null to remove the threshold."
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Current lifecycle status."
           }
         }
       },
@@ -36312,7 +36777,11 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`.",
+        "x-sdk-response-wrapper": {
+          "kind": "resource",
+          "model": "#/components/schemas/Agent"
+        }
       },
       "WithUrls_App": {
         "allOf": [
@@ -36682,7 +37151,11 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`.",
+        "x-sdk-response-wrapper": {
+          "kind": "resource",
+          "model": "#/components/schemas/CapabilityInfo"
+        }
       },
       "WithUrls_DeclarativeCapability": {
         "allOf": [
@@ -37744,7 +38217,11 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`.",
+        "x-sdk-response-wrapper": {
+          "kind": "resource",
+          "model": "#/components/schemas/Agent"
+        }
       },
       "WithUrls_ResourceWithCounts_Harness": {
         "allOf": [
@@ -38333,7 +38810,11 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`.",
+        "x-sdk-response-wrapper": {
+          "kind": "resource",
+          "model": "#/components/schemas/Session"
+        }
       },
       "WithUrls_Skill": {
         "allOf": [
@@ -38815,7 +39296,7 @@
           }
         }
       },
-      "WorkspaceResponse": {
+      "Workspace": {
         "type": "object",
         "required": [
           "id",

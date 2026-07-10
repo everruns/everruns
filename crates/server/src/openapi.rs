@@ -22,11 +22,71 @@ use everruns_core::{
         TurnCompletedData, TurnFailedData, TurnSealedData, TurnStartedData,
     },
 };
-use utoipa::OpenApi;
+use serde_json::json;
+use utoipa::openapi::extensions::Extensions;
+use utoipa::openapi::{RefOr, Schema};
+use utoipa::{Modify, OpenApi};
+
+const SDK_RESPONSE_WRAPPERS: &[(&str, &str, &str)] = &[
+    ("WithUrls_Agent", "resource", "Agent"),
+    ("WithUrls_ResourceWithCounts_Agent", "resource", "Agent"),
+    ("WithUrls_Session", "resource", "Session"),
+    ("WithUrls_CapabilityInfo", "resource", "CapabilityInfo"),
+    (
+        "PaginatedResponse_WithUrls_ResourceWithCounts_Agent",
+        "list",
+        "Agent",
+    ),
+    ("PaginatedResponse_WithUrls_Session", "list", "Session"),
+    (
+        "PaginatedResponse_WithUrls_CapabilityInfo",
+        "list",
+        "CapabilityInfo",
+    ),
+];
+
+struct SdkMetadata;
+
+impl Modify for SdkMetadata {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let Some(components) = openapi.components.as_mut() else {
+            return;
+        };
+
+        for &(wrapper, kind, model) in SDK_RESPONSE_WRAPPERS {
+            let Some(RefOr::T(schema)) = components.schemas.get_mut(wrapper) else {
+                continue;
+            };
+            let Some(extensions) = schema_extensions_mut(schema) else {
+                continue;
+            };
+            let extensions = extensions.get_or_insert_with(Extensions::default);
+            extensions.insert(
+                "x-sdk-response-wrapper".to_string(),
+                json!({
+                    "kind": kind,
+                    "model": format!("#/components/schemas/{model}"),
+                }),
+            );
+        }
+    }
+}
+
+fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>> {
+    match schema {
+        Schema::Array(schema) => Some(&mut schema.extensions),
+        Schema::Object(schema) => Some(&mut schema.extensions),
+        Schema::OneOf(schema) => Some(&mut schema.extensions),
+        Schema::AllOf(schema) => Some(&mut schema.extensions),
+        Schema::AnyOf(schema) => Some(&mut schema.extensions),
+        _ => None,
+    }
+}
 
 /// OpenAPI documentation for the Everruns API
 #[derive(OpenApi)]
 #[openapi(
+    modifiers(&SdkMetadata),
     servers(
         (url = "https://app.everruns.com/api", description = "Production API"),
     ),
@@ -527,6 +587,18 @@ use utoipa::OpenApi;
             api::memory_files::DeleteQuery,
             api::memory_files::MemoryFile,
             api::memory_files::MemoryFileInfo,
+            everruns_core::budget::Budget,
+            everruns_core::budget::BudgetStatus,
+            everruns_core::budget::BudgetSubjectType,
+            everruns_core::budget::BudgetPeriod,
+            everruns_core::budget::LedgerEntry,
+            everruns_core::budget::BudgetCheckResult,
+            api::budgets::CreateBudgetRequest,
+            api::budgets::UpdateBudgetRequest,
+            api::budgets::TopUpRequest,
+            domains::budgets::ResumeSessionBudgetsResult,
+            api::user_connections::ConnectionResponse,
+            api::user_connections::ApiKeyConnectionRequest,
             api::knowledge_bases::CreateKnowledgeBaseRequest,
             api::knowledge_bases::UpdateKnowledgeBaseRequest,
             api::knowledge_bases::ListKnowledgeBasesQuery,

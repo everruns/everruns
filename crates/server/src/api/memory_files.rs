@@ -121,6 +121,7 @@ pub struct GrepRequest {
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(as = MemoryGrepResult)]
 pub struct GrepResultEntry {
     pub path: String,
     pub size_bytes: i64,

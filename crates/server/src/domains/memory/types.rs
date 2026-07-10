@@ -10,6 +10,7 @@ pub use crate::storage::models::{CreateMemoryRow, MemoryRow, UpdateMemory};
 
 /// Response body for memory.
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(as = Memory)]
 pub struct MemoryResponse {
     #[schema(value_type = String, example = "mem_01933b5a000070008000000000000001")]
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
