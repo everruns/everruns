@@ -3804,3 +3804,59 @@ async fn link_oauth_identity_attaches_provider_and_preserves_password() {
             .is_none()
     );
 }
+
+// EVE-704: user email is a case-insensitive identity. Registering `John@x.com`
+// then `john@x.com` must resolve to a single account, and login / OAuth-linking
+// lookups must find that account regardless of the casing supplied. This test
+// fails against the pre-fix backend (verbatim store + exact-match lookup),
+// where the second casing would appear as a distinct, unfound account.
+#[tokio::test]
+async fn test_user_email_is_case_insensitive_identity() {
+    let db = InMemoryDatabase::new();
+
+    // Registered with mixed case and stray surrounding whitespace.
+    let created = db
+        .create_user(CreateUserRow {
+            email: "  John.Doe@Example.COM ".to_string(),
+            name: "John".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: Some("argon2-hash".to_string()),
+            email_verified: true,
+            auth_provider: Some("local".to_string()),
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+
+    // Stored in canonical (trim + lowercase) form.
+    assert_eq!(created.email, "john.doe@example.com");
+
+    // Every casing of the same mailbox resolves to the one account — this is the
+    // register pre-check (duplicate signup blocked), login, and OAuth-linking
+    // lookup path in `auth::routes`.
+    for lookup in [
+        "john.doe@example.com",
+        "John.Doe@Example.COM",
+        "JOHN.DOE@EXAMPLE.COM",
+        "  john.doe@example.com  ",
+    ] {
+        let found = db
+            .get_user_by_email(lookup)
+            .await
+            .unwrap()
+            .unwrap_or_else(|| panic!("email lookup {lookup:?} must resolve to the account"));
+        assert_eq!(
+            found.id, created.id,
+            "lookup {lookup:?} resolved to wrong account"
+        );
+    }
+}
+
+#[test]
+fn test_normalize_email_trims_and_lowercases() {
+    assert_eq!(normalize_email("  Alice@Example.COM "), "alice@example.com");
+    assert_eq!(normalize_email("alice@example.com"), "alice@example.com");
+    assert_eq!(normalize_email("\tBob@X.io\n"), "bob@x.io");
+}
