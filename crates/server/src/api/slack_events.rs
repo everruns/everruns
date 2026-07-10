@@ -31,7 +31,10 @@ use everruns_core::channel::{
 };
 use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
 use everruns_core::validate_safe_url;
-use everruns_core::{App, AppStatus, Caller, SessionStrategy, SlackChannelConfig, SlackReplyMode};
+use everruns_core::{
+    App, AppStatus, Caller, SessionParticipantKind, SessionParticipantRole, SessionStrategy,
+    SlackChannelConfig, SlackReplyMode,
+};
 use everruns_worker::AgentRunner;
 use hmac::{Hmac, KeyInit, Mac};
 use moka::sync::Cache;
@@ -46,10 +49,10 @@ use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
 use crate::middleware::RequestId;
-use crate::services::EventService;
+use crate::services::{EventService, PrincipalService};
 use crate::slack_delivery::SlackDeliveryDispatcher;
 use crate::storage::StorageBackend;
-use crate::storage::models::UpdateSession;
+use crate::storage::models::{CreateSessionParticipantRow, SessionParticipantRow, UpdateSession};
 
 use super::common::ErrorResponse;
 
@@ -704,6 +707,11 @@ async fn process_slack_message(
         }
     }
 
+    let speaker_participant = match external_actor.as_ref() {
+        Some(actor) => Some(ensure_slack_user_participant(state, org_id, session.id, actor).await?),
+        None => None,
+    };
+
     // Inject thread context: when joining an existing thread mid-conversation,
     // fetch prior messages from Slack and inject them as context so the agent
     // sees the full conversation history.
@@ -769,10 +777,27 @@ async fn process_slack_message(
         },
         addressed_participant_id: None,
         controls: None,
-        metadata: Some(slack_message_metadata(app, event)),
+        metadata: Some(slack_message_metadata(
+            app,
+            event,
+            speaker_participant.as_ref(),
+        )),
         tags: None,
         external_actor,
     };
+    let mut event_metadata = execution_metadata::app_message_metadata(
+        app.public_id,
+        app.owner_principal_id,
+        app.agent_identity_id,
+    );
+    if let Some(participant) = &speaker_participant
+        && let Some(map) = event_metadata.as_object_mut()
+    {
+        map.insert(
+            "participant_id".to_string(),
+            serde_json::Value::String(participant.id.to_string()),
+        );
+    }
 
     let message = state
         .message_service
@@ -783,11 +808,7 @@ async fn process_slack_message(
                 harness_id: app.harness_id.uuid(),
                 agent_id: app.agent_id.map(|agent_id| agent_id.uuid()),
                 session_id: session.id.uuid(),
-                event_metadata: Some(execution_metadata::app_message_metadata(
-                    app.public_id,
-                    app.owner_principal_id,
-                    app.agent_identity_id,
-                )),
+                event_metadata: Some(event_metadata),
                 request_id,
             },
             create_msg,
@@ -860,8 +881,36 @@ async fn process_slack_message(
     Ok(())
 }
 
-fn slack_message_metadata(app: &App, event: &SlackEvent) -> HashMap<String, serde_json::Value> {
-    [
+async fn ensure_slack_user_participant(
+    state: &SlackState,
+    org_id: i64,
+    session_id: everruns_core::typed_id::SessionId,
+    actor: &everruns_core::ExternalActor,
+) -> anyhow::Result<SessionParticipantRow> {
+    let principal = PrincipalService::new(state.db.clone())
+        .ensure_external_actor_principal(org_id, actor)
+        .await?;
+    state
+        .db
+        .ensure_active_user_session_participant(CreateSessionParticipantRow {
+            org_id,
+            session_id,
+            kind: SessionParticipantKind::User,
+            agent_id: None,
+            agent_version_id: None,
+            principal_id: principal.id,
+            role: SessionParticipantRole::Member,
+            joined_at: None,
+        })
+        .await
+}
+
+fn slack_message_metadata(
+    app: &App,
+    event: &SlackEvent,
+    participant: Option<&SessionParticipantRow>,
+) -> HashMap<String, serde_json::Value> {
+    let mut metadata: HashMap<String, serde_json::Value> = [
         (
             "_app_id".to_string(),
             serde_json::Value::String(app.public_id.to_string()),
@@ -876,7 +925,14 @@ fn slack_message_metadata(app: &App, event: &SlackEvent) -> HashMap<String, serd
         ),
     ]
     .into_iter()
-    .collect()
+    .collect();
+    if let Some(participant) = participant {
+        metadata.insert(
+            "participant_id".to_string(),
+            serde_json::Value::String(participant.id.to_string()),
+        );
+    }
+    metadata
 }
 
 /// Supported image MIME types for Slack file attachments.
@@ -2087,7 +2143,7 @@ mod tests {
         let app = test_app();
         let event = test_event("C123", Some("1234.5678"), None);
 
-        let metadata = slack_message_metadata(&app, &event);
+        let metadata = slack_message_metadata(&app, &event, None);
 
         assert_eq!(
             metadata.get("_app_id"),

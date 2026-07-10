@@ -1243,8 +1243,16 @@ async fn execute_reason_activity<A: WorkerAdapters>(
         iteration: input.iteration,
     };
 
+    let event_metadata = input.agent_id.map(|agent_id| {
+        let mut metadata = serde_json::Map::new();
+        metadata.insert(
+            "agent_id".to_string(),
+            serde_json::Value::String(agent_id.to_string()),
+        );
+        metadata
+    });
     let result = runtime_execute_reason_activity(
-        &WorkerRuntimeHost::new(adapters.clone()),
+        &WorkerRuntimeHost::with_event_metadata(adapters.clone(), event_metadata),
         input.org_id,
         reason_input,
     )

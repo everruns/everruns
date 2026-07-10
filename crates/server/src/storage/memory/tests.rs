@@ -351,6 +351,44 @@ async fn test_create_session_participant_rejects_second_active_host() {
 }
 
 #[tokio::test]
+async fn test_ensure_active_user_session_participant_is_idempotent() {
+    let db = InMemoryDatabase::new();
+    let session = db.create_session(test_session_input(None)).await.unwrap();
+    let principal_id = PrincipalId::from_seed(42);
+
+    let input = CreateSessionParticipantRow {
+        org_id: DEFAULT_ORG_ID,
+        session_id: session.id,
+        kind: SessionParticipantKind::User,
+        agent_id: None,
+        agent_version_id: None,
+        principal_id,
+        role: SessionParticipantRole::Member,
+        joined_at: None,
+    };
+    let first = db
+        .ensure_active_user_session_participant(input.clone())
+        .await
+        .unwrap();
+    let second = db
+        .ensure_active_user_session_participant(input)
+        .await
+        .unwrap();
+
+    assert_eq!(first.id, second.id);
+    let active_for_principal = db
+        .list_session_participants(DEFAULT_ORG_ID, session.id)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|row| {
+            row.kind == "user" && row.principal_id == principal_id && row.left_at.is_none()
+        })
+        .count();
+    assert_eq!(active_for_principal, 1);
+}
+
+#[tokio::test]
 async fn test_leave_session_participant_preserves_history() {
     let db = InMemoryDatabase::new();
     let session = db.create_session(test_session_input(None)).await.unwrap();

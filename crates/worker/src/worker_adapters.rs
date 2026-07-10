@@ -462,11 +462,23 @@ pub struct TurnContext {
 /// Implements: MessageRetriever, EventEmitter, SessionFileSystem.
 pub struct SessionAdapter<A: WorkerAdapters> {
     adapters: A,
+    event_metadata: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 impl<A: WorkerAdapters> SessionAdapter<A> {
     pub fn new(adapters: A) -> Self {
-        Self { adapters }
+        Self {
+            adapters,
+            event_metadata: None,
+        }
+    }
+
+    pub fn with_event_metadata(
+        mut self,
+        metadata: Option<serde_json::Map<String, serde_json::Value>>,
+    ) -> Self {
+        self.event_metadata = metadata;
+        self
     }
 }
 
@@ -573,7 +585,18 @@ impl<A: WorkerAdapters> everruns_core::MessageRetriever for SessionAdapter<A> {
 
 #[async_trait]
 impl<A: WorkerAdapters> everruns_core::traits::EventEmitter for SessionAdapter<A> {
-    async fn emit(&self, request: EventRequest) -> Result<Event> {
+    async fn emit(&self, mut request: EventRequest) -> Result<Event> {
+        if let Some(extra) = &self.event_metadata {
+            let mut metadata = request
+                .metadata
+                .take()
+                .and_then(|value| value.as_object().cloned())
+                .unwrap_or_default();
+            for (key, value) in extra {
+                metadata.entry(key.clone()).or_insert_with(|| value.clone());
+            }
+            request.metadata = Some(serde_json::Value::Object(metadata));
+        }
         self.adapters.emit_event(request).await
     }
 }

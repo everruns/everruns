@@ -99,11 +99,25 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
 #[derive(Clone)]
 pub struct WorkerRuntimeHost<A: WorkerAdapters> {
     adapters: A,
+    event_metadata: Option<serde_json::Map<String, serde_json::Value>>,
 }
 
 impl<A: WorkerAdapters> WorkerRuntimeHost<A> {
     pub fn new(adapters: A) -> Self {
-        Self { adapters }
+        Self {
+            adapters,
+            event_metadata: None,
+        }
+    }
+
+    pub fn with_event_metadata(
+        adapters: A,
+        metadata: Option<serde_json::Map<String, serde_json::Value>>,
+    ) -> Self {
+        Self {
+            adapters,
+            event_metadata: metadata,
+        }
     }
 }
 
@@ -202,7 +216,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     }
 
     fn event_emitter(&self) -> Arc<dyn EventEmitter> {
-        Arc::new(AdapterEventEmitter::new(self.adapters.clone()))
+        Arc::new(
+            AdapterEventEmitter::new(self.adapters.clone())
+                .with_event_metadata(self.event_metadata.clone()),
+        )
     }
 
     fn file_store(&self) -> Arc<dyn SessionFileSystem> {

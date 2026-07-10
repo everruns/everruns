@@ -850,6 +850,13 @@ impl StorageBackend {
         dispatch!(self, create_session_participant, input)
     }
 
+    pub async fn ensure_active_user_session_participant(
+        &self,
+        input: CreateSessionParticipantRow,
+    ) -> Result<SessionParticipantRow> {
+        dispatch!(self, ensure_active_user_session_participant, input)
+    }
+
     pub async fn list_session_participants(
         &self,
         org_id: i64,
