@@ -142,6 +142,7 @@ export function ChatPanel() {
 
   const {
     selectedModelId,
+    recentModels,
     supportsReasoning,
     reasoningEffortConfig,
     defaultEffortName,
@@ -601,6 +602,7 @@ export function ChatPanel() {
         dropZoneProps={dropZoneProps}
         handlePaste={handlePaste}
         selectedModelId={selectedModelId}
+        recentModels={recentModels}
         onModelChange={handleModelChange}
         modelTriggerLabel={modelTriggerLabel}
         defaultModelOptionLabel={defaultModelOptionLabel}
