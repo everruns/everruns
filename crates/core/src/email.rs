@@ -195,7 +195,8 @@ impl MinimalEmailTemplate {
 }
 
 // Branded transactional template. Same app styling as `MinimalEmailTemplate`,
-// plus an Everruns logo + wordmark header and a footer linking to everruns.com.
+// plus an inline Everruns logo + wordmark header and a footer linking to
+// everruns.com.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BasicEmailTemplate {
     pub text: String,
@@ -467,10 +468,54 @@ fn branded_header() -> String {
     format!(
         r#"          <tr>
             <td style="padding:24px 28px;border-bottom:1px solid {APP_BORDER};">
-              <a href="{EVERRUNS_SITE_URL}" style="text-decoration:none;display:inline-block;font-size:18px;font-weight:700;color:{BRAND_NAVY};letter-spacing:-0.02em;">Everruns</a>
+              <table role="presentation" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+                <tr>
+                  <td width="32" style="width:32px;padding:0 10px 0 0;vertical-align:middle;">
+                    <a href="{EVERRUNS_SITE_URL}" aria-label="Everruns" style="display:inline-block;text-decoration:none;">
+{logo}
+                    </a>
+                  </td>
+                  <td style="vertical-align:middle;">
+                    <a href="{EVERRUNS_SITE_URL}" style="text-decoration:none;display:inline-block;font-size:18px;font-weight:700;color:{BRAND_NAVY};letter-spacing:0;">Everruns</a>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
-"#
+"#,
+        logo = branded_logo_svg()
+    )
+}
+
+// Inline SVG keeps the Basic template branded without fetching a remote image.
+// Geometry mirrors specs/brand.md: the rings' centroid is centered in the
+// viewBox so the mark stays balanced at small email-header sizes.
+fn branded_logo_svg() -> String {
+    format!(
+        r##"                      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 512 512" role="img" aria-label="Everruns logo" style="display:block;">
+                        <defs>
+                          <linearGradient id="emailLogoTop" gradientUnits="userSpaceOnUse" x1="256" y1="63.64" x2="256" y2="256.00">
+                            <stop offset="0.00" stop-color="{BRAND_NAVY}"/>
+                            <stop offset="0.70" stop-color="{BRAND_NAVY}"/>
+                            <stop offset="1.00" stop-color="{BRAND_GOLD}"/>
+                          </linearGradient>
+                          <linearGradient id="emailLogoLeft" gradientUnits="userSpaceOnUse" x1="89.41" y1="352.18" x2="256" y2="256.00">
+                            <stop offset="0.00" stop-color="#081C3F"/>
+                            <stop offset="0.70" stop-color="#081C3F"/>
+                            <stop offset="1.00" stop-color="{BRAND_GOLD}"/>
+                          </linearGradient>
+                          <linearGradient id="emailLogoRight" gradientUnits="userSpaceOnUse" x1="422.59" y1="352.18" x2="256" y2="256.00">
+                            <stop offset="0.00" stop-color="#0B1233"/>
+                            <stop offset="0.70" stop-color="#0B1233"/>
+                            <stop offset="1.00" stop-color="{BRAND_GOLD}"/>
+                          </linearGradient>
+                        </defs>
+                        <g fill="none" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="256" cy="183.64" r="120" stroke="url(#emailLogoTop)"/>
+                          <circle cx="193.33" cy="292.18" r="120" stroke="url(#emailLogoLeft)"/>
+                          <circle cx="318.67" cy="292.18" r="120" stroke="url(#emailLogoRight)"/>
+                        </g>
+                      </svg>"##
     )
 }
 
@@ -550,10 +595,13 @@ mod tests {
         // Branded plain text: wordmark prefix and site link footer.
         assert!(rendered.text.starts_with("Everruns\n\nHello"));
         assert!(rendered.text.contains(EVERRUNS_SITE_URL));
-        // Branded HTML: shares the app shell, plus wordmark and link.
+        // Branded HTML: shares the app shell, plus logo, wordmark, and link.
         assert!(rendered.html.contains("<p>Hello</p>"));
         assert!(rendered.html.contains("border-radius:0"));
         assert!(rendered.html.contains("Everruns"));
+        assert!(rendered.html.contains("<svg"));
+        assert!(rendered.html.contains(r#"aria-label="Everruns logo""#));
+        assert!(rendered.html.contains("emailLogoTop"));
         assert!(!rendered.html.contains("<img"));
         assert!(
             rendered

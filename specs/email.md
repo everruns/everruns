@@ -51,7 +51,7 @@ All templates share an app-styled HTML shell whose colors and shapes mirror `app
   - use when the surrounding flow already carries Everruns branding
 - `EmailTemplate::Basic(BasicEmailTemplate)`
   - same app-styled shell as `Minimal`, plus branding
-  - header with the Everruns wordmark linking to everruns.com
+  - header with an inline Everruns logo mark and wordmark linking to everruns.com
   - footer linking back to everruns.com
   - plain text body is prefixed with the Everruns wordmark and gets a site-link footer
 
