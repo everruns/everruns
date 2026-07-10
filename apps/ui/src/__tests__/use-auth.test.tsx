@@ -4,6 +4,7 @@ import { ReactNode } from "react";
 import {
   useLogin,
   useRegister,
+  useVerifyEmail,
   useLogout,
   useCurrentUser,
   usePersonalAccessTokens,
@@ -17,6 +18,7 @@ import type { OrganizationMembership } from "@/lib/api/types";
 jest.mock("@/lib/api/auth", () => ({
   login: jest.fn(),
   register: jest.fn(),
+  verifyEmail: jest.fn(),
   logout: jest.fn(),
   getCurrentUser: jest.fn(),
   getAuthConfig: jest.fn(),
@@ -29,6 +31,7 @@ import * as authApi from "@/lib/api/auth";
 
 const mockLogin = authApi.login as jest.MockedFunction<typeof authApi.login>;
 const mockRegister = authApi.register as jest.MockedFunction<typeof authApi.register>;
+const mockVerifyEmail = authApi.verifyEmail as jest.MockedFunction<typeof authApi.verifyEmail>;
 const mockLogout = authApi.logout as jest.MockedFunction<typeof authApi.logout>;
 const mockListPersonalAccessTokens = authApi.listPersonalAccessTokens as jest.MockedFunction<
   typeof authApi.listPersonalAccessTokens
@@ -350,6 +353,40 @@ describe("Auth Hooks", () => {
       const cachedUser = queryClient.getQueryData(authKeys.user());
       expect(cachedUser).toEqual(newUser);
       expect(cachedUser).not.toEqual(oldUser);
+    });
+  });
+
+  describe("useVerifyEmail", () => {
+    // EVE-716: verification signs the user in. The hook must refetch the
+    // current-user query on success so post-verification navigation sees the
+    // freshly authenticated (zero-org) user and resumes onboarding instead of
+    // bouncing to /login on a stale unauthenticated cache.
+    it("refetches user data on success so a fresh signup is authenticated", async () => {
+      // App started unauthenticated (pre-verification cache).
+      await initializeUserQuery(null);
+
+      const verifiedUser = {
+        id: "user-1",
+        email: "fresh@example.com",
+        name: "Fresh User",
+        roles: ["user"],
+        email_verified: true,
+        organizations: [],
+      };
+
+      mockVerifyEmail.mockResolvedValueOnce({ ok: true });
+      mockGetCurrentUser.mockResolvedValueOnce(verifiedUser);
+
+      const { result } = renderHook(() => useVerifyEmail(), { wrapper });
+
+      await act(async () => {
+        await result.current.mutateAsync({ token: "verify-token" });
+      });
+
+      expect(mockVerifyEmail).toHaveBeenCalledWith({ token: "verify-token" });
+      // The stale unauthenticated cache was refetched to the verified user.
+      expect(mockGetCurrentUser).toHaveBeenCalled();
+      expect(queryClient.getQueryData(authKeys.user())).toEqual(verifiedUser);
     });
   });
 
