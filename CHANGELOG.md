@@ -9,6 +9,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.17.6] - 2026-07-10
+
+### Highlights
+
+- **ATIF session/eval export** — Export sessions and eval datasets to ATIF, segmented for large sessions with image refs, size guards, and CLI (`--format atif`) support ([#2591](https://github.com/everruns/everruns/pull/2591), [#2609](https://github.com/everruns/everruns/pull/2609), [#2610](https://github.com/everruns/everruns/pull/2610), [#2619](https://github.com/everruns/everruns/pull/2619), [#2626](https://github.com/everruns/everruns/pull/2626), [#2627](https://github.com/everruns/everruns/pull/2627), [#2596](https://github.com/everruns/everruns/pull/2596)).
+- **New model profiles** — Added GPT-5.6 Sol, Terra, and Luna ([#2631](https://github.com/everruns/everruns/pull/2631)).
+- **Streaming reliability** — LLM streaming responses now reconnect automatically on transport failure ([#2594](https://github.com/everruns/everruns/pull/2594)).
+- **Auth fixes** — Closed reachability dead-ends across the auth flow, added OAuth password-reset links, and improved the signup path ([#2606](https://github.com/everruns/everruns/pull/2606), [#2603](https://github.com/everruns/everruns/pull/2603), [#2592](https://github.com/everruns/everruns/pull/2592)).
+
+### What's Changed
+
+- feat(email): add logo to branded template by [@chaliy](https://github.com/chaliy)
+- feat(sessions): record user participant provenance ([#2639](https://github.com/everruns/everruns/pull/2639)) by [@chaliy](https://github.com/chaliy)
+- perf(sessions): add org created-at index (EVE-697) by [@chaliy](https://github.com/chaliy)
+- perf(sessions): eliminate list N+1 queries (EVE-695) ([#2637](https://github.com/everruns/everruns/pull/2637)) by [@chaliy](https://github.com/chaliy)
+- fix(reporting): bound event projection repair (EVE-696) by [@chaliy](https://github.com/chaliy)
+- chore: deep maintenance — refresh UI deps, fix specs drift ([#2617](https://github.com/everruns/everruns/pull/2617)) by [@chaliy](https://github.com/chaliy)
+- feat(models): add GPT-5.6 Sol, Terra, and Luna profiles ([#2631](https://github.com/everruns/everruns/pull/2631)) by [@chaliy](https://github.com/chaliy)
+- feat(sessions): route addressed participant turns ([#2634](https://github.com/everruns/everruns/pull/2634)) by [@chaliy](https://github.com/chaliy)
+- perf(ui): reduce Settings prefetches (EVE-694) ([#2635](https://github.com/everruns/everruns/pull/2635)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): gate default-org auto-join behind opt-in flag ([#2632](https://github.com/everruns/everruns/pull/2632)) by [@chaliy](https://github.com/chaliy)
+- fix(openapi): add sdk model metadata ([#2633](https://github.com/everruns/everruns/pull/2633)) by [@chaliy](https://github.com/chaliy)
+- feat(sessions): add participant API by [@chaliy](https://github.com/chaliy)
+- feat(sessions): agent-first session creation (EVE-686 B–F) by [@chaliy](https://github.com/chaliy)
+- feat(ui): segmented ATIF export for large sessions ([#2627](https://github.com/everruns/everruns/pull/2627)) by [@chaliy](https://github.com/chaliy)
+- feat(sessions): add participant model ([#2629](https://github.com/everruns/everruns/pull/2629)) by [@chaliy](https://github.com/chaliy)
+- feat(export): segmented ATIF export for large sessions ([#2626](https://github.com/everruns/everruns/pull/2626)) by [@chaliy](https://github.com/chaliy)
+- test(subagents): cover nested reaper orphan handling ([#2625](https://github.com/everruns/everruns/pull/2625)) by [@chaliy](https://github.com/chaliy)
+- feat(subagents): cap root task fanout ([#2624](https://github.com/everruns/everruns/pull/2624)) by [@chaliy](https://github.com/chaliy)
+- feat(budgets): share root session budgets with subagents ([#2623](https://github.com/everruns/everruns/pull/2623)) by [@chaliy](https://github.com/chaliy)
+- test(auth): manual reachability cases for the auth state machine ([#2622](https://github.com/everruns/everruns/pull/2622)) by [@chaliy](https://github.com/chaliy)
+- feat(subagents): enforce governed nesting depth ([#2621](https://github.com/everruns/everruns/pull/2621)) by [@chaliy](https://github.com/chaliy)
+- feat(sessions): denormalize root_session_id for delegation trees ([#2620](https://github.com/everruns/everruns/pull/2620)) by [@chaliy](https://github.com/chaliy)
+- feat(agents): persist agent harness ownership ([#2618](https://github.com/everruns/everruns/pull/2618)) by [@chaliy](https://github.com/chaliy)
+- feat(cli): add --format atif to sessions export ([#2619](https://github.com/everruns/everruns/pull/2619)) by [@chaliy](https://github.com/chaliy)
+- chore(specs): add auth flow-reachability state diagram ([#2616](https://github.com/everruns/everruns/pull/2616)) by [@chaliy](https://github.com/chaliy)
+- feat(core): add subagent progress schema by [@chaliy](https://github.com/chaliy)
+- chore(ui): typecheck on the native TypeScript 7 compiler ([#2612](https://github.com/everruns/everruns/pull/2612)) by [@chaliy](https://github.com/chaliy)
+- feat(subagents): report schema-bound task results by [@chaliy](https://github.com/chaliy)
+- fix(runtime): default to runtime-safe capabilities by [@chaliy](https://github.com/chaliy)
+- feat(export): ATIF export image refs and size guard ([#2610](https://github.com/everruns/everruns/pull/2610)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): retire legacy delegation tools by [@chaliy](https://github.com/chaliy)
+- feat(ui): ATIF session export with limit alerts ([#2609](https://github.com/everruns/everruns/pull/2609)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): dispatch spawn_agent targets by [@chaliy](https://github.com/chaliy)
+- fix(auth): close reachability dead-ends across the auth flow ([#2606](https://github.com/everruns/everruns/pull/2606)) by [@chaliy](https://github.com/chaliy)
+- feat(agent-handoff): expose spawn_agent target by [@chaliy](https://github.com/chaliy)
+- chore: standardize PR descriptions on functional change + before/after ([#2605](https://github.com/everruns/everruns/pull/2605)) by [@chaliy](https://github.com/chaliy)
+- feat(subagents): expose spawn_agent subagent target by [@chaliy](https://github.com/chaliy)
+- fix(auth): send reset links for oauth accounts ([#2603](https://github.com/everruns/everruns/pull/2603)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): extend live-turn resilience to the thinking matrix ([#2602](https://github.com/everruns/everruns/pull/2602)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): make live agent-run matrix resilient to transient flakes ([#2601](https://github.com/everruns/everruns/pull/2601)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): retry live tool-call case to absorb model non-determinism ([#2600](https://github.com/everruns/everruns/pull/2600)) by [@chaliy](https://github.com/chaliy)
+- feat(handoff): give agent handoffs a dedicated task kind ([#2599](https://github.com/everruns/everruns/pull/2599)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): repin Fireworks live case to served Kimi K2 model ([#2598](https://github.com/everruns/everruns/pull/2598)) by [@chaliy](https://github.com/chaliy)
+- feat(evals): add ATIF dataset export and case import ([#2596](https://github.com/everruns/everruns/pull/2596)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): repin Fireworks live case to llama-v3p3-70b ([#2597](https://github.com/everruns/everruns/pull/2597)) by [@chaliy](https://github.com/chaliy)
+- fix(egress): keep host transports outside runtime policy ([#2595](https://github.com/everruns/everruns/pull/2595)) by [@chaliy](https://github.com/chaliy)
+- feat(drivers): reconnect streaming LLM responses on transport failure ([#2594](https://github.com/everruns/everruns/pull/2594)) by [@chaliy](https://github.com/chaliy)
+- feat(export): add ATIF session export ([#2591](https://github.com/everruns/everruns/pull/2591)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): signup path from password screen + prefill + copy space ([#2592](https://github.com/everruns/everruns/pull/2592)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): revert "skip live matrix on transient transport errors" ([#2556](https://github.com/everruns/everruns/pull/2556)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.5] - 2026-07-08
 
 ### Highlights
