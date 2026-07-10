@@ -263,7 +263,11 @@ export default function SignupPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 autoComplete="new-password"
-                minLength={MIN_LENGTH}
+                // No native `minLength`: it would block form submission before
+                // handleSubmit runs, leaving the calm inline policy error
+                // unreachable for short-but-nonempty passwords (EVE-719). Length
+                // and digit rules are enforced in handleSubmit and mirrored by the
+                // live requirements list below; the API stays authoritative.
                 maxLength={128}
                 aria-describedby="password-requirements"
               />
