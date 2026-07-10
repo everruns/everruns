@@ -120,9 +120,11 @@ JSON object inline; without `result_schema`, foreground spawns keep returning
 the last assistant message.
 
 When `message_schema` is present, the child session receives a
-`report_progress` tool whose parameters are the declared schema. A valid
-`report_progress` call appends an outbound task message with a `data` part to
-the parent task's message thread. Background subagent tasks with
+`report_task_progress` tool whose parameters are the declared schema. A valid
+`report_task_progress` call appends an outbound task message with a `data` part to
+the parent task's message thread. The name is deliberately distinct from the
+channel-facing `report_progress` tool (progress-reporting reply mode) so the two
+never collide in a single session toolset. Background subagent tasks with
 `message_schema` use `wake_policy: on_activity` so progress messages wake the
 parent; tasks without `message_schema` keep completion-only wake-ups.
 

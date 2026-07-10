@@ -727,13 +727,17 @@ impl Tool for ReportResultTool {
 
 /// Context-bound tool injected into a child subagent when its parent task
 /// declares `message_schema`.
-pub struct ReportProgressTool {
+///
+/// Named `report_task_progress` on the wire to avoid colliding with the
+/// channel-facing `report_progress` tool (`progress_reporting::REPORT_PROGRESS_TOOL_NAME`),
+/// which has different semantics and input schema (EVE-727).
+pub struct ReportTaskProgressTool {
     parent_session_id: SessionId,
     task_id: String,
     message_schema: Value,
 }
 
-impl ReportProgressTool {
+impl ReportTaskProgressTool {
     pub fn new(parent_session_id: SessionId, task_id: String, message_schema: Value) -> Self {
         Self {
             parent_session_id,
@@ -744,13 +748,13 @@ impl ReportProgressTool {
 }
 
 #[async_trait]
-impl Tool for ReportProgressTool {
+impl Tool for ReportTaskProgressTool {
     fn name(&self) -> &str {
-        "report_progress"
+        "report_task_progress"
     }
 
     fn display_name(&self) -> Option<&str> {
-        Some("Report Progress")
+        Some("Report Task Progress")
     }
 
     fn description(&self) -> &str {
@@ -763,7 +767,7 @@ impl Tool for ReportProgressTool {
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
-            "report_progress requires context. This tool must be executed with session context.",
+            "report_task_progress requires context. This tool must be executed with session context.",
         )
     }
 
@@ -775,14 +779,14 @@ impl Tool for ReportProgressTool {
         let errors = schema_validation_errors(&self.message_schema, &arguments);
         if !errors.is_empty() {
             return ToolExecutionResult::tool_error(format!(
-                "report_progress arguments do not match message_schema: {}",
+                "report_task_progress arguments do not match message_schema: {}",
                 errors.join("; ")
             ));
         }
 
         let Some(registry) = context.session_task_registry.as_ref() else {
             return ToolExecutionResult::tool_error(
-                "report_progress requires session_task_registry context",
+                "report_task_progress requires session_task_registry context",
             );
         };
 
@@ -857,11 +861,11 @@ pub async fn report_result_tool_for_child_session(
     )))
 }
 
-pub async fn report_progress_tool_for_child_session(
+pub async fn report_task_progress_tool_for_child_session(
     child_session_id: SessionId,
     session_store: &dyn SessionStore,
     task_registry: &dyn crate::session_task::SessionTaskRegistry,
-) -> crate::error::Result<Option<ReportProgressTool>> {
+) -> crate::error::Result<Option<ReportTaskProgressTool>> {
     let Some(child) = session_store.get_session(child_session_id).await? else {
         return Ok(None);
     };
@@ -889,7 +893,7 @@ pub async fn report_progress_tool_for_child_session(
         return Ok(None);
     };
 
-    Ok(Some(ReportProgressTool::new(
+    Ok(Some(ReportTaskProgressTool::new(
         parent_session_id,
         task.id.clone(),
         schema.clone(),
@@ -970,7 +974,7 @@ impl Tool for SpawnSubagentAsAgentTool {
                 },
                 "message_schema": {
                     "type": "object",
-                    "description": "Optional JSON Schema for structured progress messages. When set, the child receives report_progress and valid calls post data messages to the task thread."
+                    "description": "Optional JSON Schema for structured progress messages. When set, the child receives report_task_progress and valid calls post data messages to the task thread."
                 }
             },
             "required": ["name", "instructions", "target"],
@@ -2758,7 +2762,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn report_progress_posts_structured_outbound_message() {
+    async fn report_task_progress_posts_structured_outbound_message() {
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let parent_session_id = crate::typed_id::SessionId::new();
         let task = registry
@@ -2782,11 +2786,12 @@ mod tests {
             .await
             .unwrap();
 
-        let tool = ReportProgressTool::new(
+        let tool = ReportTaskProgressTool::new(
             parent_session_id,
             task.id.clone(),
             task.spec["message_schema"].clone(),
         );
+        assert_eq!(tool.name(), "report_task_progress");
         let mut context = ToolContext::new(crate::typed_id::SessionId::new());
         context.session_task_registry = Some(registry.clone());
 
@@ -2813,8 +2818,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn report_progress_rejects_invalid_message_schema_payload() {
-        let tool = ReportProgressTool::new(
+    async fn report_task_progress_rejects_invalid_message_schema_payload() {
+        let tool = ReportTaskProgressTool::new(
             crate::typed_id::SessionId::new(),
             "task_test".to_string(),
             json!({
@@ -2838,6 +2843,39 @@ mod tests {
             "got: {message}"
         );
         assert!(message.contains("$.extra is not allowed"), "got: {message}");
+    }
+
+    #[test]
+    fn subagent_and_channel_progress_tools_have_distinct_names() {
+        // EVE-727: the subagent interim-progress tool must not share a wire name
+        // with the channel-facing `report_progress` tool. `ToolRegistry` is keyed
+        // by name, so a collision would silently drop one tool. This guards the
+        // rename against regressions: both tools must coexist in one registry.
+        use crate::progress_reporting::{
+            REPORT_PROGRESS_TOOL_NAME, ReportProgressTool as ChannelReportProgressTool,
+        };
+        use crate::tools::ToolRegistry;
+
+        let subagent = ReportTaskProgressTool::new(
+            crate::typed_id::SessionId::new(),
+            "task_test".to_string(),
+            json!({"type": "object"}),
+        );
+        assert_eq!(subagent.name(), "report_task_progress");
+        assert_eq!(REPORT_PROGRESS_TOOL_NAME, "report_progress");
+        assert_ne!(subagent.name(), REPORT_PROGRESS_TOOL_NAME);
+
+        let mut registry = ToolRegistry::new();
+        registry.register(ChannelReportProgressTool);
+        registry.register(subagent);
+        assert!(
+            registry.has("report_progress"),
+            "channel report_progress tool must survive"
+        );
+        assert!(
+            registry.has("report_task_progress"),
+            "subagent report_task_progress tool must survive"
+        );
     }
 
     #[tokio::test]
