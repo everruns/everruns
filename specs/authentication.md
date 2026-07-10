@@ -43,7 +43,12 @@ Authorization: Bearer <personal_access_token>
 - Personal access tokens are prefixed with `evr_pat_` for identification — the prefix distinguishes them from JWTs within the `Bearer` scheme
 - Auth scheme matching is case-insensitive per RFC 7235 (`bearer`, `BEARER`, `Bearer` all accepted)
 - Full token shown only at creation, stored hashed (SHA-256)
-- Supports scopes and expiration
+- Expiration is supported and enforced. Scopes are **not yet enforced** on the
+  request path — a validated token authenticates with the owning user's full
+  authority regardless of stored scopes. To avoid advertising a control that is
+  not honored, token creation only accepts the full-access wildcard (`scopes`
+  omitted or `["*"]`); any narrower scope is rejected with `unsupported_pat_scopes`
+  until per-request scope enforcement exists. See EVE-701.
 - Used for programmatic access
 - Non-`Bearer` formats (`Authorization: evr_pat_...`, `Authorization: ApiKey evr_pat_...`) are also accepted for non-Bearer clients
 - `metadata` JSONB column stores creation context: `source` (cli_login, web_ui, api), `hostname`, `os`, `ip`
