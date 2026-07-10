@@ -129,7 +129,8 @@ Per-IP rate limiting implemented on all auth endpoints via `AuthRateLimiter` (`c
 - Register: 5 requests/min per IP
 - Refresh: 30 requests/min per IP
 - **Dual backend**: In-memory (governor crate, per-instance) when `VALKEY_URL` not set; Valkey distributed sliding-window counter when set. Fail-open on Valkey errors (availability > strictness).
-- **Residual risk**: Without Valkey, rate limits are per-instance. With N instances behind a load balancer, an attacker gets N× the budget. Set `VALKEY_URL` for coordinated limits in multi-instance deployments.
+- **Client IP (anti-spoofing)**: The rate-limit key is the real client IP, derived by peeling trusted reverse-proxy hops off the **right** of `X-Forwarded-For`, not the leftmost (client-supplied, spoofable) entry. Forwarding headers are honored only when the immediate peer is a trusted proxy, and only the entry `TRUSTED_PROXY_HOPS`-from-the-right is used (default 1 — a single reverse proxy, the documented topology). Set `TRUSTED_PROXY_HOPS` to the number of trusted proxies in front when stacking a CDN/LB. This closes the bypass where a client rotated a forged leftmost `X-Forwarded-For` to mint unlimited distinct rate-limit keys (EVE-700).
+- **Residual risk**: Without Valkey, rate limits are per-instance. With N instances behind a load balancer, an attacker gets N× the budget. Set `VALKEY_URL` for coordinated limits in multi-instance deployments. Forensic audit logging (`audit.client_ip`) still records the leftmost `X-Forwarded-For` entry and does not gate on the trusted peer — attribution-only, not a rate-limit control; hardening it is tracked separately.
 
 **TM-AUTH-002 — JWT Secret:**
 ```
