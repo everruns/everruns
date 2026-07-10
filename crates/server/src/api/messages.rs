@@ -23,7 +23,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::{DateTime, Utc};
-use everruns_core::typed_id::{MessageId, SessionId};
+use everruns_core::typed_id::{MessageId, SessionId, SessionParticipantId};
 
 use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
 use everruns_worker::AgentRunner;
@@ -129,6 +129,14 @@ fn default_user_role() -> MessageRole {
 pub struct CreateMessageRequest {
     /// The message to create. Example shape is defined on `InputMessage`.
     pub message: InputMessage,
+    /// Optional active agent participant to address for this turn. When omitted,
+    /// the session host remains the responder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(
+        value_type = Option<String>,
+        example = "part_01933b5a00007000800000000000001"
+    )]
+    pub addressed_participant_id: Option<SessionParticipantId>,
     /// Runtime controls (model, reasoning, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub controls: Option<Controls>,
@@ -155,6 +163,7 @@ impl CreateMessageRequest {
                 role: MessageRole::User,
                 content: vec![InputContentPart::text(text)],
             },
+            addressed_participant_id: None,
             controls: None,
             metadata: None,
             tags: None,
@@ -268,6 +277,7 @@ pub async fn create_message(
     let message = CreateMessage {
         session_id,
         message: req.message,
+        addressed_participant_id: req.addressed_participant_id,
         controls: req.controls,
         metadata: req.metadata,
         tags: req.tags,

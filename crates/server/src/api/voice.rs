@@ -1426,6 +1426,7 @@ fn build_voice_message_command(session_id: SessionId, data: &VoiceTranscriptData
             role: MessageRole::User,
             content: vec![InputContentPart::text(data.accumulated.trim().to_string())],
         },
+        addressed_participant_id: None,
         controls: None,
         metadata: Some(metadata),
         tags: Some(vec!["voice".to_string()]),

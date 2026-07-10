@@ -767,6 +767,7 @@ async fn process_slack_message(
             role: MessageRole::User,
             content,
         },
+        addressed_participant_id: None,
         controls: None,
         metadata: Some(slack_message_metadata(app, event)),
         tags: None,

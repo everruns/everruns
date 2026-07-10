@@ -471,6 +471,7 @@ pub(crate) async fn run_app_agent_stream(
                     role: ApiMessageRole::User,
                     content: trigger_parts,
                 },
+                addressed_participant_id: None,
                 controls: None,
                 metadata: Some(ag_ui_message_metadata(&app, thread_tag, run_tag)),
                 tags: None,

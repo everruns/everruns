@@ -514,6 +514,7 @@ async fn send_message_and_wait(
             role: crate::api::messages::MessageRole::User,
             content: vec![everruns_core::InputContentPart::text(content)],
         },
+        addressed_participant_id: None,
         controls: None,
         metadata: None,
         tags: None,

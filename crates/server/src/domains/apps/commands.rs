@@ -1463,6 +1463,7 @@ async fn dispatch_invocation_message(
                     role: MessageRole::User,
                     content: vec![InputContentPart::text(rendered_message)],
                 },
+                addressed_participant_id: None,
                 controls: None,
                 metadata,
                 tags: None,

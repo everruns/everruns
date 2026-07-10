@@ -407,6 +407,7 @@ pub async fn message(
                     role: ApiMessageRole::User,
                     content: vec![InputContentPart::text(user_text)],
                 },
+                addressed_participant_id: None,
                 controls: None,
                 metadata: Some(fcp_message_metadata(&context.app)),
                 tags: None,
