@@ -23,6 +23,7 @@ use tokio::net::TcpListener;
 
 fn config(model: &str) -> LlmCallConfig {
     LlmCallConfig {
+        speed: None,
         model: model.to_string(),
         temperature: None,
         max_tokens: None,

@@ -1071,6 +1071,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             prompt_cache_key,
             parallel_tool_calls: config
                 .resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model)),
+            service_tier: config.speed.clone(),
         };
 
         // Log request details for debugging LLM errors.
@@ -2032,6 +2033,10 @@ struct ResponsesRequest {
     /// `None` to preserve the provider default.
     #[serde(skip_serializing_if = "Option::is_none")]
     parallel_tool_calls: Option<bool>,
+    /// Speed selector: OpenAI service tier ("flex", "default", "priority").
+    /// Omitted when `None` so the provider keeps its default ("auto") routing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    service_tier: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2166,6 +2171,7 @@ mod tests {
     #[test]
     fn test_request_serialization() {
         let request = ResponsesRequest {
+            service_tier: None,
             model: "gpt-4o".to_string(),
             input: vec![ResponsesInputItem::Message {
                 r#type: "message".to_string(),
@@ -2195,6 +2201,7 @@ mod tests {
     #[test]
     fn test_request_with_reasoning() {
         let request = ResponsesRequest {
+            service_tier: None,
             model: "o3".to_string(),
             input: vec![ResponsesInputItem::Message {
                 r#type: "message".to_string(),
@@ -2229,6 +2236,7 @@ mod tests {
         metadata.insert("agent_id".to_string(), "agent_xyz789".to_string());
 
         let request = ResponsesRequest {
+            service_tier: None,
             model: "gpt-4o".to_string(),
             input: vec![ResponsesInputItem::Message {
                 r#type: "message".to_string(),
@@ -2258,6 +2266,7 @@ mod tests {
     #[test]
     fn test_request_serializes_parallel_tool_calls() {
         let make = |flag: Option<bool>| ResponsesRequest {
+            service_tier: None,
             model: "gpt-5.4".to_string(),
             input: vec![ResponsesInputItem::Message {
                 r#type: "message".to_string(),
@@ -2290,11 +2299,47 @@ mod tests {
         assert_eq!(json["parallel_tool_calls"], false);
     }
 
+    /// The speed selector serializes as `service_tier` only when set,
+    /// preserving the provider's default ("auto") routing when `None`.
+    #[test]
+    fn test_request_serializes_service_tier() {
+        let make = |tier: Option<&str>| ResponsesRequest {
+            service_tier: tier.map(str::to_string),
+            model: "gpt-5.4".to_string(),
+            input: vec![ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("Hello".to_string()),
+                phase: None,
+            }],
+            instructions: None,
+            previous_response_id: None,
+            temperature: None,
+            max_output_tokens: None,
+            stream: true,
+            tools: None,
+            reasoning: None,
+            metadata: None,
+            prompt_cache_key: None,
+            parallel_tool_calls: None,
+        };
+
+        let json = serde_json::to_value(make(None)).unwrap();
+        assert!(json.get("service_tier").is_none());
+
+        let json = serde_json::to_value(make(Some("priority"))).unwrap();
+        assert_eq!(json["service_tier"], "priority");
+
+        let json = serde_json::to_value(make(Some("flex"))).unwrap();
+        assert_eq!(json["service_tier"], "flex");
+    }
+
     #[test]
     fn test_build_prompt_cache_key_when_enabled() {
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("session_id".to_string(), "session_abc123".to_string());
         let config = LlmCallConfig {
+            speed: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,
@@ -2335,6 +2380,7 @@ mod tests {
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("session_id".to_string(), "session_abc123".to_string());
         let config = LlmCallConfig {
+            speed: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,
@@ -2388,6 +2434,7 @@ mod tests {
         let mut second_metadata = std::collections::HashMap::new();
         second_metadata.insert("session_id".to_string(), "session_xyz789".to_string());
         let make_config = |metadata| LlmCallConfig {
+            speed: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,
@@ -2431,6 +2478,7 @@ mod tests {
     #[test]
     fn test_build_prompt_cache_key_stays_within_openai_limit() {
         let config = LlmCallConfig {
+            speed: None,
             model: "gpt-5.5".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3306,6 +3354,7 @@ mod tests {
         ];
 
         let config = LlmCallConfig {
+            speed: None,
             model: "some/model".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3391,6 +3440,7 @@ mod tests {
             .collect();
 
         let config = LlmCallConfig {
+            speed: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3451,6 +3501,7 @@ mod tests {
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("session_id".to_string(), "session_abc123".to_string());
         let config = LlmCallConfig {
+            speed: None,
             model: "gpt-5-mini".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3516,6 +3567,7 @@ mod tests {
         let api_url = format!("{}/v1/responses", server.uri());
         let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url);
         let config = LlmCallConfig {
+            speed: None,
             model: "openai/gpt-4o-mini".to_string(),
             temperature: None,
             max_tokens: None,
@@ -4109,6 +4161,7 @@ mod tests {
         // When reasoning effort is "none", the reasoning field should be omitted
         // to avoid API errors on models that don't support reasoning params
         let config = LlmCallConfig {
+            speed: None,
             model: "gpt-5.2".to_string(),
             temperature: None,
             max_tokens: None,
@@ -4143,6 +4196,7 @@ mod tests {
     fn test_request_reasoning_high_is_included() {
         // When reasoning effort is "high", the reasoning field should be present
         let config = LlmCallConfig {
+            speed: None,
             model: "gpt-5.2".to_string(),
             temperature: None,
             max_tokens: None,
@@ -4726,6 +4780,7 @@ mod tests {
     /// Minimal `LlmCallConfig` for wire tests.
     fn auth_test_config() -> LlmCallConfig {
         LlmCallConfig {
+            speed: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,

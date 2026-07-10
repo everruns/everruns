@@ -41,6 +41,7 @@ fn tool(name: &str, description: &str) -> ToolDefinition {
 
 fn config_with(parallel: Option<bool>) -> LlmCallConfig {
     LlmCallConfig {
+        speed: None,
         model: LIVE_MODEL.to_string(),
         temperature: Some(0.0),
         max_tokens: Some(512),

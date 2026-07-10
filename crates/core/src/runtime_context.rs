@@ -567,6 +567,7 @@ mod tests {
         let message_store = InMemoryMessageRetriever::new();
         let mut input = InputMessage::user("What is 2 * 3?");
         input.controls = Some(Controls {
+            speed: None,
             model_id: None,
             reasoning: None,
             locale: Some("fr-FR".into()),

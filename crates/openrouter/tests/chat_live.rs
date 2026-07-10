@@ -28,6 +28,7 @@ async fn openrouter_chat_with_session_id_and_routing_succeeds() {
     metadata.insert("session_id".to_string(), "session_live_smoke".to_string());
 
     let config = LlmCallConfig {
+        speed: None,
         model: "openai/gpt-4o-mini".to_string(),
         temperature: Some(0.0),
         max_tokens: Some(16),

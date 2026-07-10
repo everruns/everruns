@@ -206,6 +206,7 @@ impl JudgeClient for LlmJudgeClient {
             LlmMessage::text(LlmMessageRole::User, user),
         ];
         let config = LlmCallConfig {
+            speed: None,
             model: resolved.model_id,
             temperature: Some(0.0),
             max_tokens: Some(700),

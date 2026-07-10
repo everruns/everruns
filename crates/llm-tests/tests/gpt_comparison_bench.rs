@@ -223,6 +223,7 @@ async fn test_gpt52_vs_gpt54_reasoning() {
                 "A farmer has 17 chickens. All but 9 die. How many are left? Think step by step.",
             )],
             controls: Some(Controls {
+                speed: None,
                 model_id: None,
                 locale: None,
                 reasoning: Some(ReasoningConfig {

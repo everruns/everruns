@@ -436,6 +436,7 @@ impl ModelService {
             limits: hardcoded.limits.or(discovered.limits),
             modalities: hardcoded.modalities.or(discovered.modalities),
             reasoning_effort: hardcoded.reasoning_effort.or(discovered.reasoning_effort),
+            speed: hardcoded.speed.or(discovered.speed),
             tool_search: hardcoded.tool_search,
             supported_parameters: if hardcoded.supported_parameters.is_empty() {
                 discovered.supported_parameters
@@ -596,6 +597,7 @@ mod tests {
             limits: None,
             modalities: None,
             reasoning_effort: None,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,

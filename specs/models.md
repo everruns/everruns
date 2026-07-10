@@ -124,7 +124,11 @@ See `specs/localization.md` for precedence rules.
 
 **Controls:**
 
-Optional per-message overrides for model selection and reasoning configuration.
+Optional per-message overrides for model selection, reasoning configuration, and speed (service tier).
+
+**Speed (Service Tier):**
+
+When `controls.speed` is set (`flex`, `default`, or `priority`), OpenAI requests carry the matching `service_tier`; see [LLM Drivers spec](llm-drivers.md).
 
 **Extended Thinking:**
 

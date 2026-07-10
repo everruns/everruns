@@ -1328,6 +1328,35 @@ impl ReasonAtom {
             }
         });
 
+        // Resolve the speed (service tier) from the latest user message's
+        // `controls.speed`, gated the same way: a model whose profile has no
+        // speed config never gets a `service_tier` (sending flex/priority to
+        // an unsupported model is a 400). Unknown models pass through — let
+        // the API decide.
+        let speed = messages
+            .iter()
+            .rev()
+            .find(|m| m.role == MessageRole::User)
+            .and_then(|m| m.controls.as_ref())
+            .and_then(|c| c.speed.clone())
+            .filter(|speed| {
+                let profile = crate::model_profiles::get_model_profile(
+                    &model_with_provider.provider_type,
+                    &model_with_provider.model,
+                );
+                match profile {
+                    Some(p) if p.speed.is_none() => {
+                        tracing::warn!(
+                            model = %model_with_provider.model,
+                            speed = %speed,
+                            "Stripping speed: model does not support service tiers"
+                        );
+                        false
+                    }
+                    _ => true,
+                }
+            });
+
         // 9. Check for an in-flight partial assistant stream from a previous worker (EVE-532).
         // If found, apply the ContinuePartial recovery policy: finalize from accumulated
         // text (if non-empty) or restart clean (if empty/usable partial only).
@@ -1494,6 +1523,9 @@ impl ReasonAtom {
         let mut llm_config_builder = LlmCallConfigBuilder::from(&runtime_agent);
         if let Some(effort) = reasoning_effort.clone() {
             llm_config_builder = llm_config_builder.reasoning_effort(effort);
+        }
+        if let Some(speed) = speed {
+            llm_config_builder = llm_config_builder.speed(speed);
         }
 
         // Inject embedder metadata first; system keys added below take precedence
@@ -2019,6 +2051,7 @@ impl ReasonAtom {
                             ];
 
                             let summary_config = crate::driver_registry::LlmCallConfig {
+                                speed: None,
                                 model: config
                                     .summarization
                                     .model
@@ -3600,6 +3633,7 @@ mod tests {
     #[test]
     fn test_build_request_options_for_openai_prompt_cache() {
         let config = LlmCallConfig {
+            speed: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3634,6 +3668,7 @@ mod tests {
     #[test]
     fn test_build_request_options_for_gemini_explicit_cache() {
         let config = LlmCallConfig {
+            speed: None,
             model: "gemini-2.5-pro".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3668,6 +3703,7 @@ mod tests {
     #[test]
     fn test_build_request_options_omits_gemini_cache_flag_when_disabled() {
         let config = LlmCallConfig {
+            speed: None,
             model: "gemini-2.5-pro".to_string(),
             temperature: None,
             max_tokens: None,

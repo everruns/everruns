@@ -1173,6 +1173,10 @@ pub struct LlmCallConfig {
     pub tools: Vec<ToolDefinition>,
     /// Reasoning effort level (for models that support it: low, medium, high)
     pub reasoning_effort: Option<String>,
+    /// Speed (service tier) for this call: "flex", "default", or "priority".
+    /// Serialized as OpenAI `service_tier`; omitted when `None` so the
+    /// provider keeps its default ("auto") routing.
+    pub speed: Option<String>,
     /// Metadata to send with the API request for tracking and debugging.
     /// Keys and values are strings. Both OpenAI and Anthropic support metadata fields.
     /// Typically includes: session_id, agent_id, org_id, turn_id, exec_id.
@@ -1232,6 +1236,7 @@ impl From<&RuntimeAgent> for LlmCallConfig {
             max_tokens: runtime_agent.max_tokens,
             tools: runtime_agent.tools.clone(),
             reasoning_effort: None, // Set by ReasonAtom from user message controls
+            speed: None,            // Set by ReasonAtom from user message controls
             metadata: HashMap::new(), // Set by ReasonAtom with session/agent context
             previous_response_id: None,
             tool_search: runtime_agent.tool_search.clone(),
@@ -1288,6 +1293,12 @@ impl LlmCallConfigBuilder {
     /// Set reasoning effort level (for models that support it: low, medium, high)
     pub fn reasoning_effort(mut self, effort: impl Into<String>) -> Self {
         self.config.reasoning_effort = Some(effort.into());
+        self
+    }
+
+    /// Set speed (service tier): "flex", "default", or "priority"
+    pub fn speed(mut self, speed: impl Into<String>) -> Self {
+        self.config.speed = Some(speed.into());
         self
     }
 

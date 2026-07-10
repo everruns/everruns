@@ -1803,6 +1803,7 @@ impl AnthropicModelInfo {
             limits,
             modalities,
             reasoning_effort,
+            speed: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,
