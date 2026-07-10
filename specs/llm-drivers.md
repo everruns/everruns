@@ -201,7 +201,7 @@ The UI also prevents setting reasoning on non-thinking models (checks `profile.r
 
 The speed selector maps to OpenAI's `service_tier` request parameter: `flex` trades latency for batch-rate pricing, `priority` buys faster and more consistent latency at a premium, `default` pins the standard tier. The API rejects values outside the closed set at message creation. It is resolved per turn from the latest user message's `controls.speed` and guarded like reasoning effort: ReasonAtom strips the value (with a warning log) when the model profile carries no `speed` config, and unknown models pass through. When unset, the field is omitted so the provider keeps its default (`auto`) routing.
 
-Per-model availability lives in the model profile's `speed` config, sourced from the tier tables on OpenAI's pricing page (models without a flex/priority pricing row get no config). Profiles mask the config for every provider surface except first-party OpenAI — Azure and gateways have their own capacity models. Both OpenAI drivers (Responses and Chat Completions) serialize the value verbatim as `service_tier`; other drivers ignore it.
+Per-model availability lives in the model profile's `speed` config, sourced from OpenAI's official tier tables — the API pricing page for Flex, the Priority-processing docs for first-party priority models, and the specialized Codex priority table (models without a tier row get no config). Profiles mask the config for every provider surface except first-party OpenAI — Azure and gateways have their own capacity models. Both OpenAI drivers (Responses and Chat Completions) serialize the value verbatim as `service_tier`; other drivers ignore it.
 
 ### Completion Metadata
 
