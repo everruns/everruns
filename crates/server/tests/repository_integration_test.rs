@@ -798,6 +798,31 @@ async fn test_session_crud() {
         .unwrap();
 }
 
+#[tokio::test]
+async fn test_sessions_list_has_org_created_at_index() {
+    let pool = create_test_pool().await;
+    let index_definition: Option<String> = sqlx::query_scalar(
+        r#"
+        SELECT indexdef
+        FROM pg_indexes
+        WHERE schemaname = current_schema()
+          AND tablename = 'sessions'
+          AND indexname = 'idx_sessions_org_created_at'
+        "#,
+    )
+    .fetch_optional(&pool)
+    .await
+    .expect("Failed to inspect sessions indexes");
+
+    let index_definition = index_definition.expect(
+        "sessions listing needs an org_id/created_at index to avoid scanning other tenants",
+    );
+    assert!(
+        index_definition.ends_with("USING btree (org_id, created_at DESC)"),
+        "unexpected sessions list index definition: {index_definition}"
+    );
+}
+
 // ============================================
 // Event Repository Tests
 // ============================================
