@@ -575,6 +575,8 @@ See `crates/server/src/auth/backend.rs` for the `AuthBackend` trait. Key methods
 
 See `crates/server/src/auth/builtin.rs`. Wraps JWT + password + personal access token logic. Auth route handlers use `BuiltinAuthBackend` as axum state directly with `FromRef<BuiltinAuthBackend> for AuthState`.
 
+Token validation is a fresh-state boundary: `auth_user_from_claims` reloads the subject's DB user row (already required to reject deleted subjects) and derives the resolved identity — `name`, `email`, `roles`, and `is_platform_user` — from that row, not from the JWT claim payload. JWT claims still carry these fields for the token's lifetime, but they never drive request-time authorization or the profile shown by `/v1/auth/me`. So a profile rename (or role/email change) surfaces on the next request within the same access-token session, with no re-login and no token reissue (roles: EVE-703; name/email: EVE-715). The personal-access-token path reads the same DB row per request for the same reason.
+
 ### AuthState
 
 `AuthState` holds `Arc<dyn AuthBackend>`. The `extract_auth_user()` middleware delegates to `backend.validate_token()` and `backend.validate_personal_access_token()`. OSS convenience: `AuthState::builtin(config, db)`.
