@@ -156,7 +156,7 @@ Agents can override `max_tokens` via agent config. Cost guardrails should be con
 
 Extended thinking allows models to perform chain-of-thought reasoning before generating responses. Supported by both Anthropic Claude and OpenAI o-series/GPT-5 models.
 
-Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5, Opus 4.8/4.7, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5 and Opus 4.8/4.7 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/anthropic/src/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/core/src/llm_model_profiles.rs`.
+Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5, Opus 4.8/4.7, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5 and Opus 4.8/4.7 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/anthropic/src/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/core/src/model_profiles.rs`.
 
 #### Stream Events
 

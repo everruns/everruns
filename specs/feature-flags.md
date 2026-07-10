@@ -74,7 +74,7 @@ Deployment flags are computed once at server startup. Org-effective flags are re
 - **Provider**: `apps/ui/src/providers/feature-flags-provider.tsx` — fetches org-effective flags when an org is selected
 - **Settings**: `apps/ui/src/app/(main)/settings/features/page.tsx` — admin opt-in toggles
 - **Hooks**: `useFeatureFlags()` (effective flags), `useFeatureFlag("flag_name")` (single flag)
-- **Types**: `FeatureFlags` in `apps/ui/src/lib/api/types/auth-types.ts`
+- **Types**: `FeatureFlags` in `apps/ui/src/lib/api/legacy-api-types.ts`
 
 ### Workers
 
@@ -89,7 +89,7 @@ passed via gRPC turn context.
 2. Add resolution in `from_env()` using `experimental_flag()` or `standard_flag()`
 3. Add to `is_enabled()` match arm
 4. Update `all_enabled()`
-5. Add to `FeatureFlags` interface in `apps/ui/src/lib/api/types/auth-types.ts`
+5. Add to `FeatureFlags` interface in `apps/ui/src/lib/api/legacy-api-types.ts`
 6. Add to `DEFAULT_FLAGS` in `apps/ui/src/providers/feature-flags-provider.tsx`
 7. Use `useFeatureFlag("flag_name")` in UI components
 

@@ -138,12 +138,12 @@ pathological synchronous C ops (out-of-process execution is the robust fix).
 ## Phased roadmap
 
 - **Phase 1 — DONE.** Capability + `lua` tool, `fs.*` + `json.*`, sandbox limits,
-  engine seam, **native-Rust piccolo engine** with the async VFS bridge, full
-  e2e tests. Feature-flagged (`FEATURE_LUA` + `lua` cargo feature), admin-gated.
-- **Phase 2 — PARTIAL.** `tonumber` shim; `print` capture+stream; TM-LUA in the
-  threat model. **Open (P0, evidence-backed by the eval below):** stdlib shims —
-  `table.sort/insert/remove/concat` and `string.format/find/match/gmatch/gsub/rep`
-  (their absence fails the sort task 3/3). Then `os.*` subset and
+  engine seam, the **`mlua` engine** (vendored Lua 5.4) with the async VFS bridge,
+  full e2e tests. Feature-flagged (`FEATURE_LUA` + `lua` cargo feature), admin-gated.
+- **Phase 2 — PARTIAL.** `print` capture+stream and TM-LUA threat-model coverage
+  are done. The full Lua 5.4 stdlib (`table.*`, `string.*`, `math.*`, `os.*`) is
+  provided directly by `mlua`, so the piccolo-era stdlib-shim gap (which had failed
+  the sort task 3/3) no longer applies. **Open:** `os.*`-subset hardening and
   background-execution parity (`BackgroundExecutableTool`).
 - **Phase 3 — PARTIAL.** `base64` module + bash-vs-lua eval harness
   (`research/lua-vs-bash`) done — see Evaluation results below. **Open:**
@@ -243,7 +243,7 @@ prompt) means it is paid only when `lua` is present.
 | Quoting / escaping footguns | None | Many |
 | Model fluency | Good | Excellent (larger prior) |
 | Compact shell idioms | Weaker | `grep | sed | awk` |
-| Stdlib completeness | Partial (piccolo gap, see above) | Full bashkit builtins |
+| Stdlib completeness | Full (mlua ships Lua 5.4 stdlib) | Full bashkit builtins |
 | Status | Experimental | Shipped |
 
 ### Agent ergonomics (how well the model drives each)

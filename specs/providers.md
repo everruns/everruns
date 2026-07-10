@@ -143,7 +143,7 @@ The model's identity, promoted from a runtime-computed shadow type to a first-cl
 
 - **Stable key**: `"{vendor}/{model}"` (e.g. `anthropic/claude-sonnet-4.6`, `openai/gpt-5.5`, `openai/text-embedding-3-large`).
 - **Service kind**: which service this model belongs to (`chat`, `embeddings`, `realtime`, ...). Pickers filter on it — chat pickers never show `gpt-realtime-2`; embedding configuration only shows embedding profiles. This removes the per-model special-casing the voice spec required.
-- **Metadata**: vendor, default display name, capabilities (tools, vision, reasoning, structured output), limits, cost, modalities, reasoning-effort config — everything `LlmModelProfile` carries today (`crates/core/src/llm_models.rs`), still sourced from models.dev cross-referenced with official provider docs (sourcing rules in `specs/models.md` apply unchanged).
+- **Metadata**: vendor, default display name, capabilities (tools, vision, reasoning, structured output), limits, cost, modalities, reasoning-effort config — everything `LlmModelProfile` carries today (`crates/core/src/model.rs`), still sourced from models.dev cross-referenced with official provider docs (sourcing rules in `specs/models.md` apply unchanged).
 - **Sources**: built-in code registry (as today) plus discovered profiles persisted from provider metadata (the OpenRouter `supported_parameters` path). Org-custom profiles are out of scope until self-hosted models need them.
 - **Invariant**: every model row has a profile. Discovery that cannot match a known profile creates a minimal one (key derived from the wire id, service `chat`, no cost/limits data — never guessed).
 

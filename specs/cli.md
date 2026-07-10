@@ -73,9 +73,10 @@ The hard-deny floor is checked on **every** path component, not just the root. S
 
 Session management.
 
-- `create [--harness <id|name>] [--agent <id|name>] [--agent-identity <id>] [--title <t>] [--locale <tag>] [--model <m>] [--system-prompt <s>] [--tag <t>] [--capability <ref[=json]>] [--hint <key=json>] [--hints-json <json>] [--network-allow <pattern>] [--network-block <pattern>] [--max-iterations <n>] [--budget-limit <[currency:]limit>] [--budget-soft-limit <[currency:]limit>]`
+- `create [--harness <id|name>] [--agent <id|name>] [--agent-identity <id>] [--title <t>] [--locale <tag>] [--model <m>] [--system-prompt <s>] [--tag <t>] [--capability <ref[=json]>] [--hint <key=json>] [--hints-json <json>] [--secret <KEY=VALUE>] [--network-allow <pattern>] [--network-block <pattern>] [--max-iterations <n>] [--budget-limit <[currency:]limit>] [--budget-soft-limit <[currency:]limit>]`
   - `--agent` accepts an agent id (`agent_…`) or a name; a bare name resolves server-side. When `--agent` is given and `--harness` is omitted, the session runs on the agent's harness (agent-first). An explicit `--harness` still overrides it.
   - `--capability` is repeatable. Format: `REF` or `REF=JSON_CONFIG`. The CLI sends these as session-level capabilities additive to the agent and harness.
+  - `--secret` is repeatable. Format: `KEY=VALUE`. Injects session-scoped secrets at creation time (not tied to a user connection provider).
   - `--hint` is repeatable. Format: `KEY=JSON_VALUE`. `--hints-json` accepts a JSON object. Duplicate hint keys are rejected.
   - `--network-allow` and `--network-block` are repeatable network access patterns. See [`network-access.md`](network-access.md).
   - `--agent-identity` sets the resident agent identity for unattended/background execution. See [`agent-identities.md`](agent-identities.md).
@@ -88,6 +89,7 @@ Session management.
 - `list`
 - `get <id>`
 - `watch <id>` — stream session events in real time via SSE (like `kubectl logs -f`). Text mode: status/lifecycle events go to stderr, assistant message content goes to stdout (pipeable). JSON mode: each event as a JSON object to stdout. Exits cleanly on Ctrl+C.
+- `export <id> [-o <path>] [--format jsonl|atif]` — export session messages to a file (`-o`/`--output`) or stdout. `--format` defaults to `jsonl` (one message per line); `atif` emits an ATIF trajectory.
 
 ### `everruns chat`
 
@@ -103,6 +105,14 @@ List platform capabilities.
 
 - `capabilities [--status available|coming_soon|all]`
 - `list [--status available|coming_soon|all]`
+
+### `everruns connections`
+
+Manage per-provider API-key connections (e.g. `daytona`, `brave_search`, `browserless`, `deno`, `sprites`).
+
+- `set <provider> [--stdin]` — set an API key for a provider (read the key from stdin with `--stdin`).
+- `list` — list connected providers.
+- `remove <provider>` — remove a connection.
 
 ### `everruns files`
 

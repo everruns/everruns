@@ -102,7 +102,7 @@ A rule that grades agent output after execution. Embedded in EvalCase, not a sta
 | `turns_within` | `{ max: u32 }` | Completed within N turns |
 | `file_contains` | `{ path: String, text: String }` | Session filesystem file contains substring |
 | `json_schema` | `{ schema: Value }` | Final assistant message parses as JSON matching schema |
-| `llm_judge` | `{ rubric: String, model: Option<String> }` | LLM grades output against rubric (Phase 2) |
+| `llm_judge` | `{ rubric: String, model: Option<String> }` | LLM grades output against rubric (**planned; no Scorer variant yet**) |
 
 ## Data Model
 
