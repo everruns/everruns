@@ -145,6 +145,16 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    pub async fn get_agents_by_ids(&self, org_id: i64, ids: &[AgentId]) -> Result<Vec<AgentRow>> {
+        Ok(self
+            .agents
+            .read()
+            .values()
+            .filter(|row| row.org_id == org_id && ids.contains(&row.id))
+            .cloned()
+            .collect())
+    }
+
     /// Look up the owning org for an agent by its public_id (cross-org resolver).
     pub async fn get_agent_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
         Ok(self
@@ -601,6 +611,28 @@ impl InMemoryDatabase {
             .map(|(_, c)| c.clone())
             .collect();
         result.sort_by_key(|c| c.position);
+        Ok(result)
+    }
+
+    pub async fn get_agent_capabilities_by_agent_ids(
+        &self,
+        org_id: i64,
+        agent_ids: &[AgentId],
+    ) -> Result<Vec<AgentCapabilityRow>> {
+        let agents = self.agents.read();
+        let mut result: Vec<_> = self
+            .agent_capabilities
+            .read()
+            .values()
+            .filter(|row| {
+                agent_ids.contains(&row.agent_id)
+                    && agents
+                        .get(&row.agent_id)
+                        .is_some_and(|agent| agent.org_id == org_id)
+            })
+            .cloned()
+            .collect();
+        result.sort_by_key(|row| (row.agent_id.uuid(), row.position));
         Ok(result)
     }
 

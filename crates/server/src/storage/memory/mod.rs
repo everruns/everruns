@@ -61,6 +61,8 @@ use everruns_core::{
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
+#[cfg(test)]
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use uuid::Uuid;
 
 use super::models::*;
@@ -205,6 +207,10 @@ pub struct InMemoryDatabase {
     // Native-auth account-recovery tokens (hashed, single-use, short-TTL).
     password_reset_tokens: RwLock<Vec<auth::AccountRecoveryToken>>,
     email_verification_tokens: RwLock<Vec<auth::AccountRecoveryToken>>,
+    #[cfg(test)]
+    session_list_lookup_count: AtomicUsize,
+    #[cfg(test)]
+    session_list_lookup_delay_ms: AtomicU64,
 }
 
 impl Default for InMemoryDatabase {
@@ -332,6 +338,10 @@ impl Default for InMemoryDatabase {
             org_invitations: RwLock::new(Vec::new()),
             password_reset_tokens: RwLock::new(Vec::new()),
             email_verification_tokens: RwLock::new(Vec::new()),
+            #[cfg(test)]
+            session_list_lookup_count: AtomicUsize::new(0),
+            #[cfg(test)]
+            session_list_lookup_delay_ms: AtomicU64::new(0),
         }
     }
 }
@@ -343,5 +353,32 @@ impl InMemoryDatabase {
 
     pub(crate) fn now() -> DateTime<Utc> {
         Utc::now()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn record_session_list_lookup(&self) {
+        self.session_list_lookup_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reset_session_list_lookup_count(&self) {
+        self.session_list_lookup_count.store(0, Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn session_list_lookup_count(&self) -> usize {
+        self.session_list_lookup_count.load(Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_session_list_lookup_delay_ms(&self, delay_ms: u64) {
+        self.session_list_lookup_delay_ms
+            .store(delay_ms, Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn session_list_lookup_delay_ms(&self) -> u64 {
+        self.session_list_lookup_delay_ms.load(Ordering::Relaxed)
     }
 }
