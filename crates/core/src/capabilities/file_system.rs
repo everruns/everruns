@@ -2285,7 +2285,7 @@ mod tests {
             .await;
         let value = expect_success(result);
 
-        assert_eq!(value["path"], "/workspace/notes.txt");
+        assert_eq!(value["path"], "/host/repo/notes.txt");
     }
 
     #[test]
