@@ -5209,6 +5209,12 @@ export interface components {
        */
       model_id?: string | null;
       reasoning?: null | components["schemas"]["ReasoningConfig"];
+      /**
+       * @description Speed (service tier) for this message turn: "flex", "default", or
+       *     "priority". Only sent to providers whose model profile advertises a
+       *     speed config (OpenAI `service_tier`).
+       */
+      speed?: string | null;
     };
     /** @description Request to copy a file */
     CopyFileRequest: {
@@ -11043,6 +11049,7 @@ export interface components {
       reasoning_effort?: null | components["schemas"]["ReasoningEffortConfig"];
       /** @description Release date (YYYY-MM-DD format) */
       release_date?: string | null;
+      speed?: null | components["schemas"]["SpeedConfig"];
       /** @description Whether the model supports structured output (JSON mode) */
       structured_output: boolean;
       /** @description Provider-advertised request parameters supported by this model. */
@@ -14252,6 +14259,29 @@ export interface components {
       valid: boolean;
       /** @description Non-fatal warnings (style, deprecated patterns, optional fields missing). Emitted alongside a `valid` result. */
       warnings?: string[];
+    };
+    /**
+     * @description Speed level for models that expose a latency/price service tier.
+     *     Wire values map 1:1 to the OpenAI `service_tier` request parameter:
+     *     `flex` (slower, cheaper), `default` (standard), `priority` (faster,
+     *     premium). `auto` is deliberately not offered — omitting the field
+     *     preserves the provider's default routing.
+     * @enum {string}
+     */
+    Speed: "flex" | "default" | "priority";
+    /** @description Speed configuration for a model */
+    SpeedConfig: {
+      /** @description Default speed for this model */
+      default: components["schemas"]["Speed"];
+      /** @description Available speed values for this model */
+      values: components["schemas"]["SpeedValue"][];
+    };
+    /** @description Named speed value for UI display */
+    SpeedValue: {
+      /** @description Display name (e.g., "Flex", "Fast") */
+      name: string;
+      /** @description The API value (e.g., "flex", "priority") */
+      value: components["schemas"]["Speed"];
     };
     StatRequest: {
       path: string;
