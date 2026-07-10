@@ -118,6 +118,9 @@ mod seed_ids {
     pub const GPT_5_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000223);
     pub const GPT_5_5_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000224);
     pub const GPT_REALTIME_2: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000225);
+    pub const GPT_5_6_SOL: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000226);
+    pub const GPT_5_6_TERRA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000227);
+    pub const GPT_5_6_LUNA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000228);
     pub const O1_PREVIEW: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021e);
 
     // Anthropic Models (0x300-0x3FF)
@@ -1699,6 +1702,31 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gpt-realtime-2",
         display_name: "GPT Realtime 2",
         enabled: false,
+        is_favorite: false,
+    },
+    // OpenAI GPT-5.6 series (Sol / Terra / Luna)
+    SeedModel {
+        id: seed_ids::GPT_5_6_SOL,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5.6-sol",
+        display_name: "GPT-5.6 Sol",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        id: seed_ids::GPT_5_6_TERRA,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5.6-terra",
+        display_name: "GPT-5.6 Terra",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        id: seed_ids::GPT_5_6_LUNA,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5.6-luna",
+        display_name: "GPT-5.6 Luna",
+        enabled: true, // Enabled by default
         is_favorite: false,
     },
     // OpenAI GPT-5.5 series
