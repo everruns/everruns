@@ -1,6 +1,6 @@
 ---
 name: process-issues
-description: Process open Linear issues — pick up, fix, and ship one PR per issue. Use when the user asks to process issues, work on Linear issues, tackle the backlog, or fix open issues.
+description: Process Linear issues — pick up, fix, and ship one PR per issue. Use when the user asks to process one issue, a specific Linear issue ID, multiple issues, the backlog, or outstanding bugs/features.
 metadata:
   internal: true
 user-invocable: true
@@ -18,10 +18,13 @@ See [`specs/issue-tracking.md`](../../../specs/issue-tracking.md) for project sc
 
 Use this skill when the user asks to:
 
+- process one Linear issue or a specific issue ID
 - process issues or work on Linear issues
 - tackle the backlog or fix open issues
 - pick up and ship Linear issues
 - work through outstanding bugs or features
+
+Invoke this skill even when the request names exactly one issue. A single issue still follows the same ownership, implementation, `/ship`, and Linear-closing workflow.
 
 ## Arguments
 
@@ -46,7 +49,7 @@ Use this skill when the user asks to:
    - Before touching an issue, inspect its Linear state, `updatedAt`, recent comments, and linked PRs to detect active ownership.
    - If the issue is already **In Progress** and was updated within the last 1 day, treat it as actively owned by somebody else and skip it.
    - If the issue is already **In Progress** and `updatedAt` is older than 1 day, raise it to the human user as a stale-ownership conflict. Do not auto-take over, auto-reassign, or silently reset the issue.
-   - If the issue is available to pick up, immediately move it to **In Progress** and assign it before starting implementation.
+   - If the issue is available to pick up, immediately move it to **In Progress** and assign it before starting analysis or implementation. Do this as the first state-changing action after the ownership check so humans can see the issue is actively owned.
 
 5. **Sequential merging prevents conflicts.**
    - After `/ship` merges each PR, rebase remaining open PRs onto updated `main` before shipping the next.
@@ -87,7 +90,7 @@ Linear MCP server must be configured in `.mcp.json`.
 
 For each issue, process up to 5 concurrently using subagents:
 
-1. **Pick up** — only after the ownership check passes, mark as **In Progress** in Linear and assign it
+1. **Pick up immediately** — only after the ownership check passes, mark as **In Progress** in Linear and assign it before analysis, branching, or implementation
 2. **Analyze** — parse requirements, search codebase, identify root cause or scope. If ambiguous: comment in Linear requesting clarification, skip
 3. **Branch** — `git fetch origin main && git checkout -b {issue-id}-{short-description} origin/main`
 4. **Implement** — write the code change:
@@ -97,7 +100,8 @@ For each issue, process up to 5 concurrently using subagents:
 5. **Ship via `/ship` skill** — invoke `/ship` using the Skill tool to handle validation, PR creation, CI, and merge. **Do NOT** duplicate `/ship` logic (validation, PR creation, merge sequencing) inline — always delegate.
    - Pass context: what was implemented, which issue it resolves, the branch name
    - `/ship` owns: diff review, simplification, security review, artifact sync, evidence gathering, PR creation, CI wait, and merge
-6. **Close** — after `/ship` completes merge: mark issue **Done** in Linear, add comment with merged PR link
+6. **Keep Linear updated** — add Linear comments for major processing milestones when useful for human visibility, especially when opening a PR, discovering a blocker, making a meaningful scope decision, or when CI/review requires substantial follow-up. Keep comments concise and include PR links for PR-related updates
+7. **Close** — after `/ship` completes merge: mark issue **Done** in Linear, add comment with merged PR link
 
 ### Merge Sequencing
 
@@ -122,6 +126,7 @@ Leave a Linear comment explaining the skip only when the current run actively in
 ## Constraints
 
 - Max 5 issues in parallel
+- The same workflow applies to a single requested issue and to a batch of issues
 - No batch PRs — one PR per issue
 - No partial fixes — fully resolve or skip
 - No manual deployment steps (CI/CD handles deployment)
