@@ -61,6 +61,8 @@ export type NavigationItem = {
   name: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
+  activePrefix?: string;
+  prefetch?: boolean;
   flag?: keyof FeatureFlags;
   exact?: boolean;
   experimental?: boolean;
@@ -115,7 +117,13 @@ export const defaultBuildingBlocksNavigation: NavigationItem[] = [
 ];
 
 export const defaultBottomNavigation: NavigationItem[] = [
-  { name: "Settings", href: "/settings", icon: Settings },
+  {
+    name: "Settings",
+    href: "/settings/organization",
+    icon: Settings,
+    activePrefix: "/settings",
+    prefetch: false,
+  },
 ];
 
 export const defaultDurableNavigation: NavigationItem[] = [
