@@ -65,16 +65,24 @@ Parameters:
 | `instructions` | yes | Work request for the target agent. Must not contain credentials. |
 | `target.type` | yes | Must be `agent`. |
 | `target.id` | yes | Target key from capability config. |
-| `mode` | no | `background` by default when task tracking is available; `foreground` blocks for the result. |
+| `mode` | no | `background` by default when task tracking is available; `foreground` blocks for the child-session result; `invite` joins the target to the current session. |
 | `public_context` | no | Non-secret structured context appended to the child task. |
 
 Authorization, child-session creation, task kind, and result handling match the
-original handoff contract. Background mode creates an
+original handoff contract for `background` and `foreground`. Background mode creates an
 `agent_handoff` task with `wake_policy = on_terminal`, sends the initial
 instructions from a detached watcher, heartbeats the task while waiting, and
 settles the task with the child session's terminal status and last assistant
 message. If task tracking is unavailable, an omitted mode degrades to
 `foreground`; explicit `background` is rejected.
+
+Invite mode is for targets that can collaborate inside the host session's
+environment. It adds the configured target Agent as a member participant in the
+current session instead of creating a child session. Addressed user messages can
+then route a turn to that participant. The target contributes only behavioral
+agent overlay during addressed turns: prompt, capabilities, model defaults, and
+client tools are folded on top of the host session environment. The target's
+own harness stays reserved for child-session modes.
 
 Behavior:
 
@@ -82,13 +90,17 @@ Behavior:
 2. Resolve required provider connections server-side through
    `UserConnectionResolver`.
 3. If a connection is missing, return `connection_required(provider)`.
-4. Create a child session with the target `agent_id`.
-5. Persist parent/child metadata through the existing subagent session fields.
-6. Create a `session_tasks` row of kind `agent_handoff` (distinct from
+4. For `invite`, reject duplicate capability or mounted-resource conflicts with
+   a clear error and add the target Agent as a member participant in the current
+   session.
+5. For `background` or `foreground`, create a child session with the target
+   `agent_id`.
+6. Persist parent/child metadata through the existing subagent session fields.
+7. Create a `session_tasks` row of kind `agent_handoff` (distinct from
    `subagent`) with `links.child_session_id` set and `spec` carrying
    `target_id`/`external_agent_id`/`mode`.
-7. Send the task to the child session.
-8. In foreground mode, block until the child session idles and return its last assistant message.
+8. Send the task to the child session.
+9. In foreground mode, block until the child session idles and return its last assistant message.
 
 ### Monitoring and Steering
 

@@ -2574,6 +2574,13 @@ mod tests {
         async fn get_session_by_id(&self, _id: SessionId) -> crate::Result<Option<crate::Session>> {
             Ok(None)
         }
+        async fn add_agent_session_participant(
+            &self,
+            _session_id: SessionId,
+            _agent_id: AgentId,
+        ) -> crate::Result<crate::SessionParticipant> {
+            unreachable!()
+        }
         async fn get_session_context_report(
             &self,
             id: SessionId,

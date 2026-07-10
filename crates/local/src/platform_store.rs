@@ -17,7 +17,7 @@ use everruns_core::capability_dto::CapabilityInfo;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::harness::Harness;
 use everruns_core::platform_store::{PlatformMessage, PlatformStore};
-use everruns_core::session::Session;
+use everruns_core::session::{Session, SessionParticipant};
 use everruns_core::typed_id::{
     AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId,
 };
@@ -111,6 +111,14 @@ impl PlatformStore for LocalPlatformStore {
 
     async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>> {
         self.runner.get_session(id).await
+    }
+
+    async fn add_agent_session_participant(
+        &self,
+        _session_id: SessionId,
+        _agent_id: AgentId,
+    ) -> Result<SessionParticipant> {
+        Err(unsupported("add_agent_session_participant"))
     }
 
     async fn list_sessions(

@@ -22,7 +22,8 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
 use everruns_core::{
-    Agent, Harness, HarnessStatus, Message, MessageFilter, MessageRole, Session, SessionStatus,
+    Agent, Harness, HarnessStatus, Message, MessageFilter, MessageRole, Session,
+    SessionParticipant, SessionStatus,
 };
 use everruns_internal_protocol::proto;
 use everruns_internal_protocol::{
@@ -3257,6 +3258,22 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         self.execute_platform_lookup(
             "get_session",
             serde_json::json!({ "session_id": id.to_string() }),
+        )
+        .await
+    }
+
+    async fn add_agent_session_participant(
+        &self,
+        session_id: SessionId,
+        agent_id: AgentId,
+    ) -> Result<SessionParticipant> {
+        self.execute_platform_command(
+            "add_session_participant",
+            serde_json::json!({
+                "session_id": session_id.to_string(),
+                "kind": "agent",
+                "agent_id": agent_id.to_string(),
+            }),
         )
         .await
     }

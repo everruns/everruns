@@ -22,8 +22,8 @@ use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
     Agent, AgentStatus, Caller, ContentPart, DriverId, DriverRegistry, EgressRequest,
     EgressRequestKind, EgressService, EventData, Harness, HarnessStatus, Message, MessageRole,
-    Session, SessionStatus, ToolDefinition, ToolResultContentPart, UtilityLlmService,
-    merge_harness,
+    Session, SessionParticipant, SessionStatus, ToolDefinition, ToolResultContentPart,
+    UtilityLlmService, merge_harness,
 };
 use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
@@ -2988,6 +2988,22 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         self.execute_domain_lookup(
             "get_session",
             serde_json::json!({ "session_id": id.to_string() }),
+        )
+        .await
+    }
+
+    async fn add_agent_session_participant(
+        &self,
+        session_id: SessionId,
+        agent_id: AgentId,
+    ) -> everruns_core::error::Result<SessionParticipant> {
+        self.execute_domain_command(
+            "add_session_participant",
+            serde_json::json!({
+                "session_id": session_id.to_string(),
+                "kind": "agent",
+                "agent_id": agent_id.to_string(),
+            }),
         )
         .await
     }
