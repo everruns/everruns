@@ -243,14 +243,14 @@ impl BuiltinAuthBackend {
 
         // Enforce subject user still exists. Deleted users must not remain authenticated
         // with previously issued JWTs until token expiry.
-        let user_exists = self.db.get_user(user_id).await.map_err(|e| {
+        let user = self.db.get_user(user_id).await.map_err(|e| {
             tracing::error!("Failed to fetch JWT user: {}", e);
             AuthError::unauthorized("Failed to validate token user")
         })?;
-        if user_exists.is_none() {
+        let Some(user) = user else {
             tracing::warn!(user_id = %user_id, "JWT subject user not found");
             return Err(AuthError::unauthorized("Invalid or expired token"));
-        }
+        };
 
         // Fetch organization memberships for the user
         let organizations = fetch_user_organizations(&self.db, user_id).await?;
@@ -264,13 +264,17 @@ impl BuiltinAuthBackend {
         }
         let organizations = organizations_or_default(organizations);
 
-        let is_platform_user = platform_user_from_roles(&claims.roles);
+        let roles: Vec<String> = serde_json::from_value(user.roles).map_err(|e| {
+            tracing::error!(user_id = %user_id, error = %e, "Failed to decode JWT user roles");
+            AuthError::unauthorized("Failed to validate token user")
+        })?;
+        let is_platform_user = platform_user_from_roles(&roles);
 
         Ok(AuthUser {
             id: user_id,
             email: claims.email,
             name: claims.name,
-            roles: claims.roles,
+            roles,
             is_platform_user,
             auth_method,
             organizations,
@@ -688,6 +692,108 @@ mod tests {
                 .validate_personal_access_token("not-an-api-key")
                 .await;
             assert!(result.is_err(), "malformed key must be rejected");
+        }
+    }
+
+    // EVE-703: JWT role claims are not an authorization source. Tokens can be
+    // stale or attacker-controlled in tests; platform status must come from the
+    // current server-side user row after subject validation.
+    mod jwt_roles_trust_boundary {
+        use super::super::super::backend::AuthBackend;
+        use super::super::*;
+        use crate::storage::StorageBackend;
+        use crate::storage::models::CreateUserRow;
+
+        const MCP_RESOURCE: &str = "https://app.example.com/mcp";
+
+        async fn backend_with_user_roles(roles: Vec<String>) -> (BuiltinAuthBackend, uuid::Uuid) {
+            let db = Arc::new(StorageBackend::in_memory());
+            let backend = BuiltinAuthBackend::new(
+                AuthConfig::default(),
+                db.clone(),
+                Arc::new(crate::platform::oss_platform_definition()),
+            );
+            let user = db
+                .create_user(CreateUserRow {
+                    email: "roles@example.com".to_string(),
+                    name: "Roles User".to_string(),
+                    avatar_url: None,
+                    roles,
+                    password_hash: None,
+                    email_verified: true,
+                    auth_provider: None,
+                    auth_provider_id: None,
+                    external_id: None,
+                })
+                .await
+                .expect("create user");
+            (backend, user.id)
+        }
+
+        #[tokio::test]
+        async fn access_token_admin_claim_does_not_grant_platform_access() {
+            let (backend, user_id) = backend_with_user_roles(vec!["user".to_string()]).await;
+            let forged_roles = vec!["admin".to_string()];
+            let token = backend
+                .jwt_service
+                .generate_access_token(user_id, "roles@example.com", "Roles User", &forged_roles)
+                .expect("generate token");
+
+            let user = backend
+                .validate_token(&token)
+                .await
+                .expect("token subject exists");
+            assert_eq!(user.roles, vec!["user".to_string()]);
+            assert!(
+                !user.is_platform_user,
+                "platform access must be derived from DB roles, not JWT roles"
+            );
+        }
+
+        #[tokio::test]
+        async fn access_token_uses_db_admin_role_even_when_token_roles_are_stale() {
+            let (backend, user_id) = backend_with_user_roles(vec!["admin".to_string()]).await;
+            let stale_roles = vec!["user".to_string()];
+            let token = backend
+                .jwt_service
+                .generate_access_token(user_id, "roles@example.com", "Roles User", &stale_roles)
+                .expect("generate token");
+
+            let user = backend
+                .validate_token(&token)
+                .await
+                .expect("token subject exists");
+            assert_eq!(user.roles, vec!["admin".to_string()]);
+            assert!(
+                user.is_platform_user,
+                "current DB admin role must grant platform access despite stale token roles"
+            );
+        }
+
+        #[tokio::test]
+        async fn mcp_token_admin_claim_does_not_grant_platform_access() {
+            let (backend, user_id) = backend_with_user_roles(vec!["user".to_string()]).await;
+            let forged_roles = vec!["admin".to_string()];
+            let token = backend
+                .jwt_service
+                .generate_mcp_access_token(
+                    user_id,
+                    "roles@example.com",
+                    "Roles User",
+                    &forged_roles,
+                    MCP_RESOURCE,
+                )
+                .expect("generate mcp token");
+
+            let user = backend
+                .validate_mcp_token(&token, MCP_RESOURCE)
+                .await
+                .expect("mcp token subject exists");
+            assert_eq!(user.roles, vec!["user".to_string()]);
+            assert!(
+                !user.is_platform_user,
+                "MCP platform access must be derived from DB roles, not JWT roles"
+            );
         }
     }
 
