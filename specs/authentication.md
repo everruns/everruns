@@ -175,6 +175,17 @@ When configured, supports OAuth2 with:
 
 Account linking by email is supported (same email = same account).
 
+### Email Identity (case-insensitive)
+
+Email is the account identity key across register, login, OAuth account
+linking, and password recovery. It is treated **case-insensitively**: the
+stored value is canonicalized (trimmed and lowercased) at the storage trust
+boundary — both storage backends' `create_user*` and `get_user_by_email` — so
+`John@x.com` and `john@x.com` are one account, matching the normalization the
+rate limiters and org-invitation matching already use. A case-insensitive
+unique index on `users(lower(email))` enforces "one account per mailbox" in the
+database even against write paths that bypass the application (EVE-704).
+
 ### Password Requirements
 
 - Newly set passwords (signup, reset): minimum 12 characters including at

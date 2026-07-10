@@ -11,6 +11,22 @@ use everruns_durable::UpdateField;
 use sqlx::FromRow;
 use uuid::Uuid;
 
+/// Canonical form of an email address used as a user identity (EVE-704).
+///
+/// Email is the account identity key across register / login / OAuth linking /
+/// password recovery, so it must be treated case-insensitively: `John@x.com`
+/// and `john@x.com` are the same mailbox and must resolve to one account. We
+/// canonicalize by trimming surrounding whitespace and lowercasing, matching
+/// the normalization the rate limiters and org-invitation matching already use
+/// (`req.email.trim().to_lowercase()`). Applied at the storage trust boundary
+/// (both backends' `create_user*` and `get_user_by_email`) so every caller —
+/// register, login, forgot/resend, verify, oauth_callback linking, admin
+/// bootstrap — shares one identity notion, backed by a case-insensitive unique
+/// index on `users(lower(email))`.
+pub fn normalize_email(email: &str) -> String {
+    email.trim().to_lowercase()
+}
+
 // ============================================
 // Organization models
 // ============================================
