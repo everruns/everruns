@@ -15,7 +15,7 @@ use crate::storage::StorageBackend;
 use crate::storage::models::{CreateCliAuthSessionRow, CreatePersonalAccessTokenRow};
 use axum::{
     Json, Router,
-    extract::{FromRef, Query, State},
+    extract::{ConnectInfo, Extension, FromRef, Query, State},
     http::{HeaderMap, StatusCode},
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
@@ -23,6 +23,7 @@ use axum::{
 use chrono::{Duration, Utc};
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
@@ -175,10 +176,11 @@ pub fn cli_auth_public_routes(state: CliAuthState) -> Router {
 /// The CLI should open this URL in the user's browser.
 async fn cli_auth_start(
     State(state): State<CliAuthState>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     Json(req): Json<CliAuthStartRequest>,
 ) -> Result<Json<CliAuthStartResponse>, AuthError> {
-    let ip = audit::client_ip(&headers);
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
 
     // Generate random state and exchange code
     let auth_state = generate_random_hex();
@@ -244,11 +246,12 @@ async fn cli_auth_start(
 /// with the pending CLI session and redirects to the CLI's localhost server.
 async fn cli_auth_callback(
     State(state): State<CliAuthState>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     user: AuthUser,
     Query(query): Query<CliCallbackQuery>,
 ) -> Result<Response, AuthError> {
-    let ip = audit::client_ip(&headers);
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
 
     // Look up pending session by state
     let session = state
@@ -302,10 +305,11 @@ async fn cli_auth_callback(
 /// Server creates an API key and returns it with user/org info.
 async fn cli_auth_exchange(
     State(state): State<CliAuthState>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     Json(req): Json<CliExchangeRequest>,
 ) -> Result<(StatusCode, Json<CliExchangeResponse>), AuthError> {
-    let ip = audit::client_ip(&headers);
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
 
     // Look up session by exchange code
     let session = state

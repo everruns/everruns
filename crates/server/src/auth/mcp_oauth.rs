@@ -23,7 +23,7 @@ use crate::storage::models::{
 use axum::{
     Form, Json, Router,
     body::Body,
-    extract::{FromRef, Query, Request, State},
+    extract::{ConnectInfo, Extension, FromRef, Query, Request, State},
     http::{HeaderMap, StatusCode},
     middleware::{self, Next},
     response::{Html, IntoResponse, Redirect, Response},
@@ -34,6 +34,7 @@ use chrono::{Duration, Utc};
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
@@ -446,6 +447,7 @@ async fn oauth_register(
 async fn oauth_authorize(
     State(state): State<McpOAuthState>,
     original_uri: axum::extract::OriginalUri,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     jar: CookieJar,
     Query(query): Query<OAuthAuthorizeQuery>,
@@ -471,7 +473,7 @@ async fn oauth_authorize(
             return Ok(Redirect::temporary(&login_url).into_response());
         }
     };
-    let ip = audit::client_ip(&headers);
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
 
     // Validate response_type
     if query.response_type != "code" {
@@ -540,11 +542,12 @@ async fn oauth_authorize(
 
 async fn oauth_authorize_confirm(
     State(state): State<McpOAuthState>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     jar: CookieJar,
     Form(form): Form<OAuthAuthorizeConfirmForm>,
 ) -> Result<Response, AuthError> {
-    let ip = audit::client_ip(&headers);
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
     let user = try_resolve_user(&state, &jar)
         .await
         .ok_or_else(|| AuthError::unauthorized("Authentication required"))?;
@@ -984,6 +987,7 @@ fn escape_html(value: &str) -> String {
 /// `application/json` (sent by some MCP clients like Cursor).
 async fn oauth_token(
     State(state): State<McpOAuthState>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Result<Json<OAuthTokenResponse>, OAuthErrorResponse> {
@@ -1011,7 +1015,7 @@ async fn oauth_token(
             }
         })?
     };
-    let ip = audit::client_ip(&headers);
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
 
     tracing::debug!(grant_type = %req.grant_type, "MCP OAuth: processing token grant");
 
