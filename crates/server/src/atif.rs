@@ -185,12 +185,58 @@ fn assemble_document(
 
 /// Build one dataset NDJSON record for an eval case: a complete ATIF
 /// trajectory with reward and case identity in root `extra`.
+///
+/// Folds the raw event log. Used by the whole-session export path; the eval
+/// **dataset** export uses [`build_case_record_from_messages`] instead so its
+/// rows reflect the compaction model view (specs/dataset-export.md).
 pub fn build_case_record(
     run: &everruns_core::eval::EvalRun,
     result: &everruns_core::eval::EvalCaseResult,
     events: &[Event],
     options: AtifOptions,
 ) -> Value {
+    let (extra, session_id) = case_extra(run, result);
+    build_trajectory(session_id.as_deref(), events, extra, options).document
+}
+
+/// Build one dataset NDJSON record from the case's **model-view** messages
+/// (post-compaction masking) rather than the raw event log, so training rows
+/// match what the model actually saw (specs/dataset-export.md, Model-view
+/// faithfulness). Reward and case identity go in root `extra`, same as
+/// [`build_case_record`].
+///
+/// Model-view messages carry no per-step token usage or turn boundaries, so
+/// steps have no `metrics` and there is no `extra.turns`; case-level token
+/// totals from the result are surfaced in `final_metrics` instead.
+pub fn build_case_record_from_messages(
+    run: &everruns_core::eval::EvalRun,
+    result: &everruns_core::eval::EvalCaseResult,
+    messages: &[Message],
+    options: AtifOptions,
+) -> Value {
+    let (extra, session_id) = case_extra(run, result);
+    let steps = fold_messages(messages, options.redact_content);
+    let final_metrics = case_final_metrics(result, steps.len());
+    let mut value = assemble_document(
+        session_id.as_deref(),
+        None,
+        None,
+        final_metrics,
+        steps,
+        extra,
+    );
+    // Same always-on secret scrubbing as every other export path. Content
+    // redaction was already applied structurally during the fold.
+    sanitize_value(&mut value, false);
+    value
+}
+
+/// Reward + case-identity `extra` shared by both dataset record builders, plus
+/// the case session id (as the ATIF root `session_id`).
+fn case_extra(
+    run: &everruns_core::eval::EvalRun,
+    result: &everruns_core::eval::EvalCaseResult,
+) -> (Map<String, Value>, Option<String>) {
     let mut extra = Map::new();
     extra.insert(
         "reward".to_string(),
@@ -206,8 +252,228 @@ pub fn build_case_record(
         json!(result.eval_case_id.to_string()),
     );
     extra.insert("case_name".to_string(), json!(result.case_name));
-    let session_id = result.session_id.map(|s| s.to_string());
-    build_trajectory(session_id.as_deref(), events, extra, options).document
+    (extra, result.session_id.map(|s| s.to_string()))
+}
+
+/// Fold post-compaction model-view messages into ATIF steps. Mirrors the event
+/// fold's step shape (user/agent steps, tool-call parts → `tool_calls[]`,
+/// thinking → `reasoning_content`, tool results → `observation.results[]`) but
+/// over reconstructed `Message`s, so it reflects exactly what the model saw.
+fn fold_messages(messages: &[Message], redact: bool) -> Vec<Value> {
+    use everruns_core::message::MessageRole;
+
+    let mut steps: Vec<Value> = Vec::new();
+    // Index of the agent step that trailing tool results attach observations to.
+    let mut open_agent: Option<usize> = None;
+
+    for message in messages {
+        let ts = json!(message.created_at.to_rfc3339());
+        match message.role {
+            MessageRole::System | MessageRole::User => {
+                let source = if message.role == MessageRole::System {
+                    "system"
+                } else {
+                    "user"
+                };
+                let mut omitted = Vec::new();
+                let content = build_message_content(message, redact, &mut omitted);
+                let mut step = Map::new();
+                step.insert("timestamp".to_string(), ts);
+                step.insert("source".to_string(), json!(source));
+                step.insert("message".to_string(), content);
+                let mut extra = Map::new();
+                append_omitted_images(&mut extra, omitted);
+                if !extra.is_empty() {
+                    step.insert("extra".to_string(), Value::Object(extra));
+                }
+                steps.push(Value::Object(step));
+                open_agent = None;
+            }
+            MessageRole::Agent => {
+                let mut omitted = Vec::new();
+                let content = build_message_content(message, redact, &mut omitted);
+                let mut step = Map::new();
+                step.insert("timestamp".to_string(), ts);
+                step.insert("source".to_string(), json!("agent"));
+                step.insert("message".to_string(), content);
+                if let Some(thinking) = &message.thinking {
+                    let reasoning = if redact {
+                        REDACTED.to_string()
+                    } else {
+                        thinking.clone()
+                    };
+                    step.insert("reasoning_content".to_string(), json!(reasoning));
+                }
+                let tool_calls: Vec<Value> = message
+                    .tool_calls()
+                    .iter()
+                    .map(|tc| {
+                        json!({
+                            "tool_call_id": tc.id,
+                            "function_name": tc.name,
+                            "arguments": if redact {
+                                Value::String(REDACTED.to_string())
+                            } else {
+                                tc.arguments.clone()
+                            },
+                        })
+                    })
+                    .collect();
+                if !tool_calls.is_empty() {
+                    step.insert("tool_calls".to_string(), Value::Array(tool_calls));
+                }
+                let mut extra = Map::new();
+                append_omitted_images(&mut extra, omitted);
+                if !extra.is_empty() {
+                    step.insert("extra".to_string(), Value::Object(extra));
+                }
+                steps.push(Value::Object(step));
+                open_agent = Some(steps.len() - 1);
+            }
+            MessageRole::ToolResult => {
+                let mut omitted = Vec::new();
+                let Some(observation) =
+                    message_tool_result_observation(message, redact, &mut omitted)
+                else {
+                    continue;
+                };
+                // Attach to the open agent step, synthesizing a bare one if a
+                // tool result somehow leads (defensive; normally impossible).
+                let idx = match open_agent {
+                    Some(i) => i,
+                    None => {
+                        let mut step = Map::new();
+                        step.insert("timestamp".to_string(), ts);
+                        step.insert("source".to_string(), json!("agent"));
+                        step.insert("message".to_string(), json!(""));
+                        steps.push(Value::Object(step));
+                        let i = steps.len() - 1;
+                        open_agent = Some(i);
+                        i
+                    }
+                };
+                if let Value::Object(step) = &mut steps[idx] {
+                    if !omitted.is_empty() {
+                        match step.get_mut("extra") {
+                            Some(Value::Object(m)) => append_omitted_images(m, omitted),
+                            _ => {
+                                let mut m = Map::new();
+                                append_omitted_images(&mut m, omitted);
+                                step.insert("extra".to_string(), Value::Object(m));
+                            }
+                        }
+                    }
+                    match step.get_mut("observation") {
+                        Some(Value::Object(obs)) => {
+                            if let Some(Value::Array(results)) = obs.get_mut("results") {
+                                results.push(observation);
+                            }
+                        }
+                        _ => {
+                            step.insert(
+                                "observation".to_string(),
+                                json!({ "results": [observation] }),
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    for (i, step) in steps.iter_mut().enumerate() {
+        if let Value::Object(map) = step {
+            map.insert("step_id".to_string(), json!(i + 1));
+        }
+    }
+    steps
+}
+
+/// Build one ATIF observation from a model-view tool-result message: the
+/// result/error text (plus any attached images as image ContentParts) and, when
+/// the result is a subagent spawn, the `subagent_trajectory_ref` linkage.
+fn message_tool_result_observation(
+    message: &Message,
+    redact: bool,
+    omitted: &mut Vec<Value>,
+) -> Option<Value> {
+    let tr = message.tool_result_content()?;
+    let base = if let Some(err) = &tr.error {
+        format!("[error] {err}")
+    } else if let Some(res) = &tr.result {
+        match res {
+            Value::String(s) => s.clone(),
+            other => serde_json::to_string(other).unwrap_or_default(),
+        }
+    } else {
+        String::new()
+    };
+    let base = if redact { REDACTED.to_string() } else { base };
+
+    // Images carried alongside the result (tool_result_with_images) export as
+    // multimodal image ContentParts, matching the event-fold behavior.
+    let mut atif_parts: Vec<Value> = vec![json!({ "type": "text", "text": base.clone() })];
+    let mut has_image = false;
+    for part in &message.content {
+        if matches!(part, ContentPart::Image(_) | ContentPart::ImageFile(_)) {
+            match image_source(part, redact) {
+                Some(source) => {
+                    has_image = true;
+                    atif_parts.push(json!({ "type": "image", "source": source }));
+                }
+                None => {
+                    atif_parts.push(json!({ "type": "text", "text": "[image]" }));
+                    omitted.extend(omitted_image_ref(part, redact));
+                }
+            }
+        }
+    }
+    let content = if has_image {
+        Value::Array(atif_parts)
+    } else {
+        Value::String(base)
+    };
+
+    let mut obs = Map::new();
+    obs.insert("source_call_id".to_string(), json!(tr.tool_call_id));
+    obs.insert("content".to_string(), content);
+    let mut extra = Map::new();
+    extra.insert(
+        "status".to_string(),
+        json!(if tr.error.is_some() {
+            "error"
+        } else {
+            "success"
+        }),
+    );
+    obs.insert("extra".to_string(), Value::Object(extra));
+    // Subagent linkage parity with the event fold: a spawn result carries the
+    // child session id under `subagent_id`.
+    if let Some(res) = &tr.result
+        && let Some(id) = res.get("subagent_id").and_then(Value::as_str)
+        && !id.is_empty()
+    {
+        obs.insert(
+            "subagent_trajectory_ref".to_string(),
+            subagent_trajectory_ref(id),
+        );
+    }
+    Some(Value::Object(obs))
+}
+
+/// Case-level `final_metrics` for the model-view fold. Messages carry no
+/// per-step usage, so token totals come from the case result (the same source
+/// the `trajectory` format's `metadata` uses).
+fn case_final_metrics(result: &everruns_core::eval::EvalCaseResult, total_steps: usize) -> Value {
+    let mut m = Map::new();
+    if let Some(t) = result.input_tokens {
+        m.insert("total_prompt_tokens".to_string(), json!(t));
+    }
+    if let Some(t) = result.output_tokens {
+        m.insert("total_completion_tokens".to_string(), json!(t));
+    }
+    m.insert("total_steps".to_string(), json!(total_steps));
+    Value::Object(m)
 }
 
 // ============================================================================
@@ -1917,6 +2183,237 @@ mod tests {
                 .contains('/')
         );
         assert_eq!(record["session_id"], json!(session.to_string()));
+    }
+
+    // ------------------------------------------------------------------
+    // Model-view (dataset) message fold
+    // ------------------------------------------------------------------
+
+    /// A minimal passing run/result pair for the dataset record builders.
+    fn sample_run_and_result(
+        session: SessionId,
+    ) -> (
+        everruns_core::eval::EvalRun,
+        everruns_core::eval::EvalCaseResult,
+    ) {
+        use everruns_core::eval::{
+            CaseResultStatus, EvalCaseResult, EvalRun, EvalRunSource, EvalRunStatus,
+        };
+        use everruns_core::typed_id::{EvalCaseId, EvalResultId, EvalRunId};
+
+        let run = EvalRun {
+            public_id: EvalRunId::new(),
+            internal_id: uuid::Uuid::nil(),
+            org_id: 1,
+            target: None,
+            model_override: None,
+            filter_tags: None,
+            status: EvalRunStatus::Completed,
+            source: EvalRunSource::Internal,
+            attribution: None,
+            triggered_by: "test".to_string(),
+            started_at: None,
+            completed_at: None,
+            summary: None,
+            results: vec![],
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        let result = EvalCaseResult {
+            public_id: EvalResultId::new(),
+            internal_id: uuid::Uuid::nil(),
+            eval_case_id: EvalCaseId::new(),
+            case_name: Some("case-one".to_string()),
+            session_id: Some(session),
+            target: None,
+            target_snapshot: None,
+            status: CaseResultStatus::Passed,
+            scores: Some(json!([{"pass": true, "value": 1.0, "reason": "ok"}])),
+            metadata: None,
+            turns: Some(1),
+            latency_ms: Some(10),
+            input_tokens: Some(11),
+            output_tokens: Some(22),
+            error_message: None,
+            artifacts: None,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        (run, result)
+    }
+
+    #[test]
+    fn message_fold_maps_roles_to_steps() {
+        let session = SessionId::new();
+        let (run, result) = sample_run_and_result(session);
+
+        let tool_call = ToolCall {
+            id: "call_1".to_string(),
+            name: "search".to_string(),
+            arguments: json!({"q": "weather"}),
+        };
+        let mut agent = Message::assistant_with_tools("checking", vec![tool_call]);
+        agent.thinking = Some("let me look".to_string());
+        let messages = vec![
+            Message::user("hi there"),
+            agent,
+            Message::tool_result("call_1", Some(json!("sunny, 21C")), None),
+            Message::assistant("It is sunny."),
+        ];
+
+        let doc = build_case_record_from_messages(&run, &result, &messages, AtifOptions::default());
+        // No per-step metrics or turns roll-up on the model-view fold.
+        assert!(doc["extra"].get("turns").is_none());
+        // Case-level token totals surface in final_metrics.
+        assert_eq!(doc["final_metrics"]["total_prompt_tokens"], json!(11));
+        assert_eq!(doc["final_metrics"]["total_completion_tokens"], json!(22));
+
+        let steps = doc["steps"].as_array().unwrap();
+        assert_eq!(steps.len(), 3, "user, agent(tool+obs), agent(final)");
+        assert_eq!(steps[0]["source"], json!("user"));
+        assert_eq!(steps[0]["message"], json!("hi there"));
+        assert_eq!(steps[0]["step_id"], json!(1));
+
+        let s1 = &steps[1];
+        assert_eq!(s1["source"], json!("agent"));
+        assert_eq!(s1["message"], json!("checking"));
+        assert_eq!(s1["reasoning_content"], json!("let me look"));
+        assert_eq!(s1["tool_calls"][0]["tool_call_id"], json!("call_1"));
+        assert_eq!(s1["tool_calls"][0]["function_name"], json!("search"));
+        assert_eq!(
+            s1["observation"]["results"][0]["source_call_id"],
+            json!("call_1")
+        );
+        assert_eq!(
+            s1["observation"]["results"][0]["content"],
+            json!("sunny, 21C")
+        );
+        assert!(
+            s1.get("metrics").is_none(),
+            "messages carry no per-step usage"
+        );
+
+        assert_eq!(steps[2]["message"], json!("It is sunny."));
+        assert_eq!(doc["extra"]["reward"]["pass"], json!(true));
+    }
+
+    #[test]
+    fn message_fold_reflects_model_view_masking() {
+        use everruns_core::capabilities::compaction::{
+            CompactionConfig, build_model_view_messages,
+        };
+
+        let session = SessionId::new();
+        let (run, result) = sample_run_and_result(session);
+
+        // Five tool-call/result iterations. Default cost-control masking keeps
+        // the two most recent tool results and masks the three oldest.
+        let mut messages = vec![Message::user("start")];
+        for i in 0..5 {
+            let call = ToolCall {
+                id: format!("call_{i}"),
+                name: "fetch".to_string(),
+                arguments: json!({"n": i}),
+            };
+            messages.push(Message::assistant_with_tools(
+                format!("iter {i}"),
+                vec![call],
+            ));
+            messages.push(Message::tool_result(
+                format!("call_{i}"),
+                Some(json!(format!("BULKY_RESULT_{i}"))),
+                None,
+            ));
+        }
+
+        // Folding the raw (unmasked) messages keeps every distinctive result.
+        let raw = build_case_record_from_messages(&run, &result, &messages, AtifOptions::default());
+        let raw_str = serde_json::to_string(&raw).unwrap();
+        for i in 0..5 {
+            assert!(
+                raw_str.contains(&format!("BULKY_RESULT_{i}")),
+                "unmasked fold keeps result {i}",
+            );
+        }
+
+        // Folding the model view drops the masked (older) tool-result content —
+        // exactly the training-faithfulness the dataset export now guarantees.
+        let masked_messages =
+            build_model_view_messages(&messages, &CompactionConfig::default(), None).messages;
+        let masked = build_case_record_from_messages(
+            &run,
+            &result,
+            &masked_messages,
+            AtifOptions::default(),
+        );
+        let masked_str = serde_json::to_string(&masked).unwrap();
+        for i in 0..3 {
+            assert!(
+                !masked_str.contains(&format!("BULKY_RESULT_{i}")),
+                "masked result {i} must be absent from the model-view fold",
+            );
+        }
+        for i in 3..5 {
+            assert!(
+                masked_str.contains(&format!("BULKY_RESULT_{i}")),
+                "recent result {i} must survive in the model-view fold",
+            );
+        }
+        assert!(
+            masked_str.contains("masked"),
+            "masked results carry the compaction summary marker",
+        );
+    }
+
+    #[test]
+    fn message_fold_redacts_and_links_subagents() {
+        let session = SessionId::new();
+        let (run, result) = sample_run_and_result(session);
+        let child = SessionId::new();
+
+        let spawn_call = ToolCall {
+            id: "call_spawn".to_string(),
+            name: "spawn_agent".to_string(),
+            arguments: json!({"target": {"type": "subagent"}}),
+        };
+        let messages = vec![
+            Message::user("delegate secret sk-abcdef0123456789ABCDEF"),
+            Message::assistant_with_tools("spawning", vec![spawn_call]),
+            Message::tool_result(
+                "call_spawn",
+                Some(json!({"subagent_id": child.to_string(), "status": "running"})),
+                None,
+            ),
+        ];
+
+        // Subagent linkage parity with the event fold.
+        let doc = build_case_record_from_messages(&run, &result, &messages, AtifOptions::default());
+        let refs = &doc["steps"][1]["observation"]["results"][0]["subagent_trajectory_ref"];
+        assert_eq!(
+            refs[0]["trajectory_path"],
+            json!(format!("/v1/sessions/{child}/export?format=atif"))
+        );
+        // Secret scrubbing applies on the model-view path too.
+        assert!(
+            !serde_json::to_string(&doc)
+                .unwrap()
+                .contains("sk-abcdef0123456789ABCDEF")
+        );
+
+        // Redaction blanks content but preserves structure.
+        let redacted = build_case_record_from_messages(
+            &run,
+            &result,
+            &messages,
+            AtifOptions {
+                redact_content: true,
+            },
+        );
+        assert_eq!(redacted["steps"][0]["message"], json!(REDACTED));
+        assert_eq!(
+            redacted["steps"][1]["tool_calls"][0]["function_name"],
+            json!("spawn_agent")
+        );
     }
 
     // ------------------------------------------------------------------

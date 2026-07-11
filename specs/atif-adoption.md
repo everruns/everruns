@@ -61,9 +61,12 @@ the existing dataset formats), plus case identity (`source_key`, `eval_run_id`,
   default `jsonl`).
 - **Dataset export** (✅ shipped): `format: "atif"` on the eval dataset
   export produces NDJSON with one complete ATIF trajectory per case (see
-  `specs/dataset-export.md`). Unlike the message-based formats, ATIF folds the
-  raw event log (per-iteration steps and observations), not the compaction
-  model view. Same policy gate, filters, and redaction controls.
+  `specs/dataset-export.md`). Like the other dataset formats, ATIF folds the
+  **model-view messages** (post-compaction masking), so training rows never
+  contain content the model did not read; it carries no per-step token metrics
+  (messages lack per-step usage). This differs from the whole-session export
+  below, which folds the raw event log. Same policy gate, filters, and
+  redaction controls.
 - **Import** (✅ shipped): `POST /v1/evals/{eval_id}/atif_import` accepts
   NDJSON or JSON (array, single object, or `{ "trajectories": [...] }`) and
   upserts eval cases: user steps → the case `conversation` (multi-turn

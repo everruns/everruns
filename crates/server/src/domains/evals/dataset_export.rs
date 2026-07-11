@@ -34,15 +34,14 @@ pub async fn build_dataset_ndjson(
     // compaction model-view masking so the dataset matches what the model saw
     // (not the lossless durable log). The default config is used here; honoring
     // the exact per-run compaction config is a documented follow-up.
+    //
+    // Every format — including ATIF — folds the model-view messages, so ATIF
+    // training rows never contain content the model did not read (masked/dropped
+    // tool results). Only the whole-session export (`?format=atif`) still folds
+    // the raw event log, which is a debug/backup surface. See
+    // specs/dataset-export.md (Model-view faithfulness) and specs/atif-adoption.md.
     let retriever = DbMessageRetriever::new(db.clone());
     let compaction = CompactionConfig::default();
-    // The ATIF format folds the raw event log (per-iteration steps, tool
-    // observations, per-step metrics) rather than reconstructed messages, so
-    // it reads events directly. See specs/atif-adoption.md.
-    let event_service = crate::services::EventService::new(
-        db.clone(),
-        crate::event_delivery::EventDelivery::in_memory(),
-    );
 
     let mut body = String::new();
     let mut count: u64 = 0;
@@ -55,25 +54,21 @@ pub async fn build_dataset_ndjson(
         let Some(session_id) = result.session_id else {
             continue;
         };
+        let stored = retriever
+            .load(session_id)
+            .await
+            .map_err(|e| anyhow::anyhow!("load session messages: {e}"))?;
+        let messages = build_model_view_messages(&stored, &compaction, None).messages;
         let record = if req.format == DatasetFormat::Atif {
-            let events = event_service
-                .list(session_id.uuid(), None, None, &[], &[], None, None)
-                .await
-                .map_err(|e| anyhow::anyhow!("load session events: {e}"))?;
-            crate::atif::build_case_record(
+            crate::atif::build_case_record_from_messages(
                 run,
                 result,
-                &events,
+                &messages,
                 crate::atif::AtifOptions {
                     redact_content: req.redaction.redact_content,
                 },
             )
         } else {
-            let stored = retriever
-                .load(session_id)
-                .await
-                .map_err(|e| anyhow::anyhow!("load session messages: {e}"))?;
-            let messages = build_model_view_messages(&stored, &compaction, None).messages;
             dataset::build_record(req.format, run, result, &messages, &req.redaction)
         };
         let line = serde_json::to_string(&record)?;

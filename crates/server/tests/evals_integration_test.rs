@@ -921,6 +921,262 @@ async fn test_dataset_export_atif_format_produces_atif_trajectories() {
     assert!(body.contains("[REDACTED]"));
 }
 
+/// Seed a completed run whose case session has `n` tool-call/result iterations
+/// (each result a distinctive `BULKY_RESULT_{i}` string). Returns
+/// `(eval_id, run_id, session_id)`.
+async fn seed_run_with_tool_iterations(
+    server: &TestServer,
+    n: usize,
+) -> (String, String, SessionId) {
+    use everruns_core::events::{InputMessageData, OutputMessageCompletedData, ToolCompletedData};
+    use everruns_core::message::{ContentPart, Message};
+    use everruns_core::tool_types::ToolCall;
+    use uuid::Uuid;
+
+    let eval: Eval = server
+        .post("/v1/evals", json!({ "name": "modelview eval" }))
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let case: EvalCase = server
+        .post(
+            &format!("/v1/evals/{}/cases", eval.public_id),
+            json!({
+                "name": "case-mv",
+                "conversation": [{"content": "start"}],
+                "scorers": [{"type": "contains", "text": "ok", "weight": 1.0}]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let eval_row = server
+        .db
+        .get_eval_by_public_id(TEST_ORG_ID, &eval.public_id.to_string())
+        .await
+        .expect("load eval")
+        .expect("eval exists");
+    let case_row = server
+        .db
+        .get_eval_case_by_public_id(eval_row.id, &case.public_id.to_string())
+        .await
+        .expect("load case")
+        .expect("case exists");
+
+    let principal = server
+        .db
+        .create_principal(CreatePrincipalRow {
+            id: everruns_core::PrincipalId::new(),
+            org_id: TEST_ORG_ID,
+            kind: "system".to_string(),
+            subject_id: Some(Uuid::now_v7()),
+            parent_principal_id: None,
+            resolved_user_id: None,
+            metadata: json!({ "source": "modelview_test" }),
+        })
+        .await
+        .expect("create principal");
+    let session = server
+        .db
+        .create_session(CreateSessionRow {
+            org_id: TEST_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: principal.id,
+            resolved_owner_user_id: None,
+            title: Some("Eval: case-mv".to_string()),
+            locale: None,
+            tags: vec!["eval".to_string()],
+            model_id: None,
+            capabilities: json!([]),
+            tools: json!([]),
+            mcp_servers: json!({}),
+            system_prompt: None,
+            initial_files: json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            workspace_id: None,
+        })
+        .await
+        .expect("create session");
+    let session_id: SessionId = session.id;
+
+    // Seed the session's event log; `retriever.load` reconstructs the messages
+    // from these, and cost-control compaction then masks the older tool results.
+    let mut seeded: Vec<serde_json::Value> =
+        vec![serde_json::to_value(InputMessageData::new(Message::user("start"))).unwrap()];
+    let mut event_types: Vec<&str> = vec!["input.message"];
+    for i in 0..n {
+        let call = ToolCall {
+            id: format!("call_{i}"),
+            name: "fetch".to_string(),
+            arguments: json!({ "n": i }),
+        };
+        seeded.push(
+            serde_json::to_value(OutputMessageCompletedData::new(
+                Message::assistant_with_tools(format!("iter {i}"), vec![call]),
+            ))
+            .unwrap(),
+        );
+        event_types.push("output.message.completed");
+        seeded.push(
+            serde_json::to_value(ToolCompletedData::success(
+                format!("call_{i}"),
+                "fetch".to_string(),
+                vec![ContentPart::text(format!("BULKY_RESULT_{i}"))],
+                Some(1),
+            ))
+            .unwrap(),
+        );
+        event_types.push("tool.completed");
+    }
+    for (event_type, data) in event_types.into_iter().zip(seeded) {
+        server
+            .db
+            .create_event(CreateEventRow {
+                session_id,
+                event_type: event_type.to_string(),
+                ts: chrono::Utc::now(),
+                context: json!({}),
+                data,
+                metadata: None,
+                tags: None,
+            })
+            .await
+            .expect("seed event");
+    }
+
+    let run_public_id = EvalRunId::from_uuid(Uuid::now_v7()).to_string();
+    let run_row = server
+        .db
+        .create_eval_run(
+            TEST_ORG_ID,
+            CreateEvalRunRow {
+                public_id: run_public_id.clone(),
+                eval_id: eval_row.id,
+                target: None,
+                model_override: None,
+                filter_tags: None,
+                triggered_by: "test".to_string(),
+            },
+        )
+        .await
+        .expect("create run");
+    let target = json!({ "type": "session", "harness_id": TEST_HARNESS_ID });
+    let result = server
+        .db
+        .create_eval_case_result(CreateEvalCaseResultRow {
+            public_id: EvalResultId::from_uuid(Uuid::now_v7()).to_string(),
+            eval_run_id: run_row.id,
+            eval_case_id: case_row.id,
+            target: Some(target.clone()),
+            target_snapshot: Some(target),
+            artifacts: None,
+        })
+        .await
+        .expect("create result");
+    server
+        .db
+        .update_eval_case_result(
+            result.id,
+            UpdateEvalCaseResultRow {
+                status: Some("passed".to_string()),
+                session_id: Some(session_id.uuid()),
+                scores: Some(json!([{ "pass": true, "value": 1.0, "reason": "ok" }])),
+                turns: Some(1),
+                latency_ms: Some(100),
+                input_tokens: Some(10),
+                output_tokens: Some(20),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("seed result");
+    server
+        .db
+        .update_eval_run_status(run_row.id, "completed", Some(json!({ "total": 1 })))
+        .await
+        .expect("complete run");
+
+    (eval.public_id.to_string(), run_public_id, session_id)
+}
+
+/// The ATIF **dataset** export folds the compaction model view, so tool results
+/// the model no longer saw (masked by cost-control compaction) are absent from
+/// the training rows — while the raw session export (a debug surface) still
+/// carries them. This contrast is the whole point of model-view faithfulness.
+#[tokio::test]
+async fn test_dataset_export_atif_uses_model_view_not_raw_log() {
+    use everruns_server::domains::evals::dataset::DatasetFormat;
+
+    let server = TestServer::in_memory().await;
+    // Five tool iterations: default cost-control masking keeps the two most
+    // recent tool results and masks the three oldest.
+    let (eval_id, run_id, session_id) = seed_run_with_tool_iterations(&server, 5).await;
+    let service = EvalService::new(server.db.clone());
+    let caller = Caller::internal(TEST_ORG_ID);
+
+    let handle = service
+        .create_dataset_export(
+            &caller,
+            &eval_id,
+            &run_id,
+            ExportEvalRunDatasetRequest {
+                format: DatasetFormat::Atif,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("enqueue export")
+        .expect("run exists");
+    let done = await_dataset(
+        &service,
+        &caller,
+        &eval_id,
+        &run_id,
+        &handle.public_id.to_string(),
+    )
+    .await;
+    assert_eq!(done.status, EvalDatasetStatus::Completed);
+    let dataset_body = done.body.expect("completed dataset has body");
+
+    // Model view: the three oldest tool results are masked out; the two most
+    // recent survive.
+    for i in 0..3 {
+        assert!(
+            !dataset_body.contains(&format!("BULKY_RESULT_{i}")),
+            "masked tool result {i} must be absent from the ATIF dataset row",
+        );
+    }
+    for i in 3..5 {
+        assert!(
+            dataset_body.contains(&format!("BULKY_RESULT_{i}")),
+            "recent tool result {i} must be present in the ATIF dataset row",
+        );
+    }
+
+    // Contrast: the raw session ATIF export (event-log fold) still carries every
+    // result — it is a debug/backup surface, not training data.
+    let raw = server
+        .get(&format!("/v1/sessions/{}/export?format=atif", session_id))
+        .await
+        .assert_status(StatusCode::OK);
+    let raw_body = raw.text();
+    for i in 0..5 {
+        assert!(
+            raw_body.contains(&format!("BULKY_RESULT_{i}")),
+            "raw session export must carry every tool result (missing {i})",
+        );
+    }
+}
+
 #[tokio::test]
 async fn test_atif_import_creates_and_updates_cases_idempotently() {
     let server = TestServer::in_memory().await;
