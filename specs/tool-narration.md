@@ -115,6 +115,11 @@ When the relevant argument is absent, drop the value and keep the bare verb.
 
 Arguments shown in narration are **display values, not faithful echoes**:
 
+- **Filesystem paths.** When a [`SessionFileSystem`] is available on the act path,
+  path-bearing helpers (e.g. `narrate_list_directory`) render through
+  `display_path()` so narration matches tool results. Capabilities receive this
+  via [`ToolNarrationContext`] on `Tool::narrate` / `ToolCallHook::narration`.
+  Offline builders without a store fall back to legacy argument echo.
 - **Truncate.** queries / patterns / commands: ~48–80 chars with an ellipsis.
   File paths show the basename only.
 - **URLs.** show host + path; strip the scheme, query string, and fragment (the

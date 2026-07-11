@@ -117,6 +117,10 @@ impl DbSessionFileStore {
 
 #[async_trait]
 impl SessionFileSystem for DbSessionFileStore {
+    fn is_mount_resolver(&self) -> bool {
+        false
+    }
+
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let path = Self::normalize_path(path);
         let row = self

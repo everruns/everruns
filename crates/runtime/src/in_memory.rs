@@ -407,6 +407,10 @@ impl SessionFileSystem for InMemorySessionFileStore {
             .ok_or_else(|| AgentLoopError::store(format!("directory not found: {normalized}")))?;
         Ok(file_info(&file))
     }
+
+    fn is_mount_resolver(&self) -> bool {
+        false
+    }
 }
 
 /// In-memory implementation of session key/value and secret storage.

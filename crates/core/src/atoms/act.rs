@@ -49,7 +49,8 @@ use crate::tool_fingerprint::{
     tool_call_fingerprint, tool_error_fingerprint, tool_result_fingerprint,
 };
 use crate::tool_narration::{
-    ToolNarrationPhase, render_group_headline_with_locale, render_tool_narration_with_locale,
+    ToolNarrationContext, ToolNarrationPhase, render_group_headline_with_locale,
+    render_tool_narration_with_locale,
 };
 use crate::tool_types::{SideEffectClass, ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{
@@ -818,6 +819,7 @@ where
             if let Some(tool_call) = tool_calls.iter().find(|tc| tc.id == summary.id) {
                 let tool_def = tool_map.get(tool_call.name.as_str()).copied();
                 summary.narration = Some(self.render_tool_narration(
+                    &context,
                     tool_def,
                     tool_call,
                     ToolNarrationPhase::Started,
@@ -908,6 +910,7 @@ where
             && let Some(tool_call) = tool_calls.first()
         {
             completed_headline = Some(self.render_tool_narration(
+                &context,
                 tool_map.get(tool_call.name.as_str()).copied(),
                 tool_call,
                 ToolNarrationPhase::Completed,
@@ -995,17 +998,35 @@ where
 {
     fn render_tool_narration(
         &self,
+        atom_context: &AtomContext,
         tool_def: Option<&ToolDefinition>,
         tool_call: &ToolCall,
         phase: ToolNarrationPhase,
         locale: Option<&str>,
     ) -> String {
+        let wrapped_store = self.wrap_file_store_for_narration(atom_context);
+        let ctx = ToolNarrationContext::new(wrapped_store.as_deref());
         for hook in &self.tool_call_hooks {
-            if let Some(narration) = hook.narration(tool_def, tool_call, phase, locale) {
+            if let Some(narration) = hook.narration(tool_def, tool_call, phase, locale, ctx) {
                 return narration;
             }
         }
         render_tool_narration_with_locale(tool_def, tool_call, phase, locale)
+    }
+
+    /// Mirror the file-store wrapping applied during tool execution so
+    /// path-bearing narration uses the same mount resolver and workspace key.
+    fn wrap_file_store_for_narration(
+        &self,
+        atom_context: &AtomContext,
+    ) -> Option<Arc<dyn SessionFileSystem>> {
+        let store = self.file_store.as_ref()?.clone();
+        let store = if let Some(workspace_id) = atom_context.workspace_id {
+            crate::traits::WorkspaceScopedFileSystem::wrap(store, workspace_id)
+        } else {
+            store
+        };
+        Some(crate::mount_fs::MountFs::wrap_if_needed(store))
     }
 
     fn transform_tool_call_for_execution(&self, tool_call: ToolCall) -> ToolCall {
@@ -1447,6 +1468,7 @@ where
                     tool_call_fingerprint: Some(tool_call_fingerprint.clone()),
                     display_name: display_name.clone(),
                     narration: Some(self.render_tool_narration(
+                        context,
                         tool_def,
                         &tool_call,
                         ToolNarrationPhase::Started,
@@ -1487,6 +1509,7 @@ where
                         tool_error_fingerprint(&tool_call.name, "error", &error_msg),
                     )
                     .with_narration(Some(self.render_tool_narration(
+                        context,
                         None,
                         &tool_call,
                         ToolNarrationPhase::Failed,
@@ -1543,7 +1566,7 @@ where
         // is a mount + cwd, not a per-store prefix. Applied over the
         // workspace-keyed store so resolution sits above re-keying.
         if let Some(store) = tool_context.file_store.take() {
-            tool_context.file_store = Some(crate::mount_fs::MountFs::wrap(store));
+            tool_context.file_store = Some(crate::mount_fs::MountFs::wrap_if_needed(store));
         }
         if let Some(ref store) = self.sqldb_store {
             tool_context.sqldb_store = Some(store.clone());
@@ -1749,6 +1772,7 @@ where
                             .and_then(|(_, name)| name.clone()),
                     )
                     .with_narration(Some(self.render_tool_narration(
+                        context,
                         Some(tool_def),
                         &tool_call,
                         ToolNarrationPhase::Completed,
@@ -1772,6 +1796,7 @@ where
                             .and_then(|(_, name)| name.clone()),
                     )
                     .with_narration(Some(self.render_tool_narration(
+                        context,
                         Some(tool_def),
                         &tool_call,
                         ToolNarrationPhase::Failed,
@@ -1876,6 +1901,7 @@ where
                                 .and_then(|(_, name)| name.clone()),
                         )
                         .with_narration(Some(self.render_tool_narration(
+                            context,
                             Some(tool_def),
                             &tool_call,
                             ToolNarrationPhase::Failed,
@@ -2251,6 +2277,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for IntegrationFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             _s: SessionId,

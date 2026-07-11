@@ -1777,6 +1777,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for TestFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             session_id: SessionId,

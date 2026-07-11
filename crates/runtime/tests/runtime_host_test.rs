@@ -408,6 +408,7 @@ impl Tool for NarratingTool {
         _tool_call: &ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         use everruns_core::tool_narration::ToolNarrationPhase;
         match phase {
@@ -465,6 +466,7 @@ impl everruns_core::capabilities::ToolCallHook for ExplicitNarrationHook {
         tool_call: &ToolCall,
         _phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         if tool_call.name == "narrating_tool" {
             Some("Explicit hook narration wins".to_string())

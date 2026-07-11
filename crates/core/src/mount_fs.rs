@@ -109,6 +109,18 @@ impl MountFs {
         Arc::new(Self::new(workspace))
     }
 
+    /// Wrap only when `workspace` is not already a [`MountFs`].
+    ///
+    /// Re-wrapping would collapse nested mount tables (e.g. multi-root
+    /// workspaces) into a single primary view and break named-mount display.
+    pub fn wrap_if_needed(workspace: Arc<dyn SessionFileSystem>) -> Arc<dyn SessionFileSystem> {
+        if workspace.is_mount_resolver() {
+            workspace
+        } else {
+            Self::wrap(workspace)
+        }
+    }
+
     /// Register an additional mount (e.g. a read-only skills source or a named
     /// volume) backed by a different store. Longest-prefix wins at resolution.
     pub fn with_mount(
@@ -312,6 +324,10 @@ impl SessionFileSystem for MountFs {
         self.primary.display_root()
     }
 
+    fn is_mount_resolver(&self) -> bool {
+        true
+    }
+
     fn resolve_path(&self, input: &str) -> String {
         // The absolute virtual path: relative inputs resolve against cwd,
         // `.`/`..` collapse, leading `..` clamps at root. This is the namespace
@@ -500,6 +516,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for FlatStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(&self, sid: SessionId, path: &str) -> Result<Option<SessionFile>> {
             let files = self.files.lock().unwrap();
             Ok(files.get(path).map(|content| SessionFile {
@@ -746,5 +766,14 @@ mod tests {
                 "/workspace/roots/backend/Cargo.toml".to_string()
             ]
         );
+    }
+
+    #[test]
+    fn mount_fs_identifies_as_resolver() {
+        let workspace: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        let fs = MountFs::wrap(workspace);
+        assert!(fs.is_mount_resolver());
+        let again = MountFs::wrap_if_needed(fs.clone());
+        assert!(Arc::ptr_eq(&fs, &again));
     }
 }

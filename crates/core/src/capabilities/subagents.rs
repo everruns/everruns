@@ -1031,6 +1031,7 @@ impl Tool for SpawnSubagentAsAgentTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_subagent_spawn(
             &tool_call.arguments,
@@ -2402,6 +2403,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for MemoryFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             session_id: crate::typed_id::SessionId,

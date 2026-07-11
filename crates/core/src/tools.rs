@@ -553,6 +553,7 @@ pub trait Tool: Send + Sync {
         _tool_call: &crate::tool_types::ToolCall,
         _phase: crate::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         None
     }
@@ -2293,6 +2294,10 @@ mod tests {
 
     #[async_trait]
     impl crate::traits::SessionFileSystem for TestFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             _session_id: SessionId,
