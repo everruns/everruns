@@ -35,7 +35,7 @@ pub const VERBOSE_BUDGET: usize = 16 * 1024;
 /// model can `read_file` the persisted log when it needs more detail.
 ///
 /// Sized so that even after the `PersistOutputHook` appends its
-/// `[full output saved to /workspace/outputs/... (NN KiB) — use read_file ...]`
+/// `[full output saved to <display path> (NN KiB) — use read_file ...]`
 /// pointer (~120 bytes), the full inline `stdout` field stays ≤ ~512 bytes.
 pub const AUTO_SUCCESS_BUDGET: usize = 384;
 

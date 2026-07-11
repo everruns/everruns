@@ -7,11 +7,15 @@
 // cwd-relative resolution all agree on the same root — and that repointing the
 // host root (the worktree-switch scenario) moves every surface together.
 
-use everruns_core::capabilities::BashTool;
+use everruns_core::atoms::PostToolExecHook;
+use everruns_core::capabilities::{BashTool, DistillOutputHook, PersistOutputHook};
+use everruns_core::tool_types::{
+    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
+};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 use everruns_core::{MountFs, SessionFileSystem, SessionId, WorkspaceRootSet};
-use everruns_runtime::{RealDiskFileStore, multi_root_file_system};
+use everruns_runtime::{InMemorySessionFileStore, RealDiskFileStore, multi_root_file_system};
 use serde_json::json;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -29,6 +33,135 @@ async fn bash_pwd(ctx: &ToolContext) -> String {
             .to_string(),
         other => panic!("bash pwd did not succeed: {other:?}"),
     }
+}
+
+fn output_tool_def(persist_output: bool) -> ToolDefinition {
+    let hints = if persist_output {
+        ToolHints::default().with_persist_output(true)
+    } else {
+        ToolHints::default()
+    };
+    ToolDefinition::Builtin(BuiltinTool {
+        name: "test_output".to_string(),
+        display_name: None,
+        description: "test output".to_string(),
+        parameters: json!({}),
+        policy: ToolPolicy::Auto,
+        category: None,
+        deferrable: DeferrablePolicy::default(),
+        hints,
+        full_parameters: None,
+    })
+}
+
+fn output_tool_call() -> ToolCall {
+    ToolCall {
+        id: "call_paths".to_string(),
+        name: "test_output".to_string(),
+        arguments: json!({}),
+    }
+}
+
+async fn assert_output_pointers_follow_store(store: Arc<dyn SessionFileSystem>) {
+    let session = SessionId::from_seed(662);
+    let context = ToolContext::with_file_store(session, store.clone());
+    let root = store.display_root();
+    let stdout_path = format!("{root}/outputs/call_paths.stdout");
+    let stderr_path = format!("{root}/outputs/call_paths.stderr");
+    let mut result = ToolResult {
+        tool_call_id: "call_paths".to_string(),
+        result: Some(json!({
+            "stdout": "stdout body",
+            "stderr": "stderr body",
+            "exit_code": 0,
+        })),
+        images: None,
+        error: None,
+        connection_required: None,
+        raw_output: Some("stdout body\n--- stderr ---\nstderr body".to_string()),
+    };
+
+    PersistOutputHook
+        .after_exec(
+            &output_tool_call(),
+            &output_tool_def(true),
+            &mut result,
+            &context,
+        )
+        .await;
+
+    let value = result.result.as_ref().unwrap();
+    assert_eq!(value["full_output"], json!(stdout_path));
+    assert_eq!(value["output_files"], json!([stdout_path, stderr_path]));
+    for pointer in value["output_files"].as_array().unwrap() {
+        assert!(
+            store
+                .read_file(session, pointer.as_str().unwrap())
+                .await
+                .unwrap()
+                .is_some(),
+            "model-visible output pointer must be readable by file tools"
+        );
+    }
+    assert!(
+        value["stdout"]
+            .as_str()
+            .unwrap()
+            .contains(&store.display_path("/outputs/call_paths.stdout"))
+    );
+}
+
+async fn assert_distillation_pointer_follows_store(store: Arc<dyn SessionFileSystem>) {
+    let session = SessionId::from_seed(663);
+    let context = ToolContext::with_file_store(session, store.clone());
+    let rows: Vec<_> = (0..2000)
+        .map(|i| json!({"id": i, "name": format!("row-{i}")}))
+        .collect();
+    let mut result = ToolResult {
+        tool_call_id: "call_paths".to_string(),
+        result: Some(json!({"rows": rows})),
+        images: None,
+        error: None,
+        connection_required: None,
+        raw_output: None,
+    };
+
+    DistillOutputHook
+        .after_exec(
+            &output_tool_call(),
+            &output_tool_def(false),
+            &mut result,
+            &context,
+        )
+        .await;
+
+    let expected = store.display_path("/outputs/call_paths.stdout");
+    let value = result.result.as_ref().unwrap();
+    assert_eq!(value["full_output"], json!(expected));
+    assert_eq!(value["output_files"], json!([expected]));
+    assert!(value["distill_note"].as_str().unwrap().contains(&expected));
+    assert!(store.read_file(session, &expected).await.unwrap().is_some());
+}
+
+#[tokio::test]
+async fn persisted_output_paths_follow_real_disk_mount_and_vfs_identity() {
+    let direct_root = TempDir::new().unwrap();
+    let direct: Arc<dyn SessionFileSystem> =
+        Arc::new(RealDiskFileStore::new(direct_root.path()).unwrap());
+    assert_output_pointers_follow_store(direct.clone()).await;
+    assert_distillation_pointer_follows_store(direct).await;
+
+    let mounted_root = TempDir::new().unwrap();
+    let mounted = MountFs::wrap(Arc::new(
+        RealDiskFileStore::new(mounted_root.path()).unwrap(),
+    ));
+    assert_output_pointers_follow_store(mounted.clone()).await;
+    assert_distillation_pointer_follows_store(mounted).await;
+
+    let memory: Arc<dyn SessionFileSystem> = Arc::new(InMemorySessionFileStore::new());
+    assert_eq!(memory.display_root(), "/workspace");
+    assert_output_pointers_follow_store(memory.clone()).await;
+    assert_distillation_pointer_follows_store(memory).await;
 }
 
 #[tokio::test]

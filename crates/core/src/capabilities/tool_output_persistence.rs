@@ -147,7 +147,7 @@ fn truncate_for_persistence(text: &str, max_bytes: usize) -> String {
 pub fn annotate_truncated_output(truncated: &str, file_path: &str, full_size: usize) -> String {
     let size_kb = full_size / 1024;
     format!(
-        "{truncated}\n\n[full output saved to /workspace{file_path} ({size_kb} KiB) — use read_file with offset/limit]"
+        "{truncated}\n\n[full output saved to {file_path} ({size_kb} KiB) — use read_file with offset/limit]"
     )
 }
 
@@ -323,16 +323,17 @@ impl PostToolExecHook for PersistOutputHook {
                 let mut output_files = Vec::new();
 
                 if let Some(ref path) = persist_result.stdout_path {
+                    let display_path = file_store.display_path(path);
                     // Compact inline stdout/output to the success/failure budget and
                     // append the file-reference pointer. Explicit modes (verbose, full,
                     // normal) cannot produce unbounded model-facing output after
                     // persistence succeeds — full content is in /outputs/.
-                    compact_persisted_result_for_model(obj, path, stdout.len());
+                    compact_persisted_result_for_model(obj, &display_path, stdout.len());
 
-                    output_files.push(format!("/workspace{path}"));
+                    output_files.push(display_path.clone());
                     // full_output points to the stdout file only; stderr (if persisted)
                     // is available via the output_files array
-                    obj.insert("full_output".to_string(), json!(path));
+                    obj.insert("full_output".to_string(), json!(display_path));
                     obj.insert(
                         "total_lines".to_string(),
                         json!(persist_result.stdout_total_lines),
@@ -340,7 +341,7 @@ impl PostToolExecHook for PersistOutputHook {
                 }
 
                 if let Some(ref path) = persist_result.stderr_path {
-                    output_files.push(format!("/workspace{path}"));
+                    output_files.push(file_store.display_path(path));
                     // Compact stderr inline when stdout was not persisted (if stdout was
                     // persisted, compact_persisted_result_for_model already handled this).
                     if persist_result.stdout_path.is_none() {
@@ -498,8 +499,11 @@ mod tests {
 
     #[test]
     fn test_annotate_truncated_output() {
-        let annotated =
-            annotate_truncated_output("truncated text...", "/outputs/abc.stdout", 50 * 1024);
+        let annotated = annotate_truncated_output(
+            "truncated text...",
+            "/workspace/outputs/abc.stdout",
+            50 * 1024,
+        );
         assert!(annotated.contains("truncated text..."));
         assert!(annotated.contains("/workspace/outputs/abc.stdout"));
         assert!(annotated.contains("50 KiB"));
@@ -508,7 +512,7 @@ mod tests {
 
     #[test]
     fn test_annotate_truncated_output_small() {
-        let annotated = annotate_truncated_output("short", "/outputs/x.stdout", 1024);
+        let annotated = annotate_truncated_output("short", "/workspace/outputs/x.stdout", 1024);
         assert!(annotated.contains("1 KiB"));
         assert!(annotated.contains("read_file with offset/limit"));
     }
