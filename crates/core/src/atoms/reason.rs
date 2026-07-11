@@ -730,6 +730,12 @@ pub struct ReasonAtom {
     /// end-of-message output guardrails (e.g. moderation). When absent, those
     /// guardrails fail open and the seam is a no-op.
     utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
+    /// Optional session schedule store. Used by the `usage_limit_auto_continue`
+    /// capability to schedule a one-shot continuation after a provider usage
+    /// limit resets. When absent, the capability degrades to a no-op (no
+    /// continuation is scheduled and the error copy makes no auto-resume
+    /// promise).
+    schedule_store: Option<Arc<dyn crate::traits::SessionScheduleStore>>,
 }
 
 impl ReasonAtom {
@@ -762,6 +768,80 @@ impl ReasonAtom {
             partial_stream_store: None,
             reasoning_effort_handle: None,
             utility_llm_service: None,
+            schedule_store: None,
+        }
+    }
+
+    /// Set the session schedule store used by `usage_limit_auto_continue` to
+    /// schedule a continuation after a provider usage limit resets.
+    pub fn with_schedule_store(
+        mut self,
+        store: Arc<dyn crate::traits::SessionScheduleStore>,
+    ) -> Self {
+        self.schedule_store = Some(store);
+        self
+    }
+
+    /// Schedule a one-shot continuation for a usage-limit error, firing shortly
+    /// after the provider's reported reset time. Returns `true` when a
+    /// continuation was actually scheduled (so the caller may promise automatic
+    /// resumption in the error copy). Best-effort: a missing schedule store,
+    /// absent reset time, or store failure logs and returns `false` rather than
+    /// failing the turn.
+    async fn schedule_usage_limit_continuation(
+        &self,
+        session_id: SessionId,
+        source_error: &UserFacingError,
+        cfg: &crate::capabilities::AutoContinueConfig,
+    ) -> bool {
+        let Some(store) = &self.schedule_store else {
+            return false;
+        };
+        let Some(resets_at) = source_error
+            .fields
+            .get("resets_at")
+            .and_then(|v| v.as_i64())
+        else {
+            return false;
+        };
+        let Some(reset_time) = chrono::DateTime::from_timestamp(resets_at, 0) else {
+            return false;
+        };
+
+        // Fire `delay_seconds` after the reset. Clamp into the future so a
+        // stale/past reset (clock skew, limit already cleared) still fires
+        // instead of being dropped by the store's past-time next-trigger rule.
+        let now = chrono::Utc::now();
+        let delay = chrono::Duration::seconds(cfg.delay_seconds);
+        let scheduled_at = (reset_time + delay).max(now + delay);
+
+        match store
+            .create_schedule(
+                session_id,
+                cfg.prompt.clone(),
+                None,
+                Some(scheduled_at),
+                "UTC".to_string(),
+            )
+            .await
+        {
+            Ok(schedule) => {
+                tracing::info!(
+                    session_id = %session_id,
+                    schedule_id = %schedule.id,
+                    scheduled_at = %scheduled_at,
+                    "usage_limit_auto_continue: scheduled continuation after usage-limit reset"
+                );
+                true
+            }
+            Err(e) => {
+                tracing::warn!(
+                    session_id = %session_id,
+                    error = %e,
+                    "usage_limit_auto_continue: failed to schedule continuation"
+                );
+                false
+            }
         }
     }
 
@@ -1033,11 +1113,17 @@ impl ReasonAtom {
             }
         };
 
-        let (error_disclosure, error_context, call_result) = match assembled {
+        let (error_disclosure, error_context, auto_continue_cfg, call_result) = match assembled {
             Ok(assembled) => {
                 let error_disclosure = crate::capabilities::resolve_error_disclosure(
                     &assembled.resolved_capability_configs,
                     error_disclosure_override(&assembled.messages).as_deref(),
+                );
+                // Resolved before `assembled` is consumed by the LLM call so the
+                // terminal-error path below knows whether auto-continue is active
+                // even though it no longer has the capability configs.
+                let auto_continue_cfg = crate::capabilities::resolve_usage_limit_auto_continue(
+                    &assembled.resolved_capability_configs,
                 );
                 let error_context = UserFacingErrorContext::default()
                     .with_provider(assembled.model_with_provider.provider_type.to_string())
@@ -1056,11 +1142,17 @@ impl ReasonAtom {
                         assembled,
                     )
                     .await;
-                (error_disclosure, error_context, call_result)
+                (
+                    error_disclosure,
+                    error_context,
+                    auto_continue_cfg,
+                    call_result,
+                )
             }
             Err(error) => (
                 ErrorDisclosure::default(),
                 UserFacingErrorContext::default(),
+                None,
                 Err(error),
             ),
         };
@@ -1114,7 +1206,23 @@ impl ReasonAtom {
                 );
 
                 let error_msg = e.to_string();
-                let source_error = e.user_facing_error(error_context);
+                let mut source_error = e.user_facing_error(error_context);
+
+                // Usage-limit auto-continue: when the capability is active and
+                // the provider reported a concrete reset time, schedule a
+                // one-shot continuation shortly after the reset and flag the
+                // error so its copy promises automatic resumption. The `auto_continue`
+                // flag is only set when the continuation was actually scheduled,
+                // so the copy never over-promises.
+                if source_error.code == crate::user_facing_error_codes::PROVIDER_USAGE_LIMIT_REACHED
+                    && let Some(cfg) = &auto_continue_cfg
+                    && self
+                        .schedule_usage_limit_continuation(context.session_id, &source_error, cfg)
+                        .await
+                {
+                    source_error = source_error.with_field("auto_continue", true);
+                }
+
                 let user_error = source_error.apply_disclosure(error_disclosure, Some(&error_msg));
                 let user_error_text = user_error.fallback_message();
 

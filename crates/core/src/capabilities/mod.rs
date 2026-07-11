@@ -149,6 +149,7 @@ mod tool_call_repair;
 mod tool_output_distillation;
 mod tool_output_persistence;
 mod tool_search;
+mod usage_limit_auto_continue;
 pub mod user_hooks;
 mod util;
 #[cfg(feature = "web-fetch")]
@@ -327,6 +328,10 @@ pub use subagents::{
     ReportResultTool, ReportTaskProgressTool, SUBAGENTS_CAPABILITY_ID, SpawnSubagentAsAgentTool,
     SubagentCapability, report_result_tool_for_child_session,
     report_task_progress_tool_for_child_session,
+};
+pub use usage_limit_auto_continue::{
+    AutoContinueConfig, USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID, UsageLimitAutoContinueCapability,
+    resolve_usage_limit_auto_continue,
 };
 // Blueprint types are exported directly from the trait definitions above
 pub use bashkit_shell::{
@@ -1309,6 +1314,7 @@ impl CapabilityRegistry {
         registry.register(tool_output_persistence::ToolOutputPersistenceCapability);
         registry.register(tool_output_distillation::ToolOutputDistillationCapability);
         registry.register(LoopDetectionCapability);
+        registry.register(UsageLimitAutoContinueCapability);
         registry.register(ToolCallRepairCapability);
         registry.register(PromptCanaryGuardrailCapability);
         registry.register(GuardrailsCapability);
@@ -1408,6 +1414,10 @@ impl CapabilityRegistry {
 
         // Loop detection (EVE-227: detect repeated identical tool calls)
         registry.register(LoopDetectionCapability);
+
+        // Auto-continue after an LLM usage limit resets: resumes interrupted
+        // work once the provider limit clears. Behavior-only (no tools).
+        registry.register(UsageLimitAutoContinueCapability);
 
         // Tool-call repair (EVE-600): opt-in salvage of malformed tool-call
         // arguments. Disabled by default — registered so agents can enable it,
@@ -3117,6 +3127,7 @@ mod tests {
             "fake_crm",
             "fake_financial",
             "loop_detection",
+            "usage_limit_auto_continue",
             "tool_call_repair",
             "error_disclosure",
             "prompt_canary_guardrail",
@@ -3164,6 +3175,7 @@ mod tests {
             "tool_output_persistence",
             "tool_output_distillation",
             "loop_detection",
+            "usage_limit_auto_continue",
             "tool_call_repair",
             "error_disclosure",
             "prompt_canary_guardrail",
