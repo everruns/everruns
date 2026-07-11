@@ -512,7 +512,10 @@ pub trait SessionFileSystem: Send + Sync {
     /// Get file metadata
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>>;
 
-    /// Search files by pattern (grep)
+    /// Search file contents, optionally filtering canonical paths by glob.
+    ///
+    /// Basename-only globs match at any depth. Non-glob path filters retain
+    /// legacy substring matching; see `specs/file-store.md`.
     async fn grep_files(
         &self,
         session_id: SessionId,

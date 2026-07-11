@@ -64,8 +64,9 @@ base64.workspace = true
 sha2.workspace = true
 hex.workspace = true
 
-# Regex for argument substitution
+# Pattern matching
 regex.workspace = true
+globset.workspace = true
 
 # Text diff rendering for edit_file previews
 similar = "3"

@@ -1212,19 +1212,23 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         let mut matches: Vec<GrepMatch> = results.into_iter().flat_map(|r| r.matches).collect();
 
-        // Also search virtual mounts (use regex path filtering to match DB semantics)
+        // Also search virtual mounts with the shared canonical-path glob semantics.
         if let Some(registry) = &self.virtual_registry
             && let Ok(regex) = regex::Regex::new(pattern)
         {
-            let path_regex = path_pattern
-                .map(regex::Regex::new)
+            let path_matcher = path_pattern
+                .map(everruns_core::session_path::GrepPathPattern::new)
                 .transpose()
                 .unwrap_or(None);
             let virtual_matches = registry.grep(&session_id, &regex, None, 512 * 1024);
             matches.extend(
                 virtual_matches
                     .into_iter()
-                    .filter(|vm| path_regex.as_ref().is_none_or(|re| re.is_match(&vm.path)))
+                    .filter(|vm| {
+                        path_matcher
+                            .as_ref()
+                            .is_none_or(|matcher| matcher.is_match(&vm.path))
+                    })
                     .map(|vm| GrepMatch {
                         path: vm.path,
                         line_number: vm.line_number,

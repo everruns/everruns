@@ -509,7 +509,9 @@ impl SessionFileSystem for RealDiskFileStore {
         let root = self.root();
         let pattern = pattern.to_string();
         let path_pattern = match path_pattern {
-            Some(path) => Some(self.paths.parse_input(path)?.as_relative().to_string()),
+            Some(path) => Some(everruns_core::session_path::GrepPathPattern::new(
+                self.paths.parse_input(path)?.as_relative(),
+            )?),
             None => None,
         };
 
@@ -565,7 +567,7 @@ impl SessionFileSystem for RealDiskFileStore {
                     continue;
                 }
                 if let Some(filter) = &path_pattern
-                    && !rel_str.contains(filter.as_str())
+                    && !filter.is_match(&rel_str)
                 {
                     continue;
                 }
@@ -1171,6 +1173,72 @@ mod tests {
 
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].path, "/src/lib.rs");
+    }
+
+    #[tokio::test]
+    async fn grep_path_pattern_supports_globs() {
+        let (store, _dir) = make_store();
+        let session = sid();
+        for path in [
+            "/src/lib.rs",
+            "/src/nested/mod.rs",
+            "/docs/readme.md",
+            "/docs/nested/guide.md",
+            "/notes.txt",
+            "/nested/notes.txt",
+        ] {
+            store
+                .write_file(session, path, "needle", "text")
+                .await
+                .expect("write fixture");
+        }
+
+        let cases = [
+            ("src/**/*.rs", vec!["/src/lib.rs", "/src/nested/mod.rs"]),
+            (
+                "**/*",
+                vec![
+                    "/docs/nested/guide.md",
+                    "/docs/readme.md",
+                    "/nested/notes.txt",
+                    "/notes.txt",
+                    "/src/lib.rs",
+                    "/src/nested/mod.rs",
+                ],
+            ),
+            ("docs/*", vec!["/docs/readme.md"]),
+            ("*.txt", vec!["/nested/notes.txt", "/notes.txt"]),
+            (
+                "/workspace/src/**/*.rs",
+                vec!["/src/lib.rs", "/src/nested/mod.rs"],
+            ),
+        ];
+
+        for (path_pattern, expected) in cases {
+            let mut paths: Vec<_> = store
+                .grep_files(session, "needle", Some(path_pattern))
+                .await
+                .expect("grep")
+                .into_iter()
+                .map(|hit| hit.path)
+                .collect();
+            paths.sort();
+            assert_eq!(paths, expected, "path_pattern={path_pattern}");
+        }
+
+        let host_pattern = Path::new(&store.display_root())
+            .join("src/**/*.rs")
+            .display()
+            .to_string();
+        let mut paths: Vec<_> = store
+            .grep_files(session, "needle", Some(&host_pattern))
+            .await
+            .expect("host-absolute glob")
+            .into_iter()
+            .map(|hit| hit.path)
+            .collect();
+        paths.sort();
+        assert_eq!(paths, vec!["/src/lib.rs", "/src/nested/mod.rs"]);
     }
 
     #[tokio::test]

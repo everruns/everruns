@@ -488,8 +488,8 @@ impl InMemoryDatabase {
         path_pattern: Option<&str>,
         max_file_bytes: i64,
     ) -> Result<Vec<MemoryFileInfoRow>> {
-        // Use regex for both the content pattern and the optional path filter
-        // so dev/in-memory behavior matches the Postgres `~` semantics.
+        // Content uses regex. Path filtering is applied by the service with the
+        // shared glob matcher, so repositories receive `None` for path_pattern.
         let content_re =
             regex::Regex::new(pattern).map_err(|e| anyhow::anyhow!("invalid pattern: {e}"))?;
         let path_re = path_pattern

@@ -1446,7 +1446,7 @@ impl Tool for GrepFilesTool {
                 },
                 "path_pattern": {
                     "type": "string",
-                    "description": "Optional path pattern to filter files (e.g., '*.txt', 'docs/*')"
+                    "description": "Optional glob filtering canonical paths (e.g., '*.txt', 'docs/*', 'src/**/*.rs'). Basename-only globs match at any depth; non-glob values use legacy substring matching"
                 },
                 "offset": {
                     "type": "integer",

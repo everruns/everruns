@@ -242,8 +242,13 @@ The following behaviors hold across all implementations:
    always exists.
 5. **`grep_files`** searches text files only. Implementations are free to
    skip binary content, oversized files, and explicitly excluded
-   directories. `path_pattern` is a plain substring match against the
-   canonical path (no glob expansion); `Some("")` matches every path.
+   directories. `path_pattern` filters canonical workspace paths using globs:
+   `*` and `?` match within one path segment, `**` crosses directories, and
+   bracket classes and brace alternation are supported. A basename-only glob
+   such as `*.txt` matches at any depth. `/workspace` and supported host-absolute
+   aliases are normalized before matching. Patterns without glob
+   metacharacters retain the legacy substring behavior; `Some("")` matches
+   every path.
 6. **`list_directory` ambiguity.** The trait currently returns an empty
    `Vec<FileInfo>` both when the path is missing and when it exists but is
    not a directory. Callers that need to distinguish "empty directory"
