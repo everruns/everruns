@@ -1017,10 +1017,9 @@ impl ChatDriver for AnthropicChatDriver {
                                     phase: None,
                                 })))
                             }
-                            "error" => Ok(LlmStreamEvent::Error(format!(
-                                "Anthropic stream error: {}",
-                                event.data
-                            ))),
+                            "error" => Ok(LlmStreamEvent::Error(
+                                format!("Anthropic stream error: {}", event.data).into(),
+                            )),
                             "ping" => {
                                 // Keep-alive ping, ignore
                                 Ok(LlmStreamEvent::TextDelta(String::new()))
@@ -1031,7 +1030,9 @@ impl ChatDriver for AnthropicChatDriver {
                             }
                         }
                     }
-                    Err(e) => Ok(LlmStreamEvent::Error(format!("Stream error: {}", e))),
+                    Err(e) => Ok(LlmStreamEvent::Error(
+                        format!("Stream error: {}", e).into(),
+                    )),
                 }
             }
         }));

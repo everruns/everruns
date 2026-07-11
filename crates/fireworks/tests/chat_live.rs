@@ -69,7 +69,7 @@ async fn fireworks_chat_streams_response() {
                     meta.finish_reason, meta.prompt_tokens, meta.completion_tokens,
                 );
             }
-            LlmStreamEvent::Error(e) => error = Some(e),
+            LlmStreamEvent::Error(e) => error = Some(e.to_string()),
             _ => {}
         }
     }

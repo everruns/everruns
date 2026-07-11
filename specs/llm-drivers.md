@@ -55,7 +55,7 @@ graph TD
 
 1. **Trait Definition**: See `crates/core/src/driver_registry.rs` for `ChatDriver` trait, `LlmStreamEvent`, `ProviderType`, and `LlmCallConfig`.
 
-2. **Streaming Response**: Drivers return a stream of `LlmStreamEvent` (TextDelta, ToolCalls, ThinkingDelta, ThinkingSignature, Done, Error).
+2. **Streaming Response**: Drivers return a stream of `LlmStreamEvent` (TextDelta, ToolCalls, ThinkingDelta, ThinkingSignature, Done, Error). In-band provider failures use `LlmStreamError` so stable provider code and HTTP status survive the driver boundary.
 
 3. **Provider Types**: `OpenAI` (Responses API), `OpenAICompletions` (Chat Completions), `Anthropic`, `Gemini`, `Bedrock` (AWS Bedrock ConverseStream), `Mai` (Microsoft MAI via Azure AI Foundry, OpenAI-compatible Chat Completions), `Fireworks` (Fireworks AI open models, OpenAI-compatible Chat Completions), `LlmSim` (testing).
 
@@ -578,7 +578,19 @@ The following HTTP status codes trigger automatic retry:
 - `429` - Too Many Requests (Rate Limited)
 - `5xx` - Server Errors (except 501 Not Implemented)
 
-In-band stream errors (provider errors inside an accepted SSE stream) are **not** retried at the atom level to avoid duplicate user-visible error messages. The driver-level HTTP retry handles transient failures before the stream is established.
+In-band stream errors inside an accepted response are retried only when all of
+the following hold:
+
+- no text, thinking, tool call, or completion output has been produced
+- the structured provider code or HTTP status classifies the error as transient
+- the bounded default retry budget has not been exhausted
+
+Provider code is authoritative, followed by HTTP status; message matching is a
+compatibility fallback for legacy drivers. `processing_error`, provider server
+errors, ordinary rate limits, and transient HTTP statuses receive bounded retry.
+Authentication, invalid-request, and exhausted billing/quota errors fail fast.
+Once output exists, the runtime preserves it as a partial success instead of
+replaying the generation and risking duplicate visible output.
 
 ### Rate Limit Header Support
 

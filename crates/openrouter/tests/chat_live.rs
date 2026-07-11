@@ -77,7 +77,7 @@ async fn openrouter_chat_with_session_id_and_routing_succeeds() {
                     meta.provider_cost_usd,
                 );
             }
-            LlmStreamEvent::Error(e) => error = Some(e),
+            LlmStreamEvent::Error(e) => error = Some(e.to_string()),
             _ => {}
         }
     }

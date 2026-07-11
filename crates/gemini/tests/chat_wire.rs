@@ -86,7 +86,7 @@ fn golden(event: LlmStreamEvent) -> Golden {
                 finish: finish_reason,
             }
         }
-        LlmStreamEvent::Error(e) => Golden::Error(e),
+        LlmStreamEvent::Error(e) => Golden::Error(e.to_string()),
         other => panic!("unexpected event variant in golden capture: {other:?}"),
     }
 }

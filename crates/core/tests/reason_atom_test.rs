@@ -209,9 +209,11 @@ impl everruns_core::ChatDriver for FlakyStreamDriver {
 
         if attempt == 0 {
             return Ok(Box::pin(stream::iter(vec![Ok(
-                everruns_core::LlmStreamEvent::Error(
-                    "server_error: transient upstream failure".to_string(),
-                ),
+                everruns_core::LlmStreamEvent::Error(everruns_core::LlmStreamError::provider(
+                    Some("processing_error"),
+                    None,
+                    "An error occurred while processing your request.",
+                )),
             )])));
         }
 
@@ -1029,10 +1031,7 @@ async fn test_reason_atom_emits_output_message_completed_on_success() {
 }
 
 #[tokio::test]
-async fn test_reason_atom_does_not_retry_transient_stream_error() {
-    // Stream-level errors are NOT retried at the atom level.
-    // Transient retries happen at the driver level (HTTP 429/5xx).
-    // The atom reports the error as a failure to avoid duplicate user-visible messages.
+async fn test_reason_atom_retries_structured_processing_error_before_output() {
     use everruns_core::in_memory::InMemoryEventEmitter;
 
     let (
@@ -1089,11 +1088,11 @@ async fn test_reason_atom_does_not_retry_transient_stream_error() {
         .expect("ReasonAtom should return Ok with failure result");
 
     assert!(
-        !result.success,
-        "Stream error should not be retried at atom level"
+        result.success,
+        "processing_error should receive a bounded retry"
     );
-    // Only one attempt — no retry
-    assert_eq!(attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(result.text, "Recovered after retry.");
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
 
     let events = event_emitter.events().await;
     let llm_event = events
@@ -1102,7 +1101,13 @@ async fn test_reason_atom_does_not_retry_transient_stream_error() {
         .expect("llm.generation event should be emitted");
 
     if let everruns_core::EventData::LlmGeneration(data) = &llm_event.data {
-        assert!(!data.metadata.success, "Should report failure");
+        assert!(data.metadata.success, "retry should recover the generation");
+        let retry = data
+            .metadata
+            .retry
+            .as_ref()
+            .expect("retry metadata should be recorded");
+        assert_eq!(retry.attempts, 1);
     } else {
         panic!("Expected llm.generation event data");
     }
@@ -1490,7 +1495,7 @@ impl everruns_core::ChatDriver for ToolCallsThenErrorDriver {
             }])),
             // Trailing server error after valid output
             Ok(everruns_core::LlmStreamEvent::Error(
-                "server_error: An error occurred while processing your request.".to_string(),
+                "server_error: An error occurred while processing your request.".into(),
             )),
         ])))
     }
@@ -1579,7 +1584,7 @@ impl everruns_core::ChatDriver for TextThenErrorDriver {
                 "Here are the links:\n\n- Research Agent:".to_string(),
             )),
             Ok(everruns_core::LlmStreamEvent::Error(
-                "server_error: internal failure".to_string(),
+                "server_error: internal failure".into(),
             )),
         ])))
     }
@@ -1652,7 +1657,10 @@ async fn test_reason_atom_preserves_text_on_trailing_stream_error() {
 /// Driver that emits an error without any prior output (pure failure).
 /// This should still fail as before — no partial output to recover.
 #[derive(Clone, Debug)]
-struct PureErrorDriver;
+struct PureErrorDriver {
+    attempts: Arc<AtomicUsize>,
+    code: &'static str,
+}
 
 #[async_trait]
 impl everruns_core::ChatDriver for PureErrorDriver {
@@ -1661,14 +1669,19 @@ impl everruns_core::ChatDriver for PureErrorDriver {
         _messages: Vec<everruns_core::LlmMessage>,
         _config: &everruns_core::LlmCallConfig,
     ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
+        self.attempts.fetch_add(1, Ordering::SeqCst);
         Ok(Box::pin(stream::iter(vec![Ok(
-            everruns_core::LlmStreamEvent::Error("server_error: total failure".to_string()),
+            everruns_core::LlmStreamEvent::Error(everruns_core::LlmStreamError::provider(
+                Some(self.code),
+                None,
+                "An error occurred while processing your request.",
+            )),
         )])))
     }
 }
 
 #[tokio::test]
-async fn test_reason_atom_still_fails_on_pure_stream_error() {
+async fn test_reason_atom_exhausts_bounded_processing_error_retries() {
     use everruns_core::in_memory::InMemoryEventEmitter;
 
     let (
@@ -1686,8 +1699,15 @@ async fn test_reason_atom_still_fails_on_pure_stream_error() {
         .seed(session_id.into(), vec![Message::user("Hello!")])
         .await;
 
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_registry = Arc::clone(&attempts);
     let mut driver_registry = DriverRegistry::new();
-    driver_registry.register(DriverId::LlmSim, |_config| Box::new(PureErrorDriver));
+    driver_registry.register(DriverId::LlmSim, move |_config| {
+        Box::new(PureErrorDriver {
+            attempts: Arc::clone(&attempts_for_registry),
+            code: "processing_error",
+        })
+    });
 
     let event_emitter = InMemoryEventEmitter::new();
 
@@ -1725,6 +1745,67 @@ async fn test_reason_atom_still_fails_on_pure_stream_error() {
     );
     assert!(result.error.is_some());
     assert!(!result.has_tool_calls);
+    assert_eq!(
+        attempts.load(Ordering::SeqCst),
+        3,
+        "initial call + 2 retries"
+    );
+}
+
+#[tokio::test]
+async fn test_reason_atom_does_not_retry_non_transient_provider_code() {
+    use everruns_core::in_memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    message_retriever
+        .seed(session_id.into(), vec![Message::user("Hello!")])
+        .await;
+
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_registry = Arc::clone(&attempts);
+    let mut driver_registry = DriverRegistry::new();
+    driver_registry.register(DriverId::LlmSim, move |_config| {
+        Box::new(PureErrorDriver {
+            attempts: Arc::clone(&attempts_for_registry),
+            code: "invalid_request_error",
+        })
+    });
+
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        InMemoryEventEmitter::new(),
+    );
+    let result = atom
+        .execute(ReasonInput {
+            context: create_context(session_id),
+            harness_id,
+            agent_id: Some(agent_id.into()),
+            org_id: 0,
+            mcp_tool_definitions: vec![],
+            previous_response_id: None,
+            iteration: 1,
+        })
+        .await
+        .expect("ReasonAtom should return a failure result");
+
+    assert!(!result.success);
+    assert_eq!(attempts.load(Ordering::SeqCst), 1);
 }
 
 // ============================================================================

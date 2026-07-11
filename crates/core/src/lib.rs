@@ -295,8 +295,8 @@ pub use driver_registry::{
     DriverFactory, DriverId, DriverOAuthConfig, DriverOAuthFlow, DriverRegistry, EmbedRequest,
     EmbedResponse, EmbeddingsDriver, EmbeddingsDriverError, EmbeddingsDriverFactory, LlmCallConfig,
     LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent, ProviderConfig, ServiceKind,
-    fold_system_messages,
+    LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamError, LlmStreamEvent, ProviderConfig,
+    ServiceKind, fold_system_messages,
 };
 
 // LLM retry types re-exports

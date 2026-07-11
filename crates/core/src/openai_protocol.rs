@@ -597,10 +597,9 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                         let event = match result {
                             Ok(event) => event,
                             Err(e) => {
-                                return vec![Ok(LlmStreamEvent::Error(format!(
-                                    "Stream error: {}",
-                                    e
-                                )))];
+                                return vec![Ok(LlmStreamEvent::Error(
+                                    format!("Stream error: {}", e).into(),
+                                ))];
                             }
                         };
 
@@ -701,10 +700,9 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                 }
                                 vec![Ok(LlmStreamEvent::TextDelta(String::new()))]
                             }
-                            Err(e) => vec![Ok(LlmStreamEvent::Error(format!(
-                                "Failed to parse chunk: {}",
-                                e
-                            )))],
+                            Err(e) => vec![Ok(LlmStreamEvent::Error(
+                                format!("Failed to parse chunk: {}", e).into(),
+                            ))],
                         }
                     }
                 })
