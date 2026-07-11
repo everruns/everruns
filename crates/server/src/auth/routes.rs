@@ -5,7 +5,7 @@
 use axum::{
     Json, Router,
     body::Body,
-    extract::{FromRef, Path, Query, State},
+    extract::{ConnectInfo, Extension, FromRef, Path, Query, State},
     http::{HeaderMap, Request, StatusCode},
     middleware::{self, Next},
     response::{Redirect, Response},
@@ -16,6 +16,7 @@ use chrono::{Duration, Utc};
 use everruns_core::{DEFAULT_ORG_ID, OrgRole};
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -493,11 +494,12 @@ async fn enforce_auth_captcha(
 /// POST /v1/auth/login - Login with email and password
 pub async fn login(
     State(state): State<BuiltinAuthBackend>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     jar: CookieJar,
     Json(req): Json<LoginRequest>,
 ) -> Result<(CookieJar, Json<TokenResponse>), AuthError> {
-    let ip = audit::client_ip(&headers);
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
 
     // In admin mode, check admin credentials directly (no database lookup)
     if state.config.mode == AuthMode::Admin {
@@ -734,10 +736,13 @@ impl axum::response::IntoResponse for RegisterOutcome {
 /// POST /v1/auth/register - Register a new user
 pub async fn register(
     State(state): State<BuiltinAuthBackend>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     jar: CookieJar,
     Json(req): Json<RegisterRequest>,
 ) -> Result<RegisterOutcome, AuthError> {
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
+
     // Check if signup is enabled
     if state.config.disable_signup {
         return Err(AuthError::forbidden("Registration is disabled"));
@@ -787,7 +792,7 @@ pub async fn register(
                 DEFAULT_ORG_ID,
                 None,
                 "auth.register.existing_email",
-                audit::client_ip(&headers),
+                ip.clone(),
                 serde_json::json!({}),
             );
             return Ok(RegisterOutcome::ConfirmationSent(OkResponse::ok()));
@@ -875,7 +880,7 @@ pub async fn register(
             DEFAULT_ORG_ID,
             Some(user.id),
             "auth.register.pending_confirmation",
-            audit::client_ip(&headers),
+            ip.clone(),
             serde_json::json!({}),
         );
         return Ok(RegisterOutcome::ConfirmationSent(OkResponse::ok()));
@@ -900,7 +905,7 @@ pub async fn register(
         DEFAULT_ORG_ID,
         Some(auth_user.id),
         "auth.register.success",
-        audit::client_ip(&headers),
+        ip,
         serde_json::json!({}),
     );
 
@@ -915,10 +920,13 @@ pub async fn register(
 /// primary flow for browser clients since the cookie is HttpOnly.
 pub async fn refresh_token(
     State(state): State<BuiltinAuthBackend>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     jar: CookieJar,
     body: Option<Json<RefreshTokenRequest>>,
 ) -> Result<(CookieJar, Json<TokenResponse>), AuthError> {
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
+
     // Prefer JSON body, fall back to cookie
     let refresh_token_value = if let Some(Json(req)) = body {
         req.refresh_token
@@ -989,7 +997,7 @@ pub async fn refresh_token(
         DEFAULT_ORG_ID,
         Some(auth_user.id),
         "auth.token_refresh.success",
-        audit::client_ip(&headers),
+        ip,
         serde_json::json!({}),
     );
 
@@ -1172,11 +1180,13 @@ fn oauth_failure_redirect(config: &super::config::AuthConfig, category: &str) ->
 /// (everything else). The state cookie is cleared on every outcome.
 pub async fn oauth_callback(
     State(state): State<BuiltinAuthBackend>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     Path(provider): Path<String>,
     Query(query): Query<OAuthCallbackQuery>,
     jar: CookieJar,
 ) -> (CookieJar, Redirect) {
+    let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
     let cleared_jar = jar
         .clone()
         .remove(Cookie::build(OAUTH_STATE_COOKIE).path("/"));
@@ -1188,7 +1198,7 @@ pub async fn oauth_callback(
             DEFAULT_ORG_ID,
             None,
             "auth.oauth.failure",
-            audit::client_ip(&headers),
+            audit::client_ip(peer_addr, &headers),
             serde_json::json!({"provider": provider, "reason": "provider_error", "error": err}),
         );
         let category = if err == "access_denied" {
@@ -1207,7 +1217,11 @@ pub async fn oauth_callback(
         );
     };
 
-    match oauth_callback_inner(&state, &headers, &provider, &code, &cb_state, jar).await {
+    match oauth_callback_inner(
+        &state, peer_addr, &headers, &provider, &code, &cb_state, jar,
+    )
+    .await
+    {
         Ok(ok) => ok,
         Err(e) => {
             // Map the failure onto a coarse, safe category the login page renders
@@ -1231,6 +1245,7 @@ pub async fn oauth_callback(
 /// branded `/login?error=…` redirect.
 async fn oauth_callback_inner(
     state: &BuiltinAuthBackend,
+    peer_addr: Option<SocketAddr>,
     headers: &HeaderMap,
     provider: &str,
     code: &str,
@@ -1288,7 +1303,7 @@ async fn oauth_callback_inner(
             DEFAULT_ORG_ID,
             None,
             "auth.oauth.failure",
-            audit::client_ip(headers),
+            audit::client_ip(peer_addr, headers),
             serde_json::json!({"provider": provider, "reason": "exchange_failed"}),
         );
         AuthError::unauthorized("OAuth authentication failed")
@@ -1310,7 +1325,7 @@ async fn oauth_callback_inner(
             DEFAULT_ORG_ID,
             None,
             "auth.oauth.failure",
-            audit::client_ip(headers),
+            audit::client_ip(peer_addr, headers),
             serde_json::json!({"provider": provider, "reason": reason}),
         );
         return Err(AuthError::forbidden("OAuth account not permitted"));
@@ -1388,7 +1403,7 @@ async fn oauth_callback_inner(
                 DEFAULT_ORG_ID,
                 Some(linked.id),
                 "auth.oauth.linked",
-                audit::client_ip(headers),
+                audit::client_ip(peer_addr, headers),
                 serde_json::json!({"provider": provider}),
             );
             tracing::info!(
@@ -1475,7 +1490,7 @@ async fn oauth_callback_inner(
         DEFAULT_ORG_ID,
         Some(auth_user.id),
         "auth.oauth.success",
-        audit::client_ip(headers),
+        audit::client_ip(peer_addr, headers),
         serde_json::json!({"provider": provider}),
     );
 
@@ -2462,6 +2477,7 @@ mod oauth_state_tests {
         let db = state.db.clone();
         let outcome = register(
             State(state.clone()),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -2493,6 +2509,7 @@ mod oauth_state_tests {
         let db = state.db.clone();
         let _ = register(
             State(state.clone()),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -2522,6 +2539,7 @@ mod oauth_state_tests {
         let db = state.db.clone();
         register(
             State(state.clone()),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -2575,6 +2593,7 @@ mod oauth_state_tests {
         );
         register(
             State(state.clone()),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -2926,6 +2945,7 @@ mod oauth_state_tests {
         let state = full_mode_backend();
         let err = register(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -2946,6 +2966,7 @@ mod oauth_state_tests {
         seed_local_user(&state.db, "cap@example.com", "password12345").await;
         let err = login(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(LoginRequest {
@@ -2985,6 +3006,7 @@ mod oauth_state_tests {
         for _ in 0..25 {
             let result = login(
                 State(state.clone()),
+                None,
                 HeaderMap::new(),
                 CookieJar::new(),
                 Json(LoginRequest {
@@ -3005,6 +3027,7 @@ mod oauth_state_tests {
         seed_local_user(&state.db, "fresh@example.com", "password12345").await;
         let err = login(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(LoginRequest {
@@ -3025,6 +3048,7 @@ mod oauth_state_tests {
         let db = state.db.clone();
         let RegisterOutcome::Session(_status, jar, _json) = register(
             State(state.clone()),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -3097,6 +3121,7 @@ mod oauth_state_tests {
         );
         let err = register(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -3120,6 +3145,7 @@ mod oauth_state_tests {
         let frontend = state.config.frontend_url.trim_end_matches('/').to_string();
         let (_jar, redirect) = oauth_callback(
             State(state),
+            None,
             HeaderMap::new(),
             Path("google".to_string()),
             Query(OAuthCallbackQuery {
@@ -3147,6 +3173,7 @@ mod oauth_state_tests {
         let frontend = state.config.frontend_url.trim_end_matches('/').to_string();
         let (_jar, redirect) = oauth_callback(
             State(state),
+            None,
             HeaderMap::new(),
             Path("google".to_string()),
             Query(OAuthCallbackQuery {
@@ -3188,6 +3215,7 @@ mod oauth_state_tests {
         let db = state.db.clone();
         let outcome = register(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -3219,6 +3247,7 @@ mod oauth_state_tests {
         seed_local_user(&state.db, "taken@example.com", "password12345").await;
         let outcome = register(
             State(state.clone()),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -3238,6 +3267,7 @@ mod oauth_state_tests {
         let state = full_mode_backend();
         let err = register(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
