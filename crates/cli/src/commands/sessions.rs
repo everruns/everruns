@@ -442,7 +442,7 @@ fn build_create_session_body(args: CreateSessionArgs) -> Result<serde_json::Valu
     Ok(serde_json::Value::Object(body))
 }
 
-fn is_prefixed_id(value: &str, prefix: &str) -> bool {
+pub(crate) fn is_prefixed_id(value: &str, prefix: &str) -> bool {
     let expected = format!("{prefix}_");
     let Some(rest) = value.strip_prefix(&expected) else {
         return false;
