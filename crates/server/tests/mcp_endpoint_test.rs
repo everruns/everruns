@@ -3527,6 +3527,110 @@ async fn test_mcp_tasks_get_round_trip() {
     );
 }
 
+/// Seed a deterministic structured result (EVE-678) on `session_id`: create a
+/// `result_schema`-bound task owned by the session, point it at a result file,
+/// and write that file into the session's workspace VFS.
+async fn seed_structured_result(server: &TestServer, session_id: &str, result: Value) {
+    use everruns_core::session_task::{
+        CreateSessionTask, SessionTaskState, SessionTaskUpdate, new_session_task, task_result_path,
+    };
+    use everruns_server::storage::models::CreateSessionFileRow;
+
+    let sid = session_id.parse::<SessionId>().expect("valid session id");
+    let session = server
+        .db
+        .get_session(DEFAULT_ORG_ID, sid)
+        .await
+        .expect("get_session")
+        .expect("session exists");
+
+    let task = new_session_task(
+        CreateSessionTask {
+            session_id: sid,
+            id: None,
+            kind: "subagent".to_string(),
+            display_name: "structured result".to_string(),
+            spec: json!({ "result_schema": { "type": "object" } }),
+            state: SessionTaskState::Running,
+            links: Default::default(),
+            wake_policy: Default::default(),
+        },
+        chrono::Utc::now(),
+    );
+    server
+        .db
+        .create_session_task(&task)
+        .await
+        .expect("create task");
+
+    let path = task_result_path(&task.id);
+    server
+        .db
+        .update_session_task(
+            sid,
+            &task.id,
+            SessionTaskUpdate {
+                state: Some(SessionTaskState::Succeeded),
+                result_path: Some(path.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("set result_path");
+
+    server
+        .db
+        .create_session_file(CreateSessionFileRow {
+            session_id: SessionId::from_uuid(session.workspace_id),
+            path,
+            content: Some(serde_json::to_vec(&result).unwrap()),
+            is_directory: false,
+            is_readonly: false,
+        })
+        .await
+        .expect("write result file");
+}
+
+/// EVE-728: when a task reported a schema-bound `result.json`, `tasks/get`
+/// surfaces it under `result.structured_result` for Tasks clients — not just
+/// the last-message / status snapshot.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_tasks_get_surfaces_structured_result() {
+    let server = TestServer::new().await;
+
+    let run = mcp_task_tool_call(&server, "agent_run", json!({ "message": "task result" })).await;
+    let task_id = run["result"]["taskId"].as_str().unwrap().to_string();
+
+    // Before a structured result is reported, only the status snapshot is
+    // present under `result`.
+    let before = mcp_call_with_headers(
+        &server,
+        "tasks/get",
+        json!({ "taskId": task_id }),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
+    )
+    .await;
+    assert!(
+        before["result"]["result"]
+            .get("structured_result")
+            .is_none()
+    );
+
+    let expected = json!({ "verdict": "ok", "score": 42 });
+    seed_structured_result(&server, &task_id, expected.clone()).await;
+
+    let resp = mcp_call_with_headers(
+        &server,
+        "tasks/get",
+        json!({ "taskId": task_id }),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
+    )
+    .await;
+
+    assert_eq!(resp["result"]["taskId"].as_str(), Some(task_id.as_str()));
+    assert_eq!(resp["result"]["result"]["structured_result"], expected);
+}
+
 /// tasks/get for 2025-* is method_not_found (extension doesn't exist there).
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_tasks_get_rejected_for_2025() {
