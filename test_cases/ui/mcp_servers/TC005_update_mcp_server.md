@@ -38,4 +38,4 @@ Verify that an existing MCP server's name, description, and URL can be edited fr
 ## Notes
 
 - Authentication mode is managed separately: use the "Set Key" action to update an API key. The Edit dialog does not change auth mode.
-</content>
+- If the base configuration edit action is absent, record a failure. This remains a product expectation tracked by EVE-721, not catalog drift.

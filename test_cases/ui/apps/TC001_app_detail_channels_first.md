@@ -6,8 +6,8 @@ Verifies the App detail page renders a channels-first operations view with no ra
 
 ## Preconditions
 
-- `AUTH_MODE=none`
-- `just start-dev --no-watch` is running
+- A local (`AUTH_MODE=none`) or authenticated deployed Everruns UI is available
+- The tester is signed in and has access to the target organization when authentication is enabled
 - A published App exists with a schedule channel using cron `0 30 * * * * *` and timezone `America/Chicago`
 
 ## Test Data
