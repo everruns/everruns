@@ -91,7 +91,9 @@ alignment. It is not new capability: Everruns already runs long agent turns as
 the poll pattern (`agent_run` returns a session id + hint, clients poll
 `session_get_status`), all state Postgres-backed with no server-side session
 memory. Tasks is the standardized vocabulary for that same pattern, so a
-**task handle is a session id**.
+**task handle is a session id**. Field names follow final SEP-2663 and the
+official Tasks extension overview: task handles use `ttlMs` and
+`pollIntervalMs`.
 
 The whole surface is gated: it activates only when the negotiated protocol is
 `2026-07-28` **and** the client advertised the extension. `2025-*` clients (and
@@ -155,16 +157,6 @@ that reported no structured result omits the field. Retrieval is scoped by the
 same org `session_get_status` already validated, so tenant isolation is
 preserved; when a session reported more than one structured result the most
 recently updated one wins.
-
-> **RC schema note.** The Tasks extension is still an experimental RC and its
-> authoritative sources disagree on the duration field spelling: the
-> [overview docs](https://modelcontextprotocol.io/extensions/tasks/overview)
-> use `ttlMs` / `pollIntervalMs` (with concrete JSON), while the
-> [SEP-2663 PR](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2663)
-> summary uses `ttlSeconds` / `pollIntervalMilliseconds`. Everruns emits
-> `ttlMs` / `pollIntervalMs` and centralizes the field names in
-> `api/mcp_endpoint/tasks.rs` so a single edit reconciles the wire shape once
-> the spec freezes.
 
 Implementation: `crates/server/src/api/mcp_endpoint/tasks.rs` (mapping helpers,
 capability gating, task-handle shapes) and `mod.rs` (`handle_tasks_method` and

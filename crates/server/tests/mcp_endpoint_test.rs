@@ -3375,6 +3375,28 @@ fn tasks_opt_in_meta() -> Value {
     })
 }
 
+fn assert_final_tasks_duration_fields(result: &Value) {
+    assert!(
+        result.get("ttlMs").and_then(Value::as_u64).is_some(),
+        "final SEP-2663 task shape must include ttlMs, got: {result}"
+    );
+    assert!(
+        result
+            .get("pollIntervalMs")
+            .and_then(Value::as_u64)
+            .is_some(),
+        "final SEP-2663 task shape must include pollIntervalMs, got: {result}"
+    );
+    assert!(
+        result.get("ttlSeconds").is_none(),
+        "draft ttlSeconds field must not be emitted, got: {result}"
+    );
+    assert!(
+        result.get("pollIntervalMilliseconds").is_none(),
+        "draft pollIntervalMilliseconds field must not be emitted, got: {result}"
+    );
+}
+
 /// tools/call with the 2026 protocol header AND the tasks opt-in `_meta`.
 async fn mcp_task_tool_call(server: &TestServer, tool: &str, arguments: Value) -> Value {
     mcp_call_with_headers(
@@ -3441,8 +3463,7 @@ async fn test_mcp_agent_run_returns_task_handle_for_2026() {
     let task_id = result["taskId"].as_str().expect("taskId present");
     assert!(task_id.starts_with("session_"), "taskId is session id");
     assert_eq!(result["status"], "working");
-    assert!(result.get("ttlMs").is_some());
-    assert!(result.get("pollIntervalMs").is_some());
+    assert_final_tasks_duration_fields(result);
 
     // Legacy content preserved: taskId equals the session_id in the body.
     let body = tool_json(&resp);
@@ -3508,6 +3529,7 @@ async fn test_mcp_tasks_get_round_trip() {
 
     let result = &resp["result"];
     assert_eq!(result["taskId"].as_str(), Some(task_id.as_str()));
+    assert_final_tasks_duration_fields(result);
     let status = result["status"].as_str().unwrap();
     assert!(
         [
