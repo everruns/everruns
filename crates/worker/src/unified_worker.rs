@@ -1299,23 +1299,31 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
     input: &DurableTurnInput,
     output: &serde_json::Value,
 ) -> Result<()> {
-    let pending_user_message_count = if completed_activity == "reason" {
+    // A reason that produced a final answer (no tool calls) is winding the turn
+    // down; a reason that emitted tool calls is not.
+    let reason_final_answer = if completed_activity == "reason" {
         let reason_result: everruns_core::ReasonResult = serde_json::from_value(output.clone())
             .map_err(|error| anyhow::anyhow!("Invalid reason output payload: {}", error))?;
-        if reason_result.success && !reason_result.has_tool_calls {
-            store
-                .consume_pending_signals(workflow_id)
-                .await
-                .map_err(|error| anyhow::anyhow!("Failed to consume workflow signals: {}", error))?
-                .into_iter()
-                .filter(|signal| signal.signal_type == everruns_durable::signal_types::USER_MESSAGE)
-                .count()
-        } else {
-            0
-        }
+        reason_result.success && !reason_result.has_tool_calls
     } else {
-        0
+        false
     };
+
+    // Drain queued USER_MESSAGE steering signals (task wakes) at the boundaries
+    // that precede another reason iteration. The already-persisted wake message
+    // is picked up by that reason (it re-reads full history); consuming the
+    // signal here is what governs turn continuation and, being destructive,
+    // gives exactly-once delivery — see `drains_wake_signals_after`.
+    let pending_user_message_count =
+        count_drained_wakes(store, workflow_id, completed_activity, reason_final_answer).await?;
+
+    if completed_activity == "act" && pending_user_message_count > 0 {
+        debug!(
+            %workflow_id,
+            pending_user_message_count,
+            "delivering mid-turn task wake(s) at the act→reason boundary"
+        );
+    }
 
     match plan_next_host_turn(
         &WorkerRuntimeHost::new(adapters.clone()),
@@ -1357,6 +1365,51 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
     }
 
     Ok(())
+}
+
+/// Iteration boundaries at which queued `USER_MESSAGE` steering signals (task
+/// wakes) are drained.
+///
+/// A wake is delivered as a persisted user message plus a durable
+/// `USER_MESSAGE` signal (see `SessionTaskWaker`). The message is picked up by
+/// the next reason iteration (which re-reads full history); the signal governs
+/// whether the loop runs that next iteration. Draining it:
+/// - at the `act`→`reason` boundary delivers a wake that arrived **mid-turn**
+///   at the very next reason, so an active parent reacts without ending its
+///   turn (EVE-681); and
+/// - at a final-answer `reason` boundary decides continue-vs-idle for a wake
+///   that arrived as the turn wound down.
+///
+/// Because `consume_pending_signals` is a destructive read, a wake drained at
+/// the act boundary is not seen again by the end-of-turn drain — mid-turn XOR
+/// next-turn, never both.
+fn drains_wake_signals_after(completed_activity: &str, reason_final_answer: bool) -> bool {
+    match completed_activity {
+        "act" => true,
+        "reason" => reason_final_answer,
+        _ => false,
+    }
+}
+
+/// Consume and count queued `USER_MESSAGE` wakes for `workflow_id` when this
+/// activity boundary is a drain point (see [`drains_wake_signals_after`]).
+/// Returns 0 without touching the store at non-drain boundaries.
+async fn count_drained_wakes<S: TaskStore>(
+    store: &Arc<S>,
+    workflow_id: Uuid,
+    completed_activity: &str,
+    reason_final_answer: bool,
+) -> Result<usize> {
+    if !drains_wake_signals_after(completed_activity, reason_final_answer) {
+        return Ok(0);
+    }
+    Ok(store
+        .consume_pending_signals(workflow_id)
+        .await
+        .map_err(|error| anyhow::anyhow!("Failed to consume workflow signals: {}", error))?
+        .into_iter()
+        .filter(|signal| signal.signal_type == everruns_durable::signal_types::USER_MESSAGE)
+        .count())
 }
 
 async fn enqueue_reason_task<S: TaskStore>(
@@ -1402,6 +1455,175 @@ mod tests {
     use everruns_core::error::Result as CoreResult;
     use std::collections::HashMap;
     use std::sync::atomic::AtomicBool;
+
+    // ---- EVE-681: mid-turn task wake drain ----
+
+    fn user_message_signal() -> everruns_durable::WorkflowSignal {
+        everruns_durable::WorkflowSignal::new(
+            everruns_durable::signal_types::USER_MESSAGE,
+            serde_json::json!({}),
+        )
+    }
+
+    /// `TaskStore` stub returning a fixed set of pending signals and counting
+    /// how many times `consume_pending_signals` is called.
+    #[derive(Clone)]
+    struct RecordingStore {
+        signals: Vec<everruns_durable::WorkflowSignal>,
+        consume_calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl TaskStore for RecordingStore {
+        async fn register_worker(&self, _worker: WorkerInfo) -> Result<(), StoreError> {
+            Ok(())
+        }
+        async fn worker_heartbeat(
+            &self,
+            _worker_id: &str,
+            _current_load: usize,
+            _accepting_tasks: bool,
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
+        async fn deregister_worker(&self, _worker_id: &str) -> Result<usize, StoreError> {
+            Ok(0)
+        }
+        async fn claim_task(
+            &self,
+            _worker_id: &str,
+            _activity_types: &[String],
+            _max_tasks: usize,
+        ) -> Result<Vec<ClaimedTask>, StoreError> {
+            Ok(vec![])
+        }
+        async fn heartbeat_task(
+            &self,
+            _task_id: Uuid,
+            _worker_id: &str,
+            _details: Option<serde_json::Value>,
+        ) -> Result<HeartbeatResponse, StoreError> {
+            Ok(HeartbeatResponse {
+                accepted: true,
+                should_cancel: false,
+            })
+        }
+        async fn get_workflow_status(
+            &self,
+            _workflow_id: Uuid,
+        ) -> Result<WorkflowStatus, StoreError> {
+            Ok(WorkflowStatus::Running)
+        }
+        async fn record_activity_started(&self, _task: &ClaimedTask, _worker_id: &str) {}
+        async fn complete_task_and_record(
+            &self,
+            _task: &ClaimedTask,
+            _worker_id: &str,
+            _output: serde_json::Value,
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
+        async fn fail_task_and_record(
+            &self,
+            _task: &ClaimedTask,
+            _error: &str,
+        ) -> Result<TaskFailureOutcome, StoreError> {
+            Ok(TaskFailureOutcome::MovedToDlq)
+        }
+        async fn enqueue_task_and_record(
+            &self,
+            _workflow_id: Uuid,
+            _activity_id: String,
+            _activity_type: String,
+            _input: serde_json::Value,
+        ) -> Result<Uuid, StoreError> {
+            Ok(Uuid::now_v7())
+        }
+        async fn update_workflow_status(
+            &self,
+            _workflow_id: Uuid,
+            _status: WorkflowStatus,
+            _output: Option<serde_json::Value>,
+            _error: Option<WorkflowError>,
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
+        async fn complete_workflow(
+            &self,
+            _workflow_id: Uuid,
+            _event_output: serde_json::Value,
+            _stored_output: Option<serde_json::Value>,
+            _error: Option<WorkflowError>,
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
+        async fn consume_pending_signals(
+            &self,
+            _workflow_id: Uuid,
+        ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
+            self.consume_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(self.signals.clone())
+        }
+    }
+
+    #[test]
+    fn wake_signals_drain_at_act_and_final_reason_boundaries() {
+        // `act` always precedes another reason → the mid-turn delivery point.
+        assert!(drains_wake_signals_after("act", false));
+        // A final-answer reason drains to decide continue-vs-idle.
+        assert!(drains_wake_signals_after("reason", true));
+        // A tool-calling reason does not drain; the following `act` will.
+        assert!(!drains_wake_signals_after("reason", false));
+        // Turn start and unknown activities never drain.
+        assert!(!drains_wake_signals_after("process_input", false));
+        assert!(!drains_wake_signals_after("input", false));
+    }
+
+    #[tokio::test]
+    async fn act_boundary_drains_and_counts_only_user_message_wakes() {
+        // Two wakes plus an unrelated signal accrued during the turn.
+        let store = Arc::new(RecordingStore {
+            signals: vec![
+                user_message_signal(),
+                everruns_durable::WorkflowSignal::new(
+                    everruns_durable::signal_types::CANCEL,
+                    serde_json::json!({}),
+                ),
+                user_message_signal(),
+            ],
+            consume_calls: Arc::new(AtomicUsize::new(0)),
+        });
+
+        let count = count_drained_wakes(&store, Uuid::now_v7(), "act", false)
+            .await
+            .expect("act boundary drains");
+
+        // Only USER_MESSAGE wakes count; the cancel signal is ignored here.
+        assert_eq!(count, 2);
+        assert_eq!(store.consume_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn tool_calling_reason_does_not_drain_wakes() {
+        let store = Arc::new(RecordingStore {
+            signals: vec![user_message_signal()],
+            consume_calls: Arc::new(AtomicUsize::new(0)),
+        });
+
+        // A reason that emitted tool calls (`reason_final_answer = false`) must
+        // not consume signals — the following `act` boundary owns that drain,
+        // so the wake is delivered exactly once.
+        let count = count_drained_wakes(&store, Uuid::now_v7(), "reason", false)
+            .await
+            .expect("non-drain boundary");
+
+        assert_eq!(count, 0);
+        assert_eq!(
+            store.consume_calls.load(Ordering::SeqCst),
+            0,
+            "must not touch the signal store at a non-drain boundary"
+        );
+    }
 
     #[test]
     fn parse_resume_state_allows_missing_field() {
