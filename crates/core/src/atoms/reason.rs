@@ -41,7 +41,9 @@ use crate::events::{
     ReasonThinkingStartedData, RecoveryMode, TokenUsage, ToolDefinitionSummary,
     TranscriptRepairAction, TranscriptRepairedData,
 };
-use crate::llm_retry::is_transient_error_message;
+use crate::llm_retry::{
+    LlmRetryConfig, RetryMetadata, is_transient_error_message, is_transient_stream_error,
+};
 use crate::message::{Message, MessageRole};
 use crate::message_retriever::MessageRetriever;
 use crate::openresponses_protocol::{
@@ -353,6 +355,32 @@ fn stream_event_advances_stall_deadline(event: &LlmStreamEvent) -> bool {
         | LlmStreamEvent::Done(_)
         | LlmStreamEvent::Error(_) => false,
     }
+}
+
+fn should_retry_stream_error(
+    error: &crate::driver_registry::LlmStreamError,
+    retry_attempts: u32,
+    max_retries: u32,
+    has_output: bool,
+) -> bool {
+    retry_attempts < max_retries && !has_output && is_transient_stream_error(error)
+}
+
+fn merge_retry_metadata(
+    existing: Option<RetryMetadata>,
+    additional: &RetryMetadata,
+) -> Option<RetryMetadata> {
+    if !additional.had_retries() {
+        return existing;
+    }
+
+    let mut merged = existing.unwrap_or_default();
+    merged.attempts += additional.attempts;
+    merged.total_retry_wait += additional.total_retry_wait;
+    if additional.last_rate_limit_info.is_some() {
+        merged.last_rate_limit_info = additional.last_rate_limit_info.clone();
+    }
+    Some(merged)
 }
 
 fn unix_now_secs() -> u64 {
@@ -1095,7 +1123,8 @@ impl ReasonAtom {
                 // retry attempt causes duplicate error messages in the UI.
                 // The durable worker emits a single error event when all retries
                 // are exhausted (DLQ).
-                let is_transient = is_transient_error_message(&error_msg);
+                let is_transient = e.is_transient_llm_error()
+                    || (e.llm_error_kind().is_none() && is_transient_error_message(&error_msg));
                 let mut output_message_id = None;
 
                 if !is_transient {
@@ -1804,6 +1833,8 @@ impl ReasonAtom {
         // 14. Process stream with batched output.message.delta emissions
         // Batch deltas every 100ms to reduce event volume while providing real-time feedback
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
+        let retry_config = LlmRetryConfig::default();
+        let mut stream_retry_metadata = RetryMetadata::default();
         let (
             text,
             thinking,
@@ -1812,7 +1843,7 @@ impl ReasonAtom {
             completion_metadata,
             time_to_first_token_ms,
             pending_delta,
-        ) = {
+        ) = 'stream_attempt: loop {
             let mut stream = match chat_driver
                 .chat_completion_stream(llm_messages_for_call.clone(), &llm_config)
                 .await
@@ -2189,6 +2220,7 @@ impl ReasonAtom {
             let mut thinking_signature: Option<String> = None;
             let mut tool_calls = Vec::new();
             let mut completion_metadata: Option<LlmCompletionMetadata> = None;
+            let mut stream_has_output = false;
             let mut pending_delta = String::new();
             let mut pending_thinking_delta = String::new();
             let mut last_delta_emit = Instant::now();
@@ -2254,6 +2286,7 @@ impl ReasonAtom {
                         if delta.is_empty() {
                             continue;
                         }
+                        stream_has_output = true;
                         // Track time-to-first-token on first non-empty delta
                         if time_to_first_token_ms.is_none() {
                             let ttft = llm_start.elapsed().as_millis() as u64;
@@ -2323,6 +2356,7 @@ impl ReasonAtom {
                         if delta.is_empty() {
                             continue;
                         }
+                        stream_has_output = true;
                         if let Some(t) = append_guarded_thinking_delta(
                             &mut armed_guardrails,
                             &mut thinking,
@@ -2374,6 +2408,7 @@ impl ReasonAtom {
                         }
                     }
                     LlmStreamEvent::ThinkingSignature(signature) => {
+                        stream_has_output = true;
                         // Capture the cryptographic signature for thinking content (required to send it back)
                         tracing::debug!(
                             session_id = %session_id,
@@ -2390,6 +2425,7 @@ impl ReasonAtom {
                         summary,
                         token_count,
                     } => {
+                        stream_has_output = true;
                         // Preserve the opaque artifact as the assistant message's
                         // thinking_signature so the next request can replay
                         // reasoning context, and emit a durable reason.item event
@@ -2430,6 +2466,7 @@ impl ReasonAtom {
                         }
                     }
                     LlmStreamEvent::ToolCalls(calls) => {
+                        stream_has_output |= !calls.is_empty();
                         tool_calls = calls;
                     }
                     LlmStreamEvent::Done(metadata) => {
@@ -2524,6 +2561,30 @@ impl ReasonAtom {
                             break;
                         }
 
+                        if should_retry_stream_error(
+                            &err,
+                            stream_retry_metadata.attempts,
+                            retry_config.max_retries,
+                            stream_has_output,
+                        ) {
+                            let wait_duration =
+                                retry_config.calculate_backoff(stream_retry_metadata.attempts);
+                            tracing::warn!(
+                                session_id = %session_id,
+                                turn_id = %context.turn_id,
+                                attempt = stream_retry_metadata.attempts + 1,
+                                max_retries = retry_config.max_retries,
+                                wait_secs = wait_duration.as_secs_f64(),
+                                error_code = err.code.as_deref().unwrap_or("none"),
+                                error_status = err.status,
+                                error = %err,
+                                "ReasonAtom: transient stream error before output, retrying"
+                            );
+                            stream_retry_metadata.record_retry(wait_duration, None);
+                            tokio::time::sleep(wait_duration).await;
+                            continue 'stream_attempt;
+                        }
+
                         // No useful output collected — treat as a real failure.
                         let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
                         let event_context = EventContext::from_atom_context(context).with_span(
@@ -2538,7 +2599,7 @@ impl ReasonAtom {
                             tools_summary,
                             runtime_agent.model.clone(),
                             Some(model_with_provider.provider_type.to_string()),
-                            err.clone(),
+                            err.to_string(),
                             Some(llm_duration_ms),
                             time_to_first_token_ms,
                         );
@@ -2550,7 +2611,7 @@ impl ReasonAtom {
                                 generation_data,
                             ))
                             .await;
-                        return Err(AgentLoopError::llm(err));
+                        return Err(AgentLoopError::llm_kind(err.kind(), err.to_string()));
                     }
                 }
                 // Per-event heartbeat after processing the event, so accumulated_len
@@ -2566,7 +2627,12 @@ impl ReasonAtom {
                     last_stream_heartbeat = Instant::now();
                 }
             }
-            (
+            if let Some(metadata) = completion_metadata.as_mut() {
+                metadata.retry_metadata =
+                    merge_retry_metadata(metadata.retry_metadata.take(), &stream_retry_metadata);
+            }
+
+            break 'stream_attempt (
                 text,
                 thinking,
                 thinking_signature,
@@ -2574,7 +2640,7 @@ impl ReasonAtom {
                 completion_metadata,
                 time_to_first_token_ms,
                 pending_delta,
-            )
+            );
         };
         let (mut text, mut thinking, thinking_signature, mut tool_calls) =
             (text, thinking, thinking_signature, tool_calls);

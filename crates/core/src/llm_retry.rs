@@ -433,6 +433,31 @@ pub fn is_transient_error_message(message: &str) -> bool {
     .any(|needle| msg.contains(needle))
 }
 
+/// Classify an in-band provider error using structured fields first.
+///
+/// Machine-readable provider codes are authoritative, followed by HTTP status.
+/// Message matching is retained only for legacy drivers that cannot preserve
+/// either field.
+pub fn is_transient_stream_error(error: &crate::driver_registry::LlmStreamError) -> bool {
+    if let Some(code) = error.code.as_deref()
+        && let Some(kind) = crate::error::LlmErrorKind::from_provider_code(code)
+    {
+        return matches!(
+            kind,
+            crate::error::LlmErrorKind::RateLimited | crate::error::LlmErrorKind::Unavailable
+        );
+    }
+
+    if let Some(status) = error
+        .status
+        .and_then(|status| reqwest::StatusCode::from_u16(status).ok())
+    {
+        return is_transient_error(status);
+    }
+
+    is_transient_error_message(&error.message)
+}
+
 // ============================================================================
 // Generic retry executor
 // ============================================================================
@@ -794,6 +819,32 @@ mod tests {
             "invalid_request_error: bad tool schema"
         ));
         assert!(!is_transient_error_message("Model not available: gpt-99"));
+    }
+
+    #[test]
+    fn structured_stream_error_prefers_code_and_status_over_message() {
+        use crate::driver_registry::LlmStreamError;
+
+        assert!(is_transient_stream_error(&LlmStreamError::provider(
+            Some("processing_error"),
+            None,
+            "An error occurred while processing your request.",
+        )));
+        assert!(is_transient_stream_error(&LlmStreamError::provider(
+            None::<String>,
+            Some(503),
+            "opaque failure",
+        )));
+        assert!(!is_transient_stream_error(&LlmStreamError::provider(
+            Some("invalid_request_error"),
+            Some(503),
+            "server unavailable",
+        )));
+        assert!(!is_transient_stream_error(&LlmStreamError::provider(
+            Some("insufficient_quota"),
+            Some(429),
+            "rate limit",
+        )));
     }
 
     #[test]
