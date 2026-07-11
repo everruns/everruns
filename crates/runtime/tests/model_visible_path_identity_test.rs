@@ -275,12 +275,27 @@ async fn assert_persistence_identity(store: Arc<dyn SessionFileSystem>, wrap_mou
     assert_no_forbidden_prefixes(distill_value, &expectations, "distill_output");
 }
 
-fn assert_file_tool_schemas(store: Arc<dyn SessionFileSystem>) {
+async fn assert_file_tool_schemas(store: Arc<dyn SessionFileSystem>) {
     let expectations = PathIdentityExpectations::for_store(store.as_ref());
-    let cap = FileSystemCapability;
-    for tool in cap.tools() {
-        let schema = tool.parameters_schema();
-        assert_no_forbidden_prefixes(&schema, &expectations, tool.name());
+    let ctx = SystemPromptContext {
+        session_id: SessionId::from_seed(7507),
+        locale: None,
+        file_store: Some(store),
+        model: None,
+    };
+    let registry = CapabilityRegistry::runtime_builtins();
+    let collected = collect_capabilities(
+        &[SESSION_FILE_SYSTEM_CAPABILITY_ID.to_string()],
+        &registry,
+        &ctx,
+    )
+    .await;
+    let mut tools = collected.tool_definitions;
+    for hook in &collected.tool_definition_hooks {
+        tools = hook.transform(tools);
+    }
+    for def in &tools {
+        assert_no_forbidden_prefixes(def.parameters(), &expectations, def.name());
     }
 }
 
@@ -307,7 +322,7 @@ async fn run_backend_suite(store: Arc<dyn SessionFileSystem>, wrap_mount: bool) 
         .await;
     assert_system_prompt_for_store(store.clone()).await;
     assert_persistence_identity(store.clone(), wrap_mount).await;
-    assert_file_tool_schemas(store);
+    assert_file_tool_schemas(store).await;
 }
 
 #[tokio::test]
@@ -392,7 +407,11 @@ async fn collected_capability_prompt_uses_store_root() {
     assert_system_prompt(&prompt, &expectations);
     assert_no_forbidden_prefixes(&json!(prompt), &expectations, "collected prompt");
 
-    for def in &collected.tool_definitions {
+    let mut tools = collected.tool_definitions;
+    for hook in &collected.tool_definition_hooks {
+        tools = hook.transform(tools);
+    }
+    for def in &tools {
         let name = def.name();
         if name.starts_with("read_")
             || name.starts_with("write_")
