@@ -817,6 +817,19 @@ pub trait Capability: Send + Sync {
         None
     }
 
+    /// Returns a handler invoked when a turn fails with a *terminal* LLM error
+    /// (one that will not be retried), before the user-facing error message is
+    /// emitted. The handler may perform a side effect (e.g. schedule a
+    /// continuation) and/or return extra fields to augment the user-facing error
+    /// copy. This is the platform seam for capability-owned error recovery; the
+    /// reason atom invokes it generically and knows nothing about any specific
+    /// capability's behavior. See [`crate::llm_error_handler`].
+    ///
+    /// By default, returns None (no error handling).
+    fn llm_error_handler(&self) -> Option<Arc<dyn crate::llm_error_handler::LlmErrorHandler>> {
+        None
+    }
+
     /// Returns key/value [`Fact`]s this capability contributes to the model.
     ///
     /// Facts are routed by their [`Volatility`] so prompt caching is preserved:

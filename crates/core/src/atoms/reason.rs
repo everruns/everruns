@@ -782,67 +782,26 @@ impl ReasonAtom {
         self
     }
 
-    /// Schedule a one-shot continuation for a usage-limit error, firing shortly
-    /// after the provider's reported reset time. Returns `true` when a
-    /// continuation was actually scheduled (so the caller may promise automatic
-    /// resumption in the error copy). Best-effort: a missing schedule store,
-    /// absent reset time, or store failure logs and returns `false` rather than
-    /// failing the turn.
-    async fn schedule_usage_limit_continuation(
+    /// Collect the [`LlmErrorHandler`]s contributed by the active capabilities,
+    /// paired with each capability's per-agent config. Handlers are invoked
+    /// generically on the terminal-error path; the reason atom has no knowledge
+    /// of any specific capability's behavior. Capabilities that contribute no
+    /// handler — the common case — are skipped at zero allocation cost.
+    fn collect_llm_error_handlers(
         &self,
-        session_id: SessionId,
-        source_error: &UserFacingError,
-        cfg: &crate::capabilities::AutoContinueConfig,
-    ) -> bool {
-        let Some(store) = &self.schedule_store else {
-            return false;
-        };
-        let Some(resets_at) = source_error
-            .fields
-            .get("resets_at")
-            .and_then(|v| v.as_i64())
-        else {
-            return false;
-        };
-        let Some(reset_time) = chrono::DateTime::from_timestamp(resets_at, 0) else {
-            return false;
-        };
-
-        // Fire `delay_seconds` after the reset. Clamp into the future so a
-        // stale/past reset (clock skew, limit already cleared) still fires
-        // instead of being dropped by the store's past-time next-trigger rule.
-        let now = chrono::Utc::now();
-        let delay = chrono::Duration::seconds(cfg.delay_seconds);
-        let scheduled_at = (reset_time + delay).max(now + delay);
-
-        match store
-            .create_schedule(
-                session_id,
-                cfg.prompt.clone(),
-                None,
-                Some(scheduled_at),
-                "UTC".to_string(),
-            )
-            .await
-        {
-            Ok(schedule) => {
-                tracing::info!(
-                    session_id = %session_id,
-                    schedule_id = %schedule.id,
-                    scheduled_at = %scheduled_at,
-                    "usage_limit_auto_continue: scheduled continuation after usage-limit reset"
-                );
-                true
-            }
-            Err(e) => {
-                tracing::warn!(
-                    session_id = %session_id,
-                    error = %e,
-                    "usage_limit_auto_continue: failed to schedule continuation"
-                );
-                false
-            }
-        }
+        resolved_capability_configs: &[crate::AgentCapabilityConfig],
+    ) -> Vec<(
+        Arc<dyn crate::llm_error_handler::LlmErrorHandler>,
+        serde_json::Value,
+    )> {
+        resolved_capability_configs
+            .iter()
+            .filter_map(|cfg| {
+                let cap = self.capability_registry.get(cfg.capability_ref.as_str())?;
+                let handler = cap.llm_error_handler()?;
+                Some((handler, cfg.config.clone()))
+            })
+            .collect()
     }
 
     /// Set the file store for capabilities that need filesystem access.
@@ -1113,18 +1072,17 @@ impl ReasonAtom {
             }
         };
 
-        let (error_disclosure, error_context, auto_continue_cfg, call_result) = match assembled {
+        let (error_disclosure, error_context, error_handlers, call_result) = match assembled {
             Ok(assembled) => {
                 let error_disclosure = crate::capabilities::resolve_error_disclosure(
                     &assembled.resolved_capability_configs,
                     error_disclosure_override(&assembled.messages).as_deref(),
                 );
-                // Resolved before `assembled` is consumed by the LLM call so the
-                // terminal-error path below knows whether auto-continue is active
-                // even though it no longer has the capability configs.
-                let auto_continue_cfg = crate::capabilities::resolve_usage_limit_auto_continue(
-                    &assembled.resolved_capability_configs,
-                );
+                // Collected before `assembled` is consumed by the LLM call so the
+                // terminal-error path below can run capability error handlers even
+                // though it no longer has the capability configs.
+                let error_handlers =
+                    self.collect_llm_error_handlers(&assembled.resolved_capability_configs);
                 let error_context = UserFacingErrorContext::default()
                     .with_provider(assembled.model_with_provider.provider_type.to_string())
                     .with_model_id(assembled.model_with_provider.model.clone());
@@ -1142,17 +1100,12 @@ impl ReasonAtom {
                         assembled,
                     )
                     .await;
-                (
-                    error_disclosure,
-                    error_context,
-                    auto_continue_cfg,
-                    call_result,
-                )
+                (error_disclosure, error_context, error_handlers, call_result)
             }
             Err(error) => (
                 ErrorDisclosure::default(),
                 UserFacingErrorContext::default(),
-                None,
+                Vec::new(),
                 Err(error),
             ),
         };
@@ -1208,24 +1161,6 @@ impl ReasonAtom {
                 let error_msg = e.to_string();
                 let mut source_error = e.user_facing_error(error_context);
 
-                // Usage-limit auto-continue: when the capability is active and
-                // the provider reported a concrete reset time, schedule a
-                // one-shot continuation shortly after the reset and flag the
-                // error so its copy promises automatic resumption. The `auto_continue`
-                // flag is only set when the continuation was actually scheduled,
-                // so the copy never over-promises.
-                if source_error.code == crate::user_facing_error_codes::PROVIDER_USAGE_LIMIT_REACHED
-                    && let Some(cfg) = &auto_continue_cfg
-                    && self
-                        .schedule_usage_limit_continuation(context.session_id, &source_error, cfg)
-                        .await
-                {
-                    source_error = source_error.with_field("auto_continue", true);
-                }
-
-                let user_error = source_error.apply_disclosure(error_disclosure, Some(&error_msg));
-                let user_error_text = user_error.fallback_message();
-
                 // Only emit user-facing error events for non-transient errors.
                 // Transient errors (server errors, rate limits, timeouts) will be
                 // retried by the durable task engine. Emitting error events on each
@@ -1234,6 +1169,36 @@ impl ReasonAtom {
                 // are exhausted (DLQ).
                 let is_transient = e.is_transient_llm_error()
                     || (e.llm_error_kind().is_none() && is_transient_error_message(&error_msg));
+
+                // Capability error-handler seam: on the terminal (non-retried)
+                // error path, let active capabilities react — perform a side
+                // effect and/or augment the user-facing error fields — before the
+                // message is built. The atom stays behavior-agnostic; each handler
+                // (e.g. `usage_limit_auto_continue`) owns its own logic.
+                if !is_transient && !error_handlers.is_empty() {
+                    let services = crate::llm_error_handler::LlmErrorHandlerServices {
+                        schedule_store: self.schedule_store.clone(),
+                    };
+                    for (handler, config) in &error_handlers {
+                        let outcome = {
+                            let ctx = crate::llm_error_handler::LlmErrorContext {
+                                session_id: context.session_id,
+                                error_code: &source_error.code,
+                                error_fields: &source_error.fields,
+                                config,
+                                services: &services,
+                            };
+                            handler.on_llm_error(&ctx).await
+                        };
+                        for (key, value) in outcome.extra_error_fields {
+                            source_error = source_error.with_field(key, value);
+                        }
+                    }
+                }
+
+                let user_error = source_error.apply_disclosure(error_disclosure, Some(&error_msg));
+                let user_error_text = user_error.fallback_message();
+
                 let mut output_message_id = None;
 
                 if !is_transient {

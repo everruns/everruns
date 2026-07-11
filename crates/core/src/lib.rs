@@ -152,6 +152,7 @@ pub mod driver_registry;
 pub mod error;
 pub mod guardrail_checks;
 pub mod guardrail_gallery;
+pub mod llm_error_handler;
 pub mod llm_retry;
 pub mod message;
 pub mod message_filter;
@@ -205,6 +206,9 @@ pub use config_layer::{
 pub use error::{
     AgentLoopError, FileSystemError, FileSystemErrorClass, LlmError, LlmErrorKind, Result,
     StoreResultExt, classify_fs_error, from_json, json_val,
+};
+pub use llm_error_handler::{
+    LlmErrorContext, LlmErrorHandler, LlmErrorHandlerOutcome, LlmErrorHandlerServices,
 };
 pub use message::{
     ContentPart, ContentType, Controls, ExternalActor, ImageContentPart, ImageFileContentPart,

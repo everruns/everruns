@@ -3,20 +3,29 @@
 // When an LLM subscription/plan usage limit is hit — classified as
 // `provider_usage_limit_reached` with a concrete `resets_at` timestamp (e.g. the
 // ChatGPT/Codex `usage_limit_reached` body) — this capability makes the session
-// resume on its own once the limit resets. It contributes no tools; its presence
-// is the toggle, consumed by the reason atom's terminal-error path, which:
+// resume on its own once the limit resets.
 //
-//   1. appends a "we'll continue automatically" promise to the user-facing error
-//      copy (by setting the `auto_continue` error field), and
-//   2. schedules a one-shot session continuation at `resets_at + delay_seconds`
-//      that re-injects `prompt` to resume the interrupted work.
+// The behavior is fully encapsulated behind the platform's `LlmErrorHandler`
+// seam (`crate::llm_error_handler`): the capability contributes no tools and no
+// reason-atom special-casing. It supplies an error handler that, on the terminal
+// error path, when the error code matches:
 //
-// The promise (1) is only added when the continuation (2) was actually
-// scheduled, so the copy never over-promises.
+//   1. schedules a one-shot session continuation at `resets_at + delay_seconds`
+//      that re-injects `prompt` to resume the interrupted work, and
+//   2. returns an `auto_continue` error field so the user-facing copy promises
+//      automatic resumption.
+//
+// (2) is returned only when (1) actually succeeded, so the copy never
+// over-promises. The reason atom invokes this handler generically alongside any
+// other capability's handler — new error-recovery extensions are built the same
+// way, without touching the atom.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 use crate::capability_types::AgentCapabilityConfig;
+use crate::llm_error_handler::{LlmErrorContext, LlmErrorHandler, LlmErrorHandlerOutcome};
+use async_trait::async_trait;
 use serde_json::{Value, json};
+use std::sync::Arc;
 
 pub const USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID: &str = "usage_limit_auto_continue";
 
@@ -50,37 +59,40 @@ impl Default for AutoContinueConfig {
     }
 }
 
+impl AutoContinueConfig {
+    /// Parse settings from a single capability config JSON value, falling back
+    /// to defaults for any missing, blank, or out-of-range field.
+    pub fn from_config_value(config: &Value) -> Self {
+        let delay_seconds = config
+            .get("delay_seconds")
+            .and_then(Value::as_i64)
+            .filter(|secs| (0..=MAX_CONTINUATION_DELAY_SECS).contains(secs))
+            .unwrap_or(DEFAULT_CONTINUATION_DELAY_SECS);
+
+        let prompt = config
+            .get("prompt")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|p| !p.is_empty())
+            .unwrap_or(DEFAULT_CONTINUATION_PROMPT)
+            .to_string();
+
+        Self {
+            delay_seconds,
+            prompt,
+        }
+    }
+}
+
 /// Resolve the auto-continue settings for a turn, or `None` when the capability
-/// is not enabled for the agent/session. Mirrors `resolve_error_disclosure`:
-/// config is read from the enabled capability's entry, falling back to defaults
-/// for any missing or out-of-range field.
+/// is not enabled for the agent/session.
 pub fn resolve_usage_limit_auto_continue(
     configs: &[AgentCapabilityConfig],
 ) -> Option<AutoContinueConfig> {
-    let config = configs
+    configs
         .iter()
-        .find(|config| config.capability_id() == USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID)?;
-
-    let delay_seconds = config
-        .config
-        .get("delay_seconds")
-        .and_then(Value::as_i64)
-        .filter(|secs| (0..=MAX_CONTINUATION_DELAY_SECS).contains(secs))
-        .unwrap_or(DEFAULT_CONTINUATION_DELAY_SECS);
-
-    let prompt = config
-        .config
-        .get("prompt")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|p| !p.is_empty())
-        .unwrap_or(DEFAULT_CONTINUATION_PROMPT)
-        .to_string();
-
-    Some(AutoContinueConfig {
-        delay_seconds,
-        prompt,
-    })
+        .find(|config| config.capability_id() == USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID)
+        .map(|config| AutoContinueConfig::from_config_value(&config.config))
 }
 
 pub struct UsageLimitAutoContinueCapability;
@@ -120,6 +132,10 @@ impl Capability for UsageLimitAutoContinueCapability {
 
     fn category(&self) -> Option<&str> {
         Some("Core")
+    }
+
+    fn llm_error_handler(&self) -> Option<Arc<dyn LlmErrorHandler>> {
+        Some(Arc::new(UsageLimitAutoContinueHandler))
     }
 
     fn config_schema(&self) -> Option<Value> {
@@ -165,6 +181,72 @@ impl Capability for UsageLimitAutoContinueCapability {
             return Err("prompt must be a string".to_string());
         }
         Ok(())
+    }
+}
+
+/// Error handler that encapsulates the auto-continue behavior. Invoked by the
+/// reason atom through the generic `LlmErrorHandler` seam on a terminal LLM
+/// error; the reason atom itself has no knowledge of usage limits or scheduling.
+struct UsageLimitAutoContinueHandler;
+
+#[async_trait]
+impl LlmErrorHandler for UsageLimitAutoContinueHandler {
+    async fn on_llm_error(&self, ctx: &LlmErrorContext<'_>) -> LlmErrorHandlerOutcome {
+        // Only act on the usage-limit error this capability recovers from.
+        if ctx.error_code != crate::user_facing_error_codes::PROVIDER_USAGE_LIMIT_REACHED {
+            return LlmErrorHandlerOutcome::noop();
+        }
+        // Best-effort: without a schedule store or a concrete reset time there
+        // is nothing to schedule, so make no auto-resume promise.
+        let Some(store) = &ctx.services.schedule_store else {
+            return LlmErrorHandlerOutcome::noop();
+        };
+        let Some(resets_at) = ctx.error_fields.get("resets_at").and_then(|v| v.as_i64()) else {
+            return LlmErrorHandlerOutcome::noop();
+        };
+        let Some(reset_time) = chrono::DateTime::from_timestamp(resets_at, 0) else {
+            return LlmErrorHandlerOutcome::noop();
+        };
+
+        let cfg = AutoContinueConfig::from_config_value(ctx.config);
+
+        // Fire `delay_seconds` after the reset. Clamp into the future so a
+        // stale/past reset (clock skew, limit already cleared) still fires
+        // instead of being dropped by the store's past-time next-trigger rule.
+        let now = chrono::Utc::now();
+        let delay = chrono::Duration::seconds(cfg.delay_seconds);
+        let scheduled_at = (reset_time + delay).max(now + delay);
+
+        match store
+            .create_schedule(
+                ctx.session_id,
+                cfg.prompt.clone(),
+                None,
+                Some(scheduled_at),
+                "UTC".to_string(),
+            )
+            .await
+        {
+            Ok(schedule) => {
+                tracing::info!(
+                    session_id = %ctx.session_id,
+                    schedule_id = %schedule.id,
+                    scheduled_at = %scheduled_at,
+                    "usage_limit_auto_continue: scheduled continuation after usage-limit reset"
+                );
+                // Unlock the "we'll continue automatically" message copy only
+                // now that a continuation was actually scheduled.
+                LlmErrorHandlerOutcome::noop().with_error_field("auto_continue", true)
+            }
+            Err(e) => {
+                tracing::warn!(
+                    session_id = %ctx.session_id,
+                    error = %e,
+                    "usage_limit_auto_continue: failed to schedule continuation"
+                );
+                LlmErrorHandlerOutcome::noop()
+            }
+        }
     }
 }
 
@@ -228,5 +310,164 @@ mod tests {
                 .is_err()
         );
         assert!(cap.validate_config(&json!({ "prompt": 5 })).is_err());
+    }
+
+    // ------------------------------------------------------------------------
+    // Handler tests (the encapsulated behavior, exercised via the seam)
+    // ------------------------------------------------------------------------
+
+    use crate::llm_error_handler::{LlmErrorContext, LlmErrorHandler, LlmErrorHandlerServices};
+    use crate::session_schedule::SessionSchedule;
+    use crate::traits::SessionScheduleStore;
+    use crate::typed_id::{PrincipalId, ScheduleId, SessionId};
+    use crate::user_facing_error::UserFacingErrorFields;
+    use crate::user_facing_error_codes;
+    use std::sync::Mutex;
+
+    /// Records the one-shot schedules the handler creates so tests can assert on
+    /// the description and fire time.
+    #[derive(Default)]
+    struct RecordingScheduleStore {
+        created: Mutex<Vec<(String, Option<chrono::DateTime<chrono::Utc>>)>>,
+    }
+
+    #[async_trait]
+    impl SessionScheduleStore for RecordingScheduleStore {
+        async fn create_schedule(
+            &self,
+            session_id: SessionId,
+            description: String,
+            cron_expression: Option<String>,
+            scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
+            timezone: String,
+        ) -> crate::error::Result<SessionSchedule> {
+            self.created
+                .lock()
+                .unwrap()
+                .push((description.clone(), scheduled_at));
+            Ok(SessionSchedule {
+                id: ScheduleId::new(),
+                session_id,
+                owner_principal_id: PrincipalId::new(),
+                resolved_owner_user_id: None,
+                owner: None,
+                effective_owner: None,
+                description,
+                cron_expression: cron_expression.clone(),
+                scheduled_at,
+                timezone,
+                enabled: true,
+                schedule_type: SessionSchedule::derive_type(&cron_expression),
+                next_trigger_at: scheduled_at,
+                last_triggered_at: None,
+                trigger_count: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            })
+        }
+
+        async fn cancel_schedule(
+            &self,
+            _session_id: SessionId,
+            _schedule_id: ScheduleId,
+        ) -> crate::error::Result<SessionSchedule> {
+            unimplemented!("not used by these tests")
+        }
+
+        async fn list_schedules(
+            &self,
+            _session_id: SessionId,
+        ) -> crate::error::Result<Vec<SessionSchedule>> {
+            Ok(vec![])
+        }
+
+        async fn count_active_schedules(
+            &self,
+            _session_id: SessionId,
+        ) -> crate::error::Result<u32> {
+            Ok(0)
+        }
+
+        async fn count_active_org_schedules(&self) -> crate::error::Result<u32> {
+            Ok(0)
+        }
+    }
+
+    fn usage_limit_fields(resets_at: i64) -> UserFacingErrorFields {
+        let mut fields = UserFacingErrorFields::new();
+        fields.insert("resets_at".to_string(), json!(resets_at));
+        fields
+    }
+
+    #[tokio::test]
+    async fn handler_schedules_continuation_and_flags_auto_continue() {
+        let store = Arc::new(RecordingScheduleStore::default());
+        let services = LlmErrorHandlerServices {
+            schedule_store: Some(store.clone()),
+        };
+        let fields = usage_limit_fields(1_783_767_823);
+        let config = json!({ "prompt": "Resume the migration" });
+        let ctx = LlmErrorContext {
+            session_id: SessionId::new(),
+            error_code: user_facing_error_codes::PROVIDER_USAGE_LIMIT_REACHED,
+            error_fields: &fields,
+            config: &config,
+            services: &services,
+        };
+
+        let outcome = UsageLimitAutoContinueHandler.on_llm_error(&ctx).await;
+
+        // Continuation scheduled with the configured prompt.
+        let created = store.created.lock().unwrap();
+        assert_eq!(created.len(), 1);
+        assert_eq!(created[0].0, "Resume the migration");
+        assert!(created[0].1.is_some(), "continuation must have a fire time");
+
+        // Only now is the auto-continue message copy unlocked.
+        assert_eq!(
+            outcome.extra_error_fields.get("auto_continue"),
+            Some(&json!(true))
+        );
+    }
+
+    #[tokio::test]
+    async fn handler_ignores_non_usage_limit_errors() {
+        let store = Arc::new(RecordingScheduleStore::default());
+        let services = LlmErrorHandlerServices {
+            schedule_store: Some(store.clone()),
+        };
+        let fields = usage_limit_fields(1_783_767_823);
+        let config = json!({});
+        let ctx = LlmErrorContext {
+            session_id: SessionId::new(),
+            error_code: user_facing_error_codes::PROVIDER_RATE_LIMITED,
+            error_fields: &fields,
+            config: &config,
+            services: &services,
+        };
+
+        let outcome = UsageLimitAutoContinueHandler.on_llm_error(&ctx).await;
+
+        assert!(store.created.lock().unwrap().is_empty());
+        assert_eq!(outcome, LlmErrorHandlerOutcome::noop());
+    }
+
+    #[tokio::test]
+    async fn handler_makes_no_promise_without_schedule_store() {
+        let services = LlmErrorHandlerServices {
+            schedule_store: None,
+        };
+        let fields = usage_limit_fields(1_783_767_823);
+        let config = json!({});
+        let ctx = LlmErrorContext {
+            session_id: SessionId::new(),
+            error_code: user_facing_error_codes::PROVIDER_USAGE_LIMIT_REACHED,
+            error_fields: &fields,
+            config: &config,
+            services: &services,
+        };
+
+        let outcome = UsageLimitAutoContinueHandler.on_llm_error(&ctx).await;
+        assert_eq!(outcome, LlmErrorHandlerOutcome::noop());
     }
 }

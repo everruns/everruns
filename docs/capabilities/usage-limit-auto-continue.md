@@ -19,9 +19,11 @@ plan usage limit is hit — for example the ChatGPT/Codex `429`
 the limit resets, often hours later. This capability makes the session resume on
 its own once the window clears, so long-running work is not silently stranded.
 
-It contributes **no tools**. Its presence is the toggle: the reason atom's
-terminal-error path consumes it when a turn fails with the
-`provider_usage_limit_reached` error code.
+It contributes **no tools**. The behavior is encapsulated behind a reusable
+platform seam — the capability supplies an *LLM error handler* that the agent
+runtime invokes generically when a turn fails with a terminal error. The runtime
+has no special-casing for usage limits; any capability can provide the same kind
+of error-recovery handler.
 
 ## How It Works
 
