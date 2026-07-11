@@ -1124,7 +1124,7 @@ async fn seed_session_with_raw_events(
 }
 
 #[tokio::test]
-async fn test_session_export_atif_images_omitted_header() {
+async fn test_session_export_atif_image_content_multimodal() {
     use everruns_core::events::InputMessageData;
     use everruns_core::message::{ContentPart, ImageContentPart, ImageFileContentPart, Message};
     use everruns_core::typed_id::ImageId;
@@ -1155,21 +1155,27 @@ async fn test_session_export_atif_images_omitted_header() {
         .get(&format!("/v1/sessions/{}/export?format=atif", session_id))
         .await
         .assert_status(StatusCode::OK);
-    assert_eq!(
-        response
-            .headers()
-            .get("x-atif-images-omitted")
-            .expect("lossiness header"),
-        "2"
-    );
+    // Both images are materialized (URL + file reference), so nothing is
+    // omitted and the lossiness header is absent.
+    assert!(response.headers().get("x-atif-images-omitted").is_none());
     let trajectory = response.json_value();
-    assert_eq!(trajectory["extra"]["images_omitted"], json!(2));
+    assert!(trajectory["extra"].get("images_omitted").is_none());
     let step = &trajectory["steps"][0];
-    assert!(step["message"].as_str().unwrap().contains("[image]"));
-    let refs = step["extra"]["omitted_images"].as_array().expect("refs");
-    assert_eq!(refs[0]["url"], json!("https://example.com/cat.png"));
-    assert_eq!(refs[1]["file_id"], json!(image_id.to_string()));
-    assert_eq!(refs[1]["filename"], json!("cat.png"));
+    // `message` is now a ContentPart array with real image sources, not a
+    // flattened `[image]` marker string.
+    let parts = step["message"]
+        .as_array()
+        .expect("multimodal message array");
+    assert_eq!(parts[0], json!({"type": "text", "text": "look at this"}));
+    assert_eq!(
+        parts[1],
+        json!({"type": "image", "source": {"path": "https://example.com/cat.png"}})
+    );
+    assert_eq!(
+        parts[2],
+        json!({"type": "image", "source": {"path": format!("/v1/images/{image_id}")}})
+    );
+    assert!(step["extra"].get("omitted_images").is_none());
 
     // The default JSONL export never carries the ATIF lossiness header.
     let response = server
@@ -1177,6 +1183,50 @@ async fn test_session_export_atif_images_omitted_header() {
         .await
         .assert_status(StatusCode::OK);
     assert!(response.headers().get("x-atif-images-omitted").is_none());
+}
+
+#[tokio::test]
+async fn test_session_export_atif_unmaterializable_image_sets_header() {
+    use everruns_core::events::InputMessageData;
+    use everruns_core::message::{ContentPart, ImageContentPart, Message};
+
+    let server = TestServer::in_memory().await;
+    let mut message = Message::user("look at this");
+    // An inline image with neither URL nor base64 cannot be materialized, so it
+    // stays a marker and is counted as omitted.
+    message.content.push(ContentPart::Image(ImageContentPart {
+        url: None,
+        base64: None,
+        media_type: Some("image/png".to_string()),
+    }));
+    let session_id = seed_session_with_raw_events(
+        &server,
+        vec![(
+            "input.message",
+            serde_json::to_value(InputMessageData::new(message)).expect("serialize input event"),
+        )],
+    )
+    .await;
+
+    let response = server
+        .get(&format!("/v1/sessions/{}/export?format=atif", session_id))
+        .await
+        .assert_status(StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get("x-atif-images-omitted")
+            .expect("lossiness header"),
+        "1"
+    );
+    let trajectory = response.json_value();
+    assert_eq!(trajectory["extra"]["images_omitted"], json!(1));
+    let step = &trajectory["steps"][0];
+    assert!(step["message"].as_str().unwrap().contains("[image]"));
+    assert_eq!(
+        step["extra"]["omitted_images"],
+        json!([{"media_type": "image/png"}])
+    );
 }
 
 #[tokio::test]
@@ -1223,6 +1273,69 @@ async fn test_session_export_atif_over_cap_returns_413() {
         .get(&format!("/v1/sessions/{}/export", session_id))
         .await
         .assert_status(StatusCode::OK);
+}
+
+#[tokio::test]
+async fn test_session_export_atif_subagent_trajectory_ref() {
+    use everruns_core::events::{InputMessageData, OutputMessageCompletedData, ToolCompletedData};
+    use everruns_core::message::{ContentPart, Message};
+    use everruns_core::tool_types::ToolCall;
+    use everruns_core::typed_id::SessionId as CoreSessionId;
+
+    let server = TestServer::in_memory().await;
+    let child = CoreSessionId::new();
+    let spawn_call = ToolCall {
+        id: "call_spawn".to_string(),
+        name: "spawn_agent".to_string(),
+        arguments: json!({"target": {"type": "subagent"}, "name": "Worker"}),
+    };
+    let spawn_result = json!({
+        "subagent_id": child.to_string(),
+        "name": "Worker",
+        "status": "running",
+        "task_id": "task_123",
+    })
+    .to_string();
+    let session_id = seed_session_with_raw_events(
+        &server,
+        vec![
+            (
+                "input.message",
+                serde_json::to_value(InputMessageData::new(Message::user("delegate this")))
+                    .expect("serialize input event"),
+            ),
+            (
+                "output.message.completed",
+                serde_json::to_value(OutputMessageCompletedData::new(
+                    Message::assistant_with_tools("spawning", vec![spawn_call]),
+                ))
+                .expect("serialize output event"),
+            ),
+            (
+                "tool.completed",
+                serde_json::to_value(ToolCompletedData::success(
+                    "call_spawn".to_string(),
+                    "spawn_agent".to_string(),
+                    vec![ContentPart::text(spawn_result)],
+                    Some(5),
+                ))
+                .expect("serialize tool event"),
+            ),
+        ],
+    )
+    .await;
+
+    let response = server
+        .get(&format!("/v1/sessions/{}/export?format=atif", session_id))
+        .await
+        .assert_status(StatusCode::OK);
+    let trajectory = response.json_value();
+    let refs = &trajectory["steps"][1]["observation"]["results"][0]["subagent_trajectory_ref"];
+    assert_eq!(
+        refs[0]["trajectory_path"],
+        json!(format!("/v1/sessions/{child}/export?format=atif"))
+    );
+    assert_eq!(refs[0]["session_id"], json!(child.to_string()));
 }
 
 /// Seed a session with `n` user messages as `input.message` events, oldest

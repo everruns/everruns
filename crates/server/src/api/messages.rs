@@ -345,11 +345,13 @@ pub struct ExportSessionQuery {
 /// Default (`format=jsonl`): all materialized messages (user, agent) as
 /// newline-delimited JSON, one complete JSON object per line; delta events are
 /// excluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document
-/// folded from the session's event log (see `specs/atif-adoption.md`); when
-/// image content parts were flattened to `"[image]"` markers, the response
-/// carries an `X-Atif-Images-Omitted` header with the total count, and
-/// documents over the 50 MiB `ATIF_EXPORT_MAX_BYTES` cap are rejected with
-/// 413. The response includes `Content-Disposition: attachment` for browser
+/// folded from the session's event log (see `specs/atif-adoption.md`); image
+/// content parts are exported as ATIF multimodal ContentParts. When an image
+/// cannot be materialized (an inline image with neither a URL nor bytes) it is
+/// flattened to an `"[image]"` marker and the response carries an
+/// `X-Atif-Images-Omitted` header with that count (usually 0 and absent).
+/// Documents over the 50 MiB `ATIF_EXPORT_MAX_BYTES` cap are rejected with 413.
+/// The response includes `Content-Disposition: attachment` for browser
 /// download.
 #[utoipa::path(
     get,
@@ -361,7 +363,7 @@ pub struct ExportSessionQuery {
         ("cursor" = Option<String>, Query, description = "ATIF segmented export: opaque continuation cursor from the previous segment")
     ),
     responses(
-        (status = 200, description = "JSONL file with one message per line, or one ATIF trajectory JSON document (with X-Atif-Images-Omitted header when image parts were flattened to markers). With segmented=true, one ATIF segment linked forward by continued_trajectory_ref.", content_type = "application/x-ndjson"),
+        (status = 200, description = "JSONL file with one message per line, or one ATIF trajectory JSON document (images export as multimodal ContentParts; X-Atif-Images-Omitted header only when an image could not be materialized). With segmented=true, one ATIF segment linked forward by continued_trajectory_ref.", content_type = "application/x-ndjson"),
         (status = 400, description = "Invalid ID format, or malformed/foreign segmented-export cursor"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Session not found"),

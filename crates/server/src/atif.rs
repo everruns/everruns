@@ -65,9 +65,13 @@ pub struct AtifOptions {
 #[derive(Debug)]
 pub struct BuiltTrajectory {
     pub document: Value,
-    /// Image content parts flattened to `"[image]"` markers across the whole
-    /// document (step messages and observation content). Also recorded inside
-    /// the document as root `extra.images_omitted` when non-zero.
+    /// Image content parts that could NOT be materialized into an ATIF image
+    /// ContentPart (an inline image carrying neither a URL nor base64 bytes) and
+    /// were therefore flattened to `"[image]"` markers across the whole document
+    /// (step messages and observation content). Materialized images (URL, file
+    /// reference, or inlined base64) are exported as real content parts and do
+    /// NOT count here, so this is typically 0. Also recorded inside the document
+    /// as root `extra.images_omitted` when non-zero.
     pub images_omitted: usize,
 }
 
@@ -590,7 +594,10 @@ fn usage_to_metrics(usage: &TokenUsage) -> Value {
 struct AgentStepAcc {
     timestamp: DateTime<Utc>,
     model_name: Option<String>,
-    message: String,
+    /// ATIF `message` value: a JSON string for text-only content, or a
+    /// ContentPart array (RFC v1.6 multimodal) when materialized image parts
+    /// are present.
+    message: Value,
     reasoning: Option<String>,
     tool_calls: Vec<Value>,
     observations: Vec<Value>,
@@ -603,7 +610,7 @@ impl AgentStepAcc {
         Self {
             timestamp,
             model_name: None,
-            message: String::new(),
+            message: Value::String(String::new()),
             reasoning: None,
             tool_calls: Vec::new(),
             observations: Vec::new(),
@@ -627,7 +634,8 @@ struct Fold {
     open: Option<AgentStepAcc>,
     pending_thinking: Option<String>,
     last_model: Option<String>,
-    /// Image content parts flattened to `"[image]"` markers so far.
+    /// Image content parts that could not be materialized and were flattened to
+    /// `"[image]"` markers so far (materialized images do not count).
     images_omitted: usize,
 }
 
@@ -658,16 +666,12 @@ impl Fold {
             EventData::InputMessage(data) => {
                 self.flush();
                 let mut omitted = Vec::new();
-                let text = self.content_or_redacted(flatten_message_text(
-                    &data.message,
-                    self.redact,
-                    &mut omitted,
-                ));
+                let message = build_message_content(&data.message, self.redact, &mut omitted);
                 self.images_omitted += omitted.len();
                 let mut step = Map::new();
                 step.insert("timestamp".to_string(), json!(timestamp(event)));
                 step.insert("source".to_string(), json!("user"));
-                step.insert("message".to_string(), json!(text));
+                step.insert("message".to_string(), message);
                 let mut extra = Map::new();
                 append_omitted_images(&mut extra, omitted);
                 if !extra.is_empty() {
@@ -679,11 +683,7 @@ impl Fold {
                 self.flush();
                 let mut acc = AgentStepAcc::new(event.ts);
                 let mut omitted = Vec::new();
-                acc.message = self.content_or_redacted(flatten_message_text(
-                    &data.message,
-                    self.redact,
-                    &mut omitted,
-                ));
+                acc.message = build_message_content(&data.message, self.redact, &mut omitted);
                 self.images_omitted += omitted.len();
                 append_omitted_images(&mut acc.extra, omitted);
                 acc.reasoning = data
@@ -781,15 +781,14 @@ impl Fold {
             }
             EventData::ToolCompleted(data) => {
                 let mut omitted = Vec::new();
-                let content = if let Some(err) = &data.error {
-                    format!("[error] {err}")
+                let content: Value = if let Some(err) = &data.error {
+                    Value::String(self.content_or_redacted(format!("[error] {err}")))
                 } else {
-                    data.result
-                        .as_ref()
-                        .map(|parts| flatten_content_parts(parts, self.redact, &mut omitted))
-                        .unwrap_or_default()
+                    match &data.result {
+                        Some(parts) => build_observation_content(parts, self.redact, &mut omitted),
+                        None => Value::String(String::new()),
+                    }
                 };
-                let content = self.content_or_redacted(content);
                 self.images_omitted += omitted.len();
                 let mut extra = Map::new();
                 extra.insert("tool_name".to_string(), json!(data.tool_name));
@@ -799,11 +798,22 @@ impl Fold {
                 }
                 let acc = self.open.get_or_insert_with(|| AgentStepAcc::new(event.ts));
                 append_omitted_images(&mut acc.extra, omitted);
-                acc.observations.push(json!({
-                    "source_call_id": data.tool_call_id,
-                    "content": content,
-                    "extra": extra,
-                }));
+                let mut observation = Map::new();
+                observation.insert("source_call_id".to_string(), json!(data.tool_call_id));
+                observation.insert("content".to_string(), content);
+                observation.insert("extra".to_string(), Value::Object(extra));
+                // Subagent linkage (Harbor RFC 0001): when this tool call spawned
+                // a subagent, attach a `subagent_trajectory_ref` pointing at the
+                // child session's own ATIF export. Ref-only — the child's events
+                // are not embedded (this fold sees only one session's events; see
+                // specs/atif-adoption.md, "Subagent trajectories").
+                if let Some(child) = subagent_child_session(data) {
+                    observation.insert(
+                        "subagent_trajectory_ref".to_string(),
+                        subagent_trajectory_ref(&child),
+                    );
+                }
+                acc.observations.push(Value::Object(observation));
             }
             // Turn events are boundaries, not steps: close the open step and
             // record turn stats at the root extension point.
@@ -886,7 +896,7 @@ impl Fold {
         if let Some(model) = acc.model_name.or_else(|| self.last_model.clone()) {
             step.insert("model_name".to_string(), json!(model));
         }
-        step.insert("message".to_string(), json!(acc.message));
+        step.insert("message".to_string(), acc.message);
         if let Some(reasoning) = acc.reasoning {
             step.insert("reasoning_content".to_string(), json!(reasoning));
         }
@@ -930,39 +940,179 @@ fn timestamp(event: &Event) -> String {
     event.ts.to_rfc3339()
 }
 
-/// Flatten a message's text-bearing content to one string. Tool calls and
-/// results are represented elsewhere in the step; images become a marker and
-/// their locator record is appended to `omitted`.
-fn flatten_message_text(message: &Message, redact: bool, omitted: &mut Vec<Value>) -> String {
-    let mut parts: Vec<String> = Vec::new();
-    for part in &message.content {
-        match part {
-            ContentPart::Text(t) => parts.push(t.text.clone()),
-            ContentPart::Image(_) | ContentPart::ImageFile(_) => {
-                parts.push("[image]".to_string());
-                omitted.extend(omitted_image_ref(part, redact));
-            }
-            ContentPart::ToolCall(_) | ContentPart::ToolResult(_) => {}
-        }
-    }
-    parts.join("\n")
+/// Build the ATIF `message` value for a step message. Tool-call/tool-result
+/// parts are represented elsewhere on the step and are skipped here.
+fn build_message_content(message: &Message, redact: bool, omitted: &mut Vec<Value>) -> Value {
+    build_content_value(&message.content, redact, false, omitted)
 }
 
-/// Flatten tool-result content parts to a single observation string. Images
-/// become a marker and their locator record is appended to `omitted`.
-fn flatten_content_parts(parts: &[ContentPart], redact: bool, omitted: &mut Vec<Value>) -> String {
-    let mut out: Vec<String> = Vec::new();
+/// Build the ATIF observation `content` value for a tool result. Non-media
+/// parts (tool calls/results embedded in a result) are serialized to text as
+/// before.
+fn build_observation_content(
+    parts: &[ContentPart],
+    redact: bool,
+    omitted: &mut Vec<Value>,
+) -> Value {
+    build_content_value(parts, redact, true, omitted)
+}
+
+/// Fold content parts into an ATIF `message`/`content` value.
+///
+/// Text-only content yields a JSON **string** (backward compatible, and what
+/// text-only consumers/scorers expect). When at least one image part can be
+/// materialized into an ATIF image ContentPart, the value is a ContentPart
+/// **array** (Harbor RFC 0001 / ATIF v1.6 multimodal): ordered text and image
+/// parts. The RFC allows `message`/`content` to be a string OR an array, so
+/// both shapes are spec-legal; consumers that only read text can still project
+/// the `text` parts out of an array.
+///
+/// `serialize_other` controls non-media parts (`ToolCall`/`ToolResult`): step
+/// messages skip them (represented elsewhere on the step), observations
+/// serialize them to a JSON text part as before.
+///
+/// An image that cannot be materialized (an inline image with neither a URL nor
+/// base64 bytes) is flattened to an `"[image]"` text marker and its locator is
+/// appended to `omitted`; such images keep the legacy `extra.omitted_images`
+/// bookkeeping.
+fn build_content_value(
+    parts: &[ContentPart],
+    redact: bool,
+    serialize_other: bool,
+    omitted: &mut Vec<Value>,
+) -> Value {
+    let redacted = |s: &str| {
+        if redact {
+            REDACTED.to_string()
+        } else {
+            s.to_string()
+        }
+    };
+    let mut atif_parts: Vec<Value> = Vec::new();
+    let mut has_image = false;
     for part in parts {
         match part {
-            ContentPart::Text(t) => out.push(t.text.clone()),
-            ContentPart::Image(_) | ContentPart::ImageFile(_) => {
-                out.push("[image]".to_string());
-                omitted.extend(omitted_image_ref(part, redact));
+            ContentPart::Text(t) => {
+                atif_parts.push(json!({ "type": "text", "text": redacted(&t.text) }));
             }
-            other => out.push(serde_json::to_string(other).unwrap_or_default()),
+            ContentPart::Image(_) | ContentPart::ImageFile(_) => match image_source(part, redact) {
+                Some(source) => {
+                    has_image = true;
+                    atif_parts.push(json!({ "type": "image", "source": source }));
+                }
+                None => {
+                    // Genuinely unmaterializable: keep the marker + locator so
+                    // the omission is still visible and counted.
+                    atif_parts.push(json!({ "type": "text", "text": "[image]" }));
+                    omitted.extend(omitted_image_ref(part, redact));
+                }
+            },
+            ContentPart::ToolCall(_) | ContentPart::ToolResult(_) => {
+                if serialize_other {
+                    atif_parts.push(json!({
+                        "type": "text",
+                        "text": redacted(&serde_json::to_string(part).unwrap_or_default()),
+                    }));
+                }
+            }
         }
     }
-    out.join("\n")
+    if has_image {
+        Value::Array(atif_parts)
+    } else {
+        // No materialized image → collapse to the text projection (a string),
+        // preserving the prior behavior for text-only and omitted-image content.
+        let text = atif_parts
+            .iter()
+            .filter_map(|p| p.get("text").and_then(Value::as_str))
+            .collect::<Vec<_>>()
+            .join("\n");
+        Value::String(text)
+    }
+}
+
+/// Build an ATIF image ContentPart `source` for an image part, or `None` when
+/// the image cannot be materialized (an inline image with neither URL nor
+/// base64). Prefers a lean reference over inlined bytes:
+/// - `Image { url }` → `source.path = url`.
+/// - `ImageFile { image_id }` → `source.path` = the org-scoped file-serving
+///   route (`/v1/images/{image_id}`); a consumer with the same auth fetches the
+///   bytes. Keeps documents small and within the export size cap.
+/// - `Image { base64 }` (no URL) → an inline `data:` URI in `source.path`. This
+///   is the only self-contained representation, but it bloats the document and
+///   counts toward the segment byte cap, so it is a last resort.
+///
+/// `media_type` (structural) is preserved when known. Under `redact`, the
+/// content-bearing `path` is blanked while the structural `media_type` is kept.
+fn image_source(part: &ContentPart, redact: bool) -> Option<Value> {
+    let mut source = Map::new();
+    match part {
+        ContentPart::Image(image) => {
+            // Materializable only if there is some locator to point at.
+            if image.url.is_none() && image.base64.is_none() {
+                return None;
+            }
+            if let Some(media_type) = &image.media_type {
+                source.insert("media_type".to_string(), json!(media_type));
+            }
+            let path = if redact {
+                REDACTED.to_string()
+            } else if let Some(url) = &image.url {
+                url.clone()
+            } else {
+                let b64 = image.base64.as_deref().unwrap_or_default();
+                let media_type = image.media_type.as_deref().unwrap_or("image/png");
+                format!("data:{media_type};base64,{b64}")
+            };
+            source.insert("path".to_string(), json!(path));
+        }
+        ContentPart::ImageFile(file) => {
+            let path = if redact {
+                REDACTED.to_string()
+            } else {
+                format!("/v1/images/{}", file.image_id)
+            };
+            source.insert("path".to_string(), json!(path));
+        }
+        _ => return None,
+    }
+    Some(Value::Object(source))
+}
+
+/// The child session id of a subagent spawn, if this tool result is one.
+///
+/// The `spawn_agent` tool (subagent target) returns a JSON object carrying
+/// `subagent_id` = the child session id (see
+/// `crates/core/src/capabilities/subagents.rs`); the tool result is emitted as
+/// a single text ContentPart holding that JSON. Returns `None` for any other
+/// tool or a result without a `subagent_id`.
+fn subagent_child_session(data: &everruns_core::events::ToolCompletedData) -> Option<String> {
+    if data.tool_name != "spawn_agent" {
+        return None;
+    }
+    for part in data.result.as_ref()? {
+        if let ContentPart::Text(t) = part
+            && let Ok(value) = serde_json::from_str::<Value>(&t.text)
+            && let Some(id) = value.get("subagent_id").and_then(Value::as_str)
+            && !id.is_empty()
+        {
+            return Some(id.to_string());
+        }
+    }
+    None
+}
+
+/// Build the `subagent_trajectory_ref` array for an observation that spawned the
+/// child session `child_session_id`. Ref-only: `trajectory_path` points at the
+/// child's own ATIF export (a resolvable location per Harbor RFC 0001, which
+/// requires at least one of `trajectory_id`/`trajectory_path`); `session_id` is
+/// informational. The child trajectory is not embedded (see the ToolCompleted
+/// handler and specs/atif-adoption.md).
+fn subagent_trajectory_ref(child_session_id: &str) -> Value {
+    json!([{
+        "trajectory_path": format!("/v1/sessions/{child_session_id}/export?format=atif"),
+        "session_id": child_session_id,
+    }])
 }
 
 /// Locator record for an image content part flattened to a `"[image]"`
@@ -1422,7 +1572,7 @@ mod tests {
     }
 
     #[test]
-    fn images_flatten_to_markers_and_record_refs() {
+    fn images_export_as_multimodal_content_parts() {
         use everruns_core::message::{ImageContentPart, ImageFileContentPart};
         use everruns_core::typed_id::ImageId;
 
@@ -1472,38 +1622,90 @@ mod tests {
             Map::new(),
             AtifOptions::default(),
         );
-        assert_eq!(built.images_omitted, 3);
+        // Every image is materialized, so nothing is omitted.
+        assert_eq!(built.images_omitted, 0);
         let value = built.document;
-        assert_eq!(value["extra"]["images_omitted"], json!(3));
+        assert!(value["extra"].get("images_omitted").is_none());
 
-        // User step: markers stay in the text, locator refs land in step extra.
+        // User step: message is a ContentPart array (text + URL image + file
+        // image source referencing the file-serving route).
         let steps = value["steps"].as_array().unwrap();
-        assert_eq!(steps[0]["message"], json!("look at this\n[image]\n[image]"));
-        let user_refs = steps[0]["extra"]["omitted_images"].as_array().unwrap();
-        assert_eq!(user_refs.len(), 2);
-        assert_eq!(user_refs[0], json!({"url": "https://example.com/cat.png"}));
-        assert_eq!(user_refs[1]["file_id"], json!(image_id.to_string()));
-        assert_eq!(user_refs[1]["filename"], json!("cat.png"));
-
-        // Observation content keeps the marker; the base64 payload is dropped
-        // and the ref is recorded on the owning agent step.
-        let s1 = &steps[1];
+        let user_msg = steps[0]["message"].as_array().unwrap();
+        assert_eq!(user_msg[0], json!({"type": "text", "text": "look at this"}));
         assert_eq!(
-            s1["observation"]["results"][0]["content"],
-            json!("done\n[image]")
+            user_msg[1],
+            json!({"type": "image", "source": {"path": "https://example.com/cat.png"}})
         );
         assert_eq!(
-            s1["extra"]["omitted_images"],
+            user_msg[2],
+            json!({"type": "image", "source": {"path": format!("/v1/images/{image_id}")}})
+        );
+        assert!(steps[0]["extra"].get("omitted_images").is_none());
+
+        // Observation content is a ContentPart array; the base64 image inlines
+        // as a data: URI source with its media type.
+        let s1 = &steps[1];
+        let obs = s1["observation"]["results"][0]["content"]
+            .as_array()
+            .unwrap();
+        assert_eq!(obs[0], json!({"type": "text", "text": "done"}));
+        assert_eq!(
+            obs[1],
+            json!({"type": "image", "source": {"media_type": "image/png", "path": "data:image/png;base64,aGVsbG8="}})
+        );
+        assert!(s1["extra"].get("omitted_images").is_none());
+    }
+
+    #[test]
+    fn unmaterializable_image_is_still_omitted_and_counted() {
+        use everruns_core::message::ImageContentPart;
+
+        let session = SessionId::new();
+        let mut user = Message::user("no locator here");
+        // An inline image with neither URL nor base64 cannot be materialized.
+        user.content.push(ContentPart::Image(ImageContentPart {
+            url: None,
+            base64: None,
+            media_type: Some("image/png".to_string()),
+        }));
+        let events = vec![event(session, InputMessageData::new(user))];
+
+        let built = build_trajectory(
+            Some("session_x"),
+            &events,
+            Map::new(),
+            AtifOptions::default(),
+        );
+        assert_eq!(built.images_omitted, 1);
+        let value = built.document;
+        assert_eq!(value["extra"]["images_omitted"], json!(1));
+        // Text-only (no materialized image) → the message stays a string with
+        // the `[image]` marker, and the locator lands in step extra.
+        let steps = value["steps"].as_array().unwrap();
+        assert_eq!(steps[0]["message"], json!("no locator here\n[image]"));
+        assert_eq!(
+            steps[0]["extra"]["omitted_images"],
             json!([{"media_type": "image/png"}])
         );
-        let serialized = serde_json::to_string(&value).unwrap();
-        assert!(
-            !serialized.contains("aGVsbG8="),
-            "raw image bytes must never be exported"
-        );
+    }
 
-        // Redaction blanks content-bearing locators, keeps structural ones.
-        let redacted = build_trajectory(
+    #[test]
+    fn redaction_blanks_image_sources() {
+        use everruns_core::message::{ImageContentPart, ImageFileContentPart};
+        use everruns_core::typed_id::ImageId;
+
+        let session = SessionId::new();
+        let image_id = ImageId::new();
+        let mut user = Message::user("secret url");
+        user.content
+            .push(ContentPart::Image(ImageContentPart::from_url(
+                "https://example.com/private.png",
+            )));
+        user.content
+            .push(ContentPart::ImageFile(ImageFileContentPart::new(image_id)));
+        let events = vec![event(session, InputMessageData::new(user))];
+
+        let value = build_trajectory(
             Some("session_x"),
             &events,
             Map::new(),
@@ -1512,10 +1714,128 @@ mod tests {
             },
         )
         .document;
-        let refs = &redacted["steps"][0]["extra"]["omitted_images"];
-        assert_eq!(refs[0]["url"], json!(REDACTED));
-        assert_eq!(refs[1]["file_id"], json!(image_id.to_string()));
-        assert_eq!(refs[1]["filename"], json!(REDACTED));
+        let msg = value["steps"][0]["message"].as_array().unwrap();
+        // Text is redacted, image sources are blanked (path), structure kept.
+        assert_eq!(msg[0], json!({"type": "text", "text": REDACTED}));
+        assert_eq!(msg[1]["source"]["path"], json!(REDACTED));
+        assert_eq!(msg[2]["source"]["path"], json!(REDACTED));
+        let serialized = serde_json::to_string(&value).unwrap();
+        assert!(!serialized.contains("example.com"));
+    }
+
+    #[test]
+    fn segments_byte_bound_with_inline_image_parts() {
+        use everruns_core::message::ImageContentPart;
+
+        let session = SessionId::new();
+        let session_id = "session_x";
+        // Two messages each carrying a sizeable inlined base64 image, so the
+        // per-step serialized size is dominated by the image ContentPart.
+        let big_b64 = "A".repeat(2000);
+        let mut m0 = Message::user("first");
+        m0.content
+            .push(ContentPart::Image(ImageContentPart::from_base64(
+                big_b64.clone(),
+                "image/png",
+            )));
+        let mut m1 = Message::user("second");
+        m1.content
+            .push(ContentPart::Image(ImageContentPart::from_base64(
+                big_b64,
+                "image/png",
+            )));
+        let events = vec![
+            event(session, InputMessageData::new(m0)),
+            event(session, InputMessageData::new(m1)),
+        ];
+
+        // A cap just above one image step forces one step per segment, proving
+        // image ContentParts count toward the byte budget.
+        let (walked, docs) = walk_segments(session_id, &events, 4096 + 1500);
+        assert_eq!(
+            docs.len(),
+            2,
+            "each oversized image step gets its own segment"
+        );
+        assert_eq!(walked.len(), 2);
+        for (i, step) in walked.iter().enumerate() {
+            assert_eq!(step["step_id"], json!(i + 1));
+            assert!(step["message"].is_array(), "image step message is an array");
+        }
+    }
+
+    #[test]
+    fn subagent_spawn_attaches_trajectory_ref() {
+        let session = SessionId::new();
+        let child = SessionId::new();
+        let spawn_call = ToolCall {
+            id: "call_spawn".to_string(),
+            name: "spawn_agent".to_string(),
+            arguments: json!({"target": {"type": "subagent"}, "name": "Worker"}),
+        };
+        // The spawn tool result is a single text ContentPart holding the JSON
+        // object the dispatcher returns (carries `subagent_id`).
+        let spawn_result = json!({
+            "subagent_id": child.to_string(),
+            "name": "Worker",
+            "status": "running",
+            "task_id": "task_123",
+        })
+        .to_string();
+        let events = vec![
+            event(
+                session,
+                InputMessageData::new(Message::user("delegate this")),
+            ),
+            event(
+                session,
+                OutputMessageCompletedData::new(Message::assistant_with_tools(
+                    "spawning",
+                    vec![spawn_call],
+                )),
+            ),
+            event(
+                session,
+                ToolCompletedData::success(
+                    "call_spawn".to_string(),
+                    "spawn_agent".to_string(),
+                    vec![ContentPart::text(spawn_result)],
+                    Some(5),
+                ),
+            ),
+        ];
+
+        let value = build_trajectory(
+            Some("session_x"),
+            &events,
+            Map::new(),
+            AtifOptions::default(),
+        )
+        .document;
+        let refs = &value["steps"][1]["observation"]["results"][0]["subagent_trajectory_ref"];
+        assert_eq!(
+            refs[0]["trajectory_path"],
+            json!(format!("/v1/sessions/{child}/export?format=atif"))
+        );
+        assert_eq!(refs[0]["session_id"], json!(child.to_string()));
+    }
+
+    #[test]
+    fn non_spawn_tool_has_no_subagent_ref() {
+        let session = SessionId::new();
+        let value = build_trajectory(
+            Some("session_x"),
+            &sample_events(session),
+            Map::new(),
+            AtifOptions::default(),
+        )
+        .document;
+        // The sample session's tool observation is a plain search, not a spawn.
+        assert!(
+            value["steps"][1]["observation"]["results"][0]
+                .get("subagent_trajectory_ref")
+                .is_none()
+        );
     }
 
     #[test]
