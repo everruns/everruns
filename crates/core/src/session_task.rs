@@ -204,6 +204,14 @@ pub struct SessionTask {
     /// Owning session.
     #[cfg_attr(feature = "openapi", schema(value_type = String))]
     pub session_id: SessionId,
+    /// Root of the owning session's delegation tree (EVE-680). Populated on
+    /// API reads from the denormalized storage column so cross-session tooling
+    /// (e.g. the Work view) can group a whole tree's tasks by one id. `None`
+    /// for a top-level session that is its own root, or when unavailable.
+    /// Storage-derived, never client-settable on create.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+    pub root_session_id: Option<SessionId>,
     /// Task kind: "subagent", "external_agent", "background_tool", "monitor", …
     pub kind: String,
     /// Human-readable label.
@@ -437,6 +445,9 @@ pub fn new_session_task(input: CreateSessionTask, now: DateTime<Utc>) -> Session
     SessionTask {
         id: input.id.unwrap_or_else(generate_task_id),
         session_id: input.session_id,
+        // Denormalized at storage insert from the owning session's root; a
+        // freshly-built task carries no root until read back.
+        root_session_id: None,
         kind: input.kind,
         display_name: input.display_name,
         spec: input.spec,

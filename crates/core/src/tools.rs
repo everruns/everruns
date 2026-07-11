@@ -3881,6 +3881,7 @@ mod tests {
         crate::session_task::SessionTask {
             id: "t-reattach".to_string(),
             session_id: SessionId::new(),
+            root_session_id: None,
             kind: crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
             display_name: "Reattach test".to_string(),
             spec,

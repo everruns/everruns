@@ -2344,6 +2344,7 @@ impl SessionTaskRow {
         Ok(everruns_core::SessionTask {
             id: self.id.clone(),
             session_id: self.session_id,
+            root_session_id: self.root_session_id,
             kind: self.kind.clone(),
             display_name: self.display_name.clone(),
             spec: self.spec.clone(),

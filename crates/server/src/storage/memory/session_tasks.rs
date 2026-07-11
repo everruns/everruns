@@ -466,6 +466,35 @@ mod tests {
             });
     }
 
+    #[test]
+    fn to_task_surfaces_root_session_id() {
+        // EVE-681: the delegation-tree root is denormalized on the row and must
+        // now round-trip onto the core SessionTask so cross-session tooling
+        // (the Work view) can group a whole tree by one id.
+        let db = InMemoryDatabase::new();
+        let session_id = SessionId::new();
+        let root = SessionId::new();
+        terminal_row(&db, session_id, "task_root", "running", None, None);
+        db.session_tasks
+            .write()
+            .get_mut("task_root")
+            .unwrap()
+            .root_session_id = Some(root);
+
+        let row = db.session_tasks.read().get("task_root").unwrap().clone();
+        let task = row.to_task().expect("to_task");
+        assert_eq!(task.root_session_id, Some(root));
+
+        // A NULL root column surfaces as None (top-level session / unavailable).
+        db.session_tasks
+            .write()
+            .get_mut("task_root")
+            .unwrap()
+            .root_session_id = None;
+        let row = db.session_tasks.read().get("task_root").unwrap().clone();
+        assert_eq!(row.to_task().expect("to_task").root_session_id, None);
+    }
+
     #[tokio::test]
     async fn prune_removes_only_old_terminal_tasks_and_their_messages() {
         let db = InMemoryDatabase::new();
