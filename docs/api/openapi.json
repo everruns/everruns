@@ -24494,6 +24494,7 @@
               "required": [
                 "id",
                 "name",
+                "scope",
                 "source_type",
                 "source",
                 "is_readonly",
@@ -24566,6 +24567,27 @@
                   "type": "string",
                   "description": "Human-readable name. Safe to render in user-facing messages.",
                   "example": "design-docs"
+                },
+                "owner_agent_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Owning agent when `scope = agent`.",
+                  "example": "agent_01933b5a000070008000000000000001"
+                },
+                "owner_user_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uuid",
+                  "description": "Owning user when `scope = user`."
+                },
+                "scope": {
+                  "type": "string",
+                  "description": "Ownership scope (`org`, `agent`, or `user`).",
+                  "example": "org"
                 },
                 "source": {
                   "$ref": "#/components/schemas/MemorySourceResponse",
@@ -27251,6 +27273,7 @@
         "required": [
           "id",
           "name",
+          "scope",
           "source_type",
           "source",
           "is_readonly",
@@ -27323,6 +27346,27 @@
             "type": "string",
             "description": "Human-readable name. Safe to render in user-facing messages.",
             "example": "design-docs"
+          },
+          "owner_agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Owning agent when `scope = agent`.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
+          "owner_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Owning user when `scope = user`."
+          },
+          "scope": {
+            "type": "string",
+            "description": "Ownership scope (`org`, `agent`, or `user`).",
+            "example": "org"
           },
           "source": {
             "$ref": "#/components/schemas/MemorySourceResponse",

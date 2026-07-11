@@ -68,6 +68,9 @@ Key design points:
 - `timezone` should be a separate optional session-level IANA timezone for unattended execution defaults. Interactive turns may override it with live browser timezone for that turn.
 - `features` field is computed at read time by aggregating `features()` from all active capabilities (not stored). See `specs/capabilities.md#capability-features`.
 - `capabilities` allows session-level capabilities additive to the agent's. Agent capabilities applied first, then session capabilities.
+- Server-managed agent/user scoped memories are represented by `memories.scope`
+  (`org`, `agent`, `user`) and are mounted at session creation under reserved
+  `/memory/*` paths. See `specs/memory.md`.
 - Status transitions: `started` → `active` (processing) → `idle` (waiting for input)
 - Sessions work indefinitely — after processing, status returns to `idle`.
 

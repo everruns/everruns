@@ -184,6 +184,9 @@ A per-session isolated virtual filesystem stored in PostgreSQL.
 
 - Paths are relative to `/workspace`
 - Capabilities can mount initial files and directories
+- Server-managed scoped memory reserves `/memory/agent` and `/memory/user`
+  for private agent/user context; caller-supplied files and capability mounts
+  cannot claim `/memory/*`.
 - Shared between the FileSystem and BashkitShell capabilities
 - Files support an optional read-only flag
 

@@ -412,6 +412,9 @@ mod tests {
                     if is_readonly { "readonly" } else { "manual" }
                 ),
                 description: None,
+                scope: "org".to_string(),
+                owner_agent_id: None,
+                owner_user_id: None,
                 source_type: if is_readonly {
                     "github".into()
                 } else {
