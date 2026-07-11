@@ -113,6 +113,11 @@ pub use backends::{
 };
 pub use builders::{AgentBuilder, HarnessBuilder, SessionBuilder, SingleSessionBuilder};
 pub use everruns_core::AssembledTurnContext;
+// Embeddable in-process task-transition observation (EVE-729): embedders
+// implement `TaskTransitionObserver` to receive task lifecycle transitions
+// (terminal / awaiting_input / outbound message) in process, with the same
+// filter semantics as server webhook delivery but without HTTP.
+pub use everruns_core::task_observer::{TaskTransition, TaskTransitionObserver};
 pub use file_store_decorators::{
     ApprovalGatingFileStore, DEFAULT_WRITE_BLOCKLIST, FileApprovalGate, WriteBlocklistFileStore,
 };
