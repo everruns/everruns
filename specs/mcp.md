@@ -144,6 +144,18 @@ into the tools/call `result`; the existing `content` / `structuredContent` are
 untouched. `tasks/get` returns a `Task` object (`taskId`, `status`, `ttlMs`,
 `pollIntervalMs`) with the full `session_get_status` payload under `result`.
 
+**Structured result.** When the task's session reported a deterministic,
+schema-bound result (`result.json`, produced by a task declared with a
+`result_schema` — see [`specs/subagents.md`](subagents.md) and
+[`specs/session-tasks.md`](session-tasks.md)), `tasks/get` adds that JSON under
+`result.structured_result`, so Tasks clients get the machine result instead of
+re-parsing last-message text. It is additive: the existing status snapshot
+(session status, latest output, events) is unchanged, and a plain agent turn
+that reported no structured result omits the field. Retrieval is scoped by the
+same org `session_get_status` already validated, so tenant isolation is
+preserved; when a session reported more than one structured result the most
+recently updated one wins.
+
 > **RC schema note.** The Tasks extension is still an experimental RC and its
 > authoritative sources disagree on the duration field spelling: the
 > [overview docs](https://modelcontextprotocol.io/extensions/tasks/overview)
