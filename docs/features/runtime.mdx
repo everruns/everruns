@@ -209,6 +209,7 @@ In-memory stores vanish when the process exits. For an embedded, single-process 
 |---|---|
 | `LocalSessionTaskRegistry` | Session tasks and their message channel |
 | `LocalScheduleStore` | Session schedules (with a local `metadata` JSON bag) |
+| `LocalScheduleRunner` | In-process execution of due local schedules |
 | `LocalPlatformStore` | Subagent-critical platform store core |
 | `LocalProfile` | Local data dir, workspace, and identity defaults |
 | `LocalBackends` | Composes the above into `RuntimeBackends` |
@@ -239,6 +240,25 @@ let runtime = InProcessRuntimeBuilder::new()
     .build()
     .await?;
 ```
+
+If the embedded platform enables scheduled monitors, persistence alone is not
+enough: start the local executor with the same `LocalSessionRunner` used to
+drive live sessions, retain its handle for the host lifetime, and shut it down
+gracefully:
+
+```rust
+let schedule_runner = local.start_schedule_runner(session_runner.clone())?;
+let local = local.with_platform_runner(session_runner);
+
+// During host shutdown:
+schedule_runner.shutdown().await?;
+```
+
+The runner atomically claims due SQLite records, recovers stale claims after an
+interrupted process, advances timezone-aware recurring schedules, and retries
+failed `send_message` delivery. Delivery is at-least-once across the narrow
+crash window between the host accepting a message and SQLite recording its
+completion.
 
 `LocalBackends` only adds the local stores — it preserves a caller-supplied event bus (via `RuntimeBackends`) and session file-system factory (via the platform's `PlatformDefinition`), so it composes with the [custom backends](#custom-backends) above rather than replacing them. See [docs.rs/everruns-local](https://docs.rs/everruns-local) for the full API.
 

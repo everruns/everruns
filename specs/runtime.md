@@ -285,6 +285,24 @@ local `metadata` JSON column rather than by widening the shared core
 task-lifecycle, restart-survivability, schedule round-trip, composability, and
 embedded-turn coverage.
 
+Persisting a session schedule does not execute it by itself. Embedded hosts
+that expose scheduled monitors explicitly start and retain
+`LocalScheduleRunner` for the host lifetime. The runner atomically claims due
+rows across SQLite connections, heartbeats live claims, recovers stale claims,
+advances recurring cron occurrences in their IANA timezone, and disables
+successful one-shots. It delivers the stored prompt through the host's existing
+`LocalSessionRunner::send_message` implementation; storage never owns session
+execution. Failed deliveries release the occurrence for retry and retain a
+diagnostic error. Shutdown stops new claims and waits for an active delivery;
+forced abort leaves the lease for stale recovery. See `crates/local/` for the
+public lifecycle API and tests.
+
+This boundary provides at-least-once delivery across process failure. Atomic
+claims prevent duplicate delivery by concurrent healthy runners, but a crash
+after `send_message` accepts the prompt and before SQLite commits completion
+can retry that occurrence. Hosts should keep scheduled turns idempotent across
+that unavoidable external-delivery window.
+
 ## Context and Capabilities
 
 Capabilities continue to live in `everruns-core`.

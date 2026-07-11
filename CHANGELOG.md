@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+### What's Changed
+
+- `everruns-local` now executes due one-shot and recurring session schedules through `LocalSessionRunner::send_message`, with atomic claims, stale recovery, retryable delivery failures, timezone-aware advancement, graceful lifecycle, and tracing. Embedded hosts that enable scheduled monitors must start and retain `LocalScheduleRunner`.
+
 ## [0.17.7] - 2026-07-11
 
 ### Highlights
