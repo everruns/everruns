@@ -530,6 +530,23 @@ impl InProcessRuntimeBuilder {
         let persisting_emitter =
             PersistingEventEmitter::new(backends.event_bus.clone(), backends.message_store.clone());
 
+        // Mid-turn wake delivery (EVE-681, part A): when a task registry is
+        // present, wrap it so qualifying task transitions fan out to a
+        // per-session `SessionWakeQueue`. The turn loop drains that queue at
+        // each reason iteration boundary. Without a registry there is no
+        // background work to wake on, so the queue is left absent (inert).
+        let (session_task_registry, session_wake_queue) = match backends.session_task_registry {
+            Some(inner) => {
+                let wake_queue = Arc::new(everruns_core::SessionWakeQueue::new());
+                let observing = everruns_core::ObservingTaskRegistry::new(inner)
+                    .with_observer(wake_queue.clone());
+                let wrapped: Arc<dyn everruns_core::session_task::SessionTaskRegistry> =
+                    Arc::new(observing);
+                (Some(wrapped), Some(wake_queue))
+            }
+            None => (None, None),
+        };
+
         Ok(InProcessRuntime {
             platform_definition: Arc::new(self.platform_definition),
             harness_store: backends.harness_store,
@@ -543,7 +560,8 @@ impl InProcessRuntimeBuilder {
             file_store,
             storage_store: backends.storage_store,
             connection_resolver: backends.connection_resolver,
-            session_task_registry: backends.session_task_registry,
+            session_task_registry,
+            session_wake_queue,
             schedule_store_factory: backends.schedule_store_factory,
             platform_store_factory: backends.platform_store_factory,
             mcp_auth_provider: self
@@ -589,6 +607,10 @@ pub struct InProcessRuntime {
     storage_store: Arc<dyn SessionStorageStore>,
     connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
     session_task_registry: Option<Arc<dyn everruns_core::session_task::SessionTaskRegistry>>,
+    /// Mid-turn wake queue fed by `session_task_registry` transitions and
+    /// drained at each reason iteration boundary (EVE-681, part A). Present iff
+    /// a task registry was configured.
+    session_wake_queue: Option<Arc<everruns_core::SessionWakeQueue>>,
     schedule_store_factory: Option<crate::backends::ScheduleStoreFactory>,
     platform_store_factory: Option<crate::backends::PlatformStoreFactory>,
     mcp_auth_provider: Arc<dyn everruns_mcp::McpAuthProvider>,
@@ -706,6 +728,13 @@ impl InProcessRuntime {
                 }
                 TurnAction::ExecuteReason => {
                     let ctx = state_machine.context();
+                    let session_id = ctx.session_id;
+                    // Iteration boundary: drain queued task wakes and inject
+                    // them before the LLM call so this reason reacts to them
+                    // (EVE-681, part A). Draining here also delivers wakes that
+                    // arrived while the session was idle, on the next turn's
+                    // first iteration (between-turn fallback).
+                    self.drain_and_inject_wakes(session_id).await?;
                     let base_context =
                         AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id)
                             .with_workspace_id(session.workspace_id);
@@ -724,13 +753,21 @@ impl InProcessRuntime {
                     )
                     .await?;
                     previous_response_id = reason_result.response_id.clone();
+                    // If a wake landed during this reason (e.g. a background
+                    // task settling on another task), continue a would-idle turn
+                    // so it is delivered on the very next iteration rather than
+                    // after the session idles.
+                    let has_pending_wakes = self
+                        .session_wake_queue
+                        .as_ref()
+                        .is_some_and(|q| q.has_pending(session_id));
                     state_machine.on_reason_completed(
                         reason_result.text.clone(),
                         reason_result.has_tool_calls,
                         reason_result.tool_calls.len(),
                         reason_result.success,
                         reason_result.error.clone(),
-                        false,
+                        has_pending_wakes,
                     );
                     if reason_result.has_tool_calls {
                         last_reason_result = Some(reason_result);
@@ -826,6 +863,45 @@ impl InProcessRuntime {
         text: impl Into<String>,
     ) -> Result<TurnResult> {
         self.run_turn(session_id, InputMessage::user(text)).await
+    }
+
+    /// Drain any queued task wakes for `session_id` and inject them into the
+    /// conversation as user messages so the next reason reacts to them
+    /// (EVE-681, part A). Returns the number of wakes injected.
+    ///
+    /// Called at the top of every reason iteration — before the LLM call — so a
+    /// task completion that landed during the previous act (or while idle) is
+    /// visible to the very next iteration. `SessionWakeQueue::drain` is the
+    /// exactly-once claim point: a drained wake is removed and never delivered
+    /// twice, so a wake is delivered mid-turn XOR on the next turn's first
+    /// drain, never both.
+    async fn drain_and_inject_wakes(&self, session_id: SessionId) -> Result<usize> {
+        let Some(queue) = &self.session_wake_queue else {
+            return Ok(0);
+        };
+        let wakes = queue.drain(session_id);
+        if wakes.is_empty() {
+            return Ok(0);
+        }
+        let count = wakes.len();
+        for wake in wakes {
+            // Persist the wake as a user message (history reload picks it up)
+            // and emit the input event on the raw bus so it appears in the turn
+            // span without the persisting emitter double-storing it — mirroring
+            // how `run_turn` records the initial input message.
+            let message = self
+                .message_store
+                .add_input_message(session_id, InputMessage::user(wake.text))
+                .await?;
+            self.event_bus
+                .emit(EventRequest::new(
+                    session_id,
+                    EventContext::empty(),
+                    InputMessageData::new(message),
+                ))
+                .await?;
+        }
+        Ok(count)
     }
 
     /// Load the current message history for a session.

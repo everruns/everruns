@@ -120,6 +120,7 @@ pub mod skill;
 pub mod system_allowlist;
 pub mod task_observer;
 pub mod vector_store;
+pub mod wake_queue;
 pub mod workspace;
 pub mod workspace_roots;
 
@@ -512,7 +513,7 @@ pub use skill::{
     ParsedSkillMd, Skill, SkillContent, SkillFileEntry, SkillSourceType, SkillStatus, SkillUsage,
     SkillValidationResult, parse_skill_md, validate_skill_md, validate_skill_name,
 };
-pub use task_observer::{TaskTransition, TaskTransitionObserver};
+pub use task_observer::{ObservingTaskRegistry, TaskTransition, TaskTransitionObserver};
 pub use typed_id::{
     AgentId, AgentIdentityId, AgentVersionId, AppChannelId, AppId, DeclarativeCapabilityId,
     EvalCaseId, EvalId, EvalResultId, EvalRunId, EventId, ExecId, HarnessId, IdMarker,
@@ -521,6 +522,7 @@ pub use typed_id::{
     PaymentPolicyId, PluginInstallId, PluginMarketplaceId, PrincipalId, ProviderId, ScheduleId,
     SessionId, SessionParticipantId, SkillId, TurnId, TypedId, WorkspaceId,
 };
+pub use wake_queue::{PendingWake, SessionWakeQueue, wake_text_for};
 
 // Audit logging re-exports
 pub use audit::{
