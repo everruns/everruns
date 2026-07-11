@@ -3548,6 +3548,38 @@ impl StorageBackend {
         dispatch!(self, insert_session_task_message, input)
     }
 
+    // Per-task push-notification configs (EVE-682).
+
+    pub async fn create_task_push_config(
+        &self,
+        input: crate::storage::models::CreateSessionTaskPushConfig,
+    ) -> Result<crate::storage::models::SessionTaskPushConfigRow> {
+        dispatch!(self, create_task_push_config, input)
+    }
+
+    pub async fn list_task_push_configs(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> Result<Vec<crate::storage::models::SessionTaskPushConfigRow>> {
+        dispatch!(self, list_task_push_configs, session_id, task_id)
+    }
+
+    pub async fn delete_task_push_config(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        public_id: &str,
+    ) -> Result<bool> {
+        dispatch!(
+            self,
+            delete_task_push_config,
+            session_id,
+            task_id,
+            public_id
+        )
+    }
+
     pub async fn list_session_task_messages(
         &self,
         session_id: SessionId,

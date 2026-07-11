@@ -157,6 +157,35 @@ pub struct UpdateOrgTaskWebhook {
     pub enabled: Option<bool>,
 }
 
+/// Per-task push-notification config row (EVE-682).
+///
+/// Session/task-scoped outbound webhook target. Has no `org_id`: authorization
+/// is via the owning session's org. `event_filter` selects which task
+/// transitions deliver ('terminal', 'awaiting_input', 'message').
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct SessionTaskPushConfigRow {
+    pub id: i64,
+    pub public_id: String,
+    pub session_id: SessionId,
+    pub task_id: String,
+    pub url: String,
+    pub secret: Option<String>,
+    pub event_filter: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating a per-task push-notification config.
+#[derive(Debug, Clone)]
+pub struct CreateSessionTaskPushConfig {
+    pub public_id: String,
+    pub session_id: SessionId,
+    pub task_id: String,
+    pub url: String,
+    pub secret: Option<String>,
+    pub event_filter: Vec<String>,
+}
+
 /// Input for creating an organization member
 #[derive(Debug, Clone)]
 pub struct CreateOrganizationMemberRow {

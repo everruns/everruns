@@ -169,6 +169,12 @@ impl Capability for SubagentCapability {
 const SUBAGENT_SYSTEM_PROMPT: &str = "Spawn subagents for independent parallel work or separate context; avoid immediate sequential steps. Spawns are background by default: you get a task_id, keep working, and are notified on completion (monitor with get_task/wait_task). Use mode \"foreground\" only when blocked on the result. Nested subagents are allowed up to max_subagent_depth and root-tree task caps. Use blueprints for specialist tools/model.";
 const RESULT_SCHEMA_SPEC_KEY: &str = "result_schema";
 const MESSAGE_SCHEMA_SPEC_KEY: &str = "message_schema";
+/// Task spec key holding spawn-time per-task push configs (EVE-682). The
+/// webhook notifier reads this in addition to the DB-backed configs so
+/// spawn-time and endpoint-created configs share one delivery path.
+const PUSH_CONFIGS_SPEC_KEY: &str = "push_configs";
+/// Valid `event_filter` members for a per-task push config.
+const VALID_PUSH_EVENT_FILTERS: [&str; 3] = ["terminal", "awaiting_input", "message"];
 
 /// Execution mode for subagent delegation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -261,6 +267,83 @@ fn normalize_result_schema(arguments: &Value) -> Result<Option<Value>, ToolExecu
 
 fn normalize_message_schema(arguments: &Value) -> Result<Option<Value>, ToolExecutionResult> {
     normalize_optional_schema(arguments, MESSAGE_SCHEMA_SPEC_KEY)
+}
+
+/// Parse + validate the optional `push_configs` spawn arg (EVE-682).
+///
+/// # Security
+///
+/// Each config URL is SSRF-validated here at create time via
+/// `validate_safe_url`, before it is embedded in the task spec. Delivery
+/// (the webhook notifier) additionally pins DNS, closing the create→deliver
+/// rebinding window. Returns the normalized array to embed under
+/// `PUSH_CONFIGS_SPEC_KEY`, or `None` when absent/empty.
+fn normalize_push_configs(arguments: &Value) -> Result<Option<Value>, ToolExecutionResult> {
+    let Some(raw) = arguments
+        .get(PUSH_CONFIGS_SPEC_KEY)
+        .filter(|v| !v.is_null())
+    else {
+        return Ok(None);
+    };
+    let Some(entries) = raw.as_array() else {
+        return Err(ToolExecutionResult::tool_error(
+            "push_configs must be an array of { url, secret?, event_filter? } objects.",
+        ));
+    };
+    if entries.is_empty() {
+        return Ok(None);
+    }
+    let mut normalized = Vec::with_capacity(entries.len());
+    for entry in entries {
+        let Some(url) = entry.get("url").and_then(Value::as_str) else {
+            return Err(ToolExecutionResult::tool_error(
+                "Each push_configs entry requires a string `url`.",
+            ));
+        };
+        if let Err(e) = crate::url_validation::validate_safe_url(url) {
+            return Err(ToolExecutionResult::tool_error(format!(
+                "Invalid push_configs url \"{url}\": {e}"
+            )));
+        }
+        let mut obj = serde_json::Map::new();
+        obj.insert("url".to_string(), Value::String(url.to_string()));
+        if let Some(secret) = entry
+            .get("secret")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+        {
+            obj.insert("secret".to_string(), Value::String(secret.to_string()));
+        }
+        if let Some(filters) = entry.get("event_filter").filter(|v| !v.is_null()) {
+            let Some(arr) = filters.as_array() else {
+                return Err(ToolExecutionResult::tool_error(
+                    "push_configs event_filter must be an array of strings.",
+                ));
+            };
+            let mut out: Vec<Value> = Vec::new();
+            for f in arr {
+                let Some(f) = f.as_str() else {
+                    return Err(ToolExecutionResult::tool_error(
+                        "push_configs event_filter members must be strings.",
+                    ));
+                };
+                if !VALID_PUSH_EVENT_FILTERS.contains(&f) {
+                    return Err(ToolExecutionResult::tool_error(format!(
+                        "Unknown push_configs event_filter \"{f}\". Valid: {}.",
+                        VALID_PUSH_EVENT_FILTERS.join(", ")
+                    )));
+                }
+                if !out.iter().any(|x| x.as_str() == Some(f)) {
+                    out.push(Value::String(f.to_string()));
+                }
+            }
+            if !out.is_empty() {
+                obj.insert("event_filter".to_string(), Value::Array(out));
+            }
+        }
+        normalized.push(Value::Object(obj));
+    }
+    Ok(Some(Value::Array(normalized)))
 }
 
 fn json_schema_type_matches(expected: &str, value: &Value) -> bool {
@@ -975,6 +1058,26 @@ impl Tool for SpawnSubagentAsAgentTool {
                 "message_schema": {
                     "type": "object",
                     "description": "Optional JSON Schema for structured progress messages. When set, the child receives report_task_progress and valid calls post data messages to the task thread."
+                },
+                "push_configs": {
+                    "type": "array",
+                    "description": "Optional per-task webhook targets notified on task events. Each entry: { url, secret? (HMAC-SHA256 signing key), event_filter? (subset of [\"terminal\", \"awaiting_input\", \"message\"]; defaults to [\"terminal\"]) }. URLs are SSRF-validated.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "url": { "type": "string" },
+                            "secret": { "type": "string" },
+                            "event_filter": {
+                                "type": "array",
+                                "items": {
+                                    "type": "string",
+                                    "enum": ["terminal", "awaiting_input", "message"]
+                                }
+                            }
+                        },
+                        "required": ["url"],
+                        "additionalProperties": false
+                    }
                 }
             },
             "required": ["name", "instructions", "target"],
@@ -1068,6 +1171,8 @@ async fn spawn_agent_subagent_impl(
     let config_param = arguments.get("config").filter(|v| !v.is_null()).cloned();
     let result_schema = normalize_result_schema(&arguments)?;
     let message_schema = normalize_message_schema(&arguments)?;
+    // SSRF-validate spawn-time push config URLs before they enter the task spec.
+    let push_configs = normalize_push_configs(&arguments)?;
 
     // Reject config without blueprint
     if config_param.is_some() && blueprint_param.is_none() {
@@ -1252,6 +1357,7 @@ async fn spawn_agent_subagent_impl(
                     &config_param,
                     &result_schema,
                     &message_schema,
+                    &push_configs,
                     mode,
                     Some((
                         spawn_store.as_ref(),
@@ -1276,6 +1382,7 @@ async fn spawn_agent_subagent_impl(
         &config_param,
         &result_schema,
         &message_schema,
+        &push_configs,
         mode,
         None,
     )
@@ -1323,6 +1430,7 @@ async fn spawn_create_and_wait(
     config_param: &Option<Value>,
     result_schema: &Option<Value>,
     message_schema: &Option<Value>,
+    push_configs: &Option<Value>,
     mode: SpawnMode,
     settle_ctx: Option<(
         &dyn crate::traits::SubagentSpawnStore,
@@ -1380,6 +1488,14 @@ async fn spawn_create_and_wait(
         && let Some(spec) = task_spec.as_object_mut()
     {
         spec.insert(MESSAGE_SCHEMA_SPEC_KEY.to_string(), schema.clone());
+    }
+    // Spawn-time push configs (EVE-682): embed in the task spec so the webhook
+    // notifier delivers alongside endpoint-created (DB-backed) configs. URLs
+    // were SSRF-validated in normalize_push_configs before reaching here.
+    if let Some(configs) = push_configs
+        && let Some(spec) = task_spec.as_object_mut()
+    {
+        spec.insert(PUSH_CONFIGS_SPEC_KEY.to_string(), configs.clone());
     }
 
     if let Some(ref task_registry) = context.session_task_registry

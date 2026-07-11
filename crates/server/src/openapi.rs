@@ -190,6 +190,9 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::session_tasks::get_task,
         api::session_tasks::post_task_message,
         api::session_tasks::cancel_task,
+        api::session_tasks::list_push_configs,
+        api::session_tasks::create_push_config,
+        api::session_tasks::delete_push_config,
         // Task webhooks
         api::task_webhooks::list_webhooks,
         api::task_webhooks::create_webhook,
@@ -656,6 +659,8 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::task_webhooks::TaskWebhookResponse,
             api::task_webhooks::CreateTaskWebhookRequest,
             api::task_webhooks::UpdateTaskWebhookRequest,
+            api::session_tasks::CreatePushConfigBody,
+            domains::session_tasks::TaskPushConfig,
         )
     ),
     tags(

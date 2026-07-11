@@ -37,14 +37,50 @@ pub trait SessionTaskWaker: Send + Sync {
 }
 
 // ============================================================================
-// TaskWebhookNotifier — fire outbound HTTP on terminal task transitions
+// TaskWebhookNotifier — fire outbound HTTP on task transitions
 // ============================================================================
 
-/// Fire outbound HTTP webhooks configured for the owning org when a task
-/// reaches a terminal state. Errors are best-effort (logged, never fatal).
+/// A task transition that can trigger webhook delivery.
+///
+/// `Terminal` is the only event org webhooks ever fire on (regression-safe).
+/// The non-terminal events are opt-in per-task via `event_filter` (EVE-682).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskWebhookEvent {
+    /// Task reached a terminal state (succeeded / failed / canceled).
+    Terminal,
+    /// Task transitioned into `awaiting_input`.
+    AwaitingInput,
+    /// Task emitted an outbound message.
+    Message,
+}
+
+impl TaskWebhookEvent {
+    /// The `event_filter` member string that enables this event.
+    pub fn filter_value(&self) -> &'static str {
+        match self {
+            Self::Terminal => "terminal",
+            Self::AwaitingInput => "awaiting_input",
+            Self::Message => "message",
+        }
+    }
+
+    /// The `event` field value in the delivered webhook payload.
+    pub fn event_name(&self) -> &'static str {
+        match self {
+            Self::Terminal => "task.terminal",
+            Self::AwaitingInput => "task.awaiting_input",
+            Self::Message => "task.message",
+        }
+    }
+}
+
+/// Fire outbound HTTP webhooks on task transitions. Terminal transitions notify
+/// enabled org webhooks plus any per-task push configs; non-terminal events
+/// notify only per-task push configs whose `event_filter` opts in (EVE-682).
+/// Errors are best-effort (logged, never fatal).
 #[async_trait]
 pub trait TaskWebhookNotifier: Send + Sync + 'static {
-    async fn notify(&self, task: &SessionTask) -> anyhow::Result<()>;
+    async fn notify(&self, task: &SessionTask, event: TaskWebhookEvent) -> anyhow::Result<()>;
 }
 
 // ============================================================================
@@ -200,18 +236,19 @@ impl DbSessionTaskRegistry {
         self.try_wake(task.session_id, &text).await;
     }
 
-    /// Fire webhook notifications for a terminal task transition (best-effort).
-    /// Spawns a detached task so outbound HTTP latency never blocks task updates.
-    fn try_notify_webhooks(&self, task: &SessionTask) {
+    /// Fire webhook notifications for a task transition (best-effort). Spawns a
+    /// detached task so outbound HTTP latency never blocks task updates.
+    fn try_notify_webhooks(&self, task: &SessionTask, event: TaskWebhookEvent) {
         let Some(notifier) = self.notifier.clone() else {
             return;
         };
         let task = task.clone();
         tokio::spawn(async move {
-            if let Err(e) = notifier.notify(&task).await {
+            if let Err(e) = notifier.notify(&task, event).await {
                 tracing::warn!(
                     task_id = %task.id,
                     session_id = %task.session_id,
+                    event = ?event,
                     "TaskWebhookNotifier failed (best-effort): {e}"
                 );
             }
@@ -251,9 +288,10 @@ impl SessionTaskRegistry for DbSessionTaskRegistry {
 
         // Read prior state so we can detect the transition this update makes.
         // Best-effort: if the read fails we still proceed with the update.
-        let needs_prior = (self.waker.is_some()
-            && (wants_terminal_wake || wants_awaiting_input_wake))
-            || (self.notifier.is_some() && wants_terminal_wake);
+        // The notifier needs `prior` for both terminal and awaiting_input
+        // transitions (EVE-682), so it has the same gating as the waker.
+        let needs_prior = (self.waker.is_some() || self.notifier.is_some())
+            && (wants_terminal_wake || wants_awaiting_input_wake);
         let prior = if needs_prior {
             self.get(session_id, task_id).await.ok().flatten()
         } else {
@@ -280,11 +318,20 @@ impl SessionTaskRegistry for DbSessionTaskRegistry {
                     self.maybe_wake_on_terminal(prior, task).await;
                     // Webhook notifications fire on the same terminal transition.
                     if !prior.state.is_terminal() && task.state.is_terminal() {
-                        self.try_notify_webhooks(task);
+                        self.try_notify_webhooks(task, TaskWebhookEvent::Terminal);
                     }
                 }
                 if wants_awaiting_input_wake {
                     self.maybe_wake_on_awaiting_input(prior, task).await;
+                    // Per-task push configs may opt into awaiting_input delivery
+                    // (EVE-682). Fire only on the transition INTO awaiting_input,
+                    // mirroring the wake gate so idempotent input_request churn
+                    // never re-fires.
+                    if prior.state != SessionTaskState::AwaitingInput
+                        && task.state == SessionTaskState::AwaitingInput
+                    {
+                        self.try_notify_webhooks(task, TaskWebhookEvent::AwaitingInput);
+                    }
                 }
             }
         }
@@ -405,6 +452,8 @@ impl SessionTaskRegistry for DbSessionTaskRegistry {
         if stored.direction == TaskMessageDirection::Outbound {
             let msg_text = task_message_text(&stored.content);
             self.maybe_wake_on_outbound_message(&task, &msg_text).await;
+            // Per-task push configs may opt into message delivery (EVE-682).
+            self.try_notify_webhooks(&task, TaskWebhookEvent::Message);
         }
 
         // An inbound answer to the pending input request resumes the task.
@@ -483,6 +532,44 @@ mod tests {
 
     fn registry_with_waker(waker: Arc<dyn SessionTaskWaker>) -> DbSessionTaskRegistry {
         DbSessionTaskRegistry::new(Arc::new(StorageBackend::in_memory())).with_waker(waker)
+    }
+
+    // -------------------------------------------------------------------------
+    // Recording test notifier (webhook dispatch)
+    // -------------------------------------------------------------------------
+
+    #[derive(Default, Clone)]
+    struct RecordingNotifier {
+        calls: Arc<Mutex<Vec<(String, TaskWebhookEvent)>>>,
+    }
+
+    impl RecordingNotifier {
+        fn recorded(&self) -> Vec<(String, TaskWebhookEvent)> {
+            self.calls.lock().unwrap().clone()
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl TaskWebhookNotifier for RecordingNotifier {
+        async fn notify(&self, task: &SessionTask, event: TaskWebhookEvent) -> anyhow::Result<()> {
+            self.calls.lock().unwrap().push((task.id.clone(), event));
+            Ok(())
+        }
+    }
+
+    fn registry_with_notifier(notifier: Arc<RecordingNotifier>) -> DbSessionTaskRegistry {
+        DbSessionTaskRegistry::new(Arc::new(StorageBackend::in_memory())).with_notifier(notifier)
+    }
+
+    /// `try_notify_webhooks` spawns a detached task; poll until the expected
+    /// number of notifications land (or fail after a bounded number of yields).
+    async fn wait_for_notifications(notifier: &RecordingNotifier, expected: usize) {
+        for _ in 0..200 {
+            if notifier.recorded().len() >= expected {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
     }
 
     fn registry() -> DbSessionTaskRegistry {
@@ -1008,6 +1095,123 @@ mod tests {
             calls.len(),
             4,
             "Should also wake on terminal for OnActivity"
+        );
+    }
+
+    /// The registry fires webhook notifications on terminal, awaiting_input, and
+    /// outbound-message transitions — each exactly once per real transition, and
+    /// never on inbound messages. Event-filter honoring is the notifier's job
+    /// (tested there); here we assert the store emits the right event kinds.
+    #[tokio::test]
+    async fn notifier_fires_on_terminal_awaiting_input_and_outbound() {
+        let notifier = Arc::new(RecordingNotifier::default());
+        let registry = registry_with_notifier(notifier.clone());
+        let session_id = SessionId::new();
+
+        let task = registry
+            .create(create_input_with_policy(session_id, TaskWakePolicy::Silent))
+            .await
+            .unwrap();
+
+        // Running: no notification (non-terminal, not awaiting_input).
+        registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Running),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        // Awaiting input: one AwaitingInput notification.
+        registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    input_request: Some(TaskInputRequest {
+                        id: "req_1".to_string(),
+                        prompt: "Approve?".to_string(),
+                        expected: None,
+                    }),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        wait_for_notifications(&notifier, 1).await;
+
+        // Repeated awaiting_input churn: no extra notification.
+        registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    input_request: Some(TaskInputRequest {
+                        id: "req_1".to_string(),
+                        prompt: "Approve?".to_string(),
+                        expected: None,
+                    }),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        // Answer resumes to running, then an outbound message fires Message.
+        let mut answer = NewTaskMessage::inbound_text("yes");
+        answer.in_reply_to = Some("req_1".to_string());
+        registry
+            .record_message(session_id, &task.id, answer)
+            .await
+            .unwrap();
+        registry
+            .record_message(
+                session_id,
+                &task.id,
+                NewTaskMessage::outbound_text("progress"),
+            )
+            .await
+            .unwrap();
+        wait_for_notifications(&notifier, 2).await;
+
+        // Terminal transition fires Terminal.
+        registry
+            .update(
+                session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Succeeded),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        wait_for_notifications(&notifier, 3).await;
+
+        let events: Vec<TaskWebhookEvent> =
+            notifier.recorded().into_iter().map(|(_, e)| e).collect();
+        assert!(
+            events.contains(&TaskWebhookEvent::AwaitingInput),
+            "expected an awaiting_input notification, got: {events:?}"
+        );
+        assert!(
+            events.contains(&TaskWebhookEvent::Message),
+            "expected an outbound message notification, got: {events:?}"
+        );
+        assert!(
+            events.contains(&TaskWebhookEvent::Terminal),
+            "expected a terminal notification, got: {events:?}"
+        );
+        // Exactly one of each — no double-fire on awaiting_input churn, and the
+        // inbound answer never produced a Message event.
+        assert_eq!(
+            events.len(),
+            3,
+            "each transition must notify exactly once, got: {events:?}"
         );
     }
 

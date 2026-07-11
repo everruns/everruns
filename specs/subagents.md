@@ -105,6 +105,7 @@ The retired direct creation entry point is no longer advertised to models.
 | `config` | object | No | Blueprint-specific configuration. Only valid with `blueprint`. |
 | `result_schema` | object | No | JSON Schema for the child session's final machine result. |
 | `message_schema` | object | No | JSON Schema for structured progress messages from the child session. |
+| `push_configs` | array | No | Per-task webhook targets (EVE-682). Each entry `{ url, secret?, event_filter? }`; `event_filter` is a subset of `terminal` (default), `awaiting_input`, `message`. URLs are SSRF-validated at spawn; embedded in the task spec and delivered alongside endpoint-created configs. See specs/session-tasks.md. |
 
 **Returns (background):** `task_id` and `status: "running"` immediately; the final result lands on the task record (`summary`) and the parent is woken on the terminal transition.
 

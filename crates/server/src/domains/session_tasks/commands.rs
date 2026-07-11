@@ -447,6 +447,231 @@ impl Command for CancelSessionTask {
 
 inventory::submit! { CommandDescriptor::of::<CancelSessionTask>() }
 
+// ============================================================================
+// Per-task push-notification configs (EVE-682)
+// ============================================================================
+
+/// Valid `event_filter` members. `terminal` is the default when none supplied.
+const VALID_EVENT_FILTERS: [&str; 3] = ["terminal", "awaiting_input", "message"];
+
+fn generate_push_config_public_id() -> String {
+    format!("tpc_{}", uuid::Uuid::new_v4().simple())
+}
+
+/// Normalize + validate a requested event filter. Empty / absent defaults to
+/// terminal-only (matching org-webhook behavior), duplicates are removed, and
+/// unknown members are rejected.
+fn normalize_event_filter(input: Option<Vec<String>>) -> Result<Vec<String>, CommandError> {
+    let raw = input.unwrap_or_default();
+    if raw.is_empty() {
+        return Ok(vec!["terminal".to_string()]);
+    }
+    let mut out: Vec<String> = Vec::new();
+    for member in raw {
+        if !VALID_EVENT_FILTERS.contains(&member.as_str()) {
+            return Err(CommandError::bad_request(format!(
+                "Unknown event_filter \"{member}\". Valid values: {}.",
+                VALID_EVENT_FILTERS.join(", ")
+            )));
+        }
+        if !out.contains(&member) {
+            out.push(member);
+        }
+    }
+    Ok(out)
+}
+
+/// Public view of a per-task push config. The stored secret is NEVER returned —
+/// only `has_secret` signals whether one is configured.
+#[derive(Debug, Serialize, ToSchema)]
+pub struct TaskPushConfig {
+    /// Public identifier (tpc_<32-hex-chars>).
+    #[schema(example = "tpc_9f8c2b1a4e7d4c3b8a1f2e3d4c5b6a7f")]
+    pub id: String,
+    /// Target URL that receives POST deliveries.
+    #[schema(example = "https://hooks.example.com/everruns/tasks")]
+    pub url: String,
+    /// Whether a signing secret is configured (the secret itself is never returned).
+    #[schema(example = true)]
+    pub has_secret: bool,
+    /// Events that trigger delivery (terminal, awaiting_input, message).
+    pub event_filter: Vec<String>,
+    /// When the config was created (RFC 3339).
+    #[schema(example = "2026-07-11T00:00:00Z")]
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    /// When the config was last updated (RFC 3339).
+    #[schema(example = "2026-07-11T00:00:00Z")]
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+impl TaskPushConfig {
+    fn from_row(row: crate::storage::models::SessionTaskPushConfigRow) -> Self {
+        Self {
+            id: row.public_id,
+            url: row.url,
+            has_secret: row.secret.is_some(),
+            event_filter: row.event_filter,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateTaskPushConfig {
+    /// Session's prefixed public identifier.
+    pub session_id: String,
+    /// Task's prefixed public identifier.
+    pub task_id: String,
+    /// URL to POST task events to.
+    pub url: String,
+    /// Optional HMAC-SHA256 signing secret. When set, every delivery includes
+    /// an `X-Everruns-Signature: sha256=<hex>` header. Never returned once set.
+    #[serde(default)]
+    pub secret: Option<String>,
+    /// Events that trigger delivery. Defaults to `["terminal"]`.
+    #[serde(default)]
+    pub event_filter: Option<Vec<String>>,
+}
+
+impl Command for CreateTaskPushConfig {
+    type Output = TaskPushConfig;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "create_task_push_config",
+            category: "session_tasks",
+            description: "Create a per-task push-notification config.",
+            method: "POST",
+            path: "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&SESSION_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<TaskPushConfig, CommandError> {
+        let session_id = q::parse_session_id(&self.session_id)?;
+        // Authorize + existence check: the task must belong to a session in the
+        // caller's org before we persist any target for it (tenant isolation).
+        q::get_task_in_org(ctx, ctx.org_id(), session_id, &self.task_id)
+            .await?
+            .ok_or_else(|| CommandError::not_found("Session task"))?;
+
+        // SSRF: validate the URL against private/internal ranges before persist.
+        // Delivery additionally pins DNS (see build_task_webhook_request).
+        everruns_core::validate_safe_url(&self.url)
+            .map_err(|e| CommandError::bad_request(format!("Invalid webhook URL: {e}")))?;
+
+        let event_filter = normalize_event_filter(self.event_filter)?;
+        let input = crate::storage::models::CreateSessionTaskPushConfig {
+            public_id: generate_push_config_public_id(),
+            session_id,
+            task_id: self.task_id,
+            url: self.url,
+            secret: self.secret.filter(|s| !s.is_empty()),
+            event_filter,
+        };
+        let row = ctx
+            .db
+            .create_task_push_config(input)
+            .await
+            .map_err(classify_anyhow)?;
+        Ok(TaskPushConfig::from_row(row))
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<CreateTaskPushConfig>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ListTaskPushConfigs {
+    /// Session's prefixed public identifier.
+    pub session_id: String,
+    /// Task's prefixed public identifier.
+    pub task_id: String,
+}
+
+impl Command for ListTaskPushConfigs {
+    type Output = Vec<TaskPushConfig>;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "list_task_push_configs",
+            category: "session_tasks",
+            description: "List per-task push-notification configs.",
+            method: "GET",
+            path: "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&SESSION_VIEW)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Vec<TaskPushConfig>, CommandError> {
+        let session_id = q::parse_session_id(&self.session_id)?;
+        q::get_task_in_org(ctx, ctx.org_id(), session_id, &self.task_id)
+            .await?
+            .ok_or_else(|| CommandError::not_found("Session task"))?;
+        let rows = ctx
+            .db
+            .list_task_push_configs(session_id, &self.task_id)
+            .await
+            .map_err(classify_anyhow)?;
+        Ok(rows.into_iter().map(TaskPushConfig::from_row).collect())
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ListTaskPushConfigs>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct DeleteTaskPushConfig {
+    /// Session's prefixed public identifier.
+    pub session_id: String,
+    /// Task's prefixed public identifier.
+    pub task_id: String,
+    /// Push config public id (tpc_...).
+    pub config_id: String,
+}
+
+impl Command for DeleteTaskPushConfig {
+    type Output = ();
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "delete_task_push_config",
+            category: "session_tasks",
+            description: "Delete a per-task push-notification config.",
+            method: "DELETE",
+            path: "/v1/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&SESSION_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<(), CommandError> {
+        let session_id = q::parse_session_id(&self.session_id)?;
+        q::get_task_in_org(ctx, ctx.org_id(), session_id, &self.task_id)
+            .await?
+            .ok_or_else(|| CommandError::not_found("Session task"))?;
+        let deleted = ctx
+            .db
+            .delete_task_push_config(session_id, &self.task_id, &self.config_id)
+            .await
+            .map_err(classify_anyhow)?;
+        if deleted {
+            Ok(())
+        } else {
+            Err(CommandError::not_found("Push config"))
+        }
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<DeleteTaskPushConfig>() }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1267,6 +1492,161 @@ mod tests {
             updated_schedule.enabled,
             "schedule must remain enabled when cancel skips executor for terminal task"
         );
+    }
+
+    // -------------------------------------------------------------------------
+    // Per-task push configs (EVE-682)
+    // -------------------------------------------------------------------------
+
+    async fn make_task(db: &Arc<StorageBackend>, session_id: everruns_core::SessionId) -> String {
+        let ctx = test_ctx(db.clone());
+        q::registry_for_ctx(&ctx)
+            .create(CreateSessionTask {
+                session_id,
+                id: None,
+                kind: TASK_KIND_BACKGROUND_TOOL.to_string(),
+                display_name: "push cfg task".to_string(),
+                spec: serde_json::json!({}),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap()
+            .id
+    }
+
+    /// Create → list → delete round-trip. The stored secret is never echoed
+    /// (only `has_secret`), and event_filter defaults to terminal-only.
+    #[tokio::test]
+    async fn push_config_crud_never_returns_secret() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_id = create_session(&db).await;
+        let task_id = make_task(&db, session_id).await;
+        let ctx = test_ctx(db.clone());
+
+        // Default filter is terminal-only; secret is accepted but never echoed.
+        let created = CreateTaskPushConfig {
+            session_id: session_id.to_string(),
+            task_id: task_id.clone(),
+            url: "https://hooks.example.com/notify".to_string(),
+            secret: Some("s3cret".to_string()),
+            event_filter: None,
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
+        assert!(created.id.starts_with("tpc_"));
+        assert!(
+            created.has_secret,
+            "has_secret must reflect the stored secret"
+        );
+        assert_eq!(created.event_filter, vec!["terminal".to_string()]);
+        // The response type has no secret field — verify the serialized form too.
+        let json = serde_json::to_value(&created).unwrap();
+        assert!(
+            json.get("secret").is_none(),
+            "serialized push config must never contain the secret"
+        );
+
+        let listed = ListTaskPushConfigs {
+            session_id: session_id.to_string(),
+            task_id: task_id.clone(),
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, created.id);
+
+        let del = DeleteTaskPushConfig {
+            session_id: session_id.to_string(),
+            task_id: task_id.clone(),
+            config_id: created.id.clone(),
+        }
+        .execute(&ctx)
+        .await;
+        assert!(del.is_ok());
+
+        // Deleting again is a not-found.
+        let again = DeleteTaskPushConfig {
+            session_id: session_id.to_string(),
+            task_id,
+            config_id: created.id,
+        }
+        .execute(&ctx)
+        .await;
+        assert!(matches!(
+            again.unwrap_err().kind,
+            CommandErrorKind::NotFound(_)
+        ));
+    }
+
+    /// SSRF guard: a private/internal URL is rejected before any row is written.
+    #[tokio::test]
+    async fn push_config_rejects_unsafe_url() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_id = create_session(&db).await;
+        let task_id = make_task(&db, session_id).await;
+        let ctx = test_ctx(db.clone());
+
+        let err = CreateTaskPushConfig {
+            session_id: session_id.to_string(),
+            task_id,
+            url: "http://169.254.169.254/latest/meta-data".to_string(),
+            secret: None,
+            event_filter: None,
+        }
+        .execute(&ctx)
+        .await
+        .unwrap_err();
+        assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
+    }
+
+    /// An unknown event_filter member is rejected.
+    #[tokio::test]
+    async fn push_config_rejects_unknown_event_filter() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_id = create_session(&db).await;
+        let task_id = make_task(&db, session_id).await;
+        let ctx = test_ctx(db.clone());
+
+        let err = CreateTaskPushConfig {
+            session_id: session_id.to_string(),
+            task_id,
+            url: "https://hooks.example.com/notify".to_string(),
+            secret: None,
+            event_filter: Some(vec!["bogus".to_string()]),
+        }
+        .execute(&ctx)
+        .await
+        .unwrap_err();
+        assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
+    }
+
+    /// Tenant isolation: the caller's org (DEFAULT) must not create a push
+    /// config on a task owned by a session in another org — it reads as
+    /// not-found, never leaking existence.
+    #[tokio::test]
+    async fn push_config_cross_org_is_not_found() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let other_org = DEFAULT_ORG_ID + 999;
+        let other_session = create_session_in_org(&db, other_org).await;
+        let task_id = make_task(&db, other_session).await;
+
+        // ctx is DEFAULT_ORG_ID — a different tenant than the task's owner.
+        let ctx = test_ctx(db.clone());
+        let err = CreateTaskPushConfig {
+            session_id: other_session.to_string(),
+            task_id,
+            url: "https://hooks.example.com/notify".to_string(),
+            secret: None,
+            event_filter: None,
+        }
+        .execute(&ctx)
+        .await
+        .unwrap_err();
+        assert!(matches!(err.kind, CommandErrorKind::NotFound(_)));
     }
 
     // -------------------------------------------------------------------------
