@@ -2464,6 +2464,7 @@ mod tests {
         crate::session_task::SessionTask {
             id: format!("task_{run_id}"),
             session_id,
+            root_session_id: None,
             kind: TASK_KIND_EXTERNAL_AGENT.to_string(),
             display_name: "Test external agent".to_string(),
             spec: json!({ "run_id": run_id }),
@@ -2802,6 +2803,7 @@ mod tests {
         let fake_task = SessionTask {
             id: task_id.clone(),
             session_id: ctx.session_id,
+            root_session_id: None,
             kind: TASK_KIND_EXTERNAL_AGENT.to_string(),
             display_name: "Echo".to_string(),
             spec: json!({ "run_id": &run_id }),

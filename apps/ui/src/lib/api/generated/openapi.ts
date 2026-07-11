@@ -9295,6 +9295,21 @@ export interface components {
          * @example design-docs
          */
         name: string;
+        /**
+         * @description Owning agent when `scope = agent`.
+         * @example agent_01933b5a000070008000000000000001
+         */
+        owner_agent_id?: string | null;
+        /**
+         * Format: uuid
+         * @description Owning user when `scope = user`.
+         */
+        owner_user_id?: string | null;
+        /**
+         * @description Ownership scope (`org`, `agent`, or `user`).
+         * @example org
+         */
+        scope: string;
         /** @description Source-specific configuration (git remote, github repo, manual upload). */
         source: components["schemas"]["MemorySourceResponse"];
         /**
@@ -10745,6 +10760,21 @@ export interface components {
        * @example design-docs
        */
       name: string;
+      /**
+       * @description Owning agent when `scope = agent`.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      owner_agent_id?: string | null;
+      /**
+       * Format: uuid
+       * @description Owning user when `scope = user`.
+       */
+      owner_user_id?: string | null;
+      /**
+       * @description Ownership scope (`org`, `agent`, or `user`).
+       * @example org
+       */
+      scope: string;
       /** @description Source-specific configuration (git remote, github repo, manual upload). */
       source: components["schemas"]["MemorySourceResponse"];
       /**
@@ -14146,6 +14176,14 @@ export interface components {
       progress?: null | components["schemas"]["BackgroundProgress"];
       /** @description Machine result in the session VFS: `/.tasks/{task_id}/result.json`. */
       result_path?: string | null;
+      /**
+       * @description Root of the owning session's delegation tree (EVE-680). Populated on
+       *     API reads from the denormalized storage column so cross-session tooling
+       *     (e.g. the Work view) can group a whole tree's tasks by one id. `None`
+       *     for a top-level session that is its own root, or when unavailable.
+       *     Storage-derived, never client-settable on create.
+       */
+      root_session_id?: string | null;
       /** @description Owning session. */
       session_id: string;
       /** @description Kind-specific input (instructions, tool args, external agent id). */

@@ -1540,6 +1540,9 @@ pub fn proto_to_session_task(
     Ok(st::SessionTask {
         id: p.id,
         session_id: SessionId::from_uuid(parse_uuid_lenient(&session_uuid.value)),
+        // Storage-derived (EVE-680); surfaced on API storage reads via
+        // `SessionTaskRow::to_task`, not carried over the worker protocol.
+        root_session_id: None,
         kind: p.kind,
         display_name: p.display_name,
         spec: bytes_to_json_value(&p.spec_json),

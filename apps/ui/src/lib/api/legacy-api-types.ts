@@ -4005,6 +4005,12 @@ export interface SessionTask {
   /** `task_*` public ID. */
   id: string;
   session_id: string;
+  /**
+   * Root of the owning session's delegation tree (EVE-680). Surfaced on API
+   * reads so cross-session tooling can group a whole tree's tasks by one id.
+   * `null`/absent for a top-level session that is its own root.
+   */
+  root_session_id?: string | null;
   /** Task kind: "subagent", "external_agent", "background_tool", "monitor", etc. */
   kind: string;
   /** Human-readable label. */

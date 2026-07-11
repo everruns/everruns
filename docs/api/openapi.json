@@ -33091,6 +33091,13 @@
             ],
             "description": "Machine result in the session VFS: `/.tasks/{task_id}/result.json`."
           },
+          "root_session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Root of the owning session's delegation tree (EVE-680). Populated on\nAPI reads from the denormalized storage column so cross-session tooling\n(e.g. the Work view) can group a whole tree's tasks by one id. `None`\nfor a top-level session that is its own root, or when unavailable.\nStorage-derived, never client-settable on create."
+          },
           "session_id": {
             "type": "string",
             "description": "Owning session."
