@@ -289,7 +289,7 @@ pub struct CreatePushConfigBody {
     pub url: String,
     /// Optional HMAC-SHA256 signing secret (never returned once set).
     #[serde(default)]
-    #[schema(example = "whsec_9f8c2b1a4e7d4c3b8a1f2e3d")]
+    #[schema(example = "whsec_example_signing_secret_placeholder")]
     pub secret: Option<String>,
     /// Events that trigger delivery. Defaults to `["terminal"]`.
     #[serde(default)]
