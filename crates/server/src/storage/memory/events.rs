@@ -409,9 +409,10 @@ impl InMemoryDatabase {
         } else if limit.is_some() {
             result.clear();
         } else if result.len() > MESSAGE_SAFETY_LIMIT {
-            // No explicit limit: cap to the earliest N rows, matching the
+            // No explicit limit: cap to the latest N rows, matching the
             // Postgres backend's safety cap on this path.
-            result.truncate(MESSAGE_SAFETY_LIMIT);
+            let drain_end = result.len() - MESSAGE_SAFETY_LIMIT;
+            result.drain(0..drain_end);
         }
         Ok(result)
     }

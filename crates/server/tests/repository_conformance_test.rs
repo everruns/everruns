@@ -293,10 +293,9 @@ async fn run_repository_conformance(repo: &dyn Repository, label: &str, harness_
         .await
         .expect("list message events without explicit limit");
     assert_eq!(uncapped.len(), MESSAGE_SAFETY_LIMIT);
-    assert_eq!(
-        uncapped.first().expect("first capped event").sequence,
-        1,
-        "unbounded list_message_events_limited keeps the earliest capped window"
+    assert!(
+        uncapped.first().expect("first capped event").sequence > 1,
+        "unbounded list_message_events_limited keeps the latest capped window"
     );
 
     let filtered = repo

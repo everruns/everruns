@@ -884,6 +884,8 @@ async fn test_list_message_events_filtered_caps_unbounded_history() {
         .await
         .unwrap();
     assert_eq!(limited.len(), cap);
+    assert_eq!(limited.first().unwrap().sequence, (total - cap + 1) as i32);
+    assert_eq!(limited.last().unwrap().sequence, total as i32);
 }
 
 #[tokio::test]
