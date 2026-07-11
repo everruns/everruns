@@ -373,6 +373,8 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["claude-3-haiku"], ModelVendor::Anthropic, ANTHROPIC),
     // Google Gemini
     md(&["gemini-3.1-pro-preview"], ModelVendor::Google, GEMINI),
+    md(&["gemini-3.5-flash"], ModelVendor::Google, GEMINI),
+    md(&["gemini-3.1-flash-lite"], ModelVendor::Google, GEMINI),
     md(&["gemini-2.5-pro"], ModelVendor::Google, GEMINI),
     md(&["gemini-2.5-flash"], ModelVendor::Google, GEMINI),
     md(&["gemini-2.0-flash"], ModelVendor::Google, GEMINI),
@@ -3194,6 +3196,97 @@ fn gemini_profile_data(model_id: &str) -> Option<ModelProfile> {
             supports_phases: false,
         }),
 
+        // Gemini 3.5 Flash — current-gen Flash. Source: models.dev (google
+        // provider). Reasoning effort (minimal/low/medium/high) is offered
+        // upstream but, consistent with the other Gemini profiles here, effort
+        // selection is left unset.
+        "gemini-3.5-flash" => Some(ModelProfile {
+            name: "Gemini 3.5 Flash".into(),
+            family: "gemini-3.5-flash".into(),
+            description: None,
+            release_date: Some("2026-05-19".into()),
+            last_updated: Some("2026-05-19".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: true,
+            knowledge: Some("2025-01-01".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(ModelCost {
+                input: 1.50,
+                output: 9.00,
+                cache_read: Some(0.15),
+                cost_tiers: vec![],
+            }),
+            limits: Some(ModelLimits {
+                context: 1_048_576,
+                input: None,
+                output: 65_536,
+                max_media: None,
+            }),
+            modalities: Some(ModelModalities {
+                input: vec![
+                    Modality::Text,
+                    Modality::Image,
+                    Modality::Audio,
+                    Modality::Video,
+                    Modality::Pdf,
+                ],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: None,
+            speed: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+        }),
+
+        // Gemini 3.1 Flash Lite — low-latency, high-volume tier. Source:
+        // models.dev (google provider). Reasoning effort is offered upstream but
+        // left unset here, consistent with the other Gemini profiles.
+        "gemini-3.1-flash-lite" => Some(ModelProfile {
+            name: "Gemini 3.1 Flash Lite".into(),
+            family: "gemini-3.1-flash-lite".into(),
+            description: None,
+            release_date: Some("2026-05-07".into()),
+            last_updated: Some("2026-05-07".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: true,
+            knowledge: Some("2025-01-01".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(ModelCost {
+                input: 0.25,
+                output: 1.50,
+                cache_read: Some(0.025),
+                cost_tiers: vec![],
+            }),
+            limits: Some(ModelLimits {
+                context: 1_048_576,
+                input: None,
+                output: 65_536,
+                max_media: None,
+            }),
+            modalities: Some(ModelModalities {
+                input: vec![
+                    Modality::Text,
+                    Modality::Image,
+                    Modality::Audio,
+                    Modality::Video,
+                    Modality::Pdf,
+                ],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: None,
+            speed: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+        }),
+
         "gemini-2.5-pro" => Some(ModelProfile {
             name: "Gemini 2.5 Pro".into(),
             family: "gemini-2.5-pro".into(),
@@ -3538,6 +3631,8 @@ mod tests {
         (DriverId::Anthropic, "claude-3-haiku"),
         // Gemini
         (DriverId::Gemini, "gemini-3.1-pro-preview"),
+        (DriverId::Gemini, "gemini-3.5-flash"),
+        (DriverId::Gemini, "gemini-3.1-flash-lite"),
         (DriverId::Gemini, "gemini-2.5-pro"),
         (DriverId::Gemini, "gemini-2.5-flash"),
         (DriverId::Gemini, "gemini-2.0-flash"),
