@@ -195,9 +195,11 @@ inventory::submit! { CommandDescriptor::of::<ListMessages>() }
 #[derive(Debug, Serialize)]
 pub struct ExportSessionJsonl {
     pub body: String,
-    /// Image content parts flattened to `"[image]"` markers in the ATIF
-    /// document (always 0 for the JSONL format, which keeps parts verbatim).
-    /// Surfaced by the HTTP route as the `X-Atif-Images-Omitted` header.
+    /// Image content parts that could not be materialized into an ATIF image
+    /// ContentPart and were flattened to `"[image]"` markers in the ATIF
+    /// document (typically 0, since most images export as content parts; always
+    /// 0 for the JSONL format, which keeps parts verbatim). Surfaced by the HTTP
+    /// route as the `X-Atif-Images-Omitted` header.
     pub atif_images_omitted: usize,
 }
 

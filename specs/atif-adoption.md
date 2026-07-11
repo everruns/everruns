@@ -75,14 +75,48 @@ the existing dataset formats), plus case identity (`source_key`, `eval_run_id`,
   `extra.source_key` → `trajectory_id` → `session_id`), so re-import
   converges.
 
-## Limits
+## Image content
 
-- **Images are never exported raw.** Every image content part is flattened to
-  an `"[image]"` marker in step/observation text, and the fold records what
-  was omitted: locators only (url / file_id / media_type / filename as
-  present on the part, never bytes) in step-level `extra.omitted_images[]`,
-  plus a root `extra.images_omitted` total. Both keys appear only when at
-  least one image was omitted.
+Image content parts are exported as ATIF multimodal ContentParts (Harbor
+RFC 0001 / ATIF v1.6), not dropped. When a step message or a tool-result
+observation contains image parts, its `message` / `content` becomes a
+**ContentPart array** (text parts + image parts, in order) instead of a
+flattened string; text-only content stays a string (the RFC allows either, so
+text-only consumers are unaffected). Each image becomes an ATIF image
+ContentPart with a `source`, choosing the leanest faithful representation:
+
+- `Image { url }` → `source.path` = the URL.
+- `ImageFile { image_id }` → `source.path` = the org-scoped file-serving route
+  `/v1/images/{image_id}` (a consumer with the same auth fetches the bytes),
+  keeping documents small.
+- `Image { base64 }` with no URL → an inline `data:` URI in `source.path`. This
+  is the only self-contained option but bloats the document and counts toward
+  the export size cap, so it is a last resort.
+
+`source.media_type` is preserved when known. `redact_content` blanks the
+content-bearing `source.path` while keeping the structural `media_type`; the
+always-on secret scrubber still runs over every produced source.
+
+**Omitted images (now rare).** Only an image that cannot be materialized — an
+inline `Image` carrying neither a URL nor base64 bytes — is flattened to an
+`"[image]"` marker; its locator (media_type / filename as present, never bytes)
+is recorded in step-level `extra.omitted_images[]` and counted in a root
+`extra.images_omitted` total. Both keys appear only when at least one image was
+genuinely omitted, so this total is typically 0.
+
+## Subagent trajectories
+
+everruns sessions can spawn subagents (`specs/subagents.md`). When the fold
+sees a `spawn_agent` tool result carrying a `subagent_id` (the child session
+id), it attaches a `subagent_trajectory_ref` (Harbor RFC 0001) to that
+`observation.results[]` entry: `trajectory_path` points at the child's own ATIF
+export (`/v1/sessions/{child}/export?format=atif`, a resolvable location per the
+RFC's ref rules), plus the informational `session_id`. This is **ref-only** —
+the child trajectory is not embedded as `subagent_trajectories[]`, because this
+fold sees only one session's event log and has no access to child-session
+events. Embedding (recursive fold of resolvable child sessions) is a follow-up.
+
+## Limits
 - **Session export size cap.** Plain `?format=atif` returns one synchronous
   JSON document and enforces `ATIF_EXPORT_MAX_BYTES` (50 MiB, defined in
   `crates/server/src/atif.rs`); larger documents are rejected with HTTP 413
@@ -109,9 +143,9 @@ the existing dataset formats), plus case identity (`source_key`, `eval_run_id`,
     cursor only selects a step offset within that session, so it cannot widen
     scope.
   - Root `extra` carries per-segment bookkeeping: `segment_index`,
-    `continued_trajectory_ref` (mirrored), and `images_omitted` for **this**
-    segment. The session-level `turns` roll-up is carried once, on the final
-    segment.
+    `continued_trajectory_ref` (mirrored), and `images_omitted` (genuinely
+    unmaterializable images) for **this** segment. The session-level `turns`
+    roll-up is carried once, on the final segment.
   - **Byte bounding.** Segments are packed greedily and stop before the
     serialized segment would exceed `ATIF_EXPORT_MAX_BYTES`; each segment holds
     at least one step. **Caveat:** a single step whose own serialization exceeds
@@ -123,7 +157,9 @@ the existing dataset formats), plus case identity (`source_key`, `eval_run_id`,
     walk the chain and detect lossiness without parsing each body.
 - **Lossiness header.** Successful ATIF session exports set
   `X-Atif-Images-Omitted: <N>` only when N > 0 (per segment on the segmented
-  path), so clients can detect a lossy export without parsing the body.
+  path), so clients can detect a lossy export without parsing the body. Since
+  most images now export as content parts, N is typically 0 and the header is
+  usually absent.
 
 ## Security
 
@@ -148,13 +184,14 @@ reflects what has shipped on `main`.
 3. ✅ **Segmented session export** — `?format=atif&segmented=true` with
    `continued_trajectory_ref` linking + opaque cursor, for sessions over the
    size cap (see Limits).
+4. ✅ **Fold fidelity** — image content parts exported as ATIF multimodal
+   ContentParts (see Image content) and subagent spawns linked via
+   `subagent_trajectory_ref` (see Subagent trajectories).
 
 ## Non-goals (v1)
 
-- `subagent_trajectories` (session tasks are not folded into embedded
-  subagent trajectories yet).
-- ATIF image content parts (images are flattened to markers with locator
-  records — see Limits).
+- Embedding subagents as `subagent_trajectories[]` (child sessions are linked
+  by ref only; recursive embedding is a follow-up — see Subagent trajectories).
 - Importing trajectories as *results* (the existing external-run import in
   `specs/evals.md` covers scored results; ATIF import produces cases).
 
