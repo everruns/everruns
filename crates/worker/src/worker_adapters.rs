@@ -675,4 +675,8 @@ impl<A: WorkerAdapters> everruns_core::traits::SessionFileSystem for SessionAdap
             .create_directory(session_id.uuid(), path)
             .await
     }
+
+    fn is_mount_resolver(&self) -> bool {
+        false
+    }
 }
