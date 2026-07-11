@@ -91,7 +91,7 @@ impl Capability for DuckDuckGoCapability {
         // instant-answer API (curated facts/abstracts), not a general web
         // search — and that an empty result does not mean no web pages exist.
         Some(
-            "`duckduckgo_instant_answer` returns curated instant answers (facts, definitions, abstracts), not general web results. An empty result does not mean no matching web pages exist; use a web-search or web-fetch tool for web discovery.",
+            "`duckduckgo_instant_answer` returns curated instant answers (facts, definitions, abstracts), not general web results. An empty result does not mean no matching web pages exist; prefer a web-search or web-fetch tool for web discovery, but this tool can serve as a lightweight fallback when none is available.",
         )
     }
 

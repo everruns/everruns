@@ -61,8 +61,10 @@ Only non-empty fields are included in the response.
 :::note
 This tool queries the DuckDuckGo **Instant Answer** API, not full web search.
 A `nothing` result (or a `note` field) means DuckDuckGo has no curated instant
-answer for the query — it does **not** mean no web pages match. For general web
-discovery, use a web-search or web-fetch tool (or Brave Search) instead.
+answer for the query — it does **not** mean no web pages match. Prefer a
+web-search or web-fetch tool (or Brave Search) for general web discovery; when
+none is available, this tool can still serve as a lightweight search for quick
+facts, definitions, and related topics.
 :::
 
 ## When to Use DuckDuckGo vs Brave Search

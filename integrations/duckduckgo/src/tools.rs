@@ -39,8 +39,9 @@ impl Tool for DuckDuckGoSearchTool {
          or Wikipedia-style abstract for a query. This is NOT a full web/SERP search — it only \
          returns DuckDuckGo's curated instant answers and is not exhaustive. A `nothing` result \
          means no instant answer was found, NOT that no web pages exist; matching pages may still \
-         exist. For general web discovery use a web-search or web-fetch tool instead. \
-         No API key required."
+         exist. Prefer a dedicated web-search or web-fetch tool for general web discovery; if none \
+         is available, this tool can still serve as a lightweight search for quick facts, \
+         definitions, and related topics. No API key required."
     }
 
     fn parameters_schema(&self) -> Value {
