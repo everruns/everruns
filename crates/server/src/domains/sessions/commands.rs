@@ -86,6 +86,12 @@ impl Command for CreateSession {
                 "Cannot specify both agent_id and agent_name",
             ));
         }
+        if req.seed != everruns_core::SessionSeedMode::Fresh && req.forked_from_session_id.is_none()
+        {
+            return Err(CommandError::bad_request(
+                "seed requires forked_from_session_id",
+            ));
+        }
 
         // Enforce per-org session cap before the heavier creation work. Sessions
         // are hard-deleted, so the count reflects only live rows.
@@ -470,6 +476,7 @@ impl Command for ForkSession {
                 parent_id,
                 super::ForkOverrides {
                     title: overrides.title,
+                    goal: overrides.goal,
                     tags: overrides.tags,
                     model_id: overrides.model_id,
                     agent_id: overrides.agent_id,
@@ -748,6 +755,7 @@ mod tests {
             agent_name: None,
             agent_identity_id: None,
             title: Some("Test Session".to_string()),
+            goal: None,
             locale: None,
             tags: vec![],
             model_id: None,
@@ -761,6 +769,8 @@ mod tests {
             max_iterations: None,
             parallel_tool_calls: None,
             parent_session_id: None,
+            forked_from_session_id: None,
+            seed: everruns_core::SessionSeedMode::Fresh,
         }
     }
 

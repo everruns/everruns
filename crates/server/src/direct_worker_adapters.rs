@@ -552,6 +552,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 owner: None,
                 effective_owner: None,
                 title: r.title,
+                goal: r.goal,
                 locale: r.locale,
                 preview: None,
                 output_preview: None,

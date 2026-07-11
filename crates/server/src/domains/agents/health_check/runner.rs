@@ -176,6 +176,7 @@ async fn run_case(
                 agent_name: None,
                 agent_identity_id: None,
                 title: Some(format!("Health check: {}", case.name)),
+                goal: None,
                 locale: None,
                 tags: vec!["health_check".to_string()],
                 model_id: model_id.as_ref().and_then(|m| m.parse().ok()),
@@ -187,6 +188,8 @@ async fn run_case(
                 hints: None,
                 network_access: None,
                 parent_session_id: None,
+                forked_from_session_id: None,
+                seed: everruns_core::SessionSeedMode::Fresh,
                 workspace_id: None,
                 // Bound per-case work: the wall-clock timeout is a backstop,
                 // but a hard iteration cap prevents expensive tool/LLM loops

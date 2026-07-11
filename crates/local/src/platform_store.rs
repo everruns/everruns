@@ -16,7 +16,7 @@ use everruns_core::app::{App, AppChannel, ChannelType};
 use everruns_core::capability_dto::CapabilityInfo;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::harness::Harness;
-use everruns_core::platform_store::{PlatformMessage, PlatformStore};
+use everruns_core::platform_store::{PlatformCreateSessionRequest, PlatformMessage, PlatformStore};
 use everruns_core::session::{Session, SessionParticipant};
 use everruns_core::typed_id::{
     AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId,
@@ -38,6 +38,28 @@ pub trait LocalSessionRunner: Send + Sync {
         locale: Option<&str>,
         parent_session_id: Option<SessionId>,
     ) -> Result<Session>;
+
+    async fn create_session_with_options(
+        &self,
+        request: PlatformCreateSessionRequest,
+    ) -> Result<Session> {
+        if request.forked_from_session_id.is_some()
+            || request.seed != everruns_core::session::SessionSeedMode::Fresh
+        {
+            return Err(unsupported("create_session(seed)"));
+        }
+        let mut session = self
+            .create_session(
+                request.harness_id,
+                request.agent_id,
+                request.title.as_deref(),
+                request.locale.as_deref(),
+                request.parent_session_id,
+            )
+            .await?;
+        session.goal = request.goal;
+        Ok(session)
+    }
 
     /// Deliver a user message and run a turn to completion.
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()>;
@@ -107,6 +129,16 @@ impl PlatformStore for LocalPlatformStore {
         self.runner
             .create_session(harness_id, agent_id, title, locale, parent_session_id)
             .await
+    }
+
+    async fn create_session_with_options(
+        &self,
+        request: PlatformCreateSessionRequest,
+    ) -> Result<Session> {
+        if request.blueprint_id.is_some() {
+            return Err(unsupported("create_session(blueprint)"));
+        }
+        self.runner.create_session_with_options(request).await
     }
 
     async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>> {

@@ -25,7 +25,7 @@ use everruns_core::typed_id::{
 use everruns_core::{
     BuiltInHarnessRole, Caller, PlatformDefinition, ResourceConfigResponse, ScopedMcpServers,
     Session, SessionContextReport, SessionParticipant, SessionParticipantKind,
-    SessionParticipantRole, ToolDefinition, evaluate_policies_with, is_mcp_tool,
+    SessionParticipantRole, SessionSeedMode, ToolDefinition, evaluate_policies_with, is_mcp_tool,
 };
 use everruns_worker::AgentRunner;
 
@@ -74,6 +74,10 @@ pub struct CreateSessionRequest {
     #[serde(default)]
     #[schema(example = "Debug login issue")]
     pub title: Option<String>,
+    /// Optional objective for the session. Visible to the agent at system-prompt level.
+    #[serde(default)]
+    #[schema(example = "Investigate the queue latency regression and propose a fix")]
+    pub goal: Option<String>,
     /// Session locale (BCP 47, e.g. `uk-UA`).
     #[serde(default)]
     #[schema(example = "uk-UA")]
@@ -140,6 +144,14 @@ pub struct CreateSessionRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(ignore)]
     pub parent_session_id: Option<SessionId>,
+    /// Internal: lineage source when creating a detached peer session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(ignore)]
+    pub forked_from_session_id: Option<SessionId>,
+    /// Internal: how to seed a detached peer session from its lineage source.
+    #[serde(default)]
+    #[schema(ignore)]
+    pub seed: SessionSeedMode,
     /// Attach this session to an existing Workspace (format: `wsp_<32-hex>`)
     /// instead of auto-creating a default per-session workspace. The workspace
     /// must exist in the caller's org and be `active`. Lets multiple sessions
@@ -158,6 +170,10 @@ pub struct ForkSessionRequest {
     #[serde(default)]
     #[schema(example = "Branch: try the async rewrite")]
     pub title: Option<String>,
+    /// Goal for the fork. Omitted inherits the parent's goal.
+    #[serde(default)]
+    #[schema(example = "Try the async rewrite from this state")]
+    pub goal: Option<String>,
     /// Tags for the fork. Replaces (does not merge with) the parent's tags.
     #[serde(default)]
     #[schema(example = json!(["experiment"]))]
@@ -294,6 +310,10 @@ pub struct UpdateSessionRequest {
     #[serde(default)]
     #[schema(example = "Updated session title")]
     pub title: Option<String>,
+    /// Updated session objective.
+    #[serde(default)]
+    #[schema(example = "Summarize the incident and list remediations")]
+    pub goal: Option<String>,
     /// Optional resident agent identity used for unattended/background execution.
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(

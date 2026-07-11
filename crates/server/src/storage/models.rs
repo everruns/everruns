@@ -730,6 +730,8 @@ pub struct SessionRow {
     pub resolved_owner_user_id: Option<Uuid>,
     pub title: Option<String>,
     #[sqlx(default)]
+    pub goal: Option<String>,
+    #[sqlx(default)]
     pub locale: Option<String>,
     pub tags: Vec<String>,
     pub model_id: Option<ModelId>,
@@ -929,6 +931,7 @@ pub struct UpdateSession {
     pub agent_version_id: Option<everruns_core::AgentVersionId>,
     pub agent_config_hash: Option<String>,
     pub title: Option<String>,
+    pub goal: Option<String>,
     pub agent_identity_id: UpdateField<AgentIdentityId>,
     pub owner_principal_id: Option<PrincipalId>,
     pub resolved_owner_user_id: UpdateField<Uuid>,

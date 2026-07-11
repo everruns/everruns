@@ -20,12 +20,13 @@
 // Spawn governance: child depth and root-tree task fan-out are bounded.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::platform_store::PlatformStore;
+use crate::platform_store::{PlatformCreateSessionRequest, PlatformStore};
+use crate::session::SessionSeedMode;
 use crate::session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskState,
-    SessionTaskUpdate, TASK_KIND_SUBAGENT, TaskError, TaskExecutor, TaskExecutorPlugin, TaskLinks,
-    TaskMessage, TaskMessageDirection, TaskMessagePart, TaskWakePolicy, task_message_text,
-    task_result_path,
+    SessionTaskUpdate, TASK_KIND_SESSION, TASK_KIND_SUBAGENT, TaskError, TaskExecutor,
+    TaskExecutorPlugin, TaskLinks, TaskMessage, TaskMessageDirection, TaskMessagePart,
+    TaskWakePolicy, task_message_text, task_result_path,
 };
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
@@ -192,6 +193,42 @@ impl SpawnMode {
             Self::Background => "background",
             Self::Foreground => "foreground",
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SpawnLifetime {
+    Linked,
+    Detached,
+}
+
+impl SpawnLifetime {
+    fn parse(arguments: &Value) -> Result<Self, ToolExecutionResult> {
+        match arguments.get("lifetime").and_then(Value::as_str) {
+            None | Some("linked") => Ok(Self::Linked),
+            Some("detached") => Ok(Self::Detached),
+            Some(other) => Err(ToolExecutionResult::tool_error(format!(
+                "Invalid lifetime: {other}. Expected 'linked' or 'detached'."
+            ))),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Linked => "linked",
+            Self::Detached => "detached",
+        }
+    }
+}
+
+fn parse_seed(arguments: &Value) -> Result<SessionSeedMode, ToolExecutionResult> {
+    match arguments.get("seed").and_then(Value::as_str) {
+        None | Some("fresh") => Ok(SessionSeedMode::Fresh),
+        Some("fork") => Ok(SessionSeedMode::Fork),
+        Some("workspace") => Ok(SessionSeedMode::Workspace),
+        Some(other) => Err(ToolExecutionResult::tool_error(format!(
+            "Invalid seed: {other}. Expected 'fresh', 'fork', or 'workspace'."
+        ))),
     }
 }
 
@@ -1158,7 +1195,15 @@ async fn spawn_agent_subagent_impl(
 ) -> Result<ToolExecutionResult, ToolExecutionResult> {
     let name = require_str(&arguments, "name")?.trim().to_string();
     let instructions = require_str(&arguments, "instructions")?.to_string();
+    let goal = arguments
+        .get("goal")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
     let mode = resolve_spawn_mode(&arguments, context)?;
+    let lifetime = SpawnLifetime::parse(&arguments)?;
+    let seed = parse_seed(&arguments)?;
 
     let store = get_platform_store(context)?;
     let session_store = get_session_store(context)?;
@@ -1188,7 +1233,10 @@ async fn spawn_agent_subagent_impl(
         Err(e) => return Err(ToolExecutionResult::internal_error(e)),
     };
 
-    if let Err(error) = enforce_subagent_depth_cap(session_store, &parent_session, context).await {
+    if lifetime == SpawnLifetime::Linked
+        && let Err(error) =
+            enforce_subagent_depth_cap(session_store, &parent_session, context).await
+    {
         return Ok(error);
     }
 
@@ -1257,8 +1305,9 @@ async fn spawn_agent_subagent_impl(
     // When a spawn store and tool_call_id are available, attempt to claim a
     // spawn slot before creating the child session.  On reclaim, this lets us
     // reattach to the existing child instead of spawning a duplicate.
-    if let (Some(spawn_store), Some(tool_call_id)) =
-        (&context.subagent_spawn_store, &context.tool_call_id)
+    if lifetime == SpawnLifetime::Linked
+        && let (Some(spawn_store), Some(tool_call_id)) =
+            (&context.subagent_spawn_store, &context.tool_call_id)
     {
         let claim_token = uuid::Uuid::new_v4();
 
@@ -1352,6 +1401,7 @@ async fn spawn_agent_subagent_impl(
                     context,
                     &parent_session,
                     &name,
+                    goal.as_deref(),
                     &instructions,
                     &blueprint_param,
                     &config_param,
@@ -1359,6 +1409,8 @@ async fn spawn_agent_subagent_impl(
                     &message_schema,
                     &push_configs,
                     mode,
+                    lifetime,
+                    seed,
                     Some((
                         spawn_store.as_ref(),
                         tool_call_id.as_str(),
@@ -1377,6 +1429,7 @@ async fn spawn_agent_subagent_impl(
         context,
         &parent_session,
         &name,
+        goal.as_deref(),
         &instructions,
         &blueprint_param,
         &config_param,
@@ -1384,6 +1437,8 @@ async fn spawn_agent_subagent_impl(
         &message_schema,
         &push_configs,
         mode,
+        lifetime,
+        seed,
         None,
     )
     .await)
@@ -1425,6 +1480,7 @@ async fn spawn_create_and_wait(
     context: &ToolContext,
     parent_session: &crate::session::Session,
     name: &str,
+    goal: Option<&str>,
     instructions: &str,
     blueprint_param: &Option<String>,
     config_param: &Option<Value>,
@@ -1432,6 +1488,8 @@ async fn spawn_create_and_wait(
     message_schema: &Option<Value>,
     push_configs: &Option<Value>,
     mode: SpawnMode,
+    lifetime: SpawnLifetime,
+    seed: SessionSeedMode,
     settle_ctx: Option<(
         &dyn crate::traits::SubagentSpawnStore,
         &str,
@@ -1442,27 +1500,33 @@ async fn spawn_create_and_wait(
     let Some(session_store) = context.session_store.as_ref() else {
         return ToolExecutionResult::tool_error("Subagent spawn requires session_store context");
     };
-    if let Err(error) =
-        enforce_subagent_task_caps(session_store.as_ref(), parent_session, context).await
+    if lifetime == SpawnLifetime::Linked
+        && let Err(error) =
+            enforce_subagent_task_caps(session_store.as_ref(), parent_session, context).await
     {
         return error;
     }
 
-    // Create child session, linking it to the parent for tree depth enforcement.
+    // Linked sessions are lifecycle children. Detached sessions are peers: no
+    // parent_session_id, but fork lineage records who spawned them.
     let child_session = match store
-        .create_session(
-            parent_session.harness_id,
-            if blueprint_param.is_some() {
+        .create_session_with_options(PlatformCreateSessionRequest {
+            harness_id: parent_session.harness_id,
+            agent_id: if blueprint_param.is_some() {
                 None // Blueprint sessions don't inherit agent
             } else {
                 parent_session.agent_id
             },
-            Some(name),
-            parent_session.locale.as_deref(),
-            blueprint_param.as_deref(),
-            config_param.as_ref(),
-            Some(context.session_id),
-        )
+            title: Some(name.to_string()),
+            goal: goal.map(str::to_string),
+            locale: parent_session.locale.clone(),
+            blueprint_id: blueprint_param.clone(),
+            blueprint_config: config_param.clone(),
+            parent_session_id: (lifetime == SpawnLifetime::Linked).then_some(context.session_id),
+            forked_from_session_id: (lifetime == SpawnLifetime::Detached)
+                .then_some(context.session_id),
+            seed,
+        })
         .await
     {
         Ok(s) => s,
@@ -1478,6 +1542,8 @@ async fn spawn_create_and_wait(
         "instructions": instructions,
         "blueprint_id": blueprint_param,
         "mode": mode.as_str(),
+        "lifetime": lifetime.as_str(),
+        "seed": seed.as_str(),
     });
     if let Some(schema) = result_schema
         && let Some(spec) = task_spec.as_object_mut()
@@ -1503,7 +1569,11 @@ async fn spawn_create_and_wait(
             .create(CreateSessionTask {
                 session_id: context.session_id,
                 id: None,
-                kind: TASK_KIND_SUBAGENT.to_string(),
+                kind: match lifetime {
+                    SpawnLifetime::Linked => TASK_KIND_SUBAGENT,
+                    SpawnLifetime::Detached => TASK_KIND_SESSION,
+                }
+                .to_string(),
                 display_name: name.to_string(),
                 spec: task_spec,
                 state: SessionTaskState::Running,
@@ -1511,10 +1581,15 @@ async fn spawn_create_and_wait(
                     child_session_id: Some(child_session.id),
                     ..Default::default()
                 },
-                wake_policy: match (mode, message_schema.is_some()) {
-                    (SpawnMode::Background, true) => TaskWakePolicy::OnActivity,
-                    (SpawnMode::Background, false) => TaskWakePolicy::OnTerminal,
-                    (SpawnMode::Foreground, _) => TaskWakePolicy::Silent,
+                wake_policy: match (lifetime, mode, message_schema.is_some()) {
+                    (SpawnLifetime::Detached, _, _) => TaskWakePolicy::Silent,
+                    (SpawnLifetime::Linked, SpawnMode::Background, true) => {
+                        TaskWakePolicy::OnActivity
+                    }
+                    (SpawnLifetime::Linked, SpawnMode::Background, false) => {
+                        TaskWakePolicy::OnTerminal
+                    }
+                    (SpawnLifetime::Linked, SpawnMode::Foreground, _) => TaskWakePolicy::Silent,
                 },
             })
             .await
@@ -2049,6 +2124,44 @@ inventory::submit! {
     }
 }
 
+/// Control plane for detached peer-session tracking tasks. Cancellation only
+/// detaches the tracking chip; the peer session owns its own lifecycle.
+pub struct DetachedSessionTaskExecutor;
+
+#[async_trait]
+impl TaskExecutor for DetachedSessionTaskExecutor {
+    fn kind(&self) -> &str {
+        TASK_KIND_SESSION
+    }
+
+    async fn cancel(&self, task: &SessionTask, context: &ToolContext) -> crate::error::Result<()> {
+        let Some(registry) = context.session_task_registry.as_ref() else {
+            return Ok(());
+        };
+        registry
+            .update(
+                task.session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Canceled),
+                    summary: Some(
+                        "Detached session tracking canceled; peer session left running."
+                            .to_string(),
+                    ),
+                    ..Default::default()
+                },
+            )
+            .await?;
+        Ok(())
+    }
+}
+
+inventory::submit! {
+    TaskExecutorPlugin {
+        executor: || Arc::new(DetachedSessionTaskExecutor),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2476,6 +2589,128 @@ mod tests {
         assert_eq!(task.kind, TASK_KIND_SUBAGENT);
         assert_eq!(task.spec["mode"], "foreground");
         assert!(task.links.child_session_id.is_some());
+    }
+
+    #[tokio::test]
+    async fn detached_spawn_creates_peer_session_task_with_goal_and_lineage() {
+        let store = Arc::new(MockPlatformStore::new());
+        *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let context = spawn_context(&store, Some(registry.clone()));
+
+        let result = spawn(
+            &context,
+            json!({
+                "name": "Research Peer",
+                "goal": "Investigate latency",
+                "instructions": "go",
+                "lifetime": "detached",
+                "seed": "workspace",
+                "mode": "foreground"
+            }),
+        )
+        .await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success, got {result:?}");
+        };
+        let child_id: crate::typed_id::SessionId = value["subagent_id"]
+            .as_str()
+            .expect("subagent_id")
+            .parse()
+            .expect("valid session id");
+        let child = store
+            .get_session_by_id(child_id)
+            .await
+            .unwrap()
+            .expect("child session");
+        assert_eq!(child.parent_session_id, None);
+        assert_eq!(child.forked_from_session_id, Some(context.session_id));
+        assert_eq!(child.title.as_deref(), Some("Research Peer"));
+        assert_eq!(child.goal.as_deref(), Some("Investigate latency"));
+
+        let task_id = value["task_id"].as_str().expect("task_id");
+        let task = registry
+            .get(context.session_id, task_id)
+            .await
+            .unwrap()
+            .expect("task");
+        assert_eq!(task.kind, TASK_KIND_SESSION);
+        assert_eq!(task.wake_policy, TaskWakePolicy::Silent);
+        assert_eq!(task.links.child_session_id, Some(child_id));
+        assert_eq!(task.spec["lifetime"], "detached");
+        assert_eq!(task.spec["seed"], "workspace");
+    }
+
+    #[tokio::test]
+    async fn detached_spawn_bypasses_subagent_depth_guard() {
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let context = spawn_context(&store, Some(registry)).with_subagent_nesting_policy(
+            crate::traits::SubagentNestingPolicy::default().with_agent_override(Some(0)),
+        );
+
+        let linked = spawn(
+            &context,
+            json!({"name": "Linked", "instructions": "go", "mode": "foreground"}),
+        )
+        .await;
+        assert!(matches!(linked, ToolExecutionResult::ToolError(_)));
+
+        let detached = spawn(
+            &context,
+            json!({
+                "name": "Detached",
+                "instructions": "go",
+                "mode": "foreground",
+                "lifetime": "detached"
+            }),
+        )
+        .await;
+        assert!(
+            matches!(detached, ToolExecutionResult::Success(_)),
+            "detached spawn should bypass linked depth guard, got {detached:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn detached_session_task_cancel_detaches_tracking_only() {
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let context = spawn_context(&store, Some(registry.clone()));
+        let child_id = crate::typed_id::SessionId::new();
+        let task = registry
+            .create(CreateSessionTask {
+                session_id: context.session_id,
+                id: None,
+                kind: TASK_KIND_SESSION.to_string(),
+                display_name: "Peer".to_string(),
+                spec: json!({}),
+                state: SessionTaskState::Running,
+                links: TaskLinks {
+                    child_session_id: Some(child_id),
+                    ..Default::default()
+                },
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+
+        DetachedSessionTaskExecutor
+            .cancel(&task, &context)
+            .await
+            .unwrap();
+
+        let updated = registry
+            .get(context.session_id, &task.id)
+            .await
+            .unwrap()
+            .expect("task should remain present");
+        assert_eq!(updated.state, SessionTaskState::Canceled);
+        assert_eq!(updated.links.child_session_id, Some(child_id));
+        assert_eq!(
+            updated.summary.as_deref(),
+            Some("Detached session tracking canceled; peer session left running.")
+        );
     }
 
     #[tokio::test]

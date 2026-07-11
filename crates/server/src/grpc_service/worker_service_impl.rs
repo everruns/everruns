@@ -469,6 +469,7 @@ impl WorkerService for WorkerServiceImpl {
                 session_id,
                 crate::api::sessions::UpdateSessionRequest {
                     title: Some(req.title),
+                    goal: None,
                     agent_identity_id: everruns_durable::UpdateField::Unchanged,
                     locale: None,
                     tags: None,
@@ -3820,6 +3821,7 @@ impl WorkerService for WorkerServiceImpl {
             agent_name: None,
             agent_identity_id: None,
             title: req.title,
+            goal: None,
             locale: req.locale,
             tags: vec![],
             model_id: None,
@@ -3833,6 +3835,8 @@ impl WorkerService for WorkerServiceImpl {
             max_iterations: None,
             parallel_tool_calls: None,
             parent_session_id: None,
+            forked_from_session_id: None,
+            seed: everruns_core::SessionSeedMode::Fresh,
         };
 
         let session = if let Some(blueprint_id) = req.blueprint_id {

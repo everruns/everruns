@@ -799,6 +799,7 @@ async fn find_or_create_session(
                         agent_name: None,
                         agent_identity_id: app.agent_identity_id,
                         title: Some(title),
+                        goal: None,
                         locale: None,
                         tags: routing_tags.to_vec(),
                         model_id: None,
@@ -812,6 +813,8 @@ async fn find_or_create_session(
                         max_iterations: None,
                         parallel_tool_calls: None,
                         parent_session_id: None,
+                        forked_from_session_id: None,
+                        seed: everruns_core::SessionSeedMode::Fresh,
                     },
                 )
                 .await?;

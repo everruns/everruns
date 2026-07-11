@@ -251,6 +251,11 @@ export function SessionCard({
         </>
       }
     >
+      {session.goal && (
+        <p className="text-sm text-foreground/80 mt-1 line-clamp-1">
+          {truncateToLines(session.goal, 1)}
+        </p>
+      )}
       {/* Input preview: first user message */}
       {inputPreview && (
         <p className="text-sm text-muted-foreground mt-1 line-clamp-1">

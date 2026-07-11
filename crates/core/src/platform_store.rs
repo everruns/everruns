@@ -11,7 +11,7 @@ use crate::app::{App, AppChannel, ChannelType};
 use crate::capability_dto::CapabilityInfo;
 use crate::error::Result;
 use crate::harness::Harness;
-use crate::session::{Session, SessionParticipant};
+use crate::session::{Session, SessionParticipant, SessionSeedMode};
 use crate::typed_id::{AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -23,6 +23,21 @@ pub struct PlatformMessage {
     pub role: String,
     pub content: String,
     pub created_at: DateTime<Utc>,
+}
+
+/// Options for platform-backed session creation from model-facing tools.
+#[derive(Debug, Clone)]
+pub struct PlatformCreateSessionRequest {
+    pub harness_id: HarnessId,
+    pub agent_id: Option<AgentId>,
+    pub title: Option<String>,
+    pub goal: Option<String>,
+    pub locale: Option<String>,
+    pub blueprint_id: Option<String>,
+    pub blueprint_config: Option<serde_json::Value>,
+    pub parent_session_id: Option<SessionId>,
+    pub forked_from_session_id: Option<SessionId>,
+    pub seed: SessionSeedMode,
 }
 
 /// Trait for platform-level management operations.
@@ -205,6 +220,30 @@ pub trait PlatformStore: Send + Sync {
         blueprint_config: Option<&serde_json::Value>,
         parent_session_id: Option<SessionId>,
     ) -> Result<Session>;
+
+    async fn create_session_with_options(
+        &self,
+        request: PlatformCreateSessionRequest,
+    ) -> Result<Session> {
+        if request.goal.is_some()
+            || request.forked_from_session_id.is_some()
+            || request.seed != SessionSeedMode::Fresh
+        {
+            return Err(crate::error::AgentLoopError::tool(
+                "platform store does not support goal, lineage, or seeded session creation",
+            ));
+        }
+        self.create_session(
+            request.harness_id,
+            request.agent_id,
+            request.title.as_deref(),
+            request.locale.as_deref(),
+            request.blueprint_id.as_deref(),
+            request.blueprint_config.as_ref(),
+            request.parent_session_id,
+        )
+        .await
+    }
 
     /// Get a session by ID.
     async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>>;
@@ -412,6 +451,7 @@ pub mod tests {
                         owner: None,
                         effective_owner: None,
                         title: Some("Test Session".to_string()),
+                        goal: None,
                         locale: None,
                         preview: None,
                         output_preview: None,
@@ -709,6 +749,28 @@ pub mod tests {
                 sessions.insert(s.id, s.clone());
             }
             Ok(s)
+        }
+        async fn create_session_with_options(
+            &self,
+            request: PlatformCreateSessionRequest,
+        ) -> Result<Session> {
+            let mut session = self
+                .create_session(
+                    request.harness_id,
+                    request.agent_id,
+                    request.title.as_deref(),
+                    request.locale.as_deref(),
+                    request.blueprint_id.as_deref(),
+                    request.blueprint_config.as_ref(),
+                    request.parent_session_id,
+                )
+                .await?;
+            session.goal = request.goal;
+            session.forked_from_session_id = request.forked_from_session_id;
+            if let Ok(mut sessions) = self.extra_sessions.lock() {
+                sessions.insert(session.id, session.clone());
+            }
+            Ok(session)
         }
         async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>> {
             if id == self.session.id {

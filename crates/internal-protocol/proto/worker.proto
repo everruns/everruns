@@ -445,6 +445,7 @@ message Session {
     optional string blueprint_id = 23;
     optional string blueprint_config_json = 24;
     optional bool parallel_tool_calls = 25;
+    optional string goal = 26;
 }
 
 message GetSessionRequest {

@@ -488,8 +488,8 @@ pub use payment::{
 pub use principal::{Principal, PrincipalKind, PrincipalStatus, PrincipalSummary};
 pub use provider::{Provider, ProviderStatus, ProviderTraceConfig};
 pub use session::{
-    Session, SessionParticipant, SessionParticipantKind, SessionParticipantRole, SessionStatus,
-    SubagentStatus,
+    Session, SessionParticipant, SessionParticipantKind, SessionParticipantRole, SessionSeedMode,
+    SessionStatus, SubagentStatus,
 };
 pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, InitialFile, SessionFile};
 pub use session_resource::{
@@ -502,9 +502,9 @@ pub use session_sqldb::{
 pub use session_task::{
     CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
     SessionTaskState, SessionTaskUpdate, TASK_KIND_AGENT_HANDOFF, TASK_KIND_BACKGROUND_TOOL,
-    TASK_KIND_EXTERNAL_AGENT, TASK_KIND_MONITOR, TASK_KIND_SUBAGENT, TaskArtifact, TaskError,
-    TaskExecutor, TaskExecutorPlugin, TaskInputRequest, TaskLinks, TaskMessage,
-    TaskMessageDirection, TaskMessagePart, TaskProgress, TaskSink, TaskWakePolicy,
+    TASK_KIND_EXTERNAL_AGENT, TASK_KIND_MONITOR, TASK_KIND_SESSION, TASK_KIND_SUBAGENT,
+    TaskArtifact, TaskError, TaskExecutor, TaskExecutorPlugin, TaskInputRequest, TaskLinks,
+    TaskMessage, TaskMessageDirection, TaskMessagePart, TaskProgress, TaskSink, TaskWakePolicy,
     apply_task_update, find_task_executor,
 };
 pub use skill::{

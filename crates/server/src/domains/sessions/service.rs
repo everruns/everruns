@@ -20,7 +20,7 @@ use crate::storage::{
     StorageBackend,
     models::{
         CreateEventRow, CreateMemoryRow, CreateSessionFileRow, CreateSessionRow, MemoryFileRow,
-        MemoryRow, UpdateSession,
+        MemoryRow, UpdateSession, UpsertSessionKeyValue, UpsertSessionSecret,
     },
 };
 use anyhow::Result;
@@ -29,8 +29,8 @@ use everruns_core::{
     AgentCapabilityConfig, AgentId, AgentVersionPolicy, Caller, CapabilityRegistry,
     DeclarativeCapabilityDefinition, FeatureFlags, HarnessId, InitialFile, ModelId, MountAccess,
     MountEntry, MountPoint, MountSource, OrgRole, Permission, Policy, PrincipalId,
-    PrincipalSummary, Rule, Session, SessionFile, SessionId, SessionStatus, TokenUsage,
-    WorkspaceId,
+    PrincipalSummary, Rule, Session, SessionFile, SessionId, SessionSeedMode, SessionStatus,
+    TokenUsage, WorkspaceId,
     capabilities::{
         MEMORY_CAPABILITY_ID, RiskLevel, SystemPromptContext, collect_capabilities_with_configs,
         compute_features, resolve_capability_configs,
@@ -69,6 +69,7 @@ pub const SESSION_MANAGE: Policy = Policy {
 #[derive(Debug, Clone, Default)]
 pub struct ForkOverrides {
     pub title: Option<String>,
+    pub goal: Option<String>,
     pub tags: Option<Vec<String>>,
     pub model_id: Option<ModelId>,
     pub agent_id: Option<AgentId>,
@@ -242,7 +243,6 @@ impl SessionService {
             .get_session(org_id, parent_id)
             .await?
             .ok_or_else(|| ResourceNotFoundError::new("Session"))?;
-        let parent_workspace = parent_row.workspace_id;
         let parent = Self::row_to_session(parent_row, &caller.org_public_id, None);
 
         // Resolve the agent's internal id (public -> internal) when one is
@@ -275,6 +275,7 @@ impl SessionService {
                 None => "Fork".to_string(),
             })
         });
+        let goal = overrides.goal.or(parent.goal);
         let harness_uuid = parent.harness_id.uuid();
 
         // Build a create request from the parent's config + overrides. A new
@@ -287,6 +288,7 @@ impl SessionService {
             agent_name: None,
             agent_identity_id: parent.agent_identity_id,
             title,
+            goal,
             locale: overrides.locale.or(parent.locale),
             tags: overrides.tags.unwrap_or(parent.tags),
             model_id: overrides.model_id.or(parent.model_id),
@@ -300,10 +302,12 @@ impl SessionService {
             max_iterations: parent.max_iterations,
             parallel_tool_calls: parent.parallel_tool_calls,
             parent_session_id: None,
+            forked_from_session_id: Some(parent_id),
+            seed: SessionSeedMode::Fork,
             workspace_id: None,
         };
 
-        let mut child = self
+        let child = self
             .create_inner(
                 caller,
                 harness_uuid,
@@ -315,21 +319,65 @@ impl SessionService {
             )
             .await?;
 
-        // Copy conversation history (persisted events) in sequence order. Each
-        // copy re-allocates a fresh per-session sequence (1..N) via
-        // create_event, so the child's ordering matches the parent's. Original
-        // EventContext ids are preserved so intra-history correlation stays
-        // consistent; the fork's own new turns mint their own ids.
+        Ok(child)
+    }
+
+    async fn apply_session_seed(
+        &self,
+        org_id: i64,
+        source_session_id: SessionId,
+        child_session_id: SessionId,
+        child_workspace_id: Uuid,
+        seed: SessionSeedMode,
+        child: &mut Session,
+    ) -> Result<()> {
+        let source = self
+            .db
+            .get_session(org_id, source_session_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("Source session"))?;
+        let fork_sequence = if seed == SessionSeedMode::Fork {
+            Some(
+                self.copy_session_events(source_session_id, child_session_id)
+                    .await?,
+            )
+            .flatten()
+        } else {
+            None
+        };
+
+        if matches!(seed, SessionSeedMode::Fork | SessionSeedMode::Workspace) {
+            self.copy_workspace_files(source.workspace_id, child_workspace_id)
+                .await?;
+        }
+        if seed == SessionSeedMode::Fork {
+            self.copy_session_storage(source_session_id, child_session_id)
+                .await?;
+        }
+
+        self.db
+            .set_session_fork_lineage(child_session_id, source_session_id, fork_sequence)
+            .await?;
+        child.forked_from_session_id = Some(source_session_id);
+        child.forked_from_sequence = fork_sequence;
+        Ok(())
+    }
+
+    async fn copy_session_events(
+        &self,
+        source_session_id: SessionId,
+        child_session_id: SessionId,
+    ) -> Result<Option<i32>> {
         let mut events = self
             .db
-            .list_events(parent_id, None, None, &[], &[], None, None)
+            .list_events(source_session_id, None, None, &[], &[], None, None)
             .await?;
-        events.sort_by_key(|e| e.sequence);
-        let fork_sequence = events.last().map(|e| e.sequence);
+        events.sort_by_key(|event| event.sequence);
+        let fork_sequence = events.last().map(|event| event.sequence);
         for event in events {
             self.db
                 .create_event(CreateEventRow {
-                    session_id: child.id,
+                    session_id: child_session_id,
                     event_type: event.event_type,
                     ts: event.ts,
                     context: event.context,
@@ -339,20 +387,19 @@ impl SessionService {
                 })
                 .await?;
         }
+        Ok(fork_sequence)
+    }
 
-        // Deep-copy workspace files into the child's new, isolated workspace.
-        // The file repo keys rows by workspace id (the `session_id` parameter is
-        // the workspace id under the 1:1 invariant), so read from the parent
-        // workspace and write to the child workspace. Path-ascending order
-        // copies parents before children. Paths already populated by the
-        // child's capability mounts / initial files are skipped so the copy
-        // never collides with the freshly-mounted, typically read-only set.
-        let child_workspace = child.workspace_id.uuid();
-        let files = self.db.list_all_session_files(parent_workspace).await?;
+    async fn copy_workspace_files(
+        &self,
+        source_workspace_id: Uuid,
+        child_workspace_id: Uuid,
+    ) -> Result<()> {
+        let files = self.db.list_all_session_files(source_workspace_id).await?;
         for file in files {
             if self
                 .db
-                .get_session_file(child_workspace, &file.path)
+                .get_session_file(child_workspace_id, &file.path)
                 .await?
                 .is_some()
             {
@@ -362,13 +409,13 @@ impl SessionService {
                 None
             } else {
                 self.db
-                    .get_session_file(parent_workspace, &file.path)
+                    .get_session_file(source_workspace_id, &file.path)
                     .await?
                     .and_then(|row| row.content)
             };
             self.db
                 .create_session_file(CreateSessionFileRow {
-                    session_id: SessionId::from_uuid(child_workspace),
+                    session_id: SessionId::from_uuid(child_workspace_id),
                     path: file.path,
                     content,
                     is_directory: file.is_directory,
@@ -376,14 +423,49 @@ impl SessionService {
                 })
                 .await?;
         }
+        Ok(())
+    }
 
-        self.db
-            .set_session_fork_lineage(child.id, parent_id, fork_sequence)
-            .await?;
-        child.forked_from_session_id = Some(parent_id);
-        child.forked_from_sequence = fork_sequence;
-
-        Ok(child)
+    async fn copy_session_storage(
+        &self,
+        source_session_id: SessionId,
+        child_session_id: SessionId,
+    ) -> Result<()> {
+        for key in self.db.list_session_keys(source_session_id.uuid()).await? {
+            if let Some(row) = self
+                .db
+                .get_session_key_value(source_session_id.uuid(), &key.key)
+                .await?
+            {
+                self.db
+                    .upsert_session_key_value(UpsertSessionKeyValue {
+                        session_id: child_session_id,
+                        key: row.key,
+                        value: row.value,
+                    })
+                    .await?;
+            }
+        }
+        for secret in self
+            .db
+            .list_session_secrets(source_session_id.uuid())
+            .await?
+        {
+            if let Some(row) = self
+                .db
+                .get_session_secret(source_session_id.uuid(), &secret.name)
+                .await?
+            {
+                self.db
+                    .upsert_session_secret(UpsertSessionSecret {
+                        session_id: child_session_id,
+                        name: row.name,
+                        value_encrypted: row.value_encrypted,
+                    })
+                    .await?;
+            }
+        }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -413,6 +495,9 @@ impl SessionService {
                 "Session limit reached (max {max_sessions})"
             ))
             .into());
+        }
+        if req.seed != SessionSeedMode::Fresh && req.forked_from_session_id.is_none() {
+            return Err(BadRequestError::new("seed requires forked_from_session_id").into());
         }
 
         // EVE-508: check per-org concurrent session cap before creating.
@@ -651,6 +736,10 @@ impl SessionService {
             None => None,
         };
 
+        let requested_goal = req.goal.clone();
+        let forked_from_session_id = req.forked_from_session_id;
+        let seed = req.seed;
+
         let input = CreateSessionRow {
             org_id,
             app_id,
@@ -681,14 +770,17 @@ impl SessionService {
             workspace_id,
         };
         let row = self.db.create_session(input).await?;
-        let row = if let Some(version) = resolved_agent_version.as_ref() {
+        let row = if resolved_agent_version.is_some() || requested_goal.is_some() {
             self.db
                 .update_session(
                     org_id,
                     row.id,
                     UpdateSession {
-                        agent_version_id: Some(version.id),
-                        agent_config_hash: Some(version.config_hash.clone()),
+                        agent_version_id: resolved_agent_version.as_ref().map(|version| version.id),
+                        agent_config_hash: resolved_agent_version
+                            .as_ref()
+                            .map(|version| version.config_hash.clone()),
+                        goal: requested_goal,
                         ..Default::default()
                     },
                 )
@@ -781,6 +873,18 @@ impl SessionService {
         )
         .await;
 
+        if let Some(source_session_id) = forked_from_session_id {
+            self.apply_session_seed(
+                org_id,
+                source_session_id,
+                session.id,
+                session.workspace_id.uuid(),
+                seed,
+                &mut session,
+            )
+            .await?;
+        }
+
         Ok(session)
     }
 
@@ -812,6 +916,7 @@ impl SessionService {
             .principal_service
             .default_owner_principal(caller, None)
             .await?;
+        let requested_goal = req.goal.clone();
 
         let input = CreateSessionRow {
             workspace_id: None,
@@ -842,7 +947,21 @@ impl SessionService {
             blueprint_config,
             parent_session_id: None,
         };
-        let row = self.db.create_session(input).await?;
+        let mut row = self.db.create_session(input).await?;
+        if requested_goal.is_some() {
+            row = self
+                .db
+                .update_session(
+                    org_id,
+                    row.id,
+                    UpdateSession {
+                        goal: requested_goal,
+                        ..Default::default()
+                    },
+                )
+                .await?
+                .unwrap_or(row);
+        }
         let mut session = Self::row_to_session(row, org_public_id, Some(harness_id));
         self.populate_features(org_id, &mut session).await?;
 
@@ -1482,6 +1601,7 @@ impl SessionService {
         };
         let input = UpdateSession {
             title: req.title,
+            goal: req.goal,
             agent_identity_id,
             owner_principal_id,
             resolved_owner_user_id,
@@ -2292,6 +2412,7 @@ impl SessionService {
             owner: None,
             effective_owner: None,
             title: row.title,
+            goal: row.goal,
             locale: row.locale,
             preview: None,        // Populated separately in list()
             output_preview: None, // Populated separately in list()
@@ -2566,6 +2687,7 @@ mod tests {
             agent_name: None,
             agent_identity_id: None,
             title: Some("Test Session".to_string()),
+            goal: None,
             locale: None,
             tags: vec![],
             model_id,
@@ -2579,6 +2701,8 @@ mod tests {
             max_iterations: None,
             parallel_tool_calls: None,
             parent_session_id: None,
+            forked_from_session_id: None,
+            seed: SessionSeedMode::Fresh,
         }
     }
 
@@ -3246,6 +3370,20 @@ mod tests {
         })
         .await
         .unwrap();
+        db.upsert_session_key_value(UpsertSessionKeyValue {
+            session_id: parent.id,
+            key: "state".to_string(),
+            value: "ready".to_string(),
+        })
+        .await
+        .unwrap();
+        db.upsert_session_secret(UpsertSessionSecret {
+            session_id: parent.id,
+            name: "API_TOKEN".to_string(),
+            value_encrypted: b"ciphertext".to_vec(),
+        })
+        .await
+        .unwrap();
 
         let parent_events = db
             .list_events(parent.id, None, None, &[], &[], None, None)
@@ -3291,6 +3429,19 @@ mod tests {
             .unwrap()
             .expect("forked workspace should contain the parent's file");
         assert_eq!(copied.content.as_deref(), Some(b"fork me".as_slice()));
+
+        let copied_kv = db
+            .get_session_key_value(child.id.uuid(), "state")
+            .await
+            .unwrap()
+            .expect("forked session should contain KV");
+        assert_eq!(copied_kv.value, "ready");
+        let copied_secret = db
+            .get_session_secret(child.id.uuid(), "API_TOKEN")
+            .await
+            .unwrap()
+            .expect("forked session should contain secret");
+        assert_eq!(copied_secret.value_encrypted, b"ciphertext");
 
         // The parent is untouched.
         let parent_after = db.get_session(1, parent.id).await.unwrap().unwrap();
@@ -4481,6 +4632,7 @@ mod tests {
                 session.id.uuid(),
                 UpdateSessionRequest {
                     title: None,
+                    goal: None,
                     agent_identity_id: UpdateField::Unchanged,
                     locale: None,
                     tags: Some(vec!["__internal:app_invocation".to_string()]),
@@ -4542,6 +4694,7 @@ mod tests {
                     session.id.uuid(),
                     UpdateSessionRequest {
                         title: None,
+                        goal: None,
                         agent_identity_id: UpdateField::Unchanged,
                         locale: None,
                         tags: Some(forbidden.clone()),

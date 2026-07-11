@@ -6209,6 +6209,11 @@ export interface components {
        */
       title?: string | null;
       /**
+       * @description Optional objective for the session. Visible to the agent at system-prompt level.
+       * @example Investigate the queue latency regression and propose a fix
+       */
+      goal?: string | null;
+      /**
        * @description Client-side tools for this session (additive to agent tools).
        *     These tools are sent to the LLM but executed by the client.
        * @example [
@@ -7211,6 +7216,11 @@ export interface components {
        * @example Branch: try the async rewrite
        */
       title?: string | null;
+      /**
+       * @description Goal for the fork. Omitted inherits the parent's goal.
+       * @example Try the async rewrite from this state
+       */
+      goal?: string | null;
     };
     /** @description A single form field. */
     FormField: {
@@ -11621,6 +11631,11 @@ export interface components {
          * @example Q3 marketing brief
          */
         title?: string | null;
+        /**
+         * @description Session objective visible to the runtime agent at system-prompt level.
+         * @example Investigate the queue latency regression
+         */
+        goal?: string | null;
         /** @description Client-side tools for this session (additive to agent tools). */
         tools?: components["schemas"]["ToolDefinition"][];
         /**
@@ -12208,6 +12223,11 @@ export interface components {
          * @example Q3 marketing brief
          */
         title?: string | null;
+        /**
+         * @description Session objective visible to the runtime agent at system-prompt level.
+         * @example Investigate the queue latency regression
+         */
+        goal?: string | null;
         /** @description Client-side tools for this session (additive to agent tools). */
         tools?: components["schemas"]["ToolDefinition"][];
         /**
@@ -13867,6 +13887,11 @@ export interface components {
        * @example Q3 marketing brief
        */
       title?: string | null;
+      /**
+       * @description Session objective visible to the runtime agent at system-prompt level.
+       * @example Investigate the queue latency regression
+       */
+      goal?: string | null;
       /** @description Client-side tools for this session (additive to agent tools). */
       tools?: components["schemas"]["ToolDefinition"][];
       /**
@@ -15765,6 +15790,11 @@ export interface components {
        * @example Updated session title
        */
       title?: string | null;
+      /**
+       * @description Updated session objective.
+       * @example Summarize the incident and list remediations
+       */
+      goal?: string | null;
     };
     /** @description Request to update a skill */
     UpdateSkillRequest: {
@@ -17466,6 +17496,11 @@ export interface components {
        * @example Q3 marketing brief
        */
       title?: string | null;
+      /**
+       * @description Session objective visible to the runtime agent at system-prompt level.
+       * @example Investigate the queue latency regression
+       */
+      goal?: string | null;
       /** @description Client-side tools for this session (additive to agent tools). */
       tools?: components["schemas"]["ToolDefinition"][];
       /**

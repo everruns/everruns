@@ -183,6 +183,7 @@ async fn main() -> anyhow::Result<()> {
         owner: None,
         effective_owner: None,
         title: Some("Weather Query".to_string()),
+        goal: None,
         locale: None,
         preview: None,
         output_preview: None,

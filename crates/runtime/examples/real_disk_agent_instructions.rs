@@ -126,6 +126,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             owner: None,
             effective_owner: None,
             title: Some("Coding Session".into()),
+            goal: None,
             locale: None,
             preview: None,
             output_preview: None,

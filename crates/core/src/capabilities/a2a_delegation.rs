@@ -1313,6 +1313,15 @@ impl Tool for SpawnAgentTool {
                 "spawn_agent currently supports target.type = external_a2a",
             );
         }
+        if arguments
+            .get("lifetime")
+            .and_then(Value::as_str)
+            .is_some_and(|value| value == "detached")
+        {
+            return ToolExecutionResult::tool_error(
+                "lifetime=\"detached\" is only valid for local session targets (subagent or agent), not external_a2a.",
+            );
+        }
         let external_agent_id = match target
             .get("external_agent_id")
             .and_then(Value::as_str)

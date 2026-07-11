@@ -625,6 +625,7 @@ mod tests {
             owner: None,
             effective_owner: None,
             title: Some("child".to_string()),
+            goal: None,
             locale: None,
             preview: None,
             output_preview: None,

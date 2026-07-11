@@ -291,6 +291,7 @@ fn session(
         owner: None,
         effective_owner: None,
         title: Some("Friday Team Outing".into()),
+        goal: None,
         locale: Some("en-US".into()),
         preview: None,
         output_preview: None,

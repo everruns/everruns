@@ -10,11 +10,12 @@ use super::util::{get_platform_store, require_str_nonblank as require_str};
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext};
 use crate::config_layer::{AgentConfigOverlay, normalize_initial_file_path};
 use crate::harness::Harness;
-use crate::session::SubagentStatus;
+use crate::platform_store::PlatformCreateSessionRequest;
+use crate::session::{SessionSeedMode, SubagentStatus};
 use crate::session_task::{
     CreateSessionTask, SessionTask, SessionTaskState, SessionTaskUpdate, TASK_KIND_AGENT_HANDOFF,
-    TaskError, TaskExecutor, TaskExecutorPlugin, TaskLinks, TaskMessage, TaskWakePolicy,
-    task_message_text,
+    TASK_KIND_SESSION, TaskError, TaskExecutor, TaskExecutorPlugin, TaskLinks, TaskMessage,
+    TaskWakePolicy, task_message_text,
 };
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
@@ -31,6 +32,42 @@ const BACKGROUND_WAIT_SLICE_SECS: u64 = 300;
 const BACKGROUND_MAX_WAIT_SECS: u64 = 6 * 60 * 60;
 const BACKGROUND_HEARTBEAT_INTERVAL_SECS: u64 = 15;
 const BACKGROUND_POLL_BACKOFF_SECS: u64 = 5;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HandoffLifetime {
+    Linked,
+    Detached,
+}
+
+impl HandoffLifetime {
+    fn parse(arguments: &Value) -> Result<Self, String> {
+        match arguments.get("lifetime").and_then(Value::as_str) {
+            None | Some("linked") => Ok(Self::Linked),
+            Some("detached") => Ok(Self::Detached),
+            Some(other) => Err(format!(
+                "Invalid lifetime: {other}. Expected 'linked' or 'detached'."
+            )),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Linked => "linked",
+            Self::Detached => "detached",
+        }
+    }
+}
+
+fn parse_seed(arguments: &Value) -> Result<SessionSeedMode, String> {
+    match arguments.get("seed").and_then(Value::as_str) {
+        None | Some("fresh") => Ok(SessionSeedMode::Fresh),
+        Some("fork") => Ok(SessionSeedMode::Fork),
+        Some("workspace") => Ok(SessionSeedMode::Workspace),
+        Some(other) => Err(format!(
+            "Invalid seed: {other}. Expected 'fresh', 'fork', or 'workspace'."
+        )),
+    }
+}
 
 fn terminal_handoff_status(wait_status: &str) -> Option<SubagentStatus> {
     match wait_status {
@@ -845,6 +882,20 @@ impl Tool for SpawnAgentHandoffTool {
             Ok(value) => value,
             Err(error) => return error,
         };
+        let goal = arguments
+            .get("goal")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let lifetime = match HandoffLifetime::parse(&arguments) {
+            Ok(value) => value,
+            Err(error) => return ToolExecutionResult::tool_error(error),
+        };
+        let seed = match parse_seed(&arguments) {
+            Ok(value) => value,
+            Err(error) => return ToolExecutionResult::tool_error(error),
+        };
         let mode = match SpawnAgentHandoffMode::parse(
             arguments.get("mode").and_then(Value::as_str),
             context,
@@ -852,6 +903,11 @@ impl Tool for SpawnAgentHandoffTool {
             Ok(mode) => mode,
             Err(error) => return ToolExecutionResult::tool_error(error),
         };
+        if lifetime == HandoffLifetime::Detached && mode == SpawnAgentHandoffMode::Invite {
+            return ToolExecutionResult::tool_error(
+                "lifetime=\"detached\" is only valid for agent handoffs that create a new session; invite mode joins the current session.",
+            );
+        }
 
         let Some(target) = self.config.target(target_id) else {
             return ToolExecutionResult::tool_error(format!(
@@ -869,7 +925,7 @@ impl Tool for SpawnAgentHandoffTool {
             Err(error) => return ToolExecutionResult::internal_error(error),
         };
 
-        if parent_session.parent_session_id.is_some() {
+        if lifetime == HandoffLifetime::Linked && parent_session.parent_session_id.is_some() {
             return ToolExecutionResult::tool_error(
                 "Agent handoffs cannot be started from child sessions.",
             );
@@ -908,15 +964,20 @@ impl Tool for SpawnAgentHandoffTool {
         }
 
         let child_session = match store
-            .create_session(
-                target.harness_id,
-                Some(target.agent_id),
-                Some(&name),
-                parent_session.locale.as_deref(),
-                None,
-                None,
-                Some(context.session_id),
-            )
+            .create_session_with_options(PlatformCreateSessionRequest {
+                harness_id: target.harness_id,
+                agent_id: Some(target.agent_id),
+                title: Some(name.clone()),
+                goal,
+                locale: parent_session.locale.clone(),
+                blueprint_id: None,
+                blueprint_config: None,
+                parent_session_id: (lifetime == HandoffLifetime::Linked)
+                    .then_some(context.session_id),
+                forked_from_session_id: (lifetime == HandoffLifetime::Detached)
+                    .then_some(context.session_id),
+                seed,
+            })
             .await
         {
             Ok(session) => session,
@@ -931,23 +992,34 @@ impl Tool for SpawnAgentHandoffTool {
                 .create(CreateSessionTask {
                     session_id: context.session_id,
                     id: None,
-                    kind: TASK_KIND_AGENT_HANDOFF.to_string(),
+                    kind: match lifetime {
+                        HandoffLifetime::Linked => TASK_KIND_AGENT_HANDOFF,
+                        HandoffLifetime::Detached => TASK_KIND_SESSION,
+                    }
+                    .to_string(),
                     display_name: name.clone(),
                     spec: json!({
                         "target_id": &target.id,
                         "external_agent_id": target.agent_id,
                         "instructions": instructions,
                         "mode": mode.as_str(),
+                        "lifetime": lifetime.as_str(),
+                        "seed": seed.as_str(),
                     }),
                     state: SessionTaskState::Running,
                     links: TaskLinks {
                         child_session_id: Some(child_session.id),
                         ..Default::default()
                     },
-                    wake_policy: match mode {
-                        SpawnAgentHandoffMode::Background => TaskWakePolicy::OnTerminal,
-                        SpawnAgentHandoffMode::Foreground => TaskWakePolicy::Silent,
-                        SpawnAgentHandoffMode::Invite => {
+                    wake_policy: match (lifetime, mode) {
+                        (HandoffLifetime::Detached, _) => TaskWakePolicy::Silent,
+                        (HandoffLifetime::Linked, SpawnAgentHandoffMode::Background) => {
+                            TaskWakePolicy::OnTerminal
+                        }
+                        (HandoffLifetime::Linked, SpawnAgentHandoffMode::Foreground) => {
+                            TaskWakePolicy::Silent
+                        }
+                        (HandoffLifetime::Linked, SpawnAgentHandoffMode::Invite) => {
                             unreachable!("invite mode returns before child-session task creation")
                         }
                     },

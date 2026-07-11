@@ -3785,6 +3785,8 @@ export interface Session {
   owner?: PrincipalSummary | null;
   effective_owner?: PrincipalSummary | null;
   title: string | null;
+  /** Objective shown in session lists and injected into the agent prompt */
+  goal?: string | null;
   locale?: string | null;
   /** Preview text from the first user message (truncated) */
   preview?: string | null;

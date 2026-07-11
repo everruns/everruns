@@ -3076,6 +3076,13 @@ impl StorageBackend {
         dispatch!(self, list_session_keys, session_id)
     }
 
+    pub async fn upsert_session_key_value(
+        &self,
+        input: UpsertSessionKeyValue,
+    ) -> Result<SessionKeyValueRow> {
+        dispatch!(self, upsert_session_key_value, input)
+    }
+
     pub async fn get_session_key_value(
         &self,
         session_id: Uuid,
@@ -3089,6 +3096,14 @@ impl StorageBackend {
         session_id: Uuid,
     ) -> Result<Vec<SessionSecretInfoRow>> {
         dispatch!(self, list_session_secrets, session_id)
+    }
+
+    pub async fn get_session_secret(
+        &self,
+        session_id: Uuid,
+        name: &str,
+    ) -> Result<Option<SessionSecretRow>> {
+        dispatch!(self, get_session_secret, session_id, name)
     }
 
     pub async fn upsert_session_secret(
