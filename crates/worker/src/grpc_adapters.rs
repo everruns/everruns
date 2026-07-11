@@ -1523,6 +1523,10 @@ fn proto_model_with_provider_to_model(proto: proto::ResolvedModel) -> Result<Res
 
 #[async_trait]
 impl SessionFileSystem for GrpcAdapter {
+    fn is_mount_resolver(&self) -> bool {
+        false
+    }
+
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let mut client = self.client.inner.lock().await;
 

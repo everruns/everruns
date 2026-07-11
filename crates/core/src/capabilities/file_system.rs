@@ -883,6 +883,7 @@ impl Tool for ReadFileTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_read_file(
             &tool_call.arguments,
@@ -1179,6 +1180,7 @@ impl Tool for WriteFileTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_write_file(
             &tool_call.arguments,
@@ -1307,6 +1309,7 @@ impl Tool for EditFileTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_edit_file(
             &tool_call.arguments,
@@ -1524,11 +1527,13 @@ impl Tool for ListDirectoryTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_list_directory(
             &tool_call.arguments,
             phase,
             locale,
+            ctx,
         ))
     }
 
@@ -1677,6 +1682,7 @@ impl Tool for GrepFilesTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_grep_files(
             &tool_call.arguments,
@@ -1822,6 +1828,7 @@ impl Tool for DeleteFileTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_delete_file(
             &tool_call.arguments,
@@ -1936,6 +1943,7 @@ impl Tool for StatFileTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_stat_file(
             &tool_call.arguments,
@@ -2027,7 +2035,7 @@ impl Tool for StatFileTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tool_narration::ToolNarrationPhase;
+    use crate::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
     use crate::tool_types::ToolCall;
 
     #[test]
@@ -2039,7 +2047,13 @@ mod tests {
             arguments: serde_json::json!({ "path": "/workspace/AGENTS.md" }),
         };
         assert_eq!(
-            cap.narrate(None, &read, ToolNarrationPhase::Completed, None),
+            cap.narrate(
+                None,
+                &read,
+                ToolNarrationPhase::Completed,
+                None,
+                ToolNarrationContext::default()
+            ),
             Some("Read AGENTS.md".to_string())
         );
         // A tool this capability does not own returns None for its owner to handle.
@@ -2049,7 +2063,13 @@ mod tests {
             arguments: serde_json::json!({ "command": "ls" }),
         };
         assert_eq!(
-            cap.narrate(None, &bash, ToolNarrationPhase::Started, None),
+            cap.narrate(
+                None,
+                &bash,
+                ToolNarrationPhase::Started,
+                None,
+                ToolNarrationContext::default()
+            ),
             None
         );
     }
@@ -2213,6 +2233,10 @@ mod tests {
                 None if path.starts_with('/') => format!("{WORKSPACE_PREFIX}{path}"),
                 None => format!("{WORKSPACE_PREFIX}/{path}"),
             }
+        }
+
+        fn is_mount_resolver(&self) -> bool {
+            false
         }
 
         async fn read_file(

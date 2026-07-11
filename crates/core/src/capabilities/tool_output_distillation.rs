@@ -579,6 +579,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for MockFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(&self, _s: SessionId, _p: &str) -> Result<Option<SessionFile>> {
             Ok(None)
         }

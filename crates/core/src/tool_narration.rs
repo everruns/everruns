@@ -18,7 +18,9 @@ use crate::localization::{
     BackendLocale, backend_strings, format_more_actions, localized_tool_display_name,
     resolve_backend_locale,
 };
+use crate::session_path::WORKSPACE_PREFIX;
 use crate::tool_types::{ToolCall, ToolDefinition};
+use crate::traits::SessionFileSystem;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ToolNarrationPhase {
@@ -26,6 +28,21 @@ pub enum ToolNarrationPhase {
     Waiting,
     Completed,
     Failed,
+}
+
+/// Optional execution context for path-bearing tool narration.
+///
+/// When a [`SessionFileSystem`] is present, path-bearing helpers render through
+/// its `display_path` contract so narration matches tool results.
+#[derive(Clone, Copy, Default)]
+pub struct ToolNarrationContext<'a> {
+    pub file_store: Option<&'a dyn SessionFileSystem>,
+}
+
+impl<'a> ToolNarrationContext<'a> {
+    pub fn new(file_store: Option<&'a dyn SessionFileSystem>) -> Self {
+        Self { file_store }
+    }
 }
 
 fn title_case(name: &str) -> String {
@@ -205,10 +222,40 @@ pub fn labeled_phrase(
     }
 }
 
-fn location_phrase(arguments: &Value, locale: Option<&str>) -> String {
-    arg_str(arguments, &["path", "directory", "working_dir"])
+/// Present a filesystem path for narration using the active store contract.
+///
+/// When `file_store` is absent (generic fallback / offline builders), falls
+/// back to the legacy argument echo with localized root phrasing.
+pub fn present_filesystem_path(
+    file_store: Option<&dyn SessionFileSystem>,
+    input: Option<&str>,
+    locale: Option<&str>,
+) -> String {
+    if let Some(store) = file_store {
+        let raw = input
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(WORKSPACE_PREFIX);
+        return store.display_path(raw);
+    }
+    location_phrase_from_raw(input, locale)
+}
+
+fn location_phrase(
+    arguments: &Value,
+    locale: Option<&str>,
+    ctx: ToolNarrationContext<'_>,
+) -> String {
+    let raw = arg_str(arguments, &["path", "directory", "working_dir"]);
+    present_filesystem_path(ctx.file_store, raw, locale)
+}
+
+fn location_phrase_from_raw(input: Option<&str>, locale: Option<&str>) -> String {
+    input
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
         .map(|value| {
-            if value == "." || value == "/workspace" {
+            if value == "." || value == WORKSPACE_PREFIX {
                 backend_strings(locale).current_directory.to_string()
             } else {
                 value.to_string()
@@ -424,8 +471,9 @@ pub fn narrate_list_directory(
     arguments: &Value,
     phase: ToolNarrationPhase,
     locale: Option<&str>,
+    ctx: ToolNarrationContext<'_>,
 ) -> String {
-    let target = location_phrase(arguments, locale);
+    let target = location_phrase(arguments, locale, ctx);
     let verbs = pick(
         locale,
         (
@@ -831,6 +879,132 @@ mod tests {
 
     fn args(value: serde_json::Value) -> serde_json::Value {
         value
+    }
+
+    #[test]
+    fn list_directory_helper_without_store_echoes_legacy_alias() {
+        let a = args(json!({ "path": "/workspace/crates" }));
+        assert_eq!(
+            narrate_list_directory(
+                &a,
+                ToolNarrationPhase::Completed,
+                None,
+                ToolNarrationContext::default()
+            ),
+            "Listed files in /workspace/crates"
+        );
+    }
+
+    #[test]
+    fn list_directory_helper_uses_store_display_path() {
+        use crate::error::Result;
+        use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
+        use crate::typed_id::SessionId;
+        use async_trait::async_trait;
+
+        struct HostBackedStore {
+            root: String,
+        }
+
+        #[async_trait]
+        impl SessionFileSystem for HostBackedStore {
+            fn display_root(&self) -> String {
+                self.root.clone()
+            }
+
+            fn display_path(&self, path: &str) -> String {
+                if path == "/" || path == "/workspace" || path == "." {
+                    return self.root.clone();
+                }
+                if path == self.root || path.starts_with(&format!("{}/", self.root)) {
+                    return path.to_string();
+                }
+                if let Some(rest) = path.strip_prefix("/workspace/") {
+                    return format!("{}/{}", self.root.trim_end_matches('/'), rest);
+                }
+                if path.starts_with('/') {
+                    return format!(
+                        "{}/{}",
+                        self.root.trim_end_matches('/'),
+                        path.trim_start_matches('/')
+                    );
+                }
+                format!("{}/{}", self.root.trim_end_matches('/'), path)
+            }
+
+            fn is_mount_resolver(&self) -> bool {
+                false
+            }
+
+            async fn read_file(&self, _: SessionId, _: &str) -> Result<Option<SessionFile>> {
+                Ok(None)
+            }
+            async fn write_file(
+                &self,
+                _: SessionId,
+                _: &str,
+                _: &str,
+                _: &str,
+            ) -> Result<SessionFile> {
+                Err(anyhow::anyhow!("stub").into())
+            }
+            async fn delete_file(&self, _: SessionId, _: &str, _: bool) -> Result<bool> {
+                Ok(false)
+            }
+            async fn list_directory(&self, _: SessionId, _: &str) -> Result<Vec<FileInfo>> {
+                Ok(vec![])
+            }
+            async fn stat_file(&self, _: SessionId, _: &str) -> Result<Option<FileStat>> {
+                Ok(None)
+            }
+            async fn grep_files(
+                &self,
+                _: SessionId,
+                _: &str,
+                _: Option<&str>,
+            ) -> Result<Vec<GrepMatch>> {
+                Ok(vec![])
+            }
+            async fn create_directory(&self, _: SessionId, _: &str) -> Result<FileInfo> {
+                Err(anyhow::anyhow!("stub").into())
+            }
+        }
+
+        let store = HostBackedStore {
+            root: "/repo".to_string(),
+        };
+        let ctx = ToolNarrationContext::new(Some(&store));
+        let workspace_alias = args(json!({ "path": "/workspace/crates" }));
+        assert_eq!(
+            narrate_list_directory(&workspace_alias, ToolNarrationPhase::Started, None, ctx),
+            "Listing files in /repo/crates"
+        );
+        assert_eq!(
+            narrate_list_directory(&workspace_alias, ToolNarrationPhase::Completed, None, ctx),
+            "Listed files in /repo/crates"
+        );
+        assert_eq!(
+            narrate_list_directory(&workspace_alias, ToolNarrationPhase::Failed, None, ctx),
+            "Failed to list files in /repo/crates"
+        );
+
+        let relative = args(json!({ "path": "crates" }));
+        assert_eq!(
+            narrate_list_directory(&relative, ToolNarrationPhase::Completed, None, ctx),
+            "Listed files in /repo/crates"
+        );
+
+        let host_absolute = args(json!({ "path": "/repo/crates" }));
+        assert_eq!(
+            narrate_list_directory(&host_absolute, ToolNarrationPhase::Completed, None, ctx),
+            "Listed files in /repo/crates"
+        );
+
+        let root = args(json!({}));
+        assert_eq!(
+            narrate_list_directory(&root, ToolNarrationPhase::Completed, None, ctx),
+            "Listed files in /repo"
+        );
     }
 
     #[test]
