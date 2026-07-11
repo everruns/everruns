@@ -1157,6 +1157,23 @@ impl StorageBackend {
         dispatch!(self, get_memory_by_id, org_id, id)
     }
 
+    pub async fn get_memory_by_scope_owner(
+        &self,
+        org_id: i64,
+        scope: &str,
+        owner_agent_id: Option<AgentId>,
+        owner_user_id: Option<Uuid>,
+    ) -> Result<Option<MemoryRow>> {
+        dispatch!(
+            self,
+            get_memory_by_scope_owner,
+            org_id,
+            scope,
+            owner_agent_id,
+            owner_user_id
+        )
+    }
+
     pub async fn list_memories(
         &self,
         org_id: i64,

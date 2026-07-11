@@ -19,7 +19,8 @@ use crate::services::{PrincipalService, row_to_principal};
 use crate::storage::{
     StorageBackend,
     models::{
-        CreateEventRow, CreateSessionFileRow, CreateSessionRow, MemoryFileRow, UpdateSession,
+        CreateEventRow, CreateMemoryRow, CreateSessionFileRow, CreateSessionRow, MemoryFileRow,
+        MemoryRow, UpdateSession,
     },
 };
 use anyhow::Result;
@@ -46,6 +47,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::api::sessions::{CreateSessionRequest, UpdateSessionRequest};
+
+const AGENT_MEMORY_MOUNT_PATH: &str = "/memory/agent";
+const USER_MEMORY_MOUNT_PATH: &str = "/memory/user";
 
 /// Policy: View sessions (read-only).
 pub const SESSION_VIEW: Policy = Policy {
@@ -99,6 +103,12 @@ struct SessionListHydration {
     agent_public_ids: HashMap<AgentId, AgentId>,
     agent_capability_ids: HashMap<AgentId, Vec<String>>,
     harness_capability_ids: HashMap<HarnessId, Vec<String>>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct ScopedMemoryContext {
+    agent_id: Option<AgentId>,
+    user_id: Option<Uuid>,
 }
 
 impl SessionService {
@@ -696,6 +706,18 @@ impl SessionService {
         // Override agent_id with public_id (DB stores internal UUID as FK)
         session.agent_id = agent_public_id;
 
+        let scoped_memory = ScopedMemoryContext {
+            agent_id,
+            // User memory is private to the resolved user. Do not materialize it
+            // into caller-attached shared workspaces because workspace files are
+            // currently workspace-wide rather than participant-local.
+            user_id: if workspace_id.is_none() {
+                resolved_owner_user_id
+            } else {
+                None
+            },
+        };
+
         // Apply capability mounts (harness + agent + session capabilities) and
         // seed initial files into the session's workspace. Key by workspace_id
         // (not session id) so an attached shared workspace receives them; for
@@ -706,6 +728,7 @@ impl SessionService {
             agent_id.map(|a| a.uuid()),
             &session_capabilities,
             session.workspace_id.uuid(),
+            Some(scoped_memory),
         )
         .await?;
 
@@ -848,6 +871,7 @@ impl SessionService {
         agent_id: Option<Uuid>,
         session_capabilities: &[AgentCapabilityConfig],
         session_id: impl Into<uuid::Uuid> + Copy,
+        scoped_memory: Option<ScopedMemoryContext>,
     ) -> Result<()> {
         let session_id = session_id.into();
 
@@ -858,6 +882,7 @@ impl SessionService {
                 agent_id,
                 session_capabilities,
                 session_id,
+                scoped_memory,
             )
             .await?;
         if mounts.is_empty() {
@@ -898,13 +923,11 @@ impl SessionService {
         agent_id: Option<Uuid>,
         session_capabilities: &[AgentCapabilityConfig],
         session_id: Uuid,
+        scoped_memory: Option<ScopedMemoryContext>,
     ) -> Result<Vec<MountPoint>> {
         let capability_configs = self
             .collect_session_capability_configs(org_id, harness_id, agent_id, session_capabilities)
             .await?;
-        if capability_configs.is_empty() {
-            return Ok(vec![]);
-        }
 
         let ctx = SystemPromptContext::without_file_store(SessionId::from_uuid(session_id));
         let resolved_configs =
@@ -917,6 +940,13 @@ impl SessionService {
             self.collect_workspace_memory_mounts(org_id, &resolved_configs)
                 .await?,
         );
+        ensure_no_reserved_memory_mounts(&mounts)?;
+        if let Some(scoped_memory) = scoped_memory {
+            mounts.extend(
+                self.collect_scoped_memory_mounts(org_id, scoped_memory)
+                    .await?,
+            );
+        }
         Ok(mounts)
     }
 
@@ -935,6 +965,7 @@ impl SessionService {
                 agent_id,
                 session_capabilities,
                 session_id,
+                None,
             )
             .await?;
 
@@ -984,10 +1015,12 @@ impl SessionService {
         session_initial_files: &[InitialFile],
         session_id: Uuid,
     ) -> Result<()> {
-        for file in self
+        let files = self
             .collect_initial_files(org_id, harness_id, agent_id, session_initial_files)
-            .await?
-        {
+            .await?;
+        ensure_no_reserved_memory_initial_files(&files)?;
+
+        for file in files {
             self.session_file_service
                 .create_file(
                     session_id,
@@ -1623,8 +1656,18 @@ impl SessionService {
         self.populate_features(org_id, &mut session).await?;
 
         // Apply capability mounts
-        self.apply_capability_mounts(org_id, harness_id, None, &[], session_id)
-            .await?;
+        self.apply_capability_mounts(
+            org_id,
+            harness_id,
+            None,
+            &[],
+            session_id,
+            Some(ScopedMemoryContext {
+                agent_id: None,
+                user_id: Some(user_id),
+            }),
+        )
+        .await?;
 
         Ok(session)
     }
@@ -1907,6 +1950,12 @@ impl SessionService {
                 .await?
                 .filter(|memory| memory.status == "active")
                 .ok_or_else(|| ResourceNotFoundError::new("Memory"))?;
+            if memory.scope != "org" {
+                return Err(BadRequestError::new(
+                    "Scoped memories are server-managed and cannot be mounted explicitly",
+                )
+                .into());
+            }
 
             if memory.is_readonly && mount.mode == MemoryMountAccess::ReadWrite {
                 return Err(BadRequestError::new(format!(
@@ -1931,6 +1980,99 @@ impl SessionService {
         }
 
         Ok(mounts)
+    }
+
+    async fn collect_scoped_memory_mounts(
+        &self,
+        org_id: i64,
+        context: ScopedMemoryContext,
+    ) -> Result<Vec<MountPoint>> {
+        let mut mounts = Vec::with_capacity(2);
+
+        if let Some(agent_id) = context.agent_id {
+            let memory = self
+                .get_or_create_scoped_memory(
+                    org_id,
+                    "agent",
+                    Some(agent_id),
+                    None,
+                    format!("agent-memory-{}", agent_id.uuid().simple()),
+                    "Server-managed per-agent memory.",
+                )
+                .await?;
+            mounts.push(
+                self.memory_row_to_mount(memory, AGENT_MEMORY_MOUNT_PATH)
+                    .await?,
+            );
+        }
+
+        if let Some(user_id) = context.user_id {
+            let memory = self
+                .get_or_create_scoped_memory(
+                    org_id,
+                    "user",
+                    None,
+                    Some(user_id),
+                    format!("user-memory-{}", user_id.simple()),
+                    "Server-managed per-user memory.",
+                )
+                .await?;
+            mounts.push(
+                self.memory_row_to_mount(memory, USER_MEMORY_MOUNT_PATH)
+                    .await?,
+            );
+        }
+
+        Ok(mounts)
+    }
+
+    async fn get_or_create_scoped_memory(
+        &self,
+        org_id: i64,
+        scope: &str,
+        owner_agent_id: Option<AgentId>,
+        owner_user_id: Option<Uuid>,
+        name: String,
+        description: &str,
+    ) -> Result<MemoryRow> {
+        if let Some(memory) = self
+            .db
+            .get_memory_by_scope_owner(org_id, scope, owner_agent_id, owner_user_id)
+            .await?
+            .filter(|memory| memory.status == "active")
+        {
+            return Ok(memory);
+        }
+
+        self.db
+            .create_memory(
+                org_id,
+                CreateMemoryRow {
+                    public_id: MemoryId::new().to_string(),
+                    name,
+                    description: Some(description.to_string()),
+                    scope: scope.to_string(),
+                    owner_agent_id,
+                    owner_user_id,
+                    source_type: "manual".to_string(),
+                    source_config: serde_json::json!({}),
+                    is_readonly: false,
+                    sync_status: "idle".to_string(),
+                    owner_principal_id: None,
+                    resolved_owner_user_id: owner_user_id,
+                },
+            )
+            .await
+    }
+
+    async fn memory_row_to_mount(&self, memory: MemoryRow, mount_path: &str) -> Result<MountPoint> {
+        let files = self.db.list_all_memory_files(memory.id).await?;
+        Ok(MountPoint::new(
+            mount_path,
+            MountAccess::ReadWrite,
+            MountSource::directory(memory_files_to_mount_entries(files)),
+            MEMORY_CAPABILITY_ID,
+        ))
     }
 
     /// EVE-709: reject session creation when a required built-in capability is not
@@ -2241,6 +2383,41 @@ fn memory_files_to_mount_entries(mut files: Vec<MemoryFileRow>) -> HashMap<Strin
     }
 
     entries
+}
+
+fn ensure_no_reserved_memory_mounts(mounts: &[MountPoint]) -> Result<()> {
+    for mount in mounts {
+        if let Some(reserved) = reserved_memory_path(&mount.path) {
+            return Err(BadRequestError::new(format!(
+                "Mount path {} is reserved for server-managed memory ({reserved})",
+                mount.path
+            ))
+            .into());
+        }
+    }
+    Ok(())
+}
+
+fn ensure_no_reserved_memory_initial_files(files: &[InitialFile]) -> Result<()> {
+    for file in files {
+        if let Some(reserved) = reserved_memory_path(&file.path) {
+            return Err(BadRequestError::new(format!(
+                "Initial file path {} is reserved for server-managed memory ({reserved})",
+                file.path
+            ))
+            .into());
+        }
+    }
+    Ok(())
+}
+
+fn reserved_memory_path(path: &str) -> Option<&'static str> {
+    let path = normalize_initial_file_path(path);
+    if path == "/memory" || path.starts_with("/memory/") {
+        Some("/memory/*")
+    } else {
+        None
+    }
 }
 
 fn insert_mount_directory(entries: &mut HashMap<String, MountEntry>, segments: &[&str]) {
@@ -3231,6 +3408,168 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn scoped_memories_are_auto_created_and_mounted_for_new_sessions() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_service = SessionService::new(db.clone());
+        let user = db
+            .create_user(crate::storage::CreateUserRow {
+                external_id: None,
+                email: "memory-owner@example.com".to_string(),
+                name: "Memory Owner".to_string(),
+                avatar_url: None,
+                roles: vec![],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: None,
+                auth_provider_id: None,
+            })
+            .await
+            .unwrap();
+        let caller = Caller {
+            user_id: Some(user.id),
+            ..external_caller(DEFAULT_ORG_ID)
+        };
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
+
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "scoped-memory-harness".to_string(),
+            display_name: Some("Scoped Memory Harness".to_string()),
+            description: None,
+            system_prompt: Some("Harness prompt".to_string()),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+            id: None,
+            name: "scoped-memory-agent".to_string(),
+            display_name: Some("Scoped Memory Agent".to_string()),
+            description: None,
+            system_prompt: "Agent prompt".to_string(),
+            default_model_id: None,
+            harness_id: None,
+            harness_name: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            tools: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        let session = session_service
+            .create(
+                &caller,
+                harness.id.uuid(),
+                Some(agent.internal_id),
+                Some(agent.public_id),
+                build_create_request(harness.id, Some(agent.public_id), None),
+            )
+            .await
+            .unwrap();
+
+        let file_service = WorkspaceFileService::new(db.clone());
+        let agent_mount = file_service
+            .stat(session.id.uuid(), AGENT_MEMORY_MOUNT_PATH)
+            .await
+            .unwrap()
+            .expect("agent memory mount exists");
+        assert!(agent_mount.is_directory);
+        assert!(!agent_mount.is_readonly);
+
+        let user_mount = file_service
+            .stat(session.id.uuid(), USER_MEMORY_MOUNT_PATH)
+            .await
+            .unwrap()
+            .expect("user memory mount exists");
+        assert!(user_mount.is_directory);
+        assert!(!user_mount.is_readonly);
+
+        assert!(
+            db.get_memory_by_scope_owner(
+                DEFAULT_ORG_ID,
+                "agent",
+                Some(AgentId::from_uuid(agent.internal_id)),
+                None,
+            )
+            .await
+            .unwrap()
+            .is_some()
+        );
+        assert!(
+            db.get_memory_by_scope_owner(DEFAULT_ORG_ID, "user", None, Some(user.id))
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            db.list_memories(DEFAULT_ORG_ID, None, false)
+                .await
+                .unwrap()
+                .is_empty(),
+            "scoped memories stay hidden from org memory listing"
+        );
+    }
+
+    #[tokio::test]
+    async fn session_initial_files_cannot_claim_reserved_memory_paths() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_service = SessionService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
+
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "reserved-memory-path-harness".to_string(),
+            display_name: Some("Reserved Memory Path Harness".to_string()),
+            description: None,
+            system_prompt: Some("Harness prompt".to_string()),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        let mut req = build_create_request(harness.id, None, None);
+        req.initial_files.push(InitialFile {
+            path: "/memory/agent/profile.md".to_string(),
+            content: "owned by the server".to_string(),
+            encoding: "text".to_string(),
+            is_readonly: false,
+        });
+
+        let err = session_service
+            .create(&caller, harness.id.uuid(), None, None, req)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("reserved for server-managed memory"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
     async fn inherited_harness_starter_files_are_copied_into_new_sessions() {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
@@ -3929,6 +4268,7 @@ mod tests {
                 Some(other_agent.internal_id),
                 &[],
                 session_row.id.uuid(),
+                None,
             )
             .await
             .unwrap();

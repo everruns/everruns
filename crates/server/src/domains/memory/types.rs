@@ -1,6 +1,6 @@
 use crate::api::common::deserialize_nullable_update_field;
 use chrono::{DateTime, Utc};
-use everruns_core::typed_id::MemoryId;
+use everruns_core::typed_id::{AgentId, MemoryId};
 use everruns_durable::UpdateField;
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -22,6 +22,16 @@ pub struct MemoryResponse {
     /// Human-readable description. Safe to render in user-facing messages.
     #[schema(example = "Living design documents synced from GitHub")]
     pub description: Option<String>,
+    /// Ownership scope (`org`, `agent`, or `user`).
+    #[schema(example = "org")]
+    pub scope: String,
+    /// Owning agent when `scope = agent`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "agent_01933b5a000070008000000000000001")]
+    pub owner_agent_id: Option<AgentId>,
+    /// Owning user when `scope = user`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub owner_user_id: Option<Uuid>,
     /// Source kind discriminator (`manual`, `git`, `github`). Determines which `source` variant is populated.
     #[schema(example = "github")]
     pub source_type: String,
@@ -212,6 +222,9 @@ pub fn memory_response(row: MemoryRow) -> anyhow::Result<MemoryResponse> {
         id: row.public_id.parse()?,
         name: row.name,
         description: row.description,
+        scope: row.scope,
+        owner_agent_id: row.owner_agent_id,
+        owner_user_id: row.owner_user_id,
         source_type: row.source_type,
         source,
         is_readonly: row.is_readonly,
