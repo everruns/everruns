@@ -714,3 +714,214 @@ async fn reporting_event_repair_benchmark() {
         elapsed.as_millis()
     );
 }
+
+#[tokio::test]
+async fn fact_session_projection_uses_denormalized_counts_for_large_histories() {
+    let server = TestServer::new().await;
+    let org = server
+        .db
+        .create_organization(CreateOrganizationRow {
+            public_id: format!("org_{}", Uuid::now_v7().simple()),
+            name: format!("Reporting fact session org {}", Uuid::now_v7()),
+            created_by: None,
+        })
+        .await
+        .expect("create fact session projection org");
+    let session_id =
+        create_reporting_repair_session(&server, org.org_id, "fact-session-large").await;
+    let base_time = Utc::now() - Duration::days(90);
+
+    let (event_count, turn_events, tool_events): (i64, i64, i64) = sqlx::query_as(
+        r#"
+        WITH inserted AS (
+            INSERT INTO events (
+                id, session_id, sequence, event_type, data, context, ts, created_at
+            )
+            SELECT uuidv7(),
+                   $1,
+                   n,
+                   CASE (n % 3)
+                       WHEN 0 THEN 'turn.completed'
+                       WHEN 1 THEN 'tool.completed'
+                       ELSE 'output.message.delta'
+                   END,
+                   '{}'::jsonb,
+                   '{}'::jsonb,
+                   $2 + n * INTERVAL '1 microsecond',
+                   $2 + n * INTERVAL '1 microsecond'
+              FROM generate_series(1, 3000) n
+            RETURNING event_type
+        )
+        SELECT COUNT(*)::BIGINT,
+               COUNT(*) FILTER (
+                   WHERE event_type IN ('turn.completed', 'turn.failed', 'turn.cancelled')
+               )::BIGINT,
+               COUNT(*) FILTER (WHERE event_type = 'tool.completed')::BIGINT
+          FROM inserted
+        "#,
+    )
+    .bind(session_id)
+    .bind(base_time)
+    .fetch_one(&server.pool)
+    .await
+    .expect("seed large session history");
+
+    assert_eq!(event_count, 3000);
+    assert_eq!(turn_events, 1000);
+    assert_eq!(tool_events, 1000);
+
+    let (session_turn_count, session_tool_count): (i64, i64) =
+        sqlx::query_as("SELECT turn_count, tool_call_count FROM sessions WHERE id = $1")
+            .bind(session_id)
+            .fetch_one(&server.pool)
+            .await
+            .expect("load denormalized session counters");
+    assert_eq!((session_turn_count, session_tool_count), (1000, 1000));
+
+    let plan: Vec<(String,)> = sqlx::query_as(
+        r#"
+        EXPLAIN
+        INSERT INTO fact_session (
+            org_id, source_key, session_id, user_id, principal_id, agent_id,
+            agent_name_snapshot, harness_id, harness_name_snapshot, app_id,
+            blueprint_id, created_at, time_bucket_day, session_status, started_at,
+            finished_at, last_active_at, session_count, duration_ms, turn_count,
+            input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+            total_tokens, tool_call_count, projected_at
+        )
+        SELECT
+            s.org_id,
+            'session:' || s.id::TEXT,
+            s.id,
+            s.resolved_owner_user_id,
+            s.owner_principal_id,
+            s.agent_id,
+            a.name,
+            s.harness_id,
+            h.name,
+            s.app_id,
+            s.blueprint_id,
+            s.created_at,
+            (s.created_at AT TIME ZONE 'UTC')::DATE,
+            s.status,
+            s.started_at,
+            s.finished_at,
+            s.updated_at,
+            1,
+            CASE
+                WHEN s.started_at IS NOT NULL AND s.finished_at IS NOT NULL
+                THEN GREATEST(EXTRACT(EPOCH FROM (s.finished_at - s.started_at)) * 1000, 0)::BIGINT
+                ELSE 0
+            END,
+            s.turn_count,
+            s.total_input_tokens,
+            s.total_output_tokens,
+            s.total_cache_read_tokens,
+            s.total_cache_creation_tokens,
+            s.total_input_tokens + s.total_output_tokens
+                + s.total_cache_read_tokens + s.total_cache_creation_tokens,
+            s.tool_call_count,
+            NOW()
+        FROM sessions s
+        LEFT JOIN agents a ON a.id = s.agent_id AND a.org_id = s.org_id
+        LEFT JOIN harnesses h ON h.id = s.harness_id AND h.org_id = s.org_id
+        WHERE s.id = $1 AND s.org_id = $2
+        ON CONFLICT (org_id, source_key) DO UPDATE SET
+            turn_count = EXCLUDED.turn_count,
+            tool_call_count = EXCLUDED.tool_call_count,
+            projected_at = NOW()
+        "#,
+    )
+    .bind(session_id)
+    .bind(org.org_id)
+    .fetch_all(&server.pool)
+    .await
+    .expect("explain fact_session upsert");
+    let plan_text = plan
+        .iter()
+        .map(|(line,)| line.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !plan_text.contains("events"),
+        "fact_session upsert must not scan events; plan:\n{plan_text}"
+    );
+
+    async fn enqueue_session_snapshot(pool: &sqlx::PgPool, session_id: Uuid) {
+        sqlx::query(
+            r#"
+            INSERT INTO reporting_outbox (
+                org_id, source_type, source_id, source_version, reason, status, next_attempt_at
+            )
+            SELECT org_id, 'session', id::TEXT, updated_at::TEXT, 'session_snapshot', 'pending', NOW()
+              FROM sessions
+             WHERE id = $1
+            ON CONFLICT (org_id, source_type, source_id, source_version, reason)
+            DO UPDATE SET
+                status = 'pending',
+                next_attempt_at = NOW(),
+                updated_at = NOW()
+            "#,
+        )
+        .bind(session_id)
+        .execute(pool)
+        .await
+        .expect("enqueue session snapshot");
+    }
+
+    enqueue_session_snapshot(&server.pool, session_id).await;
+    let projector = PostgresReportingProjector::new(server.pool.clone());
+
+    let first_started = std::time::Instant::now();
+    projector
+        .run_once(org.org_id, 1)
+        .await
+        .expect("first session projection");
+    let first_elapsed = first_started.elapsed();
+
+    let (fact_turn_count, fact_tool_count): (i64, i64) = sqlx::query_as(
+        "SELECT turn_count, tool_call_count FROM fact_session WHERE session_id = $1",
+    )
+    .bind(session_id)
+    .fetch_one(&server.pool)
+    .await
+    .expect("load projected session fact");
+    assert_eq!((fact_turn_count, fact_tool_count), (1000, 1000));
+
+    sqlx::query("UPDATE sessions SET updated_at = NOW() WHERE id = $1")
+        .bind(session_id)
+        .execute(&server.pool)
+        .await
+        .expect("touch session for repeated projection");
+    enqueue_session_snapshot(&server.pool, session_id).await;
+
+    let repeat_started = std::time::Instant::now();
+    projector
+        .run_once(org.org_id, 1)
+        .await
+        .expect("repeated session projection");
+    let repeat_elapsed = repeat_started.elapsed();
+
+    let (fact_turn_count, fact_tool_count): (i64, i64) = sqlx::query_as(
+        "SELECT turn_count, tool_call_count FROM fact_session WHERE session_id = $1",
+    )
+    .bind(session_id)
+    .fetch_one(&server.pool)
+    .await
+    .expect("reload projected session fact after repeat");
+    assert_eq!((fact_turn_count, fact_tool_count), (1000, 1000));
+
+    assert!(
+        first_elapsed < std::time::Duration::from_millis(500),
+        "first projection took {first_elapsed:?} with {event_count} events"
+    );
+    assert!(
+        repeat_elapsed < std::time::Duration::from_millis(500),
+        "repeated projection took {repeat_elapsed:?} with {event_count} events"
+    );
+    eprintln!(
+        "fact_session projection benchmark: {event_count} events, first={}ms repeat={}ms",
+        first_elapsed.as_millis(),
+        repeat_elapsed.as_millis()
+    );
+}

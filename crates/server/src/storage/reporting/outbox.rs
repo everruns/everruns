@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
 use sqlx::{PgPool, Postgres, pool::PoolConnection};
+use std::time::Instant;
 use uuid::Uuid;
 
 use super::models::ReportingOutboxRow;
+use super::projection_timing::{FACT_SESSION_UPSERT, maybe_warn_slow_projection};
 use crate::domains::reporting::types::{ProjectorRunResult, ReportingBackfillResult};
 
 const STALE_PROCESSING_MINUTES: i32 = 15;
@@ -1172,7 +1174,8 @@ impl PostgresReportingProjector {
 
     async fn project_session(&self, org_id: i64, source_id: &str) -> Result<()> {
         let id = Uuid::parse_str(source_id).context("invalid session source id")?;
-        sqlx::query(
+        let started = Instant::now();
+        let result = sqlx::query(
             r#"
             INSERT INTO fact_session (
                 org_id, source_key, session_id, user_id, principal_id, agent_id,
@@ -1206,24 +1209,14 @@ impl PostgresReportingProjector {
                     THEN GREATEST(EXTRACT(EPOCH FROM (s.finished_at - s.started_at)) * 1000, 0)::BIGINT
                     ELSE 0
                 END,
-                (
-                    SELECT COUNT(*)
-                    FROM events e
-                    WHERE e.session_id = s.id
-                      AND e.event_type IN ('turn.completed', 'turn.failed', 'turn.cancelled')
-                ),
+                s.turn_count,
                 s.total_input_tokens,
                 s.total_output_tokens,
                 s.total_cache_read_tokens,
                 s.total_cache_creation_tokens,
                 s.total_input_tokens + s.total_output_tokens
                     + s.total_cache_read_tokens + s.total_cache_creation_tokens,
-                (
-                    SELECT COUNT(*)
-                    FROM events e
-                    WHERE e.session_id = s.id
-                      AND e.event_type = 'tool.completed'
-                ),
+                s.tool_call_count,
                 NOW()
             FROM sessions s
             LEFT JOIN agents a ON a.id = s.agent_id AND a.org_id = s.org_id
@@ -1257,6 +1250,14 @@ impl PostgresReportingProjector {
         .bind(org_id)
         .execute(&self.pool)
         .await?;
+        maybe_warn_slow_projection(
+            FACT_SESSION_UPSERT,
+            started.elapsed(),
+            result.rows_affected(),
+            "session",
+            Some("session_snapshot"),
+            org_id,
+        );
         self.project_configured_capabilities(org_id, id).await?;
         Ok(())
     }

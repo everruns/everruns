@@ -777,6 +777,12 @@ pub struct SessionRow {
     /// Cumulative cache creation tokens for all LLM calls in this session
     #[sqlx(default)]
     pub total_cache_creation_tokens: i64,
+    /// Denormalized count of turn.completed, turn.failed, and turn.cancelled events
+    #[sqlx(default)]
+    pub turn_count: i64,
+    /// Denormalized count of tool.completed events
+    #[sqlx(default)]
+    pub tool_call_count: i64,
     /// Cumulative provider-reported actual cost in USD for this session
     #[sqlx(default)]
     pub total_actual_cost_usd: f64,

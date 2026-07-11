@@ -38,6 +38,18 @@ impl InMemoryDatabase {
             created_at: now,
         };
         self.events.write().insert(id, row.clone());
+        {
+            let mut sessions = self.sessions.write();
+            if let Some(session) = sessions.get_mut(&row.session_id) {
+                match row.event_type.as_str() {
+                    "turn.completed" | "turn.failed" | "turn.cancelled" => {
+                        session.turn_count += 1;
+                    }
+                    "tool.completed" => session.tool_call_count += 1,
+                    _ => {}
+                }
+            }
+        }
         let org_id = {
             let sessions = self.sessions.read();
             sessions.get(&row.session_id).map(|session| session.org_id)
