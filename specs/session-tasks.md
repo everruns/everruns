@@ -335,6 +335,9 @@ GET  /v1/sessions/{session_id}/tasks            — list (filter by state/kind)
 GET  /v1/sessions/{session_id}/tasks/{task_id}  — snapshot + recent thread
 POST /v1/sessions/{session_id}/tasks/{task_id}/messages — inbound message
 POST /v1/sessions/{session_id}/tasks/{task_id}/cancel   — cancel intent
+GET    /v1/sessions/{session_id}/tasks/{task_id}/push-configs             — list per-task push configs
+POST   /v1/sessions/{session_id}/tasks/{task_id}/push-configs             — create a per-task push config
+DELETE /v1/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id} — delete a per-task push config
 ```
 
 `GET /v1/tasks` (EVE-583) is the cross-session, org-scoped query for
@@ -375,7 +378,34 @@ Specifically:
   cancels the schedule too. The response reflects the task state after the
   executor runs (re-fetched), so a monitor task is returned as `canceled`.
 
-Webhooks on terminal transitions are out of scope for v1.
+### Webhooks and per-task push configs
+
+Two independent delivery surfaces exist, both signed with HMAC-SHA256 when a
+secret is set (`X-Everruns-Signature: sha256=<hex>`) and both delivered through
+the same SSRF-guarded egress path (`build_task_webhook_request`, which pins DNS
+to the create-time resolution to defeat rebinding; EVE-625):
+
+- Organization task webhooks (`organization_task_webhooks`, EVE-579): org-scoped,
+  fire only on terminal transitions (succeeded / failed / canceled). Managed via
+  `/v1/task-webhooks`. Unchanged by EVE-682.
+- Per-task push configs (`session_task_push_configs`, EVE-682): scoped to a
+  single task via `{ url, secret?, event_filter? }`, modeled on A2A
+  `TaskPushNotificationConfig`. `event_filter` is a subset of `terminal`
+  (default), `awaiting_input`, `message`; a config opts into non-terminal
+  delivery by listing those events. The table has no `org_id` — a config is
+  reachable only through its owning session, so the endpoint authorizes by
+  verifying the task's session belongs to the caller's org (the notifier resolves
+  the same boundary server-internally via `get_session_unscoped`). Responses
+  return a `tpc_<id>` public id and a `has_secret` boolean; the stored secret is
+  never echoed. URLs are `validate_safe_url`-checked before persistence.
+
+Per-task configs can be created two ways, sharing one delivery path: via the
+`push-configs` endpoint (persisted to the table) or at subagent spawn time via
+the `push_configs` spawn arg (embedded in the task spec under `push_configs`;
+the notifier reads both). The registry fires the notifier on terminal,
+awaiting_input, and outbound-message transitions; per-config `event_filter`
+selects which land. Delivery is best-effort — failures are logged, never fatal,
+and never block the task update.
 
 ## Migration
 
@@ -508,7 +538,6 @@ stays as `schedule + monitor` composition.
 
 ## Out of scope (v1)
 
-- Webhooks / push notifications on task transitions.
 - Per-org retention TTL overrides (global TTL ships first; see Retention).
 - A dedicated task-definition / recurrence primitive — see the decision above;
   recurrence ships as schedule + monitor composition.

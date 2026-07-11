@@ -2127,10 +2127,67 @@ struct DirectTaskWebhookNotifier {
     egress_service: Arc<dyn EgressService>,
 }
 
+/// One resolved delivery target for a webhook notification. `label` is only for
+/// logging (a public id or a spec-embedded marker) and never affects delivery.
+struct WebhookTarget {
+    label: String,
+    url: String,
+    secret: Option<String>,
+}
+
+/// Parse spec-embedded push configs (EVE-682) that match `event`.
+///
+/// Spawn-time configs live in `task.spec["push_configs"]` as an array of
+/// `{ url, secret?, event_filter? }`. `event_filter` defaults to
+/// `["terminal"]`, matching org-webhook behavior. URLs were SSRF-validated at
+/// spawn time and delivery pins DNS, so no re-validation is needed here.
+fn spec_push_config_targets(
+    spec: &serde_json::Value,
+    event: crate::storage::session_task_store::TaskWebhookEvent,
+) -> Vec<WebhookTarget> {
+    let Some(entries) = spec.get("push_configs").and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+    let mut targets = Vec::new();
+    for entry in entries {
+        let Some(url) = entry.get("url").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let matches = match entry.get("event_filter").and_then(|v| v.as_array()) {
+            Some(filters) => filters
+                .iter()
+                .filter_map(|f| f.as_str())
+                .any(|f| f == event.filter_value()),
+            // Absent filter defaults to terminal-only.
+            None => event.filter_value() == "terminal",
+        };
+        if !matches {
+            continue;
+        }
+        targets.push(WebhookTarget {
+            label: "spec".to_string(),
+            url: url.to_string(),
+            secret: entry
+                .get("secret")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+        });
+    }
+    targets
+}
+
 #[async_trait::async_trait]
 impl crate::storage::session_task_store::TaskWebhookNotifier for DirectTaskWebhookNotifier {
-    async fn notify(&self, task: &everruns_core::session_task::SessionTask) -> anyhow::Result<()> {
+    async fn notify(
+        &self,
+        task: &everruns_core::session_task::SessionTask,
+        event: crate::storage::session_task_store::TaskWebhookEvent,
+    ) -> anyhow::Result<()> {
+        use crate::storage::session_task_store::TaskWebhookEvent;
+
         // Resolve org_id from session (unscoped lookup — no harness required).
+        // Server-internal dispatch only: this is never a user-facing read, so
+        // the unscoped lookup does not widen any caller's tenant scope.
         let session = self
             .db
             .get_session_unscoped(task.session_id)
@@ -2140,18 +2197,49 @@ impl crate::storage::session_task_store::TaskWebhookNotifier for DirectTaskWebho
             return Ok(());
         };
 
-        let webhooks = self
-            .db
-            .list_enabled_org_task_webhooks(session.org_id)
-            .await
-            .map_err(|e| anyhow::anyhow!("webhook notifier: webhook lookup failed: {e}"))?;
+        let mut targets: Vec<WebhookTarget> = Vec::new();
 
-        if webhooks.is_empty() {
+        // Org webhooks are terminal-only and unchanged (EVE-579): they never
+        // fire on non-terminal events.
+        if event == TaskWebhookEvent::Terminal {
+            let webhooks = self
+                .db
+                .list_enabled_org_task_webhooks(session.org_id)
+                .await
+                .map_err(|e| anyhow::anyhow!("webhook notifier: webhook lookup failed: {e}"))?;
+            targets.extend(webhooks.into_iter().map(|w| WebhookTarget {
+                label: w.public_id,
+                url: w.url,
+                secret: w.secret,
+            }));
+        }
+
+        // Per-task push configs (EVE-682): DB-persisted (endpoint-created) plus
+        // spec-embedded (spawn-time) configs share this delivery path. Both are
+        // filtered by whether their event_filter includes this event.
+        let configs = self
+            .db
+            .list_task_push_configs(task.session_id, &task.id)
+            .await
+            .map_err(|e| anyhow::anyhow!("webhook notifier: push-config lookup failed: {e}"))?;
+        targets.extend(
+            configs
+                .into_iter()
+                .filter(|c| c.event_filter.iter().any(|f| f == event.filter_value()))
+                .map(|c| WebhookTarget {
+                    label: c.public_id,
+                    url: c.url,
+                    secret: c.secret,
+                }),
+        );
+        targets.extend(spec_push_config_targets(&task.spec, event));
+
+        if targets.is_empty() {
             return Ok(());
         }
 
         let payload = serde_json::json!({
-            "event": "task.terminal",
+            "event": event.event_name(),
             "task": {
                 "id": task.id,
                 "display_name": task.display_name,
@@ -2164,14 +2252,15 @@ impl crate::storage::session_task_store::TaskWebhookNotifier for DirectTaskWebho
         });
         let body = serde_json::to_vec(&payload)?;
 
-        for webhook in webhooks {
-            let req = build_task_webhook_request(&webhook.url, &body, webhook.secret.as_deref());
+        for target in targets {
+            let req = build_task_webhook_request(&target.url, &body, target.secret.as_deref());
 
             if let Err(e) = self.egress_service.send(req).await {
                 tracing::warn!(
-                    webhook_id = %webhook.public_id,
-                    url = %webhook.url,
+                    webhook = %target.label,
+                    url = %target.url,
                     task_id = %task.id,
+                    event = ?event,
                     "Task webhook delivery failed (best-effort): {e}"
                 );
             }
@@ -2242,6 +2331,49 @@ mod task_webhook_request_tests {
                 .headers
                 .iter()
                 .any(|(k, _)| k.eq_ignore_ascii_case("X-Everruns-Signature"))
+        );
+    }
+
+    use super::spec_push_config_targets;
+    use crate::storage::session_task_store::TaskWebhookEvent;
+
+    #[test]
+    fn spec_push_configs_filter_by_event() {
+        // EVE-682: spawn-time configs embedded in the task spec deliver only for
+        // events their event_filter includes; an absent filter defaults to
+        // terminal-only, matching org webhook behavior.
+        let spec = serde_json::json!({
+            "push_configs": [
+                { "url": "https://a.example.com", "secret": "s", "event_filter": ["message"] },
+                { "url": "https://b.example.com", "event_filter": ["terminal", "awaiting_input"] },
+                { "url": "https://c.example.com" },
+            ]
+        });
+
+        let terminal = spec_push_config_targets(&spec, TaskWebhookEvent::Terminal);
+        let terminal_urls: Vec<&str> = terminal.iter().map(|t| t.url.as_str()).collect();
+        assert_eq!(
+            terminal_urls,
+            vec!["https://b.example.com", "https://c.example.com"],
+            "terminal must include the explicit terminal filter and the default"
+        );
+
+        let message = spec_push_config_targets(&spec, TaskWebhookEvent::Message);
+        let message_urls: Vec<&str> = message.iter().map(|t| t.url.as_str()).collect();
+        assert_eq!(message_urls, vec!["https://a.example.com"]);
+        assert_eq!(
+            message[0].secret.as_deref(),
+            Some("s"),
+            "secret must be carried through for signing"
+        );
+
+        let awaiting = spec_push_config_targets(&spec, TaskWebhookEvent::AwaitingInput);
+        let awaiting_urls: Vec<&str> = awaiting.iter().map(|t| t.url.as_str()).collect();
+        assert_eq!(awaiting_urls, vec!["https://b.example.com"]);
+
+        // No push_configs key → no targets.
+        assert!(
+            spec_push_config_targets(&serde_json::json!({}), TaskWebhookEvent::Terminal).is_empty()
         );
     }
 }

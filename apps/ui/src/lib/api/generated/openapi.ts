@@ -3271,6 +3271,41 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/tasks/{task_id}/push-configs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List per-task push-notification configs. */
+    get: operations["list_push_configs"];
+    put?: never;
+    /** Create a per-task push-notification config. */
+    post: operations["create_push_config"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Delete a per-task push-notification config. */
+    delete: operations["delete_push_config"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/tool-results": {
     parameters: {
       query?: never;
@@ -5966,6 +6001,21 @@ export interface components {
       /** @description The type of LLM provider (e.g., openai, anthropic). */
       provider_type: components["schemas"]["DriverId"];
       trace?: null | components["schemas"]["ProviderTraceConfig"];
+    };
+    /** @description Request body for creating a per-task push config. */
+    CreatePushConfigBody: {
+      /** @description Events that trigger delivery. Defaults to `["terminal"]`. */
+      event_filter?: string[] | null;
+      /**
+       * @description Optional HMAC-SHA256 signing secret (never returned once set).
+       * @example whsec_9f8c2b1a4e7d4c3b8a1f2e3d
+       */
+      secret?: string | null;
+      /**
+       * @description URL to POST task events to.
+       * @example https://hooks.example.com/everruns/tasks
+       */
+      url: string;
     };
     /** @description Request body for the `create_saved_report` operation. */
     CreateSavedReportRequest: {
@@ -14410,6 +14460,41 @@ export interface components {
           /** @enum {string} */
           type: "data";
         };
+    /**
+     * @description Public view of a per-task push config. The stored secret is NEVER returned —
+     *     only `has_secret` signals whether one is configured.
+     */
+    TaskPushConfig: {
+      /**
+       * Format: date-time
+       * @description When the config was created (RFC 3339).
+       * @example 2026-07-11T00:00:00Z
+       */
+      created_at: string;
+      /** @description Events that trigger delivery (terminal, awaiting_input, message). */
+      event_filter: string[];
+      /**
+       * @description Whether a signing secret is configured (the secret itself is never returned).
+       * @example true
+       */
+      has_secret: boolean;
+      /**
+       * @description Public identifier (tpc_<32-hex-chars>).
+       * @example tpc_9f8c2b1a4e7d4c3b8a1f2e3d4c5b6a7f
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description When the config was last updated (RFC 3339).
+       * @example 2026-07-11T00:00:00Z
+       */
+      updated_at: string;
+      /**
+       * @description Target URL that receives POST deliveries.
+       * @example https://hooks.example.com/everruns/tasks
+       */
+      url: string;
+    };
     /** @description Task response */
     TaskResponse: {
       /**
@@ -27934,6 +28019,113 @@ export interface operations {
         content?: never;
       };
       /** @description Session or task not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_push_configs: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID */
+        session_id: string;
+        /** @description Task ID */
+        task_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Push configs */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TaskPushConfig"][];
+        };
+      };
+      /** @description Session or task not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  create_push_config: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID */
+        session_id: string;
+        /** @description Task ID */
+        task_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreatePushConfigBody"];
+      };
+    };
+    responses: {
+      /** @description Created push config */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TaskPushConfig"];
+        };
+      };
+      /** @description Invalid request (bad URL or event_filter) */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session or task not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_push_config: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID */
+        session_id: string;
+        /** @description Task ID */
+        task_id: string;
+        /** @description Push config ID (tpc_...) */
+        config_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Push config deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session, task, or push config not found */
       404: {
         headers: {
           [name: string]: unknown;

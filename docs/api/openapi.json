@@ -12818,6 +12818,154 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/tasks/{task_id}/push-configs": {
+      "get": {
+        "tags": [
+          "session-tasks"
+        ],
+        "summary": "List per-task push-notification configs.",
+        "operationId": "list_push_configs",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "Task ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Push configs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskPushConfig"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session or task not found"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "session-tasks"
+        ],
+        "summary": "Create a per-task push-notification config.",
+        "operationId": "create_push_config",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "Task ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePushConfigBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Created push config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskPushConfig"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request (bad URL or event_filter)"
+          },
+          "404": {
+            "description": "Session or task not found"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}": {
+      "delete": {
+        "tags": [
+          "session-tasks"
+        ],
+        "summary": "Delete a per-task push-notification config.",
+        "operationId": "delete_push_config",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "Task ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "config_id",
+            "in": "path",
+            "description": "Push config ID (tpc_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Push config deleted"
+          },
+          "404": {
+            "description": "Session, task, or push config not found"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/tool-results": {
       "post": {
         "tags": [
@@ -18711,6 +18859,38 @@
                 "description": "Trace/observability link configuration. Stored as a per-provider override\nof the driver's default templates; omit to keep driver defaults."
               }
             ]
+          }
+        }
+      },
+      "CreatePushConfigBody": {
+        "type": "object",
+        "description": "Request body for creating a per-task push config.",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "event_filter": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Events that trigger delivery. Defaults to `[\"terminal\"]`."
+          },
+          "secret": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional HMAC-SHA256 signing secret (never returned once set).",
+            "example": "whsec_9f8c2b1a4e7d4c3b8a1f2e3d"
+          },
+          "url": {
+            "type": "string",
+            "description": "URL to POST task events to.",
+            "example": "https://hooks.example.com/everruns/tasks"
           }
         }
       },
@@ -33599,6 +33779,54 @@
           }
         ],
         "description": "One content part of a task message."
+      },
+      "TaskPushConfig": {
+        "type": "object",
+        "description": "Public view of a per-task push config. The stored secret is NEVER returned —\nonly `has_secret` signals whether one is configured.",
+        "required": [
+          "id",
+          "url",
+          "has_secret",
+          "event_filter",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the config was created (RFC 3339).",
+            "example": "2026-07-11T00:00:00Z"
+          },
+          "event_filter": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Events that trigger delivery (terminal, awaiting_input, message)."
+          },
+          "has_secret": {
+            "type": "boolean",
+            "description": "Whether a signing secret is configured (the secret itself is never returned).",
+            "example": true
+          },
+          "id": {
+            "type": "string",
+            "description": "Public identifier (tpc_<32-hex-chars>).",
+            "example": "tpc_9f8c2b1a4e7d4c3b8a1f2e3d4c5b6a7f"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the config was last updated (RFC 3339).",
+            "example": "2026-07-11T00:00:00Z"
+          },
+          "url": {
+            "type": "string",
+            "description": "Target URL that receives POST deliveries.",
+            "example": "https://hooks.example.com/everruns/tasks"
+          }
+        }
       },
       "TaskResponse": {
         "type": "object",

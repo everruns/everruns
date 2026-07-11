@@ -4,11 +4,17 @@
 // `everruns_core::session_task::apply_task_update` inside a transaction with
 // `SELECT ... FOR UPDATE` so concurrent updates serialize per task.
 
-use super::super::models::{NewSessionTaskMessageRow, SessionTaskMessageRow, SessionTaskRow};
+use super::super::models::{
+    CreateSessionTaskPushConfig, NewSessionTaskMessageRow, SessionTaskMessageRow,
+    SessionTaskPushConfigRow, SessionTaskRow,
+};
 use super::Database;
 use anyhow::Result;
 use everruns_core::SessionId;
 use everruns_core::session_task::{SessionTask, SessionTaskUpdate, apply_task_update};
+
+const PUSH_CONFIG_COLUMNS: &str =
+    "id, public_id, session_id, task_id, url, secret, event_filter, created_at, updated_at";
 
 const TASK_COLUMNS: &str = "id, session_id, root_session_id, kind, display_name, spec, state, \
      state_detail, progress, input_request, cancel_requested_at, summary, result_path, artifacts, \
@@ -257,6 +263,77 @@ impl Database {
             .get_session_task(session_id, task_id)
             .await?
             .map(|row| (row, false)))
+    }
+
+    // ============================================
+    // Per-task push-notification configs (EVE-682)
+    // ============================================
+
+    /// Create a per-task push config. Authorization is the caller's concern:
+    /// this method trusts `session_id`/`task_id` were resolved against the
+    /// caller's org before insert.
+    pub async fn create_task_push_config(
+        &self,
+        input: CreateSessionTaskPushConfig,
+    ) -> Result<SessionTaskPushConfigRow> {
+        let row = sqlx::query_as::<_, SessionTaskPushConfigRow>(sqlx::AssertSqlSafe(format!(
+            r#"
+            INSERT INTO session_task_push_configs
+                (public_id, session_id, task_id, url, secret, event_filter)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING {PUSH_CONFIG_COLUMNS}
+            "#
+        )))
+        .bind(&input.public_id)
+        .bind(input.session_id)
+        .bind(&input.task_id)
+        .bind(&input.url)
+        .bind(&input.secret)
+        .bind(&input.event_filter)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// List push configs for one task, oldest-first.
+    pub async fn list_task_push_configs(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> Result<Vec<SessionTaskPushConfigRow>> {
+        let rows = sqlx::query_as::<_, SessionTaskPushConfigRow>(sqlx::AssertSqlSafe(format!(
+            r#"
+            SELECT {PUSH_CONFIG_COLUMNS}
+            FROM session_task_push_configs
+            WHERE session_id = $1 AND task_id = $2
+            ORDER BY created_at ASC, id ASC
+            "#
+        )))
+        .bind(session_id)
+        .bind(task_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Delete one push config by its public id, scoped to the owning task.
+    /// Returns whether a row was removed.
+    pub async fn delete_task_push_config(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        public_id: &str,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "DELETE FROM session_task_push_configs \
+             WHERE session_id = $1 AND task_id = $2 AND public_id = $3",
+        )
+        .bind(session_id)
+        .bind(task_id)
+        .bind(public_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
     }
 
     pub async fn insert_session_task_message(

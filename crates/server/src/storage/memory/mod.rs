@@ -202,6 +202,8 @@ pub struct InMemoryDatabase {
     plugin_installs: RwLock<HashMap<Uuid, PluginInstallRow>>,
     // Organization task webhooks (outbound HTTP on terminal task transitions)
     org_task_webhooks: RwLock<Vec<OrgTaskWebhookRow>>,
+    // Per-task push-notification configs (EVE-682): session/task-scoped webhooks
+    session_task_push_configs: RwLock<Vec<SessionTaskPushConfigRow>>,
     // OSS-owned organization invitations (EVE-602)
     org_invitations: RwLock<Vec<OrgInvitationRow>>,
     // Native-auth account-recovery tokens (hashed, single-use, short-TTL).
@@ -335,6 +337,7 @@ impl Default for InMemoryDatabase {
             plugin_marketplaces: RwLock::new(plugin_marketplaces),
             plugin_installs: RwLock::new(HashMap::new()),
             org_task_webhooks: RwLock::new(Vec::new()),
+            session_task_push_configs: RwLock::new(Vec::new()),
             org_invitations: RwLock::new(Vec::new()),
             password_reset_tokens: RwLock::new(Vec::new()),
             email_verification_tokens: RwLock::new(Vec::new()),

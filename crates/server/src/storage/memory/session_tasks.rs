@@ -3,7 +3,10 @@
 // Mirrors the PostgreSQL repository exactly; lifecycle invariants come from
 // `everruns_core::session_task::apply_task_update` in both backends.
 
-use super::super::models::{NewSessionTaskMessageRow, SessionTaskMessageRow, SessionTaskRow};
+use super::super::models::{
+    CreateSessionTaskPushConfig, NewSessionTaskMessageRow, SessionTaskMessageRow,
+    SessionTaskPushConfigRow, SessionTaskRow,
+};
 use super::InMemoryDatabase;
 use anyhow::Result;
 use everruns_core::SessionId;
@@ -158,6 +161,62 @@ impl InMemoryDatabase {
         row.cancel_requested_at = Some(now);
         row.updated_at = now;
         Ok(Some((row.clone(), true)))
+    }
+
+    // ============================================
+    // Per-task push-notification configs (EVE-682)
+    // ============================================
+
+    pub async fn create_task_push_config(
+        &self,
+        input: CreateSessionTaskPushConfig,
+    ) -> Result<SessionTaskPushConfigRow> {
+        let now = Self::now();
+        let mut configs = self.session_task_push_configs.write();
+        let id = configs.iter().map(|c| c.id).max().unwrap_or(0) + 1;
+        let row = SessionTaskPushConfigRow {
+            id,
+            public_id: input.public_id,
+            session_id: input.session_id,
+            task_id: input.task_id,
+            url: input.url,
+            secret: input.secret,
+            event_filter: input.event_filter,
+            created_at: now,
+            updated_at: now,
+        };
+        configs.push(row.clone());
+        Ok(row)
+    }
+
+    pub async fn list_task_push_configs(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> Result<Vec<SessionTaskPushConfigRow>> {
+        let mut rows: Vec<_> = self
+            .session_task_push_configs
+            .read()
+            .iter()
+            .filter(|c| c.session_id == session_id && c.task_id == task_id)
+            .cloned()
+            .collect();
+        rows.sort_by_key(|c| (c.created_at, c.id));
+        Ok(rows)
+    }
+
+    pub async fn delete_task_push_config(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        public_id: &str,
+    ) -> Result<bool> {
+        let mut configs = self.session_task_push_configs.write();
+        let before = configs.len();
+        configs.retain(|c| {
+            !(c.session_id == session_id && c.task_id == task_id && c.public_id == public_id)
+        });
+        Ok(configs.len() < before)
     }
 
     pub async fn insert_session_task_message(
