@@ -6125,6 +6125,11 @@ export interface components {
        */
       capabilities?: components["schemas"]["AgentCapabilityConfig"][];
       /**
+       * @description Optional objective for the session. Visible to the agent at system-prompt level.
+       * @example Investigate the queue latency regression and propose a fix
+       */
+      goal?: string | null;
+      /**
        * @description ID of the harness for this session (format: harness_{32-hex}).
        *     If omitted, the harness is derived from the agent (when one is supplied),
        *     else the org default harness, else the built-in fallback. New orgs default
@@ -6208,11 +6213,6 @@ export interface components {
        * @example Debug login issue
        */
       title?: string | null;
-      /**
-       * @description Optional objective for the session. Visible to the agent at system-prompt level.
-       * @example Investigate the queue latency regression and propose a fix
-       */
-      goal?: string | null;
       /**
        * @description Client-side tools for this session (additive to agent tools).
        *     These tools are sent to the LLM but executed by the client.
@@ -7193,6 +7193,11 @@ export interface components {
        */
       agent_id?: string | null;
       /**
+       * @description Goal for the fork. Omitted inherits the parent's goal.
+       * @example Try the async rewrite from this state
+       */
+      goal?: string | null;
+      /**
        * @description Override the locale (BCP 47).
        * @example uk-UA
        */
@@ -7216,11 +7221,6 @@ export interface components {
        * @example Branch: try the async rewrite
        */
       title?: string | null;
-      /**
-       * @description Goal for the fork. Omitted inherits the parent's goal.
-       * @example Try the async rewrite from this state
-       */
-      goal?: string | null;
     };
     /** @description A single form field. */
     FormField: {
@@ -9305,6 +9305,21 @@ export interface components {
          * @example design-docs
          */
         name: string;
+        /**
+         * @description Owning agent when `scope = agent`.
+         * @example agent_01933b5a000070008000000000000001
+         */
+        owner_agent_id?: string | null;
+        /**
+         * Format: uuid
+         * @description Owning user when `scope = user`.
+         */
+        owner_user_id?: string | null;
+        /**
+         * @description Ownership scope (`org`, `agent`, or `user`).
+         * @example org
+         */
+        scope: string;
         /** @description Source-specific configuration (git remote, github repo, manual upload). */
         source: components["schemas"]["MemorySourceResponse"];
         /**
@@ -10755,6 +10770,21 @@ export interface components {
        * @example design-docs
        */
       name: string;
+      /**
+       * @description Owning agent when `scope = agent`.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      owner_agent_id?: string | null;
+      /**
+       * Format: uuid
+       * @description Owning user when `scope = user`.
+       */
+      owner_user_id?: string | null;
+      /**
+       * @description Ownership scope (`org`, `agent`, or `user`).
+       * @example org
+       */
+      scope: string;
       /** @description Source-specific configuration (git remote, github repo, manual upload). */
       source: components["schemas"]["MemorySourceResponse"];
       /**
@@ -11513,6 +11543,11 @@ export interface components {
          */
         forked_from_session_id?: string | null;
         /**
+         * @description Session objective visible to the runtime agent at system-prompt level.
+         * @example Investigate the queue latency regression
+         */
+        goal?: string | null;
+        /**
          * @description ID of the harness for this session (format: harness_{32-hex}).
          * @example harness_01933b5a00007000800000000000001
          */
@@ -11631,11 +11666,6 @@ export interface components {
          * @example Q3 marketing brief
          */
         title?: string | null;
-        /**
-         * @description Session objective visible to the runtime agent at system-prompt level.
-         * @example Investigate the queue latency regression
-         */
-        goal?: string | null;
         /** @description Client-side tools for this session (additive to agent tools). */
         tools?: components["schemas"]["ToolDefinition"][];
         /**
@@ -12105,6 +12135,11 @@ export interface components {
          */
         forked_from_session_id?: string | null;
         /**
+         * @description Session objective visible to the runtime agent at system-prompt level.
+         * @example Investigate the queue latency regression
+         */
+        goal?: string | null;
+        /**
          * @description ID of the harness for this session (format: harness_{32-hex}).
          * @example harness_01933b5a00007000800000000000001
          */
@@ -12223,11 +12258,6 @@ export interface components {
          * @example Q3 marketing brief
          */
         title?: string | null;
-        /**
-         * @description Session objective visible to the runtime agent at system-prompt level.
-         * @example Investigate the queue latency regression
-         */
-        goal?: string | null;
         /** @description Client-side tools for this session (additive to agent tools). */
         tools?: components["schemas"]["ToolDefinition"][];
         /**
@@ -13769,6 +13799,11 @@ export interface components {
        */
       forked_from_session_id?: string | null;
       /**
+       * @description Session objective visible to the runtime agent at system-prompt level.
+       * @example Investigate the queue latency regression
+       */
+      goal?: string | null;
+      /**
        * @description ID of the harness for this session (format: harness_{32-hex}).
        * @example harness_01933b5a00007000800000000000001
        */
@@ -13887,11 +13922,6 @@ export interface components {
        * @example Q3 marketing brief
        */
       title?: string | null;
-      /**
-       * @description Session objective visible to the runtime agent at system-prompt level.
-       * @example Investigate the queue latency regression
-       */
-      goal?: string | null;
       /** @description Client-side tools for this session (additive to agent tools). */
       tools?: components["schemas"]["ToolDefinition"][];
       /**
@@ -15774,6 +15804,11 @@ export interface components {
        */
       agent_identity_id?: string | null;
       /**
+       * @description Updated session objective.
+       * @example Summarize the incident and list remediations
+       */
+      goal?: string | null;
+      /**
        * @description Session locale (BCP 47, e.g. `uk-UA`).
        * @example uk-UA
        */
@@ -15790,11 +15825,6 @@ export interface components {
        * @example Updated session title
        */
       title?: string | null;
-      /**
-       * @description Updated session objective.
-       * @example Summarize the incident and list remediations
-       */
-      goal?: string | null;
     };
     /** @description Request to update a skill */
     UpdateSkillRequest: {
@@ -17378,6 +17408,11 @@ export interface components {
        */
       forked_from_session_id?: string | null;
       /**
+       * @description Session objective visible to the runtime agent at system-prompt level.
+       * @example Investigate the queue latency regression
+       */
+      goal?: string | null;
+      /**
        * @description ID of the harness for this session (format: harness_{32-hex}).
        * @example harness_01933b5a00007000800000000000001
        */
@@ -17496,11 +17531,6 @@ export interface components {
        * @example Q3 marketing brief
        */
       title?: string | null;
-      /**
-       * @description Session objective visible to the runtime agent at system-prompt level.
-       * @example Investigate the queue latency regression
-       */
-      goal?: string | null;
       /** @description Client-side tools for this session (additive to agent tools). */
       tools?: components["schemas"]["ToolDefinition"][];
       /**
