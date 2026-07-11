@@ -1329,7 +1329,6 @@ impl CapabilityRegistry {
         registry.register(tool_output_persistence::ToolOutputPersistenceCapability);
         registry.register(tool_output_distillation::ToolOutputDistillationCapability);
         registry.register(LoopDetectionCapability);
-        registry.register(UsageLimitAutoContinueCapability);
         registry.register(ToolCallRepairCapability);
         registry.register(PromptCanaryGuardrailCapability);
         registry.register(GuardrailsCapability);
@@ -1432,6 +1431,10 @@ impl CapabilityRegistry {
 
         // Auto-continue after an LLM usage limit resets: resumes interrupted
         // work once the provider limit clears. Behavior-only (no tools).
+        // Grade-only (not in `runtime_builtins`): its error hook needs the
+        // `schedule_store` host service to create the continuation and a schedule
+        // poller to fire it — neither is in the default in-process runtime — so it
+        // sits with `session_schedule` rather than the runtime-safe preset.
         registry.register(UsageLimitAutoContinueCapability);
 
         // Tool-call repair (EVE-600): opt-in salvage of malformed tool-call
@@ -3190,7 +3193,6 @@ mod tests {
             "tool_output_persistence",
             "tool_output_distillation",
             "loop_detection",
-            "usage_limit_auto_continue",
             "tool_call_repair",
             "error_disclosure",
             "prompt_canary_guardrail",

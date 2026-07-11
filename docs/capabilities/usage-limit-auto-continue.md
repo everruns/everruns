@@ -89,7 +89,12 @@ otherwise require a human to manually restart the session.
 - Requires a provider whose error reports a concrete reset time; without one the
   error copy stays generic and no continuation is scheduled.
 - The continuation is delivered through the session schedule machinery, so it
-  depends on the schedule poller running in the deployment.
+  requires both a session schedule store and a schedule poller in the deployment.
+  The hosted platform provides both. The default embedded runtime provides
+  neither, so this capability is **not** part of the runtime-safe preset — an
+  embedder must wire a `SessionScheduleStore` (e.g. via a schedule-store factory)
+  and run a poller for it to take effect; otherwise its error hook is a no-op and
+  the error copy stays generic.
 
 ## See Also
 
