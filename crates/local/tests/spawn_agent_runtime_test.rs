@@ -392,21 +392,15 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
         "child transcript should contain its marker: {child_reply}"
     );
 
-    // The background subagent completion queues a wake for the parent. Drain it
-    // before the handoff prompt so the content-keyed llmsim sees the handoff
-    // request as the latest user-authored instruction.
-    let drain = runtime
-        .run_text_turn(
-            parent_session_id,
-            "Acknowledge the completed subagent update.",
-        )
-        .await
-        .expect("parent wake-drain turn runs");
-    assert!(
-        drain.success,
-        "parent wake-drain turn failed: {:?}",
-        drain.error
-    );
+    // The background subagent completion queues a wake for the parent; the
+    // runtime injects it as a user message on the next turn's first reason
+    // iteration. We deliberately do NOT drain it with an intermediate turn: any
+    // parent turn whose own prompt matches no llmsim pattern would walk the
+    // newest-first scan back to the still-present TRIGGER_SUBAGENT message and
+    // spawn a *second* subagent (the wake text itself matches nothing). The
+    // handoff turn below is safe precisely because its newer TRIGGER_HANDOFF
+    // message wins the newest-first scan, so the stale subagent trigger is never
+    // reached and the pending wake is absorbed harmlessly.
 
     // ---- Target 2: agent handoff (foreground) ------------------------------
     let turn = runtime
