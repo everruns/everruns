@@ -545,6 +545,7 @@ fn session(session_id: SessionId, harness_id: HarnessId) -> Session {
         owner: None,
         effective_owner: None,
         title: Some("Runtime Host".into()),
+        goal: None,
         locale: None,
         preview: None,
         output_preview: None,

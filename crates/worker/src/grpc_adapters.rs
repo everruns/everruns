@@ -1369,6 +1369,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         owner: None,
         effective_owner: None,
         title: non_empty_string(proto_session.title),
+        goal: proto_session.goal.clone(),
         locale: non_empty_string(proto_session.locale),
         preview: None,
         output_preview: None,
@@ -3249,6 +3250,33 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
                 "blueprint_id": blueprint_id,
                 "blueprint_config": blueprint_config,
                 "parent_session_id": parent_session_id.map(|id| id.to_string()),
+            }),
+        )
+        .await
+    }
+
+    async fn create_session_with_options(
+        &self,
+        request: everruns_core::platform_store::PlatformCreateSessionRequest,
+    ) -> Result<Session> {
+        self.execute_platform_command(
+            "create_session",
+            serde_json::json!({
+                "harness_id": request.harness_id.to_string(),
+                "agent_id": request.agent_id.map(|id| id.to_string()),
+                "title": request.title,
+                "goal": request.goal,
+                "locale": request.locale,
+                "tags": ["managed"],
+                "capabilities": [],
+                "tools": [],
+                "mcp_servers": {},
+                "initial_files": [],
+                "blueprint_id": request.blueprint_id,
+                "blueprint_config": request.blueprint_config,
+                "parent_session_id": request.parent_session_id.map(|id| id.to_string()),
+                "forked_from_session_id": request.forked_from_session_id.map(|id| id.to_string()),
+                "seed": request.seed,
             }),
         )
         .await

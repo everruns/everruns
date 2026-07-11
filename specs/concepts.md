@@ -68,6 +68,11 @@ Working instance of an agentic loop. Configured by its harness and situationally
 - Sessions can have own capabilities, additive to agent capabilities
 - Sessions can override the LLM model
 - Status: `started` → `active` → `idle` (sessions work indefinitely)
+- Session relationships are split by purpose: `parent_session_id` models
+  subagent/linked execution nesting, while fork/detached-spawn provenance is
+  lineage metadata (`forked_from_session_id`) and does not affect nesting guards.
+- Sessions may carry a `goal`, an objective shown in lists and injected into the
+  runtime prompt as session metadata rather than as a user message.
 
 ### Capability
 

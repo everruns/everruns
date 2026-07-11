@@ -443,6 +443,7 @@ impl InMemoryAgenticLoopBuilder {
             owner: None,
             effective_owner: None,
             title: Some("In-Memory Session".to_string()),
+            goal: None,
             locale: None,
             preview: None,
             output_preview: None,

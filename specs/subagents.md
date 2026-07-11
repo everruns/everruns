@@ -100,6 +100,9 @@ The retired direct creation entry point is no longer advertised to models.
 | `name` | string | Yes | Human-readable name for the subagent |
 | `instructions` | string | Yes | Instructions sent as first user message |
 | `target.type` | string | Yes | Must be `subagent` |
+| `goal` | string | No | Objective stored on the spawned `Session.goal` and injected at system-prompt level |
+| `lifetime` | string | No | `linked` (default) creates a lifecycle child; `detached` creates an independent top-level peer session |
+| `seed` | string | No | For `detached`: `fresh` (default), `fork`, or `workspace` |
 | `mode` | string | No | `background` (default) or `foreground` |
 | `blueprint` | string | No | Optional blueprint ID for a specialist child agent. |
 | `config` | object | No | Blueprint-specific configuration. Only valid with `blueprint`. |
@@ -130,9 +133,15 @@ never collide in a single session toolset. Background subagent tasks with
 parent; tasks without `message_schema` keep completion-only wake-ups.
 
 **Behavior (both modes):**
-1. Creates child session with `parent_session_id` set to current session
+1. Creates a session. `lifetime = linked` sets `parent_session_id` to the current
+   session; `lifetime = detached` leaves `parent_session_id = NULL` and records
+   lineage with `forked_from_session_id`.
 2. Inherits the parent session locale when present
-3. Creates a `TASK_KIND_SUBAGENT` task on the parent session linked to the child session
+3. Stores `goal` on the spawned session when provided; the runtime exposes it in
+   a `<session-goal>` system-prompt block.
+4. Creates a parent-owned task linked to the child session:
+   `TASK_KIND_SUBAGENT` for linked sessions, `TASK_KIND_SESSION` for detached
+   peer sessions. Detached task wake policy defaults to `silent`.
 
 **Foreground:**
 4. Sends `instructions` as first user message
@@ -214,6 +223,10 @@ The child session does **not** inherit:
 ## Spawn Governance
 
 Subagent delegation walks the current session's `parent_session_id` chain and allows the spawn only when the new child depth is less than or equal to `max_subagent_depth`. Top-level sessions are depth 0; direct children are depth 1.
+
+Detached spawns are peer sessions, not subagents. They bypass the depth and
+root-tree task caps in both directions because `parent_session_id` remains null;
+lineage is recorded separately via the fork lineage fields.
 
 The default maximum depth is 2, enabling A -> B -> C while rejecting a depth-3 child. Setting `max_subagent_depth` to 0 restores the previous hard block on spawning subagents. The policy is resolved as platform default, then org override, then agent/capability override; the current authored override is exposed through the `subagents` capability config.
 

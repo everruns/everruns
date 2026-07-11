@@ -654,6 +654,7 @@ async fn process_slack_message(
                 agent_id: app.agent_id,
                 agent_name: None,
                 title: Some(title),
+                goal: None,
                 locale: None,
                 tags: desired_tags.clone(),
                 agent_identity_id: app.agent_identity_id,
@@ -668,6 +669,8 @@ async fn process_slack_message(
                 max_iterations: None,
                 parallel_tool_calls: None,
                 parent_session_id: None,
+                forked_from_session_id: None,
+                seed: everruns_core::SessionSeedMode::Fresh,
             };
             let internal_caller = Caller::internal(org_id);
             let s = state

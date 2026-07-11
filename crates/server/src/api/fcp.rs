@@ -677,6 +677,7 @@ async fn resolve_session(
                 agent_name: None,
                 agent_identity_id: app.agent_identity_id,
                 title: Some(format!("FCP session for {}", app.name)),
+                goal: None,
                 locale: None,
                 tags: vec![routing_tag],
                 model_id: None,
@@ -690,6 +691,8 @@ async fn resolve_session(
                 max_iterations: None,
                 parallel_tool_calls: None,
                 parent_session_id: None,
+                forked_from_session_id: None,
+                seed: everruns_core::SessionSeedMode::Fresh,
             },
         )
         .await

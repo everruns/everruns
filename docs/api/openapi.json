@@ -19048,6 +19048,14 @@
               }
             ]
           },
+          "goal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional objective for the session. Visible to the agent at system-prompt level.",
+            "example": "Investigate the queue latency regression and propose a fix"
+          },
           "harness_id": {
             "type": [
               "string",
@@ -20774,6 +20782,14 @@
             ],
             "description": "Override the agent assigned to the fork.",
             "example": "agent_01933b5a00007000800000000000001"
+          },
+          "goal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Goal for the fork. Omitted inherits the parent's goal.",
+            "example": "Try the async rewrite from this state"
           },
           "locale": {
             "type": [
@@ -28800,6 +28816,14 @@
                   ],
                   "description": "Session this one was forked from. NULL for sessions that were not forked.\nDistinct from `parent_session_id` (subagent nesting): forking is a\nuser-initiated \"branch from here\" relationship."
                 },
+                "goal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Session objective visible to the runtime agent at system-prompt level.",
+                  "example": "Investigate the queue latency regression"
+                },
                 "harness_id": {
                   "type": "string",
                   "description": "ID of the harness for this session (format: harness_{32-hex}).",
@@ -29736,6 +29760,14 @@
                         "null"
                       ],
                       "description": "Session this one was forked from. NULL for sessions that were not forked.\nDistinct from `parent_session_id` (subagent nesting): forking is a\nuser-initiated \"branch from here\" relationship."
+                    },
+                    "goal": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Session objective visible to the runtime agent at system-prompt level.",
+                      "example": "Investigate the queue latency regression"
                     },
                     "harness_id": {
                       "type": "string",
@@ -32328,6 +32360,14 @@
               "null"
             ],
             "description": "Session this one was forked from. NULL for sessions that were not forked.\nDistinct from `parent_session_id` (subagent nesting): forking is a\nuser-initiated \"branch from here\" relationship."
+          },
+          "goal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Session objective visible to the runtime agent at system-prompt level.",
+            "example": "Investigate the queue latency regression"
           },
           "harness_id": {
             "type": "string",
@@ -36244,6 +36284,14 @@
             "description": "Optional resident agent identity used for unattended/background execution.",
             "example": "identity_01933b5a00007000800000000000001"
           },
+          "goal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Updated session objective.",
+            "example": "Summarize the incident and list remediations"
+          },
           "locale": {
             "type": [
               "string",
@@ -38917,6 +38965,14 @@
                   "null"
                 ],
                 "description": "Session this one was forked from. NULL for sessions that were not forked.\nDistinct from `parent_session_id` (subagent nesting): forking is a\nuser-initiated \"branch from here\" relationship."
+              },
+              "goal": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Session objective visible to the runtime agent at system-prompt level.",
+                "example": "Investigate the queue latency regression"
               },
               "harness_id": {
                 "type": "string",

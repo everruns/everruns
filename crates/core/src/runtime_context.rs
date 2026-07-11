@@ -490,6 +490,7 @@ mod tests {
             owner: None,
             effective_owner: None,
             title: Some("ctx".into()),
+            goal: None,
             locale: Some("en-US".into()),
             preview: None,
             output_preview: None,

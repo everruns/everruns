@@ -281,6 +281,13 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(example = "Q3 marketing brief"))]
     pub title: Option<String>,
+    /// Session objective visible to the runtime agent at system-prompt level.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "Investigate the queue latency regression")
+    )]
+    pub goal: Option<String>,
     /// Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(example = "en-US"))]
@@ -423,4 +430,28 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub blueprint_config: Option<serde_json::Value>,
+}
+
+/// Seed mode used when creating a peer session from an existing session.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SessionSeedMode {
+    /// Create an empty session and only record lineage when provided.
+    #[default]
+    Fresh,
+    /// Copy conversation events, workspace files, and durable session storage.
+    Fork,
+    /// Copy workspace files only.
+    Workspace,
+}
+
+impl SessionSeedMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Fresh => "fresh",
+            Self::Fork => "fork",
+            Self::Workspace => "workspace",
+        }
+    }
 }

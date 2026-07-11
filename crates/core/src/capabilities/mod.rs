@@ -1850,6 +1850,22 @@ impl Tool for UnifiedSpawnAgentTool {
                     "type": "string",
                     "description": "Instructions for the delegated agent. Do not include credentials or bearer tokens."
                 },
+                "goal": {
+                    "type": "string",
+                    "description": "Optional objective stored on the spawned session and made visible at system-prompt level."
+                },
+                "lifetime": {
+                    "type": "string",
+                    "enum": ["linked", "detached"],
+                    "default": "linked",
+                    "description": "linked creates a lifecycle child; detached creates an independent top-level peer session. Not valid for external_a2a."
+                },
+                "seed": {
+                    "type": "string",
+                    "enum": ["fresh", "fork", "workspace"],
+                    "default": "fresh",
+                    "description": "Detached-session seed mode: fresh starts blank, fork copies history/workspace/session storage, workspace copies workspace files only."
+                },
                 "target": {
                     "type": "object",
                     "properties": {
@@ -1947,6 +1963,16 @@ impl Tool for UnifiedSpawnAgentTool {
                 "Unsupported spawn_agent target.type: \"{target_type}\". Supported target types: {supported}"
             ));
         };
+        if target_type == "external_a2a"
+            && arguments
+                .get("lifetime")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|value| value == "detached")
+        {
+            return ToolExecutionResult::tool_error(
+                "lifetime=\"detached\" is only valid for local session targets (subagent or agent), not external_a2a.",
+            );
+        }
 
         provider
             .execute_with_context(self.normalize_arguments(arguments), context)

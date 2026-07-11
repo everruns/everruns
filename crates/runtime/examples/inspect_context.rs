@@ -93,6 +93,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             owner: None,
             effective_owner: None,
             title: Some("Context Session".into()),
+            goal: None,
             locale: Some("en-US".into()),
             preview: None,
             output_preview: None,

@@ -71,6 +71,7 @@ impl InMemoryDatabase {
             owner_principal_id: input.owner_principal_id,
             resolved_owner_user_id: input.resolved_owner_user_id,
             title: input.title,
+            goal: None,
             locale: input.locale,
             tags: input.tags,
             model_id: input.model_id,
@@ -542,6 +543,9 @@ impl InMemoryDatabase {
             }
             if let Some(title) = input.title {
                 session.title = Some(title);
+            }
+            if let Some(goal) = input.goal {
+                session.goal = Some(goal);
             }
             input
                 .agent_identity_id

@@ -301,6 +301,7 @@ async fn execute_case_inner(
                 agent_name: None,
                 agent_identity_id: None,
                 title: Some(format!("Eval: {}", case_row.name)),
+                goal: None,
                 locale: None,
                 tags: vec!["eval".to_string()],
                 model_id: model_id.and_then(|m| m.parse().ok()),
@@ -314,6 +315,8 @@ async fn execute_case_inner(
                 max_iterations,
                 parallel_tool_calls: None,
                 parent_session_id: None,
+                forked_from_session_id: None,
+                seed: everruns_core::SessionSeedMode::Fresh,
             },
         )
         .await?;

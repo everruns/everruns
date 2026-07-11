@@ -523,6 +523,7 @@ pub async fn create_agent_voice_session(
         agent_name: None,
         agent_identity_id: None,
         title: Some("Voice session".to_string()),
+        goal: None,
         locale: None,
         tags: vec!["voice".to_string()],
         model_id: None,
@@ -536,6 +537,8 @@ pub async fn create_agent_voice_session(
         max_iterations: None,
         parallel_tool_calls: None,
         parent_session_id: None,
+        forked_from_session_id: None,
+        seed: everruns_core::SessionSeedMode::Fresh,
     })
     .run(&state.ctx(&org))
     .await?;
