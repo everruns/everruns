@@ -2386,6 +2386,7 @@ mod tests {
         st::SessionTask {
             id: "task_abc123".to_string(),
             session_id: SessionId::new(),
+            root_session_id: None,
             kind: st::TASK_KIND_SUBAGENT.to_string(),
             display_name: "Investigate flake".to_string(),
             spec: serde_json::json!({
