@@ -194,7 +194,8 @@ impl PostToolExecHook for DistillOutputHook {
             return;
         };
 
-        inject_pointer(result_value, &stdout_path, original_len);
+        let display_path = file_store.display_path(&stdout_path);
+        inject_pointer(result_value, &display_path, original_len);
     }
 }
 
@@ -375,17 +376,16 @@ fn head_tail(text: &str, max_bytes: usize) -> String {
 
 /// Inject the recovery pointer fields into a distilled result value, mirroring
 /// the contract of `tool_output_persistence` (`output_files` / `full_output`).
-fn inject_pointer(result_value: &mut Value, stdout_path: &str, original_len: usize) {
+fn inject_pointer(result_value: &mut Value, display_path: &str, original_len: usize) {
     let note = annotate_truncated_output(
         "Tool output was distilled to fit the context window.",
-        stdout_path,
+        display_path,
         original_len,
     );
-    let pointer = format!("/workspace{stdout_path}");
 
     if let Some(obj) = result_value.as_object_mut() {
-        obj.insert("output_files".to_string(), json!([pointer]));
-        obj.insert("full_output".to_string(), json!(stdout_path));
+        obj.insert("output_files".to_string(), json!([display_path]));
+        obj.insert("full_output".to_string(), json!(display_path));
         obj.insert("distilled".to_string(), json!(true));
         obj.insert("distill_note".to_string(), json!(note));
     } else {
@@ -394,8 +394,8 @@ fn inject_pointer(result_value: &mut Value, stdout_path: &str, original_len: usi
         let distilled = std::mem::replace(result_value, Value::Null);
         *result_value = json!({
             "distilled_output": distilled,
-            "output_files": [pointer],
-            "full_output": stdout_path,
+            "output_files": [display_path],
+            "full_output": display_path,
             "distilled": true,
             "distill_note": note,
         });
@@ -517,12 +517,12 @@ mod tests {
     #[test]
     fn test_inject_pointer_into_object() {
         let mut value = json!({ "content": "distilled" });
-        inject_pointer(&mut value, "/outputs/abc.stdout", 50 * 1024);
+        inject_pointer(&mut value, "/workspace/outputs/abc.stdout", 50 * 1024);
         assert_eq!(
             value["output_files"],
             json!(["/workspace/outputs/abc.stdout"])
         );
-        assert_eq!(value["full_output"], json!("/outputs/abc.stdout"));
+        assert_eq!(value["full_output"], json!("/workspace/outputs/abc.stdout"));
         assert_eq!(value["distilled"], json!(true));
         assert!(
             value["distill_note"]
@@ -535,10 +535,10 @@ mod tests {
     #[test]
     fn test_inject_pointer_wraps_non_object() {
         let mut value = json!(["a", "b"]);
-        inject_pointer(&mut value, "/outputs/x.stdout", 1024);
+        inject_pointer(&mut value, "/workspace/outputs/x.stdout", 1024);
         assert!(value.is_object());
         assert_eq!(value["distilled_output"], json!(["a", "b"]));
-        assert_eq!(value["full_output"], json!("/outputs/x.stdout"));
+        assert_eq!(value["full_output"], json!("/workspace/outputs/x.stdout"));
     }
 
     #[test]
