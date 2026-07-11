@@ -7,7 +7,7 @@ use crate::domains::common::CommandErrorKind;
 const COMMAND_API_VERSION_V1: &str = "v1";
 const MAX_EXECUTE_COMMAND_PARAMS_BYTES: usize = 1024 * 1024;
 const DEFAULT_TURN_CONTEXT_MESSAGE_LIMIT: i32 = 200;
-const MAX_TURN_CONTEXT_MESSAGE_LIMIT: i32 = 5_000;
+const MAX_TURN_CONTEXT_MESSAGE_LIMIT: i32 = crate::storage::repository::MESSAGE_SAFETY_LIMIT as i32;
 
 fn normalize_turn_context_message_limit(requested_limit: Option<i32>, default_limit: i32) -> i32 {
     let normalized_default = default_limit.clamp(1, MAX_TURN_CONTEXT_MESSAGE_LIMIT);

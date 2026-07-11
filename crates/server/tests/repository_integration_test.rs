@@ -1245,6 +1245,217 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
 }
 
 #[tokio::test]
+async fn test_long_message_history_reads_are_bounded_and_index_supported() {
+    let backend = create_test_backend().await;
+
+    let agent = backend
+        .create_agent(
+            TEST_ORG_ID,
+            CreateAgentRow {
+                public_id: everruns_core::AgentId::new().to_string(),
+                name: format!("long-history-agent-{}", &Uuid::now_v7().to_string()[..8]),
+                display_name: Some("Long History Test Agent".to_string()),
+                description: None,
+                system_prompt: "Test".to_string(),
+                default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+            },
+        )
+        .await
+        .expect("Failed to create agent");
+
+    let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
+    let session = backend
+        .create_session(CreateSessionRow {
+            workspace_id: None,
+            org_id: TEST_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: Some(agent.id),
+            agent_identity_id: None,
+            owner_principal_id,
+            resolved_owner_user_id: None,
+            title: None,
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+        })
+        .await
+        .expect("Failed to create session");
+
+    let total = 3_050;
+    for index in 1..=total {
+        let (event_type, data) = if index == total - 1 {
+            (
+                "output.message.completed",
+                json!({
+                    "message": {
+                        "role": "agent",
+                        "content": [{
+                            "type": "tool_call",
+                            "id": "call-final",
+                            "name": "lookup",
+                            "arguments": "{}"
+                        }]
+                    }
+                }),
+            )
+        } else if index == total {
+            (
+                "tool.completed",
+                json!({
+                    "tool_call_id": "call-final",
+                    "tool_name": "lookup",
+                    "result": "final result"
+                }),
+            )
+        } else {
+            (
+                "input.message",
+                json!({
+                    "message": {
+                        "role": "user",
+                        "content": [{"type": "text", "text": format!("message {index}")}]
+                    }
+                }),
+            )
+        };
+
+        backend
+            .create_event(CreateEventRow {
+                session_id: session.id,
+                event_type: event_type.to_string(),
+                ts: Utc::now(),
+                context: json!({"turn_id": format!("turn-{index}")}),
+                data,
+                metadata: None,
+                tags: None,
+            })
+            .await
+            .expect("Failed to create long-history event");
+    }
+
+    let started = std::time::Instant::now();
+    let fallback = backend
+        .list_message_events_limited(session.id, None)
+        .await
+        .expect("list bounded fallback history");
+    let fallback_elapsed = started.elapsed();
+    assert_eq!(
+        fallback.len(),
+        everruns_server::storage::repository::MESSAGE_SAFETY_LIMIT
+    );
+    assert_eq!(
+        fallback.first().expect("first fallback row").sequence,
+        1_051
+    );
+    assert_eq!(fallback.last().expect("last fallback row").sequence, total);
+
+    let fallback_bytes: usize = fallback
+        .iter()
+        .map(|event| {
+            event.data.to_string().len()
+                + event.context.to_string().len()
+                + event
+                    .metadata
+                    .as_ref()
+                    .map(|value| value.to_string().len())
+                    .unwrap_or(0)
+                + event
+                    .tags
+                    .as_ref()
+                    .map(|tags| tags.iter().map(String::len).sum::<usize>())
+                    .unwrap_or(0)
+        })
+        .sum();
+
+    let window = backend
+        .list_message_events_filtered(
+            &MessageQuery::new(session.id)
+                .with_limit(64)
+                .with_keep_head(1),
+        )
+        .await
+        .expect("list bounded head+tail history");
+    assert_eq!(window.len(), 65);
+    assert_eq!(window.first().expect("head anchor").sequence, 1);
+    assert_eq!(
+        window[window.len() - 2].event_type,
+        "output.message.completed"
+    );
+    assert_eq!(
+        window.last().expect("tool result").event_type,
+        "tool.completed"
+    );
+    assert_eq!(
+        window.last().unwrap().data["tool_call_id"].as_str(),
+        Some("call-final")
+    );
+
+    let pool = backend.pool().expect("postgres pool");
+    let plan_rows: Vec<(String,)> = sqlx::query_as(
+        r#"
+        EXPLAIN (ANALYZE, BUFFERS)
+        SELECT * FROM (
+            SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
+            FROM events
+            WHERE session_id = $1
+              AND event_type IN ('input.message', 'output.message.completed', 'tool.completed')
+            ORDER BY sequence DESC
+            LIMIT $2
+        ) recent
+        ORDER BY sequence ASC
+        "#,
+    )
+    .bind(session.id.uuid())
+    .bind(everruns_server::storage::repository::MESSAGE_SAFETY_LIMIT as i64)
+    .fetch_all(pool)
+    .await
+    .expect("explain bounded message history query");
+    let plan = plan_rows
+        .into_iter()
+        .map(|row| row.0)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        plan.contains("idx_events_messages"),
+        "message history query should use idx_events_messages:\n{plan}"
+    );
+    assert!(
+        !plan.contains("Seq Scan on events"),
+        "message history query should not seq-scan events:\n{plan}"
+    );
+
+    println!(
+        "long message-history benchmark: before_rows={total}, after_rows={}, bytes_returned={}, service_time_ms={}, plan=\n{}",
+        fallback.len(),
+        fallback_bytes,
+        fallback_elapsed.as_millis(),
+        plan
+    );
+}
+
+#[tokio::test]
 async fn test_event_filter_types() {
     let backend = create_test_backend().await;
 

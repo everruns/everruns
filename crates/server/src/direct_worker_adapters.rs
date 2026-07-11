@@ -8,9 +8,12 @@
 
 use async_trait::async_trait;
 use everruns_core::budget::{BudgetSummary, BudgetToolResponse};
-use everruns_core::capabilities::{AgentCapabilityConfig, CapabilityRegistry};
+use everruns_core::capabilities::{
+    AgentCapabilityConfig, CapabilityRegistry, collect_message_filters_only,
+};
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
+use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
@@ -23,7 +26,7 @@ use everruns_core::{
     Agent, AgentStatus, Caller, ContentPart, DriverId, DriverRegistry, EgressRequest,
     EgressRequestKind, EgressService, EventData, Harness, HarnessStatus, Message, MessageRole,
     Session, SessionParticipant, SessionStatus, ToolDefinition, ToolResultContentPart,
-    UtilityLlmService, merge_harness,
+    UtilityLlmService, merge_harness, resolve_runtime_capabilities,
 };
 use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
@@ -320,6 +323,31 @@ impl DirectWorkerAdapters {
             org_rate_limiter: None,
             quota: crate::domains::session_files::limits::QuotaLimits::from_env(),
         }
+    }
+
+    async fn load_turn_messages(
+        &self,
+        session: &Session,
+        agent: Option<&Agent>,
+        harness: Option<&Harness>,
+    ) -> Result<Vec<Message>> {
+        let harness_chain: Vec<Harness> = harness.cloned().into_iter().collect();
+        let resolved =
+            resolve_runtime_capabilities(&harness_chain, agent, session, &self.capability_registry);
+        let message_filters = collect_message_filters_only(
+            &resolved.effective_overlay.capabilities,
+            &self.capability_registry,
+        );
+        let mut query = everruns_core::MessageQuery::new(session.id);
+        message_filters.apply_message_filters(&mut query);
+
+        let retriever = crate::storage::DbMessageRetriever::new(self.db.clone());
+        let mut messages = retriever.load_filtered(query).await.map_err(|error| {
+            tracing::error!("Failed to load bounded turn messages: {error}");
+            store_error("Failed to load messages")
+        })?;
+        message_filters.apply_post_load_filters(&mut messages);
+        Ok(messages)
     }
 
     /// Set the agent runner for platform management tools (send_message, etc.)
@@ -1403,8 +1431,13 @@ impl WorkerAdapters for DirectWorkerAdapters {
         let mut mcp_tool_definitions = org_mcp_tool_definitions;
         mcp_tool_definitions.extend(local_mcp_tool_definitions);
 
-        // Load messages
-        let messages = self.load_messages(session_id).await?;
+        // Load messages through the same capability-aware windowing used by
+        // reason atoms. Long sessions should fetch a bounded prompt candidate
+        // set (for example infinity_context's head+tail window), not the whole
+        // event history.
+        let messages = self
+            .load_turn_messages(&session, agent.as_ref(), harness.as_ref())
+            .await?;
 
         // Load model (session > agent > harness > default)
         let model = if let Some(model_id) = session.model_id {
