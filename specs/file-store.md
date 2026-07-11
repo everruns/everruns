@@ -199,6 +199,41 @@ routing paths stay internal and must not leak into prompt text or schemas.
 `FileSystemCapability` applies this through a `FilePathPresentation` hook at
 tool-definition assembly time.
 
+### Model-visible path identity conformance (EVE-750)
+
+Every surface that can enter model context or a transcript must agree on one
+display identity owned by the active `SessionFileSystem`:
+
+- assembled system prompt and filesystem capability instructions;
+- tool results, errors, persisted `output_files` / `full_output` pointers, and
+  distillation notes;
+- paths returned by list, grep, stat, read, write, edit, and delete tools.
+
+**Invariants**
+
+- Host-backed primary rooted at `/repo`: every model-visible project path is
+  `/repo` or starts with `/repo/`. No prompt, schema default, result, error, or
+  persisted pointer may advertise `/workspace` as the active namespace.
+- VFS/in-memory primary: the established virtual identity remains `/workspace`
+  across prompt guidance, tool results, and persisted references.
+- Named secondary mounts: paths use the configured mounted virtual namespace
+  (e.g. `/workspace/roots/backend/...`) and do not leak backing-store locations.
+
+**Compatibility inputs vs presentation**
+
+Legacy `/workspace/...` input may remain accepted for routing on host-backed
+stores, but accepted aliases must be canonicalized before any path is returned,
+narrated, or persisted. Input compatibility is not model-visible identity.
+
+**Conformance**
+
+Tests use `everruns_core::path_identity` helpers (`assert_model_visible_value`,
+`assert_no_forbidden_prefixes`, `assert_tool_result_paths_conform`) and the
+runtime integration suite in
+`crates/runtime/tests/model_visible_path_identity_test.rs`. The harness
+recursively scans serialized JSON for absolute path-like strings rather than
+enumerating field names, so new model-visible fields cannot bypass the check.
+
 ### Encoding
 
 File content is round-tripped through two encodings:
