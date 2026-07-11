@@ -2867,11 +2867,13 @@ export interface paths {
      * @description Default (`format=jsonl`): all materialized messages (user, agent) as
      *     newline-delimited JSON, one complete JSON object per line; delta events are
      *     excluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document
-     *     folded from the session's event log (see `specs/atif-adoption.md`); when
-     *     image content parts were flattened to `"[image]"` markers, the response
-     *     carries an `X-Atif-Images-Omitted` header with the total count, and
-     *     documents over the 50 MiB `ATIF_EXPORT_MAX_BYTES` cap are rejected with
-     *     413. The response includes `Content-Disposition: attachment` for browser
+     *     folded from the session's event log (see `specs/atif-adoption.md`); image
+     *     content parts are exported as ATIF multimodal ContentParts. When an image
+     *     cannot be materialized (an inline image with neither a URL nor bytes) it is
+     *     flattened to an `"[image]"` marker and the response carries an
+     *     `X-Atif-Images-Omitted` header with that count (usually 0 and absent).
+     *     Documents over the 50 MiB `ATIF_EXPORT_MAX_BYTES` cap are rejected with 413.
+     *     The response includes `Content-Disposition: attachment` for browser
      *     download.
      */
     get: operations["export_session_jsonl"];
@@ -6008,7 +6010,7 @@ export interface components {
       event_filter?: string[] | null;
       /**
        * @description Optional HMAC-SHA256 signing secret (never returned once set).
-       * @example whsec_9f8c2b1a4e7d4c3b8a1f2e3d
+       * @example whsec_example_signing_secret_placeholder
        */
       secret?: string | null;
       /**
@@ -27013,7 +27015,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description JSONL file with one message per line, or one ATIF trajectory JSON document (with X-Atif-Images-Omitted header when image parts were flattened to markers). With segmented=true, one ATIF segment linked forward by continued_trajectory_ref. */
+      /** @description JSONL file with one message per line, or one ATIF trajectory JSON document (images export as multimodal ContentParts; X-Atif-Images-Omitted header only when an image could not be materialized). With segmented=true, one ATIF segment linked forward by continued_trajectory_ref. */
       200: {
         headers: {
           [name: string]: unknown;
