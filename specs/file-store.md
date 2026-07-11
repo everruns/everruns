@@ -183,6 +183,22 @@ Each backend owns its `display_path`/`display_root`:
 - For additional mounted roots, returned file paths include the stable mounted
   prefix, e.g. `/workspace/roots/backend/Cargo.toml`.
 
+### Model-facing path guidance (EVE-748)
+
+The active primary `SessionFileSystem` owns the model-visible path identity in
+capability system prompts and file-tool parameter schemas:
+
+- Host-backed primaries teach their canonical `display_root()` (for example
+  `/repo`).
+- VFS/in-memory primaries teach `/workspace`.
+- Named secondary mounts remain discoverable through their mounted namespace.
+
+Legacy `/workspace` input aliases may remain accepted internally for host-backed
+stores, but host-backed model context must not advertise them. Storage keys and
+routing paths stay internal and must not leak into prompt text or schemas.
+`FileSystemCapability` applies this through a `FilePathPresentation` hook at
+tool-definition assembly time.
+
 ### Encoding
 
 File content is round-tripped through two encodings:
