@@ -302,9 +302,37 @@ were retired in migration 062.
 
 Waking the parent is a registry-level delivery policy on outbound activity,
 not per-capability code. `wake_policy` on the task selects: wake on terminal
-transition, wake on any `post`/`request_input`, or silent (parent polls).
-Delivery uses the existing steering-message mechanism. This replaces the A2A
-synthetic wake-up message and pre-empts the subagent Phase 1b variant.
+transition, wake on any `post`/`request_input`, or silent (parent polls). This
+replaces the A2A synthetic wake-up message and pre-empts the subagent Phase 1b
+variant.
+
+There are two delivery paths, selected by whether the parent has an active turn:
+
+- **Idle parent → between-turn steering.** The waker injects a synthetic user
+  message and starts (or steers) a turn. Unchanged.
+- **Active parent → mid-turn injection.** The wake payload (task snapshot plus
+  the outbound message / `report_progress` data) is enqueued and consumed at the
+  parent's next agentic-loop iteration boundary — before the next LLM call —
+  appearing as injected context alongside the reloaded conversation, so the
+  parent reacts within the same turn instead of after it idles.
+
+The mid-turn queue lives behind the registry seam (`SessionWakeQueue` in
+`everruns-core`, fed via the `TaskTransitionObserver` seam by an
+`ObservingTaskRegistry` decorator over any registry, so runtime and server
+share it). The turn loop drains it at each reason iteration boundary.
+
+**Exactly-once.** The queue is the single source of truth for an undelivered
+wake: each real transition enqueues one entry (the registry fires each
+transition once per observer), and `drain` atomically removes a session's
+entries under one lock — that removal *is* the claim. A wake is therefore
+delivered mid-turn (drained by a running turn's next iteration) **xor** queued
+for the next turn (drained by that turn's first iteration), never both. Turn
+cancellation, seal, and max-iterations leave undrained wakes in the queue for
+the next turn (between-turn fallback); a completion landing mid-loop is visible
+to the very next iteration. Within a process the queue gives exactly-once;
+durable exactly-once across a worker restart is a property of the *persistent*
+transition source (the durable signal store), fenced by task `attempt`
+(`expected_attempt`), not of the in-memory queue.
 
 ## Durability and recovery
 
@@ -515,6 +543,23 @@ No backward compatibility is required; data migrates forward once:
   `awaiting_input` entry and outbound messages. `Silent` never wakes.
   A2A's legacy `wake_parent` call is gated on `session_task_registry.is_none()`
   (backward compat for sessions without a registry).
+- Mid-turn delivery (EVE-681, part A): `SessionWakeQueue`
+  (`crates/core/src/wake_queue.rs`) is a per-session queue behind the registry
+  seam; `ObservingTaskRegistry` (`crates/core/src/task_observer.rs`) is a
+  storage-agnostic decorator that fans qualifying transitions to observers
+  (the reusable form of `DbSessionTaskRegistry`'s inline fan-out). The
+  `everruns-runtime` in-process loop wraps its injected registry with this
+  decorator + queue and drains the queue at every reason iteration boundary
+  (`InProcessRuntime::drain_and_inject_wakes`), injecting each wake as a user
+  message before the LLM call and continuing a would-idle turn while wakes are
+  pending. `wake_text_for` renders the same terminal/awaiting_input/message text
+  the between-turn waker uses, so both paths agree on *when* a wake fires. The
+  server durable-worker path (draining the queue at
+  `unified_worker::schedule_next_activity`'s signal-consume boundary, persisted
+  through the durable signal store, with exactly-once across worker restart) is
+  **not** wired in part A — it needs live Postgres/NATS/gRPC to validate and is
+  deferred to a reviewed follow-up. The cross-session Work view (part B) depends
+  on EVE-680's `root_session_id` and is also deferred.
 - Background tool cancellation is cooperative: runs with a task record
   heartbeat every ~2s and poll `cancel_requested_at`, winding down to
   `canceled` when set (works across worker processes).
