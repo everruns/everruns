@@ -624,7 +624,10 @@ impl Tool for ActivateSkillTool {
         ctx: &ToolContext,
     ) -> ToolExecutionResult {
         let Some(name) = arguments.get("name").and_then(|v| v.as_str()) else {
-            return ToolExecutionResult::tool_error("Missing required parameter: name");
+            return ToolExecutionResult::tool_error(
+                "Missing required parameter: name. Call as \
+                 activate_skill({\"name\":\"ship\"}). Use list_skills to see valid skill names.",
+            );
         };
         let skill_args = arguments
             .get("arguments")
