@@ -782,24 +782,24 @@ impl ReasonAtom {
         self
     }
 
-    /// Collect the [`LlmErrorHandler`]s contributed by the active capabilities,
-    /// paired with each capability's per-agent config. Handlers are invoked
+    /// Collect the [`LlmErrorHook`]s contributed by the active capabilities,
+    /// paired with each capability's per-agent config. Hooks are invoked
     /// generically on the terminal-error path; the reason atom has no knowledge
     /// of any specific capability's behavior. Capabilities that contribute no
-    /// handler — the common case — are skipped at zero allocation cost.
-    fn collect_llm_error_handlers(
+    /// hook — the common case — are skipped at zero allocation cost.
+    fn collect_llm_error_hooks(
         &self,
         resolved_capability_configs: &[crate::AgentCapabilityConfig],
     ) -> Vec<(
-        Arc<dyn crate::llm_error_handler::LlmErrorHandler>,
+        Arc<dyn crate::llm_error_hook::LlmErrorHook>,
         serde_json::Value,
     )> {
         resolved_capability_configs
             .iter()
             .filter_map(|cfg| {
                 let cap = self.capability_registry.get(cfg.capability_ref.as_str())?;
-                let handler = cap.llm_error_handler()?;
-                Some((handler, cfg.config.clone()))
+                let hook = cap.llm_error_hook()?;
+                Some((hook, cfg.config.clone()))
             })
             .collect()
     }
@@ -1072,17 +1072,17 @@ impl ReasonAtom {
             }
         };
 
-        let (error_disclosure, error_context, error_handlers, call_result) = match assembled {
+        let (error_disclosure, error_context, error_hooks, call_result) = match assembled {
             Ok(assembled) => {
                 let error_disclosure = crate::capabilities::resolve_error_disclosure(
                     &assembled.resolved_capability_configs,
                     error_disclosure_override(&assembled.messages).as_deref(),
                 );
                 // Collected before `assembled` is consumed by the LLM call so the
-                // terminal-error path below can run capability error handlers even
+                // terminal-error path below can run capability error hooks even
                 // though it no longer has the capability configs.
-                let error_handlers =
-                    self.collect_llm_error_handlers(&assembled.resolved_capability_configs);
+                let error_hooks =
+                    self.collect_llm_error_hooks(&assembled.resolved_capability_configs);
                 let error_context = UserFacingErrorContext::default()
                     .with_provider(assembled.model_with_provider.provider_type.to_string())
                     .with_model_id(assembled.model_with_provider.model.clone());
@@ -1100,7 +1100,7 @@ impl ReasonAtom {
                         assembled,
                     )
                     .await;
-                (error_disclosure, error_context, error_handlers, call_result)
+                (error_disclosure, error_context, error_hooks, call_result)
             }
             Err(error) => (
                 ErrorDisclosure::default(),
@@ -1170,25 +1170,25 @@ impl ReasonAtom {
                 let is_transient = e.is_transient_llm_error()
                     || (e.llm_error_kind().is_none() && is_transient_error_message(&error_msg));
 
-                // Capability error-handler seam: on the terminal (non-retried)
+                // Capability error-hook seam: on the terminal (non-retried)
                 // error path, let active capabilities react — perform a side
                 // effect and/or augment the user-facing error fields — before the
-                // message is built. The atom stays behavior-agnostic; each handler
+                // message is built. The atom stays behavior-agnostic; each hook
                 // (e.g. `usage_limit_auto_continue`) owns its own logic.
-                if !is_transient && !error_handlers.is_empty() {
-                    let services = crate::llm_error_handler::LlmErrorHandlerServices {
+                if !is_transient && !error_hooks.is_empty() {
+                    let services = crate::llm_error_hook::LlmErrorHookServices {
                         schedule_store: self.schedule_store.clone(),
                     };
-                    for (handler, config) in &error_handlers {
+                    for (hook, config) in &error_hooks {
                         let outcome = {
-                            let ctx = crate::llm_error_handler::LlmErrorContext {
+                            let ctx = crate::llm_error_hook::LlmErrorContext {
                                 session_id: context.session_id,
                                 error_code: &source_error.code,
                                 error_fields: &source_error.fields,
                                 config,
                                 services: &services,
                             };
-                            handler.on_llm_error(&ctx).await
+                            hook.on_llm_error(&ctx).await
                         };
                         for (key, value) in outcome.extra_error_fields {
                             source_error = source_error.with_field(key, value);

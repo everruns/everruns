@@ -1,12 +1,15 @@
-// LLM error handler seam
+// LLM error hook seam
 //
-// A capability extension point for reacting to a *terminal* LLM error (a turn
+// An in-process capability hook for reacting to a *terminal* LLM error (a turn
 // that failed and will not be retried). This is the platform seam that lets a
 // capability encapsulate error-recovery behavior — augmenting the user-facing
 // error copy and/or performing a side effect — without the reason atom hard-
-// coding any capability-specific logic. It mirrors the other capability seams
-// (`message_filter_provider`, `output_guardrails`, tool hooks): the reason atom
-// collects handlers from the active capabilities and invokes each generically.
+// coding any capability-specific logic. It belongs to the same in-process hook
+// family as `ToolCallHook`, `MessageFilterProvider`, and `output_guardrails`
+// (typed traits returned from a `Capability::*` seam and invoked in-process with
+// host services) — as opposed to the user-hook system (`user_hook_types`), which
+// runs user-authored shell commands. The reason atom collects the hooks from the
+// active capabilities and invokes each generically.
 //
 // The first consumer is `usage_limit_auto_continue`, which schedules a
 // continuation after a provider usage limit resets, but the seam is deliberately
@@ -20,15 +23,15 @@ use crate::typed_id::SessionId;
 use crate::user_facing_error::UserFacingErrorFields;
 use serde_json::Value;
 
-/// Host services made available to error handlers. Extend as new handlers need
-/// more surface; today only the session schedule store is exposed (each field is
-/// optional so a handler degrades to a no-op when its service is absent).
+/// Host services made available to error hooks. Extend as new hooks need more
+/// surface; today only the session schedule store is exposed (each field is
+/// optional so a hook degrades to a no-op when its service is absent).
 #[derive(Clone, Default)]
-pub struct LlmErrorHandlerServices {
+pub struct LlmErrorHookServices {
     pub schedule_store: Option<Arc<dyn SessionScheduleStore>>,
 }
 
-/// Context handed to a capability's [`LlmErrorHandler`] on a terminal LLM error.
+/// Context handed to a capability's [`LlmErrorHook`] on a terminal LLM error.
 pub struct LlmErrorContext<'a> {
     /// Session whose turn failed.
     pub session_id: SessionId,
@@ -38,20 +41,20 @@ pub struct LlmErrorContext<'a> {
     pub error_fields: &'a UserFacingErrorFields,
     /// The contributing capability's per-agent config JSON (may be `Null`).
     pub config: &'a Value,
-    /// Host services the handler may use to perform side effects.
-    pub services: &'a LlmErrorHandlerServices,
+    /// Host services the hook may use to perform side effects.
+    pub services: &'a LlmErrorHookServices,
 }
 
-/// Result of an [`LlmErrorHandler`]: extra fields to merge into the user-facing
+/// Result of an [`LlmErrorHook`]: extra fields to merge into the user-facing
 /// error (for example to unlock capability-specific message copy). The default
 /// is a no-op that changes nothing.
 #[derive(Debug, Default, PartialEq, Eq)]
-pub struct LlmErrorHandlerOutcome {
+pub struct LlmErrorHookOutcome {
     /// Fields to merge into the `UserFacingError` before it is rendered/emitted.
     pub extra_error_fields: UserFacingErrorFields,
 }
 
-impl LlmErrorHandlerOutcome {
+impl LlmErrorHookOutcome {
     /// An outcome that changes nothing.
     pub fn noop() -> Self {
         Self::default()
@@ -65,9 +68,9 @@ impl LlmErrorHandlerOutcome {
 }
 
 /// A capability's reaction to a terminal LLM error. Provided via
-/// `Capability::llm_error_handler`. Runs only on the terminal (non-retried)
+/// `Capability::llm_error_hook`. Runs only on the terminal (non-retried)
 /// error path, before the user-facing error message is emitted.
 #[async_trait]
-pub trait LlmErrorHandler: Send + Sync {
-    async fn on_llm_error(&self, ctx: &LlmErrorContext<'_>) -> LlmErrorHandlerOutcome;
+pub trait LlmErrorHook: Send + Sync {
+    async fn on_llm_error(&self, ctx: &LlmErrorContext<'_>) -> LlmErrorHookOutcome;
 }

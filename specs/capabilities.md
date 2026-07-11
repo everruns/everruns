@@ -241,23 +241,28 @@ Associates a capability with an agent via `ref` (CapabilityId) + optional `confi
 
 #### Capability Trait (everruns-core)
 
-See `crates/core/src/capabilities/mod.rs` for the `Capability` trait and `CapabilityRegistry`. Key trait methods: `id()`, `name()`, `description()`, `status()`, `system_prompt_contribution()`, `facts()`, `tools()`, `mounts()`, `dependencies()`, `features()`, `message_filter_provider()`, `llm_error_handler()`.
+See `crates/core/src/capabilities/mod.rs` for the `Capability` trait and `CapabilityRegistry`. Key trait methods: `id()`, `name()`, `description()`, `status()`, `system_prompt_contribution()`, `facts()`, `tools()`, `mounts()`, `dependencies()`, `features()`, `message_filter_provider()`, `llm_error_hook()`.
 
-##### LLM Error Handler Seam
+##### LLM Error Hook Seam
 
-`llm_error_handler() -> Option<Arc<dyn LlmErrorHandler>>` (default `None`) is the
-platform seam for **capability-owned error recovery**. When a turn fails with a
-*terminal* LLM error (one that will not be retried), the reason atom collects the
-handlers contributed by the active capabilities and invokes each generically —
-before the user-facing error message is built — passing an `LlmErrorContext`
-(session id, classified `error_code`, structured `error_fields`, the capability's
-per-agent config, and host `LlmErrorHandlerServices`). A handler may perform a
-side effect and/or return extra fields to merge into the `UserFacingError` (for
-example to unlock capability-specific message copy). The atom stays
-behavior-agnostic: it knows nothing about any specific capability's logic, so new
-error-recovery extensions are built purely as capabilities. The first consumer is
+`llm_error_hook() -> Option<Arc<dyn LlmErrorHook>>` (default `None`) is the
+platform seam for **capability-owned error recovery**. It is an *in-process
+capability hook* — the same family as `tool_call_hooks()`,
+`message_filter_provider()`, and `output_guardrails()` (typed traits invoked
+in-process with host services) — as distinct from the user-hook system
+(`specs/user-hooks.md`), which runs user-authored shell commands at lifecycle
+events. When a turn fails with a *terminal* LLM error (one that will not be
+retried), the reason atom collects the hooks contributed by the active
+capabilities and invokes each generically — before the user-facing error message
+is built — passing an `LlmErrorContext` (session id, classified `error_code`,
+structured `error_fields`, the capability's per-agent config, and host
+`LlmErrorHookServices`). A hook may perform a side effect and/or return extra
+fields to merge into the `UserFacingError` (for example to unlock
+capability-specific message copy). The atom stays behavior-agnostic: it knows
+nothing about any specific capability's logic, so new error-recovery extensions
+are built purely as capabilities. The first consumer is
 `usage_limit_auto_continue` (schedules a continuation after a provider usage limit
-resets); see `crates/core/src/llm_error_handler.rs`.
+resets); see `crates/core/src/llm_error_hook.rs`.
 
 ##### System Prompt Methods
 
