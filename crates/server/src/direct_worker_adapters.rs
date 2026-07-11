@@ -1561,7 +1561,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 db: self.db.clone(),
                 egress_service: egress.clone(),
             });
-            registry = registry.with_notifier(notifier);
+            registry = registry.with_transition_observer(notifier);
         }
         Some(Arc::new(registry))
     }
@@ -1784,7 +1784,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 db: self.db.clone(),
                 egress_service: egress.clone(),
             });
-            registry = registry.with_notifier(notifier);
+            registry = registry.with_transition_observer(notifier);
         }
         Arc::new(registry)
     }
@@ -2176,7 +2176,7 @@ struct WebhookTarget {
 /// spawn time and delivery pins DNS, so no re-validation is needed here.
 fn spec_push_config_targets(
     spec: &serde_json::Value,
-    event: crate::storage::session_task_store::TaskWebhookEvent,
+    event: crate::storage::session_task_store::TaskTransition,
 ) -> Vec<WebhookTarget> {
     let Some(entries) = spec.get("push_configs").and_then(|v| v.as_array()) else {
         return Vec::new();
@@ -2210,13 +2210,13 @@ fn spec_push_config_targets(
 }
 
 #[async_trait::async_trait]
-impl crate::storage::session_task_store::TaskWebhookNotifier for DirectTaskWebhookNotifier {
-    async fn notify(
+impl crate::storage::session_task_store::TaskTransitionObserver for DirectTaskWebhookNotifier {
+    async fn on_transition(
         &self,
         task: &everruns_core::session_task::SessionTask,
-        event: crate::storage::session_task_store::TaskWebhookEvent,
+        event: crate::storage::session_task_store::TaskTransition,
     ) -> anyhow::Result<()> {
-        use crate::storage::session_task_store::TaskWebhookEvent;
+        use crate::storage::session_task_store::TaskTransition;
 
         // Resolve org_id from session (unscoped lookup — no harness required).
         // Server-internal dispatch only: this is never a user-facing read, so
@@ -2234,7 +2234,7 @@ impl crate::storage::session_task_store::TaskWebhookNotifier for DirectTaskWebho
 
         // Org webhooks are terminal-only and unchanged (EVE-579): they never
         // fire on non-terminal events.
-        if event == TaskWebhookEvent::Terminal {
+        if event == TaskTransition::Terminal {
             let webhooks = self
                 .db
                 .list_enabled_org_task_webhooks(session.org_id)
@@ -2368,7 +2368,7 @@ mod task_webhook_request_tests {
     }
 
     use super::spec_push_config_targets;
-    use crate::storage::session_task_store::TaskWebhookEvent;
+    use crate::storage::session_task_store::TaskTransition;
 
     #[test]
     fn spec_push_configs_filter_by_event() {
@@ -2383,7 +2383,7 @@ mod task_webhook_request_tests {
             ]
         });
 
-        let terminal = spec_push_config_targets(&spec, TaskWebhookEvent::Terminal);
+        let terminal = spec_push_config_targets(&spec, TaskTransition::Terminal);
         let terminal_urls: Vec<&str> = terminal.iter().map(|t| t.url.as_str()).collect();
         assert_eq!(
             terminal_urls,
@@ -2391,7 +2391,7 @@ mod task_webhook_request_tests {
             "terminal must include the explicit terminal filter and the default"
         );
 
-        let message = spec_push_config_targets(&spec, TaskWebhookEvent::Message);
+        let message = spec_push_config_targets(&spec, TaskTransition::Message);
         let message_urls: Vec<&str> = message.iter().map(|t| t.url.as_str()).collect();
         assert_eq!(message_urls, vec!["https://a.example.com"]);
         assert_eq!(
@@ -2400,13 +2400,13 @@ mod task_webhook_request_tests {
             "secret must be carried through for signing"
         );
 
-        let awaiting = spec_push_config_targets(&spec, TaskWebhookEvent::AwaitingInput);
+        let awaiting = spec_push_config_targets(&spec, TaskTransition::AwaitingInput);
         let awaiting_urls: Vec<&str> = awaiting.iter().map(|t| t.url.as_str()).collect();
         assert_eq!(awaiting_urls, vec!["https://b.example.com"]);
 
         // No push_configs key → no targets.
         assert!(
-            spec_push_config_targets(&serde_json::json!({}), TaskWebhookEvent::Terminal).is_empty()
+            spec_push_config_targets(&serde_json::json!({}), TaskTransition::Terminal).is_empty()
         );
     }
 }

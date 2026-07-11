@@ -407,6 +407,22 @@ awaiting_input, and outbound-message transitions; per-config `event_filter`
 selects which land. Delivery is best-effort — failures are logged, never fatal,
 and never block the task update.
 
+### Transition observers (in-process, EVE-729)
+
+Webhook delivery is one consumer of a lower-level seam: a `SessionTaskRegistry`
+fires each real transition (terminal / awaiting_input / outbound message) once to
+every registered `TaskTransitionObserver`. The trait and its `TaskTransition`
+enum live in `everruns-core` (`task_observer`) so `everruns-runtime` embedders
+can observe task transitions in process — with the same filter semantics — without
+HTTP or a dependency on the control-plane server. The server's webhook dispatcher
+(`DirectTaskWebhookNotifier`) is one implementation registered via
+`with_transition_observer`; embedders register their own. Because both share the
+registry's single transition-detection path, an in-process observer receives
+exactly the transitions the webhook path fires (asserted by the parity test in
+`crates/server/src/storage/session_task_store.rs`). Dispatch is best-effort and
+off the task-update path: each observer runs on its own detached task, so one
+slow observer never blocks task updates or another observer.
+
 ## Migration
 
 No backward compatibility is required; data migrates forward once:

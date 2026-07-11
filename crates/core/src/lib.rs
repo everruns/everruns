@@ -118,6 +118,7 @@ pub mod session_sqldb;
 pub mod session_task;
 pub mod skill;
 pub mod system_allowlist;
+pub mod task_observer;
 pub mod vector_store;
 pub mod workspace;
 pub mod workspace_roots;
@@ -511,6 +512,7 @@ pub use skill::{
     ParsedSkillMd, Skill, SkillContent, SkillFileEntry, SkillSourceType, SkillStatus, SkillUsage,
     SkillValidationResult, parse_skill_md, validate_skill_md, validate_skill_name,
 };
+pub use task_observer::{TaskTransition, TaskTransitionObserver};
 pub use typed_id::{
     AgentId, AgentIdentityId, AgentVersionId, AppChannelId, AppId, DeclarativeCapabilityId,
     EvalCaseId, EvalId, EvalResultId, EvalRunId, EventId, ExecId, HarnessId, IdMarker,
