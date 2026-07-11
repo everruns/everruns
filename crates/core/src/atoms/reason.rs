@@ -410,6 +410,7 @@ fn is_error_placeholder_message(msg: &Message) -> bool {
                 | user_facing_error_codes::MODEL_UNAVAILABLE
                 | user_facing_error_codes::REQUEST_TOO_LARGE
                 | user_facing_error_codes::PROVIDER_RATE_LIMITED
+                | user_facing_error_codes::PROVIDER_USAGE_LIMIT_REACHED
                 | user_facing_error_codes::PROVIDER_MISCONFIGURED
                 | user_facing_error_codes::PROVIDER_QUOTA_EXHAUSTED
                 | user_facing_error_codes::PROVIDER_UNAVAILABLE

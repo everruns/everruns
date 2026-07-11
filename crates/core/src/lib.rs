@@ -236,7 +236,8 @@ pub use traits::{
 pub use user_facing_error::{
     ErrorDisclosure, UserFacingError, UserFacingErrorContext, UserFacingErrorFields,
     classify_runtime_error_message, codes as user_facing_error_codes, is_provider_quota_message,
-    metadata_keys as user_facing_error_metadata_keys, trim_error_chain_prefixes,
+    is_usage_limit_message, metadata_keys as user_facing_error_metadata_keys,
+    parse_usage_limit_reset_at, trim_error_chain_prefixes,
 };
 pub use workspace_roots::{
     ADDITIONAL_ROOTS_MOUNT, PRIMARY_WORKSPACE_ROOT_NAME, RelPath, ResolvedPath, WorkspaceRoot,
