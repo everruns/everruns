@@ -18885,7 +18885,7 @@
               "null"
             ],
             "description": "Optional HMAC-SHA256 signing secret (never returned once set).",
-            "example": "whsec_9f8c2b1a4e7d4c3b8a1f2e3d"
+            "example": "whsec_example_signing_secret_placeholder"
           },
           "url": {
             "type": "string",
