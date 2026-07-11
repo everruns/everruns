@@ -31,7 +31,7 @@ Agents with the DuckDuckGo capability can use this tool:
 
 | Tool | Description |
 |------|-------------|
-| `duckduckgo_search` | Get instant answers, abstracts, definitions, and related topics |
+| `duckduckgo_instant_answer` | Look up instant answers, abstracts, definitions, and related topics. Instant-answer lookup only — not a full web/SERP search |
 
 ### Parameters
 
@@ -54,8 +54,16 @@ The tool returns a JSON object with available fields:
 | `definition` | `{ text, source, url }` — dictionary definition |
 | `related_topics` | Array of `{ text, url }` — related topics (max 10) |
 | `results` | Array of `{ text, url }` — official/direct results |
+| `note` | Present only when no instant answer was found — a caveat that this is not a definitive web-search result and matching web pages may still exist |
 
 Only non-empty fields are included in the response.
+
+:::note
+This tool queries the DuckDuckGo **Instant Answer** API, not full web search.
+A `nothing` result (or a `note` field) means DuckDuckGo has no curated instant
+answer for the query — it does **not** mean no web pages match. For general web
+discovery, use a web-search or web-fetch tool (or Brave Search) instead.
+:::
 
 ## When to Use DuckDuckGo vs Brave Search
 
