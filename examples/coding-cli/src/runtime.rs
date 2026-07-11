@@ -855,7 +855,7 @@ pub async fn build(
     //   * stateless_todo_list  — write_todos tool for multi-step tasks
     //   * loop_detection       — safety net against repeated identical tool calls
     //   * prompt_caching       — Anthropic prompt caching; free token savings
-    //   * duckduckgo           — free web search (`duckduckgo_search`); no API key
+    //   * duckduckgo           — free instant answers (`duckduckgo_instant_answer`); no API key
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(AgentInstructionsCapability);
     capabilities.register(FileSystemCapability);

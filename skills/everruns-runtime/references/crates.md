@@ -56,7 +56,7 @@ Integration crates ship optional capabilities. Construct the capability and
 
 | Crate | Capability | Notes |
 |---|---|---|
-| `everruns-integrations-duckduckgo` | `DuckDuckGoCapability` | Free web search (`duckduckgo_search`); **no API key** |
+| `everruns-integrations-duckduckgo` | `DuckDuckGoCapability` | Free instant answers (`duckduckgo_instant_answer`), not full web search; **no API key** |
 | `everruns-integrations-brave-search` | Brave Search capability | Requires Brave API key |
 | `everruns-integrations-parallel` | Parallel capability | Parallel web search MCP |
 | `everruns-integrations-browserless` | Browserless capability | Headless browser automation |

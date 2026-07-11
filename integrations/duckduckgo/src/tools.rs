@@ -31,13 +31,17 @@ impl Tool for DuckDuckGoSearchTool {
     }
 
     fn name(&self) -> &str {
-        "duckduckgo_search"
+        "duckduckgo_instant_answer"
     }
 
     fn description(&self) -> &str {
-        "Get instant answers from DuckDuckGo. Returns abstracts (from Wikipedia and other sources), \
-         definitions, direct answers, and related topics. \
-         No API key required."
+        "Look up a DuckDuckGo Instant Answer: a direct fact, calculation, dictionary definition, \
+         or Wikipedia-style abstract for a query. This is NOT a full web/SERP search — it only \
+         returns DuckDuckGo's curated instant answers and is not exhaustive. A `nothing` result \
+         means no instant answer was found, NOT that no web pages exist; matching pages may still \
+         exist. Prefer a dedicated web-search or web-fetch tool for general web discovery; if none \
+         is available, this tool can still serve as a lightweight search for quick facts, \
+         definitions, and related topics. No API key required."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -192,6 +196,20 @@ fn format_response(
         result["results"] = json!(results);
     }
 
+    // When no substantive instant answer was returned, make the limitation
+    // explicit. Agents/users otherwise read an empty result as "no web pages
+    // exist" — but this API only covers curated instant answers, not full web
+    // (SERP) search. The `query` and `type` keys are always present, so a
+    // response with only those two keys carries no actual answer.
+    let has_content = result.as_object().is_some_and(|obj| obj.len() > 2);
+    if !has_content {
+        result["note"] = json!(
+            "No DuckDuckGo Instant Answer was returned. This is not a definitive web-search \
+             result — it only means DuckDuckGo has no curated instant answer for this query. \
+             Matching web pages may still exist; use a web-search or web-fetch tool to find them."
+        );
+    }
+
     ToolExecutionResult::success(result)
 }
 
@@ -207,7 +225,15 @@ mod tests {
     #[test]
     fn test_tool_name() {
         let tool = DuckDuckGoSearchTool;
-        assert_eq!(tool.name(), "duckduckgo_search");
+        assert_eq!(tool.name(), "duckduckgo_instant_answer");
+    }
+
+    #[test]
+    fn test_description_flags_instant_answer_limits() {
+        let tool = DuckDuckGoSearchTool;
+        let desc = tool.description();
+        assert!(desc.contains("Instant Answer"));
+        assert!(desc.contains("NOT a full web"));
     }
 
     #[test]
@@ -314,6 +340,8 @@ mod tests {
                 assert_eq!(val["abstract"]["source"], "Wikipedia");
                 assert_eq!(val["related_topics"].as_array().unwrap().len(), 1);
                 assert_eq!(val["results"].as_array().unwrap().len(), 1);
+                // Substantive results must NOT carry the empty-result caveat.
+                assert!(val.get("note").is_none());
             }
             _ => panic!("Expected Success result"),
         }
@@ -346,6 +374,10 @@ mod tests {
                 assert!(val.get("answer").is_none());
                 assert!(val.get("related_topics").is_none());
                 assert!(val.get("results").is_none());
+                // Empty results carry an explicit caveat so agents don't read
+                // "nothing" as "no web pages exist".
+                let note = val["note"].as_str().expect("expected a caveat note");
+                assert!(note.contains("not a definitive web-search result"));
             }
             _ => panic!("Expected Success result"),
         }
