@@ -1208,7 +1208,7 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
             .expect("Failed to create event");
     }
 
-    let texts = |events: &[everruns_server::storage::EventRow]| -> Vec<String> {
+    let texts = |events: &[everruns_server::storage::MessageEventRow]| -> Vec<String> {
         events
             .iter()
             .map(|event| {

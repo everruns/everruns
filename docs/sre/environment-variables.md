@@ -633,6 +633,28 @@ OTEL_RECORD_CONTENT=true
 - Disabled by default for privacy and data size concerns
 - Only enable in development or when debugging specific issues
 
+## Storage Observability
+
+### SLOW_QUERY_WARN_MS
+
+Latency threshold, in milliseconds, above which a hot storage read emits one
+structured `WARN` log (`operation`/`query_family`, `elapsed_ms`, `row_count`,
+`limit`, plus `environment`/`release` from `OTEL_ENVIRONMENT` /
+`OTEL_SERVICE_VERSION`). Currently applied to the per-turn message-history read
+so a SaaS host can map long reads on large sessions to an alerting backend. The
+warning never includes SQL parameters, event content, or PII.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | `500` |
+
+**Example:**
+
+```bash
+SLOW_QUERY_WARN_MS=250
+```
+
 ## Local Development with OpenTelemetry
 
 To visualize traces locally, point `OTEL_EXPORTER_OTLP_ENDPOINT` at any OTLP-compatible collector:

@@ -339,6 +339,131 @@ mod tests {
         }
     }
 
+    /// Append one full tool-using turn (user → agent+tool_call → tool_result)
+    /// as three raw events, so we can build long sessions with tool-call/result
+    /// pairs that the retriever must reconstruct in order.
+    async fn append_tool_turn(db: &Arc<StorageBackend>, session_id: SessionId, turn: usize) {
+        use crate::storage::models::CreateEventRow;
+        let call_id = format!("call_{turn}");
+
+        let user = Message::user(format!("question {turn}"));
+        db.create_event(CreateEventRow {
+            session_id,
+            event_type: "input.message".to_string(),
+            ts: chrono::Utc::now(),
+            context: json!({}),
+            data: serde_json::to_value(InputMessageData::new(user)).unwrap(),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .unwrap();
+
+        let agent = Message::assistant_with_tools(
+            format!("let me check {turn}"),
+            vec![ToolCall {
+                id: call_id.clone(),
+                name: "lookup".to_string(),
+                arguments: json!({ "turn": turn }),
+            }],
+        );
+        db.create_event(CreateEventRow {
+            session_id,
+            event_type: "output.message.completed".to_string(),
+            ts: chrono::Utc::now(),
+            context: json!({}),
+            data: serde_json::to_value(OutputMessageCompletedData::new(agent)).unwrap(),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .unwrap();
+
+        let tool = ToolCompletedData::success(
+            call_id,
+            "lookup".to_string(),
+            vec![ContentPart::text(format!("answer {turn}"))],
+            Some(1),
+        );
+        db.create_event(CreateEventRow {
+            session_id,
+            event_type: "tool.completed".to_string(),
+            ts: chrono::Utc::now(),
+            context: json!({}),
+            data: serde_json::to_value(tool).unwrap(),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .unwrap();
+    }
+
+    /// Assert that within a reconstructed message slice every tool result
+    /// immediately follows its originating tool call (deterministic pairing),
+    /// and that agent tool-call ids are unique.
+    fn assert_tool_pairing(messages: &[Message]) {
+        for window in messages.windows(2) {
+            if let Some(call) = window[0].tool_calls().first() {
+                assert_eq!(
+                    window[1].tool_call_id(),
+                    Some(call.id.as_str()),
+                    "tool result must immediately follow its call"
+                );
+            }
+        }
+    }
+
+    // EVE-730 regression: a long session (>3000 relevant events) must reconstruct
+    // correctly through the compact message-event projection, preserving
+    // deterministic ordering and tool-call/result pairing — including when a
+    // windowed (keep_head + limit) load is used.
+    #[tokio::test]
+    async fn long_session_reconstructs_and_windows_correctly() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let retriever = DbMessageRetriever::new(db.clone());
+        let session_id = SessionId::new();
+
+        // 1010 turns × 3 events = 3030 message events (> 3000).
+        let turns = 1010usize;
+        for turn in 0..turns {
+            append_tool_turn(&db, session_id, turn).await;
+        }
+
+        // Full reconstruction: every event becomes a message, in sequence order,
+        // with intact tool-call/result pairing.
+        let messages = retriever.load(session_id).await.unwrap();
+        assert_eq!(messages.len(), turns * 3);
+        assert_eq!(messages[0].role, MessageRole::User);
+        assert_eq!(messages[0].text(), Some("question 0"));
+        assert_eq!(messages[1].role, MessageRole::Agent);
+        assert_eq!(messages[2].role, MessageRole::ToolResult);
+        assert_eq!(messages.last().unwrap().role, MessageRole::ToolResult);
+        assert_tool_pairing(&messages);
+
+        // Windowed load: keep the first turn as an anchor plus the latest turns.
+        // keep_head=3 (one whole turn) + limit=30 (ten whole turns) => 33 messages,
+        // and the tool-call/result pairing must survive the head/tail boundary.
+        let windowed = retriever
+            .load_filtered(
+                MessageQuery::new(session_id)
+                    .with_keep_head(3)
+                    .with_limit(30),
+            )
+            .await
+            .unwrap();
+        assert_eq!(windowed.len(), 33);
+        // Head anchor is the genuine first turn.
+        assert_eq!(windowed[0].text(), Some("question 0"));
+        // Tail ends on the most recent tool result.
+        assert_eq!(windowed.last().unwrap().role, MessageRole::ToolResult);
+        assert_eq!(
+            windowed.last().unwrap().tool_call_id(),
+            Some(format!("call_{}", turns - 1).as_str())
+        );
+        assert_tool_pairing(&windowed[0..3]);
+        assert_tool_pairing(&windowed[3..]);
+    }
+
     #[tokio::test]
     async fn load_filtered_applies_custom_filter_before_latest_limit() {
         let db = Arc::new(StorageBackend::in_memory());

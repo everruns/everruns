@@ -8,6 +8,17 @@ use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::{EventId, SessionId};
 use uuid::Uuid;
 
+/// Project a stored `EventRow` down to the compact message-reconstruction row,
+/// mirroring the PostgreSQL backend's narrowed SELECT.
+fn message_event_row(row: EventRow) -> MessageEventRow {
+    MessageEventRow {
+        id: row.id,
+        sequence: row.sequence,
+        event_type: row.event_type,
+        data: row.data,
+    }
+}
+
 impl InMemoryDatabase {
     // ============================================
     // Events
@@ -375,17 +386,20 @@ impl InMemoryDatabase {
         Ok(count as i64)
     }
 
-    pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<EventRow>> {
+    pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<MessageEventRow>> {
         self.list_message_events_limited(session_id, None).await
     }
 
     /// List message events with an optional limit.
     /// When `limit` is Some, returns the most recent N messages in sequence order.
+    ///
+    /// Returns the compact [`MessageEventRow`] projection to mirror the
+    /// PostgreSQL backend, which narrows the SELECT for long-session reads.
     pub async fn list_message_events_limited(
         &self,
         session_id: SessionId,
         limit: Option<i32>,
-    ) -> Result<Vec<EventRow>> {
+    ) -> Result<Vec<MessageEventRow>> {
         let message_types = [
             "input.message",
             "output.message.completed",
@@ -413,7 +427,7 @@ impl InMemoryDatabase {
             // Postgres backend's safety cap on this path.
             result.truncate(MESSAGE_SAFETY_LIMIT);
         }
-        Ok(result)
+        Ok(result.into_iter().map(message_event_row).collect())
     }
 
     /// Count message events for a session — no row materialization.
@@ -443,7 +457,7 @@ impl InMemoryDatabase {
     pub async fn list_message_events_filtered(
         &self,
         query: &MessageQuery,
-    ) -> Result<Vec<EventRow>> {
+    ) -> Result<Vec<MessageEventRow>> {
         // Default event types if not specified
         let default_types = vec![
             "input.message".to_string(),
@@ -575,7 +589,7 @@ impl InMemoryDatabase {
             result.drain(0..drain_end);
         }
 
-        Ok(result)
+        Ok(result.into_iter().map(message_event_row).collect())
     }
 
     /// Get preview text for multiple sessions (in-memory implementation)

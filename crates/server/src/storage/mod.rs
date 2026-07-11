@@ -33,6 +33,7 @@ pub mod session_schedule_store;
 pub mod session_storage_store;
 pub mod session_store;
 pub mod session_task_store;
+pub mod slow_query;
 pub mod subagent_spawn_handles;
 
 #[cfg(test)]

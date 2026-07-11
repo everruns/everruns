@@ -975,6 +975,26 @@ pub struct EventRow {
     pub created_at: DateTime<Utc>,
 }
 
+/// Compact projection of `events` for message-history reconstruction.
+///
+/// The per-turn message read (EVE-730) can return thousands of rows for long
+/// sessions. Rebuilding a conversation `Message` only needs the event type and
+/// its `data` payload (plus `id` for log correlation and `sequence` for
+/// deterministic ordering), so this projection deliberately omits the heavy
+/// `context`/`metadata`/`tags` JSONB and the `session_id`/`ts`/`created_at`
+/// columns. Dropping them from the SELECT list cuts the network transfer,
+/// deserialization, and memory amplification of loading full `EventRow`s
+/// without changing which messages are reconstructed — model-visible
+/// conversation correctness is preserved. See
+/// `Database::list_message_events_limited` / `list_message_events_filtered`.
+#[derive(Debug, Clone, FromRow)]
+pub struct MessageEventRow {
+    pub id: EventId,
+    pub sequence: i32,
+    pub event_type: String,
+    pub data: serde_json::Value,
+}
+
 #[derive(Debug, Clone)]
 pub struct CreateEventRow {
     pub session_id: SessionId,

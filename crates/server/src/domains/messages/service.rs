@@ -615,8 +615,18 @@ mod tests {
             .unwrap();
         assert_eq!(message.session_id, session.id);
 
+        // Fetch full event rows (not the compact message projection, which
+        // omits the `metadata` column) to assert the provenance metadata.
         let events = db
-            .list_message_events_limited(session.id, None)
+            .list_events(
+                session.id,
+                None,
+                None,
+                &["input.message".to_string()],
+                &[],
+                None,
+                None,
+            )
             .await
             .unwrap();
         let input = events

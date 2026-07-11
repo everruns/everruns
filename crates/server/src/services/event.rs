@@ -21,7 +21,7 @@
 
 use crate::event_delivery::EventDelivery;
 use crate::storage::{
-    EventRow, StorageBackend,
+    EventRow, MessageEventRow, StorageBackend,
     models::{CreateEventRow, EventsSummary as EventsSummaryRow, ListEventsParams},
 };
 use anyhow::{Result, bail};
@@ -522,9 +522,31 @@ impl EventService {
             .await?;
         Ok(rows
             .into_iter()
-            .map(Self::row_to_event)
+            .map(|row| Self::message_row_to_event(session_id, row))
             .filter(|e| !e.is_unsupported())
             .collect())
+    }
+
+    /// Rebuild an `Event` from the compact [`MessageEventRow`] projection.
+    ///
+    /// The message-history read (EVE-730) omits the `ts`/`context`/`metadata`/
+    /// `tags` columns because message reconstruction never reads them; they are
+    /// filled with defaults here. `session_id` comes from the caller's argument
+    /// (the query is already session-scoped), so no per-row session column is
+    /// needed.
+    fn message_row_to_event(session_id: Uuid, row: MessageEventRow) -> Event {
+        let data = everruns_core::events::deserialize_event_data(&row.event_type, row.data);
+        Event {
+            id: row.id,
+            event_type: row.event_type,
+            ts: chrono::DateTime::from_timestamp(0, 0).expect("unix epoch is a valid timestamp"),
+            session_id: SessionId::from_uuid(session_id),
+            context: everruns_core::events::EventContext::default(),
+            data,
+            metadata: None,
+            tags: None,
+            sequence: Some(row.sequence),
+        }
     }
 
     fn row_to_event(row: EventRow) -> Event {

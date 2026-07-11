@@ -24,8 +24,11 @@ pub trait Repository: Send + Sync {
         &self,
         session_id: SessionId,
         limit: Option<i32>,
-    ) -> Result<Vec<EventRow>>;
-    async fn list_message_events_filtered(&self, query: &MessageQuery) -> Result<Vec<EventRow>>;
+    ) -> Result<Vec<MessageEventRow>>;
+    async fn list_message_events_filtered(
+        &self,
+        query: &MessageQuery,
+    ) -> Result<Vec<MessageEventRow>>;
 
     async fn create_provider(&self, org_id: i64, input: CreateProviderRow) -> Result<ProviderRow>;
     async fn list_providers(&self, org_id: i64) -> Result<Vec<ProviderRow>>;
@@ -73,11 +76,14 @@ impl Repository for Database {
         &self,
         session_id: SessionId,
         limit: Option<i32>,
-    ) -> Result<Vec<EventRow>> {
+    ) -> Result<Vec<MessageEventRow>> {
         Database::list_message_events_limited(self, session_id, limit).await
     }
 
-    async fn list_message_events_filtered(&self, query: &MessageQuery) -> Result<Vec<EventRow>> {
+    async fn list_message_events_filtered(
+        &self,
+        query: &MessageQuery,
+    ) -> Result<Vec<MessageEventRow>> {
         Database::list_message_events_filtered(self, query).await
     }
 
@@ -144,11 +150,14 @@ impl Repository for InMemoryDatabase {
         &self,
         session_id: SessionId,
         limit: Option<i32>,
-    ) -> Result<Vec<EventRow>> {
+    ) -> Result<Vec<MessageEventRow>> {
         InMemoryDatabase::list_message_events_limited(self, session_id, limit).await
     }
 
-    async fn list_message_events_filtered(&self, query: &MessageQuery) -> Result<Vec<EventRow>> {
+    async fn list_message_events_filtered(
+        &self,
+        query: &MessageQuery,
+    ) -> Result<Vec<MessageEventRow>> {
         InMemoryDatabase::list_message_events_filtered(self, query).await
     }
 
@@ -215,11 +224,14 @@ impl Repository for StorageBackend {
         &self,
         session_id: SessionId,
         limit: Option<i32>,
-    ) -> Result<Vec<EventRow>> {
+    ) -> Result<Vec<MessageEventRow>> {
         StorageBackend::list_message_events_limited(self, session_id, limit).await
     }
 
-    async fn list_message_events_filtered(&self, query: &MessageQuery) -> Result<Vec<EventRow>> {
+    async fn list_message_events_filtered(
+        &self,
+        query: &MessageQuery,
+    ) -> Result<Vec<MessageEventRow>> {
         StorageBackend::list_message_events_filtered(self, query).await
     }
 

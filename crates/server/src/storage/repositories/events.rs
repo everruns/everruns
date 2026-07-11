@@ -475,24 +475,34 @@ impl Database {
     /// Ordered by sequence for conversation reconstruction.
     /// Note: Tool calls are embedded in output.message.completed events via ContentPart::ToolCall.
     /// Note: Tool results come from tool.completed events (not message.tool_result).
-    pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<EventRow>> {
+    pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<MessageEventRow>> {
         self.list_message_events_limited(session_id, None).await
     }
 
     /// List message events with an optional limit.
     /// When `limit` is Some, returns the most recent N messages (by sequence)
     /// in ascending order for correct conversation reconstruction.
+    ///
+    /// Uses the compact [`MessageEventRow`] projection (id, sequence,
+    /// event_type, data) so long sessions do not pay to transfer/deserialize
+    /// the heavy `context`/`metadata`/`tags` JSONB for rows that are only ever
+    /// turned back into `Message`s. The predicate matches the partial index
+    /// `idx_events_messages(session_id, sequence) WHERE event_type IN (...)`
+    /// (migration 084), so both the DESC-then-ASC tail read and the ASC
+    /// safety-capped read are served by an index-only-friendly range scan.
     pub async fn list_message_events_limited(
         &self,
         session_id: SessionId,
         limit: Option<i32>,
-    ) -> Result<Vec<EventRow>> {
+    ) -> Result<Vec<MessageEventRow>> {
+        let started = std::time::Instant::now();
+        let effective_limit = limit.map(i64::from).unwrap_or(MESSAGE_SAFETY_LIMIT as i64);
         let rows = if let Some(limit) = limit.filter(|limit| *limit > 0) {
             // Subquery: get most recent N by sequence DESC, then re-order ASC
-            sqlx::query_as::<_, EventRow>(
+            sqlx::query_as::<_, MessageEventRow>(
                 r#"
-                SELECT * FROM (
-                    SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
+                SELECT id, sequence, event_type, data FROM (
+                    SELECT id, sequence, event_type, data
                     FROM events
                     WHERE session_id = $1
                       AND event_type IN ('input.message', 'output.message.completed', 'tool.completed')
@@ -510,9 +520,9 @@ impl Database {
             Vec::new()
         } else {
             // Safety cap when no explicit limit — prevents unbounded result sets.
-            sqlx::query_as::<_, EventRow>(
+            sqlx::query_as::<_, MessageEventRow>(
                 r#"
-                SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
+                SELECT id, sequence, event_type, data
                 FROM events
                 WHERE session_id = $1
                   AND event_type IN ('input.message', 'output.message.completed', 'tool.completed')
@@ -525,6 +535,13 @@ impl Database {
             .fetch_all(&self.pool)
             .await?
         };
+
+        crate::storage::slow_query::maybe_warn(
+            crate::storage::slow_query::OP_MESSAGE_HISTORY_READ,
+            started.elapsed(),
+            rows.len(),
+            Some(effective_limit),
+        );
 
         Ok(rows)
     }
@@ -557,11 +574,14 @@ impl Database {
     pub async fn list_message_events_filtered(
         &self,
         query: &MessageQuery,
-    ) -> Result<Vec<EventRow>> {
-        // Build dynamic SQL query
-        let mut sql = String::from(
-            "SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at FROM events WHERE session_id = $1",
-        );
+    ) -> Result<Vec<MessageEventRow>> {
+        let started = std::time::Instant::now();
+        // Build dynamic SQL query. Uses the compact message projection (id,
+        // sequence, event_type, data) so long-session reads do not transfer or
+        // deserialize the heavy context/metadata/tags JSONB — see
+        // `MessageEventRow`.
+        let mut sql =
+            String::from("SELECT id, sequence, event_type, data FROM events WHERE session_id = $1");
 
         // Collect bound values for later binding
         // We track types separately since sqlx needs typed bindings
@@ -677,7 +697,7 @@ impl Database {
                 // parameters are referenced by number, so repeating the SQL text
                 // reuses the same bindings.
                 sql = format!(
-                    "SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at \
+                    "SELECT id, sequence, event_type, data \
                      FROM events WHERE id IN (\
                        (SELECT id FROM ({sql}) head_q ORDER BY sequence ASC LIMIT {}) \
                        UNION \
@@ -714,7 +734,7 @@ impl Database {
         // Build and execute query with dynamic bindings
         // sqlx doesn't support truly dynamic queries, so we need to use raw SQL
         // with all possible parameters, binding None for unused ones
-        let mut db_query = sqlx::query_as::<_, EventRow>(sqlx::AssertSqlSafe(sql.as_str()))
+        let mut db_query = sqlx::query_as::<_, MessageEventRow>(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(query.session_id.uuid())
             .bind(&types);
 
@@ -741,6 +761,13 @@ impl Database {
         if needs_reverse {
             rows.reverse();
         }
+
+        crate::storage::slow_query::maybe_warn(
+            crate::storage::slow_query::OP_MESSAGE_HISTORY_READ,
+            started.elapsed(),
+            rows.len(),
+            query.limit.or(Some(MESSAGE_SAFETY_LIMIT as i64)),
+        );
 
         Ok(rows)
     }

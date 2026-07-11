@@ -1745,7 +1745,7 @@ impl StorageBackend {
         dispatch!(self, find_turn_boundary, session_id, before_sequence)
     }
 
-    pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<EventRow>> {
+    pub async fn list_message_events(&self, session_id: SessionId) -> Result<Vec<MessageEventRow>> {
         dispatch!(self, list_message_events, session_id)
     }
 
@@ -1755,7 +1755,7 @@ impl StorageBackend {
         &self,
         session_id: SessionId,
         limit: Option<i32>,
-    ) -> Result<Vec<EventRow>> {
+    ) -> Result<Vec<MessageEventRow>> {
         dispatch!(self, list_message_events_limited, session_id, limit)
     }
 
@@ -1775,7 +1775,7 @@ impl StorageBackend {
     pub async fn list_message_events_filtered(
         &self,
         query: &MessageQuery,
-    ) -> Result<Vec<EventRow>> {
+    ) -> Result<Vec<MessageEventRow>> {
         dispatch!(self, list_message_events_filtered, query)
     }
 
