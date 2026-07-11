@@ -92,6 +92,8 @@ impl InMemoryDatabase {
             total_output_tokens: 0,
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
+            turn_count: 0,
+            tool_call_count: 0,
             total_actual_cost_usd: 0.0,
             total_estimated_cost_usd: 0.0,
             total_cost_usd: 0.0,
