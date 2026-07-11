@@ -129,13 +129,18 @@ impl LocalSessionRunner for RuntimeRunner {
     }
 }
 
-#[tokio::test(flavor = "multi_thread")]
-async fn background_spawn_agent_subagent_live_end_to_end() {
-    let config = ANTHROPIC_HAIKU;
-    let Some(model) = config.model() else {
-        eprintln!("Skipping: {} not set", config.label());
-        return;
-    };
+/// Run one full live attempt of the subagent e2e flow.
+///
+/// Returns `Err(msg)` only when a *transient transport* blip (network/stream
+/// decode hiccup) was observed at the parent turn or the child-turn settle — the
+/// caller retries on that. Every real (assertion / functional) failure panics
+/// inside this function so it fails loudly and immediately, keeping full
+/// coverage rather than skipping (the deliberate policy behind reverting the
+/// earlier skip-on-transient mechanism in #2550).
+async fn run_subagent_live_attempt(
+    config: &ProviderModelConfig,
+) -> std::result::Result<(), String> {
+    let model = config.model().expect("model set (checked by caller)");
 
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(SubagentCapability);
@@ -188,8 +193,9 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
         .expect("runtime builds");
     runtime_cell.set(runtime.clone()).ok().expect("set once");
 
-    // 1. Parent turn: the real model must choose to call spawn_agent.
-    let turn = runtime
+    // 1. Parent turn: the real model must choose to call spawn_agent. A transient
+    //    transport/stream-decode blip here is retried by the caller, not failed.
+    let turn = match runtime
         .run_text_turn(
             parent_id,
             &format!(
@@ -199,8 +205,23 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
             ),
         )
         .await
-        .expect("parent turn runs");
-    assert!(turn.success, "parent turn failed: {:?}", turn.error);
+    {
+        Ok(turn) => turn,
+        Err(err) => {
+            let msg = err.to_string();
+            if is_transient_transport_error(&msg) {
+                return Err(format!("parent turn transport error: {msg}"));
+            }
+            panic!("parent turn runs: {msg}");
+        }
+    };
+    if !turn.success {
+        let err = turn.error.clone().unwrap_or_default();
+        if is_transient_transport_error(&err) {
+            return Err(format!("parent turn failed transiently: {err}"));
+        }
+        panic!("parent turn failed: {:?}", turn.error);
+    }
 
     let parent_messages = runtime.messages(parent_id).await.expect("parent messages");
     let spawn_call = parent_messages
@@ -237,12 +258,25 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
         tokio::time::sleep(Duration::from_secs(1)).await;
     }
     let settled = settled.expect("subagent task should settle within 120s");
-    assert_eq!(
-        settled.state,
-        SessionTaskState::Succeeded,
-        "task error: {:?}",
-        settled.error
-    );
+    if settled.state != SessionTaskState::Succeeded {
+        // The child turn runs a real LLM through the watcher; a transient
+        // transport blip there settles the task Failed with the transport error
+        // wrapped in the child-turn message — retry rather than red CI.
+        let err_msg = settled
+            .error
+            .as_ref()
+            .map(|e| e.message.clone())
+            .unwrap_or_default();
+        if is_transient_transport_error(&err_msg) {
+            return Err(format!(
+                "child task settled with transport error: {err_msg}"
+            ));
+        }
+        panic!(
+            "subagent task did not succeed: state={:?} error={:?}",
+            settled.state, settled.error
+        );
+    }
 
     // 4. The summary is the child's REAL model reply.
     let summary = settled.summary.as_deref().expect("settled task summary");
@@ -268,4 +302,39 @@ async fn background_spawn_agent_subagent_live_end_to_end() {
     println!("parent turn iterations: {}", turn.iterations);
     println!("task settled: {} — summary: {summary}", settled.state);
     println!("child reply: {child_reply}");
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn background_spawn_agent_subagent_live_end_to_end() {
+    let config = ANTHROPIC_HAIKU;
+    if config.model().is_none() {
+        eprintln!("Skipping: {} not set", config.label());
+        return;
+    }
+
+    // Live e2e against a real provider: a transient transport/stream-decode blip
+    // (e.g. "Transport error: error decoding response body") is infrastructure
+    // flakiness, not a regression, and must not red main CI. Retry the whole flow
+    // on transient transport faults (fresh runtime state each attempt) while
+    // still failing loudly and immediately on any real assertion/functional
+    // failure. Mirrors the bounded retry the rest of the live matrix uses via
+    // `run_live_turn!` (EVE-736).
+    const MAX_ATTEMPTS: usize = 3;
+    for attempt in 1..=MAX_ATTEMPTS {
+        match run_subagent_live_attempt(&config).await {
+            Ok(()) => return,
+            Err(transient) => {
+                assert!(
+                    attempt < MAX_ATTEMPTS,
+                    "subagent live test still hitting transient transport failures after \
+                     {MAX_ATTEMPTS} attempts: {transient}"
+                );
+                eprintln!(
+                    "subagent live test attempt {attempt}/{MAX_ATTEMPTS} hit transient \
+                     transport failure, retrying: {transient}"
+                );
+            }
+        }
+    }
 }

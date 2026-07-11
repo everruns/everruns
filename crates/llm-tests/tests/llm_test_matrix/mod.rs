@@ -433,3 +433,48 @@ mod quota_detector_tests {
         assert!(!is_quota_exhausted("permission denied for this model"));
     }
 }
+
+#[cfg(test)]
+mod transient_transport_detector_tests {
+    use super::is_transient_transport_error;
+
+    #[test]
+    fn matches_observed_live_flakes() {
+        // The exact signature flaking `main` on the live OpenAI matrix.
+        assert!(is_transient_transport_error(
+            "LLM error: Stream error: Transport error: error decoding response body"
+        ));
+        assert!(is_transient_transport_error("error decoding response body"));
+        assert!(is_transient_transport_error("connection reset by peer"));
+        assert!(is_transient_transport_error(
+            "connection closed before message completed"
+        ));
+        assert!(is_transient_transport_error("hyper: incomplete message"));
+        assert!(is_transient_transport_error("operation timed out"));
+        // Case-insensitive.
+        assert!(is_transient_transport_error("TRANSPORT ERROR: broken pipe"));
+    }
+
+    #[test]
+    fn matches_child_turn_wrapped_transport_error() {
+        // The subagent live e2e settles the child task Failed with the child
+        // turn's error wrapped in a "child turn failed: ..." message; a transient
+        // transport blip there must still be recognized so the whole flow retries.
+        assert!(is_transient_transport_error(
+            "child turn failed: LLM error: Stream error: Transport error: error decoding response body"
+        ));
+    }
+
+    #[test]
+    fn does_not_match_real_functional_errors() {
+        // Genuine functional/contract breaks must still fail the test loudly.
+        assert!(!is_transient_transport_error(
+            "Model not available: gpt-99-nonexistent"
+        ));
+        assert!(!is_transient_transport_error(
+            "Bad request: invalid schema for tool"
+        ));
+        assert!(!is_transient_transport_error("child turn failed: "));
+        assert!(!is_transient_transport_error(""));
+    }
+}
