@@ -42,6 +42,10 @@ impl MockFs {
 
 #[async_trait]
 impl SessionFileSystem for MockFs {
+    fn is_mount_resolver(&self) -> bool {
+        false
+    }
+
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let files = self.files.lock().unwrap();
         Ok(files

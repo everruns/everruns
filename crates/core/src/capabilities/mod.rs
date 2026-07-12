@@ -947,11 +947,12 @@ pub trait Capability: Send + Sync {
         tool_call: &ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         self.tools()
             .iter()
             .find(|tool| tool.name() == tool_call.name)
-            .and_then(|tool| tool.narrate(tool_call, phase, locale))
+            .and_then(|tool| tool.narrate(tool_call, phase, locale, ctx))
     }
 
     /// Returns user-defined hook specifications contributed by this capability.
@@ -1109,6 +1110,7 @@ pub trait ToolCallHook: Send + Sync {
         _tool_call: &ToolCall,
         _phase: crate::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         None
     }
@@ -1132,8 +1134,9 @@ impl ToolCallHook for CapabilityNarrationHook {
         tool_call: &ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        self.0.narrate(tool_def, tool_call, phase, locale)
+        self.0.narrate(tool_def, tool_call, phase, locale, ctx)
     }
 }
 
@@ -1816,6 +1819,7 @@ impl Tool for UnifiedSpawnAgentTool {
         tool_call: &ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let target_type = tool_call
             .arguments
@@ -1823,7 +1827,7 @@ impl Tool for UnifiedSpawnAgentTool {
             .and_then(|target| target.get("type"))
             .and_then(serde_json::Value::as_str)?;
         self.provider_for(target_type)
-            .and_then(|tool| tool.narrate(tool_call, phase, locale))
+            .and_then(|tool| tool.narrate(tool_call, phase, locale, ctx))
     }
 
     fn name(&self) -> &str {

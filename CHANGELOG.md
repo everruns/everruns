@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.17.8] - 2026-07-11
+
+### Highlights
+
+- **Embedded schedule execution** — `everruns-local` now runs due one-shot and recurring session schedules through the host's live `LocalSessionRunner`, with atomic claims, stale recovery, retryable delivery, timezone-aware advancement, and graceful lifecycle. Embedded hosts that enable scheduled monitors must start and retain `LocalScheduleRunner` ([#2706](https://github.com/everruns/everruns/pull/2706)).
+
+### What's Changed
+
+- feat(local): execute due session schedules ([#2706](https://github.com/everruns/everruns/pull/2706)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): harden audit client IP extraction ([#2704](https://github.com/everruns/everruns/pull/2704)) by [@chaliy](https://github.com/chaliy)
+- fix(llm): retry structured in-band provider errors ([#2702](https://github.com/everruns/everruns/pull/2702)) by [@chaliy](https://github.com/chaliy)
+- test(local): stabilize spawn_agent runtime proof ([#2703](https://github.com/everruns/everruns/pull/2703)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.7] - 2026-07-11
 
 ### Highlights

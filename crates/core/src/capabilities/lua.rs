@@ -1286,6 +1286,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for EmptyFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             _session_id: SessionId,
@@ -1696,6 +1700,10 @@ mod tests {
 
         #[async_trait]
         impl SessionFileSystem for MapFileStore {
+            fn is_mount_resolver(&self) -> bool {
+                false
+            }
+
             async fn read_file(
                 &self,
                 session_id: SessionId,

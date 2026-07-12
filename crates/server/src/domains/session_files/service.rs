@@ -1092,6 +1092,10 @@ fn file_system_display_error(error: impl std::fmt::Display) -> AgentLoopError {
 
 #[async_trait]
 impl SessionFileSystem for WorkspaceFileService {
+    fn is_mount_resolver(&self) -> bool {
+        false
+    }
+
     async fn seed_initial_file(
         &self,
         session_id: SessionId,

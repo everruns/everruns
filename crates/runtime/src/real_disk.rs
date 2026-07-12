@@ -209,6 +209,10 @@ impl SessionFileSystem for RealDiskFileStore {
         }
     }
 
+    fn is_mount_resolver(&self) -> bool {
+        false
+    }
+
     async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
         // Clear any prior readonly mark so seeding always wins over a
         // previous starter-file declaration with the same path.
