@@ -152,6 +152,7 @@ pub mod driver_registry;
 pub mod error;
 pub mod guardrail_checks;
 pub mod guardrail_gallery;
+pub mod llm_error_hook;
 pub mod llm_retry;
 pub mod message;
 pub mod message_filter;
@@ -206,6 +207,9 @@ pub use error::{
     AgentLoopError, FileSystemError, FileSystemErrorClass, LlmError, LlmErrorKind, Result,
     StoreResultExt, classify_fs_error, from_json, json_val,
 };
+pub use llm_error_hook::{
+    LlmErrorContext, LlmErrorHook, LlmErrorHookOutcome, LlmErrorHookServices,
+};
 pub use message::{
     ContentPart, ContentType, Controls, ExternalActor, ImageContentPart, ImageFileContentPart,
     InputContentPart, Message, MessageRole, ReasoningConfig, TextContentPart, ToolCallContentPart,
@@ -236,7 +240,8 @@ pub use traits::{
 pub use user_facing_error::{
     ErrorDisclosure, UserFacingError, UserFacingErrorContext, UserFacingErrorFields,
     classify_runtime_error_message, codes as user_facing_error_codes, is_provider_quota_message,
-    metadata_keys as user_facing_error_metadata_keys, trim_error_chain_prefixes,
+    is_usage_limit_message, metadata_keys as user_facing_error_metadata_keys,
+    parse_usage_limit_reset_at, trim_error_chain_prefixes,
 };
 pub use workspace_roots::{
     ADDITIONAL_ROOTS_MOUNT, PRIMARY_WORKSPACE_ROOT_NAME, RelPath, ResolvedPath, WorkspaceRoot,

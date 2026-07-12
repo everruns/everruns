@@ -149,6 +149,7 @@ mod tool_call_repair;
 mod tool_output_distillation;
 mod tool_output_persistence;
 mod tool_search;
+mod usage_limit_auto_continue;
 pub mod user_hooks;
 mod util;
 #[cfg(feature = "web-fetch")]
@@ -327,6 +328,10 @@ pub use subagents::{
     ReportResultTool, ReportTaskProgressTool, SUBAGENTS_CAPABILITY_ID, SpawnSubagentAsAgentTool,
     SubagentCapability, report_result_tool_for_child_session,
     report_task_progress_tool_for_child_session,
+};
+pub use usage_limit_auto_continue::{
+    AutoContinueConfig, USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID, UsageLimitAutoContinueCapability,
+    resolve_usage_limit_auto_continue,
 };
 // Blueprint types are exported directly from the trait definitions above
 pub use bashkit_shell::{
@@ -809,6 +814,21 @@ pub trait Capability: Send + Sync {
     ///
     /// By default, returns None (no model-view transformation).
     fn model_view_provider(&self) -> Option<Arc<dyn ModelViewProvider>> {
+        None
+    }
+
+    /// Returns an in-process hook invoked when a turn fails with a *terminal*
+    /// LLM error (one that will not be retried), before the user-facing error
+    /// message is emitted. The hook may perform a side effect (e.g. schedule a
+    /// continuation) and/or return extra fields to augment the user-facing error
+    /// copy. This is the platform seam for capability-owned error recovery — the
+    /// same in-process hook family as [`Self::tool_call_hooks`] and
+    /// [`Self::message_filter_provider`]; the reason atom invokes it generically
+    /// and knows nothing about any specific capability's behavior. See
+    /// [`crate::llm_error_hook`].
+    ///
+    /// By default, returns None (no error hook).
+    fn llm_error_hook(&self) -> Option<Arc<dyn crate::llm_error_hook::LlmErrorHook>> {
         None
     }
 
@@ -1408,6 +1428,14 @@ impl CapabilityRegistry {
 
         // Loop detection (EVE-227: detect repeated identical tool calls)
         registry.register(LoopDetectionCapability);
+
+        // Auto-continue after an LLM usage limit resets: resumes interrupted
+        // work once the provider limit clears. Behavior-only (no tools).
+        // Grade-only (not in `runtime_builtins`): its error hook needs the
+        // `schedule_store` host service to create the continuation and a schedule
+        // poller to fire it — neither is in the default in-process runtime — so it
+        // sits with `session_schedule` rather than the runtime-safe preset.
+        registry.register(UsageLimitAutoContinueCapability);
 
         // Tool-call repair (EVE-600): opt-in salvage of malformed tool-call
         // arguments. Disabled by default — registered so agents can enable it,
@@ -3117,6 +3145,7 @@ mod tests {
             "fake_crm",
             "fake_financial",
             "loop_detection",
+            "usage_limit_auto_continue",
             "tool_call_repair",
             "error_disclosure",
             "prompt_canary_guardrail",

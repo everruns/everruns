@@ -22,6 +22,21 @@ bad API key. Quota/billing exhaustion now has its own user-facing code,
 `provider_quota_exhausted`, and is treated as non-transient (drivers fail
 fast instead of retrying it as a 429).
 
+Subscription/plan usage limits (e.g. the ChatGPT/Codex `429`
+`usage_limit_reached` body) are a third distinct case with their own code,
+`provider_usage_limit_reached`. Unlike an ordinary rate limit they do not
+recover within the driver backoff window — they reset hours later — and unlike
+quota exhaustion they need no operator action, recovering on their own at the
+reported reset time. The string classifier detects the `usage_limit_reached`
+wording provider-agnostically (so any driver surfacing it is covered), captures
+the absolute `resets_at` unix timestamp as an `error_fields` value for clients
+to localize, and `is_transient_error_message` treats it as non-transient so the
+human-readable message surfaces immediately instead of after pointless retries.
+The user-facing copy reads "You're out of LLM usage limits. Your usage limit
+resets at &lt;time&gt;." An `auto_continue` field, set by the emit site only when
+an auto-continue capability is active, appends a promise that work resumes
+automatically once the limit resets; absent it, the copy stays generic.
+
 ## Disclosure modes
 
 The `error_disclosure` capability (`crates/core/src/capabilities/error_disclosure.rs`)

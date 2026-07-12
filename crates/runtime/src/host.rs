@@ -1145,6 +1145,11 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
     if let Some(utility_llm_service) = adapter.utility_llm_service() {
         atom = atom.with_utility_llm_service(utility_llm_service);
     }
+    // Schedule store powers the `usage_limit_auto_continue` capability, which
+    // schedules a continuation after a provider usage limit resets.
+    if let Some(schedule_store) = adapter.schedule_store(org_id) {
+        atom = atom.with_schedule_store(schedule_store);
+    }
 
     let input = ReasonInput {
         mcp_tool_definitions: turn_context.mcp_tool_definitions,

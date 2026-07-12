@@ -413,6 +413,15 @@ pub fn send_error_message(err: &reqwest::Error, attempts: u32) -> String {
 /// This complements HTTP-status-based retry detection for streaming APIs that can
 /// emit retryable provider failures inside an otherwise successful event stream.
 pub fn is_transient_error_message(message: &str) -> bool {
+    // A subscription/plan usage limit (e.g. Codex `usage_limit_reached`) surfaces
+    // as a 429 ("too many requests") but does not recover within the retry
+    // window — it resets hours later at `resets_at`. Treating it as transient
+    // would waste retries and suppress the human-readable error message the
+    // reason atom emits for terminal failures, so it is explicitly non-transient.
+    if crate::user_facing_error::is_usage_limit_message(message) {
+        return false;
+    }
+
     let msg = message.trim().to_ascii_lowercase();
 
     [
@@ -845,6 +854,16 @@ mod tests {
             Some(429),
             "rate limit",
         )));
+    }
+
+    #[test]
+    fn test_is_transient_error_message_treats_usage_limit_as_non_transient() {
+        // Codex `usage_limit_reached` arrives as a 429 ("too many requests") but
+        // resets hours later — retrying inside the backoff window is pointless
+        // and would suppress the terminal user-facing message.
+        assert!(!is_transient_error_message(
+            "Codex API error (429 Too Many Requests): {\"error\":{\"type\":\"usage_limit_reached\",\"resets_at\":1783767823}}"
+        ));
     }
 
     #[test]

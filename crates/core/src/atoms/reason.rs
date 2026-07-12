@@ -410,6 +410,7 @@ fn is_error_placeholder_message(msg: &Message) -> bool {
                 | user_facing_error_codes::MODEL_UNAVAILABLE
                 | user_facing_error_codes::REQUEST_TOO_LARGE
                 | user_facing_error_codes::PROVIDER_RATE_LIMITED
+                | user_facing_error_codes::PROVIDER_USAGE_LIMIT_REACHED
                 | user_facing_error_codes::PROVIDER_MISCONFIGURED
                 | user_facing_error_codes::PROVIDER_QUOTA_EXHAUSTED
                 | user_facing_error_codes::PROVIDER_UNAVAILABLE
@@ -729,6 +730,12 @@ pub struct ReasonAtom {
     /// end-of-message output guardrails (e.g. moderation). When absent, those
     /// guardrails fail open and the seam is a no-op.
     utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
+    /// Optional session schedule store. Used by the `usage_limit_auto_continue`
+    /// capability to schedule a one-shot continuation after a provider usage
+    /// limit resets. When absent, the capability degrades to a no-op (no
+    /// continuation is scheduled and the error copy makes no auto-resume
+    /// promise).
+    schedule_store: Option<Arc<dyn crate::traits::SessionScheduleStore>>,
 }
 
 impl ReasonAtom {
@@ -761,7 +768,40 @@ impl ReasonAtom {
             partial_stream_store: None,
             reasoning_effort_handle: None,
             utility_llm_service: None,
+            schedule_store: None,
         }
+    }
+
+    /// Set the session schedule store used by `usage_limit_auto_continue` to
+    /// schedule a continuation after a provider usage limit resets.
+    pub fn with_schedule_store(
+        mut self,
+        store: Arc<dyn crate::traits::SessionScheduleStore>,
+    ) -> Self {
+        self.schedule_store = Some(store);
+        self
+    }
+
+    /// Collect the [`LlmErrorHook`]s contributed by the active capabilities,
+    /// paired with each capability's per-agent config. Hooks are invoked
+    /// generically on the terminal-error path; the reason atom has no knowledge
+    /// of any specific capability's behavior. Capabilities that contribute no
+    /// hook — the common case — are skipped at zero allocation cost.
+    fn collect_llm_error_hooks(
+        &self,
+        resolved_capability_configs: &[crate::AgentCapabilityConfig],
+    ) -> Vec<(
+        Arc<dyn crate::llm_error_hook::LlmErrorHook>,
+        serde_json::Value,
+    )> {
+        resolved_capability_configs
+            .iter()
+            .filter_map(|cfg| {
+                let cap = self.capability_registry.get(cfg.capability_ref.as_str())?;
+                let hook = cap.llm_error_hook()?;
+                Some((hook, cfg.config.clone()))
+            })
+            .collect()
     }
 
     /// Set the file store for capabilities that need filesystem access.
@@ -1032,12 +1072,17 @@ impl ReasonAtom {
             }
         };
 
-        let (error_disclosure, error_context, call_result) = match assembled {
+        let (error_disclosure, error_context, error_hooks, call_result) = match assembled {
             Ok(assembled) => {
                 let error_disclosure = crate::capabilities::resolve_error_disclosure(
                     &assembled.resolved_capability_configs,
                     error_disclosure_override(&assembled.messages).as_deref(),
                 );
+                // Collected before `assembled` is consumed by the LLM call so the
+                // terminal-error path below can run capability error hooks even
+                // though it no longer has the capability configs.
+                let error_hooks =
+                    self.collect_llm_error_hooks(&assembled.resolved_capability_configs);
                 let error_context = UserFacingErrorContext::default()
                     .with_provider(assembled.model_with_provider.provider_type.to_string())
                     .with_model_id(assembled.model_with_provider.model.clone());
@@ -1055,11 +1100,12 @@ impl ReasonAtom {
                         assembled,
                     )
                     .await;
-                (error_disclosure, error_context, call_result)
+                (error_disclosure, error_context, error_hooks, call_result)
             }
             Err(error) => (
                 ErrorDisclosure::default(),
                 UserFacingErrorContext::default(),
+                Vec::new(),
                 Err(error),
             ),
         };
@@ -1113,9 +1159,7 @@ impl ReasonAtom {
                 );
 
                 let error_msg = e.to_string();
-                let source_error = e.user_facing_error(error_context);
-                let user_error = source_error.apply_disclosure(error_disclosure, Some(&error_msg));
-                let user_error_text = user_error.fallback_message();
+                let mut source_error = e.user_facing_error(error_context);
 
                 // Only emit user-facing error events for non-transient errors.
                 // Transient errors (server errors, rate limits, timeouts) will be
@@ -1125,6 +1169,36 @@ impl ReasonAtom {
                 // are exhausted (DLQ).
                 let is_transient = e.is_transient_llm_error()
                     || (e.llm_error_kind().is_none() && is_transient_error_message(&error_msg));
+
+                // Capability error-hook seam: on the terminal (non-retried)
+                // error path, let active capabilities react — perform a side
+                // effect and/or augment the user-facing error fields — before the
+                // message is built. The atom stays behavior-agnostic; each hook
+                // (e.g. `usage_limit_auto_continue`) owns its own logic.
+                if !is_transient && !error_hooks.is_empty() {
+                    let services = crate::llm_error_hook::LlmErrorHookServices {
+                        schedule_store: self.schedule_store.clone(),
+                    };
+                    for (hook, config) in &error_hooks {
+                        let outcome = {
+                            let ctx = crate::llm_error_hook::LlmErrorContext {
+                                session_id: context.session_id,
+                                error_code: &source_error.code,
+                                error_fields: &source_error.fields,
+                                config,
+                                services: &services,
+                            };
+                            hook.on_llm_error(&ctx).await
+                        };
+                        for (key, value) in outcome.extra_error_fields {
+                            source_error = source_error.with_field(key, value);
+                        }
+                    }
+                }
+
+                let user_error = source_error.apply_disclosure(error_disclosure, Some(&error_msg));
+                let user_error_text = user_error.fallback_message();
+
                 let mut output_message_id = None;
 
                 if !is_transient {
