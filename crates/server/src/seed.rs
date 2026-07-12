@@ -125,6 +125,7 @@ mod seed_ids {
 
     // Anthropic Models (0x300-0x3FF)
     pub const CLAUDE_SONNET_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030c);
+    pub const CLAUDE_OPUS_4_8: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030d);
     pub const CLAUDE_OPUS_4_7: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000309);
     pub const CLAUDE_SONNET_4_6: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030a);
     pub const CLAUDE_HAIKU_4_6: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030b);
@@ -2030,7 +2031,15 @@ const SEED_MODELS: &[SeedModel] = &[
         enabled: false,
         is_favorite: false,
     },
-    // Anthropic Claude Sonnet 5 (current-gen Sonnet)
+    // Anthropic current-gen (Opus 4.8, Sonnet 5)
+    SeedModel {
+        id: seed_ids::CLAUDE_OPUS_4_8,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-opus-4-8",
+        display_name: "Claude Opus 4.8",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
     SeedModel {
         id: seed_ids::CLAUDE_SONNET_5,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
@@ -2240,8 +2249,8 @@ const SEED_MODELS: &[SeedModel] = &[
     },
 ];
 
-/// Default model ID for org settings seeding (GPT-5.5)
-const DEFAULT_MODEL_ID: Uuid = seed_ids::GPT_5_5;
+/// Default model ID for org settings seeding (GPT-5.6 Sol)
+const DEFAULT_MODEL_ID: Uuid = seed_ids::GPT_5_6_SOL;
 
 /// Seed organization settings (default model, etc.)
 async fn seed_organization_settings(db: &StorageBackend) -> anyhow::Result<SeedResult> {
@@ -3389,6 +3398,36 @@ mod tests {
             settings.default_model_id,
             Some(everruns_core::ModelId::from_uuid(DEFAULT_MODEL_ID))
         );
+    }
+
+    #[tokio::test]
+    async fn test_seed_all_sets_default_and_seeds_opus_48() {
+        let db = make_db();
+        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
+
+        // Platform default model is GPT-5.6 Sol.
+        let settings = db
+            .get_organization_settings(DEFAULT_ORG_ID)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            settings.default_model_id,
+            Some(everruns_core::ModelId::from_uuid(seed_ids::GPT_5_6_SOL)),
+        );
+
+        // Claude Opus 4.8 is seeded for the Anthropic provider, enabled and
+        // marked favorite (the recommended Anthropic model).
+        let opus = db
+            .get_model(DEFAULT_ORG_ID, seed_ids::CLAUDE_OPUS_4_8)
+            .await
+            .unwrap()
+            .expect("claude-opus-4-8 should be seeded");
+        assert_eq!(opus.model_id, "claude-opus-4-8");
+        assert!(opus.enabled, "claude-opus-4-8 should be enabled");
+        assert!(opus.is_favorite, "claude-opus-4-8 should be favorite");
     }
 
     #[tokio::test]
