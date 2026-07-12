@@ -481,6 +481,7 @@ impl Tool for ListSkillsTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         crate::tool_narration::narrate_skill(&tool_call.name, &tool_call.arguments, phase, locale)
     }
@@ -583,6 +584,7 @@ impl Tool for ActivateSkillTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         crate::tool_narration::narrate_skill(&tool_call.name, &tool_call.arguments, phase, locale)
     }
@@ -746,6 +748,7 @@ impl Tool for ReadSkillTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         crate::tool_narration::narrate_skill(&tool_call.name, &tool_call.arguments, phase, locale)
     }

@@ -160,6 +160,7 @@ impl Capability for McpCapability {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         // Generic search narration for provider/MCP search tools (`*__search`).
         if !tool_call.name.ends_with("__search") {

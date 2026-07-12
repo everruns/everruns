@@ -459,6 +459,11 @@ pub trait SessionFileSystem: Send + Sync {
         crate::session_path::to_session_path(input)
     }
 
+    /// Whether this store is already a mount-based resolver ([`MountFs`]).
+    ///
+    /// Used to avoid re-wrapping nested mount tables when building tool context.
+    fn is_mount_resolver(&self) -> bool;
+
     /// Read a file by path
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>>;
 
@@ -639,6 +644,10 @@ impl SessionFileSystem for WorkspaceScopedFileSystem {
     fn resolve_path(&self, input: &str) -> String {
         self.inner.resolve_path(input)
     }
+
+    fn is_mount_resolver(&self) -> bool {
+        self.inner.is_mount_resolver()
+    }
 }
 
 #[async_trait]
@@ -653,6 +662,10 @@ impl<T: SessionFileSystem + ?Sized> SessionFileSystem for std::sync::Arc<T> {
 
     fn resolve_path(&self, input: &str) -> String {
         (**self).resolve_path(input)
+    }
+
+    fn is_mount_resolver(&self) -> bool {
+        (**self).is_mount_resolver()
     }
 
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {

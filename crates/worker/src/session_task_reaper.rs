@@ -854,6 +854,10 @@ mod tests {
                 updated_at: now,
             })
         }
+
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
     }
 
     // Drive the production `reconcile_orphans` loop with an injected executor
