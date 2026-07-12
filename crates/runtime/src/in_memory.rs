@@ -364,6 +364,9 @@ impl SessionFileSystem for InMemorySessionFileStore {
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
+        let path_pattern = path_pattern
+            .map(everruns_core::session_path::GrepPathPattern::new)
+            .transpose()?;
         let files = self.files.read().await;
         let mut matches = Vec::new();
 
@@ -371,8 +374,8 @@ impl SessionFileSystem for InMemorySessionFileStore {
             if *sid != session_id || entry.file.is_directory || entry.file.encoding != "text" {
                 continue;
             }
-            if let Some(path_pattern) = path_pattern
-                && !path.contains(path_pattern)
+            if let Some(path_pattern) = &path_pattern
+                && !path_pattern.is_match(path)
             {
                 continue;
             }
@@ -579,5 +582,46 @@ fn file_info(file: &SessionFile) -> FileInfo {
         size_bytes: file.size_bytes,
         created_at: file.created_at,
         updated_at: file.updated_at,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn grep_path_pattern_supports_globs_and_substring_compatibility() {
+        let store = InMemorySessionFileStore::new();
+        let session = SessionId::from_seed(1);
+        for path in [
+            "/src/lib.rs",
+            "/src/nested/mod.rs",
+            "/docs/readme.md",
+            "/notes.txt",
+        ] {
+            store
+                .write_file(session, path, "needle", "text")
+                .await
+                .unwrap();
+        }
+
+        let mut glob_paths: Vec<_> = store
+            .grep_files(session, "needle", Some("src/**/*.rs"))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|hit| hit.path)
+            .collect();
+        glob_paths.sort();
+        assert_eq!(glob_paths, vec!["/src/lib.rs", "/src/nested/mod.rs"]);
+
+        let substring_paths: Vec<_> = store
+            .grep_files(session, "needle", Some("docs"))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|hit| hit.path)
+            .collect();
+        assert_eq!(substring_paths, vec!["/docs/readme.md"]);
     }
 }

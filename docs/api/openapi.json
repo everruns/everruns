@@ -21335,10 +21335,12 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional path glob (`**/*.rs`, `docs/*.md`)."
           },
           "pattern": {
-            "type": "string"
+            "type": "string",
+            "description": "Regex pattern to search for."
           }
         }
       },

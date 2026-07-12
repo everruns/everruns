@@ -2571,6 +2571,7 @@ dependencies = [
  "everruns-openui",
  "fetchkit",
  "futures",
+ "globset",
  "hex",
  "http 1.4.2",
  "include_dir",

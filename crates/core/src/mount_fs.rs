@@ -442,6 +442,28 @@ impl SessionFileSystem for MountFs {
     ) -> Result<Vec<GrepMatch>> {
         match path_pattern {
             Some(pp) => {
+                let matcher = crate::session_path::GrepPathPattern::new(pp)?;
+                if matcher.is_glob() && (!pp.starts_with('/') || pp.starts_with(WORKSPACE_MOUNT)) {
+                    let mut matches = Vec::new();
+                    for resolved in self.grep_mounts() {
+                        matches.extend(
+                            resolved
+                                .backend
+                                .grep_files(session_id, pattern, Some(&resolved.backend_path))
+                                .await?
+                                .into_iter()
+                                .map(|grep_match| resolved.map_grep_match(grep_match))
+                                .filter(|grep_match| matcher.is_match(&grep_match.path)),
+                        );
+                    }
+                    matches.sort_by(|a, b| {
+                        a.path
+                            .cmp(&b.path)
+                            .then(a.line_number.cmp(&b.line_number))
+                            .then(a.line.cmp(&b.line))
+                    });
+                    return Ok(matches);
+                }
                 let resolved = self.resolve(pp)?;
                 Ok(resolved
                     .backend
@@ -502,6 +524,7 @@ impl SessionFileSystem for MountFs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session_path::GrepPathPattern;
 
     fn sid() -> SessionId {
         SessionId::from_seed(1)
@@ -585,11 +608,12 @@ mod tests {
             pattern: &str,
             path_pattern: Option<&str>,
         ) -> Result<Vec<GrepMatch>> {
+            let path_pattern = path_pattern.map(GrepPathPattern::new).transpose()?;
             let files = self.files.lock().unwrap();
             let mut matches = Vec::new();
             for (path, content) in files.iter() {
-                if let Some(filter) = path_pattern
-                    && !path.contains(filter)
+                if let Some(filter) = &path_pattern
+                    && !filter.is_match(path)
                 {
                     continue;
                 }
@@ -763,6 +787,59 @@ mod tests {
             paths,
             vec![
                 "/README.md".to_string(),
+                "/workspace/roots/backend/Cargo.toml".to_string()
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn grep_resolves_workspace_glob_to_backend_namespace() {
+        let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        let fs = MountFs::new(backend);
+        fs.write_file(sid(), "/workspace/src/lib.rs", "needle", "text")
+            .await
+            .unwrap();
+        fs.write_file(sid(), "/workspace/docs/readme.md", "needle", "text")
+            .await
+            .unwrap();
+
+        let matches = fs
+            .grep_files(sid(), "needle", Some("/workspace/src/**/*.rs"))
+            .await
+            .unwrap();
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].path, "/src/lib.rs");
+    }
+
+    #[tokio::test]
+    async fn grep_glob_searches_every_matching_mount() {
+        let workspace: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        let volume: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        let fs = MountFs::new(workspace).with_mount("/workspace/roots/backend", volume, "/");
+        fs.write_file(sid(), "/workspace/Cargo.toml", "needle", "text")
+            .await
+            .unwrap();
+        fs.write_file(
+            sid(),
+            "/workspace/roots/backend/Cargo.toml",
+            "needle",
+            "text",
+        )
+        .await
+        .unwrap();
+
+        let paths: Vec<_> = fs
+            .grep_files(sid(), "needle", Some("**/*.toml"))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|hit| hit.path)
+            .collect();
+        assert_eq!(
+            paths,
+            vec![
+                "/Cargo.toml".to_string(),
                 "/workspace/roots/backend/Cargo.toml".to_string()
             ]
         );
