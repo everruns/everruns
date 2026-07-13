@@ -39,6 +39,7 @@ import {
   Shield,
   Telescope,
   UserRound,
+  Waypoints,
   Workflow,
   Cog,
   Cpu,
@@ -92,6 +93,7 @@ export const defaultTopNavigation: NavigationItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Reports", href: "/reports", icon: ChartColumn },
   { name: "Sessions", href: "/sessions", icon: MessageSquare },
+  { name: "Work", href: "/work", icon: Waypoints },
 ];
 
 export const defaultBuildingBlocksNavigation: NavigationItem[] = [

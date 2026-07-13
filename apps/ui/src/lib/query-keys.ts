@@ -203,6 +203,12 @@ export const queryKeys = {
     detail: (sessionId: string, taskId: string) => ["session-task", sessionId, taskId] as const,
   },
 
+  // Org-wide task queries (cross-session Work view — EVE-756)
+  orgTasks: {
+    all: ["org-tasks"] as const,
+    list: () => ["org-tasks", "list"] as const,
+  },
+
   // Command queries
   commands: {
     all: ["commands"] as const,
