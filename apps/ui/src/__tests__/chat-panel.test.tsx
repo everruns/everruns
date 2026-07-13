@@ -24,6 +24,8 @@ const mockSessionContext = {
   isActive: false,
   reasoningEffort: "",
   setReasoningEffort: jest.fn(),
+  verbosity: "",
+  setVerbosity: jest.fn(),
   setIsWaitingForResponse: jest.fn(),
   isThinking: false,
   streamingText: "",

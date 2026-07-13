@@ -1460,6 +1460,34 @@ impl ReasonAtom {
                 }
             });
 
+        // Resolve verbosity from the latest user message's `controls.verbosity`,
+        // gated the same way: a model whose profile has no verbosity config
+        // never gets a `verbosity` field (sending it to an unsupported model is
+        // a 400). Unknown models pass through — let the API decide.
+        let verbosity = messages
+            .iter()
+            .rev()
+            .find(|m| m.role == MessageRole::User)
+            .and_then(|m| m.controls.as_ref())
+            .and_then(|c| c.verbosity.clone())
+            .filter(|verbosity| {
+                let profile = crate::model_profiles::get_model_profile(
+                    &model_with_provider.provider_type,
+                    &model_with_provider.model,
+                );
+                match profile {
+                    Some(p) if p.verbosity.is_none() => {
+                        tracing::warn!(
+                            model = %model_with_provider.model,
+                            verbosity = %verbosity,
+                            "Stripping verbosity: model does not support verbosity control"
+                        );
+                        false
+                    }
+                    _ => true,
+                }
+            });
+
         // 9. Check for an in-flight partial assistant stream from a previous worker (EVE-532).
         // If found, apply the ContinuePartial recovery policy: finalize from accumulated
         // text (if non-empty) or restart clean (if empty/usable partial only).
@@ -1629,6 +1657,9 @@ impl ReasonAtom {
         }
         if let Some(speed) = speed {
             llm_config_builder = llm_config_builder.speed(speed);
+        }
+        if let Some(verbosity) = verbosity {
+            llm_config_builder = llm_config_builder.verbosity(verbosity);
         }
 
         // Inject embedder metadata first; system keys added below take precedence
@@ -2157,6 +2188,7 @@ impl ReasonAtom {
 
                             let summary_config = crate::driver_registry::LlmCallConfig {
                                 speed: None,
+                                verbosity: None,
                                 model: config
                                     .summarization
                                     .model
@@ -3774,6 +3806,7 @@ mod tests {
     fn test_build_request_options_for_openai_prompt_cache() {
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3809,6 +3842,7 @@ mod tests {
     fn test_build_request_options_for_gemini_explicit_cache() {
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gemini-2.5-pro".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3844,6 +3878,7 @@ mod tests {
     fn test_build_request_options_omits_gemini_cache_flag_when_disabled() {
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gemini-2.5-pro".to_string(),
             temperature: None,
             max_tokens: None,

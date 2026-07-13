@@ -544,6 +544,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 .filter(|e| !e.eq_ignore_ascii_case("none"))
                 .cloned(),
             service_tier: config.speed.clone(),
+            verbosity: config.verbosity.clone(),
             metadata,
         };
 
@@ -838,6 +839,11 @@ struct OpenAiRequest {
     /// Omitted when `None` so the provider keeps its default ("auto") routing.
     #[serde(skip_serializing_if = "Option::is_none")]
     service_tier: Option<String>,
+    /// Verbosity selector ("low", "medium", "high"). Top-level field on the
+    /// Chat Completions API. Omitted when `None` so the provider keeps its
+    /// default ("medium") output length.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    verbosity: Option<String>,
     /// Metadata for tracking API usage (up to 16 key-value pairs).
     /// Useful for correlating requests with session_id, agent_id, org_id, etc.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1138,6 +1144,7 @@ mod tests {
         // OpenAI streaming API requires stream_options.include_usage=true
         // to return token usage in the response
         let request = OpenAiRequest {
+            verbosity: None,
             service_tier: None,
             model: "gpt-4o".to_string(),
             messages: vec![OpenAiMessage {
@@ -1171,6 +1178,7 @@ mod tests {
         metadata.insert("agent_id".to_string(), "agent_xyz789".to_string());
 
         let request = OpenAiRequest {
+            verbosity: None,
             service_tier: None,
             model: "gpt-4o".to_string(),
             messages: vec![OpenAiMessage {
@@ -1472,6 +1480,7 @@ mod tests {
         // When reasoning_effort is "none", it should be filtered out
         // to avoid "Unrecognized request argument" errors on non-thinking models
         let request = OpenAiRequest {
+            verbosity: None,
             service_tier: None,
             model: "gpt-4o-mini".to_string(),
             messages: vec![OpenAiMessage {
@@ -1503,6 +1512,7 @@ mod tests {
     #[test]
     fn test_reasoning_effort_high_is_included() {
         let request = OpenAiRequest {
+            verbosity: None,
             service_tier: None,
             model: "o3-mini".to_string(),
             messages: vec![OpenAiMessage {
@@ -1535,6 +1545,7 @@ mod tests {
     fn test_request_serializes_parallel_tool_calls() {
         fn build(flag: Option<bool>) -> serde_json::Value {
             let request = OpenAiRequest {
+                verbosity: None,
                 service_tier: None,
                 model: "gpt-4o-mini".to_string(),
                 messages: vec![OpenAiMessage {
@@ -1569,6 +1580,7 @@ mod tests {
         fn build(tier: Option<&str>) -> serde_json::Value {
             let request = OpenAiRequest {
                 service_tier: tier.map(str::to_string),
+                verbosity: None,
                 model: "gpt-4o-mini".to_string(),
                 messages: vec![OpenAiMessage {
                     role: "user".to_string(),
@@ -1591,6 +1603,38 @@ mod tests {
         assert!(build(None).get("service_tier").is_none());
         assert_eq!(build(Some("flex"))["service_tier"], "flex");
         assert_eq!(build(Some("priority"))["service_tier"], "priority");
+    }
+
+    /// Verbosity serializes as a top-level `verbosity` field only when set, so
+    /// the provider's default output length applies when unset.
+    #[test]
+    fn test_request_serializes_verbosity() {
+        fn build(verbosity: Option<&str>) -> serde_json::Value {
+            let request = OpenAiRequest {
+                service_tier: None,
+                verbosity: verbosity.map(str::to_string),
+                model: "gpt-5.6-sol".to_string(),
+                messages: vec![OpenAiMessage {
+                    role: "user".to_string(),
+                    content: Some(OpenAiContent::Text("Hello".to_string())),
+                    tool_calls: None,
+                    tool_call_id: None,
+                }],
+                temperature: None,
+                max_tokens: None,
+                stream: true,
+                stream_options: None,
+                tools: None,
+                parallel_tool_calls: None,
+                reasoning_effort: None,
+                metadata: None,
+            };
+            serde_json::to_value(&request).unwrap()
+        }
+
+        assert!(build(None).get("verbosity").is_none());
+        assert_eq!(build(Some("low"))["verbosity"], "low");
+        assert_eq!(build(Some("high"))["verbosity"], "high");
     }
 
     // ------------------------------------------------------------------

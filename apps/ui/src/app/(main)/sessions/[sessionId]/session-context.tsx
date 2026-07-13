@@ -23,6 +23,7 @@ import type {
   ModelWithProvider,
   Controls,
   ReasoningEffort,
+  Verbosity,
   ToolCompletedData,
   ToolProgressData,
   InputMessageData,
@@ -67,6 +68,9 @@ export interface SessionContextValue {
   setReasoningEffort: (effort: ReasoningEffort | "") => void;
   getReasoningEffortName: (value: string) => string;
   defaultEffortName: string;
+  // Verbosity
+  verbosity: Verbosity | "";
+  setVerbosity: (value: Verbosity | "") => void;
   // Response waiting state
   isWaitingForResponse: boolean;
   setIsWaitingForResponse: (waiting: boolean) => void;
@@ -334,6 +338,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   const shouldPoll = false;
 
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffort | "">("");
+  const [verbosity, setVerbosity] = useState<Verbosity | "">("");
 
   // Clean up optimistic events when real events arrive from SSE
   useEffect(() => {
@@ -633,6 +638,8 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     setReasoningEffort,
     getReasoningEffortName,
     defaultEffortName,
+    verbosity,
+    setVerbosity,
     isWaitingForResponse,
     setIsWaitingForResponse,
     isThinking,

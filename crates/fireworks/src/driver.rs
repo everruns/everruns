@@ -278,6 +278,7 @@ impl FireworksModelInfo {
             modalities,
             reasoning_effort: None,
             speed: None,
+            verbosity: None,
             tool_search: false,
             supported_parameters: Vec::new(),
             supports_phases: false,

@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { cn } from "@/lib/utils";
-import type { Model, ReasoningEffortConfig } from "@/lib/api/types";
+import type { Model, ReasoningEffortConfig, VerbosityConfig } from "@/lib/api/types";
 import { useLocale } from "@/providers/locale-provider";
 
 interface ModelEffortMenuProps {
@@ -41,6 +41,12 @@ interface ModelEffortMenuProps {
   defaultEffortName: string;
   getReasoningEffortName: (value: string) => string;
   onReasoningEffortChange: (value: string) => void;
+  supportsVerbosity: boolean;
+  verbosity: string;
+  verbosityConfig?: VerbosityConfig;
+  defaultVerbosityName: string;
+  getVerbosityName: (value: string) => string;
+  onVerbosityChange: (value: string) => void;
 }
 
 /** A menu row that marks the active option with a trailing check, like the screenshot. */
@@ -74,6 +80,12 @@ export function ModelEffortMenu({
   defaultEffortName,
   getReasoningEffortName,
   onReasoningEffortChange,
+  supportsVerbosity,
+  verbosity,
+  verbosityConfig,
+  defaultVerbosityName,
+  getVerbosityName,
+  onVerbosityChange,
 }: ModelEffortMenuProps) {
   const { t } = useLocale();
 
@@ -85,10 +97,14 @@ export function ModelEffortMenu({
     ? getReasoningEffortName(reasoningEffort)
     : defaultEffortName;
 
-  const canReset = Boolean(selectedModelId) || Boolean(reasoningEffort);
+  // Effective verbosity name for the submenu trigger: explicit override or default.
+  const verbositySummary = verbosity ? getVerbosityName(verbosity) : defaultVerbosityName;
+
+  const canReset = Boolean(selectedModelId) || Boolean(reasoningEffort) || Boolean(verbosity);
   const handleReset = () => {
     onModelChange("");
     if (supportsReasoning) onReasoningEffortChange("");
+    if (supportsVerbosity) onVerbosityChange("");
   };
 
   return (
@@ -177,6 +193,33 @@ export function ModelEffortMenu({
                       label={effort.name}
                       selected={reasoningEffort === effort.value}
                       onSelect={() => onReasoningEffortChange(effort.value)}
+                    />
+                  ))}
+                </DropdownMenuGroup>
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )}
+
+          {supportsVerbosity && verbosityConfig && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <span>{t("verbosity")}</span>
+                <span className="ml-auto text-muted-foreground">{verbositySummary}</span>
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent className="min-w-[180px]">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>{t("verbosity")}</DropdownMenuLabel>
+                  <OptionItem
+                    label={t("default_with_value", { value: defaultVerbosityName })}
+                    selected={verbosity === ""}
+                    onSelect={() => onVerbosityChange("")}
+                  />
+                  {verbosityConfig.values.map((item) => (
+                    <OptionItem
+                      key={item.value}
+                      label={item.name}
+                      selected={verbosity === item.value}
+                      onSelect={() => onVerbosityChange(item.value)}
                     />
                   ))}
                 </DropdownMenuGroup>

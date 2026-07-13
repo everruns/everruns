@@ -207,6 +207,7 @@ impl JudgeClient for LlmJudgeClient {
         ];
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: resolved.model_id,
             temperature: Some(0.0),
             max_tokens: Some(700),

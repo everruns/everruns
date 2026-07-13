@@ -17618,6 +17618,13 @@
               "null"
             ],
             "description": "Speed (service tier) for this message turn: \"flex\", \"default\", or\n\"priority\". Only sent to providers whose model profile advertises a\nspeed config (OpenAI `service_tier`)."
+          },
+          "verbosity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Verbosity for this message turn: \"low\", \"medium\", or \"high\". Only sent\nto providers whose model profile advertises a verbosity config (OpenAI\n`verbosity`)."
           }
         }
       },
@@ -28167,6 +28174,17 @@
           "tool_search": {
             "type": "boolean",
             "description": "Whether the model supports tool_search (deferred tool loading).\nWhen true, the driver can use namespaces and defer_loading to reduce\ntoken usage for large tool sets. Currently supported by GPT-5.4 and newer."
+          },
+          "verbosity": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/VerbosityConfig",
+                "description": "Verbosity configuration, for models that expose output-length\ncontrol (OpenAI `verbosity`)."
+              }
+            ]
           }
         }
       },
@@ -36464,6 +36482,54 @@
             "type": "string",
             "description": "Full SKILL.md content to validate, including the YAML frontmatter and the markdown body.",
             "example": "---\nname: refund-policy\ndescription: Issue refunds inside the policy window.\n---\n\nUse this when a customer asks for a refund within 30 days of purchase."
+          }
+        }
+      },
+      "Verbosity": {
+        "type": "string",
+        "description": "Verbosity level for models that support output-length control.\nWire values map 1:1 to the OpenAI `verbosity` request parameter:\n`low` (terse), `medium` (balanced, provider default), `high`\n(comprehensive). Independent of `ReasoningEffort`, which tunes the\namount of reasoning rather than the length of the final answer.",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      "VerbosityConfig": {
+        "type": "object",
+        "description": "Verbosity configuration for a model",
+        "required": [
+          "values",
+          "default"
+        ],
+        "properties": {
+          "default": {
+            "$ref": "#/components/schemas/Verbosity",
+            "description": "Default verbosity for this model"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VerbosityValue"
+            },
+            "description": "Available verbosity values for this model"
+          }
+        }
+      },
+      "VerbosityValue": {
+        "type": "object",
+        "description": "Named verbosity value for UI display",
+        "required": [
+          "value",
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name (e.g., \"Low\", \"High\")"
+          },
+          "value": {
+            "$ref": "#/components/schemas/Verbosity",
+            "description": "The API value (e.g., \"low\", \"high\")"
           }
         }
       },
