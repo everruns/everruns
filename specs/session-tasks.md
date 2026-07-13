@@ -273,6 +273,13 @@ cancel, and on completion the summary plus artifact links. Chips render purely
 from the snapshot, so new kinds appear with no frontend work. The current
 resources tab becomes tasks + resources.
 
+A cross-session **Work view** (EVE-756) reuses the same snapshot-driven chips
+and the per-session task detail card over the org-scoped `GET /v1/tasks`,
+grouping tasks by `root_session_id` into a delegation tree (root session →
+owning sessions → tasks). It has no org-wide event stream, so it reconciles the
+same `task.created`/`task.updated` snapshots by `task_id` across one per-session
+SSE subscription per owning session.
+
 ## Agent-facing tools
 
 Generic tools replace the per-kind query/messaging tools:
@@ -559,8 +566,10 @@ No backward compatibility is required; data migrates forward once:
   `unified_worker::schedule_next_activity`'s signal-consume boundary, persisted
   through the durable signal store, with exactly-once across worker restart) is
   **not** wired in part A — it needs live Postgres/NATS/gRPC to validate and is
-  deferred to a reviewed follow-up. The cross-session Work view (part B) depends
-  on EVE-680's `root_session_id` and is also deferred.
+  deferred to a reviewed follow-up. The cross-session Work view (part B, EVE-756)
+  builds on EVE-680's `root_session_id` and is now implemented in `apps/ui`
+  (grouped delegation tree over `GET /v1/tasks`, reusing the per-session chips
+  and task detail).
 - Background tool cancellation is cooperative: runs with a task record
   heartbeat every ~2s and poll `cancel_requested_at`, winding down to
   `canceled` when set (works across worker processes).
