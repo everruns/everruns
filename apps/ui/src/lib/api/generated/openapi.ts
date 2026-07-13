@@ -7442,7 +7442,9 @@ export interface components {
       path: string;
     };
     GrepRequest: {
+      /** @description Optional path glob (`**\/*.rs`, `docs/*.md`). */
       path_pattern?: string | null;
+      /** @description Regex pattern to search for. */
       pattern: string;
     };
     /** @description Grep result for a file */
