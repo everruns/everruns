@@ -243,8 +243,10 @@ let runtime = InProcessRuntimeBuilder::new()
 
 If the embedded platform enables scheduled monitors, persistence alone is not
 enough: start the local executor with the same `LocalSessionRunner` used to
-drive live sessions, retain its handle for the host lifetime, and shut it down
-gracefully:
+drive live sessions. If that runner cannot deliver to every session in the
+organization, implement `routable_session_ids` with a current route snapshot;
+an empty snapshot claims no schedules. Retain the handle for the host lifetime
+and shut it down gracefully:
 
 ```rust
 let schedule_runner = local.start_schedule_runner(session_runner.clone())?;
@@ -254,10 +256,11 @@ let local = local.with_platform_runner(session_runner);
 schedule_runner.shutdown().await?;
 ```
 
-The runner atomically claims due SQLite records, recovers stale claims after an
-interrupted process, advances timezone-aware recurring schedules, and retries
-failed `send_message` delivery. Delivery is at-least-once across the narrow
-crash window between the host accepting a message and SQLite recording its
+The runner atomically claims due SQLite records only for routable sessions,
+recovers stale claims after an interrupted process, advances timezone-aware
+recurring schedules, and retries failed `send_message` delivery after the
+configured claim timeout. Delivery is at-least-once across the narrow crash
+window between the host accepting a message and SQLite recording its
 completion.
 
 `LocalBackends` only adds the local stores — it preserves a caller-supplied event bus (via `RuntimeBackends`) and session file-system factory (via the platform's `PlatformDefinition`), so it composes with the [custom backends](#custom-backends) above rather than replacing them. See [docs.rs/everruns-local](https://docs.rs/everruns-local) for the full API.
