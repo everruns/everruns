@@ -15,6 +15,7 @@ pub struct LocalScheduleRunnerConfig {
     /// How often the SQLite store is checked for due schedules.
     pub poll_interval: Duration,
     /// How long an unfinished claim remains exclusive before another runner may recover it.
+    /// Failed deliveries also wait this long before becoming claimable again.
     pub claim_timeout: Duration,
     /// Maximum schedules claimed per poll.
     pub batch_size: usize,
@@ -111,11 +112,13 @@ impl LocalScheduleRunner {
     }
 
     async fn poll_once(&self, runner_id: &str) -> everruns_core::Result<()> {
+        let routable_session_ids = self.session_runner.routable_session_ids().await?;
         let claimed = self.store.claim_due(
             runner_id,
             Utc::now(),
             self.config.claim_timeout,
             self.config.batch_size,
+            routable_session_ids.as_deref(),
         )?;
         if !claimed.is_empty() {
             tracing::debug!(
@@ -159,7 +162,9 @@ impl LocalScheduleRunner {
             },
             Err(error) => {
                 let error_text = bounded_error(&error.to_string());
-                if let Err(release_error) = self.store.fail_delivery(&claim, runner_id, &error_text)
+                if let Err(release_error) =
+                    self.store
+                        .fail_delivery(&claim, runner_id, Utc::now(), &error_text)
                 {
                     tracing::error!(
                         runner_id,
@@ -174,7 +179,7 @@ impl LocalScheduleRunner {
                     schedule_id = %schedule.id,
                     session_id = %schedule.session_id,
                     error = %error,
-                    "Local schedule delivery failed; occurrence released for retry"
+                    "Local schedule delivery failed; occurrence retained for retry"
                 );
             }
         }

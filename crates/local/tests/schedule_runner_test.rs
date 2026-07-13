@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
@@ -122,6 +123,94 @@ struct BlockingRunner {
     attempts: AtomicUsize,
     entered: Notify,
     block: Notify,
+}
+
+#[derive(Default)]
+struct RoutingRunner {
+    active_sessions: Mutex<HashSet<SessionId>>,
+    attempts: AtomicUsize,
+    attempted_sessions: Mutex<Vec<SessionId>>,
+    delivered: Mutex<Vec<(SessionId, String)>>,
+    delivery_notify: Notify,
+}
+
+impl RoutingRunner {
+    fn activate(&self, session_id: SessionId) {
+        self.active_sessions.lock().insert(session_id);
+    }
+
+    fn attempts_for(&self, session_id: SessionId) -> usize {
+        self.attempted_sessions
+            .lock()
+            .iter()
+            .filter(|attempted| **attempted == session_id)
+            .count()
+    }
+
+    async fn wait_for_deliveries(&self, expected: usize) {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while self.delivered.lock().len() < expected {
+                self.delivery_notify.notified().await;
+            }
+        })
+        .await
+        .expect("timed out waiting for routed delivery");
+    }
+}
+
+#[async_trait]
+impl LocalSessionRunner for RoutingRunner {
+    async fn routable_session_ids(&self) -> Result<Option<Vec<SessionId>>> {
+        Ok(Some(self.active_sessions.lock().iter().copied().collect()))
+    }
+
+    async fn create_session(
+        &self,
+        _harness_id: HarnessId,
+        _agent_id: Option<AgentId>,
+        _title: Option<&str>,
+        _locale: Option<&str>,
+        _parent_session_id: Option<SessionId>,
+    ) -> Result<Session> {
+        Err(AgentLoopError::tool("unused in schedule runner test"))
+    }
+
+    async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()> {
+        self.attempts.fetch_add(1, Ordering::SeqCst);
+        self.attempted_sessions.lock().push(session_id);
+        if !self.active_sessions.lock().contains(&session_id) {
+            return Err(AgentLoopError::tool("session is inactive"));
+        }
+        self.delivered
+            .lock()
+            .push((session_id, content.to_string()));
+        self.delivery_notify.notify_waiters();
+        Ok(())
+    }
+
+    async fn list_sessions(
+        &self,
+        _limit: Option<usize>,
+        _agent_id: Option<AgentId>,
+    ) -> Result<Vec<Session>> {
+        Err(AgentLoopError::tool("unused in schedule runner test"))
+    }
+
+    async fn get_session(&self, _session_id: SessionId) -> Result<Option<Session>> {
+        Err(AgentLoopError::tool("unused in schedule runner test"))
+    }
+
+    async fn get_messages(
+        &self,
+        _session_id: SessionId,
+        _limit: Option<usize>,
+    ) -> Result<Vec<PlatformMessage>> {
+        Err(AgentLoopError::tool("unused in schedule runner test"))
+    }
+
+    async fn get_session_status(&self, _session_id: SessionId) -> Result<Option<String>> {
+        Err(AgentLoopError::tool("unused in schedule runner test"))
+    }
 }
 
 impl Default for BlockingRunner {
@@ -393,7 +482,10 @@ async fn failed_delivery_is_recorded_and_retried() {
         .unwrap();
     let session_runner = Arc::new(RecordingRunner::failing(1));
     let handle = LocalScheduleRunner::new(store.clone(), session_runner.clone())
-        .with_config(config(Duration::from_millis(200), Duration::from_secs(1)))
+        .with_config(config(
+            Duration::from_millis(10),
+            Duration::from_millis(100),
+        ))
         .start()
         .unwrap();
 
@@ -408,6 +500,8 @@ async fn failed_delivery_is_recorded_and_retried() {
     assert!(retryable.enabled);
     assert_eq!(retryable.trigger_count, 0);
     assert!(retryable.next_trigger_at.is_some());
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert_eq!(session_runner.attempts.load(Ordering::SeqCst), 1);
 
     session_runner.wait_for_deliveries(1).await;
     handle.shutdown().await.unwrap();
@@ -421,6 +515,85 @@ async fn failed_delivery_is_recorded_and_retried() {
             .unwrap()
             .is_none()
     );
+}
+
+#[tokio::test]
+async fn inactive_session_is_skipped_until_it_becomes_routable() {
+    let root = tempfile::tempdir().unwrap();
+    let path = root.path().join("scoped-schedules.db");
+    let store_a = store(SqliteDb::open(&path).unwrap());
+    let store_b = store(SqliteDb::open(&path).unwrap());
+    let inactive_session_id = SessionId::new();
+    let active_session_id = SessionId::new();
+    let inactive_schedule = store_a
+        .create_schedule(
+            inactive_session_id,
+            "later".into(),
+            None,
+            Some(chrono::Utc::now() - chrono::Duration::milliseconds(10)),
+            "UTC".into(),
+        )
+        .await
+        .unwrap();
+    store_a
+        .create_schedule(
+            active_session_id,
+            "now".into(),
+            None,
+            Some(chrono::Utc::now()),
+            "UTC".into(),
+        )
+        .await
+        .unwrap();
+    let session_runner = Arc::new(RoutingRunner::default());
+    session_runner.activate(active_session_id);
+    let mut runner_config = config(Duration::from_millis(10), Duration::from_secs(1));
+    runner_config.batch_size = 1;
+    let handle_a = LocalScheduleRunner::new(store_a.clone(), session_runner.clone())
+        .with_config(runner_config.clone())
+        .start()
+        .unwrap();
+    let handle_b = LocalScheduleRunner::new(store_b, session_runner.clone())
+        .with_config(runner_config)
+        .start()
+        .unwrap();
+
+    session_runner.wait_for_deliveries(1).await;
+    tokio::time::sleep(Duration::from_millis(75)).await;
+    assert_eq!(session_runner.attempts_for(inactive_session_id), 0);
+    assert_eq!(session_runner.attempts_for(active_session_id), 1);
+    let pending = store_a
+        .list_schedules(inactive_session_id)
+        .await
+        .unwrap()
+        .remove(0);
+    assert!(pending.enabled);
+    assert_eq!(pending.trigger_count, 0);
+    assert!(pending.next_trigger_at.is_some());
+
+    session_runner.activate(inactive_session_id);
+    session_runner.wait_for_deliveries(2).await;
+    handle_a.shutdown().await.unwrap();
+    handle_b.shutdown().await.unwrap();
+
+    assert_eq!(session_runner.attempts_for(inactive_session_id), 1);
+    assert_eq!(session_runner.attempts_for(active_session_id), 1);
+    let mut delivered = session_runner.delivered.lock().clone();
+    delivered.sort_by_key(|(session_id, _)| session_id.to_string());
+    let mut expected = vec![
+        (inactive_session_id, "later".into()),
+        (active_session_id, "now".into()),
+    ];
+    expected.sort_by_key(|(session_id, _)| session_id.to_string());
+    assert_eq!(delivered, expected);
+    let completed = store_a
+        .list_schedules(inactive_session_id)
+        .await
+        .unwrap()
+        .remove(0);
+    assert_eq!(completed.id, inactive_schedule.id);
+    assert!(!completed.enabled);
+    assert_eq!(completed.trigger_count, 1);
 }
 
 #[tokio::test]

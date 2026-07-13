@@ -27,8 +27,9 @@ harness engine for building unstoppable agents.
   additive JSON `metadata` bag (name/color/kind/…) kept local rather than
   widening the shared core primitive.
 - **`LocalScheduleRunner`** — an explicitly started/stopped in-process runner
-  for due one-shot and recurring schedules. It uses atomic SQLite claims,
-  recovers interrupted claims, and delivers prompts through
+  for due one-shot and recurring schedules. It scopes atomic SQLite claims to
+  the sessions reported by `LocalSessionRunner::routable_session_ids`, recovers
+  interrupted claims, and delivers prompts through
   `LocalSessionRunner::send_message`.
 - **`LocalPlatformStore`** — a `PlatformStore` that implements the
   subagent-critical core honestly and returns explicit unsupported errors for
@@ -76,7 +77,10 @@ let _builder = InProcessRuntimeBuilder::new().backends(local.runtime_backends.cl
 
 Hosts that enable `create_schedule` or scheduled `spawn_background` calls must
 also run the executor for their lifetime. Use the same `LocalSessionRunner`
-implementation that backs `LocalPlatformStore`, then retain the handle:
+implementation that backs `LocalPlatformStore`. Hosts that cannot route every
+session in the organization must implement `routable_session_ids`; return
+`Some(vec![])` when no route is active and update the returned snapshot as
+sessions activate or stop. Then retain the handle:
 
 ```rust,ignore
 let schedule_runner = local.start_schedule_runner(session_runner.clone())?;
@@ -90,7 +94,8 @@ Delivery is at-least-once across a process crash: concurrent live runners do
 not deliver the same occurrence, and claims are heartbeated while
 `send_message` runs, but a crash after the host accepts a message and before
 SQLite records completion can cause a retry. Embedded hosts should make
-scheduled turns tolerant of that standard crash window.
+scheduled turns tolerant of that standard crash window. A failed delivery stays
+durable and waits the configured `claim_timeout` before retrying.
 
 See the integration tests under [`tests/`](./tests) for end-to-end coverage of
 task lifecycle, restart survivability, schedule round-trips, composability, and

@@ -321,36 +321,66 @@ impl LocalScheduleStore {
         now: DateTime<Utc>,
         claim_timeout: Duration,
         limit: usize,
+        routable_session_ids: Option<&[SessionId]>,
     ) -> Result<Vec<ClaimedSchedule>> {
+        if routable_session_ids.is_some_and(<[SessionId]>::is_empty) {
+            return Ok(Vec::new());
+        }
         let now_ms = now.timestamp_millis();
         let timeout_ms = i64::try_from(claim_timeout.as_millis()).unwrap_or(i64::MAX);
         let stale_before_ms = now_ms.saturating_sub(timeout_ms);
         let org_id = self.org_id;
         let runner_id = runner_id.to_string();
+        let routable_session_ids_json = routable_session_ids
+            .map(|ids| ids.iter().map(ToString::to_string).collect::<Vec<_>>())
+            .map(|ids| serde_json::to_string(&ids))
+            .transpose()
+            .map_err(|error| AgentLoopError::from(LocalError::from(error)))?;
         self.db
             .with_conn_mut(|conn| {
                 let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
                 let candidates = {
                     let mut stmt = tx.prepare(
-                        "SELECT id, snapshot FROM local_schedules
-                         WHERE org_id = ?1 AND enabled = 1
-                           AND next_trigger_at_ms IS NOT NULL AND next_trigger_at_ms <= ?2
-                           AND (claimed_at_ms IS NULL OR claimed_at_ms <= ?3)
-                         ORDER BY next_trigger_at_ms ASC LIMIT ?4",
+                        "SELECT id, session_id, snapshot FROM local_schedules
+                         WHERE org_id = ? AND enabled = 1
+                           AND next_trigger_at_ms IS NOT NULL AND next_trigger_at_ms <= ?
+                           AND (claimed_at_ms IS NULL OR claimed_at_ms <= ?)
+                           AND (?4 IS NULL OR session_id IN (SELECT value FROM json_each(?4)))
+                         ORDER BY next_trigger_at_ms ASC LIMIT ?5",
                     )?;
                     stmt.query_map(
-                        rusqlite::params![org_id, now_ms, stale_before_ms, limit as i64],
-                        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+                        rusqlite::params![
+                            org_id,
+                            now_ms,
+                            stale_before_ms,
+                            routable_session_ids_json,
+                            limit as i64
+                        ],
+                        |row| {
+                            Ok((
+                                row.get::<_, String>(0)?,
+                                row.get::<_, String>(1)?,
+                                row.get::<_, String>(2)?,
+                            ))
+                        },
                     )?
                     .collect::<rusqlite::Result<Vec<_>>>()?
                 };
                 let mut claimed = Vec::with_capacity(candidates.len());
-                for (id, snapshot) in candidates {
+                for (id, session_id, snapshot) in candidates {
                     let changed = tx.execute(
                         "UPDATE local_schedules SET claimed_by = ?2, claimed_at_ms = ?3
                          WHERE id = ?1 AND org_id = ?4 AND enabled = 1
+                           AND session_id = ?6
                            AND (claimed_at_ms IS NULL OR claimed_at_ms <= ?5)",
-                        rusqlite::params![id, runner_id, now_ms, org_id, stale_before_ms],
+                        rusqlite::params![
+                            id,
+                            runner_id,
+                            now_ms,
+                            org_id,
+                            stale_before_ms,
+                            session_id
+                        ],
                     )?;
                     if changed == 1 {
                         claimed.push((snapshot, id));
@@ -453,6 +483,7 @@ impl LocalScheduleStore {
         &self,
         claim: &ClaimedSchedule,
         runner_id: &str,
+        failed_at: DateTime<Utc>,
         error: &str,
     ) -> Result<()> {
         let changed = self
@@ -460,9 +491,15 @@ impl LocalScheduleStore {
             .with_conn(|conn| {
                 conn.execute(
                     "UPDATE local_schedules
-                     SET claimed_by = NULL, claimed_at_ms = NULL, last_delivery_error = ?4
+                     SET claimed_by = NULL, claimed_at_ms = ?4, last_delivery_error = ?5
                      WHERE id = ?1 AND org_id = ?2 AND claimed_by = ?3",
-                    rusqlite::params![claim.claim_id, self.org_id, runner_id, error],
+                    rusqlite::params![
+                        claim.claim_id,
+                        self.org_id,
+                        runner_id,
+                        failed_at.timestamp_millis(),
+                        error
+                    ],
                 )
             })
             .map_err(AgentLoopError::from)?;
