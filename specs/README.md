@@ -54,6 +54,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/agent-reliability-tests.md` - Agent execution reliability tests
 - `specs/subagents.md` - Subagent orchestration
 - `specs/session-tasks.md` - Session task registry for background work
+- `specs/session-participants.md` - Session participants (host/member agents and users, addressed-turn routing, invite-mode handoff)
 - `specs/session-resources.md` - Session resource registry
 - `specs/leased-resources.md` - Generic lease primitive
 - `specs/session-sandbox.md` - Managed session-owned sandbox capability and lifecycle
