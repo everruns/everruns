@@ -3491,6 +3491,24 @@ export interface ReasoningEffortConfig {
   default: ReasoningEffort;
 }
 
+export type Verbosity = "low" | "medium" | "high";
+
+/** Named verbosity value for UI display */
+export interface VerbosityValue {
+  /** The API value (e.g., "low", "high") */
+  value: Verbosity;
+  /** Display name (e.g., "Low", "High") */
+  name: string;
+}
+
+/** Verbosity configuration for a model */
+export interface VerbosityConfig {
+  /** Available verbosity values for this model */
+  values: VerbosityValue[];
+  /** Default verbosity for this model */
+  default: Verbosity;
+}
+
 /**
  * LLM Model Profile describing model capabilities
  * Based on models.dev structure (https://models.dev/api.json)
@@ -3528,6 +3546,8 @@ export interface ModelProfile {
   modalities?: ModelModalities;
   /** Reasoning effort configuration (for reasoning models) */
   reasoning_effort?: ReasoningEffortConfig;
+  /** Verbosity configuration (for models that support output-length control) */
+  verbosity?: VerbosityConfig;
   /** Provider-advertised request parameters supported by this model */
   supported_parameters?: string[];
   /** Whether the model supports tool_search (deferred tool loading) */

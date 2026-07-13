@@ -5252,6 +5252,12 @@ export interface components {
        *     speed config (OpenAI `service_tier`).
        */
       speed?: string | null;
+      /**
+       * @description Verbosity for this message turn: "low", "medium", or "high". Only sent
+       *     to providers whose model profile advertises a verbosity config (OpenAI
+       *     `verbosity`).
+       */
+      verbosity?: string | null;
     };
     /** @description Request to copy a file */
     CopyFileRequest: {
@@ -11164,6 +11170,7 @@ export interface components {
        *     token usage for large tool sets. Currently supported by GPT-5.4 and newer.
        */
       tool_search?: boolean;
+      verbosity?: null | components["schemas"]["VerbosityConfig"];
     };
     /**
      * @description How the model was added to the system
@@ -15886,6 +15893,29 @@ export interface components {
        *     Use this when a customer asks for a refund within 30 days of purchase.
        */
       skill_md: string;
+    };
+    /**
+     * @description Verbosity level for models that support output-length control.
+     *     Wire values map 1:1 to the OpenAI `verbosity` request parameter:
+     *     `low` (terse), `medium` (balanced, provider default), `high`
+     *     (comprehensive). Independent of `ReasoningEffort`, which tunes the
+     *     amount of reasoning rather than the length of the final answer.
+     * @enum {string}
+     */
+    Verbosity: "low" | "medium" | "high";
+    /** @description Verbosity configuration for a model */
+    VerbosityConfig: {
+      /** @description Default verbosity for this model */
+      default: components["schemas"]["Verbosity"];
+      /** @description Available verbosity values for this model */
+      values: components["schemas"]["VerbosityValue"][];
+    };
+    /** @description Named verbosity value for UI display */
+    VerbosityValue: {
+      /** @description Display name (e.g., "Low", "High") */
+      name: string;
+      /** @description The API value (e.g., "low", "high") */
+      value: components["schemas"]["Verbosity"];
     };
     /** @description Request body for voice attach. */
     VoiceAttachRequest: components["schemas"]["VoiceSessionOptions"] & {

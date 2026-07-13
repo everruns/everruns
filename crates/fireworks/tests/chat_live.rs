@@ -28,6 +28,7 @@ async fn fireworks_chat_streams_response() {
 
     let config = LlmCallConfig {
         speed: None,
+        verbosity: None,
         model: LIVE_MODEL.to_string(),
         temperature: Some(0.0),
         // Generous budget: reasoning models can spend tokens on

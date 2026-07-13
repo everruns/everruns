@@ -116,6 +116,8 @@ export function ChatPanel() {
     isActive,
     reasoningEffort,
     setReasoningEffort,
+    verbosity,
+    setVerbosity,
     setIsWaitingForResponse,
     isThinking,
     streamingText,
@@ -146,6 +148,10 @@ export function ChatPanel() {
     supportsReasoning,
     reasoningEffortConfig,
     defaultEffortName,
+    supportsVerbosity,
+    verbosityConfig,
+    defaultVerbosityName,
+    getVerbosityName,
     modelTriggerLabel,
     defaultModelOptionLabel,
     getReasoningEffortName,
@@ -158,6 +164,8 @@ export function ChatPanel() {
     defaultModel: llmModel,
     reasoningEffort,
     setReasoningEffort,
+    verbosity,
+    setVerbosity,
   });
 
   const {
@@ -612,6 +620,12 @@ export function ChatPanel() {
         defaultEffortName={defaultEffortName}
         getReasoningEffortName={getReasoningEffortName}
         onReasoningEffortChange={(value) => setReasoningEffort(value as typeof reasoningEffort)}
+        supportsVerbosity={supportsVerbosity}
+        verbosity={verbosity}
+        verbosityConfig={verbosityConfig}
+        defaultVerbosityName={defaultVerbosityName}
+        getVerbosityName={getVerbosityName}
+        onVerbosityChange={(value) => setVerbosity(value as typeof verbosity)}
         isActive={isActive}
         cancelCurrentTurn={cancelCurrentTurn}
         canSubmit={canSubmit}

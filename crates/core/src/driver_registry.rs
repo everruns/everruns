@@ -1258,6 +1258,10 @@ pub struct LlmCallConfig {
     /// Serialized as OpenAI `service_tier`; omitted when `None` so the
     /// provider keeps its default ("auto") routing.
     pub speed: Option<String>,
+    /// Verbosity for this call: "low", "medium", or "high". Serialized as
+    /// OpenAI `verbosity`; omitted when `None` so the provider keeps its
+    /// default ("medium") output length.
+    pub verbosity: Option<String>,
     /// Metadata to send with the API request for tracking and debugging.
     /// Keys and values are strings. Both OpenAI and Anthropic support metadata fields.
     /// Typically includes: session_id, agent_id, org_id, turn_id, exec_id.
@@ -1318,6 +1322,7 @@ impl From<&RuntimeAgent> for LlmCallConfig {
             tools: runtime_agent.tools.clone(),
             reasoning_effort: None, // Set by ReasonAtom from user message controls
             speed: None,            // Set by ReasonAtom from user message controls
+            verbosity: None,        // Set by ReasonAtom from user message controls
             metadata: HashMap::new(), // Set by ReasonAtom with session/agent context
             previous_response_id: None,
             tool_search: runtime_agent.tool_search.clone(),
@@ -1380,6 +1385,12 @@ impl LlmCallConfigBuilder {
     /// Set speed (service tier): "flex", "default", or "priority"
     pub fn speed(mut self, speed: impl Into<String>) -> Self {
         self.config.speed = Some(speed.into());
+        self
+    }
+
+    /// Set verbosity: "low", "medium", or "high"
+    pub fn verbosity(mut self, verbosity: impl Into<String>) -> Self {
+        self.config.verbosity = Some(verbosity.into());
         self
     }
 

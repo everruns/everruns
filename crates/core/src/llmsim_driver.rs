@@ -999,6 +999,7 @@ mod tests {
     fn make_config() -> LlmCallConfig {
         LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "test-model".to_string(),
             temperature: None,
             max_tokens: None,

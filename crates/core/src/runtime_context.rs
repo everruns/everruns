@@ -569,6 +569,7 @@ mod tests {
         let mut input = InputMessage::user("What is 2 * 3?");
         input.controls = Some(Controls {
             speed: None,
+            verbosity: None,
             model_id: None,
             reasoning: None,
             locale: Some("fr-FR".into()),
