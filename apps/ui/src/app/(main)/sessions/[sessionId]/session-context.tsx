@@ -84,7 +84,12 @@ export interface SessionContextValue {
   sendMessage: UseMutationResult<
     Message,
     Error,
-    { sessionId: string; content: string; controls?: Controls },
+    {
+      sessionId: string;
+      content: string;
+      controls?: Controls;
+      addressedParticipantId?: string | null;
+    },
     { optimisticId: string; content: string }
   >;
   // Turn cancellation
@@ -152,11 +157,13 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
       sessionId,
       content,
       controls,
+      addressedParticipantId,
     }: {
       sessionId: string;
       content: string;
       controls?: Controls;
-    }) => sendUserMessage(sessionId, content, controls),
+      addressedParticipantId?: string | null;
+    }) => sendUserMessage(sessionId, content, controls, addressedParticipantId),
     onMutate: async ({ sessionId, content }) => {
       // Create optimistic event immediately
       const optimisticId = `optimistic-${Date.now()}`;

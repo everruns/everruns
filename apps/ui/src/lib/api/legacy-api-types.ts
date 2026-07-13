@@ -3090,6 +3090,9 @@ export interface CreateMessageRequest {
   controls?: Controls;
   metadata?: Record<string, unknown>;
   tags?: string[];
+  // Optional active agent participant to address for this turn. When omitted,
+  // the session host remains the responder (default 1:1 behavior).
+  addressed_participant_id?: string | null;
 }
 
 // Helper function to create a simple text message request
