@@ -696,15 +696,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn query_does_not_return_disabled_one_shot_schedule() {
+    async fn query_returns_disabled_never_triggered_one_shot_schedule() {
         let db = make_db();
         let session_id = SessionId::new();
 
         let schedule_id = create_schedule_with_cron(&db, session_id, None).await;
-        create_monitor_task(&db, session_id, schedule_id).await;
+        let task = create_monitor_task(&db, session_id, schedule_id).await;
 
-        // One-shot firing disables the schedule before the monitor is marked
-        // Succeeded. The orphan sweep must not race that path and cancel it.
+        // Direct cancellation disables a one-shot without trigger metadata; the
+        // orphan sweep must still reconcile its linked monitor.
         db.update_session_schedule(
             DEFAULT_ORG_ID,
             schedule_id,
@@ -720,9 +720,43 @@ mod tests {
             .list_monitor_tasks_with_inactive_schedules(50)
             .await
             .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, session_id);
+        assert_eq!(results[0].1, task.id);
+        assert_eq!(results[0].2, schedule_id.to_string());
+    }
+
+    #[tokio::test]
+    async fn query_does_not_return_fired_disabled_one_shot_schedule() {
+        let db = make_db();
+        let session_id = SessionId::new();
+
+        let schedule_id = create_schedule_with_cron(&db, session_id, None).await;
+        create_monitor_task(&db, session_id, schedule_id).await;
+
+        // One-shot firing disables the schedule and records trigger metadata
+        // before the monitor is marked Succeeded. The orphan sweep must not
+        // race that path and cancel it.
+        db.update_session_schedule(
+            DEFAULT_ORG_ID,
+            schedule_id,
+            UpdateSessionScheduleRow {
+                enabled: Some(false),
+                last_triggered_at: Some(Utc::now()),
+                trigger_count_increment: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let results = db
+            .list_monitor_tasks_with_inactive_schedules(50)
+            .await
+            .unwrap();
         assert!(
             results.is_empty(),
-            "disabled one-shot schedule monitor must be excluded"
+            "fired disabled one-shot schedule monitor must be excluded"
         );
     }
 
