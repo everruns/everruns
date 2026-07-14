@@ -20,10 +20,11 @@
 use std::sync::Arc;
 
 use everruns_core::{
-    Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, FeatureFlags,
-    OrgRole, Permission, PermissionResolver,
+    AgentId, Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver,
+    FeatureFlags, OrgRole, Permission, PermissionResolver, SessionSeedMode,
 };
 use everruns_server::api::evals::CreateEvalRunRequest;
+use everruns_server::api::sessions::CreateSessionRequest;
 use everruns_server::domains::agents::health_check::commands::TriggerAgentHealthCheck;
 use everruns_server::domains::common::{
     Command, CommandError, CommandErrorKind, Ctx, catalog_entries, dispatch,
@@ -35,8 +36,10 @@ use everruns_server::domains::session_files::{GetWorkspaceFile, ListWorkspaceFil
 use everruns_server::domains::session_tasks::{
     CancelSessionTask, GetSessionTask, ListSessionTasks, PostSessionTaskMessage,
 };
+use everruns_server::domains::sessions::CreateSession;
 use everruns_server::services::CapabilityService;
 use everruns_server::storage::StorageBackend;
+use everruns_server::storage::models::{CreateAgentRow, CreateHarnessRow};
 use uuid::Uuid;
 
 // ============================================================================
@@ -373,6 +376,95 @@ fn mcp_query_read_only_overrides_are_allowlisted() {
     );
 }
 
+/// Grants only session management — models custom deployments that let users
+/// create sessions without allowing them to view or manage agents.
+struct SessionsOnlyResolver;
+
+impl PermissionResolver for SessionsOnlyResolver {
+    fn has_permission(&self, _caller: &Caller, permission: &Permission) -> bool {
+        matches!(permission, Permission::OrgSessionsManage)
+    }
+    fn caller_permissions(&self, _caller: &Caller) -> Vec<Permission> {
+        vec![Permission::OrgSessionsManage]
+    }
+}
+
+fn create_session_request() -> CreateSessionRequest {
+    CreateSessionRequest {
+        workspace_id: None,
+        harness_id: None,
+        harness_name: None,
+        agent_id: None,
+        agent_name: None,
+        agent_identity_id: None,
+        title: Some("Policy Test Session".to_string()),
+        goal: None,
+        locale: None,
+        tags: vec![],
+        model_id: None,
+        capabilities: vec![],
+        tools: vec![],
+        mcp_servers: Default::default(),
+        system_prompt: None,
+        initial_files: vec![],
+        hints: None,
+        network_access: None,
+        max_iterations: None,
+        parallel_tool_calls: None,
+        parent_session_id: None,
+        forked_from_session_id: None,
+        seed: SessionSeedMode::Fresh,
+    }
+}
+
+async fn seed_agent(ctx: &Ctx, name: &str) -> AgentId {
+    let harness = ctx
+        .db
+        .create_harness(
+            DEFAULT_ORG_ID,
+            CreateHarnessRow {
+                name: format!("harness-{name}"),
+                display_name: None,
+                description: None,
+                system_prompt: Some("test prompt".to_string()),
+                parent_harness_id: None,
+                default_model_id: None,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                embedder_metadata: serde_json::json!({}),
+                is_built_in: false,
+            },
+        )
+        .await
+        .expect("seed harness");
+    let public_id = AgentId::new();
+    ctx.db
+        .create_agent(
+            DEFAULT_ORG_ID,
+            CreateAgentRow {
+                public_id: public_id.to_string(),
+                name: name.to_string(),
+                display_name: None,
+                description: None,
+                system_prompt: "test agent".to_string(),
+                default_model_id: None,
+                harness_id: harness.id,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+            },
+        )
+        .await
+        .expect("seed agent");
+    public_id
+}
+
 /// Grants OrgAgentsManage but denies OrgSessionsManage — models an eval-only
 /// SaaS tier that can manage eval definitions but cannot start runs.
 struct AgentsOnlyResolver;
@@ -390,6 +482,42 @@ impl PermissionResolver for AgentsOnlyResolver {
 // EVE-549: CreateEvalRun must require EVAL_RUN (OrgAgentsManage +
 //           OrgSessionsManage), not just EVAL_MANAGE (OrgAgentsManage).
 // ============================================================================
+
+#[tokio::test]
+async fn session_creation_by_agent_name_requires_agent_permission() {
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Owner),
+        Arc::new(SessionsOnlyResolver),
+    );
+    seed_agent(&ctx, "hidden-agent-by-name").await;
+
+    let mut req = create_session_request();
+    req.agent_name = Some("hidden-agent-by-name".to_string());
+
+    let err = CreateSession(req)
+        .run(&ctx)
+        .await
+        .expect_err("agent-name session creation must require agent visibility");
+    assert_forbidden(err);
+}
+
+#[tokio::test]
+async fn session_creation_by_agent_id_requires_agent_permission() {
+    let ctx = make_ctx(
+        caller_with_role(OrgRole::Owner),
+        Arc::new(SessionsOnlyResolver),
+    );
+    let agent_id = seed_agent(&ctx, "hidden-agent-by-id").await;
+
+    let mut req = create_session_request();
+    req.agent_id = Some(agent_id);
+
+    let err = CreateSession(req)
+        .run(&ctx)
+        .await
+        .expect_err("agent-id session creation must require agent visibility");
+    assert_forbidden(err);
+}
 
 #[tokio::test]
 async fn eval_run_creation_requires_session_permission() {
