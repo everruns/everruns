@@ -16,6 +16,7 @@ use crate::typed_id::{AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 /// Simplified message representation for platform management tools.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,6 +60,33 @@ pub trait PlatformStore: Send + Sync {
 
     /// Get a harness by ID.
     async fn get_harness(&self, id: HarnessId) -> Result<Option<Harness>>;
+
+    /// Get the effective harness chain from root to the requested harness.
+    ///
+    /// Platform management lookups return the raw harness row. Runtime assembly
+    /// applies inherited parent harnesses first, so security-sensitive
+    /// compatibility checks must use this chain rather than a single raw row.
+    async fn get_harness_chain(&self, id: HarnessId) -> Result<Vec<Harness>> {
+        let mut chain = Vec::new();
+        let mut current_id = Some(id);
+        let mut seen = HashSet::new();
+
+        while let Some(harness_id) = current_id {
+            if !seen.insert(harness_id) {
+                return Err(crate::error::AgentLoopError::tool(format!(
+                    "Harness inheritance cycle detected at {harness_id}"
+                )));
+            }
+            let Some(harness) = self.get_harness(harness_id).await? else {
+                return Ok(Vec::new());
+            };
+            current_id = harness.parent_harness_id;
+            chain.push(harness);
+        }
+
+        chain.reverse();
+        Ok(chain)
+    }
 
     /// Create a new harness.
     ///
@@ -328,6 +356,7 @@ pub mod tests {
     /// registered but the store is not passed through.
     pub struct MockPlatformStore {
         pub harness: Harness,
+        pub extra_harnesses: std::sync::Mutex<std::collections::HashMap<HarnessId, Harness>>,
         pub agent: Agent,
         pub app: App,
         pub app_channel: AppChannel,
@@ -380,6 +409,7 @@ pub mod tests {
                     archived_at: None,
                     deleted_at: None,
                 },
+                extra_harnesses: std::sync::Mutex::new(std::collections::HashMap::new()),
                 agent: Agent {
                     public_id: crate::typed_id::AgentId::new(),
                     internal_id: uuid::Uuid::now_v7(),
@@ -507,7 +537,10 @@ pub mod tests {
         async fn list_harnesses(&self) -> Result<Vec<Harness>> {
             Ok(vec![self.harness.clone()])
         }
-        async fn get_harness(&self, _id: HarnessId) -> Result<Option<Harness>> {
+        async fn get_harness(&self, id: HarnessId) -> Result<Option<Harness>> {
+            if let Some(harness) = self.extra_harnesses.lock().unwrap().get(&id).cloned() {
+                return Ok(Some(harness));
+            }
             Ok(Some(self.harness.clone()))
         }
         async fn create_harness(
