@@ -672,7 +672,10 @@ impl TokenUsage {
             *self.estimated_cost_usd.get_or_insert(0.0) += cost;
         }
         if let Some(cost) = other.effective_cost_usd() {
-            *self.effective_cost_usd.get_or_insert(0.0) += cost;
+            let current_cost = self.effective_cost_usd();
+            *self
+                .effective_cost_usd
+                .get_or_insert(current_cost.unwrap_or(0.0)) += cost;
         }
     }
 }
@@ -697,6 +700,18 @@ mod token_usage_tests {
         let generation = TokenUsage::new(10, 5).with_cost(Some(1.0), Some(2.0));
 
         assert_eq!(generation.effective_cost_usd(), Some(1.0));
+    }
+
+    #[test]
+    fn add_seeds_effective_cost_from_accumulator_implicit_cost() {
+        let mut aggregate = TokenUsage::new(10, 5).with_cost(Some(1.0), Some(10.0));
+        let generation = TokenUsage::new(20, 10).with_cost(None, Some(2.0));
+
+        aggregate.add(&generation);
+
+        assert_eq!(aggregate.actual_cost_usd, Some(1.0));
+        assert_eq!(aggregate.estimated_cost_usd, Some(12.0));
+        assert_eq!(aggregate.effective_cost_usd(), Some(3.0));
     }
 }
 
