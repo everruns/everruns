@@ -69,13 +69,23 @@ function TargetBadge({ target }: { target?: EvalTarget }) {
   );
 }
 
+function safeExternalLink(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "https:" || parsed.protocol === "http:" ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // Attribution badge for an imported run: which external system produced it, its
 // version, and a link back when one is provided.
 function AttributionBadge({ run }: { run: EvalRun }) {
   if (run.source !== "external") return null;
   const system = run.attribution?.system ?? "external";
   const version = run.attribution?.version;
-  const url = run.attribution?.url ?? undefined;
+  const url = safeExternalLink(run.attribution?.url);
   const label = `via ${system}${version ? ` ${version}` : ""}`;
   const badge = (
     <Badge variant="secondary" className="text-xs">

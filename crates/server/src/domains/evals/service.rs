@@ -27,6 +27,7 @@ use everruns_core::typed_id::{
 use everruns_core::{Caller, Permission, Policy, Rule};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
+use url::Url;
 use uuid::Uuid;
 
 /// Policy: View evals (read-only).
@@ -764,11 +765,12 @@ impl EvalService {
         if req.source.run_id.trim().is_empty() {
             return Err(BadRequestError::new("source.run_id is required").into());
         }
+        let source_url = validate_import_source_url(req.source.url)?;
 
         let attribution = serde_json::json!({
             "system": req.source.system,
             "version": req.source.version,
-            "url": req.source.url,
+            "url": source_url,
             "run_id": req.source.run_id,
             "metadata": req.source.metadata,
         });
@@ -1264,6 +1266,18 @@ fn sanitize_attribution(v: serde_json::Value) -> Option<PublicAttribution> {
     }
 }
 
+fn validate_import_source_url(url: Option<String>) -> Result<Option<String>> {
+    let Some(url) = url else {
+        return Ok(None);
+    };
+    let parsed = Url::parse(&url)
+        .map_err(|_| BadRequestError::new("source.url must be an absolute http(s) URL"))?;
+    match parsed.scheme() {
+        "http" | "https" => Ok(Some(url)),
+        _ => Err(BadRequestError::new("source.url must use http or https").into()),
+    }
+}
+
 fn result_row_to_result(
     row: crate::storage::models::EvalCaseResultRow,
     case_name: Option<String>,
@@ -1678,6 +1692,21 @@ mod tests {
                 .unwrap(),
             2
         );
+    }
+
+    #[test]
+    fn validate_import_source_url_allows_only_http_urls() {
+        assert_eq!(
+            validate_import_source_url(Some("https://mira.example/runs/1".into())).unwrap(),
+            Some("https://mira.example/runs/1".into())
+        );
+        assert_eq!(
+            validate_import_source_url(Some("http://mira.example/runs/1".into())).unwrap(),
+            Some("http://mira.example/runs/1".into())
+        );
+        assert!(validate_import_source_url(None).unwrap().is_none());
+        assert!(validate_import_source_url(Some("javascript:alert(1)".into())).is_err());
+        assert!(validate_import_source_url(Some("/runs/1".into())).is_err());
     }
 
     fn import_request(run_id: &str, failed_value: f64) -> ImportEvalRunRequest {
