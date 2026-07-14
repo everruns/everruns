@@ -20,7 +20,6 @@ pub mod leased_resource_store;
 pub mod memory;
 pub mod message_store;
 pub mod models;
-pub mod org_feature_flags_cache;
 pub mod partial_stream;
 pub mod password;
 pub mod provider_store;

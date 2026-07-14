@@ -158,10 +158,6 @@ pub struct Database {
     /// a pointer (specs/object-storage.md). `None` keeps bytes inline in
     /// PostgreSQL (default behavior).
     blob_store: Option<crate::storage::blob_store::SharedBlobStore>,
-    /// Read-through cache for per-org feature-flag opt-ins (EVE-637). Shared
-    /// across clones; the read and `replace_org_feature_flags` write paths use
-    /// this same instance so a local update invalidates immediately.
-    org_feature_flags_cache: crate::storage::org_feature_flags_cache::OrgFeatureFlagsCache,
 }
 
 impl Database {
@@ -169,7 +165,6 @@ impl Database {
         Self {
             pool,
             blob_store: None,
-            org_feature_flags_cache: Default::default(),
         }
     }
 
@@ -244,7 +239,6 @@ impl Database {
         Ok(Self {
             pool,
             blob_store: None,
-            org_feature_flags_cache: Default::default(),
         })
     }
 
