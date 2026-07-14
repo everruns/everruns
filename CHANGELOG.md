@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.17.9] - 2026-07-14
+
+### Highlights
+
+- **Participant rail & session addressing** — Sessions now show a live participant rail with join/leave lines and explicit addressing, making multi-agent conversations easier to follow ([#2718](https://github.com/everruns/everruns/pull/2718)).
+- **Cross-session Work view** — A new Work view groups tasks across sessions by their delegation tree, so you can see delegated work in one place ([#2715](https://github.com/everruns/everruns/pull/2715)).
+- **Expanded model catalog** — Surfaced Sonnet 5 and recent Gemini models, defaulted to GPT-5.6 Sol, and seeded Claude Opus 4.8 ([#2712](https://github.com/everruns/everruns/pull/2712), [#2713](https://github.com/everruns/everruns/pull/2713)).
+- **Per-message verbosity control** — GPT-5.x sessions can now set output verbosity per message ([#2717](https://github.com/everruns/everruns/pull/2717)).
+- **Resilient usage limits** — Sessions auto-continue after LLM usage-limit errors instead of stalling ([#2714](https://github.com/everruns/everruns/pull/2714)).
+
+### What's Changed
+
+- feat(agents): unify structured delegation results ([#2722](https://github.com/everruns/everruns/pull/2722)) by [@chaliy](https://github.com/chaliy)
+- feat(agents): agent_triggers data model + storage (EVE-757 A) ([#2721](https://github.com/everruns/everruns/pull/2721)) by [@chaliy](https://github.com/chaliy)
+- fix(local): scope schedule claims to routable sessions ([#2720](https://github.com/everruns/everruns/pull/2720)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): participant rail, join/leave lines, and addressing (EVE-759) ([#2718](https://github.com/everruns/everruns/pull/2718)) by [@chaliy](https://github.com/chaliy)
+- feat(models): add per-message verbosity control for GPT-5.x ([#2717](https://github.com/everruns/everruns/pull/2717)) by [@chaliy](https://github.com/chaliy)
+- fix(examples): add harness_id to weekend-concierge Agent initializer ([#2716](https://github.com/everruns/everruns/pull/2716)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): cross-session Work view grouping tasks by delegation tree ([#2715](https://github.com/everruns/everruns/pull/2715)) by [@chaliy](https://github.com/chaliy)
+- feat(core): auto-continue after LLM usage-limit errors ([#2714](https://github.com/everruns/everruns/pull/2714)) by [@chaliy](https://github.com/chaliy)
+- chore(models): default to GPT-5.6 Sol and seed Claude Opus 4.8 ([#2713](https://github.com/everruns/everruns/pull/2713)) by [@chaliy](https://github.com/chaliy)
+- feat(models): surface Sonnet 5 and recent Gemini models in catalog ([#2712](https://github.com/everruns/everruns/pull/2712)) by [@chaliy](https://github.com/chaliy)
+- fix(files): support glob path filters in grep ([#2707](https://github.com/everruns/everruns/pull/2707)) by [@chaliy](https://github.com/chaliy)
+- fix(tools): preserve requested output verbosity ([#2705](https://github.com/everruns/everruns/pull/2705)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.8] - 2026-07-11
 
 ### Highlights
