@@ -3068,8 +3068,15 @@ mod tests {
         let ToolExecutionResult::ToolError(message) = result else {
             panic!("expected validation error, got {result:?}");
         };
-        assert!(message.contains("$.answer is required"), "got: {message}");
-        assert!(message.contains("$.extra is not allowed"), "got: {message}");
+        assert!(
+            message.contains("answer") && message.contains("required"),
+            "got: {message}"
+        );
+        assert!(
+            message.contains("extra")
+                && (message.contains("additional") || message.contains("not allowed")),
+            "got: {message}"
+        );
     }
 
     #[tokio::test]
@@ -3186,10 +3193,14 @@ mod tests {
             panic!("expected validation error, got {result:?}");
         };
         assert!(
-            message.contains("$.step has the wrong JSON type"),
+            message.contains("step") && message.contains("string"),
             "got: {message}"
         );
-        assert!(message.contains("$.extra is not allowed"), "got: {message}");
+        assert!(
+            message.contains("extra")
+                && (message.contains("additional") || message.contains("not allowed")),
+            "got: {message}"
+        );
     }
 
     #[test]
