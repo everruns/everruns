@@ -132,6 +132,11 @@ never collide in a single session toolset. Background subagent tasks with
 `message_schema` use `wake_policy: on_activity` so progress messages wake the
 parent; tasks without `message_schema` keep completion-only wake-ups.
 
+The schema validation, result-file settlement, and child-only reporting tools
+are shared delegation infrastructure. Subagents consume the same implementation
+as first-party agent handoffs; target-specific code only owns lifecycle and
+session creation.
+
 **Behavior (both modes):**
 1. Creates a session. `lifetime = linked` sets `parent_session_id` to the current
    session; `lifetime = detached` leaves `parent_session_id = NULL` and records

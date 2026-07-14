@@ -6,6 +6,10 @@
 // Credentials are never accepted as tool arguments or config. Required
 // provider connections are resolved server-side before the child session starts.
 
+use super::delegation_result::{
+    MESSAGE_SCHEMA_SPEC_KEY, RESULT_SCHEMA_SPEC_KEY, normalize_message_schema,
+    normalize_result_schema, required_result_is_missing, result_value_for_task,
+};
 use super::util::{get_platform_store, require_str_nonblank as require_str};
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext};
 use crate::config_layer::{AgentConfigOverlay, normalize_initial_file_path};
@@ -565,6 +569,28 @@ async fn finish_handoff_task(
         .await;
 }
 
+async fn finalize_handoff_task(
+    context: &ToolContext,
+    task_id: Option<&str>,
+    mut state: SessionTaskState,
+    mut summary: Option<String>,
+    mut error: Option<TaskError>,
+    expected_attempt: Option<i32>,
+) {
+    if state == SessionTaskState::Succeeded && required_result_is_missing(context, task_id).await {
+        state = SessionTaskState::Failed;
+        summary =
+            Some("Agent handoff completed without reporting a structured result.".to_string());
+        error = Some(TaskError {
+            kind: "no_result".to_string(),
+            message:
+                "Agent handoff completed without calling report_result for its result_schema task."
+                    .to_string(),
+        });
+    }
+    finish_handoff_task(context, task_id, state, summary, error, expected_attempt).await;
+}
+
 fn handoff_task_state(status: &SubagentStatus) -> SessionTaskState {
     match status {
         SubagentStatus::Completed => SessionTaskState::Succeeded,
@@ -679,7 +705,7 @@ fn spawn_handoff_background_watcher(
                         .await
                         .ok();
                     let error = handoff_error(&status, state);
-                    finish_handoff_task(
+                    finalize_handoff_task(
                         &context,
                         Some(&task_id),
                         state,
@@ -830,6 +856,14 @@ impl Tool for SpawnAgentHandoffTool {
                 "public_context": {
                     "type": "object",
                     "description": "Non-secret structured context to include with the instructions."
+                },
+                "result_schema": {
+                    "type": "object",
+                    "description": "JSON Schema for the child agent's final structured result. The child must call report_result before the task can succeed."
+                },
+                "message_schema": {
+                    "type": "object",
+                    "description": "JSON Schema for structured progress messages. The child receives report_task_progress."
                 }
             },
             "required": ["name", "instructions", "target"],
@@ -903,6 +937,28 @@ impl Tool for SpawnAgentHandoffTool {
             Ok(mode) => mode,
             Err(error) => return ToolExecutionResult::tool_error(error),
         };
+        let result_schema = match normalize_result_schema(&arguments) {
+            Ok(schema) => schema,
+            Err(error) => return error,
+        };
+        let message_schema = match normalize_message_schema(&arguments) {
+            Ok(schema) => schema,
+            Err(error) => return error,
+        };
+        if mode == SpawnAgentHandoffMode::Invite
+            && (result_schema.is_some() || message_schema.is_some())
+        {
+            return ToolExecutionResult::tool_error(
+                "result_schema and message_schema require a child task and are not valid for invite-mode agent handoffs.",
+            );
+        }
+        if (result_schema.is_some() || message_schema.is_some())
+            && context.session_task_registry.is_none()
+        {
+            return ToolExecutionResult::tool_error(
+                "result_schema and message_schema require session_task_registry context for agent handoffs.",
+            );
+        }
         if lifetime == HandoffLifetime::Detached && mode == SpawnAgentHandoffMode::Invite {
             return ToolExecutionResult::tool_error(
                 "lifetime=\"detached\" is only valid for agent handoffs that create a new session; invite mode joins the current session.",
@@ -988,6 +1044,22 @@ impl Tool for SpawnAgentHandoffTool {
         let mut task_id = None;
         let mut task_attempt = 1;
         if let Some(task_registry) = &context.session_task_registry {
+            let mut task_spec = json!({
+                "target_id": &target.id,
+                "external_agent_id": target.agent_id,
+                "instructions": instructions,
+                "mode": mode.as_str(),
+                "lifetime": lifetime.as_str(),
+                "seed": seed.as_str(),
+            });
+            if let Some(spec) = task_spec.as_object_mut() {
+                if let Some(schema) = &result_schema {
+                    spec.insert(RESULT_SCHEMA_SPEC_KEY.to_string(), schema.clone());
+                }
+                if let Some(schema) = &message_schema {
+                    spec.insert(MESSAGE_SCHEMA_SPEC_KEY.to_string(), schema.clone());
+                }
+            }
             match task_registry
                 .create(CreateSessionTask {
                     session_id: context.session_id,
@@ -998,28 +1070,24 @@ impl Tool for SpawnAgentHandoffTool {
                     }
                     .to_string(),
                     display_name: name.clone(),
-                    spec: json!({
-                        "target_id": &target.id,
-                        "external_agent_id": target.agent_id,
-                        "instructions": instructions,
-                        "mode": mode.as_str(),
-                        "lifetime": lifetime.as_str(),
-                        "seed": seed.as_str(),
-                    }),
+                    spec: task_spec,
                     state: SessionTaskState::Running,
                     links: TaskLinks {
                         child_session_id: Some(child_session.id),
                         ..Default::default()
                     },
-                    wake_policy: match (lifetime, mode) {
-                        (HandoffLifetime::Detached, _) => TaskWakePolicy::Silent,
-                        (HandoffLifetime::Linked, SpawnAgentHandoffMode::Background) => {
+                    wake_policy: match (lifetime, mode, message_schema.is_some()) {
+                        (HandoffLifetime::Detached, _, _) => TaskWakePolicy::Silent,
+                        (HandoffLifetime::Linked, SpawnAgentHandoffMode::Background, true) => {
+                            TaskWakePolicy::OnActivity
+                        }
+                        (HandoffLifetime::Linked, SpawnAgentHandoffMode::Background, false) => {
                             TaskWakePolicy::OnTerminal
                         }
-                        (HandoffLifetime::Linked, SpawnAgentHandoffMode::Foreground) => {
+                        (HandoffLifetime::Linked, SpawnAgentHandoffMode::Foreground, _) => {
                             TaskWakePolicy::Silent
                         }
-                        (HandoffLifetime::Linked, SpawnAgentHandoffMode::Invite) => {
+                        (HandoffLifetime::Linked, SpawnAgentHandoffMode::Invite, _) => {
                             unreachable!("invite mode returns before child-session task creation")
                         }
                     },
@@ -1030,7 +1098,11 @@ impl Tool for SpawnAgentHandoffTool {
                     task_attempt = task.attempt;
                     task_id = Some(task.id);
                 }
-                Err(error) if mode == SpawnAgentHandoffMode::Background => {
+                Err(error)
+                    if mode == SpawnAgentHandoffMode::Background
+                        || result_schema.is_some()
+                        || message_schema.is_some() =>
+                {
                     return ToolExecutionResult::tool_error(format!(
                         "Background spawn_agent could not create its session task, so the handoff was not started: {error}"
                     ));
@@ -1118,7 +1190,7 @@ impl Tool for SpawnAgentHandoffTool {
                 if let Some(terminal) = terminal_handoff_status(&status) {
                     let state = handoff_task_state(&terminal);
                     let error = handoff_error(&status, state);
-                    finish_handoff_task(
+                    finalize_handoff_task(
                         context,
                         task_id.as_deref(),
                         state,
@@ -1129,6 +1201,10 @@ impl Tool for SpawnAgentHandoffTool {
                     .await;
                 }
 
+                let result_value = result_value_for_task(context, task_id.as_deref())
+                    .await
+                    .unwrap_or_else(|| json!(result));
+
                 ToolExecutionResult::success(json!({
                     "task_id": task_id,
                     "handoff_id": child_session.id.to_string(),
@@ -1136,7 +1212,7 @@ impl Tool for SpawnAgentHandoffTool {
                     "target_agent_id": target.agent_id,
                     "name": name,
                     "status": status,
-                    "result": result,
+                    "result": result_value,
                     "mode": "foreground",
                 }))
             }
@@ -1220,7 +1296,7 @@ impl TaskExecutor for AgentHandoffTaskExecutor {
         let state = handoff_task_state(&terminal);
         let result = handoff_result(store.as_ref(), child_id, &status).await.ok();
         let error = handoff_error(&status, state);
-        finish_handoff_task(context, Some(&task.id), state, result, error, None).await;
+        finalize_handoff_task(context, Some(&task.id), state, result, error, None).await;
         Ok(())
     }
 }
@@ -1501,6 +1577,93 @@ mod tests {
         assert_eq!(task.spec["target_id"], "aws_operator");
         assert_eq!(task.spec["mode"], "foreground");
         assert!(task.links.child_session_id.is_some());
+    }
+
+    #[tokio::test]
+    async fn schema_bound_handoff_requires_report_result() {
+        let store = Arc::new(MockPlatformStore::new());
+        *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
+        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let mut context = context(store.clone(), None);
+        context.session_task_registry = Some(registry.clone());
+
+        let result = spawn_agent_tool(&config)
+            .execute_with_context(
+                json!({
+                    "name": "Structured handoff",
+                    "instructions": "Return structured data",
+                    "target": {"type": "agent", "id": "aws_operator"},
+                    "mode": "foreground",
+                    "result_schema": {
+                        "type": "object",
+                        "properties": {"answer": {"type": "string"}},
+                        "required": ["answer"]
+                    }
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected terminal handoff result, got {result:?}");
+        };
+        let task_id = value["task_id"].as_str().expect("task_id");
+        let task = registry
+            .get(store.session.id, task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            task.spec[RESULT_SCHEMA_SPEC_KEY]["required"],
+            json!(["answer"])
+        );
+        assert_eq!(task.state, SessionTaskState::Failed);
+        assert_eq!(
+            task.error.as_ref().map(|error| error.kind.as_str()),
+            Some("no_result")
+        );
+    }
+
+    #[tokio::test]
+    async fn handoff_message_schema_is_task_backed_and_wakes_on_activity() {
+        let store = Arc::new(MockPlatformStore::new());
+        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let mut context = context(store.clone(), None);
+        context.session_task_registry = Some(registry.clone());
+
+        let result = spawn_agent_tool(&config)
+            .execute_with_context(
+                json!({
+                    "name": "Progress handoff",
+                    "instructions": "Report progress",
+                    "target": {"type": "agent", "id": "aws_operator"},
+                    "mode": "background",
+                    "message_schema": {
+                        "type": "object",
+                        "properties": {"step": {"type": "string"}},
+                        "required": ["step"]
+                    }
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected background handoff, got {result:?}");
+        };
+        let task_id = value["task_id"].as_str().expect("task_id");
+        let task = registry
+            .get(store.session.id, task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            task.spec[MESSAGE_SCHEMA_SPEC_KEY]["required"],
+            json!(["step"])
+        );
+        assert_eq!(task.wake_policy, TaskWakePolicy::OnActivity);
     }
 
     #[tokio::test]

@@ -99,6 +99,7 @@ pub mod compaction;
 mod current_time;
 mod data_knowledge;
 mod declarative;
+mod delegation_result;
 mod error_disclosure;
 pub mod facts;
 mod fake_aws;
@@ -203,6 +204,10 @@ pub use declarative::{
     declarative_capability_info, hydrate_declarative_capability_config,
     hydrate_plugin_capability_config, is_declarative_capability, parse_declarative_capability_id,
     plugin_capability_info, validate_declarative_capability_definition,
+};
+pub use delegation_result::{
+    ReportResultTool, ReportTaskProgressTool, report_result_tool_for_child_session,
+    report_task_progress_tool_for_child_session,
 };
 pub use error_disclosure::{
     ERROR_DISCLOSURE_CAPABILITY_ID, ErrorDisclosureCapability, resolve_error_disclosure,
@@ -324,11 +329,7 @@ pub use skills_scoped::{
 pub use stateless_todo_list::{
     STATELESS_TODO_LIST_CAPABILITY_ID, StatelessTodoListCapability, WriteTodosTool,
 };
-pub use subagents::{
-    ReportResultTool, ReportTaskProgressTool, SUBAGENTS_CAPABILITY_ID, SpawnSubagentAsAgentTool,
-    SubagentCapability, report_result_tool_for_child_session,
-    report_task_progress_tool_for_child_session,
-};
+pub use subagents::{SUBAGENTS_CAPABILITY_ID, SpawnSubagentAsAgentTool, SubagentCapability};
 pub use usage_limit_auto_continue::{
     AutoContinueConfig, USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID, UsageLimitAutoContinueCapability,
     resolve_usage_limit_auto_continue,
@@ -1933,11 +1934,11 @@ impl Tool for UnifiedSpawnAgentTool {
                 },
                 "result_schema": {
                     "type": "object",
-                    "description": "Subagent-only JSON Schema for the child agent's final structured result. When set, the child must call report_result before the task can succeed."
+                    "description": "JSON Schema for a required final structured result. Local child agents must call report_result; external A2A agents must return a structured data artifact."
                 },
                 "message_schema": {
                     "type": "object",
-                    "description": "Subagent-only JSON Schema for structured progress messages. When set, the child receives report_task_progress and valid calls post data messages to the task thread."
+                    "description": "JSON Schema for structured progress messages from local child agents. When set, the child receives report_task_progress. External A2A targets reject this option explicitly."
                 },
                 "public_context": {
                     "type": "object",
@@ -2003,6 +2004,15 @@ impl Tool for UnifiedSpawnAgentTool {
         {
             return ToolExecutionResult::tool_error(
                 "lifetime=\"detached\" is only valid for local session targets (subagent or agent), not external_a2a.",
+            );
+        }
+        if target_type == "external_a2a"
+            && arguments
+                .get("message_schema")
+                .is_some_and(|schema| !schema.is_null())
+        {
+            return ToolExecutionResult::tool_error(
+                "message_schema is not supported for external_a2a targets because remote agents cannot receive report_task_progress.",
             );
         }
 

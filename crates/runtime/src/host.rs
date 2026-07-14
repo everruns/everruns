@@ -19,6 +19,7 @@ use everruns_core::message::{ContentPart, Message};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::platform_store::PlatformStore;
 use everruns_core::session::SessionStatus;
+use everruns_core::tools::Tool;
 use everruns_core::traits::{
     AgentStore, BudgetChecker, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver,
     LeasedResourceStore, PaymentAuthority, ProviderCredentialStore, ProviderStore, ResolvedModel,
@@ -1109,9 +1110,30 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
         }
     }
 
-    let turn_context = adapter
+    let mut turn_context = adapter
         .load_turn_context(org_id, input.context.session_id)
         .await?;
+    if let Some(registry) = adapter.session_task_registry() {
+        let session_store = adapter.session_store(org_id);
+        if let Some(tool) = report_result_tool_for_child_session(
+            input.context.session_id,
+            session_store.as_ref(),
+            registry.as_ref(),
+        )
+        .await?
+        {
+            turn_context.mcp_tool_definitions.push(tool.to_definition());
+        }
+        if let Some(tool) = report_task_progress_tool_for_child_session(
+            input.context.session_id,
+            session_store.as_ref(),
+            registry.as_ref(),
+        )
+        .await?
+        {
+            turn_context.mcp_tool_definitions.push(tool.to_definition());
+        }
+    }
 
     let mut atom = ReasonAtom::new(
         adapter.harness_store(org_id),
