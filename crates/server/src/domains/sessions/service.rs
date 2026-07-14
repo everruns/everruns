@@ -219,6 +219,35 @@ impl SessionService {
         .await
     }
 
+    /// Create a session owned by an agent that its own schedule trigger woke
+    /// (EVE-757). Mirrors [`Self::create_from_app`] but there is no App row:
+    /// the session runs on the agent's harness (P1), is hosted by the agent
+    /// (P2, via `agent_public_id`), and is owned by `owner_principal_id` so the
+    /// shared-session reuse lookup (`find_session_by_tags_and_owner`) matches
+    /// across fires. `app_id` is `None`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_from_agent_trigger(
+        &self,
+        caller: &Caller,
+        harness_id: Uuid,
+        agent_internal_id: Uuid,
+        agent_public_id: AgentId,
+        owner_principal_id: PrincipalId,
+        resolved_owner_user_id: Option<Uuid>,
+        req: CreateSessionRequest,
+    ) -> Result<Session> {
+        self.create_inner(
+            caller,
+            harness_id,
+            Some(agent_internal_id),
+            Some(agent_public_id),
+            None,
+            Some((owner_principal_id, resolved_owner_user_id)),
+            req,
+        )
+        .await
+    }
+
     /// Fork a session into a new, independent session (specs/forking-sessions.md).
     ///
     /// Creates a fresh session that is config-identical to `parent_id` (modulo

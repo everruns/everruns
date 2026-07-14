@@ -3993,6 +3993,39 @@ impl WorkerService for WorkerServiceImpl {
         }))
     }
 
+    async fn invoke_agent_trigger(
+        &self,
+        request: Request<InvokeAgentTriggerRequest>,
+    ) -> Result<Response<InvokeAgentTriggerResponse>, Status> {
+        let req = request.into_inner();
+        let runner = self
+            .runner
+            .clone()
+            .ok_or_else(|| Status::unavailable("Agent runner not available"))?;
+        let message_service = crate::domains::messages::MessageService::new(
+            self.db.clone(),
+            runner,
+            false,
+            self.event_service.event_delivery().clone(),
+        );
+
+        let result = crate::domains::agent_triggers::invoke_agent_trigger(
+            &self.db,
+            &self.session_service,
+            &message_service,
+            req.org_id,
+            &req.agent_id,
+            &req.trigger_id,
+        )
+        .await
+        .map_err(command_error_to_status)?;
+
+        Ok(Response::new(InvokeAgentTriggerResponse {
+            session_id: result.session_id.to_string(),
+            created_session: result.created_session,
+        }))
+    }
+
     async fn platform_get_messages(
         &self,
         request: Request<PlatformGetMessagesRequest>,

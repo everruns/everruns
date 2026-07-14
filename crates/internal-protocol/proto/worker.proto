@@ -275,6 +275,7 @@ service WorkerService {
     rpc PlatformSendMessage(PlatformSendMessageRequest) returns (PlatformSendMessageResponse);
     rpc PlatformGetMessages(PlatformGetMessagesRequest) returns (PlatformGetMessagesResponse);
     rpc InvokeScheduledAppChannel(InvokeScheduledAppChannelRequest) returns (InvokeScheduledAppChannelResponse);
+    rpc InvokeAgentTrigger(InvokeAgentTriggerRequest) returns (InvokeAgentTriggerResponse);
 
     // Turn management
     rpc PlatformWaitForIdle(PlatformWaitForIdleRequest) returns (PlatformWaitForIdleResponse);
@@ -1794,6 +1795,17 @@ message InvokeScheduledAppChannelRequest {
 }
 
 message InvokeScheduledAppChannelResponse {
+    string session_id = 1;
+    bool created_session = 2;
+}
+
+message InvokeAgentTriggerRequest {
+    int64 org_id = 1;
+    string agent_id = 2;
+    string trigger_id = 3;
+}
+
+message InvokeAgentTriggerResponse {
     string session_id = 1;
     bool created_session = 2;
 }

@@ -37,7 +37,10 @@ use crate::grpc_durable_store::GrpcDurableStore;
 use crate::runtime_host::WorkerRuntimeHost;
 use crate::task_error::summarize_task_failure;
 use crate::worker_adapters::WorkerAdapters;
-use crate::{activities::ScheduledAppChannelInput, activities::activity_types};
+use crate::{
+    activities::ScheduledAgentTriggerInput, activities::ScheduledAppChannelInput,
+    activities::activity_types,
+};
 
 // Re-export atom types
 pub use everruns_core::atoms::{InputAtomInput, ReasonInput, ReasonResult};
@@ -117,6 +120,7 @@ impl Default for TaskWorkerConfig {
                 "leased_resource_cleanup".to_string(),
                 "session_task_reaper".to_string(),
                 activity_types::INVOKE_SCHEDULED_APP_CHANNEL.to_string(),
+                activity_types::INVOKE_AGENT_TRIGGER.to_string(),
             ],
             max_concurrent_tasks: DEFAULT_MAX_CONCURRENT_TASKS,
             claim_batch_size: DEFAULT_CLAIM_BATCH_SIZE,
@@ -1042,6 +1046,15 @@ where
                 .map_err(|e| anyhow::anyhow!("Failed to parse scheduled app input: {}", e))?;
             let res = adapters
                 .invoke_scheduled_app_channel(input.org_id, &input.app_id, &input.channel_id)
+                .await
+                .map_err(anyhow::Error::from);
+            (res, None)
+        }
+        activity_types::INVOKE_AGENT_TRIGGER => {
+            let input: ScheduledAgentTriggerInput = serde_json::from_value(task.input.clone())
+                .map_err(|e| anyhow::anyhow!("Failed to parse agent trigger input: {}", e))?;
+            let res = adapters
+                .invoke_agent_trigger(input.org_id, &input.agent_id, &input.trigger_id)
                 .await
                 .map_err(anyhow::Error::from);
             (res, None)
@@ -2004,6 +2017,14 @@ mod tests {
                 _org_id: i64,
                 _app_id: &str,
                 _channel_id: &str,
+            ) -> CoreResult<serde_json::Value> {
+                unimplemented!()
+            }
+            async fn invoke_agent_trigger(
+                &self,
+                _org_id: i64,
+                _agent_id: &str,
+                _trigger_id: &str,
             ) -> CoreResult<serde_json::Value> {
                 unimplemented!()
             }

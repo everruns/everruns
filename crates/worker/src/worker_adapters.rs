@@ -362,6 +362,14 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         channel_id: &str,
     ) -> Result<serde_json::Value>;
 
+    /// Invoke an agent schedule trigger when a durable schedule fires (EVE-757).
+    async fn invoke_agent_trigger(
+        &self,
+        org_id: i64,
+        agent_id: &str,
+        trigger_id: &str,
+    ) -> Result<serde_json::Value>;
+
     /// Claim due leased resources for cleanup work.
     ///
     /// This is the control-plane entry point used by the durable cleanup

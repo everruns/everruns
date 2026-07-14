@@ -4,7 +4,7 @@
 
 Scheduled tasks extend the durable execution engine with cron-based scheduling capabilities. Users can define recurring tasks that automatically trigger workflows or activities at specified intervals. This feature integrates seamlessly with existing durable infrastructure—sharing the same reliability guarantees, observability, and management APIs.
 
-See `specs/localization.md` for how schedule timezone interacts with session and user timezone defaults during execution.
+See `specs/localization.md` for how schedule timezone interacts with session and user timezone defaults during execution. Consumers of this durable scheduler include App schedule channels (`specs/app-invocation-channels.md`) and agent triggers (`specs/agent-triggers.md`).
 
 ## Goals
 
