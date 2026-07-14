@@ -541,14 +541,28 @@ pub fn estimate_cost_usd(
     cache_creation_tokens: u32,
 ) -> Option<f64> {
     let cost = get_model_profile(provider_type, model_id)?.cost?;
+    let prompt_tokens = input_tokens
+        .saturating_add(cache_read_tokens)
+        .saturating_add(cache_creation_tokens);
+    let active_tier = cost
+        .cost_tiers
+        .iter()
+        .filter(|tier| prompt_tokens > tier.above_tokens.max(0) as u32)
+        .max_by_key(|tier| tier.above_tokens);
+
+    let input_rate = active_tier.map_or(cost.input, |tier| tier.input);
+    let output_rate = active_tier.map_or(cost.output, |tier| tier.output);
+    let cache_read_rate = active_tier
+        .and_then(|tier| tier.cache_read)
+        .or(cost.cache_read)
+        .unwrap_or(input_rate);
     let per_million = |tokens: u32, rate: f64| (tokens as f64 / 1_000_000.0) * rate;
-    let cache_read_rate = cost.cache_read.unwrap_or(cost.input);
 
     Some(
-        per_million(input_tokens, cost.input)
+        per_million(input_tokens, input_rate)
             + per_million(cache_read_tokens, cache_read_rate)
-            + per_million(cache_creation_tokens, cost.input)
-            + per_million(output_tokens, cost.output),
+            + per_million(cache_creation_tokens, input_rate)
+            + per_million(output_tokens, output_rate),
     )
 }
 
@@ -5067,6 +5081,32 @@ mod tests {
         // 42K*5 + 285K*0.5 + 2K*30 (per M) ≈ $0.42 — far below the ~$1.70 that
         // billing the whole 327K prompt at the full input rate would produce.
         assert!(est < 0.45 && est > 0.39, "est {est}");
+    }
+
+    #[test]
+    fn test_estimate_cost_usd_applies_tier_to_whole_request() {
+        let est = estimate_cost_usd(&DriverId::OpenAI, "gpt-5.6-sol", 300_000, 100_000, 0, 0)
+            .expect("known tiered model should yield an estimate");
+        // GPT-5.6 Sol charges prompts above 272K input tokens at the tiered
+        // rates for the whole request: 300K*$10/M + 100K*$45/M = $7.50.
+        assert!((est - 7.50).abs() < 1e-9, "got {est}");
+    }
+
+    #[test]
+    fn test_estimate_cost_usd_uses_cache_tokens_for_tier_threshold() {
+        let est = estimate_cost_usd(
+            &DriverId::OpenAI,
+            "gpt-5.6-luna",
+            42_000,
+            100_000,
+            260_000,
+            0,
+        )
+        .expect("known tiered model should yield an estimate");
+        // The prompt exceeds the 272K tier threshold after cached reads are
+        // included, so non-cached input, cached reads, and output use tier rates.
+        // 42K*$2/M + 260K*$0.20/M + 100K*$9/M = $1.036.
+        assert!((est - 1.036).abs() < 1e-9, "got {est}");
     }
 
     #[test]
