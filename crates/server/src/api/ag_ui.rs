@@ -343,18 +343,30 @@ async fn run_agent(
         channel_config,
     } = authorize_ag_ui_request(&state, &app_id, &headers, peer_addr).await?;
 
-    run_app_agent_stream(state, app, channel_config, "ag_ui", request, request_id).await
+    run_app_agent_stream(
+        state,
+        app,
+        channel_config,
+        "ag_ui",
+        Vec::new(),
+        request,
+        request_id,
+    )
+    .await
 }
 
 /// Shared AG-UI ingress + streaming core, reused by both the AG-UI channel and
 /// the Public Chat channel. `tag_prefix` scopes the session routing tags
 /// (`{prefix}:app:{id}` / `{prefix}:thread:{id}`) so reusing a thread ID across
 /// channels or apps can never merge tenants or sessions (TM-TENANT-009).
+/// Callers with stronger visitor ownership requirements can pass additional
+/// routing tags; they become part of the session lookup identity.
 pub(crate) async fn run_app_agent_stream(
     state: AgUiState,
     app: App,
     channel_config: AgUiChannelConfig,
     tag_prefix: &str,
+    extra_routing_tags: Vec<String>,
     request: Request,
     request_id: Option<String>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, Response> {
@@ -396,10 +408,11 @@ pub(crate) async fn run_app_agent_stream(
     // not merge tenants or app sessions.
     // Mitigation: Scope the session lookup tags by channel prefix, app public
     // ID, and thread ID so thread collisions stay isolated per app and channel.
-    let routing_tags = vec![
+    let mut routing_tags = vec![
         format!("{tag_prefix}:app:{}", app.public_id),
         format!("{tag_prefix}:thread:{}", thread_tag),
     ];
+    routing_tags.extend(extra_routing_tags);
     let session = find_or_create_session(
         &state,
         &app,
