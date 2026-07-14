@@ -684,6 +684,7 @@ jobs:
         run: |
           cargo test -p everruns-server \
             --test ag_ui_integration_test \
+            --test agent_trigger_invocation_integration_test \
             --test app_a2a_integration_test \
             --test app_invocation_channels_integration_test \
             --test auth_integration_test \
