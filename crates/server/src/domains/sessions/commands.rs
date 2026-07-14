@@ -4,6 +4,7 @@ use super::types::{
     ForkSessionRequest, GetOrCreateChatSessionRequest, SessionStatsResponse, UpdateSessionRequest,
 };
 use crate::domains::common::*;
+use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
 use everruns_core::events::{
     EventContext, EventData, EventRequest, InputMessageData, LLM_GENERATION, SessionIdledData,
     TurnCancelledData, deserialize_event_data,
@@ -258,6 +259,11 @@ impl Command for ListSessionParticipants {
             .list_session_participants(ctx.org_id(), session_id)
             .await
             .map_err(classify_anyhow)?;
+        if rows.len() > MAX_SESSION_PARTICIPANT_HISTORY {
+            return Err(CommandError::conflict(format!(
+                "Session participant history exceeds the {MAX_SESSION_PARTICIPANT_HISTORY} row limit"
+            )));
+        }
         Ok(rows.into_iter().map(|row| row.to_core()).collect())
     }
 }
@@ -324,20 +330,52 @@ impl Command for AddSessionParticipant {
             }
         };
 
-        let row = ctx
-            .db
-            .create_session_participant(crate::storage::models::CreateSessionParticipantRow {
-                org_id: ctx.org_id(),
-                session_id,
-                kind: self.req.kind,
-                agent_id,
-                agent_version_id,
-                principal_id: session.owner_principal_id,
-                role,
-                joined_at: None,
-            })
-            .await
-            .map_err(classify_anyhow)?;
+        let is_user_participant = self.req.kind == SessionParticipantKind::User;
+        if !is_user_participant {
+            let rows = ctx
+                .db
+                .list_session_participants(ctx.org_id(), session_id)
+                .await
+                .map_err(classify_anyhow)?;
+            if rows.len() > MAX_SESSION_PARTICIPANT_HISTORY {
+                return Err(CommandError::conflict(format!(
+                    "Session participant history exceeds the {MAX_SESSION_PARTICIPANT_HISTORY} row limit"
+                )));
+            }
+            if rows.iter().any(|row| {
+                row.kind == SessionParticipantKind::Agent.to_string()
+                    && row.role == SessionParticipantRole::Member.to_string()
+                    && row.agent_id == agent_id
+                    && row.left_at.is_none()
+            }) {
+                return Err(CommandError::conflict(
+                    "Session already has an active agent participant for this agent",
+                ));
+            }
+        }
+
+        let input = crate::storage::models::CreateSessionParticipantRow {
+            org_id: ctx.org_id(),
+            session_id,
+            kind: self.req.kind,
+            agent_id,
+            agent_version_id,
+            principal_id: session.owner_principal_id,
+            role,
+            joined_at: None,
+        };
+
+        let row = if is_user_participant {
+            ctx.db
+                .ensure_active_user_session_participant(input)
+                .await
+                .map_err(classify_anyhow)?
+        } else {
+            ctx.db
+                .create_session_participant(input)
+                .await
+                .map_err(classify_anyhow)?
+        };
 
         Ok(row.to_core())
     }
@@ -1097,6 +1135,26 @@ mod tests {
         assert_eq!(host.kind, SessionParticipantKind::Agent);
         assert_eq!(host.agent_id, Some(host_agent.id));
 
+        let user_again = AddSessionParticipant {
+            session_id: session.id.to_string(),
+            req: AddSessionParticipantRequest {
+                kind: SessionParticipantKind::User,
+                agent_id: None,
+                role: None,
+            },
+        }
+        .execute(&ctx)
+        .await
+        .expect("user participant add is idempotent");
+        assert_eq!(user_again.kind, SessionParticipantKind::User);
+        assert_eq!(
+            initial
+                .iter()
+                .filter(|p| p.kind == SessionParticipantKind::User)
+                .count(),
+            1
+        );
+
         let added = AddSessionParticipant {
             session_id: session.id.to_string(),
             req: AddSessionParticipantRequest {
@@ -1110,6 +1168,19 @@ mod tests {
         .expect("add member participant");
         assert_eq!(added.role, SessionParticipantRole::Member);
         assert_eq!(added.agent_id, Some(member_agent.id));
+
+        let duplicate_agent = AddSessionParticipant {
+            session_id: session.id.to_string(),
+            req: AddSessionParticipantRequest {
+                kind: SessionParticipantKind::Agent,
+                agent_id: Some(member_public_id),
+                role: None,
+            },
+        }
+        .execute(&ctx)
+        .await
+        .expect_err("duplicate active agent participant is rejected");
+        assert_eq!(duplicate_agent.status().as_u16(), 409);
 
         let left = LeaveSessionParticipant {
             session_id: session.id.to_string(),
