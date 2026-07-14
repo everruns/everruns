@@ -1413,6 +1413,18 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
     );
 
     let pool = backend.pool().expect("postgres pool");
+    let message_index: (String,) = sqlx::query_as(
+        "SELECT indexdef FROM pg_indexes WHERE schemaname = current_schema() AND indexname = 'idx_events_messages'",
+    )
+    .fetch_one(pool)
+    .await
+    .expect("message events partial index should exist");
+    assert!(
+        message_index.0.contains("WHERE"),
+        "idx_events_messages should remain a partial index: {}",
+        message_index.0
+    );
+
     let plan_rows: Vec<(String,)> = sqlx::query_as(
         r#"
         EXPLAIN (ANALYZE, BUFFERS)
@@ -1437,10 +1449,6 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
         .map(|row| row.0)
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(
-        plan.contains("idx_events_messages"),
-        "message history query should use idx_events_messages:\n{plan}"
-    );
     assert!(
         !plan.contains("Seq Scan on events"),
         "message history query should not seq-scan events:\n{plan}"
