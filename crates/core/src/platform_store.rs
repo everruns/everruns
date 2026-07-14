@@ -337,6 +337,10 @@ pub mod tests {
         /// Status returned by `wait_for_idle` ("idle" by default). Tests set
         /// a terminal turn status (e.g. "completed") to exercise settle paths.
         pub wait_for_idle_status: std::sync::Mutex<String>,
+        /// Records every `send_message` call as `(session_id, content)` so
+        /// tests can assert which session was signaled (e.g. a detached peer
+        /// receiving a cooperative-cancel message).
+        pub sent_messages: std::sync::Mutex<Vec<(SessionId, String)>>,
     }
 
     impl Default for MockPlatformStore {
@@ -486,6 +490,7 @@ pub mod tests {
                 joined_participants: std::sync::Mutex::new(Vec::new()),
                 created_session_harness_ids: std::sync::Mutex::new(Vec::new()),
                 wait_for_idle_status: std::sync::Mutex::new("idle".to_string()),
+                sent_messages: std::sync::Mutex::new(Vec::new()),
             }
         }
     }
@@ -826,7 +831,11 @@ pub mod tests {
         async fn delete_session(&self, _id: SessionId) -> Result<()> {
             Ok(())
         }
-        async fn send_message(&self, _id: SessionId, _content: &str) -> Result<()> {
+        async fn send_message(&self, id: SessionId, content: &str) -> Result<()> {
+            self.sent_messages
+                .lock()
+                .unwrap()
+                .push((id, content.to_string()));
             Ok(())
         }
         async fn get_messages(

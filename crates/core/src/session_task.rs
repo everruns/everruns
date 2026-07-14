@@ -29,8 +29,9 @@ pub type TaskProgress = crate::background::BackgroundProgress;
 /// Well-known task kinds. Kind stays a free-form string; these constants
 /// cover the built-in executors.
 pub const TASK_KIND_SUBAGENT: &str = "subagent";
-/// Detached peer session tracked for visibility only. Canceling this task
-/// detaches tracking; it does not stop the peer session.
+/// Detached peer session. Canceling this task cooperatively cancels the peer
+/// session (standard send/cancel path) and settles the tracking task
+/// `canceled` — cancel means cancel, not detach-only (EVE-766).
 pub const TASK_KIND_SESSION: &str = "session";
 /// Cross-agent handoff to a different configured Agent in the same harness.
 /// Distinct from `subagent` so `list_tasks(kind="subagent")` returns only

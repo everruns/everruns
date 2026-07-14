@@ -161,7 +161,7 @@ update); `post` and `output` are content (thread and stream). This keeps
 | `subagent` | create child session, send instructions | `send_message(child)` | child question → `request_input`; final message → `post` + terminal state |
 | `external_agent` | A2A `message/send` | `message/send` with `remote_task_id` | `reconcile` polls `tasks/get`; remote artifacts → `artifact` |
 | `background_tool` | run `execute_background` with the sink | rarely used | direct sink calls (existing `BackgroundEventSink` is a strict subset) |
-| `session` | create a detached peer session | n/a | visibility-only task; cancel detaches tracking and never stops the peer session |
+| `session` | create a detached peer session | n/a | `cancel` cooperatively cancels the peer session (standard send/cancel path) and settles the tracking task `canceled` — cancel means cancel, not detach-only (EVE-766) |
 | `monitor` | created by `spawn_background` with a `schedule` arg | n/a (schedule-driven) | schedule fire → probe runs (or placeholder message); one-shot → `succeeded`; recurring stays `running` |
 
 A monitor is a long-lived task (`running` until canceled or exhausted).
