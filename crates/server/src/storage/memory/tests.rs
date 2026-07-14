@@ -3862,3 +3862,197 @@ fn test_normalize_email_trims_and_lowercases() {
     assert_eq!(normalize_email("alice@example.com"), "alice@example.com");
     assert_eq!(normalize_email("\tBob@X.io\n"), "bob@x.io");
 }
+
+// ============================================
+// Agent trigger round-trips (EVE-757)
+// ============================================
+
+fn schedule_trigger_input(agent_id: AgentId) -> CreateAgentTriggerRow {
+    CreateAgentTriggerRow {
+        org_id: DEFAULT_ORG_ID,
+        id: everruns_core::TriggerId::new(),
+        agent_id,
+        trigger_type: "schedule".to_string(),
+        config: serde_json::json!({
+            "cron_expression": "0 0 * * * *",
+            "timezone": "UTC",
+            "session_mode": "shared_session",
+            "message": "hello",
+        }),
+        enabled: true,
+        durable_schedule_id: None,
+    }
+}
+
+#[tokio::test]
+async fn test_agent_trigger_create_get_list_update_delete_round_trip() {
+    let db = InMemoryDatabase::new();
+    let agent_id = AgentId::new();
+
+    // Create
+    let created = db
+        .create_agent_trigger(schedule_trigger_input(agent_id))
+        .await
+        .unwrap();
+    assert_eq!(created.status, "active");
+    assert_eq!(created.trigger_type, "schedule");
+    assert!(created.enabled);
+    assert_eq!(created.agent_id, agent_id);
+
+    // Config round-trips into the typed core accessor.
+    let trigger = everruns_core::AgentTrigger {
+        id: created.id,
+        agent_id: created.agent_id,
+        trigger_type: created.trigger_type.as_str().into(),
+        config: created.config.clone(),
+        enabled: created.enabled,
+        created_at: created.created_at,
+        updated_at: created.updated_at,
+        archived_at: created.archived_at,
+        deleted_at: created.deleted_at,
+    };
+    let schedule = trigger.schedule_config().unwrap();
+    assert_eq!(schedule.cron_expression, "0 0 * * * *");
+    assert_eq!(schedule.message, "hello");
+
+    // Get
+    let fetched = db
+        .get_agent_trigger(DEFAULT_ORG_ID, created.id)
+        .await
+        .unwrap()
+        .expect("trigger exists");
+    assert_eq!(fetched.id, created.id);
+
+    // Cross-org isolation.
+    assert!(
+        db.get_agent_trigger(999, created.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    // List
+    let listed = db
+        .list_agent_triggers(DEFAULT_ORG_ID, None, false)
+        .await
+        .unwrap();
+    assert_eq!(listed.len(), 1);
+
+    // Update
+    let updated = db
+        .update_agent_trigger(
+            DEFAULT_ORG_ID,
+            created.id,
+            UpdateAgentTrigger {
+                enabled: Some(false),
+                config: Some(serde_json::json!({
+                    "cron_expression": "0 5 * * * *",
+                    "message": "updated",
+                })),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+        .expect("update returns row");
+    assert!(!updated.enabled);
+    assert_eq!(updated.config["message"], serde_json::json!("updated"));
+
+    // Soft delete (archive)
+    assert!(
+        db.delete_agent_trigger(DEFAULT_ORG_ID, created.id)
+            .await
+            .unwrap()
+    );
+    let after_delete = db
+        .get_agent_trigger(DEFAULT_ORG_ID, created.id)
+        .await
+        .unwrap()
+        .expect("row still present after soft delete");
+    assert_eq!(after_delete.status, "archived");
+    assert!(after_delete.archived_at.is_some());
+
+    // Archived rows are excluded unless include_archived.
+    assert!(
+        db.list_agent_triggers(DEFAULT_ORG_ID, None, false)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        db.list_agent_triggers(DEFAULT_ORG_ID, None, true)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+
+    // Second delete is a no-op (already archived, not active).
+    assert!(
+        !db.delete_agent_trigger(DEFAULT_ORG_ID, created.id)
+            .await
+            .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn test_agent_trigger_set_durable_schedule_id() {
+    let db = InMemoryDatabase::new();
+    let created = db
+        .create_agent_trigger(schedule_trigger_input(AgentId::new()))
+        .await
+        .unwrap();
+    assert!(created.durable_schedule_id.is_none());
+
+    let schedule_id = uuid::Uuid::now_v7();
+    let bound = db
+        .set_agent_trigger_durable_schedule_id(DEFAULT_ORG_ID, created.id, Some(schedule_id))
+        .await
+        .unwrap()
+        .expect("bind returns row");
+    assert_eq!(bound.durable_schedule_id, Some(schedule_id));
+
+    // Clearing the binding works too.
+    let cleared = db
+        .set_agent_trigger_durable_schedule_id(DEFAULT_ORG_ID, created.id, None)
+        .await
+        .unwrap()
+        .expect("clear returns row");
+    assert!(cleared.durable_schedule_id.is_none());
+}
+
+#[tokio::test]
+async fn test_agent_trigger_list_filters_by_agent() {
+    let db = InMemoryDatabase::new();
+    let agent_a = AgentId::new();
+    let agent_b = AgentId::new();
+
+    db.create_agent_trigger(schedule_trigger_input(agent_a))
+        .await
+        .unwrap();
+    db.create_agent_trigger(schedule_trigger_input(agent_a))
+        .await
+        .unwrap();
+    db.create_agent_trigger(schedule_trigger_input(agent_b))
+        .await
+        .unwrap();
+
+    let for_a = db
+        .list_agent_triggers(DEFAULT_ORG_ID, Some(agent_a), false)
+        .await
+        .unwrap();
+    assert_eq!(for_a.len(), 2);
+    assert!(for_a.iter().all(|t| t.agent_id == agent_a));
+
+    let for_b = db
+        .list_agent_triggers(DEFAULT_ORG_ID, Some(agent_b), false)
+        .await
+        .unwrap();
+    assert_eq!(for_b.len(), 1);
+
+    let all = db
+        .list_agent_triggers(DEFAULT_ORG_ID, None, false)
+        .await
+        .unwrap();
+    assert_eq!(all.len(), 3);
+}

@@ -322,6 +322,13 @@ impl IdMarker for AgentIdentityIdMarker {
     const PREFIX: &'static str = "identity";
 }
 
+/// Marker for agent trigger IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TriggerIdMarker;
+impl IdMarker for TriggerIdMarker {
+    const PREFIX: &'static str = "trg";
+}
+
 /// Marker for principal IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PrincipalIdMarker;
@@ -624,6 +631,8 @@ pub type AgentVersionId = TypedId<AgentVersionIdMarker>;
 pub type HarnessId = TypedId<HarnessIdMarker>;
 /// Agent identity ID
 pub type AgentIdentityId = TypedId<AgentIdentityIdMarker>;
+/// Agent trigger ID
+pub type TriggerId = TypedId<TriggerIdMarker>;
 /// Principal ID
 pub type PrincipalId = TypedId<PrincipalIdMarker>;
 /// Session ID
