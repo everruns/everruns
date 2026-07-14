@@ -166,8 +166,8 @@ also stores `spec["tool"]` and `spec["arguments"]` — the probe tool to run on
 each fire.
 
 On each fire the session scheduler executes the probe tool directly (using a
-built-in tool registry) and records the result as an outbound message on the
-monitor's thread. Because the probe runs autonomously, no agent turn is
+small built-in registry of context-free probe tools) and records the result as
+an outbound message on the monitor's thread. Because the probe runs autonomously, no agent turn is
 started — the session LLM is not involved.
 
 A plain `"Monitor fired at …"` placeholder is recorded and the normal
@@ -175,7 +175,10 @@ scheduled session turn runs instead when any of the following are true:
 
 - No tool registry is available at startup.
 - `spec["tool"]` is absent or empty.
-- The named tool is not in the built-in registry.
+- The named tool is not in the built-in probe registry. Network, filesystem,
+  storage, and other context-sensitive tools are intentionally excluded until
+  probe execution can use the same fully populated `ToolContext` as worker/API
+  executor paths.
 - The tool returns `InternalError` or `ConnectionRequired` (non-observable outcomes).
 
 One-shot monitors transition to `succeeded` after their single fire; recurring
