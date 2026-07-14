@@ -10,6 +10,7 @@ use crate::domains::common::*;
 use everruns_core::{
     AgentCapabilityConfig, Harness, HarnessId, HarnessStatus, Policy, ScopedMcpServers,
     ToolDefinition, merge_scoped_mcp_servers,
+    openresponses_types::{MAX_METADATA_KEY_LENGTH, MAX_METADATA_KEYS, MAX_METADATA_VALUE_LENGTH},
 };
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -23,6 +24,18 @@ use crate::api::validation::{
     MAX_AGENT_SYSTEM_PROMPT_BYTES, MAX_INITIAL_FILES, MAX_INITIAL_FILES_TOTAL_BYTES,
 };
 use everruns_core::InitialFile;
+
+const SYSTEM_LLM_METADATA_KEYS: &[&str] = &[
+    "session_id",
+    "harness_id",
+    "turn_id",
+    "exec_id",
+    "org_id",
+    "agent_id",
+    "model_id",
+];
+
+const MAX_EMBEDDER_METADATA_KEYS: usize = MAX_METADATA_KEYS - SYSTEM_LLM_METADATA_KEYS.len();
 
 fn validate_create_limits(req: &CreateHarnessRequest) -> Result<(), CommandError> {
     if req.name.len() > MAX_AGENT_NAME_BYTES
@@ -44,6 +57,7 @@ fn validate_create_limits(req: &CreateHarnessRequest) -> Result<(), CommandError
     {
         return Err(CommandError::bad_request("Input exceeds allowed limits"));
     }
+    validate_embedder_metadata_limits(&req.embedder_metadata)?;
     Ok(())
 }
 
@@ -74,6 +88,24 @@ fn validate_update_limits(req: &UpdateHarnessRequest) -> Result<(), CommandError
             .is_some_and(|f| initial_files_total_bytes(f) > MAX_INITIAL_FILES_TOTAL_BYTES)
     {
         return Err(CommandError::bad_request("Input exceeds allowed limits"));
+    }
+    if let Some(metadata) = &req.embedder_metadata {
+        validate_embedder_metadata_limits(metadata)?;
+    }
+    Ok(())
+}
+
+fn validate_embedder_metadata_limits(
+    metadata: &std::collections::HashMap<String, String>,
+) -> Result<(), CommandError> {
+    if metadata.len() > MAX_EMBEDDER_METADATA_KEYS
+        || metadata.iter().any(|(key, value)| {
+            key.len() > MAX_METADATA_KEY_LENGTH || value.len() > MAX_METADATA_VALUE_LENGTH
+        })
+    {
+        return Err(CommandError::bad_request(
+            "Embedder metadata exceeds allowed limits",
+        ));
     }
     Ok(())
 }
@@ -949,6 +981,78 @@ mod tests {
             network_access: None,
             embedder_metadata: Default::default(),
         }
+    }
+
+    fn update_request_with_metadata(
+        embedder_metadata: std::collections::HashMap<String, String>,
+    ) -> UpdateHarnessRequest {
+        UpdateHarnessRequest {
+            name: None,
+            display_name: None,
+            description: None,
+            system_prompt: None,
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: None,
+            capabilities: None,
+            initial_files: None,
+            mcp_servers: None,
+            network_access: None,
+            status: None,
+            embedder_metadata: Some(embedder_metadata),
+        }
+    }
+
+    fn metadata_entries(count: usize) -> std::collections::HashMap<String, String> {
+        (0..count)
+            .map(|i| (format!("key_{i}"), format!("value_{i}")))
+            .collect()
+    }
+
+    #[test]
+    fn create_rejects_embedder_metadata_without_system_key_headroom() {
+        let mut req = basic_request("metadata-heavy");
+        req.embedder_metadata = metadata_entries(MAX_EMBEDDER_METADATA_KEYS + 1);
+
+        let err = validate_create_limits(&req)
+            .expect_err("embedder metadata must leave room for system metadata");
+
+        assert_eq!(err.status().as_u16(), 400);
+        assert!(err.message().contains("Embedder metadata"));
+    }
+
+    #[test]
+    fn create_rejects_overlong_embedder_metadata_key_or_value() {
+        let mut req = basic_request("metadata-overlong-key");
+        req.embedder_metadata
+            .insert("k".repeat(MAX_METADATA_KEY_LENGTH + 1), "value".to_string());
+        assert!(validate_create_limits(&req).is_err());
+
+        let mut req = basic_request("metadata-overlong-value");
+        req.embedder_metadata
+            .insert("key".to_string(), "v".repeat(MAX_METADATA_VALUE_LENGTH + 1));
+        assert!(validate_create_limits(&req).is_err());
+    }
+
+    #[test]
+    fn update_rejects_embedder_metadata_provider_limit_violations() {
+        let err = validate_update_limits(&update_request_with_metadata(metadata_entries(
+            MAX_EMBEDDER_METADATA_KEYS + 1,
+        )))
+        .expect_err("update must apply the same metadata key limit");
+        assert_eq!(err.status().as_u16(), 400);
+
+        let mut metadata = metadata_entries(1);
+        metadata.insert("key".to_string(), "v".repeat(MAX_METADATA_VALUE_LENGTH + 1));
+        assert!(validate_update_limits(&update_request_with_metadata(metadata)).is_err());
+    }
+
+    #[test]
+    fn accepts_embedder_metadata_that_leaves_system_key_headroom() {
+        let mut req = basic_request("metadata-ok");
+        req.embedder_metadata = metadata_entries(MAX_EMBEDDER_METADATA_KEYS);
+
+        validate_create_limits(&req).expect("metadata within reserved provider limits");
     }
 
     #[tokio::test]
