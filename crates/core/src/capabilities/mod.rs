@@ -1785,6 +1785,31 @@ struct SpawnAgentTargetProvider {
     tool: Box<dyn Tool>,
 }
 
+/// Shared execution mode accepted natively by every `spawn_agent` provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SpawnMode {
+    Background,
+    Foreground,
+}
+
+impl SpawnMode {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "background" => Some(Self::Background),
+            "foreground" => Some(Self::Foreground),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Background => "background",
+            Self::Foreground => "foreground",
+        }
+    }
+}
+
 struct UnifiedSpawnAgentTool {
     providers: Vec<SpawnAgentTargetProvider>,
 }
@@ -1810,34 +1835,6 @@ impl UnifiedSpawnAgentTool {
                     .any(|provider| provider.target_type == *target_type)
             })
             .collect()
-    }
-
-    fn normalize_arguments(&self, mut arguments: serde_json::Value) -> serde_json::Value {
-        let target_type = arguments
-            .get("target")
-            .and_then(|target| target.get("type"))
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default();
-
-        if target_type == "external_a2a" {
-            if let Some(target) = arguments
-                .get_mut("target")
-                .and_then(serde_json::Value::as_object_mut)
-                && !target.contains_key("external_agent_id")
-                && let Some(id) = target.get("id").cloned()
-            {
-                target.insert("external_agent_id".to_string(), id);
-            }
-            if arguments.get("mode").and_then(serde_json::Value::as_str) == Some("foreground") {
-                arguments["mode"] = serde_json::Value::String("wait".to_string());
-            }
-        } else if matches!(target_type, "subagent" | "agent")
-            && arguments.get("mode").and_then(serde_json::Value::as_str) == Some("wait")
-        {
-            arguments["mode"] = serde_json::Value::String("foreground".to_string());
-        }
-
-        arguments
     }
 }
 
@@ -1909,7 +1906,7 @@ impl Tool for UnifiedSpawnAgentTool {
                         },
                         "id": {
                             "type": "string",
-                            "description": "Configured first-party handoff target id. Also accepted as an alias for external_a2a target.external_agent_id."
+                            "description": "Configured target id for first-party handoffs or external A2A agents."
                         },
                         "external_agent_id": {
                             "type": "string",
@@ -1921,8 +1918,8 @@ impl Tool for UnifiedSpawnAgentTool {
                 },
                 "mode": {
                     "type": "string",
-                    "enum": ["background", "foreground", "wait"],
-                    "description": "Execution mode. Use background to return immediately with a task_id. Use foreground to block for local targets; external_a2a also accepts legacy wait."
+                    "enum": ["background", "foreground"],
+                    "description": "Execution mode. Use background to return immediately with a task_id, or foreground to block until the delegated work reaches a terminal state or timeout."
                 },
                 "blueprint": {
                     "type": "string",
@@ -1948,7 +1945,7 @@ impl Tool for UnifiedSpawnAgentTool {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 86400,
-                    "description": "External-A2A-only foreground/wait timeout."
+                    "description": "External-A2A-only foreground timeout."
                 },
                 "wake_on_completion": {
                     "type": "boolean",
@@ -2016,9 +2013,7 @@ impl Tool for UnifiedSpawnAgentTool {
             );
         }
 
-        provider
-            .execute_with_context(self.normalize_arguments(arguments), context)
-            .await
+        provider.execute_with_context(arguments, context).await
     }
 
     fn requires_context(&self) -> bool {
@@ -5303,6 +5298,16 @@ mod tests {
         assert_eq!(
             spawn_agent_defs[0].parameters()["properties"]["target"]["properties"]["type"]["enum"],
             serde_json::json!(["subagent", "external_a2a"])
+        );
+        assert_eq!(
+            spawn_agent_defs[0].parameters()["properties"]["mode"]["enum"],
+            serde_json::json!(["background", "foreground"])
+        );
+        assert!(
+            !spawn_agent_defs[0].parameters()["properties"]["mode"]["description"]
+                .as_str()
+                .expect("mode description")
+                .contains("wait")
         );
     }
 

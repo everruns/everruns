@@ -25,7 +25,7 @@ use super::delegation_result::{
 };
 #[cfg(test)]
 use super::delegation_result::{ReportResultTool, ReportTaskProgressTool};
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, SpawnMode};
 use crate::platform_store::{PlatformCreateSessionRequest, PlatformStore};
 use crate::session::SessionSeedMode;
 use crate::session_task::{
@@ -179,25 +179,6 @@ const SUBAGENT_SYSTEM_PROMPT: &str = "Spawn subagents for independent parallel w
 const PUSH_CONFIGS_SPEC_KEY: &str = "push_configs";
 /// Valid `event_filter` members for a per-task push config.
 const VALID_PUSH_EVENT_FILTERS: [&str; 3] = ["terminal", "awaiting_input", "message"];
-
-/// Execution mode for subagent delegation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SpawnMode {
-    /// Return immediately; a detached watcher settles the task and the
-    /// OnTerminal wake policy notifies the parent when the child finishes.
-    Background,
-    /// Block until the child idles and return its result inline.
-    Foreground,
-}
-
-impl SpawnMode {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Background => "background",
-            Self::Foreground => "foreground",
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SpawnLifetime {
@@ -733,8 +714,7 @@ fn resolve_spawn_mode(
         .filter(|s| !s.is_empty())
     {
         None => None,
-        Some("background") => Some(SpawnMode::Background),
-        Some("foreground") => Some(SpawnMode::Foreground),
+        Some(value) if let Some(mode) = SpawnMode::parse(value) => Some(mode),
         Some(other) => {
             return Err(ToolExecutionResult::tool_error(format!(
                 "Invalid mode: \"{other}\". Valid modes: background, foreground."
