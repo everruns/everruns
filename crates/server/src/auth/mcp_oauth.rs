@@ -223,6 +223,8 @@ pub struct McpOAuthState {
     pub issuer_url: String,
     /// Frontend URL for login redirects (e.g. `http://localhost:9300`).
     pub frontend_url: String,
+    /// Optional trusted origin hosting the login page.
+    pub login_origin: Option<String>,
     /// Per-IP rate limiter shared with the other auth endpoints. Used to throttle
     /// the unauthenticated dynamic client registration endpoint (TM-DOS).
     pub rate_limiter: AuthRateLimiter,
@@ -464,7 +466,11 @@ async fn oauth_authorize(
                 .path_and_query()
                 .map(|pq| pq.as_str())
                 .unwrap_or("/oauth/authorize");
-            let frontend = state.frontend_url.trim_end_matches('/');
+            let frontend = state
+                .login_origin
+                .as_deref()
+                .unwrap_or(&state.frontend_url)
+                .trim_end_matches('/');
             let login_url = format!(
                 "{}/login?return_to={}",
                 frontend,

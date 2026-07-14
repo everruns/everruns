@@ -137,8 +137,10 @@ pub struct CliUserInfo {
 pub struct CliAuthState {
     pub db: Arc<StorageBackend>,
     pub auth: AuthState,
-    /// Frontend URL for login redirects (e.g. `https://app.example.com`)
+    /// Frontend URL used to derive the browser-relative CLI callback path.
     pub frontend_url: String,
+    /// Optional trusted origin hosting the login page.
+    pub login_origin: Option<String>,
     /// Full backend base URL including any path prefix (e.g. `https://app.example.com/api`).
     /// Used directly to construct callback URLs — no env-var lookup is performed.
     pub base_url: String,
@@ -221,7 +223,11 @@ async fn cli_auth_start(
     );
     let auth_url = format!(
         "{}/login?return_to={}",
-        state.frontend_url.trim_end_matches('/'),
+        state
+            .login_origin
+            .as_deref()
+            .unwrap_or(&state.frontend_url)
+            .trim_end_matches('/'),
         urlencoding::encode(&callback_path)
     );
 

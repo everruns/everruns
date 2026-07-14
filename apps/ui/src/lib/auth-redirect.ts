@@ -8,6 +8,24 @@ export const RETURN_TO_STORAGE_KEY = "everruns_return_to";
 
 type SearchInput = URLSearchParams | string | null | undefined;
 
+function normalizeLoginOrigin(value: string | null | undefined): string {
+  if (!value) return "";
+  // THREAT[TM-WEB-008]: defense-in-depth for UI-only deployments. Callers may
+  // provide deployment config, never request/query input, and it must be an origin.
+  const parsed = new URL(value);
+  if (
+    !["http:", "https:"].includes(parsed.protocol) ||
+    parsed.username ||
+    parsed.password ||
+    parsed.pathname !== "/" ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new Error("Login origin must be an HTTP(S) origin");
+  }
+  return parsed.origin;
+}
+
 function getSearchString(search: SearchInput): string {
   if (search instanceof URLSearchParams) {
     return search.toString();
@@ -20,15 +38,37 @@ function getSearchString(search: SearchInput): string {
   return "";
 }
 
-export function getLoginRedirectPath(pathname: string, search: SearchInput): string {
+export function getLoginRedirectPath(
+  pathname: string,
+  search: SearchInput,
+  loginOrigin?: string | null,
+): string {
   const searchString = getSearchString(search);
   const currentUrl = pathname + (searchString ? `?${searchString}` : "");
+  const loginPath = `${normalizeLoginOrigin(loginOrigin)}/login`;
 
   if (currentUrl === "/dashboard") {
-    return "/login";
+    return loginPath;
   }
 
-  return `/login?return_to=${encodeURIComponent(currentUrl)}`;
+  return `${loginPath}?return_to=${encodeURIComponent(currentUrl)}`;
+}
+
+/** Configured absolute login URLs must leave the Next.js client router. */
+export function isFullPageLoginRedirect(path: string): boolean {
+  return /^https?:\/\//i.test(path);
+}
+
+export function navigateToLogin(
+  path: string,
+  routerReplace: (path: string) => void,
+  locationAssign: (path: string) => void = (target) => window.location.assign(target),
+): void {
+  if (isFullPageLoginRedirect(path)) {
+    locationAssign(path);
+  } else {
+    routerReplace(path);
+  }
 }
 
 /**

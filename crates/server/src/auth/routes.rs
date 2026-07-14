@@ -302,6 +302,10 @@ pub struct OAuthCallbackQuery {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AuthConfigResponse {
     pub mode: String,
+    /// Trusted configured origin hosting the login page. Absent means the
+    /// frontend's same-origin `/login` route.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub login_origin: Option<String>,
     pub password_auth_enabled: bool,
     pub oauth_providers: Vec<String>,
     pub signup_enabled: bool,
@@ -450,6 +454,7 @@ pub fn routes(state: BuiltinAuthBackend) -> Router {
 pub async fn get_auth_config(State(state): State<BuiltinAuthBackend>) -> Json<AuthConfigResponse> {
     Json(AuthConfigResponse {
         mode: state.config.mode.as_str().to_string(),
+        login_origin: state.config.login_origin.clone(),
         password_auth_enabled: state.config.password_auth_enabled(),
         oauth_providers: oauth_providers(&state.config),
         signup_enabled: state.config.signup_enabled(),
@@ -1165,7 +1170,7 @@ pub async fn oauth_redirect(
 fn oauth_failure_redirect(config: &super::config::AuthConfig, category: &str) -> Redirect {
     let url = format!(
         "{}/login?error={category}",
-        config.frontend_url.trim_end_matches('/')
+        config.login_origin().trim_end_matches('/')
     );
     Redirect::to(&url)
 }
@@ -1589,7 +1594,10 @@ async fn send_verification_email(state: &BuiltinAuthBackend, to: &str, raw_token
 /// response is identical to a fresh signup, and THIS email is the only place
 /// the user learns they already have an account (anti-enumeration).
 async fn send_account_exists_email(state: &BuiltinAuthBackend, to: &str) {
-    let url = format!("{}/login", state.config.frontend_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/login",
+        state.config.login_origin().trim_end_matches('/')
+    );
     let subject = "You already have an Everruns account";
     let text = format!(
         "Someone (probably you) tried to create an Everruns account with this email — but you already have one.Log in here:{url}Forgot your password? Use \"Reset your password\" on the login page. If this wasn't you, you can safely ignore this email."
@@ -3192,6 +3200,34 @@ mod oauth_state_tests {
             .unwrap_or_default()
             .to_string();
         assert_eq!(location, format!("{frontend}/login?error=oauth_failed"));
+    }
+
+    #[tokio::test]
+    async fn oauth_callback_failure_honors_configured_login_origin() {
+        use axum::response::IntoResponse;
+        let mut state = full_mode_backend();
+        state.config.login_origin = Some("https://id.example.com".to_string());
+        let (_jar, redirect) = oauth_callback(
+            State(state),
+            None,
+            HeaderMap::new(),
+            Path("google".to_string()),
+            Query(OAuthCallbackQuery {
+                code: None,
+                state: None,
+                error: Some("access_denied".to_string()),
+            }),
+            CookieJar::new(),
+        )
+        .await;
+        let response = redirect.into_response();
+        assert_eq!(
+            response
+                .headers()
+                .get(axum::http::header::LOCATION)
+                .and_then(|value| value.to_str().ok()),
+            Some("https://id.example.com/login?error=oauth_cancelled")
+        );
     }
 
     // --- signup email-confirm mode (AUTH_SIGNUP_EMAIL_CONFIRM) ---

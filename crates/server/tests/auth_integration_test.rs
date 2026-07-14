@@ -712,6 +712,7 @@ async fn test_auth_config_returns_full_mode() {
     assert_eq!(body["mode"], "full");
     assert_eq!(body["password_auth_enabled"], true);
     assert_eq!(body["signup_enabled"], true);
+    assert!(body.get("login_origin").is_none());
 }
 
 // ============================================
