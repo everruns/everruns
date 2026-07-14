@@ -1651,8 +1651,12 @@ inventory::submit! {
     }
 }
 
-/// Control plane for detached peer-session tracking tasks. Cancellation only
-/// detaches the tracking chip; the peer session owns its own lifecycle.
+/// Control plane for detached peer-session tracking tasks. `cancel` means
+/// cancel everywhere (EVE-766): it cooperatively requests the peer session to
+/// stop via the standard session cancel path, then settles the tracking task
+/// `canceled`. The peer is a same-org session (inherited via fork lineage), so
+/// the cooperative-cancel message routes through the ordinary send path — the
+/// same mechanism linked subagents use.
 pub struct DetachedSessionTaskExecutor;
 
 #[async_trait]
@@ -1665,16 +1669,31 @@ impl TaskExecutor for DetachedSessionTaskExecutor {
         let Some(registry) = context.session_task_registry.as_ref() else {
             return Ok(());
         };
+        // Option A (EVE-766): cancel actually cancels. Deliver a cooperative
+        // stop to the peer session first; only settle the tracking task once
+        // the request is in flight, so a delivery failure surfaces to the
+        // caller instead of silently claiming the peer was canceled.
+        let summary = match (context.platform_store.as_ref(), task.links.child_session_id) {
+            (Some(store), Some(peer_id)) => {
+                store
+                    .send_message(
+                        peer_id,
+                        "Cancellation requested by the session that spawned you. Stop work, wind down, and end your run.",
+                    )
+                    .await?;
+                "Peer session cancellation requested; tracking settled canceled.".to_string()
+            }
+            // No peer link to signal (e.g. never wired): nothing to stop, just
+            // settle the tracking task so the intent is honored.
+            _ => "Detached session tracking canceled; no peer session link to signal.".to_string(),
+        };
         registry
             .update(
                 task.session_id,
                 &task.id,
                 SessionTaskUpdate {
                     state: Some(SessionTaskState::Canceled),
-                    summary: Some(
-                        "Detached session tracking canceled; peer session left running."
-                            .to_string(),
-                    ),
+                    summary: Some(summary),
                     ..Default::default()
                 },
             )
@@ -2205,7 +2224,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn detached_session_task_cancel_detaches_tracking_only() {
+    async fn detached_session_task_cancel_requests_peer_cancellation() {
+        // EVE-766: cancel_task on a detached-session task must cooperatively
+        // cancel the peer session, not just detach the tracking chip.
         let store = Arc::new(MockPlatformStore::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -2232,6 +2253,21 @@ mod tests {
             .await
             .unwrap();
 
+        // The peer session was signaled to stop via the standard send path.
+        let sent = store.sent_messages.lock().unwrap().clone();
+        assert_eq!(
+            sent.len(),
+            1,
+            "exactly one cooperative-cancel message expected, got {sent:?}"
+        );
+        assert_eq!(sent[0].0, child_id, "cancel must target the peer session");
+        assert!(
+            sent[0].1.contains("Cancellation requested"),
+            "cancel message should ask the peer to stop, got {:?}",
+            sent[0].1
+        );
+
+        // The tracking task settles canceled and keeps its peer link.
         let updated = registry
             .get(context.session_id, &task.id)
             .await
@@ -2241,7 +2277,46 @@ mod tests {
         assert_eq!(updated.links.child_session_id, Some(child_id));
         assert_eq!(
             updated.summary.as_deref(),
-            Some("Detached session tracking canceled; peer session left running.")
+            Some("Peer session cancellation requested; tracking settled canceled.")
+        );
+    }
+
+    #[tokio::test]
+    async fn detached_session_task_cancel_without_peer_link_still_settles() {
+        // Defensive: a session-kind task with no peer link has nothing to
+        // signal, but the cancel intent must still be honored.
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let context = spawn_context(&store, Some(registry.clone()));
+        let task = registry
+            .create(CreateSessionTask {
+                session_id: context.session_id,
+                id: None,
+                kind: TASK_KIND_SESSION.to_string(),
+                display_name: "Peer".to_string(),
+                spec: json!({}),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+
+        DetachedSessionTaskExecutor
+            .cancel(&task, &context)
+            .await
+            .unwrap();
+
+        assert!(store.sent_messages.lock().unwrap().is_empty());
+        let updated = registry
+            .get(context.session_id, &task.id)
+            .await
+            .unwrap()
+            .expect("task should remain present");
+        assert_eq!(updated.state, SessionTaskState::Canceled);
+        assert_eq!(
+            updated.summary.as_deref(),
+            Some("Detached session tracking canceled; no peer session link to signal.")
         );
     }
 
