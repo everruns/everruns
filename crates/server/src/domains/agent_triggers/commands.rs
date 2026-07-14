@@ -167,7 +167,14 @@ pub(crate) async fn sync_agent_trigger_binding(
     ctx: &Ctx,
     trigger_row: &AgentTriggerRow,
 ) -> Result<(), CommandError> {
-    let trigger = q::row_to_trigger(trigger_row.clone());
+    let agent = ctx
+        .db
+        .get_agent(ctx.org_id(), trigger_row.agent_id)
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Agent"))?;
+    let agent_public_id = parse_agent_id(&agent.public_id)?;
+    let trigger = q::row_to_trigger(trigger_row.clone(), agent_public_id);
     if trigger.trigger_type != AgentTriggerType::Schedule {
         return Ok(());
     }
@@ -180,12 +187,6 @@ pub(crate) async fn sync_agent_trigger_binding(
 
     // The durable target must name the agent by its user-facing public id so the
     // invocation activity can resolve it.
-    let agent = ctx
-        .db
-        .get_agent(ctx.org_id(), trigger_row.agent_id)
-        .await
-        .map_err(classify_anyhow)?
-        .ok_or_else(|| CommandError::not_found("Agent"))?;
     let target_input = build_trigger_target_input(ctx.org_id(), &agent.public_id, trigger_row.id);
     let description = format!(
         "Agent schedule trigger {} for {}",
@@ -413,7 +414,7 @@ impl Command for CreateAgentTrigger {
         let row = q::get_by_id(&ctx.db, ctx.org_id(), row.id)
             .await?
             .unwrap_or(row);
-        Ok(q::row_to_trigger(row))
+        Ok(q::row_to_trigger(row, agent_public))
     }
 }
 
@@ -460,7 +461,10 @@ impl Command for ListAgentTriggers {
             .list_agent_triggers(ctx.org_id(), Some(agent.id), self.include_archived)
             .await
             .map_err(classify_anyhow)?;
-        Ok(rows.into_iter().map(q::row_to_trigger).collect())
+        Ok(rows
+            .into_iter()
+            .map(|row| q::row_to_trigger(row, agent_public))
+            .collect())
     }
 }
 
@@ -495,8 +499,10 @@ impl Command for GetAgentTrigger {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentTrigger, CommandError> {
-        let (_, trigger) = resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id).await?;
-        Ok(q::row_to_trigger(trigger))
+        let (agent, trigger) =
+            resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id).await?;
+        let agent_public = parse_agent_id(&agent.public_id)?;
+        Ok(q::row_to_trigger(trigger, agent_public))
     }
 }
 
@@ -538,7 +544,7 @@ impl Command for UpdateAgentTriggerCmd {
         let req = self.req;
 
         // Merge onto the stored schedule config.
-        let mut config = q::row_to_trigger(existing.clone())
+        let mut config = q::row_to_trigger(existing.clone(), parse_agent_id(&self.agent_id)?)
             .schedule_config()
             .map_err(|_| CommandError::bad_request("Invalid stored schedule configuration"))?;
         if let Some(cron) = req.cron_expression {
@@ -591,7 +597,7 @@ impl Command for UpdateAgentTriggerCmd {
         let row = q::get_by_id(&ctx.db, ctx.org_id(), row.id)
             .await?
             .unwrap_or(row);
-        Ok(q::row_to_trigger(row))
+        Ok(q::row_to_trigger(row, parse_agent_id(&self.agent_id)?))
     }
 }
 
@@ -756,7 +762,7 @@ pub async fn invoke_agent_trigger(
         return Err(CommandError::not_found("Agent trigger"));
     }
 
-    let trigger = q::row_to_trigger(trigger_row.clone());
+    let trigger = q::row_to_trigger(trigger_row.clone(), parse_agent_id(&agent.public_id)?);
     let config = trigger
         .schedule_config()
         .map_err(|_| CommandError::bad_request("Invalid schedule trigger configuration"))?;
