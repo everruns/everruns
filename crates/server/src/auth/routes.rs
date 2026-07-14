@@ -654,7 +654,7 @@ pub async fn login(
             .as_array()
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     };
 
     audit::emit(
@@ -902,7 +902,7 @@ pub async fn register(
         roles: vec!["user".to_string()],
         is_platform_user: false,
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     };
 
     audit::emit(
@@ -994,7 +994,7 @@ pub async fn refresh_token(
             .as_array()
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     };
 
     audit::emit(
@@ -1487,7 +1487,7 @@ async fn oauth_callback_inner(
             .as_array()
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     };
 
     audit::emit(
@@ -1782,7 +1782,7 @@ pub async fn verify_email(
                 roles,
                 is_platform_user: false,
                 auth_method: AuthMethod::Jwt,
-                organizations: builtin::organizations_or_default(organizations),
+                organizations,
             };
             match generate_token_response(&state, jar.clone(), &auth_user).await {
                 Ok((jar, _json)) => jar,
@@ -2028,7 +2028,7 @@ async fn get_or_create_admin_user(
             .as_array()
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     })
 }
 
@@ -2421,6 +2421,7 @@ mod oauth_state_tests {
     // Password reset + email verification
     // ========================================================================
 
+    use crate::auth::backend::AuthBackend;
     use crate::auth::config::AuthConfig;
     use crate::storage::StorageBackend;
     use crate::storage::models::CreateUserRow;
@@ -2545,7 +2546,7 @@ mod oauth_state_tests {
     async fn register_does_not_join_default_org_by_default() {
         let state = full_mode_backend();
         let db = state.db.clone();
-        register(
+        let outcome = register(
             State(state.clone()),
             None,
             HeaderMap::new(),
@@ -2559,6 +2560,25 @@ mod oauth_state_tests {
         )
         .await
         .expect("register should succeed");
+
+        let RegisterOutcome::Session(status, jar, Json(tokens)) = outcome else {
+            panic!("default mode must return an instant session");
+        };
+        assert_eq!(status, StatusCode::CREATED);
+        assert!(
+            jar.get(ORG_COOKIE_NAME).is_none(),
+            "zero-org signup must not receive a synthetic org cookie"
+        );
+
+        let auth_user = state
+            .validate_token(&tokens.access_token)
+            .await
+            .expect("issued access token should validate");
+        assert!(
+            auth_user.organizations.is_empty(),
+            "issued token must preserve zero-org memberships, got {:?}",
+            auth_user.organizations
+        );
 
         let user = db
             .get_user_by_email("solo@example.com")
