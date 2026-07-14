@@ -274,7 +274,11 @@ impl PostgresReportingProjector {
                        WHEN scoped.event_type = 'capability.usage' THEN EXISTS (
                            SELECT 1
                              FROM jsonb_array_elements(
-                                  COALESCE(scoped.data->'records', '[]'::jsonb)
+                                  CASE
+                                      WHEN jsonb_typeof(scoped.data->'records') = 'array'
+                                          THEN scoped.data->'records'
+                                      ELSE '[]'::jsonb
+                                  END
                              ) WITH ORDINALITY AS usage(record, ordinality)
                             WHERE usage.record ? 'capability_id'
                               AND usage.record ? 'usage_kind'
@@ -395,7 +399,11 @@ impl PostgresReportingProjector {
                        WHEN e.event_type = 'capability.usage' THEN EXISTS (
                            SELECT 1
                              FROM jsonb_array_elements(
-                                  COALESCE(e.data->'records', '[]'::jsonb)
+                                  CASE
+                                      WHEN jsonb_typeof(e.data->'records') = 'array'
+                                          THEN e.data->'records'
+                                      ELSE '[]'::jsonb
+                                  END
                              ) WITH ORDINALITY AS usage(record, ordinality)
                             WHERE usage.record ? 'capability_id'
                               AND usage.record ? 'usage_kind'
@@ -962,8 +970,13 @@ impl PostgresReportingProjector {
             JOIN sessions s ON s.id = e.session_id
             LEFT JOIN agents a ON a.id = s.agent_id AND a.org_id = s.org_id
             LEFT JOIN harnesses h ON h.id = s.harness_id AND h.org_id = s.org_id
-            CROSS JOIN LATERAL jsonb_array_elements(COALESCE(e.data->'records', '[]'::jsonb))
-                WITH ORDINALITY AS usage(record, ordinality)
+            CROSS JOIN LATERAL jsonb_array_elements(
+                CASE
+                    WHEN jsonb_typeof(e.data->'records') = 'array'
+                        THEN e.data->'records'
+                    ELSE '[]'::jsonb
+                END
+            ) WITH ORDINALITY AS usage(record, ordinality)
             WHERE e.id = $1
               AND s.org_id = $2
               AND usage.record ? 'capability_id'
