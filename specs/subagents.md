@@ -236,7 +236,10 @@ Detached spawns are peer sessions, not subagents. They reset nesting depth
 lineage fields) and are **not** counted by the subagent descendant caps. They are
 instead bounded by their own detached caps against the origin tree root (see
 **Detached spawn caps** below), so a loop of detached spawns cannot escape
-governance (EVE-767 / TM-DOS-030).
+governance (EVE-767 / TM-DOS-030). Before session creation, the host resolves
+the current session's human owner and requires `OrgSessionsManage`
+(`SESSION_MANAGE`). Denial is returned as a `ToolError`; the model cannot choose
+the caller or bypass the host-injected authority.
 
 The default maximum depth is 2, enabling A -> B -> C while rejecting a depth-3 child. Setting `max_subagent_depth` to 0 restores the previous hard block on spawning subagents. The policy is resolved as platform default, then org override, then agent/capability override; the current authored override is exposed through the `subagents` capability config.
 
@@ -267,8 +270,8 @@ is shallow.
 
 A detached spawn (`lifetime = detached`) resets depth but is admission-capped
 against the **origin** subagent-tree root before the peer session is created.
-The gate resolves the origin root by walking the spawning session's
-`parent_session_id` chain, then counts detached (`TASK_KIND_SESSION`) tasks
+The host authority resolves the origin root from the spawning session's stored,
+org-scoped `root_session_id`, then the gate counts detached (`TASK_KIND_SESSION`) tasks
 anywhere under that root — a BFS that follows every task's
 `links.child_session_id`, so detached spawns made by subagents deeper in the tree
 or by other detached peers all count against the origin root. A new detached
@@ -282,16 +285,18 @@ spawn is rejected before session creation when it would exceed either:
 These caps are independent of the subagent descendant caps (a detached peer does
 not consume the subagent budget and vice-versa) and are configurable on the
 `subagents` capability. Cap errors return `ToolError` messages naming the
-configured limit and attempted count. Budget *spend* attribution for detached
-peers is a separate follow-up (see `specs/budgeting.md`); today a detached peer
-resolves to its own fresh budget root, so the count cap is what bounds a detached
-fan-out.
+configured limit and attempted count. The same authority call returns the
+org-validated origin root, which is passed as an internal-only session-creation
+override. Detached peers and detached chains spend from that root budget in
+addition to consuming the independent count cap (see `specs/budgeting.md`).
 
 ## Security Considerations
 
 | Concern | Mitigation |
 |---------|------------|
 | Capability escalation | Subagent inherits parent capabilities exactly; no additional capabilities |
+| Detached session creation | Host-injected authority evaluates `SESSION_MANAGE` for the resolved session owner before creation |
+| Cross-org budget linkage | Internal override is stripped from public HTTP and storage resolves it with `org_id` before canonicalizing the root |
 | Context isolation | Separate message history; child cannot read parent messages |
 | Resource exhaustion | Foreground: 300s timeout on `wait_for_idle`. Background: 6h overall watcher cap; max iterations per child session; orphaned watchers are failed by the session task reaper on stale heartbeats |
 | Runaway nesting/fan-out | `max_subagent_depth` enforced by bounded parent-chain walk; root-tree active and total descendant task caps are enforced before child session creation; detached peer spawns reset depth but are separately capped against the origin root (`max_active_detached_tasks` / `max_total_detached_tasks`) so a detached fan-out loop cannot escape governance (TM-DOS-030) |

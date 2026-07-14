@@ -571,9 +571,8 @@ async fn descendant_detached_task_counts(
 /// door (TM-DOS). Non-detached subagent caps are enforced separately and are
 /// unchanged.
 async fn enforce_detached_spawn_caps(
-    session_store: &dyn SessionStore,
-    session: &crate::session::Session,
     context: &ToolContext,
+    root_session_id: SessionId,
 ) -> Result<(), ToolExecutionResult> {
     let Some(registry) = context.session_task_registry.as_ref() else {
         return Ok(());
@@ -581,7 +580,6 @@ async fn enforce_detached_spawn_caps(
     let policy = context.subagent_nesting_policy;
     let max_active = policy.max_active_detached_tasks();
     let max_total = policy.max_total_detached_tasks();
-    let root_session_id = root_session_for_subagent_tree(session_store, session).await?;
     let counts =
         descendant_detached_task_counts(registry.as_ref(), root_session_id, max_active, max_total)
             .await?;
@@ -1153,6 +1151,31 @@ async fn spawn_create_and_wait(
     let Some(session_store) = context.session_store.as_ref() else {
         return ToolExecutionResult::tool_error("Subagent spawn requires session_store context");
     };
+    // THREAT[TM-AUTHZ-014][TM-AGENT-028][TM-DOS-030]: Detached peers require
+    // explicit session-creation authority. The host
+    // returns the org-validated origin root so detached chains cannot reset
+    // either spend attribution or their count-cap scope.
+    let budget_root_session_id = if lifetime == SpawnLifetime::Detached {
+        let Some(authority) = context.session_creation_authority.as_ref() else {
+            return ToolExecutionResult::tool_error(
+                "Detached spawn requires session-creation authority.",
+            );
+        };
+        match authority
+            .authorize_session_creation(context.session_id)
+            .await
+        {
+            Ok(root_session_id) => Some(root_session_id),
+            Err(error) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Detached spawn is not authorized to create a session: {error}"
+                ));
+            }
+        }
+    } else {
+        None
+    };
+
     // Governance gate before creating the child session. Linked subagents are
     // bounded by the descendant task caps; detached peers reset depth but are
     // bounded by the detached caps against the same origin root (EVE-767) so a
@@ -1162,7 +1185,11 @@ async fn spawn_create_and_wait(
             enforce_subagent_task_caps(session_store.as_ref(), parent_session, context).await
         }
         SpawnLifetime::Detached => {
-            enforce_detached_spawn_caps(session_store.as_ref(), parent_session, context).await
+            enforce_detached_spawn_caps(
+                context,
+                budget_root_session_id.expect("detached authority returned a root"),
+            )
+            .await
         }
     };
     if let Err(error) = caps_result {
@@ -1187,6 +1214,7 @@ async fn spawn_create_and_wait(
             parent_session_id: (lifetime == SpawnLifetime::Linked).then_some(context.session_id),
             forked_from_session_id: (lifetime == SpawnLifetime::Detached)
                 .then_some(context.session_id),
+            budget_root_session_id,
             seed,
         })
         .await
@@ -1996,6 +2024,27 @@ mod tests {
     /// SessionStore view over the mock platform store (depth-policy lookup).
     struct MockSessionStore(Arc<MockPlatformStore>);
 
+    struct MockSessionCreationAuthority {
+        root: crate::typed_id::SessionId,
+        allowed: bool,
+    }
+
+    #[async_trait]
+    impl crate::traits::SessionCreationAuthority for MockSessionCreationAuthority {
+        async fn authorize_session_creation(
+            &self,
+            _session_id: crate::typed_id::SessionId,
+        ) -> crate::error::Result<crate::typed_id::SessionId> {
+            if self.allowed {
+                Ok(self.root)
+            } else {
+                Err(crate::error::AgentLoopError::tool(
+                    "org:sessions:manage is required",
+                ))
+            }
+        }
+    }
+
     #[async_trait]
     impl crate::traits::SessionStore for MockSessionStore {
         async fn get_session(
@@ -2021,6 +2070,10 @@ mod tests {
         let mut context = ToolContext::new(session_id);
         context.platform_store = Some(store.clone());
         context.session_store = Some(Arc::new(MockSessionStore(store.clone())));
+        context.session_creation_authority = Some(Arc::new(MockSessionCreationAuthority {
+            root: store.session.id,
+            allowed: true,
+        }));
         if let Some(registry) = registry {
             context.session_task_registry = Some(registry);
         }
@@ -2297,6 +2350,14 @@ mod tests {
         assert_eq!(child.forked_from_session_id, Some(context.session_id));
         assert_eq!(child.title.as_deref(), Some("Research Peer"));
         assert_eq!(child.goal.as_deref(), Some("Investigate latency"));
+        assert_eq!(
+            store
+                .created_session_budget_roots
+                .lock()
+                .unwrap()
+                .as_slice(),
+            &[Some(store.session.id)]
+        );
 
         let task_id = value["task_id"].as_str().expect("task_id");
         let task = registry
@@ -2309,6 +2370,60 @@ mod tests {
         assert_eq!(task.links.child_session_id, Some(child_id));
         assert_eq!(task.spec["lifetime"], "detached");
         assert_eq!(task.spec["seed"], "workspace");
+    }
+
+    #[tokio::test]
+    async fn detached_spawn_requires_session_creation_authority_before_creation() {
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let mut context = spawn_context(&store, Some(registry));
+        context.session_creation_authority = None;
+
+        let result = spawn(
+            &context,
+            json!({"name": "Denied", "instructions": "go", "lifetime": "detached"}),
+        )
+        .await;
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("expected authority ToolError, got {result:?}");
+        };
+        assert!(message.contains("session-creation authority"));
+        assert!(
+            store
+                .created_session_budget_roots
+                .lock()
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn detached_spawn_reports_permission_denial_before_creation() {
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let mut context = spawn_context(&store, Some(registry));
+        context.session_creation_authority = Some(Arc::new(MockSessionCreationAuthority {
+            root: store.session.id,
+            allowed: false,
+        }));
+
+        let result = spawn(
+            &context,
+            json!({"name": "Denied", "instructions": "go", "lifetime": "detached"}),
+        )
+        .await;
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("expected permission ToolError, got {result:?}");
+        };
+        assert!(message.contains("not authorized"));
+        assert!(message.contains("org:sessions:manage"));
+        assert!(
+            store
+                .created_session_budget_roots
+                .lock()
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]

@@ -6,7 +6,8 @@ use async_trait::async_trait;
 use everruns_core::error::Result;
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver, PaymentAuthority,
-    ProviderCredentialStore, ProviderStore, SessionFileSystem, SessionMutator, SessionStore,
+    ProviderCredentialStore, ProviderStore, SessionCreationAuthority, SessionFileSystem,
+    SessionMutator, SessionStore,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{
@@ -293,6 +294,14 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         agent_id: Option<AgentId>,
     ) -> Option<Arc<dyn PaymentAuthority>> {
         self.adapters.payment_authority(org_id, agent_id)
+    }
+
+    fn session_creation_authority(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Option<Arc<dyn SessionCreationAuthority>> {
+        self.adapters.session_creation_authority(org_id, session_id)
     }
 
     fn outbound_tool_rate_limiter(

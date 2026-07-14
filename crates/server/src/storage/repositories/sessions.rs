@@ -57,16 +57,30 @@ impl Database {
         // pointer stays consistent with the parent chain. The parent row is
         // guaranteed to exist (parent_session_id is itself an FK) and to carry a
         // root post-migration; the fallbacks are defensive.
-        let root_session_id: uuid::Uuid = match input.parent_session_id {
-            Some(parent) => sqlx::query_scalar::<_, Option<uuid::Uuid>>(
-                "SELECT root_session_id FROM sessions WHERE id = $1",
+        // THREAT[TM-TENANT-014]: An internal override still resolves through
+        // the creating org so a compromised worker cannot link tenant budgets.
+        let root_session_id: uuid::Uuid = if let Some(budget_root) = input.budget_root_session_id {
+            sqlx::query_scalar::<_, Option<uuid::Uuid>>(
+                "SELECT root_session_id FROM sessions WHERE org_id = $1 AND id = $2",
             )
-            .bind(parent.uuid())
+            .bind(input.org_id)
+            .bind(budget_root.uuid())
             .fetch_optional(&mut *tx)
             .await?
             .flatten()
-            .unwrap_or_else(|| parent.uuid()),
-            None => session_id,
+            .ok_or_else(|| anyhow::anyhow!("budget root session not found in organization"))?
+        } else {
+            match input.parent_session_id {
+                Some(parent) => sqlx::query_scalar::<_, Option<uuid::Uuid>>(
+                    "SELECT root_session_id FROM sessions WHERE id = $1",
+                )
+                .bind(parent.uuid())
+                .fetch_optional(&mut *tx)
+                .await?
+                .flatten()
+                .unwrap_or_else(|| parent.uuid()),
+                None => session_id,
+            }
         };
 
         let row = sqlx::query_as::<_, SessionRow>(

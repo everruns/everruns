@@ -64,6 +64,7 @@ async fn create_session_with_owner_and_tags(
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     })
     .await
     .unwrap()
@@ -99,9 +100,41 @@ async fn create_child_session(
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: Some(parent.id),
+        budget_root_session_id: None,
     })
     .await
     .unwrap()
+}
+
+async fn create_detached_session(db: &Arc<StorageBackend>, origin: &SessionRow) -> SessionRow {
+    let input = CreateSessionRow {
+        workspace_id: None,
+        org_id: origin.org_id,
+        app_id: origin.app_id,
+        harness_id: origin.harness_id,
+        agent_id: origin.agent_id,
+        agent_identity_id: origin.agent_identity_id,
+        owner_principal_id: origin.owner_principal_id,
+        resolved_owner_user_id: origin.resolved_owner_user_id,
+        title: Some("Detached budget peer".into()),
+        locale: origin.locale.clone(),
+        tags: origin.tags.clone(),
+        model_id: origin.model_id,
+        capabilities: serde_json::json!({}),
+        tools: serde_json::json!([]),
+        mcp_servers: serde_json::json!([]),
+        system_prompt: None,
+        initial_files: serde_json::json!({}),
+        hints: None,
+        network_access: None,
+        max_iterations: None,
+        parallel_tool_calls: None,
+        blueprint_id: None,
+        blueprint_config: None,
+        parent_session_id: None,
+        budget_root_session_id: Some(origin.id),
+    };
+    db.create_session(input).await.unwrap()
 }
 
 fn make_budget_row(limit: f64, balance: f64, soft_limit: Option<f64>, currency: &str) -> BudgetRow {
@@ -1543,6 +1576,54 @@ async fn test_llm_generation_from_child_debits_root_session_budget() {
         .unwrap()
         .unwrap();
     assert_eq!(updated.balance, 850.0);
+}
+
+#[tokio::test]
+async fn test_detached_chain_spend_debits_and_exhausts_origin_root_budget() {
+    let db = make_db();
+    let svc = BudgetService::new(db.clone());
+    let root = create_session_with_owner(&db, 1, None, None).await;
+    let detached = create_detached_session(&db, &root).await;
+    let chained = create_detached_session(&db, &detached).await;
+    assert_eq!(chained.root_session_id, Some(root.id));
+
+    let budget = db
+        .create_budget(CreateBudgetRow {
+            org_id: root.org_id,
+            subject_type: "session".into(),
+            subject_id: root.id.to_string(),
+            currency: "tokens".into(),
+            limit: 150.0,
+            soft_limit: None,
+            period: None,
+            metadata: None,
+        })
+        .await
+        .unwrap();
+    let data = LlmGenerationData::success(
+        vec![],
+        vec![],
+        Some("detached chain spent tokens".into()),
+        vec![],
+        "gpt-5.4-mini".into(),
+        Some("openai".into()),
+        Some(TokenUsage::new(100, 50)),
+        None,
+        None,
+    );
+    svc.on_event(&Event::new(chained.id, EventContext::empty(), data))
+        .await;
+
+    let updated = db
+        .get_budget(root.org_id, budget.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.balance, 0.0);
+    let action = svc
+        .check_budgets_for_session(chained.org_id, &chained.id.to_string(), None)
+        .await;
+    assert_eq!(action.action, "stop");
 }
 
 // ========================================================================

@@ -189,6 +189,7 @@ async fn run_case(
                 network_access: None,
                 parent_session_id: None,
                 forked_from_session_id: None,
+                budget_root_session_id: None,
                 seed: everruns_core::SessionSeedMode::Fresh,
                 workspace_id: None,
                 // Bound per-case work: the wall-clock timeout is a backstop,

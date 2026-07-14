@@ -257,6 +257,8 @@ where
     budget_checker: Option<Arc<dyn crate::traits::BudgetChecker>>,
     /// Optional internal payment authority for paid capability tools.
     payment_authority: Option<Arc<dyn crate::traits::PaymentAuthority>>,
+    /// Optional host authority for detached peer-session creation.
+    session_creation_authority: Option<Arc<dyn crate::traits::SessionCreationAuthority>>,
     /// Optional per-org outbound tool-call rate limiter (TM-TOOL-009).
     /// When present, each tool call increments the org counter; calls that
     /// exceed the per-org window return a tool error rather than a hard failure.
@@ -330,6 +332,7 @@ where
             network_access: None,
             budget_checker: None,
             payment_authority: None,
+            session_creation_authority: None,
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
             subagent_spawn_store: None,
@@ -377,6 +380,7 @@ where
             network_access: None,
             budget_checker: None,
             payment_authority: None,
+            session_creation_authority: None,
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
             subagent_spawn_store: None,
@@ -617,6 +621,15 @@ where
         authority: Arc<dyn crate::traits::PaymentAuthority>,
     ) -> Self {
         self.payment_authority = Some(authority);
+        self
+    }
+
+    /// Set the authority used to authorize detached peer-session creation.
+    pub fn with_session_creation_authority(
+        mut self,
+        authority: Arc<dyn crate::traits::SessionCreationAuthority>,
+    ) -> Self {
+        self.session_creation_authority = Some(authority);
         self
     }
 
@@ -1634,6 +1647,9 @@ where
         }
         if let Some(ref authority) = self.payment_authority {
             tool_context.payment_authority = Some(authority.clone());
+        }
+        if let Some(ref authority) = self.session_creation_authority {
+            tool_context.session_creation_authority = Some(authority.clone());
         }
         if let Some(ref store) = self.subagent_spawn_store {
             tool_context.subagent_spawn_store = Some(store.clone());

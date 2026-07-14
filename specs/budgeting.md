@@ -139,17 +139,16 @@ tree's `root_session_id`: a child or grandchild checks and debits the root
 session's budget pool, while usage journal and ledger rows still retain the
 actual child session id for attribution.
 
-**Detached peer spawns** (`spawn_agent(lifetime=detached)`) are lifecycle-independent
-peers with `parent_session_id = NULL`, so they resolve to their own fresh
-`root_session_id` and do **not** yet debit the origin tree's budget pool. To keep
-that independence from becoming an unbounded cost/DoS escape hatch, a detached
-spawn is admission-capped against the origin subagent-tree root by a count of
-concurrent/total detached peers (`max_active_detached_tasks` /
-`max_total_detached_tasks`; see TM-DOS-030 in `specs/threat-model.md`). Attributing
-detached LLM *spend* to the origin root budget (so a detached fan-out is bounded by
-the root's budget, not only by the peer count) is a planned follow-up (EVE-767
-Policy 1) and would require threading an explicit budget-root override through
-session creation.
+**Detached peer spawns** (`spawn_agent(lifetime=detached)`) remain lifecycle-
+independent (`parent_session_id = NULL`) but explicitly inherit the origin
+session's org-validated `root_session_id` for budget attribution. Their LLM
+generations therefore debit the origin root pool, and detached chains stop when
+that pool is exhausted. The override is carried only on trusted worker/internal
+session-creation paths and is stripped at the public HTTP boundary. Storage
+canonicalizes the referenced session's root under the creating org, preventing
+cross-org linkage. Ordinary user forks carry lineage only and remain independent
+budget roots. Detached count caps (`max_active_detached_tasks` /
+`max_total_detached_tasks`) remain an independent admission bound (TM-DOS-030).
 
 **Worker integration**: The worker checks `BudgetCheckResult` between atoms via gRPC. When a budget is `paused` or `exhausted`, the turn loop stops scheduling the next atom. Current implementation resolves the full hierarchy (`root session`, `app_channel`, `app`, `agent`, `user`, `org`) from the session owner and org context before checking.
 

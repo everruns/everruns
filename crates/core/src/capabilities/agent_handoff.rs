@@ -1019,6 +1019,30 @@ impl Tool for SpawnAgentHandoffTool {
             }));
         }
 
+        // Detached handoffs create the same lifecycle-independent peer shape
+        // as detached subagents, so they share the host authorization and
+        // origin-root budget linkage invariant.
+        let budget_root_session_id = if lifetime == HandoffLifetime::Detached {
+            let Some(authority) = context.session_creation_authority.as_ref() else {
+                return ToolExecutionResult::tool_error(
+                    "Detached handoff requires session-creation authority.",
+                );
+            };
+            match authority
+                .authorize_session_creation(context.session_id)
+                .await
+            {
+                Ok(root_session_id) => Some(root_session_id),
+                Err(error) => {
+                    return ToolExecutionResult::tool_error(format!(
+                        "Detached handoff is not authorized to create a session: {error}"
+                    ));
+                }
+            }
+        } else {
+            None
+        };
+
         let child_session = match store
             .create_session_with_options(PlatformCreateSessionRequest {
                 harness_id: target.harness_id,
@@ -1032,6 +1056,7 @@ impl Tool for SpawnAgentHandoffTool {
                     .then_some(context.session_id),
                 forked_from_session_id: (lifetime == HandoffLifetime::Detached)
                     .then_some(context.session_id),
+                budget_root_session_id,
                 seed,
             })
             .await

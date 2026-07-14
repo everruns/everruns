@@ -43,6 +43,7 @@ fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     }
 }
 
@@ -194,6 +195,7 @@ async fn test_create_and_list_sessions() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -237,6 +239,7 @@ async fn test_set_session_fork_lineage_roundtrip() {
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     };
 
     let parent = db.create_session(new_session()).await.unwrap();
@@ -265,6 +268,49 @@ async fn test_set_session_fork_lineage_roundtrip() {
         .unwrap()
         .unwrap();
     assert_eq!(reloaded_parent.forked_from_session_id, None);
+}
+
+#[tokio::test]
+async fn detached_budget_root_override_is_canonical_and_org_scoped() {
+    let db = InMemoryDatabase::new();
+    let root = db
+        .create_session(test_session_input(None))
+        .await
+        .expect("root session");
+
+    let mut detached_input = test_session_input(None);
+    detached_input.budget_root_session_id = Some(root.id);
+    let detached = db
+        .create_session(detached_input)
+        .await
+        .expect("detached peer");
+    assert_eq!(detached.parent_session_id, None);
+    assert_eq!(detached.root_session_id, Some(root.id));
+
+    let mut chain_input = test_session_input(None);
+    chain_input.budget_root_session_id = Some(detached.id);
+    let chained = db
+        .create_session(chain_input)
+        .await
+        .expect("detached chain");
+    assert_eq!(chained.root_session_id, Some(root.id));
+
+    // A normal fork has lineage but no internal budget-root override, so its
+    // storage root remains independent.
+    let ordinary_fork = db
+        .create_session(test_session_input(None))
+        .await
+        .expect("ordinary fork storage row");
+    assert_eq!(ordinary_fork.root_session_id, Some(ordinary_fork.id));
+
+    let mut cross_org = test_session_input(None);
+    cross_org.org_id = DEFAULT_ORG_ID + 1;
+    cross_org.budget_root_session_id = Some(root.id);
+    let error = db
+        .create_session(cross_org)
+        .await
+        .expect_err("cross-org budget linkage must be rejected");
+    assert!(error.to_string().contains("not found in organization"));
 }
 
 #[tokio::test]
@@ -501,6 +547,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -603,6 +650,7 @@ async fn test_session_updated_at() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -687,6 +735,7 @@ async fn test_events_sequence() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -772,6 +821,7 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -852,6 +902,7 @@ async fn test_list_message_events_filtered_caps_unbounded_history() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -954,6 +1005,7 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -1102,6 +1154,7 @@ async fn test_unpin_session_is_scoped_by_org() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -1181,6 +1234,7 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -1895,6 +1949,7 @@ async fn test_list_events_empty_session_with_limit() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -1962,6 +2017,7 @@ async fn test_sessions_pagination() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -2068,6 +2124,7 @@ async fn test_sessions_pagination_ordering() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -2803,6 +2860,7 @@ async fn test_search_sessions_by_title() {
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     })
     .await
     .unwrap();
@@ -2832,6 +2890,7 @@ async fn test_search_sessions_by_title() {
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     })
     .await
     .unwrap();
@@ -2877,6 +2936,7 @@ async fn test_search_sessions_with_agent_filter() {
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     })
     .await
     .unwrap();
@@ -2906,6 +2966,7 @@ async fn test_search_sessions_with_agent_filter() {
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     })
     .await
     .unwrap();
@@ -3139,6 +3200,7 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -3332,6 +3394,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -3361,6 +3424,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -3390,6 +3454,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -3485,6 +3550,7 @@ async fn test_session_system_prompt_and_initial_files_round_trip() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -3538,6 +3604,7 @@ async fn test_session_system_prompt_defaults_to_none() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();

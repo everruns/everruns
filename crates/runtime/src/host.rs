@@ -23,8 +23,9 @@ use everruns_core::tools::Tool;
 use everruns_core::traits::{
     AgentStore, BudgetChecker, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver,
     LeasedResourceStore, PaymentAuthority, ProviderCredentialStore, ProviderStore, ResolvedModel,
-    SessionFileSystem, SessionMutator, SessionResourceRegistry, SessionScheduleStore,
-    SessionSqlDbStoreRef, SessionStorageStore, SessionStore, UserConnectionResolver,
+    SessionCreationAuthority, SessionFileSystem, SessionMutator, SessionResourceRegistry,
+    SessionScheduleStore, SessionSqlDbStoreRef, SessionStorageStore, SessionStore,
+    UserConnectionResolver,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::vector_store::KnowledgeIndexSearch;
@@ -187,6 +188,14 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         _org_id: i64,
         _agent_id: Option<AgentId>,
     ) -> Option<Arc<dyn PaymentAuthority>> {
+        None
+    }
+
+    fn session_creation_authority(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+    ) -> Option<Arc<dyn SessionCreationAuthority>> {
         None
     }
 
@@ -1397,6 +1406,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     }
     if let Some(payment_authority) = adapter.payment_authority(org_id, input.agent_id) {
         atom = atom.with_payment_authority(payment_authority);
+    }
+    if let Some(authority) = adapter.session_creation_authority(org_id, input.context.session_id) {
+        atom = atom.with_session_creation_authority(authority);
     }
     if let Some(limiter) = adapter.outbound_tool_rate_limiter(org_id) {
         atom = atom.with_outbound_tool_rate_limiter(limiter);
