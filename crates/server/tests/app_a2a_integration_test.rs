@@ -1031,6 +1031,67 @@ async fn seed_structured_result(server: &TestServer, session_id: &str, result: V
         .expect("write result file");
 }
 
+async fn seed_non_schema_result_path(server: &TestServer, session_id: &str, result: Value) {
+    use everruns_core::session_task::{
+        CreateSessionTask, SessionTaskState, SessionTaskUpdate, new_session_task,
+    };
+    use everruns_server::storage::models::CreateSessionFileRow;
+
+    let sid = session_id.parse::<SessionId>().expect("valid session id");
+    let session = server
+        .db
+        .get_session(DEFAULT_ORG_ID, sid)
+        .await
+        .expect("get_session")
+        .expect("session exists");
+
+    let task = new_session_task(
+        CreateSessionTask {
+            session_id: sid,
+            id: None,
+            kind: "background_tool".to_string(),
+            display_name: "background result".to_string(),
+            spec: json!({ "tool": "internal_scan" }),
+            state: SessionTaskState::Running,
+            links: Default::default(),
+            wake_policy: Default::default(),
+        },
+        chrono::Utc::now(),
+    );
+    server
+        .db
+        .create_session_task(&task)
+        .await
+        .expect("create non-schema task");
+
+    let path = format!("/.background/{}/result.json", task.id);
+    server
+        .db
+        .update_session_task(
+            sid,
+            &task.id,
+            SessionTaskUpdate {
+                state: Some(SessionTaskState::Succeeded),
+                result_path: Some(path.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("set non-schema result_path");
+
+    server
+        .db
+        .create_session_file(CreateSessionFileRow {
+            session_id: SessionId::from_uuid(session.workspace_id),
+            path,
+            content: Some(serde_json::to_vec(&result).unwrap()),
+            is_directory: false,
+            is_readonly: false,
+        })
+        .await
+        .expect("write non-schema result file");
+}
+
 /// A task that reported a schema-bound `result.json` (EVE-678) exposes it as an
 /// A2A `tasks/get` artifact `DataPart`, not just last-message / status text.
 #[tokio::test]
@@ -1087,6 +1148,43 @@ async fn a2a_tasks_get_surfaces_structured_result_artifact() {
     let parts = artifacts[0]["parts"].as_array().expect("artifact parts");
     assert_eq!(parts[0]["kind"], "data");
     assert_eq!(parts[0]["data"], expected);
+}
+
+#[tokio::test]
+async fn a2a_tasks_get_ignores_non_schema_result_path_artifact() {
+    let server = TestServer::in_memory().await;
+    let (app, api_key) =
+        create_app_with_a2a(&server, "a2a-non-schema-result", "{{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+
+    let send = a2a_rpc(
+        &server,
+        app_id,
+        channel_id,
+        &api_key,
+        "message/send",
+        json!({ "message": { "role": "user", "parts": [{ "kind": "text", "text": "triage" }] } }),
+    )
+    .await;
+    let task_id = send["result"]["id"].as_str().unwrap().to_string();
+
+    seed_non_schema_result_path(&server, &task_id, json!({ "internal": "tool-output" })).await;
+
+    let resp = a2a_rpc(
+        &server,
+        app_id,
+        channel_id,
+        &api_key,
+        "tasks/get",
+        json!({ "id": task_id }),
+    )
+    .await;
+    assert!(
+        resp["result"].get("artifacts").is_none(),
+        "non-schema result_path leaked as artifact: {resp}"
+    );
 }
 
 /// Tenant isolation: a second channel's API key must not receive another
