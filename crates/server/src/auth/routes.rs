@@ -748,8 +748,9 @@ pub async fn register(
 ) -> Result<RegisterOutcome, AuthError> {
     let ip = audit::client_ip_from_connect_info(connect_info, &headers);
 
-    // Check if signup is enabled
-    if state.config.disable_signup {
+    // Check if signup is enabled. Admin mode accepts password login for the
+    // configured administrator, but must not expose public self-registration.
+    if !state.config.signup_enabled() {
         return Err(AuthError::forbidden("Registration is disabled"));
     }
 
@@ -1936,6 +1937,15 @@ async fn get_or_create_admin_user(
         })?;
 
     let user = if let Some(user) = existing_user {
+        let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
+        if !roles.iter().any(|role| role == "admin") {
+            tracing::error!(
+                user_id = %user.id,
+                email = %user.email,
+                "Configured admin email collides with a non-admin account"
+            );
+            return Err(AuthError::unauthorized("Login failed"));
+        }
         user
     } else {
         // Create admin user
@@ -2661,6 +2671,79 @@ mod oauth_state_tests {
             .await
             .expect("create OAuth-only user");
         user.id
+    }
+
+    #[tokio::test]
+    async fn admin_mode_register_is_disabled() {
+        let config = AuthConfig {
+            mode: AuthMode::Admin,
+            admin: Some(super::super::config::AdminConfig {
+                email: "admin@example.com".to_string(),
+                password: "password12345".to_string(),
+            }),
+            ..Default::default()
+        };
+        let state = BuiltinAuthBackend::new(
+            config,
+            Arc::new(StorageBackend::in_memory()),
+            Arc::new(crate::platform::oss_platform_definition()),
+        );
+
+        let err = register(
+            State(state),
+            None,
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(RegisterRequest {
+                email: "attacker@example.com".to_string(),
+                password: "password12345".to_string(),
+                name: None,
+                captcha_token: None,
+            }),
+        )
+        .await
+        .expect_err("admin mode must not allow self-registration");
+        assert_eq!(err.status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn admin_login_rejects_non_admin_email_collision() {
+        let config = AuthConfig {
+            mode: AuthMode::Admin,
+            admin: Some(super::super::config::AdminConfig {
+                email: "admin@example.com".to_string(),
+                password: "password12345".to_string(),
+            }),
+            ..Default::default()
+        };
+        let db = Arc::new(StorageBackend::in_memory());
+        let attacker_id = seed_local_user(&db, " ADMIN@example.com ", "attacker12345").await;
+        let state = BuiltinAuthBackend::new(
+            config,
+            db.clone(),
+            Arc::new(crate::platform::oss_platform_definition()),
+        );
+
+        let err = login(
+            State(state),
+            None,
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(LoginRequest {
+                email: "admin@example.com".to_string(),
+                password: "password12345".to_string(),
+            }),
+        )
+        .await
+        .expect_err("admin bootstrap must fail closed on non-admin collision");
+        assert_eq!(err.status, StatusCode::UNAUTHORIZED);
+        assert!(
+            db.list_user_organizations(attacker_id)
+                .await
+                .unwrap()
+                .is_empty(),
+            "colliding user must not be promoted into any org"
+        );
     }
 
     #[tokio::test]
