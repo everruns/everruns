@@ -84,6 +84,7 @@ pub mod budget;
 // These are DB-agnostic entity types used by both API and worker
 pub mod agent;
 pub mod agent_identity;
+pub mod agent_trigger;
 pub mod app;
 pub mod ard_attachment;
 pub mod capability_dto;
@@ -420,6 +421,7 @@ pub use agent::{
     generate_agent_public_id, validate_addressable_name, validate_agent_public_id,
 };
 pub use agent_identity::{AgentIdentity, AgentIdentityStatus};
+pub use agent_trigger::{AgentTrigger, AgentTriggerType, ScheduleTriggerConfig};
 pub use app::{
     A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentVersionPolicy,
     ApiEndpointChannelConfig, App, AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode,
@@ -526,7 +528,7 @@ pub use typed_id::{
     IdParseError, ImageId, KnowledgeBaseId, KnowledgeEntryId, LeasedResourceId, McpServerId,
     MemoryId, MessageId, ModelId, NotificationId, OrgId, PaymentAccountId, PaymentAttemptId,
     PaymentPolicyId, PluginInstallId, PluginMarketplaceId, PrincipalId, ProviderId, ScheduleId,
-    SessionId, SessionParticipantId, SkillId, TurnId, TypedId, WorkspaceId,
+    SessionId, SessionParticipantId, SkillId, TriggerId, TurnId, TypedId, WorkspaceId,
 };
 pub use wake_queue::{PendingWake, SessionWakeQueue, wake_text_for};
 

@@ -10,7 +10,7 @@ use everruns_core::message_filter::MessageQuery;
 use everruns_core::typed_id::{
     AgentId, AgentIdentityId, EventId, HarnessId, KnowledgeBaseId, KnowledgeEntryId,
     KnowledgeIndexId, LeasedResourceId, MemoryId, MessageId, NotificationId, PrincipalId,
-    ScheduleId, SessionId, SessionParticipantId, WorkspaceId,
+    ScheduleId, SessionId, SessionParticipantId, TriggerId, WorkspaceId,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -833,6 +833,68 @@ impl StorageBackend {
 
     pub async fn destroy_agent_identity(&self, org_id: i64, id: AgentIdentityId) -> Result<bool> {
         dispatch!(self, destroy_agent_identity, org_id, id)
+    }
+
+    // ============================================
+    // Agent triggers
+    // ============================================
+
+    pub async fn create_agent_trigger(
+        &self,
+        input: CreateAgentTriggerRow,
+    ) -> Result<AgentTriggerRow> {
+        dispatch!(self, create_agent_trigger, input)
+    }
+
+    pub async fn get_agent_trigger(
+        &self,
+        org_id: i64,
+        id: TriggerId,
+    ) -> Result<Option<AgentTriggerRow>> {
+        dispatch!(self, get_agent_trigger, org_id, id)
+    }
+
+    pub async fn list_agent_triggers(
+        &self,
+        org_id: i64,
+        agent_id: Option<AgentId>,
+        include_archived: bool,
+    ) -> Result<Vec<AgentTriggerRow>> {
+        dispatch!(
+            self,
+            list_agent_triggers,
+            org_id,
+            agent_id,
+            include_archived
+        )
+    }
+
+    pub async fn update_agent_trigger(
+        &self,
+        org_id: i64,
+        id: TriggerId,
+        input: UpdateAgentTrigger,
+    ) -> Result<Option<AgentTriggerRow>> {
+        dispatch!(self, update_agent_trigger, org_id, id, input)
+    }
+
+    pub async fn set_agent_trigger_durable_schedule_id(
+        &self,
+        org_id: i64,
+        id: TriggerId,
+        durable_schedule_id: Option<Uuid>,
+    ) -> Result<Option<AgentTriggerRow>> {
+        dispatch!(
+            self,
+            set_agent_trigger_durable_schedule_id,
+            org_id,
+            id,
+            durable_schedule_id
+        )
+    }
+
+    pub async fn delete_agent_trigger(&self, org_id: i64, id: TriggerId) -> Result<bool> {
+        dispatch!(self, delete_agent_trigger, org_id, id)
     }
 
     // ============================================

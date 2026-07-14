@@ -11,6 +11,7 @@ mod agent_check_rules;
 mod agent_health_checks;
 mod agent_identities;
 mod agent_identity_connections;
+mod agent_triggers;
 mod agents;
 mod app_channels;
 mod apps;
@@ -57,7 +58,7 @@ use everruns_core::{
     AgentId, AgentIdentityId, AgentVersionId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId,
     HarnessId, ImageId, LeasedResourceId, McpServerId, MessageId, ModelId, NotificationId,
     PluginMarketplaceId, PrincipalId, ProviderId, ScheduleId, SessionId, SessionParticipantId,
-    SkillId,
+    SkillId, TriggerId,
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -155,6 +156,8 @@ pub struct InMemoryDatabase {
     app_channels: RwLock<HashMap<Uuid, AppChannelRow>>,
     // Agent identities (virtual principals)
     agent_identities: RwLock<HashMap<AgentIdentityId, AgentIdentityRow>>,
+    // Agent triggers (agent-owned invocation triggers)
+    agent_triggers: RwLock<HashMap<TriggerId, AgentTriggerRow>>,
     principals: RwLock<HashMap<PrincipalId, PrincipalRow>>,
     // Agent identity connections (identity-scoped external accounts)
     agent_identity_connections: RwLock<HashMap<Uuid, AgentIdentityConnectionRow>>,
@@ -302,6 +305,7 @@ impl Default for InMemoryDatabase {
             apps: RwLock::new(HashMap::new()),
             app_channels: RwLock::new(HashMap::new()),
             agent_identities: RwLock::new(HashMap::new()),
+            agent_triggers: RwLock::new(HashMap::new()),
             principals: RwLock::new(HashMap::new()),
             agent_identity_connections: RwLock::new(HashMap::new()),
             org_settings: RwLock::new(HashMap::new()),
