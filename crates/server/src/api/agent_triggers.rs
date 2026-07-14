@@ -115,6 +115,7 @@ pub struct ListAgentTriggersQuery {
 #[utoipa::path(
     get,
     path = "/v1/agents/{agent_id}/triggers",
+    description = "List an agent's triggers. Set include_archived=true to also return archived triggers.",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
         ListAgentTriggersQuery

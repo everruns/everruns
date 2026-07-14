@@ -277,6 +277,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description List an agent's triggers. Set include_archived=true to also return archived triggers. */
     get: operations["list_agent_triggers"];
     put?: never;
     /** POST /v1/agents/{agent_id}/triggers */

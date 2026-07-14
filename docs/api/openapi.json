@@ -979,6 +979,7 @@
         "tags": [
           "agent-triggers"
         ],
+        "description": "List an agent's triggers. Set include_archived=true to also return archived triggers.",
         "operationId": "list_agent_triggers",
         "parameters": [
           {
