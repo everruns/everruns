@@ -1528,6 +1528,10 @@ const PASSWORD_RESET_TTL: std::time::Duration = std::time::Duration::from_secs(6
 const EMAIL_VERIFICATION_TTL: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 /// Token entropy: 32 random bytes, hex-encoded into the link.
 const RECOVERY_TOKEN_BYTES: usize = 32;
+/// Minimum response time for account-recovery start endpoints. This keeps
+/// generic `200 {"ok":true}` responses from becoming an account-state timing
+/// oracle while actual email delivery runs off the request path.
+const RECOVERY_START_MIN_RESPONSE_TIME: std::time::Duration = std::time::Duration::from_millis(50);
 
 /// Generate a fresh recovery token and its storage hash. The raw token is shown
 /// once (embedded in the emailed URL) and never persisted.
@@ -1637,6 +1641,32 @@ async fn deliver_account_email(
     }
 }
 
+fn recovery_start_response_delay(elapsed: std::time::Duration) -> std::time::Duration {
+    RECOVERY_START_MIN_RESPONSE_TIME.saturating_sub(elapsed)
+}
+
+async fn finish_recovery_start_response(started_at: tokio::time::Instant) -> Json<OkResponse> {
+    let delay = recovery_start_response_delay(started_at.elapsed());
+    if !delay.is_zero() {
+        tokio::time::sleep(delay).await;
+    }
+    OkResponse::ok()
+}
+
+async fn issue_password_reset_email(state: &BuiltinAuthBackend, user_id: Uuid, email: &str) {
+    let (raw_token, token_hash) = generate_recovery_token();
+    let expires_at =
+        Utc::now() + Duration::from_std(PASSWORD_RESET_TTL).unwrap_or_else(|_| Duration::hours(1));
+    match state
+        .db
+        .create_password_reset_token(user_id, &token_hash, expires_at)
+        .await
+    {
+        Ok(()) => send_password_reset_email(state, email, &raw_token).await,
+        Err(e) => tracing::error!(error = %e, "failed to create password reset token"),
+    }
+}
+
 /// POST /v1/auth/forgot-password - Begin a password reset.
 ///
 /// Enumeration-safe: always returns 200 `{ "ok": true }`. If an account exists
@@ -1648,6 +1678,7 @@ pub async fn forgot_password(
     State(state): State<BuiltinAuthBackend>,
     Json(req): Json<EmailOnlyRequest>,
 ) -> Result<Json<OkResponse>, AuthError> {
+    let started_at = tokio::time::Instant::now();
     // Bot gate (when configured) before any account work. A captcha failure
     // is account-independent, so surfacing it is not an enumeration signal.
     enforce_auth_captcha(&state, req.captcha_token.as_deref(), None).await?;
@@ -1661,23 +1692,16 @@ pub async fn forgot_password(
         .await
         .is_err()
     {
-        return Ok(OkResponse::ok());
+        return Ok(finish_recovery_start_response(started_at).await);
     }
     if let Ok(Some(user)) = state.db.get_user_by_email(&req.email).await {
-        let (raw_token, token_hash) = generate_recovery_token();
-        let expires_at = Utc::now()
-            + Duration::from_std(PASSWORD_RESET_TTL).unwrap_or_else(|_| Duration::hours(1));
-        match state
-            .db
-            .create_password_reset_token(user.id, &token_hash, expires_at)
-            .await
-        {
-            Ok(()) => send_password_reset_email(&state, &user.email, &raw_token).await,
-            Err(e) => tracing::error!(error = %e, "failed to create password reset token"),
-        }
+        let state = state.clone();
+        tokio::spawn(async move {
+            issue_password_reset_email(&state, user.id, &user.email).await;
+        });
     }
     // Generic response regardless of outcome — never reveal account existence.
-    Ok(OkResponse::ok())
+    Ok(finish_recovery_start_response(started_at).await)
 }
 
 /// POST /v1/auth/reset-password - Complete a password reset.
@@ -1776,6 +1800,7 @@ pub async fn resend_verification(
     State(state): State<BuiltinAuthBackend>,
     Json(req): Json<EmailOnlyRequest>,
 ) -> Result<Json<OkResponse>, AuthError> {
+    let started_at = tokio::time::Instant::now();
     // Bot gate (when configured), then the same per-address send budget as
     // forgot-password (email-bombing guard); over budget → generic success
     // without sending.
@@ -1786,15 +1811,18 @@ pub async fn resend_verification(
         .await
         .is_err()
     {
-        return Ok(OkResponse::ok());
+        return Ok(finish_recovery_start_response(started_at).await);
     }
     if let Ok(Some(user)) = state.db.get_user_by_email(&req.email).await
         && is_local_password_user(&user)
         && !user.email_verified
     {
-        issue_verification_email(&state, user.id, &user.email).await;
+        let state = state.clone();
+        tokio::spawn(async move {
+            issue_verification_email(&state, user.id, &user.email).await;
+        });
     }
-    Ok(OkResponse::ok())
+    Ok(finish_recovery_start_response(started_at).await)
 }
 
 /// Create + send a verification token for a user. Best-effort; logs on failure.
@@ -2434,7 +2462,7 @@ mod oauth_state_tests {
     }
 
     fn backend_with_email_sender(
-        sender: Arc<RecordingEmailSender>,
+        sender: Arc<dyn EmailSender>,
     ) -> (BuiltinAuthBackend, Arc<StorageBackend>) {
         let db = Arc::new(StorageBackend::in_memory());
         let platform = PlatformDefinition::builder().email_sender(sender).build();
@@ -2442,6 +2470,53 @@ mod oauth_state_tests {
             BuiltinAuthBackend::new(AuthConfig::default(), db.clone(), Arc::new(platform)),
             db,
         )
+    }
+
+    #[derive(Debug)]
+    struct SlowEmailSender(std::time::Duration);
+
+    #[async_trait]
+    impl EmailSender for SlowEmailSender {
+        async fn send_email(&self, _message: EmailMessage) -> EmailResult<SentEmail> {
+            tokio::time::sleep(self.0).await;
+            Ok(SentEmail {
+                provider: "slow-test",
+                id: "slow-test".to_string(),
+            })
+        }
+
+        fn name(&self) -> &'static str {
+            "SlowEmailSender"
+        }
+    }
+
+    async fn wait_for_recorded_messages(sender: &RecordingEmailSender, expected: usize) {
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                if sender.messages.lock().unwrap().len() >= expected {
+                    return;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("background email delivery timed out");
+    }
+
+    #[test]
+    fn recovery_start_response_delay_enforces_minimum() {
+        assert_eq!(
+            recovery_start_response_delay(std::time::Duration::ZERO),
+            RECOVERY_START_MIN_RESPONSE_TIME
+        );
+        assert_eq!(
+            recovery_start_response_delay(RECOVERY_START_MIN_RESPONSE_TIME),
+            std::time::Duration::ZERO
+        );
+        assert_eq!(
+            recovery_start_response_delay(RECOVERY_START_MIN_RESPONSE_TIME * 2),
+            std::time::Duration::ZERO
+        );
     }
 
     // Full-mode backend so password registration is enabled.
@@ -2644,7 +2719,7 @@ mod oauth_state_tests {
         user.id
     }
 
-    async fn seed_oauth_only_user(db: &StorageBackend, email: &str) -> Uuid {
+    async fn seed_oauth_user(db: &StorageBackend, email: &str, verified: bool) -> Uuid {
         let user = db
             .create_user(CreateUserRow {
                 email: email.to_string(),
@@ -2652,13 +2727,13 @@ mod oauth_state_tests {
                 avatar_url: None,
                 roles: vec!["user".to_string()],
                 password_hash: None,
-                email_verified: true,
-                auth_provider: Some("google".to_string()),
-                auth_provider_id: Some("google-sub-1".to_string()),
+                email_verified: verified,
+                auth_provider: Some("github".to_string()),
+                auth_provider_id: Some(format!("github:{email}")),
                 external_id: None,
             })
             .await
-            .expect("create OAuth-only user");
+            .expect("create oauth user");
         user.id
     }
 
@@ -2972,7 +3047,7 @@ mod oauth_state_tests {
     async fn forgot_password_sends_reset_email_for_oauth_only_account() {
         let sender = Arc::new(RecordingEmailSender::default());
         let (state, db) = backend_with_email_sender(sender.clone());
-        seed_oauth_only_user(&db, "oauth-only@example.com").await;
+        seed_oauth_user(&db, "oauth-only@example.com", true).await;
 
         let resp = forgot_password(
             State(state),
@@ -2985,6 +3060,7 @@ mod oauth_state_tests {
         .expect("enumeration-safe success");
         assert!(resp.0.ok);
 
+        wait_for_recorded_messages(&sender, 1).await;
         let messages = sender.messages.lock().unwrap();
         assert_eq!(messages.len(), 1);
         assert_eq!(messages[0].subject, "Reset your Everruns password");
@@ -3004,6 +3080,91 @@ mod oauth_state_tests {
         .await
         .expect("enumeration-safe success");
         assert!(resp.0.ok);
+    }
+
+    #[tokio::test]
+    async fn forgot_password_does_not_wait_for_slow_email_delivery() {
+        let (state, _) = backend_with_email_sender(Arc::new(SlowEmailSender(
+            std::time::Duration::from_millis(250),
+        )));
+        seed_local_user(&state.db, "recover@example.com", "password12345").await;
+        seed_oauth_user(&state.db, "oauth@example.com", false).await;
+
+        for email in [
+            "recover@example.com",
+            "oauth@example.com",
+            "ghost@example.com",
+        ] {
+            let started = tokio::time::Instant::now();
+            let resp = forgot_password(
+                State(state.clone()),
+                Json(EmailOnlyRequest {
+                    email: email.to_string(),
+                    captcha_token: None,
+                }),
+            )
+            .await
+            .expect("always generic success");
+            let elapsed = started.elapsed();
+            assert!(resp.0.ok);
+            assert!(
+                elapsed >= RECOVERY_START_MIN_RESPONSE_TIME,
+                "forgot-password response for {email} bypassed timing normalization"
+            );
+            assert!(
+                elapsed < std::time::Duration::from_millis(200),
+                "forgot-password response for {email} waited for slow email delivery"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn resend_verification_does_not_wait_for_slow_email_delivery() {
+        let (state, _) = backend_with_email_sender(Arc::new(SlowEmailSender(
+            std::time::Duration::from_millis(250),
+        )));
+        seed_local_user(&state.db, "unverified@example.com", "password12345").await;
+        let verified_id = seed_local_user(&state.db, "verified@example.com", "password12345").await;
+        state
+            .db
+            .update_user(
+                verified_id,
+                crate::storage::models::UpdateUser {
+                    email_verified: Some(true),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("mark verified");
+        seed_oauth_user(&state.db, "oauth@example.com", false).await;
+
+        for email in [
+            "unverified@example.com",
+            "verified@example.com",
+            "oauth@example.com",
+            "ghost@example.com",
+        ] {
+            let started = tokio::time::Instant::now();
+            let resp = resend_verification(
+                State(state.clone()),
+                Json(EmailOnlyRequest {
+                    email: email.to_string(),
+                    captcha_token: None,
+                }),
+            )
+            .await
+            .expect("always generic success");
+            let elapsed = started.elapsed();
+            assert!(resp.0.ok);
+            assert!(
+                elapsed >= RECOVERY_START_MIN_RESPONSE_TIME,
+                "resend-verification response for {email} bypassed timing normalization"
+            );
+            assert!(
+                elapsed < std::time::Duration::from_millis(200),
+                "resend-verification response for {email} waited for slow email delivery"
+            );
+        }
     }
 
     // --- Auth hardening tests (abuse limits, password cap, logout revoke,
