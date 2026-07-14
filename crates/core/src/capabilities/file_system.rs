@@ -527,6 +527,14 @@ fn fs_display_path(file_store: &dyn SessionFileSystem, path: &str) -> String {
     file_store.display_path(path)
 }
 
+fn fs_input_display_path(file_store: &dyn SessionFileSystem, path: &str) -> String {
+    if file_store.is_mount_resolver() {
+        file_store.resolve_path(path)
+    } else {
+        file_store.display_path(path)
+    }
+}
+
 fn file_content_hash(content: &str, encoding: &str) -> crate::error::Result<String> {
     let bytes = SessionFile::decode_content(content, encoding)
         .map_err(|error| anyhow::anyhow!("failed to decode file content for hashing: {error}"))?;
@@ -980,13 +988,16 @@ impl Tool for ReadFileTool {
         // The store (MountFs in production) is the sole resolver: hand it the
         // raw path and it routes `/workspace`, the root mount, and relatives.
         let normalized_path = path.to_string();
-        let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
+        let display_path = fs_input_display_path(file_store.as_ref(), &normalized_path);
 
         match file_store
             .read_file(context.session_id, &normalized_path)
             .await
         {
             Ok(Some(file)) => {
+                let resolved_path = file.path.as_str();
+                let display_path = fs_display_path(file_store.as_ref(), resolved_path);
+
                 if file.is_directory {
                     return ToolExecutionResult::tool_error(format!(
                         "Path '{}' is a directory, not a file. Use list_directory instead.",
@@ -995,7 +1006,7 @@ impl Tool for ReadFileTool {
                 }
 
                 // Check if this is an image file that should be returned as native image content
-                if let Some(media_type) = image_media_type(&normalized_path) {
+                if let Some(media_type) = image_media_type(resolved_path) {
                     // For base64-encoded files, return as image
                     if file.encoding == "base64"
                         && let Some(ref content) = file.content
@@ -1041,8 +1052,8 @@ impl Tool for ReadFileTool {
 
                 // Apply content-type-aware defaults (EVE-249)
                 let (ct_limit, read_mode) =
-                    effective_read_defaults(&normalized_path, explicit_offset, explicit_limit);
-                let content_type = content_type_from_extension(&normalized_path);
+                    effective_read_defaults(resolved_path, explicit_offset, explicit_limit);
+                let content_type = content_type_from_extension(resolved_path);
 
                 // Metadata-only for known binary extensions
                 if read_mode == ReadMode::MetadataOnly {
@@ -1089,7 +1100,7 @@ impl Tool for ReadFileTool {
                 // Generate structural outline for unread portions (EVE-248)
                 let mut formatted = if truncated && start_line > 0 {
                     let outline_items =
-                        crate::outline::generate_outline(raw_content, &normalized_path);
+                        crate::outline::generate_outline(raw_content, resolved_path);
                     if let Some(outline_text) = crate::outline::format_outline(
                         &outline_items,
                         start_line,
@@ -1273,7 +1284,7 @@ impl Tool for WriteFileTool {
         // The store (MountFs in production) is the sole resolver: hand it the
         // raw path and it routes `/workspace`, the root mount, and relatives.
         let normalized_path = path.to_string();
-        let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
+        let display_path = fs_input_display_path(file_store.as_ref(), &normalized_path);
 
         match file_store
             .write_file(context.session_id, &normalized_path, content, encoding)
@@ -1401,7 +1412,7 @@ impl Tool for EditFileTool {
         // The store (MountFs in production) is the sole resolver: hand it the
         // raw path and it routes `/workspace`, the root mount, and relatives.
         let normalized_path = path.to_string();
-        let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
+        let display_path = fs_input_display_path(file_store.as_ref(), &normalized_path);
 
         let existing = match file_store
             .read_file(context.session_id, &normalized_path)
@@ -1620,7 +1631,7 @@ impl Tool for ListDirectoryTool {
         // The store (MountFs in production) is the sole resolver: hand it the
         // raw path and it routes `/workspace`, the root mount, and relatives.
         let normalized_path = path.to_string();
-        let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
+        let display_path = fs_input_display_path(file_store.as_ref(), &normalized_path);
 
         match file_store
             .list_directory(context.session_id, &normalized_path)
@@ -1976,7 +1987,7 @@ impl Tool for DeleteFileTool {
         // The store (MountFs in production) is the sole resolver: hand it the
         // raw path and it routes `/workspace`, the root mount, and relatives.
         let normalized_path = path.to_string();
-        let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
+        let display_path = fs_input_display_path(file_store.as_ref(), &normalized_path);
 
         match file_store
             .delete_file(context.session_id, &normalized_path, recursive)
@@ -2083,7 +2094,7 @@ impl Tool for StatFileTool {
         // The store (MountFs in production) is the sole resolver: hand it the
         // raw path and it routes `/workspace`, the root mount, and relatives.
         let normalized_path = path.to_string();
-        let display_path = fs_display_path(file_store.as_ref(), &normalized_path);
+        let display_path = fs_input_display_path(file_store.as_ref(), &normalized_path);
 
         match file_store
             .stat_file(context.session_id, &normalized_path)
