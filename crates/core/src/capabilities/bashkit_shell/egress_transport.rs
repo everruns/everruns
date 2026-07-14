@@ -28,6 +28,7 @@ use crate::egress::{EgressError, EgressRequest, EgressRequestKind, EgressService
 use crate::network_access::NetworkAccessList;
 use async_trait::async_trait;
 use bashkit::{HttpResponse, HttpTransport, HttpTransportError, HttpTransportRequest};
+use futures::StreamExt;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
@@ -94,28 +95,32 @@ impl HttpTransport for BashkitEgressTransport {
         // transport-level connection policy; the overall deadline above (and
         // bashkit's own enforcement around this call) bounds the request.
 
-        let response = self
+        let mut response = self
             .egress
-            .send(egress_request)
+            .send_stream(egress_request)
             .await
             .map_err(map_egress_error)?;
 
-        // Enforce bashkit's response cap at the boundary so oversized bodies
-        // surface as curl exit 63 instead of a generic post-hoc rejection.
-        // bashkit re-checks after this call regardless (misbehaving-transport
-        // backstop in its pipeline).
-        if response.body.len() > request.max_response_bytes {
-            return Err(HttpTransportError::TooLarge(format!(
-                "{} bytes (max: {} bytes)",
-                response.body.len(),
-                request.max_response_bytes
-            )));
+        // Enforce bashkit's response cap while streaming so a hostile endpoint
+        // cannot force the worker to buffer an oversized body before the cap
+        // is applied. bashkit re-checks after this call as a backstop.
+        let mut body = Vec::new();
+        while let Some(chunk) = response.body.next().await {
+            let chunk = chunk.map_err(map_egress_error)?;
+            let next_len = body.len().saturating_add(chunk.len());
+            if next_len > request.max_response_bytes {
+                return Err(HttpTransportError::TooLarge(format!(
+                    "{} bytes (max: {} bytes)",
+                    next_len, request.max_response_bytes
+                )));
+            }
+            body.extend_from_slice(&chunk);
         }
 
         Ok(HttpResponse {
             status: response.status,
             headers: response.headers.into_iter().collect(),
-            body: response.body,
+            body,
         })
     }
 }
@@ -156,6 +161,8 @@ pub(crate) mod tests {
     pub(crate) struct MockEgress {
         responses: Mutex<Vec<EgressResult<EgressResponse>>>,
         pub(crate) requests: Mutex<Vec<EgressRequest>>,
+        pub(crate) send_calls: Mutex<usize>,
+        pub(crate) stream_calls: Mutex<usize>,
     }
 
     impl MockEgress {
@@ -163,6 +170,8 @@ pub(crate) mod tests {
             Self {
                 responses: Mutex::new(responses),
                 requests: Mutex::new(Vec::new()),
+                send_calls: Mutex::new(0),
+                stream_calls: Mutex::new(0),
             }
         }
 
@@ -185,6 +194,7 @@ pub(crate) mod tests {
     #[async_trait]
     impl EgressService for MockEgress {
         async fn send(&self, request: EgressRequest) -> EgressResult<EgressResponse> {
+            *self.send_calls.lock().unwrap() += 1;
             self.requests.lock().unwrap().push(request);
             let mut responses = self.responses.lock().unwrap();
             assert!(!responses.is_empty(), "MockEgress ran out of responses");
@@ -192,7 +202,11 @@ pub(crate) mod tests {
         }
 
         async fn send_stream(&self, request: EgressRequest) -> EgressResult<EgressStreamResponse> {
-            let response = self.send(request).await?;
+            *self.stream_calls.lock().unwrap() += 1;
+            self.requests.lock().unwrap().push(request);
+            let mut responses = self.responses.lock().unwrap();
+            assert!(!responses.is_empty(), "MockEgress ran out of responses");
+            let response = responses.remove(0)?;
             Ok(EgressStreamResponse {
                 status: response.status,
                 headers: response.headers,

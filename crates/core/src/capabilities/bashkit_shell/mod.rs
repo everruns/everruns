@@ -3242,6 +3242,8 @@ mod tests {
                 output["stdout"]
             );
 
+            assert_eq!(*egress.send_calls.lock().unwrap(), 0);
+            assert_eq!(*egress.stream_calls.lock().unwrap(), 1);
             let requests = egress.requests.lock().unwrap();
             assert_eq!(requests.len(), 1);
             let request = &requests[0];
@@ -3305,7 +3307,7 @@ mod tests {
                 &[("content-type", "text/plain")],
                 &big,
             )]));
-            let context = http_context(Some(egress));
+            let context = http_context(Some(egress.clone()));
             let tool = BashTool { enable_http: true };
 
             let result = tool
@@ -3318,6 +3320,8 @@ mod tests {
             let ToolExecutionResult::Success(output) = result else {
                 panic!("expected success result");
             };
+            assert_eq!(*egress.send_calls.lock().unwrap(), 0);
+            assert_eq!(*egress.stream_calls.lock().unwrap(), 1);
             assert_eq!(output["exit_code"], 63, "stderr: {}", output["stderr"]);
             assert!(
                 output["stderr"]
