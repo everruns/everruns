@@ -49,7 +49,7 @@ RUN cargo build --release -p everruns-server
 # ============================================================================
 # Stage 4: Runtime - Distroless production image (minimal size and security)
 # ============================================================================
-FROM gcr.io/distroless/cc-debian12:nonroot@sha256:b0ae8e989418b458e0f25489bc3be523718938a2b70864cc0f6a00af1ddbd985 AS runtime
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:66aa873a4a14fb164aa01296058efd8253744606d72715e45acface073359faa AS runtime
 
 WORKDIR /app
 
