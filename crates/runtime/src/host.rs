@@ -293,10 +293,22 @@ fn subagent_nesting_policy_from_configs(
         .and_then(|config| config.config.get("max_total_descendant_tasks"))
         .and_then(|value| value.as_u64())
         .and_then(|value| u32::try_from(value).ok());
+    let configured_max_active_detached = subagents_config
+        .and_then(|config| config.config.get("max_active_detached_tasks"))
+        .and_then(|value| value.as_u64())
+        .and_then(|value| u32::try_from(value).ok());
+    let configured_max_total_detached = subagents_config
+        .and_then(|config| config.config.get("max_total_detached_tasks"))
+        .and_then(|value| value.as_u64())
+        .and_then(|value| u32::try_from(value).ok());
 
     everruns_core::SubagentNestingPolicy::default()
         .with_agent_override(configured_depth)
         .with_agent_task_caps_override(configured_max_active, configured_max_total)
+        .with_agent_detached_task_caps_override(
+            configured_max_active_detached,
+            configured_max_total_detached,
+        )
 }
 
 /// Collect and finalize user-hook specs for a session from its resolved

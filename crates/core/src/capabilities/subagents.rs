@@ -121,6 +121,20 @@ impl Capability for SubagentCapability {
                     "maximum": 10000,
                     "default": crate::traits::DEFAULT_MAX_TOTAL_DESCENDANT_SUBAGENT_TASKS,
                     "description": "Maximum descendant subagent task records allowed under one root session before rejecting new spawns."
+                },
+                "max_active_detached_tasks": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1024,
+                    "default": crate::traits::DEFAULT_MAX_ACTIVE_DETACHED_TASKS,
+                    "description": "Maximum non-terminal detached peer sessions allowed under one origin root session. Detached spawns reset depth but are still capped here so a loop cannot run unbounded (EVE-767)."
+                },
+                "max_total_detached_tasks": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000,
+                    "default": crate::traits::DEFAULT_MAX_TOTAL_DETACHED_TASKS,
+                    "description": "Maximum detached peer session task records allowed under one origin root session before rejecting new detached spawns."
                 }
             }
         }))
@@ -152,12 +166,23 @@ impl Capability for SubagentCapability {
                 return Err(format!("{key} must be <= 1024"));
             }
         }
-        if let Some(value) = config.get("max_total_descendant_tasks") {
+        for key in ["max_total_descendant_tasks", "max_total_detached_tasks"] {
+            let Some(value) = config.get(key) else {
+                continue;
+            };
             let Some(max_total) = value.as_u64() else {
-                return Err("max_total_descendant_tasks must be a non-negative integer".to_string());
+                return Err(format!("{key} must be a non-negative integer"));
             };
             if max_total > 10_000 {
-                return Err("max_total_descendant_tasks must be <= 10000".to_string());
+                return Err(format!("{key} must be <= 10000"));
+            }
+        }
+        if let Some(value) = config.get("max_active_detached_tasks") {
+            let Some(max_active) = value.as_u64() else {
+                return Err("max_active_detached_tasks must be a non-negative integer".to_string());
+            };
+            if max_active > 1024 {
+                return Err("max_active_detached_tasks must be <= 1024".to_string());
             }
         }
         Ok(())
@@ -487,6 +512,91 @@ async fn enforce_subagent_task_caps(
         let attempted = counts.total.saturating_add(1);
         return Err(ToolExecutionResult::tool_error(format!(
             "Subagent total descendant task cap exceeded: spawning this subagent would create {attempted} descendant task records under root session {root_session_id}, but max_total_descendant_tasks is {max_total}."
+        )));
+    }
+
+    Ok(())
+}
+
+/// Count detached peer tasks (`TASK_KIND_SESSION`) anywhere under the origin
+/// subagent tree root (EVE-767). Unlike `descendant_subagent_task_counts`, the
+/// BFS follows *every* task's `child_session_id` (subagent and detached alike)
+/// so detached spawns made deep in the tree — by subagents or by other detached
+/// peers — are all attributed to the origin root. Only `session`-kind tasks are
+/// counted; subagent accounting is untouched.
+async fn descendant_detached_task_counts(
+    registry: &dyn crate::session_task::SessionTaskRegistry,
+    root_session_id: SessionId,
+    max_active: u32,
+    max_total: u32,
+) -> Result<DescendantTaskCounts, ToolExecutionResult> {
+    let mut counts = DescendantTaskCounts::default();
+    let mut queue = VecDeque::from([root_session_id]);
+    let mut visited_sessions = HashSet::from([root_session_id]);
+
+    while let Some(session_id) = queue.pop_front() {
+        // No kind filter: traversal must cross both subagent and detached
+        // subtrees to find every detached spawn under the root.
+        let tasks = registry
+            .list(session_id, None)
+            .await
+            .map_err(ToolExecutionResult::internal_error)?;
+
+        for task in tasks {
+            if task.kind == TASK_KIND_SESSION {
+                counts.total = counts.total.saturating_add(1);
+                if !task.state.is_terminal() {
+                    counts.active = counts.active.saturating_add(1);
+                }
+            }
+
+            if let Some(child_session_id) = task.links.child_session_id
+                && visited_sessions.insert(child_session_id)
+            {
+                queue.push_back(child_session_id);
+            }
+
+            if counts.active >= max_active || counts.total >= max_total {
+                return Ok(counts);
+            }
+        }
+    }
+
+    Ok(counts)
+}
+
+/// Governance gate for a detached spawn (EVE-767). A detached peer resets depth
+/// but is priced against the origin tree root: a loop of detached spawns is
+/// bounded by the active/total detached caps, closing the uncapped-runaway side
+/// door (TM-DOS). Non-detached subagent caps are enforced separately and are
+/// unchanged.
+async fn enforce_detached_spawn_caps(
+    session_store: &dyn SessionStore,
+    session: &crate::session::Session,
+    context: &ToolContext,
+) -> Result<(), ToolExecutionResult> {
+    let Some(registry) = context.session_task_registry.as_ref() else {
+        return Ok(());
+    };
+    let policy = context.subagent_nesting_policy;
+    let max_active = policy.max_active_detached_tasks();
+    let max_total = policy.max_total_detached_tasks();
+    let root_session_id = root_session_for_subagent_tree(session_store, session).await?;
+    let counts =
+        descendant_detached_task_counts(registry.as_ref(), root_session_id, max_active, max_total)
+            .await?;
+
+    if counts.active >= max_active {
+        let attempted = counts.active.saturating_add(1);
+        return Err(ToolExecutionResult::tool_error(format!(
+            "Detached spawn active cap exceeded: spawning this detached session would create {attempted} non-terminal detached peer tasks under origin root session {root_session_id}, but max_active_detached_tasks is {max_active}."
+        )));
+    }
+
+    if counts.total >= max_total {
+        let attempted = counts.total.saturating_add(1);
+        return Err(ToolExecutionResult::tool_error(format!(
+            "Detached spawn total cap exceeded: spawning this detached session would create {attempted} detached peer task records under origin root session {root_session_id}, but max_total_detached_tasks is {max_total}."
         )));
     }
 
@@ -1043,10 +1153,19 @@ async fn spawn_create_and_wait(
     let Some(session_store) = context.session_store.as_ref() else {
         return ToolExecutionResult::tool_error("Subagent spawn requires session_store context");
     };
-    if lifetime == SpawnLifetime::Linked
-        && let Err(error) =
+    // Governance gate before creating the child session. Linked subagents are
+    // bounded by the descendant task caps; detached peers reset depth but are
+    // bounded by the detached caps against the same origin root (EVE-767) so a
+    // loop of detached spawns cannot escape governance.
+    let caps_result = match lifetime {
+        SpawnLifetime::Linked => {
             enforce_subagent_task_caps(session_store.as_ref(), parent_session, context).await
-    {
+        }
+        SpawnLifetime::Detached => {
+            enforce_detached_spawn_caps(session_store.as_ref(), parent_session, context).await
+        }
+    };
+    if let Err(error) = caps_result {
         return error;
     }
 
@@ -2220,6 +2339,161 @@ mod tests {
         assert!(
             matches!(detached, ToolExecutionResult::Success(_)),
             "detached spawn should bypass linked depth guard, got {detached:?}"
+        );
+    }
+
+    // EVE-767: detached spawns reset depth but are still capped against the
+    // origin root so a loop of detached spawns cannot run unbounded (TM-DOS).
+
+    fn session_task_under(
+        root: crate::typed_id::SessionId,
+        kind: &str,
+        state: SessionTaskState,
+    ) -> CreateSessionTask {
+        CreateSessionTask {
+            session_id: root,
+            id: None,
+            kind: kind.to_string(),
+            display_name: "t".to_string(),
+            spec: json!({}),
+            state,
+            links: TaskLinks {
+                child_session_id: Some(crate::typed_id::SessionId::new()),
+                ..Default::default()
+            },
+            wake_policy: TaskWakePolicy::Silent,
+        }
+    }
+
+    #[tokio::test]
+    async fn detached_task_counts_ignore_subagent_and_terminal_active() {
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let root = store.session.id;
+
+        registry
+            .create(session_task_under(
+                root,
+                TASK_KIND_SESSION,
+                SessionTaskState::Running,
+            ))
+            .await
+            .unwrap();
+        registry
+            .create(session_task_under(
+                root,
+                TASK_KIND_SESSION,
+                SessionTaskState::Running,
+            ))
+            .await
+            .unwrap();
+        // Terminal detached task: counts toward total, not active.
+        registry
+            .create(session_task_under(
+                root,
+                TASK_KIND_SESSION,
+                SessionTaskState::Canceled,
+            ))
+            .await
+            .unwrap();
+        // Subagent task: must not count toward the detached budget at all.
+        registry
+            .create(session_task_under(
+                root,
+                TASK_KIND_SUBAGENT,
+                SessionTaskState::Running,
+            ))
+            .await
+            .unwrap();
+
+        let counts = descendant_detached_task_counts(registry.as_ref(), root, 100, 100)
+            .await
+            .unwrap();
+        assert_eq!(
+            counts.active, 2,
+            "only non-terminal session tasks are active"
+        );
+        assert_eq!(
+            counts.total, 3,
+            "terminal session task counts toward total; subagent task excluded"
+        );
+    }
+
+    #[tokio::test]
+    async fn detached_spawn_rejected_at_cap_and_allowed_under_cap() {
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let context = spawn_context(&store, Some(registry.clone())).with_subagent_nesting_policy(
+            crate::traits::SubagentNestingPolicy::default()
+                .with_agent_detached_task_caps_override(Some(1), Some(4)),
+        );
+
+        // Under the ceiling (0 existing): one authorized detached spawn succeeds.
+        let ok = spawn(
+            &context,
+            json!({"name": "D0", "instructions": "go", "mode": "background", "lifetime": "detached"}),
+        )
+        .await;
+        assert!(
+            matches!(ok, ToolExecutionResult::Success(_)),
+            "detached spawn under cap should succeed, got {ok:?}"
+        );
+
+        // The spawn created one active detached peer task under the root → at
+        // the active cap. The next detached spawn is refused with a clear error.
+        let refused = spawn(
+            &context,
+            json!({"name": "D1", "instructions": "go", "mode": "background", "lifetime": "detached"}),
+        )
+        .await;
+        let ToolExecutionResult::ToolError(msg) = refused else {
+            panic!("expected detached active cap ToolError, got {refused:?}");
+        };
+        assert!(
+            msg.contains("max_active_detached_tasks is 1"),
+            "cap error should name the limit, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn detached_cap_does_not_affect_linked_subagent_spawn() {
+        // A root already at the detached ceiling must still allow linked
+        // subagent spawns — the two budgets are independent (regression guard).
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let context = spawn_context(&store, Some(registry.clone())).with_subagent_nesting_policy(
+            crate::traits::SubagentNestingPolicy::default()
+                .with_agent_detached_task_caps_override(Some(1), Some(4)),
+        );
+        let root = store.session.id;
+
+        // Saturate the detached active cap.
+        registry
+            .create(session_task_under(
+                root,
+                TASK_KIND_SESSION,
+                SessionTaskState::Running,
+            ))
+            .await
+            .unwrap();
+
+        // A detached spawn is refused…
+        let refused = spawn(
+            &context,
+            json!({"name": "D", "instructions": "go", "mode": "background", "lifetime": "detached"}),
+        )
+        .await;
+        assert!(matches!(refused, ToolExecutionResult::ToolError(_)));
+
+        // …but a linked subagent spawn is unaffected by the detached cap.
+        let linked = spawn(
+            &context,
+            json!({"name": "L", "instructions": "go", "mode": "background"}),
+        )
+        .await;
+        assert!(
+            matches!(linked, ToolExecutionResult::Success(_)),
+            "linked subagent spawn must not be blocked by the detached cap, got {linked:?}"
         );
     }
 

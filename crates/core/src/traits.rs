@@ -1107,6 +1107,13 @@ pub trait LeasedResourceStore: Send + Sync {
 pub const DEFAULT_MAX_SUBAGENT_DEPTH: u32 = 2;
 pub const DEFAULT_MAX_ACTIVE_DESCENDANT_SUBAGENT_TASKS: u32 = 16;
 pub const DEFAULT_MAX_TOTAL_DESCENDANT_SUBAGENT_TASKS: u32 = 200;
+/// Governance for detached peer spawns (EVE-767): a detached spawn resets depth
+/// (it is a peer, not a lifecycle child) but is still counted against the origin
+/// subagent tree's root so a loop of `spawn_agent(lifetime=detached)` cannot run
+/// unbounded (TM-DOS). Detached peers are full independent sessions, so the
+/// default ceiling is tighter than the subagent descendant caps.
+pub const DEFAULT_MAX_ACTIVE_DETACHED_TASKS: u32 = 8;
+pub const DEFAULT_MAX_TOTAL_DETACHED_TASKS: u32 = 50;
 
 /// Resolved subagent spawn governance policy for a tool execution context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1120,6 +1127,12 @@ pub struct SubagentNestingPolicy {
     pub platform_default_max_total_descendant_tasks: u32,
     pub org_override_max_total_descendant_tasks: Option<u32>,
     pub agent_override_max_total_descendant_tasks: Option<u32>,
+    pub platform_default_max_active_detached_tasks: u32,
+    pub org_override_max_active_detached_tasks: Option<u32>,
+    pub agent_override_max_active_detached_tasks: Option<u32>,
+    pub platform_default_max_total_detached_tasks: u32,
+    pub org_override_max_total_detached_tasks: Option<u32>,
+    pub agent_override_max_total_detached_tasks: Option<u32>,
 }
 
 impl Default for SubagentNestingPolicy {
@@ -1136,6 +1149,12 @@ impl Default for SubagentNestingPolicy {
                 DEFAULT_MAX_TOTAL_DESCENDANT_SUBAGENT_TASKS,
             org_override_max_total_descendant_tasks: None,
             agent_override_max_total_descendant_tasks: None,
+            platform_default_max_active_detached_tasks: DEFAULT_MAX_ACTIVE_DETACHED_TASKS,
+            org_override_max_active_detached_tasks: None,
+            agent_override_max_active_detached_tasks: None,
+            platform_default_max_total_detached_tasks: DEFAULT_MAX_TOTAL_DETACHED_TASKS,
+            org_override_max_total_detached_tasks: None,
+            agent_override_max_total_detached_tasks: None,
         }
     }
 }
@@ -1157,6 +1176,18 @@ impl SubagentNestingPolicy {
         self.agent_override_max_total_descendant_tasks
             .or(self.org_override_max_total_descendant_tasks)
             .unwrap_or(self.platform_default_max_total_descendant_tasks)
+    }
+
+    pub fn max_active_detached_tasks(self) -> u32 {
+        self.agent_override_max_active_detached_tasks
+            .or(self.org_override_max_active_detached_tasks)
+            .unwrap_or(self.platform_default_max_active_detached_tasks)
+    }
+
+    pub fn max_total_detached_tasks(self) -> u32 {
+        self.agent_override_max_total_detached_tasks
+            .or(self.org_override_max_total_detached_tasks)
+            .unwrap_or(self.platform_default_max_total_detached_tasks)
     }
 
     pub fn with_platform_default(mut self, depth: u32) -> Self {
@@ -1181,6 +1212,16 @@ impl SubagentNestingPolicy {
     ) -> Self {
         self.agent_override_max_active_descendant_tasks = max_active;
         self.agent_override_max_total_descendant_tasks = max_total;
+        self
+    }
+
+    pub fn with_agent_detached_task_caps_override(
+        mut self,
+        max_active: Option<u32>,
+        max_total: Option<u32>,
+    ) -> Self {
+        self.agent_override_max_active_detached_tasks = max_active;
+        self.agent_override_max_total_detached_tasks = max_total;
         self
     }
 }
