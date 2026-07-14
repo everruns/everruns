@@ -3501,7 +3501,7 @@ async fn test_mcp_tasks_get_round_trip() {
     let resp = mcp_call_with_headers(
         &server,
         "tasks/get",
-        json!({ "taskId": task_id }),
+        json!({ "taskId": task_id, "_meta": tasks_opt_in_meta() }),
         vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
     )
     .await;
@@ -3541,6 +3541,20 @@ async fn test_mcp_tasks_get_rejected_for_2025() {
     assert_eq!(resp["error"]["code"], -32601, "expected method not found");
 }
 
+/// tasks/* for 2026 clients still require the per-request Tasks opt-in.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_tasks_get_rejected_without_tasks_opt_in() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_call_with_headers(
+        &server,
+        "tasks/get",
+        json!({ "taskId": "session_00000000000000000000000000000000" }),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
+    )
+    .await;
+    assert_eq!(resp["error"]["code"], -32601, "expected method not found");
+}
+
 /// tasks/update sends input to a session and returns an updated Task object.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_tasks_update_round_trip() {
@@ -3552,7 +3566,7 @@ async fn test_mcp_tasks_update_round_trip() {
     let resp = mcp_call_with_headers(
         &server,
         "tasks/update",
-        json!({ "taskId": task_id, "message": "follow up" }),
+        json!({ "taskId": task_id, "message": "follow up", "_meta": tasks_opt_in_meta() }),
         vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
     )
     .await;
@@ -3575,7 +3589,7 @@ async fn test_mcp_tasks_update_accepts_input_responses_map() {
     let resp = mcp_call_with_headers(
         &server,
         "tasks/update",
-        json!({ "taskId": task_id, "inputResponses": { "prompt": "map form input" } }),
+        json!({ "taskId": task_id, "inputResponses": { "prompt": "map form input" }, "_meta": tasks_opt_in_meta() }),
         vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
     )
     .await;
@@ -3595,7 +3609,7 @@ async fn test_mcp_tasks_cancel_round_trip() {
     let resp = mcp_call_with_headers(
         &server,
         "tasks/cancel",
-        json!({ "taskId": task_id }),
+        json!({ "taskId": task_id, "_meta": tasks_opt_in_meta() }),
         vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
     )
     .await;
@@ -3614,7 +3628,7 @@ async fn test_mcp_tasks_get_missing_task_id() {
     let resp = mcp_call_with_headers(
         &server,
         "tasks/get",
-        json!({}),
+        json!({ "_meta": tasks_opt_in_meta() }),
         vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
     )
     .await;
