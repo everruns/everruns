@@ -308,6 +308,9 @@ providers (`subagent`, `agent`, and/or `external_a2a`). Every spawn creates a
 task and returns its `task_id`. Blocking
 (foreground) spawns also create task records: same object, and the UI shows it
 live while the parent turn waits; background is a mode, not a different entity.
+All delegation providers parse the shared `background | foreground` execution
+vocabulary natively; the dispatcher owns one model-facing enum and performs no
+provider-specific mode translation.
 
 Naming cleanup: `task` parameters that carry instruction text were renamed to
 `instructions` so "task" unambiguously means the lifecycle object. The

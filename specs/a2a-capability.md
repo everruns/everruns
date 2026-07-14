@@ -21,7 +21,8 @@ V1 supports:
 
 - AgentCard discovery from configured external A2A agents.
 - JSON-RPC and HTTP+JSON transport negotiation through the official Rust A2A client.
-- `spawn_agent` in `wait` or `background` mode.
+- `spawn_agent` in `foreground` or `background` mode, using the same execution
+  vocabulary as local delegation providers.
 - `wait_task` for pending runs (generic session task tool).
 - `message_task` for follow-up or `input_required` runs (generic session task tool).
 - `cancel_task` for remote task cancellation (generic session task tool).
@@ -113,9 +114,9 @@ Parameters:
 
 - `instructions` required
 - `target.type = external_a2a`
-- `target.external_agent_id`
-- `mode = wait | background`; the shared dispatcher also accepts `foreground`
-  as an alias for `wait`.
+- `target.id` (the A2A provider also accepts its provider-specific
+  `target.external_agent_id` spelling)
+- `mode = foreground | background`
 - `wait_timeout_secs`
 - `wake_on_completion`
 - `result_schema`: optional JSON Schema for a required terminal structured
@@ -124,7 +125,10 @@ Parameters:
   spawn error; Everruns cannot inject `report_task_progress` into a remote
   agent.
 
-`mode = wait` blocks until the remote task reaches a terminal state or timeout. `mode = background` returns an `agent_run_id` immediately and monitors completion in a detached task.
+`mode = foreground` blocks until the remote task reaches a terminal state or
+timeout. `mode = background` returns an `agent_run_id` immediately and monitors
+completion in a detached task. The provider parses these values directly; the
+shared dispatcher does not translate provider-specific mode dialects.
 
 When `result_schema` is present, a completed remote task succeeds only if its
 first structured data artifact conforms. A valid value is written to
@@ -204,7 +208,8 @@ Required mitigations:
 Integration tests use the official Rust `a2a-server-lf` crate to start a real local A2A agent over JSON-RPC. Tests cover:
 
 - AgentCard discovery.
-- `spawn_agent` wait mode.
+- `spawn_agent` foreground mode and terminal/timeout parity with the former
+  blocking behavior.
 - Structured artifact validation and task-result persistence.
 - Schema mismatch settlement and explicit `message_schema` rejection.
 - Background mode (background spawn).

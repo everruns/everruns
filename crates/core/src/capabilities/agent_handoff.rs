@@ -11,7 +11,9 @@ use super::delegation_result::{
     normalize_result_schema, required_result_is_missing, result_value_for_task,
 };
 use super::util::{get_platform_store, require_str_nonblank as require_str};
-use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext};
+use super::{
+    Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SpawnMode, SystemPromptContext,
+};
 use crate::config_layer::{AgentConfigOverlay, normalize_initial_file_path};
 use crate::harness::Harness;
 use crate::platform_store::PlatformCreateSessionRequest;
@@ -375,11 +377,9 @@ impl AgentHandoffTargetConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SpawnAgentHandoffMode {
-    Background,
-    Foreground,
+    Spawn(SpawnMode),
     Invite,
 }
 
@@ -387,8 +387,7 @@ impl SpawnAgentHandoffMode {
     fn parse(value: Option<&str>, context: &ToolContext) -> std::result::Result<Self, String> {
         let explicit = match value.map(str::trim).filter(|s| !s.is_empty()) {
             None => None,
-            Some("background") => Some(Self::Background),
-            Some("foreground") => Some(Self::Foreground),
+            Some(value) if let Some(mode) = SpawnMode::parse(value) => Some(Self::Spawn(mode)),
             Some("invite") => Some(Self::Invite),
             Some(other) => {
                 return Err(format!(
@@ -398,22 +397,25 @@ impl SpawnAgentHandoffMode {
         };
         let has_registry = context.session_task_registry.is_some();
         match explicit {
-            Some(Self::Background) if !has_registry => Err(
+            Some(Self::Spawn(SpawnMode::Background)) if !has_registry => Err(
                 "Background mode requires a session task registry, which is not available in this environment. Use mode: \"foreground\" instead."
                     .to_string(),
             ),
             Some(mode) => Ok(mode),
-            None if has_registry => Ok(Self::Background),
-            None => Ok(Self::Foreground),
+            None if has_registry => Ok(Self::Spawn(SpawnMode::Background)),
+            None => Ok(Self::Spawn(SpawnMode::Foreground)),
         }
     }
 
     fn as_str(self) -> &'static str {
         match self {
-            Self::Background => "background",
-            Self::Foreground => "foreground",
+            Self::Spawn(mode) => mode.as_str(),
             Self::Invite => "invite",
         }
+    }
+
+    fn is_invite(self) -> bool {
+        self == Self::Invite
     }
 }
 
@@ -945,9 +947,7 @@ impl Tool for SpawnAgentHandoffTool {
             Ok(schema) => schema,
             Err(error) => return error,
         };
-        if mode == SpawnAgentHandoffMode::Invite
-            && (result_schema.is_some() || message_schema.is_some())
-        {
+        if mode.is_invite() && (result_schema.is_some() || message_schema.is_some()) {
             return ToolExecutionResult::tool_error(
                 "result_schema and message_schema require a child task and are not valid for invite-mode agent handoffs.",
             );
@@ -959,7 +959,7 @@ impl Tool for SpawnAgentHandoffTool {
                 "result_schema and message_schema require session_task_registry context for agent handoffs.",
             );
         }
-        if lifetime == HandoffLifetime::Detached && mode == SpawnAgentHandoffMode::Invite {
+        if lifetime == HandoffLifetime::Detached && mode.is_invite() {
             return ToolExecutionResult::tool_error(
                 "lifetime=\"detached\" is only valid for agent handoffs that create a new session; invite mode joins the current session.",
             );
@@ -987,7 +987,7 @@ impl Tool for SpawnAgentHandoffTool {
             );
         }
 
-        if mode == SpawnAgentHandoffMode::Invite {
+        if mode.is_invite() {
             let (host_overlay, guest_overlay) =
                 match invite_mode_overlays(store, &parent_session, target).await {
                     Ok(overlays) => overlays,
@@ -1078,15 +1078,21 @@ impl Tool for SpawnAgentHandoffTool {
                     },
                     wake_policy: match (lifetime, mode, message_schema.is_some()) {
                         (HandoffLifetime::Detached, _, _) => TaskWakePolicy::Silent,
-                        (HandoffLifetime::Linked, SpawnAgentHandoffMode::Background, true) => {
-                            TaskWakePolicy::OnActivity
-                        }
-                        (HandoffLifetime::Linked, SpawnAgentHandoffMode::Background, false) => {
-                            TaskWakePolicy::OnTerminal
-                        }
-                        (HandoffLifetime::Linked, SpawnAgentHandoffMode::Foreground, _) => {
-                            TaskWakePolicy::Silent
-                        }
+                        (
+                            HandoffLifetime::Linked,
+                            SpawnAgentHandoffMode::Spawn(SpawnMode::Background),
+                            true,
+                        ) => TaskWakePolicy::OnActivity,
+                        (
+                            HandoffLifetime::Linked,
+                            SpawnAgentHandoffMode::Spawn(SpawnMode::Background),
+                            false,
+                        ) => TaskWakePolicy::OnTerminal,
+                        (
+                            HandoffLifetime::Linked,
+                            SpawnAgentHandoffMode::Spawn(SpawnMode::Foreground),
+                            _,
+                        ) => TaskWakePolicy::Silent,
                         (HandoffLifetime::Linked, SpawnAgentHandoffMode::Invite, _) => {
                             unreachable!("invite mode returns before child-session task creation")
                         }
@@ -1099,7 +1105,7 @@ impl Tool for SpawnAgentHandoffTool {
                     task_id = Some(task.id);
                 }
                 Err(error)
-                    if mode == SpawnAgentHandoffMode::Background
+                    if mode == SpawnAgentHandoffMode::Spawn(SpawnMode::Background)
                         || result_schema.is_some()
                         || message_schema.is_some() =>
                 {
@@ -1112,7 +1118,7 @@ impl Tool for SpawnAgentHandoffTool {
         }
 
         match mode {
-            SpawnAgentHandoffMode::Background => {
+            SpawnAgentHandoffMode::Spawn(SpawnMode::Background) => {
                 let Some(task_id) = task_id else {
                     return ToolExecutionResult::tool_error(
                         "Background spawn_agent requires session_task_registry context so the handoff can be controlled with wait_task/message_task/cancel_task",
@@ -1135,7 +1141,7 @@ impl Tool for SpawnAgentHandoffTool {
                     "mode": "background",
                 }))
             }
-            SpawnAgentHandoffMode::Foreground => {
+            SpawnAgentHandoffMode::Spawn(SpawnMode::Foreground) => {
                 if let Err(error) = store.send_message(child_session.id, &handoff_task).await {
                     finish_handoff_task(
                         context,

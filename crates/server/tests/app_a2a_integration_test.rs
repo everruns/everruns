@@ -339,7 +339,7 @@ async fn spawn_background_against_local_a2a(config: Value) -> (Arc<TestStorageSt
         .execute_with_context(
             json!({
                 "instructions": "hello from outbound delegation",
-                "target": {"type": "external_a2a", "external_agent_id": "local_app"},
+                "target": {"type": "external_a2a", "id": "local_app"},
                 "mode": "background",
                 "wait_timeout_secs": 5,
                 "wake_on_completion": false

@@ -12,7 +12,7 @@ use super::delegation_result::{
 };
 use super::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SESSION_TASKS_CAPABILITY_ID,
-    SystemPromptContext,
+    SpawnMode, SystemPromptContext,
 };
 use crate::network_access::NetworkAccessList;
 use crate::session_task::{
@@ -287,7 +287,7 @@ impl Capability for A2aAgentDelegationCapability {
         Some(format!(
             "<capability id=\"{}\">\n\
 Delegate work to configured external A2A agents with spawn_agent.\n\
-Use mode=\"background\" for long-running work; use wait_task (from session_tasks) later for results.\n\
+Use mode=\"background\" for long-running work and wait_task (from session_tasks) later for results; use mode=\"foreground\" when blocked on the result.\n\
 Use message_task for follow-up input or input_required tasks; use cancel_task to stop a remote task.\n\
 Available external agents:\n{}\n\
 </capability>",
@@ -502,25 +502,6 @@ impl From<&TaskState> for AgentRunStatus {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum AgentRunMode {
-    Wait,
-    Background,
-}
-
-impl AgentRunMode {
-    fn parse(value: Option<&str>) -> std::result::Result<Self, String> {
-        match value.unwrap_or("wait") {
-            "wait" => Ok(Self::Wait),
-            "background" => Ok(Self::Background),
-            other => Err(format!(
-                "Invalid mode: {other}. Expected wait or background"
-            )),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AgentRunRecord {
     run_id: String,
@@ -529,7 +510,7 @@ struct AgentRunRecord {
     external_agent_name: String,
     #[serde(alias = "task")]
     instructions: String,
-    mode: AgentRunMode,
+    mode: SpawnMode,
     status: AgentRunStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     remote_task_id: Option<String>,
@@ -572,7 +553,7 @@ impl AgentRunRecord {
         run_id: String,
         agent: &ExternalA2aAgentConfig,
         instructions: String,
-        mode: AgentRunMode,
+        mode: SpawnMode,
         wake_on_completion: bool,
         result_schema: Option<Value>,
     ) -> Self {
@@ -1345,7 +1326,7 @@ impl Tool for SpawnAgentTool {
     }
 
     fn description(&self) -> &str {
-        "Delegate a task to a configured external A2A agent. Supports wait and background modes."
+        "Delegate a task to a configured external A2A agent in foreground or background mode."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -1357,12 +1338,13 @@ impl Tool for SpawnAgentTool {
                     "type": "object",
                     "properties": {
                         "type": {"type": "string", "enum": ["external_a2a"]},
-                        "external_agent_id": {"type": "string"}
+                        "id": {"type": "string", "description": "Configured external A2A agent id."},
+                        "external_agent_id": {"type": "string", "description": "Deprecated provider-specific spelling; prefer target.id."}
                     },
-                    "required": ["type", "external_agent_id"],
+                    "required": ["type"],
                     "additionalProperties": false
                 },
-                "mode": {"type": "string", "enum": ["wait", "background"], "default": "wait"},
+                "mode": {"type": "string", "enum": ["background", "foreground"], "default": "foreground"},
                 "wait_timeout_secs": {"type": "integer", "minimum": 1, "maximum": 86400},
                 "wake_on_completion": {"type": "boolean", "default": true},
                 "result_schema": {"type": "object", "description": "JSON Schema for a required structured result artifact from the external agent."},
@@ -1411,16 +1393,15 @@ impl Tool for SpawnAgentTool {
             );
         }
         let external_agent_id = match target
-            .get("external_agent_id")
+            .get("id")
+            .or_else(|| target.get("external_agent_id"))
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|s| !s.is_empty())
         {
             Some(id) => id,
             None => {
-                return ToolExecutionResult::tool_error(
-                    "Missing required parameter: target.external_agent_id",
-                );
+                return ToolExecutionResult::tool_error("Missing required parameter: target.id");
             }
         };
         let Some(agent) = self.config.agent(external_agent_id).cloned() else {
@@ -1428,9 +1409,14 @@ impl Tool for SpawnAgentTool {
                 "Unknown external A2A agent: {external_agent_id}"
             ));
         };
-        let mode = match AgentRunMode::parse(arguments.get("mode").and_then(Value::as_str)) {
-            Ok(mode) => mode,
-            Err(e) => return ToolExecutionResult::tool_error(e),
+        let mode = match arguments.get("mode").and_then(Value::as_str) {
+            None => SpawnMode::Foreground,
+            Some(value) if let Some(mode) = SpawnMode::parse(value) => mode,
+            Some(other) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Invalid mode: {other}. Expected background, foreground"
+                ));
+            }
         };
         let timeout_secs = arguments
             .get("wait_timeout_secs")
@@ -1464,7 +1450,7 @@ impl Tool for SpawnAgentTool {
             run_id.clone(),
             &agent,
             instructions.clone(),
-            mode.clone(),
+            mode,
             wake_on_completion,
             result_schema.clone(),
         );
@@ -1491,14 +1477,14 @@ impl Tool for SpawnAgentTool {
                         state: SessionTaskState::Queued,
                         links: TaskLinks::default(),
                         wake_policy: match mode {
-                            AgentRunMode::Background => TaskWakePolicy::OnTerminal,
-                            AgentRunMode::Wait => TaskWakePolicy::Silent,
+                            SpawnMode::Background => TaskWakePolicy::OnTerminal,
+                            SpawnMode::Foreground => TaskWakePolicy::Silent,
                         },
                     })
                     .await
                 {
                     Ok(created) => record.task_id = Some(created.id),
-                    Err(e) if mode == AgentRunMode::Background || result_schema.is_some() => {
+                    Err(e) if mode == SpawnMode::Background || result_schema.is_some() => {
                         // Background runs must be task-backed before remote work
                         // starts; surface this as a user-facing tool error (per
                         // the capability contract) rather than an internal error,
@@ -1511,7 +1497,7 @@ impl Tool for SpawnAgentTool {
                     Err(_) => {}
                 }
             }
-            None if mode == AgentRunMode::Background => {
+            None if mode == SpawnMode::Background => {
                 return ToolExecutionResult::tool_error(
                     "Background spawn_agent requires session_task_registry context so the run can be controlled with wait_task/message_task/cancel_task",
                 );
@@ -1530,7 +1516,7 @@ impl Tool for SpawnAgentTool {
             return ToolExecutionResult::success(record.public_json());
         }
         match mode {
-            AgentRunMode::Background => {
+            SpawnMode::Background => {
                 let context = context.clone();
                 // Capture the attempt at spawn time (1 for a fresh spawn).
                 // The heartbeat loop uses this to fence stale writes from any
@@ -1549,7 +1535,7 @@ impl Tool for SpawnAgentTool {
                 });
                 ToolExecutionResult::success(record.public_json())
             }
-            AgentRunMode::Wait => {
+            SpawnMode::Foreground => {
                 // Foreground wait: the tool executor owns the call stack so no
                 // separate heartbeat thread is needed; pass None.
                 match wait_for_run(context, &agent, record, timeout_secs, None).await {
@@ -2124,7 +2110,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn spawn_agent_wait_calls_real_a2a_agent() {
+    async fn spawn_agent_foreground_calls_real_a2a_agent_with_target_id_alias() {
         let base_url = spawn_real_a2a_agent().await;
         let config = configured_capability(base_url);
         let tool = SpawnAgentTool::new(config);
@@ -2136,8 +2122,8 @@ mod tests {
             .execute_with_context(
                 json!({
                     "instructions": "hello",
-                    "target": {"type": "external_a2a", "external_agent_id": "echo"},
-                    "mode": "wait",
+                    "target": {"type": "external_a2a", "id": "echo"},
+                    "mode": "foreground",
                     "wait_timeout_secs": 5
                 }),
                 &ctx,
@@ -2153,7 +2139,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn spawn_agent_wait_validates_a2a_data_artifact_and_writes_task_result() {
+    async fn spawn_agent_rejects_legacy_wait_mode() {
+        let tool = SpawnAgentTool::new(configured_capability("http://127.0.0.1:1".to_string()));
+        let ctx = context(
+            Arc::new(TestStorageStore::default()),
+            Arc::new(TestFileStore::default()),
+        );
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "instructions": "never sent",
+                    "target": {"type": "external_a2a", "external_agent_id": "echo"},
+                    "mode": "wait"
+                }),
+                &ctx,
+            )
+            .await;
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("expected legacy mode rejection: {result:?}");
+        };
+        assert!(message.contains("background, foreground"));
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_foreground_validates_a2a_data_artifact_and_writes_task_result() {
         let tool = SpawnAgentTool::new(configured_capability(spawn_real_a2a_agent().await));
         let storage_store = Arc::new(TestStorageStore::default());
         let file_store = Arc::new(TestFileStore::default());
@@ -2166,7 +2175,7 @@ mod tests {
                 json!({
                     "instructions": "structured",
                     "target": {"type": "external_a2a", "external_agent_id": "echo"},
-                    "mode": "wait",
+                    "mode": "foreground",
                     "wait_timeout_secs": 5,
                     "result_schema": {
                         "type": "object",
@@ -2207,7 +2216,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn spawn_agent_wait_marks_a2a_schema_mismatch_failed() {
+    async fn spawn_agent_foreground_marks_a2a_schema_mismatch_failed() {
         let tool = SpawnAgentTool::new(configured_capability(spawn_real_a2a_agent().await));
         let storage_store = Arc::new(TestStorageStore::default());
         let file_store = Arc::new(TestFileStore::default());
@@ -2219,7 +2228,7 @@ mod tests {
                 json!({
                     "instructions": "structured",
                     "target": {"type": "external_a2a", "external_agent_id": "echo"},
-                    "mode": "wait",
+                    "mode": "foreground",
                     "wait_timeout_secs": 5,
                     "result_schema": {
                         "type": "object",
@@ -2317,6 +2326,13 @@ mod tests {
             }))
             .is_err()
         );
+
+        let tool_schema = SpawnAgentTool::new(A2aDelegationConfig::default()).parameters_schema();
+        assert_eq!(
+            tool_schema["properties"]["mode"]["enum"],
+            json!(["background", "foreground"])
+        );
+        assert!(tool_schema["properties"]["target"]["properties"]["id"].is_object());
     }
 
     #[test]
@@ -2347,7 +2363,7 @@ mod tests {
             "run-policy".to_string(),
             &config,
             "instructions".to_string(),
-            AgentRunMode::Background,
+            SpawnMode::Background,
             false,
             None,
         );
@@ -2761,7 +2777,7 @@ mod tests {
             run_id.clone(),
             &config,
             "instructions".to_string(),
-            AgentRunMode::Background,
+            SpawnMode::Background,
             false,
             None,
         );
@@ -2864,7 +2880,7 @@ mod tests {
             run_id.clone(),
             &config,
             "instructions".to_string(),
-            AgentRunMode::Background,
+            SpawnMode::Background,
             false,
             None,
         );
@@ -2961,7 +2977,7 @@ mod tests {
             run_id.clone(),
             &config,
             "instructions".to_string(),
-            AgentRunMode::Background,
+            SpawnMode::Background,
             false,
             None,
         );
@@ -3000,7 +3016,7 @@ mod tests {
             "external_agent_id": "echo",
             "external_agent_name": "Echo",
             "task": "legacy instructions",
-            "mode": "wait",
+            "mode": "foreground",
             "status": "submitted"
         });
 
@@ -3036,7 +3052,7 @@ mod tests {
             run_id.clone(),
             &config,
             "do something".to_string(),
-            AgentRunMode::Wait,
+            SpawnMode::Foreground,
             false,
             None,
         );

@@ -94,6 +94,8 @@ execution. The dispatcher can advertise other active known delegation providers
 alongside `subagent` (for example first-party handoff or external A2A).
 
 The retired direct creation entry point is no longer advertised to models.
+`background` and `foreground` are the native shared execution-mode vocabulary
+for every delegation provider; the dispatcher does not rewrite them per target.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
