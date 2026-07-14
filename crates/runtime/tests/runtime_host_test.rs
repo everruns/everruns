@@ -13,6 +13,10 @@ use everruns_core::in_memory::{
     InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryMessageRetriever,
     InMemoryProviderStore,
 };
+use everruns_core::session_task::{
+    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
+    SessionTaskUpdate, TaskMessage, apply_task_update, new_session_task,
+};
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, ProviderStore, SessionFileSystem, SessionMutator,
     SessionStore,
@@ -88,6 +92,7 @@ struct MockHostAdapter {
     provider_store: Arc<InMemoryProviderStore>,
     event_emitter: Arc<InMemoryEventEmitter>,
     file_store: Arc<InMemorySessionFileStore>,
+    session_task_registry: Option<Arc<dyn SessionTaskRegistry>>,
 }
 
 #[async_trait]
@@ -178,6 +183,102 @@ impl RuntimeHostAdapter for MockHostAdapter {
 
     fn file_store(&self) -> Arc<dyn SessionFileSystem> {
         self.file_store.clone()
+    }
+
+    fn session_task_registry(&self) -> Option<Arc<dyn SessionTaskRegistry>> {
+        self.session_task_registry.clone()
+    }
+}
+
+#[derive(Default)]
+struct TestTaskRegistry {
+    tasks: RwLock<Vec<SessionTask>>,
+}
+
+#[async_trait]
+impl SessionTaskRegistry for TestTaskRegistry {
+    async fn create(&self, input: CreateSessionTask) -> everruns_core::error::Result<SessionTask> {
+        let task = new_session_task(input, Utc::now());
+        self.tasks.write().await.push(task.clone());
+        Ok(task)
+    }
+
+    async fn update(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        update: SessionTaskUpdate,
+    ) -> everruns_core::error::Result<Option<SessionTask>> {
+        let mut tasks = self.tasks.write().await;
+        let Some(task) = tasks
+            .iter_mut()
+            .find(|task| task.session_id == session_id && task.id == task_id)
+        else {
+            return Ok(None);
+        };
+        apply_task_update(task, update, Utc::now());
+        Ok(Some(task.clone()))
+    }
+
+    async fn get(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> everruns_core::error::Result<Option<SessionTask>> {
+        Ok(self
+            .tasks
+            .read()
+            .await
+            .iter()
+            .find(|task| task.session_id == session_id && task.id == task_id)
+            .cloned())
+    }
+
+    async fn list(
+        &self,
+        session_id: SessionId,
+        filter: Option<&SessionTaskFilter>,
+    ) -> everruns_core::error::Result<Vec<SessionTask>> {
+        Ok(self
+            .tasks
+            .read()
+            .await
+            .iter()
+            .filter(|task| {
+                task.session_id == session_id
+                    && filter
+                        .and_then(|filter| filter.kind.as_deref())
+                        .is_none_or(|kind| task.kind == kind)
+            })
+            .cloned()
+            .collect())
+    }
+
+    async fn request_cancel(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> everruns_core::error::Result<Option<SessionTask>> {
+        self.get(session_id, task_id).await
+    }
+
+    async fn record_message(
+        &self,
+        _session_id: SessionId,
+        _task_id: &str,
+        _message: NewTaskMessage,
+    ) -> everruns_core::error::Result<TaskMessage> {
+        Err(everruns_core::error::AgentLoopError::tool("not needed"))
+    }
+
+    async fn list_messages(
+        &self,
+        _session_id: SessionId,
+        _task_id: &str,
+        _limit: Option<u32>,
+        _after_id: Option<&str>,
+    ) -> everruns_core::error::Result<Vec<TaskMessage>> {
+        Ok(vec![])
     }
 }
 
@@ -644,6 +745,7 @@ fn mock_host() -> MockHostAdapter {
         provider_store: Arc::new(InMemoryProviderStore::new()),
         event_emitter: Arc::new(InMemoryEventEmitter::new()),
         file_store: Arc::new(InMemorySessionFileStore::new()),
+        session_task_registry: None,
     }
 }
 
@@ -2103,6 +2205,152 @@ async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
         .unwrap()
         .expect("stored user message");
     assert_eq!(stored_message.content_to_llm_string(), "SECRET prompt");
+}
+
+#[tokio::test]
+async fn reason_activity_injects_schema_tools_for_agent_handoff_child() {
+    use everruns_core::atoms::ReasonInput;
+    use everruns_core::llmsim_driver::{LlmSimConfig, register_driver_with_config};
+    use everruns_core::session_task::{
+        SessionTaskState, TASK_KIND_AGENT_HANDOFF, TaskLinks, TaskWakePolicy,
+    };
+    use everruns_runtime::execute_reason_activity;
+
+    let mut adapter = mock_host();
+    register_driver_with_config(&mut adapter.driver_registry, LlmSimConfig::fixed("ready"));
+    set_default_model(&adapter).await;
+    let registry = Arc::new(TestTaskRegistry::default());
+    adapter.session_task_registry = Some(registry.clone());
+
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let parent_id = SessionId::from_uuid(Uuid::now_v7());
+    let child_id = SessionId::from_uuid(Uuid::now_v7());
+    adapter.harness_store.add_harness(harness(harness_id)).await;
+    let parent = session(parent_id, harness_id);
+    let mut child = session(child_id, harness_id);
+    child.parent_session_id = Some(parent_id);
+    child.workspace_id = parent.workspace_id;
+    adapter.session_store.insert(parent).await;
+    adapter.session_store.insert(child).await;
+    registry
+        .create(CreateSessionTask {
+            session_id: parent_id,
+            id: Some("task_handoff_schema".to_string()),
+            kind: TASK_KIND_AGENT_HANDOFF.to_string(),
+            display_name: "Structured handoff".to_string(),
+            spec: json!({
+                "result_schema": {
+                    "type": "object",
+                    "properties": {"answer": {"type": "string"}},
+                    "required": ["answer"]
+                },
+                "message_schema": {
+                    "type": "object",
+                    "properties": {"step": {"type": "string"}},
+                    "required": ["step"]
+                }
+            }),
+            state: SessionTaskState::Running,
+            links: TaskLinks {
+                child_session_id: Some(child_id),
+                ..Default::default()
+            },
+            wake_policy: TaskWakePolicy::OnActivity,
+        })
+        .await
+        .unwrap();
+    let input = adapter
+        .message_store
+        .add(child_id, InputMessage::user("work"))
+        .await
+        .unwrap();
+
+    let result = execute_reason_activity(
+        &adapter,
+        1,
+        ReasonInput {
+            context: AtomContext::new(child_id, TurnId::from_uuid(Uuid::now_v7()), input.id),
+            harness_id,
+            agent_id: None,
+            org_id: 1,
+            mcp_tool_definitions: vec![],
+            previous_response_id: None,
+            iteration: 1,
+        },
+    )
+    .await
+    .unwrap();
+
+    let report_result = result
+        .tool_definitions
+        .iter()
+        .find(|definition| definition.name() == "report_result")
+        .expect("handoff child receives report_result");
+    assert_eq!(report_result.parameters()["required"], json!(["answer"]));
+    let report_progress = result
+        .tool_definitions
+        .iter()
+        .find(|definition| definition.name() == "report_task_progress")
+        .expect("handoff child receives report_task_progress");
+    assert_eq!(report_progress.parameters()["required"], json!(["step"]));
+
+    let invalid = execute_act_activity(
+        &adapter,
+        ActInput {
+            org_id: Some(1),
+            context: AtomContext::new(child_id, TurnId::from_uuid(Uuid::now_v7()), input.id),
+            harness_id,
+            agent_id: None,
+            tool_calls: vec![ToolCall {
+                id: "call_invalid_result".into(),
+                name: "report_result".into(),
+                arguments: json!({"answer": 42}),
+            }],
+            tool_definitions: result.tool_definitions.clone(),
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        invalid.error_count, 1,
+        "invalid schema payload must be retryable"
+    );
+
+    let valid = execute_act_activity(
+        &adapter,
+        ActInput {
+            org_id: Some(1),
+            context: AtomContext::new(child_id, TurnId::from_uuid(Uuid::now_v7()), input.id),
+            harness_id,
+            agent_id: None,
+            tool_calls: vec![ToolCall {
+                id: "call_valid_result".into(),
+                name: "report_result".into(),
+                arguments: json!({"answer": "done"}),
+            }],
+            tool_definitions: result.tool_definitions,
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(valid.success_count, 1);
+    let task = registry
+        .get(parent_id, "task_handoff_schema")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        task.result_path.as_deref(),
+        Some("/.tasks/task_handoff_schema/result.json")
+    );
 }
 
 /// A `turn_end` hook fires (advisory) when a turn completes. We drive a full

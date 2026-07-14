@@ -19,19 +19,24 @@
 // Subagent naming: human-readable ("Test Runner"), unique per parent, case-insensitive.
 // Spawn governance: child depth and root-tree task fan-out are bounded.
 
+use super::delegation_result::{
+    MESSAGE_SCHEMA_SPEC_KEY, RESULT_SCHEMA_SPEC_KEY, normalize_message_schema,
+    normalize_result_schema, required_result_is_missing, result_value_for_task, truncate_summary,
+};
+#[cfg(test)]
+use super::delegation_result::{ReportResultTool, ReportTaskProgressTool};
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::platform_store::{PlatformCreateSessionRequest, PlatformStore};
 use crate::session::SessionSeedMode;
 use crate::session_task::{
-    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskState,
-    SessionTaskUpdate, TASK_KIND_SESSION, TASK_KIND_SUBAGENT, TaskError, TaskExecutor,
-    TaskExecutorPlugin, TaskLinks, TaskMessage, TaskMessageDirection, TaskMessagePart,
-    TaskWakePolicy, task_message_text, task_result_path,
+    CreateSessionTask, SessionTask, SessionTaskFilter, SessionTaskState, SessionTaskUpdate,
+    TASK_KIND_SESSION, TASK_KIND_SUBAGENT, TaskError, TaskExecutor, TaskExecutorPlugin, TaskLinks,
+    TaskMessage, TaskWakePolicy, task_message_text,
 };
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{SessionFileSystem, SessionStore, SpawnClaimResult, ToolContext};
-use crate::typed_id::{SessionId, WorkspaceId};
+use crate::traits::{SessionStore, SpawnClaimResult, ToolContext};
+use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::{HashSet, VecDeque};
@@ -168,8 +173,6 @@ impl Capability for SubagentCapability {
 }
 
 const SUBAGENT_SYSTEM_PROMPT: &str = "Spawn subagents for independent parallel work or separate context; avoid immediate sequential steps. Spawns are background by default: you get a task_id, keep working, and are notified on completion (monitor with get_task/wait_task). Use mode \"foreground\" only when blocked on the result. Nested subagents are allowed up to max_subagent_depth and root-tree task caps. Use blueprints for specialist tools/model.";
-const RESULT_SCHEMA_SPEC_KEY: &str = "result_schema";
-const MESSAGE_SCHEMA_SPEC_KEY: &str = "message_schema";
 /// Task spec key holding spawn-time per-task push configs (EVE-682). The
 /// webhook notifier reads this in addition to the DB-backed configs so
 /// spawn-time and endpoint-created configs share one delivery path.
@@ -271,41 +274,6 @@ fn terminal_subagent_task_state(
     }
 }
 
-fn declared_result_schema(task: &SessionTask) -> Option<&Value> {
-    task.spec
-        .get(RESULT_SCHEMA_SPEC_KEY)
-        .filter(|schema| schema.is_object())
-}
-
-fn declared_message_schema(task: &SessionTask) -> Option<&Value> {
-    task.spec
-        .get(MESSAGE_SCHEMA_SPEC_KEY)
-        .filter(|schema| schema.is_object())
-}
-
-fn normalize_optional_schema(
-    arguments: &Value,
-    key: &str,
-) -> Result<Option<Value>, ToolExecutionResult> {
-    let Some(schema) = arguments.get(key).filter(|v| !v.is_null()) else {
-        return Ok(None);
-    };
-    if !schema.is_object() {
-        return Err(ToolExecutionResult::tool_error(format!(
-            "{key} must be a JSON Schema object when provided.",
-        )));
-    }
-    Ok(Some(schema.clone()))
-}
-
-fn normalize_result_schema(arguments: &Value) -> Result<Option<Value>, ToolExecutionResult> {
-    normalize_optional_schema(arguments, RESULT_SCHEMA_SPEC_KEY)
-}
-
-fn normalize_message_schema(arguments: &Value) -> Result<Option<Value>, ToolExecutionResult> {
-    normalize_optional_schema(arguments, MESSAGE_SCHEMA_SPEC_KEY)
-}
-
 /// Parse + validate the optional `push_configs` spawn arg (EVE-682).
 ///
 /// # Security
@@ -381,92 +349,6 @@ fn normalize_push_configs(arguments: &Value) -> Result<Option<Value>, ToolExecut
         normalized.push(Value::Object(obj));
     }
     Ok(Some(Value::Array(normalized)))
-}
-
-fn json_schema_type_matches(expected: &str, value: &Value) -> bool {
-    match expected {
-        "object" => value.is_object(),
-        "array" => value.is_array(),
-        "string" => value.is_string(),
-        "boolean" => value.is_boolean(),
-        "integer" => value.as_i64().is_some() || value.as_u64().is_some(),
-        "number" => value.is_number(),
-        "null" => value.is_null(),
-        _ => true,
-    }
-}
-
-fn validate_against_schema(schema: &Value, value: &Value, path: &str, errors: &mut Vec<String>) {
-    if let Some(enum_values) = schema.get("enum").and_then(Value::as_array)
-        && !enum_values.iter().any(|candidate| candidate == value)
-    {
-        errors.push(format!("{path} is not one of the allowed enum values"));
-    }
-
-    if let Some(const_value) = schema.get("const")
-        && const_value != value
-    {
-        errors.push(format!("{path} does not match the required const value"));
-    }
-
-    if let Some(type_value) = schema.get("type") {
-        let matches = match type_value {
-            Value::String(expected) => json_schema_type_matches(expected, value),
-            Value::Array(types) => types
-                .iter()
-                .filter_map(Value::as_str)
-                .any(|expected| json_schema_type_matches(expected, value)),
-            _ => true,
-        };
-        if !matches {
-            errors.push(format!("{path} has the wrong JSON type"));
-            return;
-        }
-    }
-
-    if let (Some(object), Some(properties)) = (
-        value.as_object(),
-        schema.get("properties").and_then(Value::as_object),
-    ) {
-        if let Some(required) = schema.get("required").and_then(Value::as_array) {
-            for key in required.iter().filter_map(Value::as_str) {
-                if !object.contains_key(key) {
-                    errors.push(format!("{path}.{key} is required"));
-                }
-            }
-        }
-
-        if schema.get("additionalProperties") == Some(&Value::Bool(false)) {
-            for key in object.keys() {
-                if !properties.contains_key(key) {
-                    errors.push(format!("{path}.{key} is not allowed"));
-                }
-            }
-        }
-
-        for (key, property_schema) in properties {
-            if let Some(property_value) = object.get(key) {
-                validate_against_schema(
-                    property_schema,
-                    property_value,
-                    &format!("{path}.{key}"),
-                    errors,
-                );
-            }
-        }
-    }
-
-    if let (Some(array), Some(item_schema)) = (value.as_array(), schema.get("items")) {
-        for (index, item) in array.iter().enumerate() {
-            validate_against_schema(item_schema, item, &format!("{path}[{index}]"), errors);
-        }
-    }
-}
-
-fn schema_validation_errors(schema: &Value, value: &Value) -> Vec<String> {
-    let mut errors = Vec::new();
-    validate_against_schema(schema, value, "$", &mut errors);
-    errors
 }
 
 // =============================================================================
@@ -656,19 +538,6 @@ fn last_agent_message(messages: &[crate::platform_store::PlatformMessage]) -> Op
         .map(|m| m.content.clone())
 }
 
-/// Truncated human summary stored on the subagent's task record.
-const MAX_TASK_SUMMARY_CHARS: usize = 2_048;
-
-fn truncate_summary(text: &str) -> String {
-    let mut chars = text.chars();
-    let truncated: String = chars.by_ref().take(MAX_TASK_SUMMARY_CHARS).collect();
-    if chars.next().is_some() {
-        format!("{truncated}\n[truncated]")
-    } else {
-        truncated
-    }
-}
-
 /// Mirror a terminal outcome onto the subagent's session task (best-effort;
 /// tolerates a missing registry or task).
 async fn finish_subagent_task(
@@ -711,313 +580,6 @@ async fn find_subagent_task(context: &ToolContext, child_id: SessionId) -> Optio
     tasks
         .into_iter()
         .find(|task| task.links.child_session_id == Some(child_id))
-}
-
-async fn get_subagent_task(context: &ToolContext, task_id: &str) -> Option<SessionTask> {
-    context
-        .session_task_registry
-        .as_ref()?
-        .get(context.session_id, task_id)
-        .await
-        .ok()
-        .flatten()
-}
-
-/// Context-bound tool injected into a child subagent when its parent task
-/// declares `result_schema`.
-pub struct ReportResultTool {
-    parent_session_id: SessionId,
-    parent_workspace_id: WorkspaceId,
-    task_id: String,
-    result_schema: Value,
-    file_store: Option<Arc<dyn SessionFileSystem>>,
-}
-
-impl ReportResultTool {
-    pub fn new(
-        parent_session_id: SessionId,
-        parent_workspace_id: WorkspaceId,
-        task_id: String,
-        result_schema: Value,
-    ) -> Self {
-        Self {
-            parent_session_id,
-            parent_workspace_id,
-            task_id,
-            result_schema,
-            file_store: None,
-        }
-    }
-
-    pub fn with_file_store(mut self, file_store: Arc<dyn SessionFileSystem>) -> Self {
-        self.file_store = Some(file_store);
-        self
-    }
-
-    fn result_path(&self) -> String {
-        task_result_path(&self.task_id)
-    }
-}
-
-#[async_trait]
-impl Tool for ReportResultTool {
-    fn name(&self) -> &str {
-        "report_result"
-    }
-
-    fn display_name(&self) -> Option<&str> {
-        Some("Report Result")
-    }
-
-    fn description(&self) -> &str {
-        "Submit the final structured result for this subagent task. The call arguments must match the declared result schema."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        self.result_schema.clone()
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error(
-            "report_result requires context. This tool must be executed with session context.",
-        )
-    }
-
-    async fn execute_with_context(
-        &self,
-        arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        let errors = schema_validation_errors(&self.result_schema, &arguments);
-        if !errors.is_empty() {
-            return ToolExecutionResult::tool_error(format!(
-                "report_result arguments do not match result_schema: {}",
-                errors.join("; ")
-            ));
-        }
-
-        let Some(registry) = context.session_task_registry.as_ref() else {
-            return ToolExecutionResult::tool_error(
-                "report_result requires session_task_registry context",
-            );
-        };
-        let Some(file_store) = self.file_store.as_ref().or(context.file_store.as_ref()) else {
-            return ToolExecutionResult::tool_error("report_result requires file_store context");
-        };
-
-        let path = self.result_path();
-        let content = match serde_json::to_string_pretty(&arguments) {
-            Ok(content) => content,
-            Err(error) => return ToolExecutionResult::internal_error(error),
-        };
-        let parent_workspace_key = SessionId::from_uuid(self.parent_workspace_id.uuid());
-        if let Err(error) = file_store
-            .write_file(parent_workspace_key, &path, &content, "utf-8")
-            .await
-        {
-            return ToolExecutionResult::internal_error(error);
-        }
-
-        if let Err(error) = registry
-            .update(
-                self.parent_session_id,
-                &self.task_id,
-                SessionTaskUpdate {
-                    result_path: Some(path.clone()),
-                    summary: Some(truncate_summary(&content)),
-                    ..Default::default()
-                },
-            )
-            .await
-        {
-            return ToolExecutionResult::internal_error(error);
-        }
-
-        ToolExecutionResult::success(json!({
-            "status": "recorded",
-            "task_id": self.task_id,
-            "result_path": path,
-        }))
-    }
-
-    fn requires_context(&self) -> bool {
-        true
-    }
-}
-
-/// Context-bound tool injected into a child subagent when its parent task
-/// declares `message_schema`.
-///
-/// Named `report_task_progress` on the wire to avoid colliding with the
-/// channel-facing `report_progress` tool (`progress_reporting::REPORT_PROGRESS_TOOL_NAME`),
-/// which has different semantics and input schema (EVE-727).
-pub struct ReportTaskProgressTool {
-    parent_session_id: SessionId,
-    task_id: String,
-    message_schema: Value,
-}
-
-impl ReportTaskProgressTool {
-    pub fn new(parent_session_id: SessionId, task_id: String, message_schema: Value) -> Self {
-        Self {
-            parent_session_id,
-            task_id,
-            message_schema,
-        }
-    }
-}
-
-#[async_trait]
-impl Tool for ReportTaskProgressTool {
-    fn name(&self) -> &str {
-        "report_task_progress"
-    }
-
-    fn display_name(&self) -> Option<&str> {
-        Some("Report Task Progress")
-    }
-
-    fn description(&self) -> &str {
-        "Post a structured progress message for this subagent task. The call arguments must match the declared message schema."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        self.message_schema.clone()
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error(
-            "report_task_progress requires context. This tool must be executed with session context.",
-        )
-    }
-
-    async fn execute_with_context(
-        &self,
-        arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        let errors = schema_validation_errors(&self.message_schema, &arguments);
-        if !errors.is_empty() {
-            return ToolExecutionResult::tool_error(format!(
-                "report_task_progress arguments do not match message_schema: {}",
-                errors.join("; ")
-            ));
-        }
-
-        let Some(registry) = context.session_task_registry.as_ref() else {
-            return ToolExecutionResult::tool_error(
-                "report_task_progress requires session_task_registry context",
-            );
-        };
-
-        let message = NewTaskMessage {
-            direction: TaskMessageDirection::Outbound,
-            content: vec![TaskMessagePart::Data {
-                data: arguments.clone(),
-            }],
-            in_reply_to: None,
-            expected_attempt: None,
-        };
-        let stored = match registry
-            .record_message(self.parent_session_id, &self.task_id, message)
-            .await
-        {
-            Ok(stored) => stored,
-            Err(error) => return ToolExecutionResult::internal_error(error),
-        };
-
-        ToolExecutionResult::success(json!({
-            "status": "posted",
-            "task_id": self.task_id,
-            "message_id": stored.id,
-        }))
-    }
-
-    fn requires_context(&self) -> bool {
-        true
-    }
-}
-
-pub async fn report_result_tool_for_child_session(
-    child_session_id: SessionId,
-    session_store: &dyn SessionStore,
-    task_registry: &dyn crate::session_task::SessionTaskRegistry,
-) -> crate::error::Result<Option<ReportResultTool>> {
-    let Some(child) = session_store.get_session(child_session_id).await? else {
-        return Ok(None);
-    };
-    let Some(parent_session_id) = child.parent_session_id else {
-        return Ok(None);
-    };
-    let Some(parent) = session_store.get_session(parent_session_id).await? else {
-        return Ok(None);
-    };
-
-    let tasks = task_registry
-        .list(
-            parent_session_id,
-            Some(&SessionTaskFilter {
-                kind: Some(TASK_KIND_SUBAGENT.to_string()),
-                state: None,
-            }),
-        )
-        .await?;
-
-    let Some(task) = tasks
-        .into_iter()
-        .find(|task| task.links.child_session_id == Some(child_session_id))
-    else {
-        return Ok(None);
-    };
-    let Some(schema) = declared_result_schema(&task) else {
-        return Ok(None);
-    };
-
-    Ok(Some(ReportResultTool::new(
-        parent_session_id,
-        parent.workspace_id,
-        task.id.clone(),
-        schema.clone(),
-    )))
-}
-
-pub async fn report_task_progress_tool_for_child_session(
-    child_session_id: SessionId,
-    session_store: &dyn SessionStore,
-    task_registry: &dyn crate::session_task::SessionTaskRegistry,
-) -> crate::error::Result<Option<ReportTaskProgressTool>> {
-    let Some(child) = session_store.get_session(child_session_id).await? else {
-        return Ok(None);
-    };
-    let Some(parent_session_id) = child.parent_session_id else {
-        return Ok(None);
-    };
-
-    let tasks = task_registry
-        .list(
-            parent_session_id,
-            Some(&SessionTaskFilter {
-                kind: Some(TASK_KIND_SUBAGENT.to_string()),
-                state: None,
-            }),
-        )
-        .await?;
-
-    let Some(task) = tasks
-        .into_iter()
-        .find(|task| task.links.child_session_id == Some(child_session_id))
-    else {
-        return Ok(None);
-    };
-    let Some(schema) = declared_message_schema(&task) else {
-        return Ok(None);
-    };
-
-    Ok(Some(ReportTaskProgressTool::new(
-        parent_session_id,
-        task.id.clone(),
-        schema.clone(),
-    )))
 }
 
 // =============================================================================
@@ -1717,7 +1279,7 @@ async fn run_subagent_wait_and_settle(
         Ok(text) => text,
         Err(error) => return error,
     };
-    let result = foreground_result_value(context, task_id.as_deref())
+    let result = result_value_for_task(context, task_id.as_deref())
         .await
         .unwrap_or_else(|| json!(result_text));
 
@@ -1729,19 +1291,6 @@ async fn run_subagent_wait_and_settle(
         "task_id": task_id,
         "blueprint": blueprint_param,
     }))
-}
-
-async fn foreground_result_value(context: &ToolContext, task_id: Option<&str>) -> Option<Value> {
-    let task = get_subagent_task(context, task_id?).await?;
-    declared_result_schema(&task)?;
-    let result_path = task.result_path.as_deref()?;
-    let file_store = context.file_store.as_ref()?;
-    let file = file_store
-        .read_file(context.workspace_fs_key(), result_path)
-        .await
-        .ok()
-        .flatten()?;
-    serde_json::from_str(file.content.as_deref()?).ok()
 }
 
 /// Collect the child's final message and, when `status` is terminal, settle
@@ -1802,10 +1351,7 @@ async fn settle_subagent_outcome(
         };
         let mut summary = Some(truncate_summary(&result_text));
         if task_state == SessionTaskState::Succeeded
-            && let Some(task_id) = task_id
-            && let Some(task) = get_subagent_task(context, task_id).await
-            && declared_result_schema(&task).is_some()
-            && task.result_path.is_none()
+            && required_result_is_missing(context, task_id).await
         {
             task_state = SessionTaskState::Failed;
             task_error = Some(TaskError {
@@ -2167,6 +1713,7 @@ inventory::submit! {
 mod tests {
     use super::*;
     use crate::Tool;
+    use crate::session_task::{TaskMessageDirection, TaskMessagePart, task_result_path};
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 

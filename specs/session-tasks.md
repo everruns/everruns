@@ -114,7 +114,7 @@ TaskMessage {
 - For subagents the channel carries only cross-boundary messages — the child
   transcript is not mirrored; `links.child_session_id` points at the full
   conversation.
-- Schema-bound subagents can post structured progress with a child-only
+- Schema-bound local delegation children can post structured progress with a child-only
   `report_task_progress` tool. Valid calls append outbound messages containing a
   single `data` part; invalid payloads return a validation error so the child
   can retry.
@@ -204,17 +204,25 @@ Results are modeled apart from status:
 - **Artifacts**: typed links (file, PR, child session) on the record.
 
 Task kinds may require a structured result by storing `spec.result_schema` as a
-JSON Schema. For subagent tasks, that schema injects a child-only
-`report_result` tool. The tool validates its arguments, writes the JSON object
-to `result_path`, and updates the task record. If a schema-bound subagent
-reaches a successful terminal child status without a recorded `result_path`, the
-task settles as `failed` with `error.kind = "no_result"`. Tasks without
-`spec.result_schema` keep their existing summary-only behavior.
+JSON Schema. Local child-session kinds (`subagent`, `session`, and
+`agent_handoff`) inject the shared child-only `report_result` tool. It validates
+its arguments, writes the JSON object to `/.tasks/{task_id}/result.json`, and
+updates the task record. If a schema-bound local child reaches a successful
+terminal status without a recorded `result_path`, the task settles as `failed`
+with `error.kind = "no_result"`.
 
-Subagent tasks may also declare `spec.message_schema` as a JSON Schema. That
-schema injects a child-only `report_task_progress` tool; valid calls are recorded as
-outbound task messages with `data` content, and background tasks use
-`wake_policy: on_activity` so those messages wake the parent session.
+External A2A tasks cannot receive local tools. For `external_agent`, the first
+structured data artifact on the terminal A2A task is validated against
+`spec.result_schema`. A valid value uses the same task-result path; a mismatch
+settles as `failed`/`schema_mismatch`, and absent data settles as
+`failed`/`no_result`. Tasks without `spec.result_schema` keep their existing
+summary-only or legacy snapshot behavior.
+
+Local child-session tasks may also declare `spec.message_schema`. That schema
+injects the shared child-only `report_task_progress` tool; valid calls are
+recorded as outbound task messages with `data` content, and background tasks
+use `wake_policy: on_activity` so those messages wake the parent session.
+External A2A spawning rejects `message_schema` explicitly.
 
 ### Retention (TTL)
 

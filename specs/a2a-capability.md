@@ -118,8 +118,20 @@ Parameters:
   as an alias for `wait`.
 - `wait_timeout_secs`
 - `wake_on_completion`
+- `result_schema`: optional JSON Schema for a required terminal structured
+  artifact. The first A2A data part is validated against it.
+- `message_schema` is unsupported for remote A2A agents and causes an explicit
+  spawn error; Everruns cannot inject `report_task_progress` into a remote
+  agent.
 
 `mode = wait` blocks until the remote task reaches a terminal state or timeout. `mode = background` returns an `agent_run_id` immediately and monitors completion in a detached task.
+
+When `result_schema` is present, a completed remote task succeeds only if its
+first structured data artifact conforms. A valid value is written to
+`/.tasks/{task_id}/result.json` and recorded as the session-task result. Missing
+structured data fails with `error.kind = "no_result"`; invalid data fails with
+`error.kind = "schema_mismatch"`. Runs without a schema retain the legacy text
+summary and `/.agent-runs/{run_id}/result.json` snapshot behavior.
 
 ### Monitoring and steering agent runs
 
@@ -153,6 +165,7 @@ The following per-kind tools were retired in favour of the generic tools above:
 | `remote_context_id` | A2A `Task.contextId` |
 | `instructions` / follow-up message | A2A `Message` with `ROLE_USER` |
 | result summary | first text artifact, else status message text |
+| schema-bound machine result | first structured data artifact |
 | `input_required` | non-terminal interrupted run |
 | `auth_required` | non-terminal interrupted run |
 | `cancel_task` | A2A `CancelTask` |
@@ -181,7 +194,8 @@ Required mitigations:
 - The model cannot provide arbitrary A2A URLs; it chooses a configured `external_agent_id`.
 - Configured URLs pass `validate_safe_url` unless explicitly marked `allow_local_urls`.
 - Remote IDs are opaque strings and are only used with the configured agent that produced them.
-- Result snapshots are bounded by normal tool-result and session-resource limits.
+- Result snapshots are bounded by normal tool-result and session-task limits;
+  schema-bound data is treated as untrusted and validated before persistence.
 - Secret-bearing auth should move to encrypted org-managed external-agent config before production use with private agents.
 - Inbound A2A must be a separate App channel and follow `specs/public-endpoints.md`.
 
@@ -191,5 +205,7 @@ Integration tests use the official Rust `a2a-server-lf` crate to start a real lo
 
 - AgentCard discovery.
 - `spawn_agent` wait mode.
+- Structured artifact validation and task-result persistence.
+- Schema mismatch settlement and explicit `message_schema` rejection.
 - Background mode (background spawn).
 - Local URL blocking unless `allow_local_urls` is set.
