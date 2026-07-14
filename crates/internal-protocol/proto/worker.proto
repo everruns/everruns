@@ -296,6 +296,9 @@ service WorkerService {
     // === Machine payment operations ===
     // Execute a paid capability request through the control-plane payment authority.
     rpc ExecuteMachinePayment(ExecuteMachinePaymentRequest) returns (ExecuteMachinePaymentResponse);
+
+    // Authorize detached peer-session creation as the current session owner.
+    rpc AuthorizeSessionCreation(AuthorizeSessionCreationRequest) returns (AuthorizeSessionCreationResponse);
 }
 
 // ============================================================================
@@ -1909,6 +1912,15 @@ message ExecuteMachinePaymentResponse {
     optional string rail = 3;
     google.protobuf.Value response = 4;
     google.protobuf.Value receipt = 5;
+}
+
+message AuthorizeSessionCreationRequest {
+    int64 org_id = 1;
+    string session_id = 2;
+}
+
+message AuthorizeSessionCreationResponse {
+    string budget_root_session_id = 1;
 }
 
 // ============================================

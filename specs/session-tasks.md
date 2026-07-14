@@ -399,7 +399,10 @@ The optional `root_session_id` filter (EVE-680) narrows the list to a single
 delegation tree — the root session's own tasks plus every descendant's. A
 session's tree root is denormalized onto `sessions.root_session_id` (a top-level
 session is its own root; a subagent child inherits its parent's root, set at
-session creation and backfilled by migration 094) and mirrored onto
+session creation and backfilled by migration 094). A detached `session` task's
+peer is created with an internal, org-validated root override, so detached task
+chains stay grouped with and spend against the origin tree; ordinary forks do
+not set this override. The root is mirrored onto
 `session_tasks.root_session_id` at task creation, so the whole tree is one
 indexed lookup with no parent-chain walk. The filter parses to a session id and
 stays inside the org semijoin, so it never crosses the tenant boundary.

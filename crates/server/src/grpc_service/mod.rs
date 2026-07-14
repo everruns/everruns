@@ -33,6 +33,8 @@ use everruns_internal_protocol::proto::{
     self,
     AddMessageRequest,
     AddMessageResponse,
+    AuthorizeSessionCreationRequest,
+    AuthorizeSessionCreationResponse,
     BudgetSummaryProto,
     // Session schedule operations
     CancelSessionScheduleRequest,

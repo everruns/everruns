@@ -692,6 +692,7 @@ async fn resolve_session(
                 parallel_tool_calls: None,
                 parent_session_id: None,
                 forked_from_session_id: None,
+                budget_root_session_id: None,
                 seed: everruns_core::SessionSeedMode::Fresh,
             },
         )

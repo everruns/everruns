@@ -27,8 +27,8 @@ use crate::grpc_adapters::{
     GrpcAgentStore, GrpcBudgetChecker, GrpcClient, GrpcEventEmitter, GrpcHarnessStore,
     GrpcImageArtifactStore, GrpcImageResolver, GrpcLeasedResourceStore, GrpcMessageRetriever,
     GrpcOutboundToolRateLimiter, GrpcPaymentAuthority, GrpcProviderCredentialStore,
-    GrpcProviderStore, GrpcSessionFileStore, GrpcSessionSqlDbStore, GrpcSessionStorageStore,
-    GrpcSessionStore,
+    GrpcProviderStore, GrpcSessionCreationAuthority, GrpcSessionFileStore, GrpcSessionSqlDbStore,
+    GrpcSessionStorageStore, GrpcSessionStore,
 };
 use crate::mcp_executor::McpServerInfo;
 use crate::worker_adapters::{TurnContext, WorkerAdapters};
@@ -480,6 +480,18 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             GrpcPaymentAuthority::new(self.client.clone(), org_id)
                 .with_agent_id(agent_id.map(|id| id.to_string())),
         ))
+    }
+
+    fn session_creation_authority(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Option<Arc<dyn everruns_core::traits::SessionCreationAuthority>> {
+        Some(Arc::new(GrpcSessionCreationAuthority::new(
+            self.client.clone(),
+            org_id,
+            session_id,
+        )))
     }
 
     fn outbound_tool_rate_limiter(

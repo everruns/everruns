@@ -1310,6 +1310,23 @@ pub trait PaymentAuthority: Send + Sync {
     ) -> Result<crate::payment::MachinePaymentResponse>;
 }
 
+// ============================================================================
+// SessionCreationAuthority - For detached subagent session creation
+// ============================================================================
+
+/// Host-provided authority for creating detached peer sessions.
+///
+/// The host resolves the current session owner and evaluates session-management
+/// permission. Keeping this outside model-authored arguments prevents a tool
+/// call from choosing or forging its authorization identity.
+#[async_trait]
+pub trait SessionCreationAuthority: Send + Sync {
+    /// Authorize creation and return the org-validated budget root for the
+    /// current session. Returning the root from the authority keeps detached
+    /// chains linked without exposing internal root metadata to model input.
+    async fn authorize_session_creation(&self, session_id: SessionId) -> Result<SessionId>;
+}
+
 // OutboundToolRateLimiter - Per-org outbound tool-call rate limiting (TM-TOOL-009)
 // ============================================================================
 
@@ -1658,6 +1675,9 @@ pub struct ToolContext {
     /// Optional internal payment authority for paid capability tools.
     pub payment_authority: Option<Arc<dyn PaymentAuthority>>,
 
+    /// Optional host authority for detached peer-session creation.
+    pub session_creation_authority: Option<Arc<dyn SessionCreationAuthority>>,
+
     /// Optional durable spawn handle store for subagent reattach (EVE-535).
     /// When set, subagent delegation uses claim/settle to prevent duplicate spawning
     /// on parent worker reclaim.
@@ -1723,6 +1743,7 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            session_creation_authority: None,
             subagent_spawn_store: None,
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
@@ -1765,6 +1786,7 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            session_creation_authority: None,
             subagent_spawn_store: None,
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
@@ -1810,6 +1832,7 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            session_creation_authority: None,
             subagent_spawn_store: None,
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
@@ -1856,6 +1879,7 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            session_creation_authority: None,
             subagent_spawn_store: None,
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
@@ -1948,6 +1972,7 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            session_creation_authority: None,
             subagent_spawn_store: None,
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,

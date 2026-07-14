@@ -16,7 +16,7 @@ use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
     BudgetChecker, ImageArtifactStore, ImageResolver, LeasedResourceStore, PaymentAuthority,
-    ProviderCredentialStore, ResolvedImage, ResolvedModel,
+    ProviderCredentialStore, ResolvedImage, ResolvedModel, SessionCreationAuthority,
 };
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
@@ -312,6 +312,16 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         _org_id: i64,
         _agent_id: Option<AgentId>,
     ) -> Option<Arc<dyn PaymentAuthority>> {
+        None
+    }
+
+    /// Get the authority for detached peer-session creation, scoped to the
+    /// current session owner.
+    fn session_creation_authority(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+    ) -> Option<Arc<dyn SessionCreationAuthority>> {
         None
     }
 

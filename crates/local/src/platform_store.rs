@@ -54,6 +54,7 @@ pub trait LocalSessionRunner: Send + Sync {
         request: PlatformCreateSessionRequest,
     ) -> Result<Session> {
         if request.forked_from_session_id.is_some()
+            || request.budget_root_session_id.is_some()
             || request.seed != everruns_core::session::SessionSeedMode::Fresh
         {
             return Err(unsupported("create_session(seed)"));

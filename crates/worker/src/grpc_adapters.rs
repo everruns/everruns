@@ -784,6 +784,13 @@ pub struct GrpcPaymentAuthority {
     agent_id: Option<String>,
 }
 
+/// Session-creation authority backed by the control-plane permission resolver.
+pub struct GrpcSessionCreationAuthority {
+    client: GrpcClient,
+    org_id: i64,
+    session_id: SessionId,
+}
+
 impl GrpcBudgetChecker {
     pub fn new(client: GrpcClient, org_id: i64) -> Self {
         Self {
@@ -811,6 +818,16 @@ impl GrpcPaymentAuthority {
     pub fn with_agent_id(mut self, agent_id: Option<String>) -> Self {
         self.agent_id = agent_id;
         self
+    }
+}
+
+impl GrpcSessionCreationAuthority {
+    pub fn new(client: GrpcClient, org_id: i64, session_id: SessionId) -> Self {
+        Self {
+            client,
+            org_id,
+            session_id,
+        }
     }
 }
 
@@ -3303,6 +3320,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
                 "blueprint_config": request.blueprint_config,
                 "parent_session_id": request.parent_session_id.map(|id| id.to_string()),
                 "forked_from_session_id": request.forked_from_session_id.map(|id| id.to_string()),
+                "budget_root_session_id": request.budget_root_session_id.map(|id| id.to_string()),
                 "seed": request.seed,
             }),
         )
@@ -3873,6 +3891,32 @@ impl everruns_core::traits::PaymentAuthority for GrpcPaymentAuthority {
             rail,
             response: body,
             receipt,
+        })
+    }
+}
+
+#[async_trait]
+impl everruns_core::traits::SessionCreationAuthority for GrpcSessionCreationAuthority {
+    async fn authorize_session_creation(
+        &self,
+        session_id: SessionId,
+    ) -> everruns_core::error::Result<SessionId> {
+        if session_id != self.session_id {
+            return Err(AgentLoopError::tool(
+                "session-creation authority is scoped to the current session",
+            ));
+        }
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .authorize_session_creation(proto::AuthorizeSessionCreationRequest {
+                org_id: self.org_id,
+                session_id: session_id.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+        SessionId::parse(&response.budget_root_session_id).map_err(|error| {
+            AgentLoopError::store(format!("Invalid budget root session id: {error}"))
         })
     }
 }

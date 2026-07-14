@@ -67,6 +67,7 @@ fn session_input(owner_principal_id: PrincipalId, label: &str) -> CreateSessionR
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
         workspace_id: None,
     }
 }

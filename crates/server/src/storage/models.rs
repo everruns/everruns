@@ -874,6 +874,8 @@ pub struct CreateSessionRow {
     pub blueprint_config: Option<serde_json::Value>,
     /// Parent session ID for governed subagent depth tracking.
     pub parent_session_id: Option<everruns_core::SessionId>,
+    /// Explicit internal-only budget/delegation root for detached peers.
+    pub budget_root_session_id: Option<everruns_core::SessionId>,
     /// Internal id of an existing workspace to attach this session to. When
     /// `None`, `create_session` auto-creates a default 1:1 workspace whose id
     /// equals the new session id (the equality invariant). When `Some`, the

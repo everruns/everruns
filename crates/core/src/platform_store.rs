@@ -37,6 +37,9 @@ pub struct PlatformCreateSessionRequest {
     pub blueprint_config: Option<serde_json::Value>,
     pub parent_session_id: Option<SessionId>,
     pub forked_from_session_id: Option<SessionId>,
+    /// Internal-only override for the budget/delegation root. Detached spawns
+    /// set this explicitly; ordinary forks must leave it unset.
+    pub budget_root_session_id: Option<SessionId>,
     pub seed: SessionSeedMode,
 }
 
@@ -227,10 +230,11 @@ pub trait PlatformStore: Send + Sync {
     ) -> Result<Session> {
         if request.goal.is_some()
             || request.forked_from_session_id.is_some()
+            || request.budget_root_session_id.is_some()
             || request.seed != SessionSeedMode::Fresh
         {
             return Err(crate::error::AgentLoopError::tool(
-                "platform store does not support goal, lineage, or seeded session creation",
+                "platform store does not support goal, lineage, budget-root override, or seeded session creation",
             ));
         }
         self.create_session(
@@ -334,6 +338,8 @@ pub mod tests {
         /// call so tests can assert which harness a child session was
         /// created against. See `start_handoff_uses_target_harness_not_parent`.
         pub created_session_harness_ids: std::sync::Mutex<Vec<HarnessId>>,
+        /// Records internal budget-root overrides supplied to session creation.
+        pub created_session_budget_roots: std::sync::Mutex<Vec<Option<SessionId>>>,
         /// Status returned by `wait_for_idle` ("idle" by default). Tests set
         /// a terminal turn status (e.g. "completed") to exercise settle paths.
         pub wait_for_idle_status: std::sync::Mutex<String>,
@@ -489,6 +495,7 @@ pub mod tests {
                 extra_sessions: std::sync::Mutex::new(std::collections::HashMap::new()),
                 joined_participants: std::sync::Mutex::new(Vec::new()),
                 created_session_harness_ids: std::sync::Mutex::new(Vec::new()),
+                created_session_budget_roots: std::sync::Mutex::new(Vec::new()),
                 wait_for_idle_status: std::sync::Mutex::new("idle".to_string()),
                 sent_messages: std::sync::Mutex::new(Vec::new()),
             }
@@ -759,6 +766,10 @@ pub mod tests {
             &self,
             request: PlatformCreateSessionRequest,
         ) -> Result<Session> {
+            self.created_session_budget_roots
+                .lock()
+                .expect("budget root recorder")
+                .push(request.budget_root_session_id);
             let mut session = self
                 .create_session(
                     request.harness_id,

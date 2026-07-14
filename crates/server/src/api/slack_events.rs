@@ -670,6 +670,7 @@ async fn process_slack_message(
                 parallel_tool_calls: None,
                 parent_session_id: None,
                 forked_from_session_id: None,
+                budget_root_session_id: None,
                 seed: everruns_core::SessionSeedMode::Fresh,
             };
             let internal_caller = Caller::internal(org_id);
@@ -2481,6 +2482,7 @@ mod tests {
             blueprint_config: None,
             network_access: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         };
         let session = db.create_session(row).await.unwrap();
         session.id
