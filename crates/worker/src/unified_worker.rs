@@ -272,6 +272,12 @@ pub trait TaskStore: Send + Sync + 'static {
         &self,
         workflow_id: Uuid,
     ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError>;
+
+    async fn consume_pending_signals_by_type(
+        &self,
+        workflow_id: Uuid,
+        signal_type: &str,
+    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError>;
 }
 
 #[async_trait]
@@ -417,6 +423,14 @@ where
         workflow_id: Uuid,
     ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
         WorkflowEventStore::consume_pending_signals(self, workflow_id).await
+    }
+
+    async fn consume_pending_signals_by_type(
+        &self,
+        workflow_id: Uuid,
+        signal_type: &str,
+    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
+        WorkflowEventStore::consume_pending_signals_by_type(self, workflow_id, signal_type).await
     }
 }
 
@@ -580,6 +594,17 @@ impl TaskStore for GrpcDurableStore {
     ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
         let mut store = self.clone();
         GrpcDurableStore::get_and_consume_signals(&mut store, workflow_id)
+            .await
+            .map_err(store_error)
+    }
+
+    async fn consume_pending_signals_by_type(
+        &self,
+        workflow_id: Uuid,
+        signal_type: &str,
+    ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
+        let mut store = self.clone();
+        GrpcDurableStore::get_and_consume_signals_by_type(&mut store, workflow_id, signal_type)
             .await
             .map_err(store_error)
     }
@@ -1404,12 +1429,10 @@ async fn count_drained_wakes<S: TaskStore>(
         return Ok(0);
     }
     Ok(store
-        .consume_pending_signals(workflow_id)
+        .consume_pending_signals_by_type(workflow_id, everruns_durable::signal_types::USER_MESSAGE)
         .await
-        .map_err(|error| anyhow::anyhow!("Failed to consume workflow signals: {}", error))?
-        .into_iter()
-        .filter(|signal| signal.signal_type == everruns_durable::signal_types::USER_MESSAGE)
-        .count())
+        .map_err(|error| anyhow::anyhow!("Failed to consume workflow wake signals: {}", error))?
+        .len())
 }
 
 async fn enqueue_reason_task<S: TaskStore>(
@@ -1466,7 +1489,7 @@ mod tests {
     }
 
     /// `TaskStore` stub returning a fixed set of pending signals and counting
-    /// how many times `consume_pending_signals` is called.
+    /// how many times wake-signal drains are called.
     #[derive(Clone)]
     struct RecordingStore {
         signals: Vec<everruns_durable::WorkflowSignal>,
@@ -1561,8 +1584,21 @@ mod tests {
             &self,
             _workflow_id: Uuid,
         ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
-            self.consume_calls.fetch_add(1, Ordering::SeqCst);
             Ok(self.signals.clone())
+        }
+
+        async fn consume_pending_signals_by_type(
+            &self,
+            _workflow_id: Uuid,
+            signal_type: &str,
+        ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
+            self.consume_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(self
+                .signals
+                .iter()
+                .filter(|signal| signal.signal_type == signal_type)
+                .cloned()
+                .collect())
         }
     }
 
@@ -1580,7 +1616,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn act_boundary_drains_and_counts_only_user_message_wakes() {
+    async fn act_boundary_drains_only_user_message_wakes() {
         // Two wakes plus an unrelated signal accrued during the turn.
         let store = Arc::new(RecordingStore {
             signals: vec![
@@ -1598,7 +1634,8 @@ mod tests {
             .await
             .expect("act boundary drains");
 
-        // Only USER_MESSAGE wakes count; the cancel signal is ignored here.
+        // Only USER_MESSAGE wakes are consumed; the cancel signal remains pending
+        // for the normal signal dispatcher instead of being dropped.
         assert_eq!(count, 2);
         assert_eq!(store.consume_calls.load(Ordering::SeqCst), 1);
     }
@@ -1838,6 +1875,14 @@ mod tests {
             async fn consume_pending_signals(
                 &self,
                 _workflow_id: Uuid,
+            ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
+                Ok(vec![])
+            }
+
+            async fn consume_pending_signals_by_type(
+                &self,
+                _workflow_id: Uuid,
+                _signal_type: &str,
             ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
                 Ok(vec![])
             }

@@ -739,6 +739,13 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         Ok(signals)
     }
 
+    /// Atomically get and consume pending signals of one type for a workflow.
+    async fn consume_pending_signals_by_type(
+        &self,
+        workflow_id: Uuid,
+        signal_type: &str,
+    ) -> Result<Vec<WorkflowSignal>, StoreError>;
+
     // =========================================================================
     // Worker Registry Operations (optional, default no-op)
     // =========================================================================
