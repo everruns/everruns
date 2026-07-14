@@ -745,6 +745,10 @@ impl SessionService {
             app_id,
             harness_id: Some(harness_id),
             agent_id,
+            agent_version_id: resolved_agent_version.as_ref().map(|version| version.id),
+            agent_config_hash: resolved_agent_version
+                .as_ref()
+                .map(|version| version.config_hash.clone()),
             agent_identity_id,
             owner_principal_id,
             resolved_owner_user_id,
@@ -770,16 +774,12 @@ impl SessionService {
             workspace_id,
         };
         let row = self.db.create_session(input).await?;
-        let row = if resolved_agent_version.is_some() || requested_goal.is_some() {
+        let row = if requested_goal.is_some() {
             self.db
                 .update_session(
                     org_id,
                     row.id,
                     UpdateSession {
-                        agent_version_id: resolved_agent_version.as_ref().map(|version| version.id),
-                        agent_config_hash: resolved_agent_version
-                            .as_ref()
-                            .map(|version| version.config_hash.clone()),
                         goal: requested_goal,
                         ..Default::default()
                     },
@@ -924,6 +924,8 @@ impl SessionService {
             app_id: None,
             harness_id: Some(harness_id),
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: owner_principal.id,
             resolved_owner_user_id: owner_principal.resolved_user_id,
@@ -1749,6 +1751,8 @@ impl SessionService {
             app_id: None,
             harness_id: Some(harness_id_typed),
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: owner_principal.id,
             resolved_owner_user_id: owner_principal.resolved_user_id,
@@ -3043,6 +3047,8 @@ mod tests {
                 app_id: None,
                 harness_id: Some(harness.id),
                 agent_id: Some(missing_agent_id),
+                agent_version_id: None,
+                agent_config_hash: None,
                 agent_identity_id: None,
                 owner_principal_id: missing_owner_id,
                 resolved_owner_user_id: None,
@@ -4056,6 +4062,8 @@ mod tests {
                 app_id: None,
                 harness_id: Some(other_harness.id),
                 agent_id: Some(AgentId::from_uuid(other_agent.internal_id)),
+                agent_version_id: None,
+                agent_config_hash: None,
                 agent_identity_id: None,
                 owner_principal_id: everruns_core::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
@@ -4389,6 +4397,8 @@ mod tests {
                 app_id: None,
                 harness_id: None,
                 agent_id: None,
+                agent_version_id: None,
+                agent_config_hash: None,
                 agent_identity_id: None,
                 owner_principal_id: everruns_core::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,

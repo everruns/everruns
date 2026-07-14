@@ -464,6 +464,8 @@ mod tests {
                 app_id: None,
                 harness_id: Some(harness.id),
                 agent_id: Some(host_agent.id),
+                agent_version_id: None,
+                agent_config_hash: None,
                 agent_identity_id: None,
                 owner_principal_id: PrincipalId::from_seed(DEFAULT_ORG_ID as u128),
                 resolved_owner_user_id: None,

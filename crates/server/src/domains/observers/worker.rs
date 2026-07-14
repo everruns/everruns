@@ -321,6 +321,8 @@ mod tests {
             app_id: None,
             harness_id: Some(harness),
             agent_id: Some(agent),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             parent_session_id: None,
             owner_principal_id: PrincipalId::from_uuid(Uuid::nil()),

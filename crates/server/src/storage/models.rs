@@ -843,6 +843,8 @@ pub struct CreateSessionRow {
     pub app_id: Option<Uuid>,
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
+    pub agent_version_id: Option<everruns_core::AgentVersionId>,
+    pub agent_config_hash: Option<String>,
     pub agent_identity_id: Option<AgentIdentityId>,
     pub owner_principal_id: PrincipalId,
     pub resolved_owner_user_id: Option<Uuid>,

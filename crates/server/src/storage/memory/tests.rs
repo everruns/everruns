@@ -4,8 +4,8 @@ use crate::api::common::Pagination;
 use chrono::Utc;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::{
-    AgentId, DEFAULT_ORG_ID, HarnessId, PrincipalId, SessionId, SessionParticipantKind,
-    SessionParticipantRole,
+    AgentId, AgentVersionId, DEFAULT_ORG_ID, HarnessId, PrincipalId, SessionId,
+    SessionParticipantKind, SessionParticipantRole,
 };
 
 /// Default pagination for tests (large enough to not truncate).
@@ -24,6 +24,8 @@ fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
         app_id: None,
         harness_id: None,
         agent_id,
+        agent_version_id: None,
+        agent_config_hash: None,
         agent_identity_id: None,
         owner_principal_id: PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
@@ -175,6 +177,8 @@ async fn test_create_and_list_sessions() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -218,6 +222,8 @@ async fn test_set_session_fork_lineage_roundtrip() {
         app_id: None,
         harness_id: None,
         agent_id: None,
+        agent_version_id: None,
+        agent_config_hash: None,
         agent_identity_id: None,
         owner_principal_id: everruns_core::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
@@ -301,6 +307,31 @@ async fn test_create_session_seeds_agent_and_user_participants() {
     assert_eq!(user.role, SessionParticipantRole::Member);
     assert_eq!(user.agent_id, None);
     assert_eq!(user.principal_id, PrincipalId::from_seed(1));
+}
+
+#[tokio::test]
+async fn test_create_session_seeds_agent_participant_version() {
+    let db = InMemoryDatabase::new();
+    let agent_id = AgentId::new();
+    let agent_version_id = AgentVersionId::new();
+    let mut input = test_session_input(Some(agent_id));
+    input.agent_version_id = Some(agent_version_id);
+    input.agent_config_hash = Some("config-hash".to_string());
+
+    let session = db.create_session(input).await.unwrap();
+    let participants = db
+        .list_session_participants(DEFAULT_ORG_ID, session.id)
+        .await
+        .unwrap();
+
+    assert_eq!(session.agent_version_id, Some(agent_version_id));
+    let host = participants
+        .iter()
+        .map(SessionParticipantRow::to_core)
+        .find(|participant| participant.role == SessionParticipantRole::Host)
+        .unwrap();
+    assert_eq!(host.agent_id, Some(agent_id));
+    assert_eq!(host.agent_version_id, Some(agent_version_id));
 }
 
 #[tokio::test]
@@ -482,6 +513,8 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
             app_id: None,
             harness_id: Some(harness.id),
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -584,6 +617,8 @@ async fn test_session_updated_at() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -668,6 +703,8 @@ async fn test_events_sequence() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -753,6 +790,8 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -833,6 +872,8 @@ async fn test_list_message_events_filtered_caps_unbounded_history() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -935,6 +976,8 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(42),
             resolved_owner_user_id: Some(owner.id),
@@ -1083,6 +1126,8 @@ async fn test_unpin_session_is_scoped_by_org() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: Some(user_id),
@@ -1162,6 +1207,8 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -1876,6 +1923,8 @@ async fn test_list_events_empty_session_with_limit() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -1943,6 +1992,8 @@ async fn test_sessions_pagination() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -2049,6 +2100,8 @@ async fn test_sessions_pagination_ordering() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -2784,6 +2837,8 @@ async fn test_search_sessions_by_title() {
         app_id: None,
         harness_id: None,
         agent_id: Some(agent.id),
+        agent_version_id: None,
+        agent_config_hash: None,
         agent_identity_id: None,
         owner_principal_id: everruns_core::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
@@ -2813,6 +2868,8 @@ async fn test_search_sessions_by_title() {
         app_id: None,
         harness_id: None,
         agent_id: Some(agent.id),
+        agent_version_id: None,
+        agent_config_hash: None,
         agent_identity_id: None,
         owner_principal_id: everruns_core::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
@@ -2858,6 +2915,8 @@ async fn test_search_sessions_with_agent_filter() {
         app_id: None,
         harness_id: None,
         agent_id: Some(agent1.id),
+        agent_version_id: None,
+        agent_config_hash: None,
         agent_identity_id: None,
         owner_principal_id: everruns_core::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
@@ -2887,6 +2946,8 @@ async fn test_search_sessions_with_agent_filter() {
         app_id: None,
         harness_id: None,
         agent_id: Some(agent2.id),
+        agent_version_id: None,
+        agent_config_hash: None,
         agent_identity_id: None,
         owner_principal_id: everruns_core::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
@@ -3120,6 +3181,8 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -3313,6 +3376,8 @@ async fn test_list_sessions_waiting_tool_results_before() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -3342,6 +3407,8 @@ async fn test_list_sessions_waiting_tool_results_before() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -3371,6 +3438,8 @@ async fn test_list_sessions_waiting_tool_results_before() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -3466,6 +3535,8 @@ async fn test_session_system_prompt_and_initial_files_round_trip() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -3519,6 +3590,8 @@ async fn test_session_system_prompt_defaults_to_none() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
