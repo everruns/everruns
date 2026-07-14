@@ -134,6 +134,20 @@ The login page accepts exactly one public query parameter for auth resume:
 
 **External auth backends:** External login pages only need to honor `return_to` — no other parameter. There is no need for a separate `redirect_to` path.
 
+An operator may set `AUTH_LOGIN_ORIGIN` to delegate the login page to a
+trusted remote HTTP(S) origin. When configured, unauthenticated browser flows
+use `{AUTH_LOGIN_ORIGIN}/login`; when absent, they preserve the existing
+same-origin relative `/login` behavior. The configured value is validated at
+startup as an origin only (no credentials, path, query, or fragment), is
+exposed read-only as `login_origin` from `GET /v1/auth/config`, and is never
+derived from request or query input. Absolute login URLs use full-page browser
+navigation, never the Next.js client router.
+
+`return_to` remains a sanitized relative path. Configuring a login origin does
+not permit absolute or protocol-relative continuation targets. Server-authored
+login redirects, including MCP OAuth authorization and CLI login, use the same
+configured origin.
+
 Implementations: `apps/ui/src/lib/auth-redirect.ts` (`sanitizeReturnTo`) and `apps/ui/src/app/(auth)/login/page.tsx`.
 
 ### Unified Entry (Log In or Sign Up)
@@ -419,6 +433,7 @@ None reveals account existence to an unauthenticated party.
 | `AUTH_MODE` | Authentication mode: `none`, `admin`, `full`, `external`. Unknown values are rejected at startup. `none` is allowed only in dev deployments (`DEPLOYMENT_GRADE=dev`/`DEV_MODE=true`); a non-dev deployment that omits or sets `AUTH_MODE=none` fails startup. | `none` (dev only) |
 | `PUBLIC_APP_URL` | Public browser origin for the app | `http://localhost:9300` |
 | `FRONTEND_URL` | Browser redirect origin; set only when different from `PUBLIC_APP_URL` | `PUBLIC_APP_URL` |
+| `AUTH_LOGIN_ORIGIN` | Trusted HTTP(S) origin hosting `/login`; server and UI deployments must receive the same value | Not set (same-origin `/login`) |
 | `AUTH_BASE_URL` | Base URL for OAuth callbacks, including API prefix | `PUBLIC_APP_URL` + `API_PREFIX` |
 | `AUTH_ADMIN_EMAIL` | Admin user email (admin mode) | - |
 | `AUTH_ADMIN_PASSWORD` | Admin user password (admin mode) | - |
@@ -514,7 +529,7 @@ Based on `mode`:
 2. If `mode === "none"`, render app without auth
 3. Otherwise, check if user is authenticated via `/v1/auth/me`
 4. If auth bootstrap fails (`/v1/auth/config` error or non-401 `/v1/auth/me` error), block protected routes with an auth-unavailable state
-5. If `/v1/auth/me` returns `401 Unauthorized`, redirect to `/login?return_to=<current_path>` (preserving the user's location)
+5. If `/v1/auth/me` returns `401 Unauthorized`, redirect to `/login?return_to=<current_path>` or configured `{AUTH_LOGIN_ORIGIN}/login?return_to=<current_path>` (preserving the user's location)
 6. After login, cookies are set automatically (HTTP-only) and the user is redirected back to `return_to` (default: `/dashboard`)
 7. Subsequent requests include cookies via `credentials: "include"`
 8. On 401 response, the API client silently attempts `POST /v1/auth/refresh` (using the HttpOnly `refresh_token` cookie) and retries the request

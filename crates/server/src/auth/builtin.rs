@@ -353,6 +353,7 @@ impl AuthBackend for BuiltinAuthBackend {
             db: self.db.clone(),
             auth: auth_state,
             frontend_url: self.config.frontend_url.clone(),
+            login_origin: self.config.login_origin.clone(),
             base_url: api_base_url,
         };
         let cli_routes = super::cli_auth::cli_auth_routes(cli_state);
@@ -371,6 +372,7 @@ impl AuthBackend for BuiltinAuthBackend {
             db: self.db.clone(),
             auth: auth_state.clone(),
             frontend_url: self.config.frontend_url.clone(),
+            login_origin: self.config.login_origin.clone(),
             base_url: api_base_url.clone(),
         };
         let mcp_oauth_state = super::mcp_oauth::McpOAuthState {
@@ -379,6 +381,7 @@ impl AuthBackend for BuiltinAuthBackend {
             jwt_service: self.jwt_service.clone(),
             issuer_url: root_url_from_api_base(&api_base_url),
             frontend_url: self.config.frontend_url.clone(),
+            login_origin: self.config.login_origin.clone(),
             rate_limiter: self.rate_limiter.clone(),
         };
         Some(
@@ -399,6 +402,7 @@ impl AuthBackend for BuiltinAuthBackend {
 
         AuthConfigResponse {
             mode: self.config.mode.as_str().to_string(),
+            login_origin: self.config.login_origin.clone(),
             password_auth_enabled: self.config.password_auth_enabled(),
             oauth_providers,
             signup_enabled: self.config.signup_enabled(),

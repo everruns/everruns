@@ -802,6 +802,8 @@ export interface OrgFeatureFlagsSettingsResponse {
 
 export interface AuthConfigResponse {
   mode: AuthMode;
+  /** Trusted configured origin hosting the login page. */
+  login_origin?: string;
   password_auth_enabled: boolean;
   oauth_providers: string[];
   signup_enabled: boolean;

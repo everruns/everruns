@@ -649,6 +649,7 @@ impl TestServer {
                     db: db.clone(),
                     auth: auth_state.clone(),
                     frontend_url: auth_config.frontend_url.clone(),
+                    login_origin: auth_config.login_origin.clone(),
                     base_url: auth_config.base_url.clone(),
                 },
             ));
@@ -679,6 +680,7 @@ impl TestServer {
                     db: db.clone(),
                     auth: auth_state.clone(),
                     frontend_url: auth_config.frontend_url.clone(),
+                    login_origin: auth_config.login_origin.clone(),
                     base_url: auth_config.base_url.clone(),
                 },
             ))
@@ -689,6 +691,7 @@ impl TestServer {
                     jwt_service: auth_backend.jwt_service.clone(),
                     issuer_url: auth_config.frontend_url.clone(),
                     frontend_url: auth_config.frontend_url.clone(),
+                    login_origin: auth_config.login_origin.clone(),
                     rate_limiter: auth_backend.rate_limiter.clone(),
                 },
             ));
