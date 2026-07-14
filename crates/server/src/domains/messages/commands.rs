@@ -333,6 +333,14 @@ pub async fn export_session_segment(
         .map_err(classify_anyhow)?
         .ok_or_else(|| CommandError::not_found("Session"))?;
 
+    if let Some(raw_cursor) = cursor {
+        // THREAT[TM-DOS/TM-API]: reject malformed, oversized, or foreign-session
+        // cursors before loading the session event log or folding ATIF steps.
+        crate::atif::decode_segment_cursor(raw_cursor, &session_id.to_string()).map_err(|e| {
+            CommandError::bad_request(e.to_string()).with_code("atif_cursor_invalid")
+        })?;
+    }
+
     let event_service = crate::services::EventService::new(
         ctx.db.clone(),
         crate::event_delivery::EventDelivery::in_memory(),
