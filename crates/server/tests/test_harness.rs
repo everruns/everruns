@@ -523,6 +523,14 @@ impl TestServer {
             messages_state.session_service.clone(),
             messages_state.message_service.clone(),
         );
+        let agent_triggers_state = api::agent_triggers::AppState::new(
+            db.clone(),
+            Some(durable_store.clone()),
+            capability_service.clone(),
+            auth_state.clone(),
+            messages_state.session_service.clone(),
+            messages_state.message_service.clone(),
+        );
         let slack_state = api::slack_events::SlackState::new(
             db.clone(),
             encryption.clone(),
@@ -596,6 +604,7 @@ impl TestServer {
                 agent_identity_connections_state,
             ))
             .merge(api::apps::routes(apps_state))
+            .merge(api::agent_triggers::routes(agent_triggers_state))
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
             .merge(api::messages::routes(messages_state))
