@@ -280,7 +280,7 @@ agent or harness.
 * `NULL` means the KB uses keyword search only (current default). No embedding provider is required.
 * When set, the referenced model must exist in the org and its provider driver must declare `ServiceKind::Embeddings`. The `EmbeddingsDriver` trait (implemented by `OpenAIEmbeddingsDriver` in phase 6) provides the `embed()` call used during hybrid retrieval.
 * Different KBs in the same org can use different embedding models (e.g., multilingual embeddings for a multilingual KB).
-* The embedding model is validated on create/update: the referenced model UUID must exist in the org's `llm_models` table.
+* The embedding model is validated on create/update: the referenced model UUID must exist in the org's `models` table and its provider driver must declare `ServiceKind::Embeddings`.
 
 This design is explicit and flexible: orgs pay only for the embedding providers they configure, and different KBs can use different providers independently.
 
