@@ -506,6 +506,17 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             .await
     }
 
+    async fn invoke_agent_trigger(
+        &self,
+        org_id: i64,
+        agent_id: &str,
+        trigger_id: &str,
+    ) -> Result<serde_json::Value> {
+        self.client
+            .invoke_agent_trigger(org_id, agent_id, trigger_id)
+            .await
+    }
+
     async fn claim_due_leased_resources(
         &self,
         limit: u32,

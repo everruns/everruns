@@ -526,6 +526,29 @@ impl GrpcClient {
             "created_session": response.created_session,
         }))
     }
+
+    pub async fn invoke_agent_trigger(
+        &self,
+        org_id: i64,
+        agent_id: &str,
+        trigger_id: &str,
+    ) -> Result<serde_json::Value> {
+        let mut client = self.inner.lock().await;
+        let response = client
+            .invoke_agent_trigger(proto::InvokeAgentTriggerRequest {
+                org_id,
+                agent_id: agent_id.to_string(),
+                trigger_id: trigger_id.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+
+        let response = response.into_inner();
+        Ok(serde_json::json!({
+            "session_id": response.session_id,
+            "created_session": response.created_session,
+        }))
+    }
 }
 
 // ============================================================================

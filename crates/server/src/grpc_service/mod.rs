@@ -124,6 +124,8 @@ use everruns_internal_protocol::proto::{
     HeartbeatDurableTaskResponse,
     HeartbeatDurableWorkerRequest,
     HeartbeatDurableWorkerResponse,
+    InvokeAgentTriggerRequest,
+    InvokeAgentTriggerResponse,
     InvokeScheduledAppChannelRequest,
     InvokeScheduledAppChannelResponse,
     ListCommandsRequest,
