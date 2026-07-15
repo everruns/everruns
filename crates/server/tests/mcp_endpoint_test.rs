@@ -3689,7 +3689,7 @@ async fn test_mcp_tasks_get_surfaces_structured_result() {
     let before = mcp_call_with_headers(
         &server,
         "tasks/get",
-        json!({ "taskId": task_id }),
+        json!({ "taskId": task_id, "_meta": tasks_opt_in_meta() }),
         vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
     )
     .await;
@@ -3705,7 +3705,7 @@ async fn test_mcp_tasks_get_surfaces_structured_result() {
     let resp = mcp_call_with_headers(
         &server,
         "tasks/get",
-        json!({ "taskId": task_id }),
+        json!({ "taskId": task_id, "_meta": tasks_opt_in_meta() }),
         vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
     )
     .await;
@@ -3726,7 +3726,7 @@ async fn test_mcp_tasks_get_ignores_non_schema_result_path() {
     let resp = mcp_call_with_headers(
         &server,
         "tasks/get",
-        json!({ "taskId": task_id }),
+        json!({ "taskId": task_id, "_meta": tasks_opt_in_meta() }),
         vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
     )
     .await;
