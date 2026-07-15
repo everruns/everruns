@@ -417,6 +417,53 @@ impl GrpcDurableStore {
         use everruns_internal_protocol::proto::GetAndConsumeDurableWorkflowSignalsRequest;
         let request = GetAndConsumeDurableWorkflowSignalsRequest {
             workflow_id: workflow_id.to_string(),
+            signal_type: String::new(),
+        };
+        let response = self
+            .client
+            .get_and_consume_durable_workflow_signals(request)
+            .await?;
+        let signals = response
+            .into_inner()
+            .signals
+            .into_iter()
+            .filter_map(|s| {
+                let payload = s
+                    .payload
+                    .as_ref()
+                    .map(everruns_internal_protocol::proto_value_to_json)
+                    .unwrap_or(serde_json::json!({}));
+                match chrono::DateTime::parse_from_rfc3339(&s.sent_at) {
+                    Ok(dt) => Some(everruns_durable::WorkflowSignal {
+                        signal_type: s.signal_type,
+                        payload,
+                        sent_at: dt.with_timezone(&chrono::Utc),
+                    }),
+                    Err(err) => {
+                        tracing::warn!(
+                            sent_at = %s.sent_at,
+                            signal_type = %s.signal_type,
+                            error = %err,
+                            "Skipping workflow signal with malformed sent_at"
+                        );
+                        None
+                    }
+                }
+            })
+            .collect();
+        Ok(signals)
+    }
+
+    /// Get and consume pending signals of a specific type for a workflow
+    pub async fn get_and_consume_signals_by_type(
+        &mut self,
+        workflow_id: Uuid,
+        signal_type: &str,
+    ) -> Result<Vec<everruns_durable::WorkflowSignal>> {
+        use everruns_internal_protocol::proto::GetAndConsumeDurableWorkflowSignalsRequest;
+        let request = GetAndConsumeDurableWorkflowSignalsRequest {
+            workflow_id: workflow_id.to_string(),
+            signal_type: signal_type.to_string(),
         };
         let response = self
             .client

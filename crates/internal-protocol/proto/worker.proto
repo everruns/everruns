@@ -925,6 +925,7 @@ message SendDurableWorkflowSignalResponse {}
 
 message GetAndConsumeDurableWorkflowSignalsRequest {
     string workflow_id = 1;
+    string signal_type = 2;
 }
 
 message GetAndConsumeDurableWorkflowSignalsResponse {

@@ -24,7 +24,8 @@ use everruns_core::{
     normalize_mcp_error_code, validate_url_dns_pinned,
 };
 use serde_json::Value;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, hash_map::DefaultHasher};
+use std::hash::{Hash, Hasher};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -373,12 +374,58 @@ pub async fn http_call_tool(
 
 /// MCP transport over the platform [`EgressService`] boundary.
 ///
-/// Holds a small per-URL negotiation cache so a `tools/list` followed by a
-/// `tools/call` (the common turn pattern) reuses the negotiated era and session
-/// id instead of re-probing.
+/// Holds a small negotiation cache scoped by URL plus logical connection and
+/// auth context so a `tools/list` followed by a `tools/call` (the common turn
+/// pattern) reuses its own negotiated era and session id without crossing
+/// credentials or pinned protocol modes.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct NegotiationCacheKey {
+    url: String,
+    server_name: String,
+    protocol_mode: String,
+    headers_hash: u64,
+    credential_hash: u64,
+}
+
+impl NegotiationCacheKey {
+    fn new(
+        connection: &McpConnection,
+        url: &str,
+        headers: &HashMap<String, String>,
+        credential: Option<&McpCredential>,
+    ) -> Self {
+        Self {
+            url: url.to_string(),
+            server_name: connection.name.clone(),
+            protocol_mode: connection.protocol_mode.to_string(),
+            headers_hash: hash_headers(headers),
+            credential_hash: hash_credential(credential),
+        }
+    }
+}
+
+fn hash_headers(headers: &HashMap<String, String>) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    let sorted: BTreeMap<_, _> = headers.iter().collect();
+    sorted.hash(&mut hasher);
+    hasher.finish()
+}
+
+fn hash_credential(credential: Option<&McpCredential>) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    credential
+        .and_then(|credential| credential.authorization.as_deref())
+        .hash(&mut hasher);
+    if let Some(credential) = credential {
+        let sorted: BTreeMap<_, _> = credential.headers.iter().collect();
+        sorted.hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
 pub struct HttpTransport {
     egress: Arc<dyn EgressService>,
-    negotiations: Mutex<HashMap<String, (Negotiated, Instant)>>,
+    negotiations: Mutex<HashMap<NegotiationCacheKey, (Negotiated, Instant)>>,
 }
 
 impl HttpTransport {
@@ -406,16 +453,17 @@ impl HttpTransport {
         }
     }
 
-    /// Fresh cached negotiation for a URL, or `None` if absent/expired.
-    fn cached_negotiation(&self, url: &str) -> Option<Negotiated> {
+    /// Fresh cached negotiation for one logical connection/auth scope, or
+    /// `None` if absent/expired.
+    fn cached_negotiation(&self, key: &NegotiationCacheKey) -> Option<Negotiated> {
         let cache = self.negotiations.lock().ok()?;
-        let (negotiated, at) = cache.get(url)?;
+        let (negotiated, at) = cache.get(key)?;
         (at.elapsed() < NEGOTIATION_TTL).then(|| negotiated.clone())
     }
 
-    fn store_negotiation(&self, url: &str, negotiated: Negotiated) {
+    fn store_negotiation(&self, key: NegotiationCacheKey, negotiated: Negotiated) {
         if let Ok(mut cache) = self.negotiations.lock() {
-            cache.insert(url.to_string(), (negotiated, Instant::now()));
+            cache.insert(key, (negotiated, Instant::now()));
         }
     }
 }
@@ -428,7 +476,8 @@ impl McpTransport for HttpTransport {
         credential: Option<&McpCredential>,
     ) -> Result<Vec<McpToolDefinition>> {
         let (url, headers) = Self::http_parts(connection)?;
-        let cached = self.cached_negotiation(url);
+        let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
+        let cached = self.cached_negotiation(&cache_key);
         let body = serde_json::to_vec(&protocol::tools_list_body(1))?;
         let (text, negotiated) = negotiate_and_send(
             self.egress.as_ref(),
@@ -443,7 +492,7 @@ impl McpTransport for HttpTransport {
             DISCOVERY_TIMEOUT,
         )
         .await?;
-        self.store_negotiation(url, negotiated);
+        self.store_negotiation(cache_key, negotiated);
         parse_tools_list(&text)
     }
 
@@ -455,7 +504,8 @@ impl McpTransport for HttpTransport {
         credential: Option<&McpCredential>,
     ) -> Result<McpToolCallResult> {
         let (url, headers) = Self::http_parts(connection)?;
-        let cached = self.cached_negotiation(url);
+        let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
+        let cached = self.cached_negotiation(&cache_key);
         let body = serde_json::to_vec(&protocol::tools_call_body(1, tool_name, &arguments))?;
         let (text, negotiated) = negotiate_and_send(
             self.egress.as_ref(),
@@ -470,7 +520,7 @@ impl McpTransport for HttpTransport {
             CALL_TIMEOUT,
         )
         .await?;
-        self.store_negotiation(url, negotiated);
+        self.store_negotiation(cache_key, negotiated);
         parse_tool_call(&text)
     }
 }

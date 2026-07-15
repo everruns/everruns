@@ -149,6 +149,8 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_core::Session
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id,
             resolved_owner_user_id: None,
@@ -361,8 +363,8 @@ async fn offloaded_file_update_writes_immutable_blob_revision_and_hash() {
     let blob = blob_store_under_test();
     assert_eq!(
         blob.get(&old_key).await.expect("old blob get").as_deref(),
-        None,
-        "the previous revision should be deleted after the sidecar moves"
+        Some(original_body.as_slice()),
+        "superseded revisions are retained because content-addressed keys can become current again"
     );
     assert_eq!(
         blob.get(&new_key).await.expect("new blob get").as_deref(),
@@ -455,8 +457,8 @@ async fn offloaded_file_cas_matches_and_rejects() {
             .await
             .expect("old CAS blob get")
             .as_deref(),
-        None,
-        "CAS should delete the previous revision after the sidecar moves"
+        Some(original.as_slice()),
+        "CAS superseded revisions are retained because content-addressed keys can become current again"
     );
 
     backend.delete_session(TEST_ORG_ID, session_id).await.ok();

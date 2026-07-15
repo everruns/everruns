@@ -1577,13 +1577,17 @@ impl WorkerService for WorkerServiceImpl {
             .map_err(|e| Status::invalid_argument(format!("Invalid workflow_id: {}", e)))?;
 
         let store = self.durable_store()?;
-        let signals = store
-            .consume_pending_signals(workflow_id)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to consume pending signals: {}", e);
-                Status::internal("Failed to consume pending signals")
-            })?;
+        let signals = if req.signal_type.is_empty() {
+            store.consume_pending_signals(workflow_id).await
+        } else {
+            store
+                .consume_pending_signals_by_type(workflow_id, &req.signal_type)
+                .await
+        }
+        .map_err(|e| {
+            tracing::error!("Failed to consume pending signals: {}", e);
+            Status::internal("Failed to consume pending signals")
+        })?;
 
         let proto_signals = signals
             .into_iter()

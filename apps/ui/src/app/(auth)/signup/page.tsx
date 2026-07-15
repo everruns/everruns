@@ -21,7 +21,7 @@ import { useAuthConfig, useRegister } from "@/hooks/use-auth";
 import { getOAuthUrl } from "@/lib/api/auth";
 import {
   buildLoginHref,
-  consumeReturnTo,
+  getPostAuthTarget,
   isBackendNavigationPath,
   persistReturnTo,
   sanitizeReturnTo,
@@ -56,10 +56,6 @@ export default function SignupPage() {
   useEffect(() => {
     persistReturnTo(returnTo);
   }, [returnTo]);
-
-  const getPostAuthTarget = (): string => {
-    return returnTo || consumeReturnTo() || "/dashboard";
-  };
 
   const navigateAfterAuth = (target: string) => {
     if (isBackendNavigationPath(target)) {
@@ -101,7 +97,7 @@ export default function SignupPage() {
         // Confirm mode: no session yet — the emailed link signs you in.
         setSubmittedEmail(email);
       } else {
-        navigateAfterAuth(getPostAuthTarget());
+        navigateAfterAuth(getPostAuthTarget(returnTo));
       }
     } catch {
       if (config?.signup_email_confirm) {

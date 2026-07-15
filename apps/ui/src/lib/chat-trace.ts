@@ -24,9 +24,9 @@ export interface TraceUrlParams {
  * Substitute placeholders in a trace URL template. Returns `null` when:
  * - the template references a placeholder we have no value for (so the caller
  *   hides the link rather than rendering a broken URL), or
- * - the result is not a valid `http(s)` URL. Templates come from org settings
- *   and are rendered as clickable `href`s, so rejecting `javascript:`/`data:`
- *   (and other) schemes prevents an XSS/phishing vector.
+ * - the result is not a safe public HTTPS URL. Templates come from org settings
+ *   and are rendered as clickable `href`s, so reject plaintext and internal
+ *   destinations to avoid leaking trace identifiers or targeting intranet hosts.
  */
 export function buildTraceUrl(template: string, params: TraceUrlParams): string | null {
   const replacements: Record<string, string | undefined> = {
@@ -48,14 +48,56 @@ export function buildTraceUrl(template: string, params: TraceUrlParams): string 
 
   if (missing) return null;
 
+  return isSafeTraceUrl(url) ? url : null;
+}
+
+function isSafeTraceUrl(url: string): boolean {
+  let parsed: URL;
   try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    parsed = new URL(url);
   } catch {
-    return null;
+    return false;
   }
 
-  return url;
+  if (parsed.protocol !== "https:") return false;
+
+  const hostname = parsed.hostname.toLowerCase().replace(/\.$/, "");
+  if (hostname === "localhost" || hostname.endsWith(".localhost")) return false;
+  if (hostname.endsWith(".local") || hostname.endsWith(".internal")) return false;
+
+  return !isBlockedIpLiteral(hostname);
+}
+
+function isBlockedIpLiteral(hostname: string): boolean {
+  const ipv4 = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (ipv4) {
+    const octets = ipv4.slice(1).map((part) => Number(part));
+    if (octets.some((octet) => !Number.isInteger(octet) || octet < 0 || octet > 255)) {
+      return true;
+    }
+    const [a, b, c] = octets;
+    return (
+      a === 0 ||
+      a === 10 ||
+      a === 127 ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 169 && b === 254) ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 192 && b === 0 && c === 2) ||
+      (a === 198 && b === 51 && c === 100) ||
+      (a === 203 && b === 0 && c === 113)
+    );
+  }
+
+  const normalized = hostname.replace(/^\[|\]$/g, "");
+  return (
+    normalized === "::" ||
+    normalized === "::1" ||
+    normalized.startsWith("fe80:") ||
+    normalized.toLowerCase().startsWith("::ffff:127.") ||
+    normalized.toLowerCase().startsWith("::ffff:169.254.")
+  );
 }
 
 /**

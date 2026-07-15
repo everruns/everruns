@@ -501,6 +501,8 @@ mod tests {
             harness_id: None,
             app_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(org_id as u128),
             resolved_owner_user_id: None,

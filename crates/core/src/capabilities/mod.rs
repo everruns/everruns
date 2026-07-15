@@ -1836,6 +1836,49 @@ impl UnifiedSpawnAgentTool {
             })
             .collect()
     }
+
+    fn target_requirement_branches(&self) -> Vec<serde_json::Value> {
+        self.target_types()
+            .into_iter()
+            .filter_map(|target_type| match target_type {
+                "subagent" => Some(serde_json::json!({
+                    "properties": {
+                        "target": {
+                            "properties": {
+                                "type": {"const": "subagent"}
+                            }
+                        }
+                    },
+                    "required": ["name"]
+                })),
+                "agent" => Some(serde_json::json!({
+                    "properties": {
+                        "target": {
+                            "properties": {
+                                "type": {"const": "agent"}
+                            },
+                            "required": ["type", "id"]
+                        }
+                    },
+                    "required": ["name"]
+                })),
+                "external_a2a" => Some(serde_json::json!({
+                    "properties": {
+                        "target": {
+                            "properties": {
+                                "type": {"const": "external_a2a"}
+                            },
+                            "anyOf": [
+                                {"required": ["id"]},
+                                {"required": ["external_agent_id"]}
+                            ]
+                        }
+                    }
+                })),
+                _ => None,
+            })
+            .collect()
+    }
 }
 
 #[async_trait]
@@ -1953,6 +1996,7 @@ impl Tool for UnifiedSpawnAgentTool {
                 }
             },
             "required": ["instructions", "target"],
+            "oneOf": self.target_requirement_branches(),
             "additionalProperties": false
         })
     }
@@ -5257,9 +5301,32 @@ mod tests {
             .collect();
 
         assert_eq!(spawn_agent_defs.len(), 1);
+        let schema = spawn_agent_defs[0].parameters();
         assert_eq!(
-            spawn_agent_defs[0].parameters()["properties"]["target"]["properties"]["type"]["enum"],
+            schema["properties"]["target"]["properties"]["type"]["enum"],
             serde_json::json!(["subagent", "agent"])
+        );
+        assert_eq!(
+            schema["oneOf"],
+            serde_json::json!([
+                {
+                    "properties": {
+                        "target": {
+                            "properties": {"type": {"const": "subagent"}}
+                        }
+                    },
+                    "required": ["name"]
+                },
+                {
+                    "properties": {
+                        "target": {
+                            "properties": {"type": {"const": "agent"}},
+                            "required": ["type", "id"]
+                        }
+                    },
+                    "required": ["name"]
+                }
+            ])
         );
     }
 
@@ -5308,6 +5375,30 @@ mod tests {
                 .as_str()
                 .expect("mode description")
                 .contains("wait")
+        );
+        assert_eq!(
+            spawn_agent_defs[0].parameters()["oneOf"],
+            serde_json::json!([
+                {
+                    "properties": {
+                        "target": {
+                            "properties": {"type": {"const": "subagent"}}
+                        }
+                    },
+                    "required": ["name"]
+                },
+                {
+                    "properties": {
+                        "target": {
+                            "properties": {"type": {"const": "external_a2a"}},
+                            "anyOf": [
+                                {"required": ["id"]},
+                                {"required": ["external_agent_id"]}
+                            ]
+                        }
+                    }
+                }
+            ])
         );
     }
 

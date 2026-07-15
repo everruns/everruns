@@ -691,6 +691,28 @@ impl ToolRegistry {
         builder.build()
     }
 
+    /// Create a tool registry for autonomous scheduled monitor probes.
+    ///
+    /// Probe execution currently uses a scheduler-local [`ToolContext`] instead
+    /// of the fully populated worker/API executor context. Keep this registry to
+    /// context-free tools so scheduled probes cannot bypass session-scoped
+    /// controls such as network ACLs, egress routing, storage, or filesystem
+    /// mediation.
+    pub fn with_monitor_probe_defaults() -> Self {
+        use crate::capabilities::{
+            AddTool, DivideTool, GetCurrentTimeTool, MultiplyTool, SubtractTool,
+        };
+
+        ToolRegistry::builder()
+            .tool(GetCurrentTimeTool)
+            .tool(EchoTool)
+            .tool(AddTool)
+            .tool(SubtractTool)
+            .tool(MultiplyTool)
+            .tool(DivideTool)
+            .build()
+    }
+
     /// Register a tool with the registry.
     ///
     /// If a tool with the same name already exists, it will be replaced.
