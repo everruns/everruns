@@ -49,6 +49,8 @@ export interface Agent {
   display_name: string | null;
   description: string | null;
   system_prompt: string;
+  /** Base execution harness this agent runs on. Required; defaults to the org's built-in `generic` harness. */
+  harness_id: string;
   default_model_id: string | null;
   default_version_id?: string | null;
   forked_from_agent_id?: string | null;
@@ -152,6 +154,10 @@ export interface CreateAgentRequest {
   display_name?: string;
   description?: string;
   system_prompt: string;
+  /** Base execution harness (id). Mutually exclusive with `harness_name`. Omit both to default to the org's built-in `generic` harness. */
+  harness_id?: string;
+  /** Base execution harness (name), resolved within the org. Mutually exclusive with `harness_id`. */
+  harness_name?: string;
   default_model_id?: string;
   tags?: string[];
   /** Capabilities with per-agent configuration */
@@ -170,6 +176,10 @@ export interface UpdateAgentRequest {
   display_name?: string;
   description?: string;
   system_prompt?: string;
+  /** Base execution harness (id). Omit to leave unchanged; never clearable to null. Mutually exclusive with `harness_name`. */
+  harness_id?: string;
+  /** Base execution harness (name), resolved within the org. Mutually exclusive with `harness_id`. */
+  harness_name?: string;
   default_model_id?: string;
   tags?: string[];
   /** Capabilities with per-agent configuration */
@@ -792,6 +802,8 @@ export interface OrgFeatureFlagsSettingsResponse {
 
 export interface AuthConfigResponse {
   mode: AuthMode;
+  /** Trusted configured origin hosting the login page. */
+  login_origin?: string;
   password_auth_enabled: boolean;
   oauth_providers: string[];
   signup_enabled: boolean;
@@ -913,6 +925,8 @@ export interface UserInfoResponse {
   name: string;
   roles: string[];
   avatar_url?: string;
+  /** Whether the account's email has been verified. Drives the in-app verify nudge. */
+  email_verified: boolean;
   /** Organizations the user belongs to */
   organizations?: OrganizationMembership[];
 }
@@ -3078,6 +3092,9 @@ export interface CreateMessageRequest {
   controls?: Controls;
   metadata?: Record<string, unknown>;
   tags?: string[];
+  // Optional active agent participant to address for this turn. When omitted,
+  // the session host remains the responder (default 1:1 behavior).
+  addressed_participant_id?: string | null;
 }
 
 // Helper function to create a simple text message request
@@ -3479,6 +3496,24 @@ export interface ReasoningEffortConfig {
   default: ReasoningEffort;
 }
 
+export type Verbosity = "low" | "medium" | "high";
+
+/** Named verbosity value for UI display */
+export interface VerbosityValue {
+  /** The API value (e.g., "low", "high") */
+  value: Verbosity;
+  /** Display name (e.g., "Low", "High") */
+  name: string;
+}
+
+/** Verbosity configuration for a model */
+export interface VerbosityConfig {
+  /** Available verbosity values for this model */
+  values: VerbosityValue[];
+  /** Default verbosity for this model */
+  default: Verbosity;
+}
+
 /**
  * LLM Model Profile describing model capabilities
  * Based on models.dev structure (https://models.dev/api.json)
@@ -3516,6 +3551,8 @@ export interface ModelProfile {
   modalities?: ModelModalities;
   /** Reasoning effort configuration (for reasoning models) */
   reasoning_effort?: ReasoningEffortConfig;
+  /** Verbosity configuration (for models that support output-length control) */
+  verbosity?: VerbosityConfig;
   /** Provider-advertised request parameters supported by this model */
   supported_parameters?: string[];
   /** Whether the model supports tool_search (deferred tool loading) */
@@ -3773,6 +3810,8 @@ export interface Session {
   owner?: PrincipalSummary | null;
   effective_owner?: PrincipalSummary | null;
   title: string | null;
+  /** Objective shown in session lists and injected into the agent prompt */
+  goal?: string | null;
   locale?: string | null;
   /** Preview text from the first user message (truncated) */
   preview?: string | null;
@@ -3837,10 +3876,14 @@ export interface ResourceStats {
 }
 
 export interface CreateSessionRequest {
-  /** Harness ID for this session. If omitted, org base harness is used. */
+  /** Harness ID for this session. If omitted, the harness is derived from the agent (when one is supplied), else the org default harness. */
   harness_id?: string;
-  /** Agent ID to work in this session (optional) */
+  /** Harness name, resolved within the org. Mutually exclusive with `harness_id`. */
+  harness_name?: string;
+  /** Agent ID to work in this session (optional). Mutually exclusive with `agent_name`. */
   agent_id?: string;
+  /** Agent name to work in this session (optional). Mutually exclusive with `agent_id`. */
+  agent_name?: string;
   agent_identity_id?: string;
   title?: string;
   locale?: string;
@@ -3989,6 +4032,12 @@ export interface SessionTask {
   /** `task_*` public ID. */
   id: string;
   session_id: string;
+  /**
+   * Root of the owning session's delegation tree (EVE-680). Surfaced on API
+   * reads so cross-session tooling can group a whole tree's tasks by one id.
+   * `null`/absent for a top-level session that is its own root.
+   */
+  root_session_id?: string | null;
   /** Task kind: "subagent", "external_agent", "background_tool", "monitor", etc. */
   kind: string;
   /** Human-readable label. */

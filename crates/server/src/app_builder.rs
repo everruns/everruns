@@ -1269,6 +1269,14 @@ impl ServerAppBuilder {
             messages_state.session_service.clone(),
             messages_state.message_service.clone(),
         );
+        let agent_triggers_state = api::agent_triggers::AppState::new(
+            db.clone(),
+            scheduler_store.clone(),
+            capability_service.clone(),
+            auth_state.clone(),
+            messages_state.session_service.clone(),
+            messages_state.message_service.clone(),
+        );
         let schedules_state = api::schedules::routes(
             api::schedules::ScheduleAppState::new(
                 db.clone(),
@@ -1405,6 +1413,7 @@ impl ServerAppBuilder {
                 agent_identity_connections_state,
             ))
             .merge(api::apps::routes(apps_state))
+            .merge(api::agent_triggers::routes(agent_triggers_state))
             // Evals routes are conditionally merged below based on feature flag.
             .merge(api::harness_examples::routes(harness_examples_state))
             .merge(api::harnesses::routes(harnesses_state))

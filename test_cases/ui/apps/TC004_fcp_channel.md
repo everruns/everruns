@@ -11,8 +11,8 @@ Also verifies the GET handshake renders the configured Markdown.
 
 ## Preconditions
 
-- `AUTH_MODE=none`
-- `just start-dev --no-watch` is running
+- A local (`AUTH_MODE=none`) or authenticated deployed Everruns UI is available
+- The tester is signed in and has access to the target organization when authentication is enabled
 - A draft or published App exists with an agent and harness assigned
 
 ## Test Data

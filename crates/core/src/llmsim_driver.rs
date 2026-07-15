@@ -460,17 +460,20 @@ impl LlmSimDriver {
             }
 
             Some(ToolCallConfig::Conditional { patterns }) => {
-                // Find last user message
-                let last_user = messages
-                    .iter()
-                    .rev()
-                    .find(|m| m.role == LlmMessageRole::User)
-                    .map(|m| m.content_as_text())
-                    .unwrap_or_default();
-
-                // Check patterns
-                for pattern in patterns {
-                    if last_user.contains(&pattern.contains) {
+                // Scan user messages newest-first and use the first one that
+                // matches a pattern. Looking only at the very last user message
+                // is brittle: an injected user-role notification (e.g. a
+                // background task's terminal wake-up) can land after the
+                // triggering prompt and mask it, even though content-keyed
+                // patterns are meant to make scheduling order irrelevant.
+                // Newest-first honours the most recent matching intent while
+                // skipping interleaved non-matching notifications.
+                for message in messages.iter().rev() {
+                    if message.role != LlmMessageRole::User {
+                        continue;
+                    }
+                    let text = message.content_as_text();
+                    if let Some(pattern) = patterns.iter().find(|p| text.contains(&p.contains)) {
                         return if pattern.tool_calls.is_empty() {
                             None
                         } else {
@@ -995,6 +998,8 @@ mod tests {
 
     fn make_config() -> LlmCallConfig {
         LlmCallConfig {
+            speed: None,
+            verbosity: None,
             model: "test-model".to_string(),
             temperature: None,
             max_tokens: None,

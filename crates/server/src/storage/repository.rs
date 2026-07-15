@@ -10,7 +10,7 @@ use super::reporting::models::ReportingOutboxRow;
 use super::repositories::Database;
 
 /// Shared hard cap for otherwise-unbounded message history reads.
-pub const MESSAGE_SAFETY_LIMIT: usize = 5_000;
+pub const MESSAGE_SAFETY_LIMIT: usize = 2_000;
 
 /// Shared storage contract for repository operations that must stay identical
 /// across PostgreSQL and in-memory backends.

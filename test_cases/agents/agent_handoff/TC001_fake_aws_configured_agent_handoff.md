@@ -86,7 +86,7 @@ accepted only for child sessions owned by the source session.
 
 11. Inspect the child session returned by the handoff resource.
 
-12. Send a follow-up through `message_agent_handoff`, for example:
+12. Send a follow-up through `message_task`, for example:
 
     ```text
     List the RDS databases you can see now.
@@ -106,7 +106,7 @@ accepted only for child sessions owned by the source session.
 
 | Check | Expected |
 |-------|----------|
-| Handoff tool called | Source session includes a `start_agent_handoff` tool call |
+| Handoff tool called | Source session includes a `spawn_agent` tool call |
 | Target allowlist enforced | Tool arguments use `target: "aws_operator"` |
 | Child session created | A child session exists with `parent_session_id` equal to the source session id |
 | Target agent selected | Child session `agent_id` equals `<TARGET_AGENT_ID>` |
@@ -121,7 +121,7 @@ accepted only for child sessions owned by the source session.
 
 | Check | Expected |
 |-------|----------|
-| Follow-up ownership | `message_agent_handoff` accepts the child handoff id from this source session |
+| Follow-up ownership | `message_task` accepts the child handoff id from this source session |
 | Cross-session guard | The same tool rejects an unrelated or non-child session id |
 | Follow-up result | Child session processes the follow-up and returns a non-empty assistant response |
 
@@ -145,6 +145,6 @@ cargo check -p everruns-server
 | Handoff starts before connection | `required_connections` is not being resolved through `UserConnectionResolver` |
 | Source can use Fake AWS tools directly | Target capabilities leaked into the source runtime instead of remaining on the target Agent |
 | Credential appears in events/resource metadata | Tool args, prompt context, resource metadata, or event logging is persisting secrets |
-| Child session has wrong agent | `start_agent_handoff` is creating from inherited config or blueprint config instead of configured target `agent_id` |
+| Child session has wrong agent | `spawn_agent` is creating from inherited config or blueprint config instead of configured target `agent_id` |
 | Handoff cannot be listed | `session_resources.kind = "agent_handoff"` registration or filtering is broken |
-| Follow-up reaches wrong session | `message_agent_handoff` is missing the `parent_session_id` ownership check |
+| Follow-up reaches wrong session | `message_task` is missing the `parent_session_id` ownership check |

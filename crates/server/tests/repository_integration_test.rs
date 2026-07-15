@@ -49,6 +49,15 @@ async fn create_test_backend() -> StorageBackend {
 /// Test organization ID (default org)
 const TEST_ORG_ID: i64 = 1;
 
+async fn ensure_test_harness_id(backend: &StorageBackend) -> everruns_core::HarnessId {
+    org_init::initialize_org_harnesses(backend, TEST_ORG_ID)
+        .await
+        .expect("initialize built-in harnesses");
+    org_init::generic_harness_id(backend, TEST_ORG_ID)
+        .await
+        .expect("generic harness id")
+}
+
 async fn create_test_principal(
     backend: &StorageBackend,
     org_id: i64,
@@ -127,6 +136,8 @@ async fn test_agent_crud() {
                 description: Some("Test description".to_string()),
                 system_prompt: "Test prompt".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -206,6 +217,8 @@ async fn test_agent_upsert_initial_files() {
                 description: None,
                 system_prompt: "prompt".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([
                     {"path": "/AGENTS.md", "content": "old", "encoding": "utf-8", "is_readonly": false}
@@ -234,6 +247,8 @@ async fn test_agent_upsert_initial_files() {
                 description: None,
                 system_prompt: "prompt".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([
                     {"path": "/AGENTS.md", "content": "new", "encoding": "utf-8", "is_readonly": false}
@@ -384,6 +399,8 @@ async fn test_agent_get_by_name() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -451,6 +468,7 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -580,6 +598,65 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
     );
 }
 
+#[tokio::test]
+async fn test_detached_budget_root_override_canonicalizes_postgres_chain() {
+    let backend = create_test_backend().await;
+    let owner = create_test_user(&backend, "detached-budget-root").await;
+    backend
+        .add_organization_member(TEST_ORG_ID, owner.id, "member")
+        .await
+        .expect("add owner to org");
+    let owner_principal_id = create_test_user_principal(&backend, TEST_ORG_ID, owner.id).await;
+    let base = CreateSessionRow {
+        workspace_id: None,
+        org_id: TEST_ORG_ID,
+        app_id: None,
+        harness_id: None,
+        agent_id: None,
+        agent_identity_id: None,
+        owner_principal_id,
+        resolved_owner_user_id: Some(owner.id),
+        title: Some(format!("detached-root-{}", Uuid::now_v7())),
+        locale: None,
+        tags: vec![],
+        model_id: None,
+        capabilities: serde_json::json!([]),
+        tools: serde_json::json!([]),
+        mcp_servers: serde_json::json!({}),
+        system_prompt: None,
+        initial_files: serde_json::json!([]),
+        hints: None,
+        network_access: None,
+        max_iterations: None,
+        parallel_tool_calls: None,
+        blueprint_id: None,
+        blueprint_config: None,
+        parent_session_id: None,
+        budget_root_session_id: None,
+    };
+    let root = backend.create_session(base.clone()).await.expect("root");
+    let mut detached_input = base.clone();
+    detached_input.budget_root_session_id = Some(root.id);
+    let detached = backend
+        .create_session(detached_input)
+        .await
+        .expect("detached");
+    let mut chain_input = base.clone();
+    chain_input.budget_root_session_id = Some(detached.id);
+    let chained = backend
+        .create_session(chain_input)
+        .await
+        .expect("detached chain");
+    assert_eq!(detached.root_session_id, Some(root.id));
+    assert_eq!(chained.root_session_id, Some(root.id));
+
+    let ordinary = backend
+        .create_session(base)
+        .await
+        .expect("ordinary fork root");
+    assert_eq!(ordinary.root_session_id, Some(ordinary.id));
+}
+
 // ============================================
 // Session Repository Tests
 // ============================================
@@ -599,6 +676,8 @@ async fn test_session_crud() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -680,6 +759,7 @@ async fn test_session_crud() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -779,6 +859,31 @@ async fn test_session_crud() {
         .unwrap();
 }
 
+#[tokio::test]
+async fn test_sessions_list_has_org_created_at_index() {
+    let pool = create_test_pool().await;
+    let index_definition: Option<String> = sqlx::query_scalar(
+        r#"
+        SELECT indexdef
+        FROM pg_indexes
+        WHERE schemaname = current_schema()
+          AND tablename = 'sessions'
+          AND indexname = 'idx_sessions_org_created_at'
+        "#,
+    )
+    .fetch_optional(&pool)
+    .await
+    .expect("Failed to inspect sessions indexes");
+
+    let index_definition = index_definition.expect(
+        "sessions listing needs an org_id/created_at index to avoid scanning other tenants",
+    );
+    assert!(
+        index_definition.ends_with("USING btree (org_id, created_at DESC)"),
+        "unexpected sessions list index definition: {index_definition}"
+    );
+}
+
 // ============================================
 // Event Repository Tests
 // ============================================
@@ -798,6 +903,8 @@ async fn test_event_crud() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -837,6 +944,7 @@ async fn test_event_crud() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -893,6 +1001,8 @@ async fn test_event_exclude_types() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -932,6 +1042,7 @@ async fn test_event_exclude_types() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -996,6 +1107,8 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -1035,6 +1148,7 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1093,6 +1207,8 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -1132,6 +1248,7 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1193,7 +1310,7 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
 }
 
 #[tokio::test]
-async fn test_event_filter_types() {
+async fn test_long_message_history_reads_are_bounded_and_index_supported() {
     let backend = create_test_backend().await;
 
     let agent = backend
@@ -1201,11 +1318,13 @@ async fn test_event_filter_types() {
             TEST_ORG_ID,
             CreateAgentRow {
                 public_id: everruns_core::AgentId::new().to_string(),
-                name: format!("event-filter-agent-{}", &Uuid::now_v7().to_string()[..8]),
-                display_name: Some("Event Filter Types Agent".to_string()),
+                name: format!("long-history-agent-{}", &Uuid::now_v7().to_string()[..8]),
+                display_name: Some("Long History Test Agent".to_string()),
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -1245,6 +1364,227 @@ async fn test_event_filter_types() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
+        })
+        .await
+        .expect("Failed to create session");
+
+    let total = 3_050;
+    for index in 1..=total {
+        let (event_type, data) = if index == total - 1 {
+            (
+                "output.message.completed",
+                json!({
+                    "message": {
+                        "role": "agent",
+                        "content": [{
+                            "type": "tool_call",
+                            "id": "call-final",
+                            "name": "lookup",
+                            "arguments": "{}"
+                        }]
+                    }
+                }),
+            )
+        } else if index == total {
+            (
+                "tool.completed",
+                json!({
+                    "tool_call_id": "call-final",
+                    "tool_name": "lookup",
+                    "result": "final result"
+                }),
+            )
+        } else {
+            (
+                "input.message",
+                json!({
+                    "message": {
+                        "role": "user",
+                        "content": [{"type": "text", "text": format!("message {index}")}]
+                    }
+                }),
+            )
+        };
+
+        backend
+            .create_event(CreateEventRow {
+                session_id: session.id,
+                event_type: event_type.to_string(),
+                ts: Utc::now(),
+                context: json!({"turn_id": format!("turn-{index}")}),
+                data,
+                metadata: None,
+                tags: None,
+            })
+            .await
+            .expect("Failed to create long-history event");
+    }
+
+    let started = std::time::Instant::now();
+    let fallback = backend
+        .list_message_events_limited(session.id, None)
+        .await
+        .expect("list bounded fallback history");
+    let fallback_elapsed = started.elapsed();
+    assert_eq!(
+        fallback.len(),
+        everruns_server::storage::repository::MESSAGE_SAFETY_LIMIT
+    );
+    assert_eq!(
+        fallback.first().expect("first fallback row").sequence,
+        1_051
+    );
+    assert_eq!(fallback.last().expect("last fallback row").sequence, total);
+
+    let fallback_bytes: usize = fallback
+        .iter()
+        .map(|event| {
+            event.data.to_string().len()
+                + event.context.to_string().len()
+                + event
+                    .metadata
+                    .as_ref()
+                    .map(|value| value.to_string().len())
+                    .unwrap_or(0)
+                + event
+                    .tags
+                    .as_ref()
+                    .map(|tags| tags.iter().map(String::len).sum::<usize>())
+                    .unwrap_or(0)
+        })
+        .sum();
+
+    let window = backend
+        .list_message_events_filtered(
+            &MessageQuery::new(session.id)
+                .with_limit(64)
+                .with_keep_head(1),
+        )
+        .await
+        .expect("list bounded head+tail history");
+    assert_eq!(window.len(), 65);
+    assert_eq!(window.first().expect("head anchor").sequence, 1);
+    assert_eq!(
+        window[window.len() - 2].event_type,
+        "output.message.completed"
+    );
+    assert_eq!(
+        window.last().expect("tool result").event_type,
+        "tool.completed"
+    );
+    assert_eq!(
+        window.last().unwrap().data["tool_call_id"].as_str(),
+        Some("call-final")
+    );
+
+    let pool = backend.pool().expect("postgres pool");
+    let message_index: (String,) = sqlx::query_as(
+        "SELECT indexdef FROM pg_indexes WHERE schemaname = current_schema() AND indexname = 'idx_events_messages'",
+    )
+    .fetch_one(pool)
+    .await
+    .expect("message events partial index should exist");
+    assert!(
+        message_index.0.contains("WHERE"),
+        "idx_events_messages should remain a partial index: {}",
+        message_index.0
+    );
+
+    let plan_rows: Vec<(String,)> = sqlx::query_as(
+        r#"
+        EXPLAIN (ANALYZE, BUFFERS)
+        SELECT * FROM (
+            SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
+            FROM events
+            WHERE session_id = $1
+              AND event_type IN ('input.message', 'output.message.completed', 'tool.completed')
+            ORDER BY sequence DESC
+            LIMIT $2
+        ) recent
+        ORDER BY sequence ASC
+        "#,
+    )
+    .bind(session.id.uuid())
+    .bind(everruns_server::storage::repository::MESSAGE_SAFETY_LIMIT as i64)
+    .fetch_all(pool)
+    .await
+    .expect("explain bounded message history query");
+    let plan = plan_rows
+        .into_iter()
+        .map(|row| row.0)
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        !plan.contains("Seq Scan on events"),
+        "message history query should not seq-scan events:\n{plan}"
+    );
+
+    println!(
+        "long message-history benchmark: before_rows={total}, after_rows={}, bytes_returned={}, service_time_ms={}, plan=\n{}",
+        fallback.len(),
+        fallback_bytes,
+        fallback_elapsed.as_millis(),
+        plan
+    );
+}
+
+#[tokio::test]
+async fn test_event_filter_types() {
+    let backend = create_test_backend().await;
+
+    let agent = backend
+        .create_agent(
+            TEST_ORG_ID,
+            CreateAgentRow {
+                public_id: everruns_core::AgentId::new().to_string(),
+                name: format!("event-filter-agent-{}", &Uuid::now_v7().to_string()[..8]),
+                display_name: Some("Event Filter Types Agent".to_string()),
+                description: None,
+                system_prompt: "Test".to_string(),
+                default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+            },
+        )
+        .await
+        .expect("Failed to create agent");
+
+    let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
+    let session = backend
+        .create_session(CreateSessionRow {
+            workspace_id: None,
+            org_id: TEST_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: Some(agent.id),
+            agent_identity_id: None,
+            owner_principal_id,
+            resolved_owner_user_id: None,
+            title: None,
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1512,6 +1852,8 @@ async fn test_session_file_crud() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -1551,6 +1893,7 @@ async fn test_session_file_crud() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1708,6 +2051,8 @@ async fn test_agent_capabilities() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -1979,6 +2324,8 @@ async fn test_session_usage_tracking() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -2018,6 +2365,7 @@ async fn test_session_usage_tracking() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -2083,6 +2431,8 @@ async fn test_session_previews() {
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+
+                harness_id: ensure_test_harness_id(&backend).await,
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -2122,6 +2472,7 @@ async fn test_session_previews() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -2730,6 +3081,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create test session");
@@ -3059,6 +3411,7 @@ async fn list_org_session_tasks_pg() {
                     blueprint_id: None,
                     blueprint_config: None,
                     parent_session_id: None,
+                    budget_root_session_id: None,
                 })
                 .await
                 .expect("create session")
@@ -3126,7 +3479,7 @@ async fn list_org_session_tasks_pg() {
 
     // Org A listing: contains both A tasks, never the B task.
     let a_all = backend
-        .list_org_session_tasks(TEST_ORG_ID, None, None, None, 500)
+        .list_org_session_tasks(TEST_ORG_ID, None, None, None, None, 500)
         .await
         .expect("list org A");
     let a_all_ids = ids(&a_all);
@@ -3139,7 +3492,7 @@ async fn list_org_session_tasks_pg() {
 
     // Org B listing: contains only the B task, never A's.
     let b_all = backend
-        .list_org_session_tasks(org_b, None, None, None, 500)
+        .list_org_session_tasks(org_b, None, None, None, None, 500)
         .await
         .expect("list org B");
     let b_all_ids = ids(&b_all);
@@ -3148,7 +3501,7 @@ async fn list_org_session_tasks_pg() {
 
     // Kind filter (org A): only the subagent task.
     let a_subs = backend
-        .list_org_session_tasks(TEST_ORG_ID, Some("subagent"), None, None, 500)
+        .list_org_session_tasks(TEST_ORG_ID, Some("subagent"), None, None, None, 500)
         .await
         .expect("list org A subagents");
     let a_subs_ids = ids(&a_subs);
@@ -3157,7 +3510,7 @@ async fn list_org_session_tasks_pg() {
 
     // State filter (org A): only the queued task.
     let a_queued = backend
-        .list_org_session_tasks(TEST_ORG_ID, None, Some("queued"), None, 500)
+        .list_org_session_tasks(TEST_ORG_ID, None, Some("queued"), None, None, 500)
         .await
         .expect("list org A queued");
     let a_queued_ids = ids(&a_queued);
@@ -3167,7 +3520,7 @@ async fn list_org_session_tasks_pg() {
     // created_after in the future excludes our just-created tasks.
     let future = Utc::now() + chrono::Duration::hours(1);
     let a_future = backend
-        .list_org_session_tasks(TEST_ORG_ID, None, None, Some(future), 500)
+        .list_org_session_tasks(TEST_ORG_ID, None, None, Some(future), None, 500)
         .await
         .expect("list org A future");
     let a_future_ids = ids(&a_future);
@@ -3175,8 +3528,25 @@ async fn list_org_session_tasks_pg() {
 
     // Limit is honored.
     let a_limited = backend
-        .list_org_session_tasks(TEST_ORG_ID, None, None, None, 1)
+        .list_org_session_tasks(TEST_ORG_ID, None, None, None, None, 1)
         .await
         .expect("list org A limited");
     assert!(a_limited.len() <= 1, "limit must bound the result set");
+
+    // root_session_id filter (EVE-680): session_a is its own root (no parent),
+    // so filtering on it returns exactly A's two tasks and never B's — and the
+    // org boundary still applies alongside the root filter.
+    let a_root = backend
+        .list_org_session_tasks(TEST_ORG_ID, None, None, None, Some(session_a), 500)
+        .await
+        .expect("list org A by root");
+    let a_root_ids = ids(&a_root);
+    assert!(
+        a_root_ids.contains(&a_sub) && a_root_ids.contains(&a_bg),
+        "root filter must return the whole tree's tasks"
+    );
+    assert!(
+        !a_root_ids.contains(&b_sub),
+        "root filter must never cross the org boundary"
+    );
 }

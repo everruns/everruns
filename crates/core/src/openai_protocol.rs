@@ -15,7 +15,6 @@
 // creates the appropriate gen-ai spans. No direct tracing in drivers.
 
 use async_trait::async_trait;
-use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
@@ -29,10 +28,11 @@ use crate::driver_registry::{
 };
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_retry::{
-    LlmRetryConfig, RateLimitInfo, RetryDecision, SendOutcome, is_rate_limit_status, retry_request,
-    send_error_message,
+    LlmRetryConfig, RateLimitInfo, RetryDecision, RetryMetadata, SendOutcome, is_rate_limit_status,
+    retry_request, send_error_message,
 };
 use crate::stream_accumulator::StreamToolCallAccumulator;
+use crate::stream_reconnect::connect_sse_with_reconnect;
 use crate::tool_types::ToolDefinition;
 use crate::user_facing_error::is_provider_quota_message;
 
@@ -261,6 +261,128 @@ impl OpenAIProtocolChatDriver {
         &self.client
     }
 
+    /// Send one streaming chat-completion request, applying the shared
+    /// header-phase retry loop (transient send failures, 429, and 5xx), and
+    /// return the raw response plus its retry metadata.
+    ///
+    /// Invoked once per reconnect attempt by [`connect_sse_with_reconnect`]. It
+    /// re-sends the identical request and consumes no body bytes, so retrying it
+    /// is idempotent. The classifier preserves OpenAI's terminal classification
+    /// and error messages exactly.
+    async fn send_chat_completion_request(
+        &self,
+        request: &OpenAiRequest,
+        model: &str,
+    ) -> Result<(reqwest::Response, RetryMetadata)> {
+        let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+
+        retry_request(
+            &self.retry_config,
+            "OpenAIProtocolDriver",
+            || async {
+                // Apply auth: a pluggable provider (e.g. OAuth bearer token)
+                // takes precedence over the default host-keyed `api-key` /
+                // bearer logic. An auth-provider failure is fatal (no retry).
+                let request_builder = self.client.post(&self.api_url);
+                let request_builder = match &self.auth_provider {
+                    Some(provider) => {
+                        let (name, value) =
+                            provider.auth_header().await.map_err(SendOutcome::Fatal)?;
+                        request_builder.header(name, value)
+                    }
+                    None => apply_openai_api_auth(request_builder, &self.api_url, &self.api_key),
+                };
+                request_builder
+                    .header("Content-Type", "application/json")
+                    .json(request)
+                    .send()
+                    .await
+                    .map_err(SendOutcome::Send)
+            },
+            |response, attempts, can_retry| {
+                let last_error = Arc::clone(&last_error);
+                let model = model.to_string();
+                async move {
+                    let status = response.status();
+
+                    if can_retry {
+                        // Parse rate limit info from headers before consuming body.
+                        let rate_limit_info = if is_rate_limit_status(status) {
+                            Some(RateLimitInfo::from_openai_headers(response.headers()))
+                        } else {
+                            None
+                        };
+
+                        let error_text = response.text().await.unwrap_or_default();
+
+                        // Don't retry a request-too-large error (not transient).
+                        if is_openai_request_too_large(status, &error_text) {
+                            return RetryDecision::Terminal(AgentLoopError::request_too_large(
+                                format!("OpenAI API error ({}): {}", status, error_text),
+                            ));
+                        }
+
+                        // Exhausted billing quota is surfaced as a 429 but is not
+                        // transient — fail fast instead of burning retries.
+                        if is_provider_quota_message(&error_text) {
+                            return RetryDecision::Terminal(AgentLoopError::llm_kind(
+                                LlmErrorKind::QuotaExhausted,
+                                format!("OpenAI API error ({}): {}", status, error_text),
+                            ));
+                        }
+
+                        let wait = rate_limit_info
+                            .as_ref()
+                            .map(|info| info.recommended_wait(&self.retry_config, attempts))
+                            .unwrap_or_else(|| self.retry_config.calculate_backoff(attempts));
+
+                        *last_error.lock().unwrap() = Some(error_text);
+                        return RetryDecision::Retry {
+                            wait,
+                            rate_limit_info,
+                        };
+                    }
+
+                    // Non-retryable error or max retries exceeded
+                    let error_text = response.text().await.unwrap_or_default();
+                    let error_msg = format!("OpenAI API error ({}): {}", status, error_text);
+
+                    // Check if this is a model-not-found error
+                    if is_openai_model_not_found(status, &error_text) {
+                        return RetryDecision::Terminal(AgentLoopError::model_not_available(model));
+                    }
+
+                    // Check if this is a request-too-large error
+                    if is_openai_request_too_large(status, &error_text) {
+                        return RetryDecision::Terminal(AgentLoopError::request_too_large(
+                            error_msg,
+                        ));
+                    }
+
+                    // Attach the semantic error kind while the HTTP status and
+                    // body are still available (see LlmErrorKind).
+                    let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
+
+                    if attempts > 0 {
+                        return RetryDecision::Terminal(AgentLoopError::llm_kind(
+                            kind,
+                            format!(
+                                "{} (after {} retries, last error: {})",
+                                error_msg,
+                                attempts,
+                                last_error.lock().unwrap().take().unwrap_or_default()
+                            ),
+                        ));
+                    }
+
+                    RetryDecision::Terminal(AgentLoopError::llm_kind(kind, error_msg))
+                }
+            },
+            |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
+        )
+        .await
+    }
+
     fn convert_role(role: &LlmMessageRole) -> &'static str {
         match role {
             LlmMessageRole::System => "system",
@@ -421,123 +543,21 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 .as_ref()
                 .filter(|e| !e.eq_ignore_ascii_case("none"))
                 .cloned(),
+            service_tier: config.speed.clone(),
+            verbosity: config.verbosity.clone(),
             metadata,
         };
 
-        // Retry loop for rate limit (429) and transient errors. The shared
-        // executor (llm_retry::retry_request) owns the loop/backoff/send-error
-        // retry/exhaustion logging; this classifier closure preserves the
-        // previous OpenAI terminal classification and error messages exactly.
-        let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
-
-        let (response, retry_metadata) = retry_request(
-            &self.retry_config,
-            "OpenAIProtocolDriver",
-            || async {
-                // Apply auth: a pluggable provider (e.g. OAuth bearer token)
-                // takes precedence over the default host-keyed `api-key` /
-                // bearer logic. An auth-provider failure is fatal (no retry).
-                let request_builder = self.client.post(&self.api_url);
-                let request_builder = match &self.auth_provider {
-                    Some(provider) => {
-                        let (name, value) =
-                            provider.auth_header().await.map_err(SendOutcome::Fatal)?;
-                        request_builder.header(name, value)
-                    }
-                    None => apply_openai_api_auth(request_builder, &self.api_url, &self.api_key),
-                };
-                request_builder
-                    .header("Content-Type", "application/json")
-                    .json(&request)
-                    .send()
-                    .await
-                    .map_err(SendOutcome::Send)
-            },
-            |response, attempts, can_retry| {
-                let last_error = Arc::clone(&last_error);
-                let model = config.model.clone();
-                async move {
-                    let status = response.status();
-
-                    if can_retry {
-                        // Parse rate limit info from headers before consuming body.
-                        let rate_limit_info = if is_rate_limit_status(status) {
-                            Some(RateLimitInfo::from_openai_headers(response.headers()))
-                        } else {
-                            None
-                        };
-
-                        let error_text = response.text().await.unwrap_or_default();
-
-                        // Don't retry a request-too-large error (not transient).
-                        if is_openai_request_too_large(status, &error_text) {
-                            return RetryDecision::Terminal(AgentLoopError::request_too_large(
-                                format!("OpenAI API error ({}): {}", status, error_text),
-                            ));
-                        }
-
-                        // Exhausted billing quota is surfaced as a 429 but is not
-                        // transient — fail fast instead of burning retries.
-                        if is_provider_quota_message(&error_text) {
-                            return RetryDecision::Terminal(AgentLoopError::llm_kind(
-                                LlmErrorKind::QuotaExhausted,
-                                format!("OpenAI API error ({}): {}", status, error_text),
-                            ));
-                        }
-
-                        let wait = rate_limit_info
-                            .as_ref()
-                            .map(|info| info.recommended_wait(&self.retry_config, attempts))
-                            .unwrap_or_else(|| self.retry_config.calculate_backoff(attempts));
-
-                        *last_error.lock().unwrap() = Some(error_text);
-                        return RetryDecision::Retry {
-                            wait,
-                            rate_limit_info,
-                        };
-                    }
-
-                    // Non-retryable error or max retries exceeded
-                    let error_text = response.text().await.unwrap_or_default();
-                    let error_msg = format!("OpenAI API error ({}): {}", status, error_text);
-
-                    // Check if this is a model-not-found error
-                    if is_openai_model_not_found(status, &error_text) {
-                        return RetryDecision::Terminal(AgentLoopError::model_not_available(model));
-                    }
-
-                    // Check if this is a request-too-large error
-                    if is_openai_request_too_large(status, &error_text) {
-                        return RetryDecision::Terminal(AgentLoopError::request_too_large(
-                            error_msg,
-                        ));
-                    }
-
-                    // Attach the semantic error kind while the HTTP status and
-                    // body are still available (see LlmErrorKind).
-                    let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
-
-                    if attempts > 0 {
-                        return RetryDecision::Terminal(AgentLoopError::llm_kind(
-                            kind,
-                            format!(
-                                "{} (after {} retries, last error: {})",
-                                error_msg,
-                                attempts,
-                                last_error.lock().unwrap().take().unwrap_or_default()
-                            ),
-                        ));
-                    }
-
-                    RetryDecision::Terminal(AgentLoopError::llm_kind(kind, error_msg))
-                }
-            },
-            |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
-        )
-        .await?;
-
-        let byte_stream = response.bytes_stream();
-        let event_stream = byte_stream.eventsource();
+        // Establish the SSE stream, transparently reconnecting on a transport
+        // failure that lands before the first event is decoded (the "error
+        // decoding response body" flake). Header-phase retries (429/5xx and
+        // transient send failures) are handled inside the per-attempt send;
+        // this adds the body-phase reconnect the official SDKs get for free.
+        let (event_stream, retry_metadata) =
+            connect_sse_with_reconnect(&self.retry_config, "OpenAIProtocolDriver", |_attempt| {
+                self.send_chat_completion_request(&request, &config.model)
+            })
+            .await?;
 
         let model = config.model.clone();
         let total_tokens = Arc::new(Mutex::new(0u32));
@@ -578,10 +598,9 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                         let event = match result {
                             Ok(event) => event,
                             Err(e) => {
-                                return vec![Ok(LlmStreamEvent::Error(format!(
-                                    "Stream error: {}",
-                                    e
-                                )))];
+                                return vec![Ok(LlmStreamEvent::Error(
+                                    format!("Stream error: {}", e).into(),
+                                ))];
                             }
                         };
 
@@ -682,10 +701,9 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                 }
                                 vec![Ok(LlmStreamEvent::TextDelta(String::new()))]
                             }
-                            Err(e) => vec![Ok(LlmStreamEvent::Error(format!(
-                                "Failed to parse chunk: {}",
-                                e
-                            )))],
+                            Err(e) => vec![Ok(LlmStreamEvent::Error(
+                                format!("Failed to parse chunk: {}", e).into(),
+                            ))],
                         }
                     }
                 })
@@ -817,6 +835,15 @@ struct OpenAiRequest {
     parallel_tool_calls: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<String>,
+    /// Speed selector: OpenAI service tier ("flex", "default", "priority").
+    /// Omitted when `None` so the provider keeps its default ("auto") routing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    service_tier: Option<String>,
+    /// Verbosity selector ("low", "medium", "high"). Top-level field on the
+    /// Chat Completions API. Omitted when `None` so the provider keeps its
+    /// default ("medium") output length.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    verbosity: Option<String>,
     /// Metadata for tracking API usage (up to 16 key-value pairs).
     /// Useful for correlating requests with session_id, agent_id, org_id, etc.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1117,6 +1144,8 @@ mod tests {
         // OpenAI streaming API requires stream_options.include_usage=true
         // to return token usage in the response
         let request = OpenAiRequest {
+            verbosity: None,
+            service_tier: None,
             model: "gpt-4o".to_string(),
             messages: vec![OpenAiMessage {
                 role: "user".to_string(),
@@ -1149,6 +1178,8 @@ mod tests {
         metadata.insert("agent_id".to_string(), "agent_xyz789".to_string());
 
         let request = OpenAiRequest {
+            verbosity: None,
+            service_tier: None,
             model: "gpt-4o".to_string(),
             messages: vec![OpenAiMessage {
                 role: "user".to_string(),
@@ -1449,6 +1480,8 @@ mod tests {
         // When reasoning_effort is "none", it should be filtered out
         // to avoid "Unrecognized request argument" errors on non-thinking models
         let request = OpenAiRequest {
+            verbosity: None,
+            service_tier: None,
             model: "gpt-4o-mini".to_string(),
             messages: vec![OpenAiMessage {
                 role: "user".to_string(),
@@ -1479,6 +1512,8 @@ mod tests {
     #[test]
     fn test_reasoning_effort_high_is_included() {
         let request = OpenAiRequest {
+            verbosity: None,
+            service_tier: None,
             model: "o3-mini".to_string(),
             messages: vec![OpenAiMessage {
                 role: "user".to_string(),
@@ -1510,6 +1545,8 @@ mod tests {
     fn test_request_serializes_parallel_tool_calls() {
         fn build(flag: Option<bool>) -> serde_json::Value {
             let request = OpenAiRequest {
+                verbosity: None,
+                service_tier: None,
                 model: "gpt-4o-mini".to_string(),
                 messages: vec![OpenAiMessage {
                     role: "user".to_string(),
@@ -1534,6 +1571,70 @@ mod tests {
         // Present and preserved for Some(_).
         assert_eq!(build(Some(true))["parallel_tool_calls"], true);
         assert_eq!(build(Some(false))["parallel_tool_calls"], false);
+    }
+
+    /// The speed selector serializes as `service_tier` only when set, so the
+    /// provider's default ("auto") routing applies when unset.
+    #[test]
+    fn test_request_serializes_service_tier() {
+        fn build(tier: Option<&str>) -> serde_json::Value {
+            let request = OpenAiRequest {
+                service_tier: tier.map(str::to_string),
+                verbosity: None,
+                model: "gpt-4o-mini".to_string(),
+                messages: vec![OpenAiMessage {
+                    role: "user".to_string(),
+                    content: Some(OpenAiContent::Text("Hello".to_string())),
+                    tool_calls: None,
+                    tool_call_id: None,
+                }],
+                temperature: None,
+                max_tokens: None,
+                stream: true,
+                stream_options: None,
+                tools: None,
+                parallel_tool_calls: None,
+                reasoning_effort: None,
+                metadata: None,
+            };
+            serde_json::to_value(&request).unwrap()
+        }
+
+        assert!(build(None).get("service_tier").is_none());
+        assert_eq!(build(Some("flex"))["service_tier"], "flex");
+        assert_eq!(build(Some("priority"))["service_tier"], "priority");
+    }
+
+    /// Verbosity serializes as a top-level `verbosity` field only when set, so
+    /// the provider's default output length applies when unset.
+    #[test]
+    fn test_request_serializes_verbosity() {
+        fn build(verbosity: Option<&str>) -> serde_json::Value {
+            let request = OpenAiRequest {
+                service_tier: None,
+                verbosity: verbosity.map(str::to_string),
+                model: "gpt-5.6-sol".to_string(),
+                messages: vec![OpenAiMessage {
+                    role: "user".to_string(),
+                    content: Some(OpenAiContent::Text("Hello".to_string())),
+                    tool_calls: None,
+                    tool_call_id: None,
+                }],
+                temperature: None,
+                max_tokens: None,
+                stream: true,
+                stream_options: None,
+                tools: None,
+                parallel_tool_calls: None,
+                reasoning_effort: None,
+                metadata: None,
+            };
+            serde_json::to_value(&request).unwrap()
+        }
+
+        assert!(build(None).get("verbosity").is_none());
+        assert_eq!(build(Some("low"))["verbosity"], "low");
+        assert_eq!(build(Some("high"))["verbosity"], "high");
     }
 
     // ------------------------------------------------------------------

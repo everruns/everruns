@@ -111,6 +111,7 @@ impl Capability for CursorCapability {
         tool_call: &ToolCall,
         phase: ToolNarrationPhase,
         _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let target = tool_call
             .arguments

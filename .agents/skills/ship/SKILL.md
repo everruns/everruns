@@ -142,7 +142,8 @@ Pick only what matches the changed surface:
 ## PR And Merge
 
 - Use a conventional-commit style PR title.
-- In the PR body, explain what changed, why it changed, how it was validated, notable risks, and an explicit **Follow-ups** section (or "No follow-ups." if none). Prefer implementing follow-ups in this PR; only defer when the work is genuinely out of scope or too large, and say so per item.
+- Use `.github/pull_request_template.md` as the required PR body structure. Start by copying the template headings exactly, then fill every applicable section. Do not replace the template with ad-hoc headings such as `Summary` or `Validation`, even for small docs-only changes.
+- In the PR body, explain what changed, why it changed, the Before / After proof, risk, security review, validation/checklist status, and an explicit **Follow-ups** section (or "No follow-ups." if none). Map those details into the template's existing sections instead of inventing a shorter structure. Prefer implementing follow-ups in this PR; only defer when the work is genuinely out of scope or too large, and say so per item.
 - Use `gh pr view --json url` to detect an existing PR.
 - Create a PR with `gh pr create` if needed.
 - Use `gh pr edit --add-label <label>` only for interim CI opt-outs, and `gh pr edit --remove-label <label>` before final CI. If label removal does not trigger the expected workflow, rerun the workflow or push an empty final commit only after confirming that is the repo's intended practice.
