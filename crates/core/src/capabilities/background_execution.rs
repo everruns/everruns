@@ -127,6 +127,7 @@ mod tests {
         let task = SessionTask {
             id: "t1".to_string(),
             session_id: crate::SessionId::new(),
+            root_session_id: None,
             kind: crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
             display_name: "test".to_string(),
             spec: serde_json::json!({ "tool": "get_current_time", "reattachable": true }),
@@ -161,6 +162,7 @@ mod tests {
         let task = SessionTask {
             id: "t2".to_string(),
             session_id: crate::SessionId::new(),
+            root_session_id: None,
             kind: crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
             display_name: "test".to_string(),
             spec: serde_json::json!({ "tool": "some_side_effecting_tool", "reattachable": false }),
@@ -195,6 +197,7 @@ mod tests {
         let task = SessionTask {
             id: "t3".to_string(),
             session_id: crate::SessionId::new(),
+            root_session_id: None,
             kind: crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
             display_name: "test".to_string(),
             spec: serde_json::json!({ "tool": "old_task_without_reattachable_flag" }),

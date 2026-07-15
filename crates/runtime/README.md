@@ -66,6 +66,11 @@ no API key. Swap in a real provider (for example
 [`everruns-openai`](https://crates.io/crates/everruns-openai)) to talk to a
 hosted model.
 
+`InProcessRuntimeBuilder::new()` starts with a runtime-safe built-in capability
+registry. If you call `.platform_definition(...)`, that platform becomes
+authoritative; start from `CapabilityRegistry::runtime_builtins()` when you want
+the default runtime catalog plus your own additions.
+
 Runnable examples ship with the crate:
 
 ```text

@@ -102,7 +102,7 @@ A rule that grades agent output after execution. Embedded in EvalCase, not a sta
 | `turns_within` | `{ max: u32 }` | Completed within N turns |
 | `file_contains` | `{ path: String, text: String }` | Session filesystem file contains substring |
 | `json_schema` | `{ schema: Value }` | Final assistant message parses as JSON matching schema |
-| `llm_judge` | `{ rubric: String, model: Option<String> }` | LLM grades output against rubric (Phase 2) |
+| `llm_judge` | `{ rubric: String, model: Option<String> }` | LLM grades output against rubric (**planned; no Scorer variant yet**) |
 
 ## Data Model
 
@@ -239,6 +239,7 @@ All endpoints under `/v1/evals`. See `crates/server/src/api/evals.rs`.
 | `GET` | `/v1/evals/{eval_id}/cases/{case_id}` | Get case |
 | `PATCH` | `/v1/evals/{eval_id}/cases/{case_id}` | Update case |
 | `DELETE` | `/v1/evals/{eval_id}/cases/{case_id}` | Remove case |
+| `POST` | `/v1/evals/{eval_id}/atif_import` | Upsert cases from ATIF trajectories (NDJSON or JSON body; see `specs/atif-adoption.md`) |
 
 ### Run Management
 

@@ -77,6 +77,7 @@ impl_auth_state!(AppState);
 
 /// Connection info returned in API responses (never includes token)
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = Connection)]
 pub struct ConnectionResponse {
     pub provider: String,
     pub connection_type: String,

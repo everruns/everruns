@@ -17,11 +17,15 @@ export async function listMessages(sessionId: string): Promise<Message[]> {
   return response.data.data;
 }
 
-// Send a user message to a session (triggers workflow)
+// Send a user message to a session (triggers workflow).
+//
+// `addressedParticipantId` optionally targets an active agent participant for
+// this turn; when omitted the session host responds (unchanged default).
 export async function sendUserMessage(
   sessionId: string,
   content: string,
   controls?: Controls,
+  addressedParticipantId?: string | null,
 ): Promise<Message> {
   return createMessage(sessionId, {
     message: {
@@ -29,6 +33,7 @@ export async function sendUserMessage(
       content: [{ type: "text", text: content }],
     },
     controls,
+    ...(addressedParticipantId ? { addressed_participant_id: addressedParticipantId } : {}),
   });
 }
 
@@ -46,6 +51,7 @@ export async function sendUserMessageWithImages(
   text: string,
   images: ImageAttachment[],
   controls?: Controls,
+  addressedParticipantId?: string | null,
 ): Promise<Message> {
   const content: Array<
     { type: "text"; text: string } | { type: "image_file"; image_id: string; filename?: string }
@@ -71,5 +77,6 @@ export async function sendUserMessageWithImages(
       content,
     },
     controls,
+    ...(addressedParticipantId ? { addressed_participant_id: addressedParticipantId } : {}),
   });
 }

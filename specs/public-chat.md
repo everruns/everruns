@@ -82,7 +82,7 @@ disable the channel (the flag governs availability, not per-channel lifecycle).
   config are in `crates/core/src/app.rs` (`PublicChatChannelConfig`,
   `PublicChatBranding`, `PublicChatCaptchaConfig`, `CaptchaProvider`), with
   create/update validation, secret redaction (`token`, Turnstile `secret_key`),
-  PATCH secret-preservation, and migration `083_app_channel_type_public_chat.sql`.
+  PATCH secret-preservation, and migration `092_app_channel_type_public_chat.sql`.
   The public ingress endpoint is implemented in
   `crates/server/src/api/public_chat.rs`, reusing the AG-UI streaming core
   (`ag_ui::run_app_agent_stream`, scoped with a `public_chat:` routing-tag

@@ -474,7 +474,7 @@ Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_wi
 |-------|----------------|
 | `everruns-core` | Skill types, SKILL.md parser, name validation, `AttachSkillCapability` + `SkillsCapability` |
 | `everruns-server` | API routes, gRPC services, database operations, ZIP handling |
-| `everruns-worker` | `SkillToolExecutor` for `activate_skill` and `read_skill_file` tool execution |
+| `everruns-worker` | No skill-specific role — the `activate_skill` / `list_skills` tools execute in-process in `everruns-core` (`SkillsCapability`) |
 
 ### Key Components
 
@@ -483,14 +483,14 @@ Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_wi
 - Validates name, description, and optional fields
 - Returns structured `ParsedSkillMd` with metadata and body
 
-**SkillsCapability** (`crates/core/src/capabilities/skills_discovery.rs`):
+**SkillsCapability** (`crates/core/src/capabilities/skills.rs`):
 - Built-in capability (ID: `"skills"`) included in the Generic harness
 - Scans `/.agents/skills/` in session VFS for SKILL.md files
 - Provides `list_skills` and `activate_skill` tools
 - System prompt explains skills system and lists discovered skills
 - Discovers both user-uploaded skills and registry-attached skills (via VFS mounts)
 
-**AttachSkillCapability** (`crates/core/src/capabilities/skill.rs`):
+**AttachSkillCapability** (`crates/core/src/capabilities/attach_skill.rs`):
 - Virtual capability (ID: `"skill:{uuid}"`) for database-registered skills
 - Mount-only: reconstructs SKILL.md and mounts to `/.agents/skills/{name}/`
 - Does NOT contribute to system prompt or provide tools
@@ -500,17 +500,16 @@ Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_wi
 - `discover_skills_from_entries()` helper parses SKILL.md files from `.agents/skills/` path
 - `is_skill` flag on `CapabilityInfo` DTO for UI badge rendering
 
-**SkillService** (`crates/server/src/services/skill.rs`):
+**SkillService** (`crates/server/src/domains/skills/`):
 - Business logic for CRUD operations
 - SKILL.md parsing and validation
 - ZIP archive extraction and validation
 - Integration with capability listing
 
-**SkillToolExecutor** (`crates/worker/src/skill_executor.rs`):
-- Handles `activate_skill` tool calls
-- Fetches skill instructions + files via gRPC
-- Returns SKILL.md body as tool result
-- Mounts extracted files into session VFS at `/skills/{name}/`
+**ActivateSkillFromVfsTool** (`crates/core/src/capabilities/skills.rs`):
+- Backs the `activate_skill` tool, executed in-process by `everruns-core` (no worker-side executor, no gRPC fetch)
+- Reads the skill's `SKILL.md` body from the session VFS at `/.agents/skills/{name}/` and returns it as the tool result
+- Registry skills are mounted into the VFS beforehand by `AttachSkillCapability`, so activation is a pure VFS read
 
 ### gRPC Protocol
 

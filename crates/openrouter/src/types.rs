@@ -193,6 +193,8 @@ impl OpenRouterModelInfo {
             limits,
             modalities,
             reasoning_effort,
+            speed: None,
+            verbosity: None,
             tool_search: false,
             supported_parameters: self.supported_parameters.clone(),
             supports_phases: false,

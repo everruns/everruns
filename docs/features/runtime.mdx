@@ -68,6 +68,32 @@ let runtime = InProcessRuntimeBuilder::new()
 
 The quickstart uses the built-in `llmsim` driver for deterministic, offline runs. To talk to a live provider, register that provider's driver and point `default_model` at it — see [Talk to OpenAI](#talk-to-openai) below.
 
+## Capability registry
+
+`InProcessRuntimeBuilder::new()` includes a runtime-safe built-in capability
+registry by default. That registry contains capabilities that work with the
+runtime's in-process services, such as session files, session storage, egress,
+prompt helpers, guardrails, and tool-search helpers.
+
+When you call `.platform_definition(platform)`, the supplied platform replaces
+that default. Use `CapabilityRegistry::runtime_builtins()` as the starting point
+when you want the default runtime catalog plus custom capabilities:
+
+```rust
+use everruns_core::{CapabilityRegistry, DriverRegistry, PlatformDefinition};
+
+let mut capabilities = CapabilityRegistry::runtime_builtins();
+capabilities.register(MyCapability);
+
+let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+```
+
+Hosted Everruns product capabilities and capabilities that require optional host
+services, such as platform management, session tasks, schedules, session SQL
+databases, provider credentials, or knowledge stores, are not in the runtime
+default. Register them explicitly only when your host provides the required
+services.
+
 ## Talk to OpenAI
 
 A real provider needs two things, not one: the provider's **driver must be registered** in the `DriverRegistry`, *and* `default_model` must select it. Setting `default_model` alone is not enough — the runtime resolves `provider_type` against the registry, so an unregistered driver fails at turn time.
@@ -183,6 +209,7 @@ In-memory stores vanish when the process exits. For an embedded, single-process 
 |---|---|
 | `LocalSessionTaskRegistry` | Session tasks and their message channel |
 | `LocalScheduleStore` | Session schedules (with a local `metadata` JSON bag) |
+| `LocalScheduleRunner` | In-process execution of due local schedules |
 | `LocalPlatformStore` | Subagent-critical platform store core |
 | `LocalProfile` | Local data dir, workspace, and identity defaults |
 | `LocalBackends` | Composes the above into `RuntimeBackends` |
@@ -213,6 +240,28 @@ let runtime = InProcessRuntimeBuilder::new()
     .build()
     .await?;
 ```
+
+If the embedded platform enables scheduled monitors, persistence alone is not
+enough: start the local executor with the same `LocalSessionRunner` used to
+drive live sessions. If that runner cannot deliver to every session in the
+organization, implement `routable_session_ids` with a current route snapshot;
+an empty snapshot claims no schedules. Retain the handle for the host lifetime
+and shut it down gracefully:
+
+```rust
+let schedule_runner = local.start_schedule_runner(session_runner.clone())?;
+let local = local.with_platform_runner(session_runner);
+
+// During host shutdown:
+schedule_runner.shutdown().await?;
+```
+
+The runner atomically claims due SQLite records only for routable sessions,
+recovers stale claims after an interrupted process, advances timezone-aware
+recurring schedules, and retries failed `send_message` delivery after the
+configured claim timeout. Delivery is at-least-once across the narrow crash
+window between the host accepting a message and SQLite recording its
+completion.
 
 `LocalBackends` only adds the local stores — it preserves a caller-supplied event bus (via `RuntimeBackends`) and session file-system factory (via the platform's `PlatformDefinition`), so it composes with the [custom backends](#custom-backends) above rather than replacing them. See [docs.rs/everruns-local](https://docs.rs/everruns-local) for the full API.
 

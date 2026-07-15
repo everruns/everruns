@@ -135,11 +135,18 @@ pub const OPENROUTER_GPT4O_MINI: ProviderModelConfig = ProviderModelConfig::new(
 );
 
 // Fireworks AI serves open models via an OpenAI-compatible Chat Completions
-// API. gpt-oss-120b is a chat + tool-calling model. Exercises the Chat
-// Completions streaming path against a third (non-OpenAI/Azure) host.
-pub const FIREWORKS_GPT_OSS: ProviderModelConfig = ProviderModelConfig::new(
+// API. The point of this case is to exercise our OpenAI-protocol driver's
+// streaming + tool-calling path against a third (non-OpenAI/Azure) host — not
+// to probe a model's intelligence — so the model must call tools reliably for
+// the `test_tool_call` assertion to be deterministic. Kimi K2 is purpose-built
+// for agentic tool use and calls tools deterministically. Fireworks has
+// churned its serverless catalog repeatedly: `gpt-oss-120b` flaked the "must
+// call tool" assert (#2550/#2556), and `llama-v3p3-70b-instruct` (#2597) was
+// then de-listed from the account entirely ("Model not available"). Kimi K2 is
+// a current, dependable tool-caller in the served catalog.
+pub const FIREWORKS_KIMI_K2: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Fireworks,
-    "accounts/fireworks/models/gpt-oss-120b",
+    "accounts/fireworks/models/kimi-k2p6",
     "FIREWORKS_API_KEY",
 );
 
@@ -233,62 +240,6 @@ pub fn is_quota_exhausted(err: &str) -> bool {
     false
 }
 
-// ============================================================================
-// Transient transport / network flakiness
-// ============================================================================
-
-// The live LLM matrix talks to real providers over the network, so a turn can
-// fail because the HTTP/SSE connection was interrupted mid-stream rather than
-// because of any code regression. Historically these surface on `main` as
-// `LLM error: Stream error: Transport error: error decoding response body`
-// (reqwest/hyper failing to read the response body) and vary test-to-test,
-// which is the signature of infrastructure flakiness, not a contract break.
-//
-// We treat these the same way as quota exhaustion: skip the case with a loud
-// warning so `main` stays green, while genuine functional failures (auth,
-// schema, model availability, assertion mismatches) still fail loudly.
-//
-// Detection is kept specific to transport-layer signatures so ordinary API
-// errors are never swallowed. Auth/permission signals are excluded first, so a
-// broken credential can never be misread as a transient hiccup.
-pub fn is_transient_transport(err: &str) -> bool {
-    let e = err.to_lowercase();
-
-    // Never treat auth/permission failures as transient transport noise.
-    let auth_failure = e.contains("unauthorized")
-        || e.contains("forbidden")
-        || e.contains("invalid api key")
-        || e.contains("invalid_api_key")
-        || e.contains("permission")
-        || e.contains("authentication")
-        || e.contains(" 401")
-        || e.contains("401 ")
-        || e.contains(" 403")
-        || e.contains("403 ");
-    if auth_failure {
-        return false;
-    }
-
-    // Transport-layer / connection-teardown signatures from reqwest/hyper and
-    // the drivers' own error wrapping. These indicate the network stream was
-    // interrupted, not that the provider rejected the request on its merits.
-    e.contains("transport error")
-        || e.contains("error decoding response body")
-        || e.contains("connection reset")
-        || e.contains("connection closed")
-        || e.contains("connection aborted")
-        || e.contains("connection refused")
-        || e.contains("broken pipe")
-        || e.contains("incomplete message")
-        || e.contains("unexpected end of file")
-        || e.contains("unexpected eof")
-        || e.contains("error trying to connect")
-        || e.contains("tcp connect error")
-        || e.contains("dns error")
-        || e.contains("timed out")
-        || e.contains("timeout")
-}
-
 /// Skip the current test (with a loud stderr warning) if `result` failed due to
 /// the provider being out of quota/credits. Otherwise the test proceeds and its
 /// normal assertions run. `result` must expose `success: bool` and
@@ -310,15 +261,91 @@ macro_rules! skip_if_quota {
                     eprintln!("SKIP: provider {} out of quota: {}", $label, err);
                     return;
                 }
-                if is_transient_transport(err) {
-                    eprintln!(
-                        "SKIP: provider {} transient transport error: {}",
-                        $label, err
-                    );
-                    return;
-                }
             }
         }
+    }};
+}
+
+/// Substrings that mark a *transient* live-transport failure (network blip,
+/// streaming-decode hiccup, timeout) rather than a real, reproducible error.
+/// These tests hit real provider endpoints, so a single transport hiccup should
+/// be retried, not reported as a regression — e.g. the observed flake
+/// `LLM error: Stream error: Transport error: error decoding response body`.
+pub fn is_transient_transport_error(err: &str) -> bool {
+    let e = err.to_ascii_lowercase();
+    [
+        "transport error",
+        "stream error",
+        "error decoding response body",
+        "connection reset",
+        "connection closed",
+        "connection error",
+        "connection refused",
+        "timed out",
+        "timeout",
+        "broken pipe",
+        "incomplete message",
+        "unexpected eof",
+        "tls",
+    ]
+    .iter()
+    .any(|s| e.contains(s))
+}
+
+/// Run a live turn with bounded retries against real-model non-determinism and
+/// transient transport failures. `$run` is a block that builds a runner and
+/// awaits a turn, evaluating to a `TurnResult`; it is re-run up to `$max` times.
+///
+/// Returns `None` when the provider is out of quota (caller should skip), or
+/// `Some(result)` for the first attempt that satisfies the `$ok` predicate —
+/// otherwise the last attempt after exhausting retries, so the caller's own
+/// assertions still produce a precise failure message. Retries fire when a turn
+/// hit a transient transport error or `$ok` was not yet met.
+///
+/// Exported via `#[macro_export]` so every test binary that includes this
+/// shared module can use it. `is_quota_exhausted`, `is_transient_transport_error`,
+/// and `TurnResult` are referenced unqualified and resolve at each call site
+/// (the test files already glob-import this module and `TurnResult`).
+#[macro_export]
+macro_rules! run_live_turn {
+    ($config:expr, $max:expr, $ok:expr, $run:block) => {{
+        let ok_fn = $ok;
+        let mut outcome: Option<TurnResult> = None;
+        for attempt in 1..=$max {
+            let result: TurnResult = $run;
+            if !result.success {
+                if let Some(err) = result.error.as_deref() {
+                    if is_quota_exhausted(err) {
+                        eprintln!("SKIP: {} out of quota: {}", $config.label(), err);
+                        outcome = None;
+                        break;
+                    }
+                }
+            }
+            if ok_fn(&result) {
+                outcome = Some(result);
+                break;
+            }
+            let transient = !result.success
+                && result
+                    .error
+                    .as_deref()
+                    .is_some_and(is_transient_transport_error);
+            eprintln!(
+                "{}: attempt {attempt}/{} not acceptable \
+                 (success={}, transient_transport={}, tool_calls={}, iterations={}, error={:?}); {}",
+                $config.label(),
+                $max,
+                result.success,
+                transient,
+                result.tool_calls_count,
+                result.iterations,
+                result.error,
+                if attempt < $max { "retrying" } else { "giving up" },
+            );
+            outcome = Some(result);
+        }
+        outcome
     }};
 }
 
@@ -404,53 +431,5 @@ mod quota_detector_tests {
             "insufficient_quota but actually invalid api key"
         ));
         assert!(!is_quota_exhausted("permission denied for this model"));
-    }
-}
-
-#[cfg(test)]
-mod transient_transport_tests {
-    use super::is_transient_transport;
-
-    #[test]
-    fn matches_transport_flakes() {
-        // The exact message observed flaking `main` from live OpenAI streaming.
-        assert!(is_transient_transport(
-            "LLM error: Stream error: Transport error: error decoding response body"
-        ));
-        assert!(is_transient_transport("error decoding response body"));
-        assert!(is_transient_transport("connection reset by peer"));
-        assert!(is_transient_transport(
-            "connection closed before message completed"
-        ));
-        assert!(is_transient_transport("hyper: incomplete message"));
-        assert!(is_transient_transport(
-            "error trying to connect: tcp connect error"
-        ));
-        assert!(is_transient_transport("operation timed out"));
-        assert!(is_transient_transport("request timeout"));
-        // Case-insensitive.
-        assert!(is_transient_transport("TRANSPORT ERROR: broken pipe"));
-    }
-
-    #[test]
-    fn does_not_match_functional_or_auth_errors() {
-        // Genuine functional/contract breaks must still fail the test.
-        assert!(!is_transient_transport(
-            "Model not available: gpt-99-nonexistent"
-        ));
-        assert!(!is_transient_transport(
-            "Bad request: invalid schema for tool"
-        ));
-        assert!(!is_transient_transport("Internal server error"));
-        assert!(!is_transient_transport(""));
-        assert!(!is_transient_transport("rate_limit_exceeded"));
-        // Auth/permission failures must never be swallowed as transport noise,
-        // even when the message mentions a connection.
-        assert!(!is_transient_transport("401 Unauthorized: invalid api key"));
-        assert!(!is_transient_transport("403 Forbidden"));
-        assert!(!is_transient_transport(
-            "connection reset but actually 401 unauthorized"
-        ));
-        assert!(!is_transient_transport("permission denied for this model"));
     }
 }

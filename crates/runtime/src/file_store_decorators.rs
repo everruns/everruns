@@ -171,6 +171,10 @@ impl SessionFileSystem for WriteBlocklistFileStore {
         self.check(&file.path)?;
         self.inner.seed_initial_file(session_id, file).await
     }
+
+    fn is_mount_resolver(&self) -> bool {
+        self.inner.is_mount_resolver()
+    }
 }
 
 /// Embedder-supplied approval callback used by [`ApprovalGatingFileStore`].
@@ -341,6 +345,10 @@ impl SessionFileSystem for ApprovalGatingFileStore {
 
     async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
         self.inner.seed_initial_file(session_id, file).await
+    }
+
+    fn is_mount_resolver(&self) -> bool {
+        self.inner.is_mount_resolver()
     }
 }
 

@@ -30,6 +30,7 @@ Fundamental capabilities for file operations, command execution, web access, ses
 | [Message Metadata](/capabilities/message-metadata/) | `message_metadata` | 0 |
 | [Task Management](/capabilities/task-management/) | `stateless_todo_list` | 1 |
 | [Schedules](/capabilities/session-schedules/) | `session_schedule` | 3 |
+| [Auto-Continue After Usage Limit](/capabilities/usage-limit-auto-continue/) | `usage_limit_auto_continue` | 0 |
 | [Sub Agents](/capabilities/sub-agents/) | `subagents` | 3 |
 | [AGENTS.md](/capabilities/agent-instructions/) | `agent_instructions` | 0 |
 | [Agent Skills](/capabilities/agent-skills/) | `skills` | 2 |

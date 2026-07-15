@@ -6,6 +6,7 @@
 
 use crate::tool_output_sanitizer::{
     clean_exec_output, output_verbosity_budget, priority_aware_truncate, resolve_auto_mode,
+    truncate_exec_stream,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,7 +31,7 @@ impl ExecToolResultPayload {
         let effective_mode = resolve_auto_mode(output_mode, exit_code);
         let (stdout, stderr) = if let Some(budget) = output_verbosity_budget(effective_mode) {
             (
-                priority_aware_truncate(&clean_stdout, budget),
+                truncate_exec_stream(&clean_stdout, budget, exit_code),
                 priority_aware_truncate(&clean_stderr, budget.min(4096)),
             )
         } else {
@@ -183,6 +184,23 @@ mod tests {
             "explicit normal mode should not compact to auto-success budget on success"
         );
         assert!(payload.stdout.len() <= NORMAL_BUDGET);
+    }
+
+    #[test]
+    fn successful_source_search_preserves_leading_matches() {
+        let mut lines = vec![
+            "src/runtime.rs:10: first relevant match".to_string(),
+            "src/runtime.rs:11: second relevant match".to_string(),
+        ];
+        lines.extend((0..1200).map(|i| format!("src/module_{i}.rs: ordinary source line")));
+        lines.extend((0..300).map(|i| format!("src/errors_{i}.rs: struct ErrorContext{i}")));
+        let stdout = lines.join("\n");
+
+        let payload = ExecToolResultPayload::new(&stdout, "", 0, "normal");
+
+        assert!(payload.truncated);
+        assert!(payload.stdout.contains("first relevant match"));
+        assert!(payload.stdout.contains("second relevant match"));
     }
 
     #[test]

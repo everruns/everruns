@@ -3,7 +3,7 @@
 // Storage row types are re-exported from `storage::models` so domain code
 // has a single import path.
 
-use everruns_core::typed_id::{AgentId, AgentVersionId, ModelId};
+use everruns_core::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId};
 use everruns_core::{
     AgentCapabilityConfig, AgentStatus, InitialFile, ScopedMcpServers, ToolDefinition,
 };
@@ -42,6 +42,15 @@ pub struct CreateAgentRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub default_model_id: Option<ModelId>,
+    /// Harness ID used as this agent's base execution environment. If omitted,
+    /// the org's built-in `generic` harness is used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "harness_01933b5a00007000800000000000001")]
+    pub harness_id: Option<HarnessId>,
+    /// Addressable harness name. Alternative to `harness_id`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "generic")]
+    pub harness_name: Option<String>,
     /// Tags for organizing and filtering agents.
     #[serde(default)]
     #[schema(example = json!(["support", "customer-facing"]))]
@@ -104,6 +113,14 @@ pub struct UpdateAgentRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub default_model_id: Option<ModelId>,
+    /// Harness ID used as this agent's base execution environment. Omit to leave unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "harness_01933b5a00007000800000000000001")]
+    pub harness_id: Option<HarnessId>,
+    /// Addressable harness name. Alternative to `harness_id`; omit to leave unchanged.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = "generic")]
+    pub harness_name: Option<String>,
     /// Tags for organizing and filtering agents.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = json!(["updated-tag"]))]

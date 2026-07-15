@@ -270,6 +270,60 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/triggers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List an agent's triggers. Set include_archived=true to also return archived triggers. */
+    get: operations["list_agent_triggers"];
+    put?: never;
+    /** POST /v1/agents/{agent_id}/triggers */
+    post: operations["create_agent_trigger"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/triggers/{trigger_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/agents/{agent_id}/triggers/{trigger_id} */
+    get: operations["get_agent_trigger"];
+    put?: never;
+    post?: never;
+    /** DELETE /v1/agents/{agent_id}/triggers/{trigger_id} */
+    delete: operations["delete_agent_trigger"];
+    options?: never;
+    head?: never;
+    /** PATCH|PUT /v1/agents/{agent_id}/triggers/{trigger_id} */
+    patch: operations["update_agent_trigger"];
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** POST /v1/agents/{agent_id}/triggers/{trigger_id}/trigger */
+    post: operations["trigger_agent_trigger"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/versions": {
     parameters: {
       query?: never;
@@ -2863,10 +2917,18 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * Export session messages as a JSONL file
-     * @description Returns all materialized messages (user, agent) as newline-delimited JSON.
-     *     Delta events are excluded. Each line is a complete JSON object representing one message.
-     *     The response includes `Content-Disposition: attachment` for browser download.
+     * Export session messages as a JSONL file (default) or as an ATIF trajectory
+     * @description Default (`format=jsonl`): all materialized messages (user, agent) as
+     *     newline-delimited JSON, one complete JSON object per line; delta events are
+     *     excluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document
+     *     folded from the session's event log (see `specs/atif-adoption.md`); image
+     *     content parts are exported as ATIF multimodal ContentParts. When an image
+     *     cannot be materialized (an inline image with neither a URL nor bytes) it is
+     *     flattened to an `"[image]"` marker and the response carries an
+     *     `X-Atif-Images-Omitted` header with that count (usually 0 and absent).
+     *     Documents over the 50 MiB `ATIF_EXPORT_MAX_BYTES` cap are rejected with 413.
+     *     The response includes `Content-Disposition: attachment` for browser
+     *     download.
      */
     get: operations["export_session_jsonl"];
     put?: never;
@@ -3009,6 +3071,41 @@ export interface paths {
     /** POST /v1/sessions/{session_id}/messages - Create message (user message triggers workflow) */
     post: operations["create_message"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/participants": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/sessions/{session_id}/participants - List session participants */
+    get: operations["list_session_participants"];
+    put?: never;
+    /** POST /v1/sessions/{session_id}/participants - Add a session participant */
+    post: operations["add_session_participant"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/participants/{participant_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** DELETE /v1/sessions/{session_id}/participants/{participant_id} - Leave a participant */
+    delete: operations["leave_session_participant"];
     options?: never;
     head?: never;
     patch?: never;
@@ -3225,6 +3322,41 @@ export interface paths {
     /** Send an inbound message to a session task. */
     post: operations["post_task_message"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/tasks/{task_id}/push-configs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List per-task push-notification configs. */
+    get: operations["list_push_configs"];
+    put?: never;
+    /** Create a per-task push-notification config. */
+    post: operations["create_push_config"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Delete a per-task push-notification config. */
+    delete: operations["delete_push_config"];
     options?: never;
     head?: never;
     patch?: never;
@@ -3856,6 +3988,17 @@ export interface components {
       /** @description The created api_endpoint channel. */
       channel: components["schemas"]["AppChannel"];
     };
+    /** @description Request to add a participant to a session. */
+    AddSessionParticipantRequest: {
+      /**
+       * @description Agent to add when `kind` is `agent`.
+       * @example agent_01933b5a00007000800000000000001
+       */
+      agent_id?: string | null;
+      /** @description Participant kind to add. */
+      kind: components["schemas"]["SessionParticipantKind"];
+      role?: null | components["schemas"]["SessionParticipantRole"];
+    };
     /**
      * @description Agent configuration for agentic loop.
      *     An agent defines the behavior and capabilities of an AI assistant.
@@ -3916,6 +4059,11 @@ export interface components {
        * @example agentver_01933b5a00007000800000000000001
        */
       forked_from_version_id?: string | null;
+      /**
+       * @description Harness that supplies the base execution environment for this agent.
+       * @example harness_01933b5a00007000800000000000001
+       */
+      harness_id: string;
       /**
        * @description External identifier (agent_<32-hex>). Shown as "id" in API.
        *     Client-supplied or auto-generated.
@@ -4020,6 +4168,51 @@ export interface components {
      * @enum {string}
      */
     AgentStatus: "active" | "archived" | "deleted";
+    /** @description AgentTrigger is a durable, agent-owned invocation trigger. */
+    AgentTrigger: {
+      /**
+       * @description Agent that owns this trigger.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      agent_id: string;
+      /**
+       * Format: date-time
+       * @description Archive timestamp.
+       */
+      archived_at?: string | null;
+      /** @description Type-specific configuration (parsed via typed accessors). */
+      config: unknown;
+      /**
+       * Format: date-time
+       * @description Creation timestamp.
+       */
+      created_at: string;
+      /**
+       * Format: date-time
+       * @description Delete timestamp.
+       */
+      deleted_at?: string | null;
+      /** @description Whether the trigger is currently active. */
+      enabled: boolean;
+      /**
+       * @description External identifier (trg_<32-hex>). Shown as `id` in API.
+       * @example trg_01933b5a000070008000000000000001
+       */
+      id: string;
+      /** @description The kind of event that fires this trigger. */
+      trigger_type: components["schemas"]["AgentTriggerType"];
+      /**
+       * Format: date-time
+       * @description Last update timestamp.
+       */
+      updated_at: string;
+    };
+    /**
+     * @description The kind of event that fires an agent trigger. Only scheduled triggers exist
+     *     today; the enum leaves room for webhook/event triggers later.
+     * @enum {string}
+     */
+    AgentTriggerType: "schedule";
     /** @description Immutable snapshot of an Agent's authored and resolved runtime config. */
     AgentVersion: {
       /**
@@ -4179,6 +4372,10 @@ export interface components {
        *     agent fetch the input shape without scanning the whole spec.
        */
       schema_ref?: string | null;
+    };
+    /** @description Request body for API-key-based connections (e.g., Brave Search) */
+    ApiKeyConnectionRequest: {
+      api_key: string;
     };
     /**
      * @description App configuration for deploying agents to channels.
@@ -4503,6 +4700,70 @@ export interface components {
       /** @description Number of secrets stored */
       count: number;
     };
+    /**
+     * @description Budget — a spending cap for a subject in a currency.
+     *     API response DTO.
+     */
+    Budget: {
+      /**
+       * Format: double
+       * @description Current remaining balance (limit minus consumed).
+       */
+      balance: number;
+      /** Format: date-time */
+      created_at: string;
+      /** @description Currency: "usd", "tokens", "credits", or custom. */
+      currency: string;
+      /** @example bdgt_01933b5a00007000800000000000001 */
+      id: string;
+      /**
+       * Format: double
+       * @description Hard limit — budget ceiling.
+       */
+      limit: number;
+      /** @description Arbitrary metadata. */
+      metadata?: unknown;
+      organization_id: string;
+      period?: null | components["schemas"]["BudgetPeriod"];
+      /**
+       * Format: date-time
+       * @description When the current period started (used to detect period rollover for
+       *     `Duration` / `Rolling` periods, and to display "resets at" in the UI).
+       *     `None` for budgets without a period.
+       */
+      period_started_at?: string | null;
+      /**
+       * Format: double
+       * @description Soft limit — triggers pause/warn when balance drops below this.
+       */
+      soft_limit?: number | null;
+      status: components["schemas"]["BudgetStatus"];
+      /** @description Public ID of the subject entity. */
+      subject_id: string;
+      subject_type: components["schemas"]["BudgetSubjectType"];
+      /** Format: date-time */
+      updated_at: string;
+    };
+    /** @description Result of checking all budgets for a session. */
+    BudgetCheckResult: {
+      /** @description Most restrictive action across all budgets. */
+      action: string;
+      /**
+       * Format: double
+       * @description Remaining balance on the most restrictive budget.
+       */
+      balance?: number | null;
+      /** @description Budget that triggered the action. */
+      budget_id?: string | null;
+      /** @description Currency of the most restrictive budget. */
+      currency?: string | null;
+      /** @description Stable error code for user-facing budget failures. */
+      error_code?: string | null;
+      /** @description Structured interpolation fields for localized error rendering. */
+      error_fields?: Record<string, unknown> | null;
+      /** @description Human-readable message (set when action != "continue"). */
+      message?: string | null;
+    };
     /** @description Data for budget lifecycle events (warning, paused, exhausted, resumed). */
     BudgetEventData: {
       /**
@@ -4527,6 +4788,46 @@ export interface components {
        */
       soft_limit?: number | null;
     };
+    /**
+     * @description Budget period configuration for recurring budgets.
+     *
+     *     Periods drive automatic balance reset:
+     *     - `Duration` is a fixed-length sliding window (e.g. last 5 hours, last 30 days)
+     *       measured from `Budget::period_started_at`. When the window elapses the
+     *       balance is reset to `limit` and the window restarts.
+     *     - `Calendar` aligns to a calendar boundary (`hour | day | week | month | year`)
+     *       in UTC. The balance resets when the next boundary is crossed.
+     *     - `Rolling` is preserved for backwards compatibility and parses common
+     *       shorthand (`24h`, `5h`, `7d`, `30d`) into a `Duration`-equivalent reset
+     *       policy.
+     */
+    BudgetPeriod:
+      | {
+          /** Format: int64 */
+          seconds: number;
+          /** @enum {string} */
+          type: "duration";
+        }
+      | {
+          /** @enum {string} */
+          type: "rolling";
+          window: string;
+        }
+      | {
+          /** @enum {string} */
+          type: "calendar";
+          unit: string;
+        };
+    /**
+     * @description Budget status.
+     * @enum {string}
+     */
+    BudgetStatus: "active" | "paused" | "exhausted" | "disabled";
+    /**
+     * @description Subject type: what entity this budget constrains.
+     * @enum {string}
+     */
+    BudgetSubjectType: "session" | "agent" | "user" | "organization" | "app" | "app_channel";
     /**
      * @description Built-in tool configuration
      *
@@ -4916,6 +5217,15 @@ export interface components {
       /** @description Strategy used in this step. */
       strategy: string;
     };
+    /** @description Connection info returned in API responses (never includes token) */
+    Connection: {
+      /** Format: date-time */
+      connected_at: string;
+      connection_type: string;
+      provider: string;
+      provider_username?: string | null;
+      scopes?: string | null;
+    };
     /**
      * @description A part of message content - can be text, image, image_file, tool_call, or tool_result
      *
@@ -5035,6 +5345,18 @@ export interface components {
        */
       model_id?: string | null;
       reasoning?: null | components["schemas"]["ReasoningConfig"];
+      /**
+       * @description Speed (service tier) for this message turn: "flex", "default", or
+       *     "priority". Only sent to providers whose model profile advertises a
+       *     speed config (OpenAI `service_tier`).
+       */
+      speed?: string | null;
+      /**
+       * @description Verbosity for this message turn: "low", "medium", or "high". Only sent
+       *     to providers whose model profile advertises a verbosity config (OpenAI
+       *     `verbosity`).
+       */
+      verbosity?: string | null;
     };
     /** @description Request to copy a file */
     CopyFileRequest: {
@@ -5109,6 +5431,17 @@ export interface components {
        * @example Customer Support Agent
        */
       display_name?: string | null;
+      /**
+       * @description Harness ID used as this agent's base execution environment. If omitted,
+       *     the org's built-in `generic` harness is used.
+       * @example harness_01933b5a00007000800000000000001
+       */
+      harness_id?: string | null;
+      /**
+       * @description Addressable harness name. Alternative to `harness_id`.
+       * @example generic
+       */
+      harness_name?: string | null;
       /**
        * @description Client-supplied agent ID (format: agent_{32-hex}).
        *     If not provided, one is auto-generated.
@@ -5185,6 +5518,29 @@ export interface components {
        */
       tools?: components["schemas"]["ToolDefinition"][];
     };
+    /** @description Request to create a schedule trigger on an agent. */
+    CreateAgentTriggerRequest: {
+      /**
+       * @description Cron expression that drives the durable schedule. Accepts 5-field
+       *     (min hour day month weekday) or 7-field (sec … year) form.
+       * @example 0 9 * * *
+       */
+      cron_expression: string;
+      /** @description Whether the trigger is active on creation (default `true`). */
+      enabled?: boolean;
+      /**
+       * @description Message content or `{{template}}` sent when the schedule fires.
+       * @example Run the daily digest
+       */
+      message: string;
+      /** @description Whether invocations reuse a stable session or create a new one. */
+      session_mode?: components["schemas"]["InvocationSessionMode"];
+      /**
+       * @description IANA timezone identifier for cron evaluation (default `UTC`).
+       * @example UTC
+       */
+      timezone?: string;
+    };
     /** @description Request body for the `create_agent_version` operation. */
     CreateAgentVersionRequest: {
       change_kind?: null | components["schemas"]["AgentVersionChangeKind"];
@@ -5248,6 +5604,39 @@ export interface components {
        * @example feature/refund-flow
        */
       name: string;
+    };
+    /** @description Request body for creating a spending budget. */
+    CreateBudgetRequest: {
+      /**
+       * @description Unit in which usage and the limit are measured.
+       * @example usd
+       */
+      currency: string;
+      /**
+       * Format: double
+       * @description Hard spending ceiling for the budget.
+       * @example 100
+       */
+      limit: number;
+      /** @description Free-form metadata attached to this resource. */
+      metadata?: unknown;
+      period?: null | components["schemas"]["BudgetPeriod"];
+      /**
+       * Format: double
+       * @description Optional threshold that triggers a warning or pause before exhaustion.
+       * @example 20
+       */
+      soft_limit?: number | null;
+      /**
+       * @description Public identifier of the constrained resource.
+       * @example agent_01933b5a00007000800000000000001
+       */
+      subject_id: string;
+      /**
+       * @description Kind of resource constrained by the budget.
+       * @example agent
+       */
+      subject_type: string;
     };
     /** @description Request body for creating a database. */
     CreateDatabaseRequest: {
@@ -5504,6 +5893,12 @@ export interface components {
         });
     /** @description Request to create a message */
     CreateMessageRequest: {
+      /**
+       * @description Optional active agent participant to address for this turn. When omitted,
+       *     the session host remains the responder.
+       * @example part_01933b5a00007000800000000000001
+       */
+      addressed_participant_id?: string | null;
       controls?: null | components["schemas"]["Controls"];
       external_actor?: null | components["schemas"]["ExternalActor"];
       /** @description The message to create. Example shape is defined on `InputMessage`. */
@@ -5737,6 +6132,21 @@ export interface components {
       provider_type: components["schemas"]["DriverId"];
       trace?: null | components["schemas"]["ProviderTraceConfig"];
     };
+    /** @description Request body for creating a per-task push config. */
+    CreatePushConfigBody: {
+      /** @description Events that trigger delivery. Defaults to `["terminal"]`. */
+      event_filter?: string[] | null;
+      /**
+       * @description Optional HMAC-SHA256 signing secret (never returned once set).
+       * @example whsec_example_signing_secret_placeholder
+       */
+      secret?: string | null;
+      /**
+       * @description URL to POST task events to.
+       * @example https://hooks.example.com/everruns/tasks
+       */
+      url: string;
+    };
     /** @description Request body for the `create_saved_report` operation. */
     CreateSavedReportRequest: {
       dashboard?: null | components["schemas"]["SavedReportDashboardMetadata"];
@@ -5812,6 +6222,8 @@ export interface components {
     CreateSessionRequest: {
       /**
        * @description ID of the agent to work in this session (optional, format: agent_{32-hex}).
+       *     When supplied without a harness, the session inherits the agent's harness.
+       *     Mutually exclusive with `agent_name`.
        * @example agent_01933b5a00007000800000000000001
        */
       agent_id?: string | null;
@@ -5820,6 +6232,13 @@ export interface components {
        * @example identity_01933b5a00007000800000000000001
        */
       agent_identity_id?: string | null;
+      /**
+       * @description Name of the agent to work in this session (optional).
+       *     Alternative to `agent_id` — looked up by name within the org.
+       *     Mutually exclusive with `agent_id`.
+       * @example support
+       */
+      agent_name?: string | null;
       /**
        * @description Session-level capabilities (additive to agent capabilities).
        *     Applied after agent capabilities when building RuntimeAgent.
@@ -5836,9 +6255,15 @@ export interface components {
        */
       capabilities?: components["schemas"]["AgentCapabilityConfig"][];
       /**
+       * @description Optional objective for the session. Visible to the agent at system-prompt level.
+       * @example Investigate the queue latency regression and propose a fix
+       */
+      goal?: string | null;
+      /**
        * @description ID of the harness for this session (format: harness_{32-hex}).
-       *     If omitted, the org default harness is used. New orgs default that to Generic.
-       *     Mutually exclusive with `harness_name`.
+       *     If omitted, the harness is derived from the agent (when one is supplied),
+       *     else the org default harness, else the built-in fallback. New orgs default
+       *     that to Generic. Mutually exclusive with `harness_name`.
        * @example harness_01933b5a00007000800000000000001
        */
       harness_id?: string | null;
@@ -6120,12 +6545,12 @@ export interface components {
     DeleteAccountResponse: {
       deleted: boolean;
     };
+    /** @description Response for delete operation */
+    DeleteFileResponse: {
+      deleted: boolean;
+    };
     DeleteQuery: {
       recursive?: boolean;
-    };
-    /** @description Response for delete operation */
-    DeleteResponse: {
-      deleted: boolean;
     };
     /** @description Query for diff endpoint */
     DiffQuery: {
@@ -6898,6 +7323,11 @@ export interface components {
        */
       agent_id?: string | null;
       /**
+       * @description Goal for the fork. Omitted inherits the parent's goal.
+       * @example Try the async rewrite from this state
+       */
+      goal?: string | null;
+      /**
        * @description Override the locale (BCP 47).
        * @example uk-UA
        */
@@ -7140,18 +7570,15 @@ export interface components {
       path: string;
     };
     GrepRequest: {
+      /** @description Optional path glob (`**\/*.rs`, `docs/*.md`). */
       path_pattern?: string | null;
+      /** @description Regex pattern to search for. */
       pattern: string;
     };
     /** @description Grep result for a file */
     GrepResult: {
       matches: components["schemas"]["GrepMatch"][];
       path: string;
-    };
-    GrepResultEntry: {
-      path: string;
-      /** Format: int64 */
-      size_bytes: number;
     };
     /**
      * @description Effective action of a hit after applying the config mode.
@@ -8052,6 +8479,27 @@ export interface components {
      * @enum {string}
      */
     LeasedResourceStatus: "active" | "cleaning" | "released" | "cleanup_failed";
+    /** @description Immutable ledger entry recording resource consumption or credit against a budget. */
+    LedgerEntry: {
+      /**
+       * Format: double
+       * @description Positive = debit (consumption), negative = credit (top-up/refund).
+       */
+      amount: number;
+      budget_id: string;
+      /** Format: date-time */
+      created_at: string;
+      description?: string | null;
+      id: string;
+      /** @description Which meter produced this: "llm_tokens", "tool_calls", etc. */
+      meter_source: string;
+      /** @description Reference entity ID. */
+      ref_id?: string | null;
+      /** @description Reference entity type: "llm_generation", "tool_execution", "manual". */
+      ref_type?: string | null;
+      /** @description Session context for this entry. */
+      session_id?: string | null;
+    };
     /**
      * @description Query parameters for listing recent app invocation runs — a relative
      *     time window and an optional bucketing hint for the dashboard.
@@ -8204,6 +8652,11 @@ export interface components {
          * @example agentver_01933b5a00007000800000000000001
          */
         forked_from_version_id?: string | null;
+        /**
+         * @description Harness that supplies the base execution environment for this agent.
+         * @example harness_01933b5a00007000800000000000001
+         */
+        harness_id: string;
         /**
          * @description External identifier (agent_<32-hex>). Shown as "id" in API.
          *     Client-supplied or auto-generated.
@@ -8526,18 +8979,6 @@ export interface components {
       data: {
         matches: components["schemas"]["GrepMatch"][];
         path: string;
-      }[];
-    };
-    /**
-     * @description Response wrapper for list endpoints.
-     *     All list endpoints return responses wrapped in a `data` field.
-     */
-    ListResponse_GrepResultEntry: {
-      /** @description Array of items returned by the list operation. */
-      data: {
-        path: string;
-        /** Format: int64 */
-        size_bytes: number;
       }[];
     };
     /**
@@ -8944,25 +9385,7 @@ export interface components {
      * @description Response wrapper for list endpoints.
      *     All list endpoints return responses wrapped in a `data` field.
      */
-    ListResponse_MemoryFileInfo: {
-      /** @description Array of items returned by the list operation. */
-      data: {
-        content_hash?: string | null;
-        /** Format: date-time */
-        created_at: string;
-        is_directory: boolean;
-        path: string;
-        /** Format: int64 */
-        size_bytes: number;
-        /** Format: date-time */
-        updated_at: string;
-      }[];
-    };
-    /**
-     * @description Response wrapper for list endpoints.
-     *     All list endpoints return responses wrapped in a `data` field.
-     */
-    ListResponse_MemoryResponse: {
+    ListResponse_Memory: {
       /** @description Array of items returned by the list operation. */
       data: {
         /**
@@ -9014,6 +9437,21 @@ export interface components {
          * @example design-docs
          */
         name: string;
+        /**
+         * @description Owning agent when `scope = agent`.
+         * @example agent_01933b5a000070008000000000000001
+         */
+        owner_agent_id?: string | null;
+        /**
+         * Format: uuid
+         * @description Owning user when `scope = user`.
+         */
+        owner_user_id?: string | null;
+        /**
+         * @description Ownership scope (`org`, `agent`, or `user`).
+         * @example org
+         */
+        scope: string;
         /** @description Source-specific configuration (git remote, github repo, manual upload). */
         source: components["schemas"]["MemorySourceResponse"];
         /**
@@ -9037,6 +9475,36 @@ export interface components {
          * @example 2026-05-25T08:00:00Z
          */
         updated_at: string;
+      }[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
+    ListResponse_MemoryFileInfo: {
+      /** @description Array of items returned by the list operation. */
+      data: {
+        content_hash?: string | null;
+        /** Format: date-time */
+        created_at: string;
+        is_directory: boolean;
+        path: string;
+        /** Format: int64 */
+        size_bytes: number;
+        /** Format: date-time */
+        updated_at: string;
+      }[];
+    };
+    /**
+     * @description Response wrapper for list endpoints.
+     *     All list endpoints return responses wrapped in a `data` field.
+     */
+    ListResponse_MemoryGrepResult: {
+      /** @description Array of items returned by the list operation. */
+      data: {
+        path: string;
+        /** Format: int64 */
+        size_bytes: number;
       }[];
     };
     /**
@@ -9955,7 +10423,7 @@ export interface components {
      * @description Response wrapper for list endpoints.
      *     All list endpoints return responses wrapped in a `data` field.
      */
-    ListResponse_WorkspaceResponse: {
+    ListResponse_Workspace: {
       /** @description Array of items returned by the list operation. */
       data: {
         /** Format: date-time */
@@ -10383,33 +10851,8 @@ export interface components {
       openWorldHint?: boolean | null;
       readOnlyHint?: boolean | null;
     };
-    MemoryFile: {
-      /** @description Text or base64-encoded content; check `encoding`. */
-      content: string;
-      content_hash?: string | null;
-      /** Format: date-time */
-      created_at: string;
-      /** @description "text" or "base64". */
-      encoding: string;
-      path: string;
-      /** Format: int64 */
-      size_bytes: number;
-      /** Format: date-time */
-      updated_at: string;
-    };
-    MemoryFileInfo: {
-      content_hash?: string | null;
-      /** Format: date-time */
-      created_at: string;
-      is_directory: boolean;
-      path: string;
-      /** Format: int64 */
-      size_bytes: number;
-      /** Format: date-time */
-      updated_at: string;
-    };
     /** @description Response body for memory. */
-    MemoryResponse: {
+    Memory: {
       /**
        * Format: date-time
        * @description Timestamp when this resource was archived, if any (RFC 3339).
@@ -10459,6 +10902,21 @@ export interface components {
        * @example design-docs
        */
       name: string;
+      /**
+       * @description Owning agent when `scope = agent`.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      owner_agent_id?: string | null;
+      /**
+       * Format: uuid
+       * @description Owning user when `scope = user`.
+       */
+      owner_user_id?: string | null;
+      /**
+       * @description Ownership scope (`org`, `agent`, or `user`).
+       * @example org
+       */
+      scope: string;
       /** @description Source-specific configuration (git remote, github repo, manual upload). */
       source: components["schemas"]["MemorySourceResponse"];
       /**
@@ -10482,6 +10940,36 @@ export interface components {
        * @example 2026-05-25T08:00:00Z
        */
       updated_at: string;
+    };
+    MemoryFile: {
+      /** @description Text or base64-encoded content; check `encoding`. */
+      content: string;
+      content_hash?: string | null;
+      /** Format: date-time */
+      created_at: string;
+      /** @description "text" or "base64". */
+      encoding: string;
+      path: string;
+      /** Format: int64 */
+      size_bytes: number;
+      /** Format: date-time */
+      updated_at: string;
+    };
+    MemoryFileInfo: {
+      content_hash?: string | null;
+      /** Format: date-time */
+      created_at: string;
+      is_directory: boolean;
+      path: string;
+      /** Format: int64 */
+      size_bytes: number;
+      /** Format: date-time */
+      updated_at: string;
+    };
+    MemoryGrepResult: {
+      path: string;
+      /** Format: int64 */
+      size_bytes: number;
     };
     /** @description Response body for memory source. */
     MemorySourceResponse:
@@ -10783,6 +11271,7 @@ export interface components {
       reasoning_effort?: null | components["schemas"]["ReasoningEffortConfig"];
       /** @description Release date (YYYY-MM-DD format) */
       release_date?: string | null;
+      speed?: null | components["schemas"]["SpeedConfig"];
       /** @description Whether the model supports structured output (JSON mode) */
       structured_output: boolean;
       /** @description Provider-advertised request parameters supported by this model. */
@@ -10803,6 +11292,7 @@ export interface components {
        *     token usage for large tool sets. Currently supported by GPT-5.4 and newer.
        */
       tool_search?: boolean;
+      verbosity?: null | components["schemas"]["VerbosityConfig"];
     };
     /**
      * @description How the model was added to the system
@@ -11186,6 +11676,11 @@ export interface components {
          */
         forked_from_session_id?: string | null;
         /**
+         * @description Session objective visible to the runtime agent at system-prompt level.
+         * @example Investigate the queue latency regression
+         */
+        goal?: string | null;
+        /**
          * @description ID of the harness for this session (format: harness_{32-hex}).
          * @example harness_01933b5a00007000800000000000001
          */
@@ -11263,7 +11758,7 @@ export interface components {
         parallel_tool_calls?: boolean | null;
         /**
          * @description Parent session that spawned this subagent. NULL for top-level sessions.
-         *     Used as the nesting guard in spawn_subagent.
+         *     Used to compute governed subagent delegation depth.
          */
         parent_session_id?: string | null;
         /**
@@ -11572,6 +12067,11 @@ export interface components {
          */
         forked_from_version_id?: string | null;
         /**
+         * @description Harness that supplies the base execution environment for this agent.
+         * @example harness_01933b5a00007000800000000000001
+         */
+        harness_id: string;
+        /**
          * @description External identifier (agent_<32-hex>). Shown as "id" in API.
          *     Client-supplied or auto-generated.
          * @example agent_01933b5a000070008000000000000001
@@ -11768,6 +12268,11 @@ export interface components {
          */
         forked_from_session_id?: string | null;
         /**
+         * @description Session objective visible to the runtime agent at system-prompt level.
+         * @example Investigate the queue latency regression
+         */
+        goal?: string | null;
+        /**
          * @description ID of the harness for this session (format: harness_{32-hex}).
          * @example harness_01933b5a00007000800000000000001
          */
@@ -11845,7 +12350,7 @@ export interface components {
         parallel_tool_calls?: boolean | null;
         /**
          * @description Parent session that spawned this subagent. NULL for top-level sessions.
-         *     Used as the nesting guard in spawn_subagent.
+         *     Used to compute governed subagent delegation depth.
          */
         parent_session_id?: string | null;
         /**
@@ -12870,7 +13375,7 @@ export interface components {
       };
     };
     /** @description Response body for resource stats. */
-    ResourceStatsResponse: {
+    ResourceStats: {
       /**
        * Format: int64
        * @description Sessions in a running state right now.
@@ -12982,6 +13487,11 @@ export interface components {
        * @example 2
        */
       waiting_for_tool_results_session_count: number;
+    };
+    /** @description Result of resuming budgets paused for a session. */
+    ResumeSessionResponse: {
+      resumed_budgets: number;
+      session_id: string;
     };
     /**
      * @description Risk classification for capabilities (TM-AGENT-005).
@@ -13303,6 +13813,22 @@ export interface components {
        */
       type: string;
     };
+    /**
+     * @description Typed configuration for a `Schedule` trigger.
+     *
+     *     `message` is also the template body. `{{path.to.value}}` placeholders are
+     *     expanded at invocation time. Mirrors `app::ScheduleChannelConfig`.
+     */
+    ScheduleTriggerConfig: {
+      /** @description Cron expression that drives the durable schedule. */
+      cron_expression: string;
+      /** @description Message content or template sent when the schedule fires. */
+      message: string;
+      /** @description Whether invocations reuse a stable session or create a new one. */
+      session_mode?: components["schemas"]["InvocationSessionMode"];
+      /** @description IANA timezone identifier for cron evaluation. */
+      timezone?: string;
+    };
     /** @description Schedules list response */
     SchedulesListResponse: {
       /** @description Page of items returned by this query. */
@@ -13422,6 +13948,11 @@ export interface components {
        */
       forked_from_session_id?: string | null;
       /**
+       * @description Session objective visible to the runtime agent at system-prompt level.
+       * @example Investigate the queue latency regression
+       */
+      goal?: string | null;
+      /**
        * @description ID of the harness for this session (format: harness_{32-hex}).
        * @example harness_01933b5a00007000800000000000001
        */
@@ -13499,7 +14030,7 @@ export interface components {
       parallel_tool_calls?: boolean | null;
       /**
        * @description Parent session that spawned this subagent. NULL for top-level sessions.
-       *     Used as the nesting guard in spawn_subagent.
+       *     Used to compute governed subagent delegation depth.
        */
       parent_session_id?: string | null;
       /**
@@ -13651,6 +14182,50 @@ export interface components {
       turn_id: string;
       usage?: null | components["schemas"]["TokenUsage"];
     };
+    /** @description Session participant - an agent or user that has joined a session. */
+    SessionParticipant: {
+      /**
+       * @description Present for agent participants.
+       * @example agent_01933b5a00007000800000000000001
+       */
+      agent_id?: string | null;
+      /**
+       * @description Immutable agent version captured for an agent participant when known.
+       * @example agentver_01933b5a00007000800000000000001
+       */
+      agent_version_id?: string | null;
+      /**
+       * @description Unique identifier for the participant row (format: part_{32-hex}).
+       * @example part_01933b5a00007000800000000000001
+       */
+      id: string;
+      /** Format: date-time */
+      joined_at: string;
+      kind: components["schemas"]["SessionParticipantKind"];
+      /** Format: date-time */
+      left_at?: string | null;
+      /**
+       * @description Principal that joined the session.
+       * @example principal_01933b5a000070008000000000000001
+       */
+      principal_id: string;
+      role: components["schemas"]["SessionParticipantRole"];
+      /**
+       * @description Session this participant belongs to.
+       * @example session_01933b5a00007000800000000000001
+       */
+      session_id: string;
+    };
+    /**
+     * @description Kind of actor participating in a session.
+     * @enum {string}
+     */
+    SessionParticipantKind: "agent" | "user";
+    /**
+     * @description Role a participant has inside a session.
+     * @enum {string}
+     */
+    SessionParticipantRole: "host" | "member";
     SessionRef: {
       created_session?: boolean | null;
       session_id: string;
@@ -13775,6 +14350,14 @@ export interface components {
       progress?: null | components["schemas"]["BackgroundProgress"];
       /** @description Machine result in the session VFS: `/.tasks/{task_id}/result.json`. */
       result_path?: string | null;
+      /**
+       * @description Root of the owning session's delegation tree (EVE-680). Populated on
+       *     API reads from the denormalized storage column so cross-session tooling
+       *     (e.g. the Work view) can group a whole tree's tasks by one id. `None`
+       *     for a top-level session that is its own root, or when unavailable.
+       *     Storage-derived, never client-settable on create.
+       */
+      root_session_id?: string | null;
       /** @description Owning session. */
       session_id: string;
       /** @description Kind-specific input (instructions, tool args, external agent id). */
@@ -13939,6 +14522,29 @@ export interface components {
       /** @description Non-fatal warnings (style, deprecated patterns, optional fields missing). Emitted alongside a `valid` result. */
       warnings?: string[];
     };
+    /**
+     * @description Speed level for models that expose a latency/price service tier.
+     *     Wire values map 1:1 to the OpenAI `service_tier` request parameter:
+     *     `flex` (slower, cheaper), `default` (standard), `priority` (faster,
+     *     premium). `auto` is deliberately not offered — omitting the field
+     *     preserves the provider's default routing.
+     * @enum {string}
+     */
+    Speed: "flex" | "default" | "priority";
+    /** @description Speed configuration for a model */
+    SpeedConfig: {
+      /** @description Default speed for this model */
+      default: components["schemas"]["Speed"];
+      /** @description Available speed values for this model */
+      values: components["schemas"]["SpeedValue"][];
+    };
+    /** @description Named speed value for UI display */
+    SpeedValue: {
+      /** @description Display name (e.g., "Flex", "Fast") */
+      name: string;
+      /** @description The API value (e.g., "flex", "priority") */
+      value: components["schemas"]["Speed"];
+    };
     StatRequest: {
       path: string;
     };
@@ -14066,6 +14672,41 @@ export interface components {
           /** @enum {string} */
           type: "data";
         };
+    /**
+     * @description Public view of a per-task push config. The stored secret is NEVER returned —
+     *     only `has_secret` signals whether one is configured.
+     */
+    TaskPushConfig: {
+      /**
+       * Format: date-time
+       * @description When the config was created (RFC 3339).
+       * @example 2026-07-11T00:00:00Z
+       */
+      created_at: string;
+      /** @description Events that trigger delivery (terminal, awaiting_input, message). */
+      event_filter: string[];
+      /**
+       * @description Whether a signing secret is configured (the secret itself is never returned).
+       * @example true
+       */
+      has_secret: boolean;
+      /**
+       * @description Public identifier (tpc_<32-hex-chars>).
+       * @example tpc_9f8c2b1a4e7d4c3b8a1f2e3d4c5b6a7f
+       */
+      id: string;
+      /**
+       * Format: date-time
+       * @description When the config was last updated (RFC 3339).
+       * @example 2026-07-11T00:00:00Z
+       */
+      updated_at: string;
+      /**
+       * @description Target URL that receives POST deliveries.
+       * @example https://hooks.example.com/everruns/tasks
+       */
+      url: string;
+    };
     /** @description Task response */
     TaskResponse: {
       /**
@@ -14513,6 +15154,15 @@ export interface components {
       /** @description Stable fingerprint of tool name + normalized arguments. */
       tool_call_fingerprint?: string | null;
     };
+    TopUpRequest: {
+      /**
+       * Format: double
+       * @description Amount credited back to the budget balance.
+       */
+      amount: number;
+      /** @description Human-readable description. Safe to render in user-facing messages. */
+      description?: string | null;
+    };
     /**
      * @description Action taken during transcript repair for a dangling tool call.
      * @enum {string}
@@ -14532,6 +15182,11 @@ export interface components {
       tool_call_id: string;
       /** @description The tool name, if known. */
       tool_name?: string | null;
+    };
+    TriggerAgentTriggerOutput: {
+      created_session: boolean;
+      /** @description Session's prefixed public identifier. */
+      session_id: components["schemas"]["sessionId"];
     };
     /** @description Manual trigger response */
     TriggerResponse: {
@@ -14693,6 +15348,16 @@ export interface components {
        */
       display_name?: string | null;
       /**
+       * @description Harness ID used as this agent's base execution environment. Omit to leave unchanged.
+       * @example harness_01933b5a00007000800000000000001
+       */
+      harness_id?: string | null;
+      /**
+       * @description Addressable harness name. Alternative to `harness_id`; omit to leave unchanged.
+       * @example generic
+       */
+      harness_name?: string | null;
+      /**
        * @description Starter files copied into each new session for this agent.
        * @example [
        *       {
@@ -14759,6 +15424,17 @@ export interface components {
        */
       tools?: components["schemas"]["ToolDefinition"][] | null;
     };
+    /**
+     * @description Request to update a schedule trigger. Only provided fields change; the rest
+     *     are preserved from the stored config.
+     */
+    UpdateAgentTriggerRequest: {
+      cron_expression?: string | null;
+      enabled?: boolean | null;
+      message?: string | null;
+      session_mode?: null | components["schemas"]["InvocationSessionMode"];
+      timezone?: string | null;
+    };
     /** @description Request to update an app. Only provided fields will be updated. */
     UpdateAppRequest: {
       /**
@@ -14786,6 +15462,24 @@ export interface components {
        */
       name?: string | null;
       status?: null | components["schemas"]["AppStatus"];
+    };
+    /** @description Request body for changing a spending budget. */
+    UpdateBudgetRequest: {
+      /**
+       * Format: double
+       * @description Replacement hard spending ceiling.
+       * @example 150
+       */
+      limit?: number | null;
+      /** @description Free-form metadata attached to this resource. */
+      metadata?: unknown;
+      /**
+       * Format: double
+       * @description Replacement soft threshold, or null to remove the threshold.
+       */
+      soft_limit?: number | null;
+      /** @description Current lifecycle status. */
+      status?: string | null;
     };
     /** @description Request body for the `update_declarative_capability` operation. */
     UpdateDeclarativeCapabilityRequest: {
@@ -15283,6 +15977,11 @@ export interface components {
        */
       agent_identity_id?: string | null;
       /**
+       * @description Updated session objective.
+       * @example Summarize the incident and list remediations
+       */
+      goal?: string | null;
+      /**
        * @description Session locale (BCP 47, e.g. `uk-UA`).
        * @example uk-UA
        */
@@ -15348,6 +16047,29 @@ export interface components {
        *     Use this when a customer asks for a refund within 30 days of purchase.
        */
       skill_md: string;
+    };
+    /**
+     * @description Verbosity level for models that support output-length control.
+     *     Wire values map 1:1 to the OpenAI `verbosity` request parameter:
+     *     `low` (terse), `medium` (balanced, provider default), `high`
+     *     (comprehensive). Independent of `ReasoningEffort`, which tunes the
+     *     amount of reasoning rather than the length of the final answer.
+     * @enum {string}
+     */
+    Verbosity: "low" | "medium" | "high";
+    /** @description Verbosity configuration for a model */
+    VerbosityConfig: {
+      /** @description Default verbosity for this model */
+      default: components["schemas"]["Verbosity"];
+      /** @description Available verbosity values for this model */
+      values: components["schemas"]["VerbosityValue"][];
+    };
+    /** @description Named verbosity value for UI display */
+    VerbosityValue: {
+      /** @description Display name (e.g., "Low", "High") */
+      name: string;
+      /** @description The API value (e.g., "low", "high") */
+      value: components["schemas"]["Verbosity"];
     };
     /** @description Request body for voice attach. */
     VoiceAttachRequest: components["schemas"]["VoiceSessionOptions"] & {
@@ -15660,6 +16382,11 @@ export interface components {
        * @example agentver_01933b5a00007000800000000000001
        */
       forked_from_version_id?: string | null;
+      /**
+       * @description Harness that supplies the base execution environment for this agent.
+       * @example harness_01933b5a00007000800000000000001
+       */
+      harness_id: string;
       /**
        * @description External identifier (agent_<32-hex>). Shown as "id" in API.
        *     Client-supplied or auto-generated.
@@ -16550,6 +17277,11 @@ export interface components {
        */
       forked_from_version_id?: string | null;
       /**
+       * @description Harness that supplies the base execution environment for this agent.
+       * @example harness_01933b5a00007000800000000000001
+       */
+      harness_id: string;
+      /**
        * @description External identifier (agent_<32-hex>). Shown as "id" in API.
        *     Client-supplied or auto-generated.
        * @example agent_01933b5a000070008000000000000001
@@ -16872,6 +17604,11 @@ export interface components {
        */
       forked_from_session_id?: string | null;
       /**
+       * @description Session objective visible to the runtime agent at system-prompt level.
+       * @example Investigate the queue latency regression
+       */
+      goal?: string | null;
+      /**
        * @description ID of the harness for this session (format: harness_{32-hex}).
        * @example harness_01933b5a00007000800000000000001
        */
@@ -16949,7 +17686,7 @@ export interface components {
       parallel_tool_calls?: boolean | null;
       /**
        * @description Parent session that spawned this subagent. NULL for top-level sessions.
-       *     Used as the nesting guard in spawn_subagent.
+       *     Used to compute governed subagent delegation depth.
        */
       parent_session_id?: string | null;
       /**
@@ -17291,7 +18028,7 @@ export interface components {
       /** @description Total number of items matching the query, across all pages. */
       total: number;
     };
-    WorkspaceResponse: {
+    Workspace: {
       /** Format: date-time */
       archived_at?: string | null;
       /** Format: date-time */
@@ -17344,6 +18081,11 @@ export interface components {
      * @example paypol_01933b5a00007000800000000000001
      */
     paypolId: string;
+    /**
+     * @description Prefixed identifier with 'session' prefix
+     * @example session_01933b5a00007000800000000000001
+     */
+    sessionId: string;
   };
   responses: never;
   parameters: never;
@@ -18089,7 +18831,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ResourceStatsResponse"];
+          "application/json": components["schemas"]["ResourceStats"];
         };
       };
       /** @description Agent not found */
@@ -18103,6 +18845,233 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_agent_triggers: {
+    parameters: {
+      query?: {
+        /** @description Include archived triggers (default false). */
+        include_archived?: boolean;
+      };
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent triggers */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentTrigger"][];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  create_agent_trigger: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateAgentTriggerRequest"];
+      };
+    };
+    responses: {
+      /** @description Trigger created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentTrigger"];
+        };
+      };
+      /** @description Invalid request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_agent_trigger: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+        /** @description Trigger ID (prefixed) */
+        trigger_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Trigger */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentTrigger"];
+        };
+      };
+      /** @description Trigger not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  delete_agent_trigger: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+        /** @description Trigger ID (prefixed) */
+        trigger_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Trigger archived */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Trigger not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  update_agent_trigger: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+        /** @description Trigger ID (prefixed) */
+        trigger_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateAgentTriggerRequest"];
+      };
+    };
+    responses: {
+      /** @description Trigger updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentTrigger"];
+        };
+      };
+      /** @description Invalid request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Trigger not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  trigger_agent_trigger: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+        /** @description Trigger ID (prefixed) */
+        trigger_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Trigger fired */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TriggerAgentTriggerOutput"];
+        };
+      };
+      /** @description Trigger not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };
@@ -21730,7 +22699,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ResourceStatsResponse"];
+          "application/json": components["schemas"]["ResourceStats"];
         };
       };
       /** @description Forbidden */
@@ -22932,7 +23901,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ListResponse_MemoryResponse"];
+          "application/json": components["schemas"]["ListResponse_Memory"];
         };
       };
     };
@@ -22956,7 +23925,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["MemoryResponse"];
+          "application/json": components["schemas"]["Memory"];
         };
       };
       /** @description Invalid input */
@@ -22997,7 +23966,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["MemoryResponse"];
+          "application/json": components["schemas"]["Memory"];
         };
       };
       /** @description Memory not found */
@@ -23063,7 +24032,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["MemoryResponse"];
+          "application/json": components["schemas"]["Memory"];
         };
       };
       /** @description Invalid input */
@@ -23190,7 +24159,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ListResponse_GrepResultEntry"];
+          "application/json": components["schemas"]["ListResponse_MemoryGrepResult"];
         };
       };
       /** @description Invalid pattern */
@@ -23461,7 +24430,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["MemoryResponse"];
+          "application/json": components["schemas"]["Memory"];
         };
       };
       /** @description Invalid sync request */
@@ -26455,7 +27424,14 @@ export interface operations {
   };
   export_session_jsonl: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Output format: jsonl (default) or atif */
+        format?: string;
+        /** @description ATIF only: return byte-bounded segments linked by continued_trajectory_ref instead of one document */
+        segmented?: boolean;
+        /** @description ATIF segmented export: opaque continuation cursor from the previous segment */
+        cursor?: string;
+      };
       header?: never;
       path: {
         /** @description Session ID (prefixed, e.g., session_...) */
@@ -26465,7 +27441,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description JSONL file with one message per line */
+      /** @description JSONL file with one message per line, or one ATIF trajectory JSON document (images export as multimodal ContentParts; X-Atif-Images-Omitted header only when an image could not be materialized). With segmented=true, one ATIF segment linked forward by continued_trajectory_ref. */
       200: {
         headers: {
           [name: string]: unknown;
@@ -26474,7 +27450,7 @@ export interface operations {
           "application/x-ndjson": unknown;
         };
       };
-      /** @description Invalid ID format */
+      /** @description Invalid ID format, or malformed/foreign segmented-export cursor */
       400: {
         headers: {
           [name: string]: unknown;
@@ -26494,6 +27470,15 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      /** @description ATIF document exceeds the 50 MiB export cap; retry with segmented=true for a recoverable chunked export */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
       };
       /** @description Internal server error */
       500: {
@@ -26847,6 +27832,158 @@ export interface operations {
       };
       /** @description Session not found */
       404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_session_participants: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID (prefixed, e.g., session_...) */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Session participant history */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionParticipant"][];
+        };
+      };
+      /** @description Invalid session ID */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  add_session_participant: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID (prefixed, e.g., session_...) */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AddSessionParticipantRequest"];
+      };
+    };
+    responses: {
+      /** @description Participant added successfully */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionParticipant"];
+        };
+      };
+      /** @description Invalid participant request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session or agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Participant conflicts with current membership */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  leave_session_participant: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID (prefixed, e.g., session_...) */
+        session_id: string;
+        /** @description Participant ID (prefixed, e.g., part_...) */
+        participant_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Participant left successfully */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionParticipant"];
+        };
+      };
+      /** @description Invalid ID */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session or participant not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Host participant cannot leave through this endpoint */
+      409: {
         headers: {
           [name: string]: unknown;
         };
@@ -27375,6 +28512,113 @@ export interface operations {
         content?: never;
       };
       /** @description Session or task not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  list_push_configs: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID */
+        session_id: string;
+        /** @description Task ID */
+        task_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Push configs */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TaskPushConfig"][];
+        };
+      };
+      /** @description Session or task not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  create_push_config: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID */
+        session_id: string;
+        /** @description Task ID */
+        task_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreatePushConfigBody"];
+      };
+    };
+    responses: {
+      /** @description Created push config */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TaskPushConfig"];
+        };
+      };
+      /** @description Invalid request (bad URL or event_filter) */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session or task not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  delete_push_config: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID */
+        session_id: string;
+        /** @description Task ID */
+        task_id: string;
+        /** @description Push config ID (tpc_...) */
+        config_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Push config deleted */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session, task, or push config not found */
       404: {
         headers: {
           [name: string]: unknown;
@@ -28122,6 +29366,8 @@ export interface operations {
         kind?: string;
         /** @description Only tasks created at/after this RFC3339 timestamp */
         created_after?: string;
+        /** @description Only tasks whose owning session's delegation-tree root is this session */
+        root_session_id?: string;
         /** @description Max tasks, newest first (default 100, max 500) */
         limit?: number;
       };
@@ -28369,7 +29615,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["ListResponse_WorkspaceResponse"];
+          "application/json": components["schemas"]["ListResponse_Workspace"];
         };
       };
     };
@@ -28393,7 +29639,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["WorkspaceResponse"];
+          "application/json": components["schemas"]["Workspace"];
         };
       };
       /** @description Invalid input */
@@ -28434,7 +29680,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["WorkspaceResponse"];
+          "application/json": components["schemas"]["Workspace"];
         };
       };
       /** @description Not found */
@@ -28500,7 +29746,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["WorkspaceResponse"];
+          "application/json": components["schemas"]["Workspace"];
         };
       };
       /** @description Invalid input */
@@ -29028,7 +30274,7 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["DeleteResponse"];
+          "application/json": components["schemas"]["DeleteFileResponse"];
         };
       };
       /** @description Invalid request */

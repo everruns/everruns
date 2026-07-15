@@ -6,14 +6,16 @@ Verify that an active turn can be cancelled and the session returns to idle stat
 
 ## Preconditions
 
-- API server running (`just start-dev`)
+- API server running locally (`just start-dev`) or a deployed API is available
+- Set `BASE_URL` to the API origin (for example, `http://localhost:9300`)
+- For authenticated deployments, configure `curl` with the required authorization and organization headers
 - LLM API keys configured
 
 ## Test Data
 
 | Field | Value |
 |-------|-------|
-| Agent Name | Slow Agent |
+| Agent Name | slow-agent |
 | Agent Prompt | You are an assistant. Write a very long, detailed essay about the history of computing. |
 | User Message | Write the essay now. |
 
@@ -21,10 +23,10 @@ Verify that an active turn can be cancelled and the session returns to idle stat
 
 1. Create agent:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "${BASE_URL}/api/v1/agents" \
      -H "Content-Type: application/json" \
      -d '{
-       "name": "Slow Agent",
+       "name": "slow-agent",
        "system_prompt": "You are an assistant. Write a very long, detailed essay about the history of computing."
      }'
    ```
@@ -32,7 +34,7 @@ Verify that an active turn can be cancelled and the session returns to idle stat
 
 2. Create session:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions" \
+   curl -s -X POST "${BASE_URL}/api/v1/sessions" \
      -H "Content-Type: application/json" \
      -d '{"agent_id": "{agent_id}"}'
    ```
@@ -40,7 +42,7 @@ Verify that an active turn can be cancelled and the session returns to idle stat
 
 3. Send message to trigger a long response:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions/{session_id}/messages" \
+   curl -s -X POST "${BASE_URL}/api/v1/sessions/{session_id}/messages" \
      -H "Content-Type: application/json" \
      -d '{
        "message": {
@@ -52,12 +54,12 @@ Verify that an active turn can be cancelled and the session returns to idle stat
 
 4. While session is active, cancel the turn:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions/{session_id}/cancel"
+   curl -s -X POST "${BASE_URL}/api/v1/sessions/{session_id}/cancel"
    ```
 
 5. Wait briefly, then check session status:
    ```bash
-   curl -s "http://localhost:9300/api/v1/sessions/{session_id}"
+   curl -s "${BASE_URL}/api/v1/sessions/{session_id}"
    ```
 
 ## Expected Result
@@ -66,4 +68,5 @@ Verify that an active turn can be cancelled and the session returns to idle stat
 |-------|----------|
 | Step 4: HTTP status | 200 |
 | Step 5: session `status` | `"idle"` |
-| Events contain cancellation | `turn.cancelled` or `turn.completed` event |
+| Events contain cancellation | `turn.cancelled` event |
+| Events contain lifecycle settle | `session.idled` event emitted after `turn.cancelled` |

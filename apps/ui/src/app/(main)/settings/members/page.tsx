@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Notice, NoticeDescription } from "@/components/ui/notice";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -71,29 +72,48 @@ const ROLE_BADGE_VARIANT: Record<OrgRole, "default" | "secondary" | "outline"> =
   member: "outline",
 };
 
+/** Extract a human-facing message from a mutation error (ApiError carries the
+ *  backend 403/400 message), falling back to a generic string. */
+function mutationErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  return fallback;
+}
+
 function MemberCard({
   member,
   currentUserId,
-  canManage,
-  isOwner,
+  viewerIsAdmin,
+  viewerIsOwner,
 }: {
   member: OrgMember;
   currentUserId: string;
-  canManage: boolean;
-  isOwner: boolean;
+  /** Viewer has admin (or higher) role in the current org. */
+  viewerIsAdmin: boolean;
+  /** Viewer has owner role in the current org. */
+  viewerIsOwner: boolean;
 }) {
   const updateRole = useUpdateMemberRole();
   const removeMember = useRemoveMember();
   const [pendingRole, setPendingRole] = useState<string | null>(null);
   const isSelf = member.user_id === currentUserId;
+  const targetIsOwner = member.role === "owner";
   const RoleIcon = ROLE_ICONS[member.role];
+
+  // Mirror backend owner/admin rules (crates/server/src/api/organizations.rs):
+  // - Changing any role that involves an owner (target is owner, or promoting
+  //   to owner) requires the viewer to be an owner. Admins may only re-role
+  //   non-owner members between admin/member.
+  // - Removing another member requires the viewer to be an owner; admins and
+  //   members cannot remove others. Self-removal is not offered here.
+  const canChangeRole = viewerIsAdmin && !isSelf && (viewerIsOwner || !targetIsOwner);
+  const canRemove = viewerIsOwner && !isSelf;
 
   const handleRoleChange = async (newRole: string) => {
     setPendingRole(newRole);
     try {
       await updateRole.mutateAsync({ userId: member.user_id, role: newRole as OrgRole });
     } catch {
-      // Error handled by mutation
+      // Surfaced inline below via updateRole.error
     } finally {
       setPendingRole(null);
     }
@@ -104,76 +124,93 @@ function MemberCard({
     try {
       await removeMember.mutateAsync(member.user_id);
     } catch {
-      // Error handled by mutation
+      // Surfaced inline below via removeMember.error
     }
   };
 
-  return (
-    <div className="flex items-center justify-between p-4 border">
-      <div className="flex items-center gap-4">
-        <Avatar className="h-10 w-10">
-          {member.avatar_url && <AvatarImage src={member.avatar_url} alt={member.name} />}
-          <AvatarFallback>{getInitials(member.name)}</AvatarFallback>
-        </Avatar>
-        <div>
-          <div className="font-medium flex items-center gap-2">
-            {member.name}
-            {isSelf && (
-              <Badge variant="outline" className="text-xs">
-                You
-              </Badge>
-            )}
-          </div>
-          <div className="text-sm text-muted-foreground">{member.email}</div>
-        </div>
-      </div>
-      <div className="flex items-center gap-3">
-        <span className="text-xs text-muted-foreground hidden sm:inline">
-          Joined {formatDate(member.joined_at)}
-        </span>
+  const errorMessage = removeMember.isError
+    ? mutationErrorMessage(removeMember.error, "Failed to remove member.")
+    : updateRole.isError
+      ? mutationErrorMessage(updateRole.error, "Failed to update member role.")
+      : null;
 
-        {canManage && !isSelf ? (
-          <Select
-            value={pendingRole ?? member.role}
-            onValueChange={handleRoleChange}
-            disabled={updateRole.isPending}
-          >
-            <SelectTrigger className="w-[120px]">
-              {updateRole.isPending ? (
+  return (
+    <div className="border">
+      <div className="flex items-center justify-between p-4">
+        <div className="flex items-center gap-4">
+          <Avatar className="h-10 w-10">
+            {member.avatar_url && <AvatarImage src={member.avatar_url} alt={member.name} />}
+            <AvatarFallback>{getInitials(member.name)}</AvatarFallback>
+          </Avatar>
+          <div>
+            <div className="font-medium flex items-center gap-2">
+              {member.name}
+              {isSelf && (
+                <Badge variant="outline" className="text-xs">
+                  You
+                </Badge>
+              )}
+            </div>
+            <div className="text-sm text-muted-foreground">{member.email}</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-muted-foreground hidden sm:inline">
+            Joined {formatDate(member.joined_at)}
+          </span>
+
+          {canChangeRole ? (
+            <Select
+              value={pendingRole ?? member.role}
+              onValueChange={handleRoleChange}
+              disabled={updateRole.isPending}
+            >
+              <SelectTrigger className="w-[120px]">
+                {updateRole.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <SelectValue>{ROLE_LABELS[(pendingRole ?? member.role) as OrgRole]}</SelectValue>
+                )}
+              </SelectTrigger>
+              <SelectContent>
+                {/* Only owners can promote to owner. */}
+                {viewerIsOwner && <SelectItem value="owner">Owner</SelectItem>}
+                <SelectItem value="admin">Admin</SelectItem>
+                <SelectItem value="member">Member</SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <Badge variant={ROLE_BADGE_VARIANT[member.role]} className="gap-1">
+              <RoleIcon className="h-3 w-3" />
+              {ROLE_LABELS[member.role]}
+            </Badge>
+          )}
+
+          {canRemove && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleRemove}
+              disabled={removeMember.isPending}
+              title="Remove member"
+            >
+              {removeMember.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
               ) : (
-                <SelectValue>{ROLE_LABELS[(pendingRole ?? member.role) as OrgRole]}</SelectValue>
+                <UserMinus className="h-4 w-4 text-muted-foreground" />
               )}
-            </SelectTrigger>
-            <SelectContent>
-              {isOwner && <SelectItem value="owner">Owner</SelectItem>}
-              <SelectItem value="admin">Admin</SelectItem>
-              <SelectItem value="member">Member</SelectItem>
-            </SelectContent>
-          </Select>
-        ) : (
-          <Badge variant={ROLE_BADGE_VARIANT[member.role]} className="gap-1">
-            <RoleIcon className="h-3 w-3" />
-            {ROLE_LABELS[member.role]}
-          </Badge>
-        )}
-
-        {canManage && !isSelf && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleRemove}
-            disabled={removeMember.isPending}
-            title="Remove member"
-          >
-            {removeMember.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <UserMinus className="h-4 w-4 text-muted-foreground" />
-            )}
-          </Button>
-        )}
+            </Button>
+          )}
+        </div>
       </div>
+
+      {errorMessage && (
+        <div className="px-4 pb-4">
+          <Notice variant="destructive" role="alert">
+            <NoticeDescription>{errorMessage}</NoticeDescription>
+          </Notice>
+        </div>
+      )}
     </div>
   );
 }
@@ -334,8 +371,8 @@ export default function MembersPage() {
                   key={member.user_id}
                   member={member}
                   currentUserId={currentUserId}
-                  canManage={canManage}
-                  isOwner={isOwner}
+                  viewerIsAdmin={canManage}
+                  viewerIsOwner={isOwner}
                 />
               ))}
             </div>
