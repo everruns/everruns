@@ -654,7 +654,7 @@ pub async fn login(
             .as_array()
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     };
 
     audit::emit(
@@ -748,8 +748,9 @@ pub async fn register(
 ) -> Result<RegisterOutcome, AuthError> {
     let ip = audit::client_ip_from_connect_info(connect_info, &headers);
 
-    // Check if signup is enabled
-    if state.config.disable_signup {
+    // Check if signup is enabled. Admin mode accepts password login for the
+    // configured administrator, but must not expose public self-registration.
+    if !state.config.signup_enabled() {
         return Err(AuthError::forbidden("Registration is disabled"));
     }
 
@@ -878,8 +879,8 @@ pub async fn register(
     issue_verification_email(&state, user.id, &user.email).await;
 
     if state.config.signup_email_confirm {
-        // No session until the emailed confirmation link is clicked — the
-        // verify-email endpoint mints it (see `verify_email`).
+        // No session is minted during confirm-mode signup. The emailed link
+        // only verifies the address; users sign in explicitly afterward.
         audit::emit(
             state.db.clone(),
             DEFAULT_ORG_ID,
@@ -902,7 +903,7 @@ pub async fn register(
         roles: vec!["user".to_string()],
         is_platform_user: false,
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     };
 
     audit::emit(
@@ -994,7 +995,7 @@ pub async fn refresh_token(
             .as_array()
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     };
 
     audit::emit(
@@ -1487,7 +1488,7 @@ async fn oauth_callback_inner(
             .as_array()
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     };
 
     audit::emit(
@@ -1736,9 +1737,8 @@ pub async fn reset_password(
 /// POST /v1/auth/verify-email - Mark the user's email verified.
 pub async fn verify_email(
     State(state): State<BuiltinAuthBackend>,
-    jar: CookieJar,
     Json(req): Json<VerifyEmailRequest>,
-) -> Result<(CookieJar, Json<OkResponse>), AuthError> {
+) -> Result<Json<OkResponse>, AuthError> {
     let token_hash = crate::api::org_invitations::hash_invite_token(&req.token);
     let user_id = state
         .db
@@ -1765,37 +1765,7 @@ pub async fn verify_email(
             AuthError::internal("Email verification failed")
         })?;
 
-    // The single-use token proves control of the mailbox, so the confirmation
-    // link doubles as sign-in (required by confirm-mode signup, where no
-    // session exists before this point; harmless otherwise). Best-effort: a
-    // session failure must not fail verification itself.
-    let jar = match state.db.get_user(user_id).await {
-        Ok(Some(user)) => {
-            let organizations = builtin::fetch_user_organizations(&state.db, user.id)
-                .await
-                .unwrap_or_default();
-            let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
-            let auth_user = AuthUser {
-                id: user.id,
-                email: user.email,
-                name: user.name,
-                roles,
-                is_platform_user: false,
-                auth_method: AuthMethod::Jwt,
-                organizations: builtin::organizations_or_default(organizations),
-            };
-            match generate_token_response(&state, jar.clone(), &auth_user).await {
-                Ok((jar, _json)) => jar,
-                Err(err) => {
-                    tracing::warn!(error = %err.error, "verify-email session mint failed");
-                    jar
-                }
-            }
-        }
-        _ => jar,
-    };
-
-    Ok((jar, OkResponse::ok()))
+    Ok(OkResponse::ok())
 }
 
 /// POST /v1/auth/resend-verification - Re-send a verification email.
@@ -1936,6 +1906,15 @@ async fn get_or_create_admin_user(
         })?;
 
     let user = if let Some(user) = existing_user {
+        let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
+        if !roles.iter().any(|role| role == "admin") {
+            tracing::error!(
+                user_id = %user.id,
+                email = %user.email,
+                "Configured admin email collides with a non-admin account"
+            );
+            return Err(AuthError::unauthorized("Login failed"));
+        }
         user
     } else {
         // Create admin user
@@ -2028,7 +2007,7 @@ async fn get_or_create_admin_user(
             .as_array()
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     })
 }
 
@@ -2421,6 +2400,7 @@ mod oauth_state_tests {
     // Password reset + email verification
     // ========================================================================
 
+    use crate::auth::backend::AuthBackend;
     use crate::auth::config::AuthConfig;
     use crate::storage::StorageBackend;
     use crate::storage::models::CreateUserRow;
@@ -2545,7 +2525,7 @@ mod oauth_state_tests {
     async fn register_does_not_join_default_org_by_default() {
         let state = full_mode_backend();
         let db = state.db.clone();
-        register(
+        let outcome = register(
             State(state.clone()),
             None,
             HeaderMap::new(),
@@ -2559,6 +2539,25 @@ mod oauth_state_tests {
         )
         .await
         .expect("register should succeed");
+
+        let RegisterOutcome::Session(status, jar, Json(tokens)) = outcome else {
+            panic!("default mode must return an instant session");
+        };
+        assert_eq!(status, StatusCode::CREATED);
+        assert!(
+            jar.get(ORG_COOKIE_NAME).is_none(),
+            "zero-org signup must not receive a synthetic org cookie"
+        );
+
+        let auth_user = state
+            .validate_token(&tokens.access_token)
+            .await
+            .expect("issued access token should validate");
+        assert!(
+            auth_user.organizations.is_empty(),
+            "issued token must preserve zero-org memberships, got {:?}",
+            auth_user.organizations
+        );
 
         let user = db
             .get_user_by_email("solo@example.com")
@@ -2661,6 +2660,79 @@ mod oauth_state_tests {
             .await
             .expect("create OAuth-only user");
         user.id
+    }
+
+    #[tokio::test]
+    async fn admin_mode_register_is_disabled() {
+        let config = AuthConfig {
+            mode: AuthMode::Admin,
+            admin: Some(super::super::config::AdminConfig {
+                email: "admin@example.com".to_string(),
+                password: "password12345".to_string(),
+            }),
+            ..Default::default()
+        };
+        let state = BuiltinAuthBackend::new(
+            config,
+            Arc::new(StorageBackend::in_memory()),
+            Arc::new(crate::platform::oss_platform_definition()),
+        );
+
+        let err = register(
+            State(state),
+            None,
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(RegisterRequest {
+                email: "attacker@example.com".to_string(),
+                password: "password12345".to_string(),
+                name: None,
+                captcha_token: None,
+            }),
+        )
+        .await
+        .expect_err("admin mode must not allow self-registration");
+        assert_eq!(err.status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn admin_login_rejects_non_admin_email_collision() {
+        let config = AuthConfig {
+            mode: AuthMode::Admin,
+            admin: Some(super::super::config::AdminConfig {
+                email: "admin@example.com".to_string(),
+                password: "password12345".to_string(),
+            }),
+            ..Default::default()
+        };
+        let db = Arc::new(StorageBackend::in_memory());
+        let attacker_id = seed_local_user(&db, " ADMIN@example.com ", "attacker12345").await;
+        let state = BuiltinAuthBackend::new(
+            config,
+            db.clone(),
+            Arc::new(crate::platform::oss_platform_definition()),
+        );
+
+        let err = login(
+            State(state),
+            None,
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(LoginRequest {
+                email: "admin@example.com".to_string(),
+                password: "password12345".to_string(),
+            }),
+        )
+        .await
+        .expect_err("admin bootstrap must fail closed on non-admin collision");
+        assert_eq!(err.status, StatusCode::UNAUTHORIZED);
+        assert!(
+            db.list_user_organizations(attacker_id)
+                .await
+                .unwrap()
+                .is_empty(),
+            "colliding user must not be promoted into any org"
+        );
     }
 
     #[tokio::test]
@@ -2823,13 +2895,9 @@ mod oauth_state_tests {
             .create_email_verification_token(user_id, &hash, Utc::now() - Duration::minutes(1))
             .await
             .unwrap();
-        let err = verify_email(
-            State(state),
-            CookieJar::new(),
-            Json(VerifyEmailRequest { token: raw }),
-        )
-        .await
-        .expect_err("expired token must be rejected");
+        let err = verify_email(State(state), Json(VerifyEmailRequest { token: raw }))
+            .await
+            .expect_err("expired token must be rejected");
         assert_eq!(err.status, StatusCode::BAD_REQUEST);
     }
 
@@ -2860,20 +2928,14 @@ mod oauth_state_tests {
             .await
             .unwrap();
 
-        let (jar, _ok) = verify_email(
+        let _ = verify_email(
             State(state.clone()),
-            CookieJar::new(),
             Json(VerifyEmailRequest { token: raw }),
         )
         .await
         .expect("verify should succeed");
 
         assert!(db.get_user(user_id).await.unwrap().unwrap().email_verified);
-        // The confirmation link doubles as sign-in: session cookies are set.
-        assert!(
-            jar.get("access_token").is_some(),
-            "verify must mint a session"
-        );
     }
 
     #[tokio::test]
@@ -2881,7 +2943,6 @@ mod oauth_state_tests {
         let state = test_backend();
         let err = verify_email(
             State(state),
-            CookieJar::new(),
             Json(VerifyEmailRequest {
                 token: "bad".to_string(),
             }),

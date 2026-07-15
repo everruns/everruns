@@ -9,10 +9,13 @@ use everruns_core::{AgentTrigger, AgentTriggerType};
 use std::sync::Arc;
 
 /// Map a storage row into the core [`AgentTrigger`].
-pub fn row_to_trigger(row: AgentTriggerRow) -> AgentTrigger {
+///
+/// `AgentTriggerRow.agent_id` is the internal agent FK; API DTOs must carry
+/// the caller-facing agent public id.
+pub fn row_to_trigger(row: AgentTriggerRow, agent_public_id: AgentId) -> AgentTrigger {
     AgentTrigger {
         id: row.id,
-        agent_id: row.agent_id,
+        agent_id: agent_public_id,
         trigger_type: AgentTriggerType::from(row.trigger_type.as_str()),
         config: row.config,
         enabled: row.enabled,

@@ -13,7 +13,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -218,7 +218,7 @@ pub struct SessionTask {
     /// Human-readable label.
     pub display_name: String,
     /// Kind-specific input (instructions, tool args, external agent id).
-    #[serde(default)]
+    #[serde(default, serialize_with = "serialize_public_task_spec")]
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub spec: Value,
     pub state: SessionTaskState,
@@ -264,6 +264,32 @@ pub struct SessionTask {
 
 fn default_attempt() -> i32 {
     1
+}
+
+fn serialize_public_task_spec<S>(
+    spec: &Value,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    redacted_public_task_spec(spec).serialize(serializer)
+}
+
+fn redacted_public_task_spec(spec: &Value) -> Value {
+    let mut public = spec.clone();
+    let Some(configs) = public.get_mut("push_configs").and_then(Value::as_array_mut) else {
+        return public;
+    };
+    for config in configs {
+        let Some(config) = config.as_object_mut() else {
+            continue;
+        };
+        if config.remove("secret").is_some() {
+            config.insert("has_secret".to_string(), Value::Bool(true));
+        }
+    }
+    public
 }
 
 /// Input for creating a task.
@@ -938,6 +964,41 @@ mod tests {
         assert!(t.id.starts_with("task_"));
         assert_eq!(t.state, SessionTaskState::Queued);
         assert!(t.started_at.is_none());
+    }
+
+    #[test]
+    fn serialization_redacts_spec_push_config_secrets() {
+        let mut t = task();
+        t.spec = serde_json::json!({
+            "instructions": "notify",
+            "push_configs": [
+                {
+                    "url": "https://hooks.example.com/everruns",
+                    "secret": "LEAKME-HMAC-KEY",
+                    "event_filter": ["terminal"]
+                },
+                {
+                    "url": "https://hooks.example.com/no-secret",
+                    "event_filter": ["message"]
+                }
+            ]
+        });
+
+        let serialized = serde_json::to_value(&t).expect("task serializes");
+        let configs = serialized["spec"]["push_configs"]
+            .as_array()
+            .expect("push configs stay visible");
+        assert_eq!(configs[0]["url"], "https://hooks.example.com/everruns");
+        assert_eq!(configs[0]["has_secret"], true);
+        assert!(configs[0].get("secret").is_none());
+        assert!(configs[1].get("secret").is_none());
+
+        // Redaction is presentation-only so the worker can still sign webhook
+        // deliveries from the stored task spec.
+        assert_eq!(
+            t.spec["push_configs"][0]["secret"], "LEAKME-HMAC-KEY",
+            "stored spec remains unchanged for delivery"
+        );
     }
 
     #[test]
