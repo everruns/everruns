@@ -449,6 +449,8 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id,
             resolved_owner_user_id: Some(owner.id),
@@ -614,6 +616,8 @@ async fn test_detached_budget_root_override_canonicalizes_postgres_chain() {
         harness_id: None,
         agent_id: None,
         agent_identity_id: None,
+        agent_version_id: None,
+        agent_config_hash: None,
         owner_principal_id,
         resolved_owner_user_id: Some(owner.id),
         title: Some(format!("detached-root-{}", Uuid::now_v7())),
@@ -740,6 +744,8 @@ async fn test_session_crud() {
             app_id: Some(app.id),
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id,
             resolved_owner_user_id: None,
@@ -925,6 +931,8 @@ async fn test_event_crud() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id,
             resolved_owner_user_id: None,
@@ -1023,6 +1031,8 @@ async fn test_event_exclude_types() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id,
             resolved_owner_user_id: None,
@@ -1129,6 +1139,8 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id,
             resolved_owner_user_id: None,
@@ -1229,6 +1241,8 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id,
             resolved_owner_user_id: None,
@@ -1345,6 +1359,8 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id,
             resolved_owner_user_id: None,
@@ -1565,6 +1581,8 @@ async fn test_event_filter_types() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id,
             resolved_owner_user_id: None,
@@ -1874,6 +1892,8 @@ async fn test_session_file_crud() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id,
             resolved_owner_user_id: None,
@@ -2346,6 +2366,8 @@ async fn test_session_usage_tracking() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id,
             resolved_owner_user_id: None,
@@ -2453,6 +2475,8 @@ async fn test_session_previews() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id,
             resolved_owner_user_id: None,
@@ -3062,6 +3086,8 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id,
             resolved_owner_user_id: None,
@@ -3108,16 +3134,15 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
 
     let schedule_id: ScheduleId = schedule.id;
 
-    // Fixture: a one-shot schedule. A fired one-shot is disabled before its
-    // linked monitor is marked Succeeded, so disabled one-shots are not orphan
-    // candidates.
+    // Fixture: a directly canceled one-shot schedule. It should be considered
+    // inactive because it has no trigger metadata.
     let one_shot_schedule = backend
         .create_session_schedule(CreateSessionScheduleRow {
             org_id: TEST_ORG_ID,
             session_id,
             owner_principal_id,
             resolved_owner_user_id: None,
-            description: "monitor-disabled-one-shot-test".to_string(),
+            description: "monitor-canceled-one-shot-test".to_string(),
             cron_expression: None,
             scheduled_at: Some(Utc::now()),
             timezone: "UTC".to_string(),
@@ -3127,6 +3152,25 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
         .expect("Failed to create one-shot test schedule");
 
     let one_shot_schedule_id: ScheduleId = one_shot_schedule.id;
+
+    // Fixture: a fired one-shot schedule. It is disabled before its linked
+    // monitor is marked Succeeded, so it should not be an orphan candidate.
+    let fired_one_shot_schedule = backend
+        .create_session_schedule(CreateSessionScheduleRow {
+            org_id: TEST_ORG_ID,
+            session_id,
+            owner_principal_id,
+            resolved_owner_user_id: None,
+            description: "monitor-fired-one-shot-test".to_string(),
+            cron_expression: None,
+            scheduled_at: Some(Utc::now()),
+            timezone: "UTC".to_string(),
+            next_trigger_at: None,
+        })
+        .await
+        .expect("Failed to create fired one-shot test schedule");
+
+    let fired_one_shot_schedule_id: ScheduleId = fired_one_shot_schedule.id;
 
     // ------------------------------------------------------------------
     // Fixture: running monitor task with a valid prefixed schedule_id
@@ -3156,7 +3200,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
             session_id,
             id: None,
             kind: TASK_KIND_MONITOR.to_string(),
-            display_name: "Test monitor (disabled one-shot pg)".to_string(),
+            display_name: "Test monitor (canceled one-shot pg)".to_string(),
             spec: json!({ "schedule_id": one_shot_schedule_id.to_string() }),
             state: SessionTaskState::Running,
             links: TaskLinks::default(),
@@ -3170,6 +3214,26 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
         .expect("Failed to create one-shot monitor task");
 
     let one_shot_task_id = one_shot_monitor_task.id.clone();
+
+    let fired_one_shot_monitor_task = new_session_task(
+        CreateSessionTask {
+            session_id,
+            id: None,
+            kind: TASK_KIND_MONITOR.to_string(),
+            display_name: "Test monitor (fired one-shot pg)".to_string(),
+            spec: json!({ "schedule_id": fired_one_shot_schedule_id.to_string() }),
+            state: SessionTaskState::Running,
+            links: TaskLinks::default(),
+            wake_policy: TaskWakePolicy::Silent,
+        },
+        Utc::now(),
+    );
+    backend
+        .create_session_task(&fired_one_shot_monitor_task)
+        .await
+        .expect("Failed to create fired one-shot monitor task");
+
+    let fired_one_shot_task_id = fired_one_shot_monitor_task.id.clone();
 
     // ------------------------------------------------------------------
     // Fixture: a second monitor task with a *malformed* schedule_id.
@@ -3200,6 +3264,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
     let our_ids: std::collections::HashSet<String> = [
         task_id.clone(),
         one_shot_task_id.clone(),
+        fired_one_shot_task_id.clone(),
         malformed_task_id.clone(),
     ]
     .into();
@@ -3224,8 +3289,8 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
     );
 
     // ------------------------------------------------------------------
-    // Step 5: disable the recurring schedule and the one-shot schedule.
-    // Only the recurring valid-spec task must now appear exactly once.
+    // Step 5: disable the recurring and one-shot schedules. The recurring and
+    // directly canceled one-shot tasks must appear; the fired one-shot must not.
     // ------------------------------------------------------------------
     backend
         .update_session_schedule(
@@ -3249,6 +3314,19 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
         )
         .await
         .expect("Failed to disable one-shot schedule");
+    backend
+        .update_session_schedule(
+            TEST_ORG_ID,
+            fired_one_shot_schedule_id,
+            UpdateSessionScheduleRow {
+                enabled: Some(false),
+                last_triggered_at: Some(Utc::now()),
+                trigger_count_increment: true,
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("Failed to mark fired one-shot schedule");
 
     let results_after = backend
         .list_monitor_tasks_with_inactive_schedules(500)
@@ -3260,21 +3338,30 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
         .filter(|(_, tid, _)| our_ids.contains(tid))
         .collect();
 
-    // Exactly one row for the valid-spec task.
     assert_eq!(
         our_results_after.len(),
-        1,
-        "expected exactly 1 result after disabling schedule, got: {:?}",
+        2,
+        "expected recurring and canceled one-shot results after disabling schedules, got: {:?}",
         our_results_after
     );
 
-    let (ret_session_id, ret_task_id, ret_schedule_id) = our_results_after[0];
-    assert_eq!(*ret_session_id, session_id, "session_id mismatch");
-    assert_eq!(ret_task_id, &task_id, "task_id mismatch");
-    assert_eq!(
-        ret_schedule_id,
-        &schedule_id.to_string(),
-        "schedule_id string mismatch (expected prefixed form)"
+    let returned: std::collections::HashSet<_> = our_results_after
+        .iter()
+        .map(|(_, task_id, schedule_id)| ((*task_id).clone(), (*schedule_id).clone()))
+        .collect();
+    assert!(
+        returned.contains(&(task_id.clone(), schedule_id.to_string())),
+        "recurring schedule task should be returned"
+    );
+    assert!(
+        returned.contains(&(one_shot_task_id.clone(), one_shot_schedule_id.to_string())),
+        "directly canceled one-shot schedule task should be returned"
+    );
+    assert!(
+        our_results_after
+            .iter()
+            .all(|(ret_session_id, _, _)| *ret_session_id == session_id),
+        "session_id mismatch in results"
     );
 
     // ------------------------------------------------------------------
@@ -3289,8 +3376,8 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
     assert!(
         results_after
             .iter()
-            .all(|(_, tid, _)| tid != &one_shot_task_id),
-        "disabled one-shot schedule task must never appear in results"
+            .all(|(_, tid, _)| tid != &fired_one_shot_task_id),
+        "fired disabled one-shot schedule task must never appear in results"
     );
 }
 
@@ -3392,6 +3479,8 @@ async fn list_org_session_tasks_pg() {
                     app_id: None,
                     harness_id: None,
                     agent_id: None,
+                    agent_version_id: None,
+                    agent_config_hash: None,
                     agent_identity_id: None,
                     owner_principal_id: owner,
                     resolved_owner_user_id: None,

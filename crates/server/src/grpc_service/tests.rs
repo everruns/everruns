@@ -431,6 +431,8 @@ async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
             harness_id: None,
             agent_id: None,
             agent_identity_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: Some(user.id),
             title: Some("authority root".to_string()),

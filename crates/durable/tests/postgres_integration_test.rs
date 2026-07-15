@@ -33,6 +33,11 @@ fn get_database_url() -> String {
 }
 
 async fn reset_durable_tables(pool: &PgPool) {
+    let mut tx = pool
+        .begin()
+        .await
+        .expect("Failed to begin durable test table reset");
+
     // Integration tests assume a clean durable schema. Truncate explicitly so
     // other integration binaries using the same test database cannot leak state.
     sqlx::query(
@@ -51,10 +56,13 @@ async fn reset_durable_tables(pool: &PgPool) {
         RESTART IDENTITY CASCADE
         "#,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .expect("Failed to reset durable test tables");
 
+    // Keep this in the same transaction as TRUNCATE so PostgreSQL holds the
+    // table locks until commit; otherwise a concurrent test can insert rows after
+    // TRUNCATE commits and have its trigger increment overwritten back to zero.
     // TRUNCATE bypasses the row-level triggers that maintain `durable_stat_counters`
     // (migration 082), so the cumulative health counters would otherwise stay
     // non-zero while the tables they track are now empty. That stale drift made
@@ -62,9 +70,13 @@ async fn reset_durable_tables(pool: &PgPool) {
     // binary ran first against the shared DB. The triggers UPDATE pre-seeded rows,
     // so the rows must remain — zero the values in place instead of truncating.
     sqlx::query("UPDATE durable_stat_counters SET value = 0")
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .expect("Failed to reset durable stat counters");
+
+    tx.commit()
+        .await
+        .expect("Failed to commit durable test table reset");
 }
 
 /// Create a test store with a fresh database connection

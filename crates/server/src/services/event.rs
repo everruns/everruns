@@ -614,6 +614,8 @@ mod tests {
             app_id: None,
             harness_id: Some(HarnessId::from_uuid(Uuid::nil())),
             agent_id: Some(agent_id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: PrincipalId::from_seed(1),
             resolved_owner_user_id: None,

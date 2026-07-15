@@ -147,6 +147,24 @@ describe("EvalRunDetailPage", () => {
     expect(screen.getByText("the imported answer")).toBeInTheDocument();
   });
 
+  it("does not link unsafe attribution URLs", async () => {
+    const externalRun: EvalRun = {
+      id: "evalrun_ext_unsafe",
+      status: "completed",
+      source: "external",
+      attribution: { system: "mira", url: "javascript:alert(1)" },
+      triggered_by: "import:mira",
+      results: [],
+      created_at: "2026-04-19T10:00:00Z",
+      updated_at: "2026-04-19T10:01:00Z",
+    };
+    mockUseEvalRun.mockReturnValue({ data: externalRun, isLoading: false });
+
+    await renderWithSuspense({ evalId: "eval_123", runId: "evalrun_ext_unsafe" });
+
+    expect(screen.getByText("via mira").closest("a")).toBeNull();
+  });
+
   it("defaults a multi-target run to the matrix view", async () => {
     const mkResult = (id: string, provider: string, model: string, value: number) => ({
       id,

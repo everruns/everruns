@@ -9,8 +9,8 @@ use super::{
     ENTRY_KINDS, KNOWLEDGE_BASE_MANAGE, KNOWLEDGE_BASE_VIEW, MAX_ENTRY_BODY_BYTES, MAX_ENTRY_TAGS,
 };
 use crate::domains::common::*;
-use everruns_core::Policy;
 use everruns_core::typed_id::{KnowledgeBaseId, KnowledgeEntryId};
+use everruns_core::{DriverId, Policy, ServiceKind};
 use everruns_durable::UpdateField;
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -125,6 +125,36 @@ fn validate_body(body: &str) -> Result<String, CommandError> {
     Ok(body.to_string())
 }
 
+async fn validate_embedding_model_id(
+    ctx: &Ctx,
+    model_id: everruns_core::ModelId,
+) -> Result<everruns_core::ModelId, CommandError> {
+    let model = ctx
+        .db
+        .get_model(ctx.org_id(), model_id.uuid())
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::bad_request("Embedding model not found"))?;
+    let provider = ctx
+        .db
+        .get_provider(ctx.org_id(), model.provider_id.uuid())
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::bad_request("Embedding provider not found"))?;
+    let provider_type: DriverId = provider
+        .provider_type
+        .parse()
+        .expect("DriverId::from_str is infallible");
+    let registry = everruns_worker::create_driver_registry();
+    if !registry.supports(&provider_type, ServiceKind::Embeddings) {
+        return Err(CommandError::bad_request(format!(
+            "Embedding model provider '{}' does not support embeddings",
+            provider.provider_type
+        )));
+    }
+    Ok(model_id)
+}
+
 // ============================================
 // Knowledge Base CRUD
 // ============================================
@@ -232,13 +262,7 @@ impl Command for CreateKnowledgeBase {
     async fn execute(self, ctx: &Ctx) -> Result<KnowledgeBaseResponse, CommandError> {
         let name = validate_name(&self.name)?;
         let embedding_model_id = if let Some(model_id) = self.embedding_model_id {
-            // Validate the model exists in this org.
-            ctx.db
-                .get_model(ctx.org_id(), model_id.uuid())
-                .await
-                .map_err(classify_anyhow)?
-                .ok_or_else(|| CommandError::bad_request("Embedding model not found"))?;
-            Some(model_id)
+            Some(validate_embedding_model_id(ctx, model_id).await?)
         } else {
             None
         };
@@ -357,14 +381,9 @@ impl Command for UpdateKnowledgeBaseCmd {
             .transpose()?;
         // Validate the embedding model if it's being updated.
         let embedding_model_id = match self.request.embedding_model_id {
-            UpdateField::Set(model_id) => {
-                ctx.db
-                    .get_model(ctx.org_id(), model_id.uuid())
-                    .await
-                    .map_err(classify_anyhow)?
-                    .ok_or_else(|| CommandError::bad_request("Embedding model not found"))?;
-                Some(UpdateField::Set(model_id))
-            }
+            UpdateField::Set(model_id) => Some(UpdateField::Set(
+                validate_embedding_model_id(ctx, model_id).await?,
+            )),
             UpdateField::Clear => Some(UpdateField::Clear),
             UpdateField::Unchanged => None,
         };
@@ -781,6 +800,7 @@ mod tests {
     use super::*;
     use crate::domains::common::Ctx;
     use crate::storage::StorageBackend;
+    use crate::storage::models::{CreateModelRow, CreateProviderRow};
     use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
     use std::sync::Arc;
 
@@ -812,6 +832,43 @@ mod tests {
             db,
             None,
         )
+    }
+
+    async fn seed_model(
+        db: &StorageBackend,
+        org_id: i64,
+        provider_type: &str,
+        model_id: &str,
+    ) -> everruns_core::ModelId {
+        let provider = db
+            .create_provider(
+                org_id,
+                CreateProviderRow {
+                    name: format!("{provider_type} provider"),
+                    provider_type: provider_type.to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .expect("create provider");
+        db.create_model(
+            org_id,
+            CreateModelRow {
+                provider_id: provider.id,
+                model_id: model_id.to_string(),
+                display_name: model_id.to_string(),
+                capabilities: vec![],
+                is_favorite: false,
+                enabled: true,
+                source: "manual".to_string(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .expect("create model")
+        .id
     }
 
     #[tokio::test]
@@ -1016,6 +1073,84 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[tokio::test]
+    async fn embedding_model_must_use_embeddings_provider_on_create() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
+        let chat_only_model = seed_model(&db, DEFAULT_ORG_ID, "anthropic", "claude-sonnet").await;
+
+        let err = CreateKnowledgeBase {
+            name: "Hybrid KB".into(),
+            description: None,
+            embedding_model_id: Some(chat_only_model),
+        }
+        .run(&ctx)
+        .await
+        .expect_err("chat-only provider should be rejected");
+
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn embedding_model_must_use_embeddings_provider_on_update() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
+        let chat_only_model = seed_model(&db, DEFAULT_ORG_ID, "anthropic", "claude-sonnet").await;
+        let kb = CreateKnowledgeBase {
+            name: "Hybrid KB".into(),
+            description: None,
+            embedding_model_id: None,
+        }
+        .run(&ctx)
+        .await
+        .expect("create kb");
+
+        let err = UpdateKnowledgeBaseCmd {
+            kb_id: kb.id.to_string(),
+            request: UpdateKnowledgeBaseRequest {
+                name: None,
+                description: UpdateField::Unchanged,
+                embedding_model_id: UpdateField::Set(chat_only_model),
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect_err("chat-only provider should be rejected");
+
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
+    }
+
+    #[tokio::test]
+    async fn accepts_embedding_model_from_embeddings_provider() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
+        let embedding_model =
+            seed_model(&db, DEFAULT_ORG_ID, "openai", "text-embedding-3-small").await;
+
+        let kb = CreateKnowledgeBase {
+            name: "Hybrid KB".into(),
+            description: None,
+            embedding_model_id: Some(embedding_model),
+        }
+        .run(&ctx)
+        .await
+        .expect("embedding provider should be accepted");
+
+        assert_eq!(kb.embedding_model_id, Some(embedding_model));
     }
 
     #[tokio::test]

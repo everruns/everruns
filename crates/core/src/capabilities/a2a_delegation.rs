@@ -510,6 +510,7 @@ struct AgentRunRecord {
     external_agent_name: String,
     #[serde(alias = "task")]
     instructions: String,
+    #[serde(deserialize_with = "deserialize_agent_run_mode")]
     mode: SpawnMode,
     status: AgentRunStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -546,6 +547,21 @@ struct AgentRunRecord {
     /// ActAtom, so it must restore this before rebuilding outbound clients.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     network_access: Option<NetworkAccessList>,
+}
+
+fn deserialize_agent_run_mode<'de, D>(deserializer: D) -> std::result::Result<SpawnMode, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let mode = String::deserialize(deserializer)?;
+    match mode.as_str() {
+        // Legacy durable A2A foreground runs were stored as "wait" before the
+        // shared spawn-agent vocabulary was unified on "foreground".
+        "wait" => Ok(SpawnMode::Foreground),
+        _ => SpawnMode::parse(&mode).ok_or_else(|| {
+            serde::de::Error::unknown_variant(&mode, &["background", "foreground", "wait"])
+        }),
+    }
 }
 
 impl AgentRunRecord {
@@ -3006,8 +3022,9 @@ mod tests {
         );
     }
 
-    /// Legacy records written before the task-to-instructions rename should
-    /// still load from durable session storage.
+    /// Legacy records written before the task-to-instructions rename and the
+    /// A2A wait-to-foreground mode rename should still load from durable
+    /// session storage.
     #[test]
     fn agent_run_record_accepts_legacy_task_field() {
         let legacy = json!({
@@ -3016,15 +3033,17 @@ mod tests {
             "external_agent_id": "echo",
             "external_agent_name": "Echo",
             "task": "legacy instructions",
-            "mode": "foreground",
+            "mode": "wait",
             "status": "submitted"
         });
 
         let record: AgentRunRecord = serde_json::from_value(legacy).unwrap();
         assert_eq!(record.instructions, "legacy instructions");
+        assert_eq!(record.mode, SpawnMode::Foreground);
 
         let serialized = serde_json::to_value(&record).unwrap();
         assert_eq!(serialized["instructions"], "legacy instructions");
+        assert_eq!(serialized["mode"], "foreground");
         assert!(serialized.get("task").is_none());
     }
 

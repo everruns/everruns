@@ -174,18 +174,19 @@ impl WorkspaceRootSet {
     pub fn parse_host_scope(&self, root: &str, relative: Option<&str>) -> Result<PathBuf> {
         let workspace_root = self.root_by_name(root)?;
         let rel = RelPath::from_str(relative.unwrap_or(""))?;
-        let joined = if rel.as_relative().is_empty() {
+        let candidate = if rel.as_relative().is_empty() {
             workspace_root.path.clone()
         } else {
             workspace_root.path.join(rel.as_relative())
         };
-        if !joined.starts_with(&workspace_root.path) {
+        let resolved = canonicalize_existing_or_parent(&candidate)?;
+        if resolved != workspace_root.path && !resolved.starts_with(&workspace_root.path) {
             return Err(AgentLoopError::tool(format!(
                 "path escapes workspace root: {}",
-                joined.display()
+                candidate.display()
             )));
         }
-        Ok(joined)
+        Ok(resolved)
     }
 
     pub fn primary_host_root(&self) -> &Path {
@@ -406,5 +407,20 @@ mod tests {
                 .unwrap()
                 .join("Cargo.toml")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn host_scope_rejects_symlink_escape() {
+        let primary = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        std::os::unix::fs::symlink(outside.path(), primary.path().join("outside-link")).unwrap();
+        let set = WorkspaceRootSet::from_primary(primary.path()).unwrap();
+
+        let err = set
+            .parse_host_scope("workspace", Some("outside-link/secret.txt"))
+            .unwrap_err();
+
+        assert!(err.to_string().contains("path escapes workspace root"));
     }
 }

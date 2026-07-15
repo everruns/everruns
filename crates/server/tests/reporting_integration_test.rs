@@ -297,6 +297,71 @@ async fn create_reporting_repair_session(server: &TestServer, org_id: i64, suffi
 }
 
 #[tokio::test]
+async fn reporting_backfill_skips_malformed_capability_usage_records() {
+    let server = TestServer::new().await;
+    let session_id = create_reporting_repair_session(&server, 1, "malformed-backfill").await;
+    let malformed = Uuid::now_v7();
+    let missing_turn = Uuid::now_v7();
+    let base_time = Utc::now() + Duration::days(45);
+
+    for (id, sequence, event_type, data) in [
+        (
+            malformed,
+            1,
+            "capability.usage",
+            json!({ "records": { "capability_id": "cap-object", "usage_kind": "invoked" } }),
+        ),
+        (
+            missing_turn,
+            2,
+            "turn.completed",
+            json!({ "turn_id": "turn-after-malformed" }),
+        ),
+    ] {
+        sqlx::query(
+            r#"
+            INSERT INTO events (
+                id, session_id, sequence, event_type, data, context, ts, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, '{}'::jsonb, $6, $6)
+            "#,
+        )
+        .bind(id)
+        .bind(session_id)
+        .bind(sequence)
+        .bind(event_type)
+        .bind(data)
+        .bind(base_time + Duration::seconds(sequence.into()))
+        .execute(&server.pool)
+        .await
+        .expect("insert malformed backfill fixture");
+    }
+
+    let result: Value = server
+        .post("/v1/reports/admin/backfill", json!({ "limit": 100 }))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert!(result["events"].as_i64().unwrap() >= 1);
+
+    let rows: Vec<(String,)> = sqlx::query_as(
+        r#"
+        SELECT source_id
+          FROM reporting_outbox
+         WHERE source_type = 'event'
+           AND source_id = ANY($1)
+         ORDER BY source_id
+        "#,
+    )
+    .bind(vec![malformed.to_string(), missing_turn.to_string()])
+    .fetch_all(&server.pool)
+    .await
+    .expect("load backfilled malformed rows");
+
+    assert_eq!(rows, vec![(missing_turn.to_string(),)]);
+}
+
+#[tokio::test]
 async fn bounded_event_repair_enqueues_only_missing_projections() {
     let server = TestServer::new().await;
     let other_org = server
@@ -314,6 +379,7 @@ async fn bounded_event_repair_enqueues_only_missing_projections() {
     let base_time = Utc::now() + Duration::days(30);
     let tool = Uuid::now_v7();
     let tool_missing = Uuid::now_v7();
+    let malformed_capability = Uuid::now_v7();
     let capability_partial = Uuid::now_v7();
     let capability_complete = Uuid::now_v7();
     let guardrail = Uuid::now_v7();
@@ -338,9 +404,16 @@ async fn bounded_event_repair_enqueues_only_missing_projections() {
             json!({ "capability_id": "cap-tool-missing", "tool_name": "fetch" }),
         ),
         (
-            capability_partial,
+            malformed_capability,
             primary_session,
             3,
+            "capability.usage",
+            json!({ "records": { "capability_id": "cap-malformed", "usage_kind": "invoked" } }),
+        ),
+        (
+            capability_partial,
+            primary_session,
+            4,
             "capability.usage",
             json!({ "records": [
                 { "capability_id": "cap-a", "usage_kind": "resolved" },
@@ -350,28 +423,28 @@ async fn bounded_event_repair_enqueues_only_missing_projections() {
         (
             guardrail,
             primary_session,
-            4,
+            5,
             "output.message.replaced",
             json!({ "guardrail_capability_id": "guardrail-a" }),
         ),
         (
             guardrail_missing,
             primary_session,
-            5,
+            6,
             "output.message.replaced",
             json!({ "guardrail_capability_id": "guardrail-missing" }),
         ),
         (
             turn_completed,
             primary_session,
-            6,
+            7,
             "turn.completed",
             json!({ "turn_id": "turn-completed" }),
         ),
         (
             turn_failed,
             primary_session,
-            7,
+            8,
             "turn.failed",
             json!({ "turn_id": "turn-failed" }),
         ),
@@ -550,6 +623,7 @@ async fn bounded_event_repair_enqueues_only_missing_projections() {
     .bind(vec![
         tool.to_string(),
         tool_missing.to_string(),
+        malformed_capability.to_string(),
         capability_partial.to_string(),
         capability_complete.to_string(),
         guardrail.to_string(),
@@ -576,7 +650,11 @@ async fn bounded_event_repair_enqueues_only_missing_projections() {
     ];
     expected_pending.sort();
     assert_eq!(pending, expected_pending);
-    assert_eq!(rows.len(), 9, "unsupported events must not be enqueued");
+    assert_eq!(
+        rows.len(),
+        9,
+        "unsupported and malformed events must not be enqueued"
+    );
 
     sqlx::query(
         r#"
