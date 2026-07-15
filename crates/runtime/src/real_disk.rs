@@ -19,6 +19,7 @@ use everruns_core::traits::{
 use everruns_core::typed_id::SessionId;
 use everruns_core::{MountFs, WorkspaceRootSet};
 use ignore::WalkBuilder;
+use regex::Regex;
 use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -511,7 +512,8 @@ impl SessionFileSystem for RealDiskFileStore {
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
         let root = self.root();
-        let pattern = pattern.to_string();
+        let regex = Regex::new(pattern)
+            .map_err(|error| AgentLoopError::tool(format!("Invalid regex pattern: {error}")))?;
         let path_pattern = match path_pattern {
             Some(path) => Some(everruns_core::session_path::GrepPathPattern::new(
                 self.paths.parse_input(path)?.as_relative(),
@@ -588,7 +590,7 @@ impl SessionFileSystem for RealDiskFileStore {
                 };
                 let canonical_path = format!("/{rel_str}");
                 for (idx, line) in text.lines().enumerate() {
-                    if line.contains(&pattern) {
+                    if regex.is_match(line) {
                         out.push(GrepMatch {
                             path: canonical_path.clone(),
                             line_number: idx + 1,

@@ -51,84 +51,27 @@ pub(crate) fn normalize_message_schema(
     normalize_optional_schema(arguments, MESSAGE_SCHEMA_SPEC_KEY)
 }
 
-fn json_schema_type_matches(expected: &str, value: &Value) -> bool {
-    match expected {
-        "object" => value.is_object(),
-        "array" => value.is_array(),
-        "string" => value.is_string(),
-        "boolean" => value.is_boolean(),
-        "integer" => value.as_i64().is_some() || value.as_u64().is_some(),
-        "number" => value.is_number(),
-        "null" => value.is_null(),
-        _ => true,
-    }
-}
-
-fn validate_against_schema(schema: &Value, value: &Value, path: &str, errors: &mut Vec<String>) {
-    if let Some(enum_values) = schema.get("enum").and_then(Value::as_array)
-        && !enum_values.iter().any(|candidate| candidate == value)
-    {
-        errors.push(format!("{path} is not one of the allowed enum values"));
-    }
-    if let Some(const_value) = schema.get("const")
-        && const_value != value
-    {
-        errors.push(format!("{path} does not match the required const value"));
-    }
-    if let Some(type_value) = schema.get("type") {
-        let matches = match type_value {
-            Value::String(expected) => json_schema_type_matches(expected, value),
-            Value::Array(types) => types
-                .iter()
-                .filter_map(Value::as_str)
-                .any(|expected| json_schema_type_matches(expected, value)),
-            _ => true,
-        };
-        if !matches {
-            errors.push(format!("{path} has the wrong JSON type"));
-            return;
-        }
-    }
-    if let (Some(object), Some(properties)) = (
-        value.as_object(),
-        schema.get("properties").and_then(Value::as_object),
-    ) {
-        if let Some(required) = schema.get("required").and_then(Value::as_array) {
-            for key in required.iter().filter_map(Value::as_str) {
-                if !object.contains_key(key) {
-                    errors.push(format!("{path}.{key} is required"));
-                }
-            }
-        }
-        if schema.get("additionalProperties") == Some(&Value::Bool(false)) {
-            for key in object.keys() {
-                if !properties.contains_key(key) {
-                    errors.push(format!("{path}.{key} is not allowed"));
-                }
-            }
-        }
-        for (key, property_schema) in properties {
-            if let Some(property_value) = object.get(key) {
-                validate_against_schema(
-                    property_schema,
-                    property_value,
-                    &format!("{path}.{key}"),
-                    errors,
-                );
-            }
-        }
-    }
-    if let (Some(array), Some(item_schema)) = (value.as_array(), schema.get("items")) {
-        for (index, item) in array.iter().enumerate() {
-            validate_against_schema(item_schema, item, &format!("{path}[{index}]"), errors);
-        }
-    }
-}
-
 pub(crate) fn schema_validation_errors(schema: &Value, value: &Value) -> Vec<String> {
-    let mut errors = Vec::new();
-    validate_against_schema(schema, value, "$", &mut errors);
-    errors
+    let validator = match jsonschema::draft202012::options()
+        .should_validate_formats(true)
+        .build(schema)
+    {
+        Ok(validator) => validator,
+        Err(error) => return vec![format!("result schema is invalid: {error}")],
+    };
+
+    validator
+        .iter_errors(value)
+        .map(|error| {
+            let path = error.instance_path().to_string();
+            let path = if path.is_empty() {
+                "$".to_string()
+            } else {
+                path
+            };
+            format!("{path} {error}")
+        })
+        .collect()
 }
 
 const MAX_TASK_SUMMARY_CHARS: usize = 2_048;
@@ -480,13 +423,70 @@ mod tests {
         });
         let errors =
             schema_validation_errors(&schema, &json!({"count": "not-an-integer", "extra": true}));
-        assert!(errors.iter().any(|error| error == "$.answer is required"));
         assert!(
             errors
                 .iter()
-                .any(|error| error == "$.count has the wrong JSON type")
+                .any(|error| error.contains("answer") && error.contains("required"))
         );
-        assert!(errors.iter().any(|error| error == "$.extra is not allowed"));
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("count") && error.contains("integer"))
+        );
+        assert!(errors.iter().any(|error| error.contains("extra")
+            && (error.contains("additional") || error.contains("not allowed"))));
+    }
+
+    #[test]
+    fn shared_validator_enforces_full_json_schema_constraints() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "echo": {"type": "string", "pattern": "^[0-9]+$", "minLength": 2},
+                "score": {"type": "integer", "minimum": 0},
+                "tags": {
+                    "type": "array",
+                    "minItems": 2,
+                    "items": {"type": "string"}
+                },
+                "choice": {
+                    "oneOf": [
+                        {"const": "alpha"},
+                        {"const": "beta"}
+                    ]
+                }
+            },
+            "required": ["echo", "score", "tags", "choice"],
+            "additionalProperties": false
+        });
+
+        let errors = schema_validation_errors(
+            &schema,
+            &json!({
+                "echo": "x",
+                "score": -5,
+                "tags": ["solo"],
+                "choice": "gamma"
+            }),
+        );
+
+        assert!(errors.iter().any(|error| error.contains("echo")
+            && (error.contains("pattern") || error.contains("^[0-9]+$"))));
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("score") && error.contains("0"))
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("tags") && error.contains("2"))
+        );
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.contains("choice") && error.contains("oneOf"))
+        );
     }
 
     #[test]

@@ -851,15 +851,14 @@ where
 
         // Execute tasks concurrently
         for task in tasks {
-            self.in_flight.fetch_add(1, Ordering::SeqCst);
-
             let store = self.store.clone();
             let adapters = self.adapters.clone();
             let worker_id = self.config.worker_id.clone();
-            let in_flight = self.in_flight.clone();
+            let in_flight_guard = InFlightTaskGuard::increment(self.in_flight.clone());
             let heartbeat_interval = self.config.heartbeat_interval;
 
             task_handles.spawn(async move {
+                let _in_flight_guard = in_flight_guard;
                 let result =
                     execute_task(&store, &adapters, &worker_id, heartbeat_interval, &task).await;
 
@@ -885,8 +884,6 @@ where
                         "Task execution failed"
                     );
                 }
-
-                in_flight.fetch_sub(1, Ordering::SeqCst);
             });
         }
 
@@ -904,6 +901,23 @@ impl ShutdownHandle {
     /// Trigger shutdown of the worker
     pub fn shutdown(&self) {
         let _ = self.tx.send(true);
+    }
+}
+
+struct InFlightTaskGuard {
+    in_flight: Arc<AtomicUsize>,
+}
+
+impl InFlightTaskGuard {
+    fn increment(in_flight: Arc<AtomicUsize>) -> Self {
+        in_flight.fetch_add(1, Ordering::SeqCst);
+        Self { in_flight }
+    }
+}
+
+impl Drop for InFlightTaskGuard {
+    fn drop(&mut self) {
+        self.in_flight.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
@@ -956,120 +970,148 @@ where
         heartbeat_interval,
     );
 
-    // Execute based on activity type
-    let (result, turn_input_opt) = match task.activity_type.as_str() {
-        "process_input" | "reason" => {
-            let turn_input: DurableTurnInput = serde_json::from_value(task.input.clone())
-                .map_err(|e| anyhow::anyhow!("Failed to parse task input: {}", e))?;
+    // Execute based on activity type. Keep fallible parsing inside this result so
+    // cleanup below runs before malformed tasks are failed.
+    let execution = async {
+        let (result, turn_input_opt) = match task.activity_type.as_str() {
+            "process_input" | "reason" => {
+                let turn_input: DurableTurnInput = serde_json::from_value(task.input.clone())
+                    .map_err(|e| anyhow::anyhow!("Failed to parse task input: {}", e))?;
 
-            let res = match task.activity_type.as_str() {
-                "process_input" => execute_input_activity(adapters, &turn_input).await,
-                "reason" => execute_reason_activity(adapters, &turn_input).await,
-                _ => unreachable!(),
-            };
-            (res, Some(turn_input))
-        }
-        "act" => {
-            let act_input: ActInput = serde_json::from_value(task.input.clone())
-                .map_err(|e| anyhow::anyhow!("Failed to parse ActInput: {}", e))?;
+                let res = match task.activity_type.as_str() {
+                    "process_input" => execute_input_activity(adapters, &turn_input).await,
+                    "reason" => execute_reason_activity(adapters, &turn_input).await,
+                    _ => unreachable!(),
+                };
+                (res, Some(turn_input))
+            }
+            "act" => {
+                let act_input: ActInput = serde_json::from_value(task.input.clone())
+                    .map_err(|e| anyhow::anyhow!("Failed to parse ActInput: {}", e))?;
 
-            // Extract previous_response_id injected by reason→act scheduling
-            let previous_response_id = task
-                .input
-                .get("previous_response_id")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
+                // Extract previous_response_id injected by reason→act scheduling
+                let previous_response_id = task
+                    .input
+                    .get("previous_response_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
 
-            // Extract iteration count from act task input (carried through from reason)
-            let iteration = task
-                .input
-                .get("iteration")
-                .and_then(|v| v.as_u64())
-                .and_then(|raw| u32::try_from(raw).ok())
-                .filter(|&it| it > 0)
-                .unwrap_or(1);
+                // Extract iteration count from act task input (carried through from reason)
+                let iteration = task
+                    .input
+                    .get("iteration")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|raw| u32::try_from(raw).ok())
+                    .filter(|&it| it > 0)
+                    .unwrap_or(1);
 
-            let act_request_id = task
-                .input
-                .get("request_id")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let resume_state = parse_resume_state(&task.input)?;
+                let act_request_id = task
+                    .input
+                    .get("request_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let resume_state = parse_resume_state(&task.input)?;
 
-            // Create DurableTurnInput from ActInput context
-            let mut turn_input = resume_state.unwrap_or(DurableTurnInput {
-                org_id: act_input
-                    .org_id
-                    .expect("ActInput.org_id must be set for durable turns"),
-                session_id: act_input.context.session_id,
-                harness_id: act_input.harness_id,
-                agent_id: act_input.agent_id,
-                input_message_id: act_input.context.input_message_id,
-                turn_id: Some(act_input.context.turn_id),
-                previous_response_id: previous_response_id.clone(),
-                iteration,
-                request_id: act_request_id.clone(),
-                started_at: None,
-                cumulative_usage: None,
-                tool_call_count: 0,
-                llm_call_count: 0,
-                time_to_first_token_ms: None,
-                final_message_id: None,
-                final_answer_preview: None,
-            });
-            turn_input.previous_response_id = previous_response_id;
-            turn_input.iteration = iteration;
-            turn_input.request_id = act_request_id;
+                // Create DurableTurnInput from ActInput context
+                let mut turn_input = resume_state.unwrap_or(DurableTurnInput {
+                    org_id: act_input.org_id.ok_or_else(|| {
+                        anyhow::anyhow!("ActInput.org_id must be set for durable turns")
+                    })?,
+                    session_id: act_input.context.session_id,
+                    harness_id: act_input.harness_id,
+                    agent_id: act_input.agent_id,
+                    input_message_id: act_input.context.input_message_id,
+                    turn_id: Some(act_input.context.turn_id),
+                    previous_response_id: previous_response_id.clone(),
+                    iteration,
+                    request_id: act_request_id.clone(),
+                    started_at: None,
+                    cumulative_usage: None,
+                    tool_call_count: 0,
+                    llm_call_count: 0,
+                    time_to_first_token_ms: None,
+                    final_message_id: None,
+                    final_answer_preview: None,
+                });
+                turn_input.previous_response_id = previous_response_id;
+                turn_input.iteration = iteration;
+                turn_input.request_id = act_request_id;
 
-            let res = execute_act_activity(adapters, &act_input).await;
-            (res, Some(turn_input))
-        }
-        "leased_resource_cleanup" => {
-            let cleanup_input: crate::leased_resource_cleanup::LeasedResourceCleanupInput =
-                serde_json::from_value(task.input.clone())
-                    .map_err(|e| anyhow::anyhow!("Failed to parse cleanup input: {}", e))?;
-            let res =
-                crate::leased_resource_cleanup::execute_cleanup_activity(adapters, &cleanup_input)
-                    .await;
-            (res, None)
-        }
-        "session_task_reaper" => {
-            let reaper_input: crate::session_task_reaper::SessionTaskReaperInput =
-                serde_json::from_value(task.input.clone())
-                    .map_err(|e| anyhow::anyhow!("Failed to parse reaper input: {}", e))?;
-            let res =
-                crate::session_task_reaper::execute_reaper_activity(adapters, &reaper_input).await;
-            (res, None)
-        }
-        activity_types::INVOKE_SCHEDULED_APP_CHANNEL => {
-            let input: ScheduledAppChannelInput = serde_json::from_value(task.input.clone())
-                .map_err(|e| anyhow::anyhow!("Failed to parse scheduled app input: {}", e))?;
-            let res = adapters
-                .invoke_scheduled_app_channel(input.org_id, &input.app_id, &input.channel_id)
-                .await
-                .map_err(anyhow::Error::from);
-            (res, None)
-        }
-        activity_types::INVOKE_AGENT_TRIGGER => {
-            let input: ScheduledAgentTriggerInput = serde_json::from_value(task.input.clone())
-                .map_err(|e| anyhow::anyhow!("Failed to parse agent trigger input: {}", e))?;
-            let res = adapters
-                .invoke_agent_trigger(input.org_id, &input.agent_id, &input.trigger_id)
-                .await
-                .map_err(anyhow::Error::from);
-            (res, None)
-        }
-        _ => (
-            Err(anyhow::anyhow!(
-                "Unknown activity type: {}",
-                task.activity_type
-            )),
-            None,
-        ),
-    };
+                let res = execute_act_activity(adapters, &act_input).await;
+                (res, Some(turn_input))
+            }
+            "leased_resource_cleanup" => {
+                let cleanup_input: crate::leased_resource_cleanup::LeasedResourceCleanupInput =
+                    serde_json::from_value(task.input.clone())
+                        .map_err(|e| anyhow::anyhow!("Failed to parse cleanup input: {}", e))?;
+                let res = crate::leased_resource_cleanup::execute_cleanup_activity(
+                    adapters,
+                    &cleanup_input,
+                )
+                .await;
+                (res, None)
+            }
+            "session_task_reaper" => {
+                let reaper_input: crate::session_task_reaper::SessionTaskReaperInput =
+                    serde_json::from_value(task.input.clone())
+                        .map_err(|e| anyhow::anyhow!("Failed to parse reaper input: {}", e))?;
+                let res =
+                    crate::session_task_reaper::execute_reaper_activity(adapters, &reaper_input)
+                        .await;
+                (res, None)
+            }
+            activity_types::INVOKE_SCHEDULED_APP_CHANNEL => {
+                let input: ScheduledAppChannelInput = serde_json::from_value(task.input.clone())
+                    .map_err(|e| anyhow::anyhow!("Failed to parse scheduled app input: {}", e))?;
+                let res = adapters
+                    .invoke_scheduled_app_channel(input.org_id, &input.app_id, &input.channel_id)
+                    .await
+                    .map_err(anyhow::Error::from);
+                (res, None)
+            }
+            activity_types::INVOKE_AGENT_TRIGGER => {
+                let input: ScheduledAgentTriggerInput = serde_json::from_value(task.input.clone())
+                    .map_err(|e| anyhow::anyhow!("Failed to parse agent trigger input: {}", e))?;
+                let res = adapters
+                    .invoke_agent_trigger(input.org_id, &input.agent_id, &input.trigger_id)
+                    .await
+                    .map_err(anyhow::Error::from);
+                (res, None)
+            }
+            _ => (
+                Err(anyhow::anyhow!(
+                    "Unknown activity type: {}",
+                    task.activity_type
+                )),
+                None,
+            ),
+        };
+        Ok::<_, anyhow::Error>((result, turn_input_opt))
+    }
+    .await;
 
     let _ = heartbeat_cancel_tx.send(());
     let _ = heartbeat_handle.await;
+
+    let (result, turn_input_opt) = match execution {
+        Ok(execution) => execution,
+        Err(e) => {
+            let failure = summarize_task_failure(
+                task.id,
+                task.workflow_id,
+                &task.activity_type,
+                task.attempt,
+                Some(task.max_attempts),
+                &task.input,
+                &e,
+            );
+            let _ = store
+                .fail_task_and_record(task, &failure.persisted_message)
+                .await;
+
+            return Err(e);
+        }
+    };
 
     match result {
         Ok(output) => {
