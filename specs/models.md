@@ -127,11 +127,15 @@ See `specs/localization.md` for precedence rules.
 
 **Controls:**
 
-Optional per-message overrides for model selection, reasoning configuration, and speed (service tier).
+Optional per-message overrides for model selection, reasoning configuration, speed (service tier), and verbosity.
 
 **Speed (Service Tier):**
 
 When `controls.speed` is set (`flex`, `default`, or `priority`), OpenAI requests carry the matching `service_tier`; see [LLM Drivers spec](llm-drivers.md).
+
+**Verbosity:**
+
+When `controls.verbosity` is set (`low`, `medium`, or `high`), OpenAI requests carry the matching `verbosity`, hinting how expansive the model's answer should be (independent of reasoning effort). Only sent to models whose profile advertises a `verbosity` config (currently the GPT-5.5 and GPT-5.6 series); it is stripped for models that do not support it. See [LLM Drivers spec](llm-drivers.md).
 
 **Extended Thinking:**
 

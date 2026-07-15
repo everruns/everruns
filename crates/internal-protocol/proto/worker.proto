@@ -275,6 +275,7 @@ service WorkerService {
     rpc PlatformSendMessage(PlatformSendMessageRequest) returns (PlatformSendMessageResponse);
     rpc PlatformGetMessages(PlatformGetMessagesRequest) returns (PlatformGetMessagesResponse);
     rpc InvokeScheduledAppChannel(InvokeScheduledAppChannelRequest) returns (InvokeScheduledAppChannelResponse);
+    rpc InvokeAgentTrigger(InvokeAgentTriggerRequest) returns (InvokeAgentTriggerResponse);
 
     // Turn management
     rpc PlatformWaitForIdle(PlatformWaitForIdleRequest) returns (PlatformWaitForIdleResponse);
@@ -295,6 +296,9 @@ service WorkerService {
     // === Machine payment operations ===
     // Execute a paid capability request through the control-plane payment authority.
     rpc ExecuteMachinePayment(ExecuteMachinePaymentRequest) returns (ExecuteMachinePaymentResponse);
+
+    // Authorize detached peer-session creation as the current session owner.
+    rpc AuthorizeSessionCreation(AuthorizeSessionCreationRequest) returns (AuthorizeSessionCreationResponse);
 }
 
 // ============================================================================
@@ -1798,6 +1802,17 @@ message InvokeScheduledAppChannelResponse {
     bool created_session = 2;
 }
 
+message InvokeAgentTriggerRequest {
+    int64 org_id = 1;
+    string agent_id = 2;
+    string trigger_id = 3;
+}
+
+message InvokeAgentTriggerResponse {
+    string session_id = 1;
+    bool created_session = 2;
+}
+
 // === Turn management ===
 
 message PlatformWaitForIdleRequest {
@@ -1897,6 +1912,15 @@ message ExecuteMachinePaymentResponse {
     optional string rail = 3;
     google.protobuf.Value response = 4;
     google.protobuf.Value receipt = 5;
+}
+
+message AuthorizeSessionCreationRequest {
+    int64 org_id = 1;
+    string session_id = 2;
+}
+
+message AuthorizeSessionCreationResponse {
+    string budget_root_session_id = 1;
 }
 
 // ============================================

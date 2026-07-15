@@ -183,6 +183,57 @@ Each backend owns its `display_path`/`display_root`:
 - For additional mounted roots, returned file paths include the stable mounted
   prefix, e.g. `/workspace/roots/backend/Cargo.toml`.
 
+### Model-facing path guidance (EVE-748)
+
+The active primary `SessionFileSystem` owns the model-visible path identity in
+capability system prompts and file-tool parameter schemas:
+
+- Host-backed primaries teach their canonical `display_root()` (for example
+  `/repo`).
+- VFS/in-memory primaries teach `/workspace`.
+- Named secondary mounts remain discoverable through their mounted namespace.
+
+Legacy `/workspace` input aliases may remain accepted internally for host-backed
+stores, but host-backed model context must not advertise them. Storage keys and
+routing paths stay internal and must not leak into prompt text or schemas.
+`FileSystemCapability` applies this through a `FilePathPresentation` hook at
+tool-definition assembly time.
+
+### Model-visible path identity conformance (EVE-750)
+
+Every surface that can enter model context or a transcript must agree on one
+display identity owned by the active `SessionFileSystem`:
+
+- assembled system prompt and filesystem capability instructions;
+- tool results, errors, persisted `output_files` / `full_output` pointers, and
+  distillation notes;
+- paths returned by list, grep, stat, read, write, edit, and delete tools.
+
+**Invariants**
+
+- Host-backed primary rooted at `/repo`: every model-visible project path is
+  `/repo` or starts with `/repo/`. No prompt, schema default, result, error, or
+  persisted pointer may advertise `/workspace` as the active namespace.
+- VFS/in-memory primary: the established virtual identity remains `/workspace`
+  across prompt guidance, tool results, and persisted references.
+- Named secondary mounts: paths use the configured mounted virtual namespace
+  (e.g. `/workspace/roots/backend/...`) and do not leak backing-store locations.
+
+**Compatibility inputs vs presentation**
+
+Legacy `/workspace/...` input may remain accepted for routing on host-backed
+stores, but accepted aliases must be canonicalized before any path is returned,
+narrated, or persisted. Input compatibility is not model-visible identity.
+
+**Conformance**
+
+Tests use `everruns_core::path_identity` helpers (`assert_model_visible_value`,
+`assert_no_forbidden_prefixes`, `assert_tool_result_paths_conform`) and the
+runtime integration suite in
+`crates/runtime/tests/model_visible_path_identity_test.rs`. The harness
+recursively scans serialized JSON for absolute path-like strings rather than
+enumerating field names, so new model-visible fields cannot bypass the check.
+
 ### Encoding
 
 File content is round-tripped through two encodings:
@@ -240,10 +291,17 @@ The following behaviors hold across all implementations:
    itself MUST fail with an error, not return `Ok(false)`.
 4. **`stat_file` on root** returns a synthetic directory entry; the root
    always exists.
-5. **`grep_files`** searches text files only. Implementations are free to
-   skip binary content, oversized files, and explicitly excluded
-   directories. `path_pattern` is a plain substring match against the
-   canonical path (no glob expansion); `Some("")` matches every path.
+5. **`grep_files`** searches text files only. The content `pattern` uses Rust
+   [`regex`](https://docs.rs/regex) syntax and is compiled once before scanning;
+   an invalid pattern returns an explicit error. Implementations are free to
+   skip binary content, oversized files, and explicitly excluded directories.
+   `path_pattern` filters canonical workspace paths using globs:
+   `*` and `?` match within one path segment, `**` crosses directories, and
+   bracket classes and brace alternation are supported. A basename-only glob
+   such as `*.txt` matches at any depth. `/workspace` and supported host-absolute
+   aliases are normalized before matching. Patterns without glob
+   metacharacters retain the legacy substring behavior; `Some("")` matches
+   every path.
 6. **`list_directory` ambiguity.** The trait currently returns an empty
    `Vec<FileInfo>` both when the path is missing and when it exists but is
    not a directory. Callers that need to distinguish "empty directory"

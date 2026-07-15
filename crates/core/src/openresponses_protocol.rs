@@ -1072,6 +1072,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             parallel_tool_calls: config
                 .resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model)),
             service_tier: config.speed.clone(),
+            text: config.verbosity.clone().map(|verbosity| ResponsesText {
+                verbosity: Some(verbosity),
+            }),
         };
 
         // Log request details for debugging LLM errors.
@@ -1408,12 +1411,14 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             raw_error = %json.get("error").unwrap_or(&json),
                                             "OpenResponsesDriver: received streaming error event (fallback parser)"
                                         );
-                                        let formatted = if error_code != "unknown" {
-                                            format!("{}: {}", error_code, error_msg)
-                                        } else {
-                                            error_msg.to_string()
-                                        };
-                                        Ok(LlmStreamEvent::Error(formatted))
+                                        Ok(LlmStreamEvent::Error(
+                                            crate::driver_registry::LlmStreamError::provider(
+                                                (error_code != "unknown")
+                                                    .then_some(error_code.to_string()),
+                                                None,
+                                                error_msg,
+                                            ),
+                                        ))
                                     }
 
                                     _ => {
@@ -1422,13 +1427,14 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                     }
                                 }
                             }
-                            Err(e) => Ok(LlmStreamEvent::Error(format!(
-                                "Failed to parse event: {}",
-                                e
-                            ))),
+                            Err(e) => Ok(LlmStreamEvent::Error(
+                                format!("Failed to parse event: {}", e).into(),
+                            )),
                         }
                     }
-                    Err(e) => Ok(LlmStreamEvent::Error(format!("Stream error: {}", e))),
+                    Err(e) => Ok(LlmStreamEvent::Error(
+                        format!("Stream error: {}", e).into(),
+                    )),
                 }
             }
         }));
@@ -1667,22 +1673,39 @@ fn handle_streaming_event(
         }
 
         StreamingEvent::Error { error, .. } => {
-            let msg = if let Some(code) = &error.code {
-                format!("{}: {}", code, error.message)
-            } else {
-                error.message.clone()
-            };
             tracing::warn!(
                 error_code = error.code.as_deref().unwrap_or("none"),
                 error_message = %error.message,
                 "OpenResponsesDriver: received streaming error event from provider"
             );
-            LlmStreamEvent::Error(msg)
+            LlmStreamEvent::Error(crate::driver_registry::LlmStreamError::provider(
+                error.code,
+                None,
+                error.message,
+            ))
+        }
+
+        StreamingEvent::ResponseFailed { response, .. } => {
+            let error = response.error.unwrap_or(types::Error {
+                code: "processing_error".to_string(),
+                message: "The provider failed while processing the response".to_string(),
+            });
+            tracing::warn!(
+                response_id = %response.id,
+                error_code = %error.code,
+                error_message = %error.message,
+                "OpenResponsesDriver: response failed in stream"
+            );
+            LlmStreamEvent::Error(crate::driver_registry::LlmStreamError::provider(
+                Some(error.code),
+                None,
+                error.message,
+            ))
         }
 
         StreamingEvent::RefusalDelta { delta, .. } => {
             // Treat refusal as an error message
-            LlmStreamEvent::Error(format!("Model refused: {}", delta))
+            LlmStreamEvent::Error(format!("Model refused: {}", delta).into())
         }
 
         // All other events: emit empty delta to maintain stream continuity
@@ -2037,6 +2060,18 @@ struct ResponsesRequest {
     /// Omitted when `None` so the provider keeps its default ("auto") routing.
     #[serde(skip_serializing_if = "Option::is_none")]
     service_tier: Option<String>,
+    /// Text output controls, currently just `verbosity`. Omitted when there is
+    /// nothing to configure so the provider keeps its default output length.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    text: Option<ResponsesText>,
+}
+
+/// `text` request block for the Responses API. Verbosity ("low"/"medium"/"high")
+/// controls output length independently of reasoning effort.
+#[derive(Debug, Serialize)]
+struct ResponsesText {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    verbosity: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2171,6 +2206,7 @@ mod tests {
     #[test]
     fn test_request_serialization() {
         let request = ResponsesRequest {
+            text: None,
             service_tier: None,
             model: "gpt-4o".to_string(),
             input: vec![ResponsesInputItem::Message {
@@ -2201,6 +2237,7 @@ mod tests {
     #[test]
     fn test_request_with_reasoning() {
         let request = ResponsesRequest {
+            text: None,
             service_tier: None,
             model: "o3".to_string(),
             input: vec![ResponsesInputItem::Message {
@@ -2236,6 +2273,7 @@ mod tests {
         metadata.insert("agent_id".to_string(), "agent_xyz789".to_string());
 
         let request = ResponsesRequest {
+            text: None,
             service_tier: None,
             model: "gpt-4o".to_string(),
             input: vec![ResponsesInputItem::Message {
@@ -2266,6 +2304,7 @@ mod tests {
     #[test]
     fn test_request_serializes_parallel_tool_calls() {
         let make = |flag: Option<bool>| ResponsesRequest {
+            text: None,
             service_tier: None,
             model: "gpt-5.4".to_string(),
             input: vec![ResponsesInputItem::Message {
@@ -2322,6 +2361,7 @@ mod tests {
             metadata: None,
             prompt_cache_key: None,
             parallel_tool_calls: None,
+            text: None,
         };
 
         let json = serde_json::to_value(make(None)).unwrap();
@@ -2334,12 +2374,51 @@ mod tests {
         assert_eq!(json["service_tier"], "flex");
     }
 
+    /// Verbosity serializes as a nested `text.verbosity` object only when set,
+    /// preserving the provider's default output length when `None`.
+    #[test]
+    fn test_request_serializes_verbosity() {
+        let make = |verbosity: Option<&str>| ResponsesRequest {
+            service_tier: None,
+            text: verbosity.map(|v| ResponsesText {
+                verbosity: Some(v.to_string()),
+            }),
+            model: "gpt-5.6-sol".to_string(),
+            input: vec![ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("Hello".to_string()),
+                phase: None,
+            }],
+            instructions: None,
+            previous_response_id: None,
+            temperature: None,
+            max_output_tokens: None,
+            stream: true,
+            tools: None,
+            reasoning: None,
+            metadata: None,
+            prompt_cache_key: None,
+            parallel_tool_calls: None,
+        };
+
+        let json = serde_json::to_value(make(None)).unwrap();
+        assert!(json.get("text").is_none());
+
+        let json = serde_json::to_value(make(Some("low"))).unwrap();
+        assert_eq!(json["text"]["verbosity"], "low");
+
+        let json = serde_json::to_value(make(Some("high"))).unwrap();
+        assert_eq!(json["text"]["verbosity"], "high");
+    }
+
     #[test]
     fn test_build_prompt_cache_key_when_enabled() {
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("session_id".to_string(), "session_abc123".to_string());
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,
@@ -2381,6 +2460,7 @@ mod tests {
         metadata.insert("session_id".to_string(), "session_abc123".to_string());
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,
@@ -2435,6 +2515,7 @@ mod tests {
         second_metadata.insert("session_id".to_string(), "session_xyz789".to_string());
         let make_config = |metadata| LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,
@@ -2479,6 +2560,7 @@ mod tests {
     fn test_build_prompt_cache_key_stays_within_openai_limit() {
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.5".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3355,6 +3437,7 @@ mod tests {
 
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "some/model".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3441,6 +3524,7 @@ mod tests {
 
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3502,6 +3586,7 @@ mod tests {
         metadata.insert("session_id".to_string(), "session_abc123".to_string());
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5-mini".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3568,6 +3653,7 @@ mod tests {
         let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url);
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "openai/gpt-4o-mini".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3969,6 +4055,47 @@ mod tests {
     }
 
     #[test]
+    fn response_failed_preserves_provider_error_code() {
+        use std::sync::Mutex;
+
+        let event: StreamingEvent = serde_json::from_value(serde_json::json!({
+            "type": "response.failed",
+            "sequence_number": 7,
+            "response": {
+                "id": "resp_failed",
+                "object": "response",
+                "created_at": 1,
+                "status": "failed",
+                "model": "gpt-5",
+                "output": [],
+                "tools": [],
+                "error": {
+                    "code": "processing_error",
+                    "message": "An error occurred while processing your request."
+                }
+            }
+        }))
+        .expect("response.failed should deserialize");
+
+        let result = handle_streaming_event(
+            event,
+            &Mutex::new(0),
+            &Mutex::new(0),
+            &Mutex::new(None),
+            &Mutex::new(Vec::new()),
+            &Mutex::new(None),
+            "gpt-5".to_string(),
+            None,
+        );
+
+        let LlmStreamEvent::Error(error) = result else {
+            panic!("expected structured stream error");
+        };
+        assert_eq!(error.code.as_deref(), Some("processing_error"));
+        assert!(crate::llm_retry::is_transient_stream_error(&error));
+    }
+
+    #[test]
     fn test_handle_streaming_event_reasoning_without_encrypted_content() {
         use std::sync::Mutex;
 
@@ -4162,6 +4289,7 @@ mod tests {
         // to avoid API errors on models that don't support reasoning params
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.2".to_string(),
             temperature: None,
             max_tokens: None,
@@ -4197,6 +4325,7 @@ mod tests {
         // When reasoning effort is "high", the reasoning field should be present
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.2".to_string(),
             temperature: None,
             max_tokens: None,
@@ -4781,6 +4910,7 @@ mod tests {
     fn auth_test_config() -> LlmCallConfig {
         LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,

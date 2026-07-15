@@ -206,7 +206,7 @@ fn schedule_channel_max_per_org() -> i64 {
         .unwrap_or(DEFAULT)
 }
 
-fn normalize_cron_expression(cron_expression: &str) -> Result<String, CommandError> {
+pub(crate) fn normalize_cron_expression(cron_expression: &str) -> Result<String, CommandError> {
     let fields = cron_expression.split_whitespace().collect::<Vec<_>>();
     let normalized = match fields.len() {
         5 => format!("0 {} *", fields.join(" ")),
@@ -230,7 +230,10 @@ fn normalize_cron_expression(cron_expression: &str) -> Result<String, CommandErr
 /// for supported fields, so this catches non-uniform bursts that a small sample
 /// from the current wall clock could miss. Returns None when fewer than 2
 /// upcoming times exist in the horizon.
-fn cron_min_interval_seconds(schedule: &cron::Schedule, reject_below_seconds: i64) -> Option<i64> {
+pub(crate) fn cron_min_interval_seconds(
+    schedule: &cron::Schedule,
+    reject_below_seconds: i64,
+) -> Option<i64> {
     let start = Utc::now();
     let end = start + Duration::days(366);
     let mut previous: Option<DateTime<Utc>> = None;
@@ -748,7 +751,7 @@ fn validate_endpoint_auth_config(
     }
 }
 
-fn calculate_schedule_next_trigger(
+pub(crate) fn calculate_schedule_next_trigger(
     cron_expression: &str,
 ) -> Result<Option<DateTime<Utc>>, CommandError> {
     let normalized = normalize_cron_expression(cron_expression)?;
@@ -1333,7 +1336,7 @@ fn template_value_to_string(value: &Value) -> String {
     }
 }
 
-fn render_message_template(template: &str, context: &Value) -> String {
+pub(crate) fn render_message_template(template: &str, context: &Value) -> String {
     TEMPLATE_EXPR_RE
         .replace_all(template, |captures: &regex::Captures<'_>| {
             let path = captures.get(1).map(|m| m.as_str()).unwrap_or_default();
@@ -1426,6 +1429,7 @@ async fn find_or_create_invocation_session(
                 parallel_tool_calls: None,
                 parent_session_id: None,
                 forked_from_session_id: None,
+                budget_root_session_id: None,
                 seed: everruns_core::SessionSeedMode::Fresh,
             },
         )

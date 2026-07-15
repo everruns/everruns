@@ -99,6 +99,7 @@ pub mod compaction;
 mod current_time;
 mod data_knowledge;
 mod declarative;
+mod delegation_result;
 mod error_disclosure;
 pub mod facts;
 mod fake_aws;
@@ -149,6 +150,7 @@ mod tool_call_repair;
 mod tool_output_distillation;
 mod tool_output_persistence;
 mod tool_search;
+mod usage_limit_auto_continue;
 pub mod user_hooks;
 mod util;
 #[cfg(feature = "web-fetch")]
@@ -202,6 +204,10 @@ pub use declarative::{
     declarative_capability_info, hydrate_declarative_capability_config,
     hydrate_plugin_capability_config, is_declarative_capability, parse_declarative_capability_id,
     plugin_capability_info, validate_declarative_capability_definition,
+};
+pub use delegation_result::{
+    ReportResultTool, ReportTaskProgressTool, report_result_tool_for_child_session,
+    report_task_progress_tool_for_child_session,
 };
 pub use error_disclosure::{
     ERROR_DISCLOSURE_CAPABILITY_ID, ErrorDisclosureCapability, resolve_error_disclosure,
@@ -323,10 +329,10 @@ pub use skills_scoped::{
 pub use stateless_todo_list::{
     STATELESS_TODO_LIST_CAPABILITY_ID, StatelessTodoListCapability, WriteTodosTool,
 };
-pub use subagents::{
-    ReportResultTool, ReportTaskProgressTool, SUBAGENTS_CAPABILITY_ID, SpawnSubagentAsAgentTool,
-    SubagentCapability, report_result_tool_for_child_session,
-    report_task_progress_tool_for_child_session,
+pub use subagents::{SUBAGENTS_CAPABILITY_ID, SpawnSubagentAsAgentTool, SubagentCapability};
+pub use usage_limit_auto_continue::{
+    AutoContinueConfig, USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID, UsageLimitAutoContinueCapability,
+    resolve_usage_limit_auto_continue,
 };
 // Blueprint types are exported directly from the trait definitions above
 pub use bashkit_shell::{
@@ -812,6 +818,21 @@ pub trait Capability: Send + Sync {
         None
     }
 
+    /// Returns an in-process hook invoked when a turn fails with a *terminal*
+    /// LLM error (one that will not be retried), before the user-facing error
+    /// message is emitted. The hook may perform a side effect (e.g. schedule a
+    /// continuation) and/or return extra fields to augment the user-facing error
+    /// copy. This is the platform seam for capability-owned error recovery — the
+    /// same in-process hook family as [`Self::tool_call_hooks`] and
+    /// [`Self::message_filter_provider`]; the reason atom invokes it generically
+    /// and knows nothing about any specific capability's behavior. See
+    /// [`crate::llm_error_hook`].
+    ///
+    /// By default, returns None (no error hook).
+    fn llm_error_hook(&self) -> Option<Arc<dyn crate::llm_error_hook::LlmErrorHook>> {
+        None
+    }
+
     /// Returns key/value [`Fact`]s this capability contributes to the model.
     ///
     /// Facts are routed by their [`Volatility`] so prompt caching is preserved:
@@ -947,11 +968,12 @@ pub trait Capability: Send + Sync {
         tool_call: &ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         self.tools()
             .iter()
             .find(|tool| tool.name() == tool_call.name)
-            .and_then(|tool| tool.narrate(tool_call, phase, locale))
+            .and_then(|tool| tool.narrate(tool_call, phase, locale, ctx))
     }
 
     /// Returns user-defined hook specifications contributed by this capability.
@@ -1109,6 +1131,7 @@ pub trait ToolCallHook: Send + Sync {
         _tool_call: &ToolCall,
         _phase: crate::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         None
     }
@@ -1132,8 +1155,9 @@ impl ToolCallHook for CapabilityNarrationHook {
         tool_call: &ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        self.0.narrate(tool_def, tool_call, phase, locale)
+        self.0.narrate(tool_def, tool_call, phase, locale, ctx)
     }
 }
 
@@ -1405,6 +1429,14 @@ impl CapabilityRegistry {
 
         // Loop detection (EVE-227: detect repeated identical tool calls)
         registry.register(LoopDetectionCapability);
+
+        // Auto-continue after an LLM usage limit resets: resumes interrupted
+        // work once the provider limit clears. Behavior-only (no tools).
+        // Grade-only (not in `runtime_builtins`): its error hook needs the
+        // `schedule_store` host service to create the continuation and a schedule
+        // poller to fire it — neither is in the default in-process runtime — so it
+        // sits with `session_schedule` rather than the runtime-safe preset.
+        registry.register(UsageLimitAutoContinueCapability);
 
         // Tool-call repair (EVE-600): opt-in salvage of malformed tool-call
         // arguments. Disabled by default — registered so agents can enable it,
@@ -1753,6 +1785,31 @@ struct SpawnAgentTargetProvider {
     tool: Box<dyn Tool>,
 }
 
+/// Shared execution mode accepted natively by every `spawn_agent` provider.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SpawnMode {
+    Background,
+    Foreground,
+}
+
+impl SpawnMode {
+    pub(crate) fn parse(value: &str) -> Option<Self> {
+        match value {
+            "background" => Some(Self::Background),
+            "foreground" => Some(Self::Foreground),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Background => "background",
+            Self::Foreground => "foreground",
+        }
+    }
+}
+
 struct UnifiedSpawnAgentTool {
     providers: Vec<SpawnAgentTargetProvider>,
 }
@@ -1779,34 +1836,6 @@ impl UnifiedSpawnAgentTool {
             })
             .collect()
     }
-
-    fn normalize_arguments(&self, mut arguments: serde_json::Value) -> serde_json::Value {
-        let target_type = arguments
-            .get("target")
-            .and_then(|target| target.get("type"))
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default();
-
-        if target_type == "external_a2a" {
-            if let Some(target) = arguments
-                .get_mut("target")
-                .and_then(serde_json::Value::as_object_mut)
-                && !target.contains_key("external_agent_id")
-                && let Some(id) = target.get("id").cloned()
-            {
-                target.insert("external_agent_id".to_string(), id);
-            }
-            if arguments.get("mode").and_then(serde_json::Value::as_str) == Some("foreground") {
-                arguments["mode"] = serde_json::Value::String("wait".to_string());
-            }
-        } else if matches!(target_type, "subagent" | "agent")
-            && arguments.get("mode").and_then(serde_json::Value::as_str) == Some("wait")
-        {
-            arguments["mode"] = serde_json::Value::String("foreground".to_string());
-        }
-
-        arguments
-    }
 }
 
 #[async_trait]
@@ -1816,6 +1845,7 @@ impl Tool for UnifiedSpawnAgentTool {
         tool_call: &ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let target_type = tool_call
             .arguments
@@ -1823,7 +1853,7 @@ impl Tool for UnifiedSpawnAgentTool {
             .and_then(|target| target.get("type"))
             .and_then(serde_json::Value::as_str)?;
         self.provider_for(target_type)
-            .and_then(|tool| tool.narrate(tool_call, phase, locale))
+            .and_then(|tool| tool.narrate(tool_call, phase, locale, ctx))
     }
 
     fn name(&self) -> &str {
@@ -1876,7 +1906,7 @@ impl Tool for UnifiedSpawnAgentTool {
                         },
                         "id": {
                             "type": "string",
-                            "description": "Configured first-party handoff target id. Also accepted as an alias for external_a2a target.external_agent_id."
+                            "description": "Configured target id for first-party handoffs or external A2A agents."
                         },
                         "external_agent_id": {
                             "type": "string",
@@ -1888,8 +1918,8 @@ impl Tool for UnifiedSpawnAgentTool {
                 },
                 "mode": {
                     "type": "string",
-                    "enum": ["background", "foreground", "wait"],
-                    "description": "Execution mode. Use background to return immediately with a task_id. Use foreground to block for local targets; external_a2a also accepts legacy wait."
+                    "enum": ["background", "foreground"],
+                    "description": "Execution mode. Use background to return immediately with a task_id, or foreground to block until the delegated work reaches a terminal state or timeout."
                 },
                 "blueprint": {
                     "type": "string",
@@ -1901,11 +1931,11 @@ impl Tool for UnifiedSpawnAgentTool {
                 },
                 "result_schema": {
                     "type": "object",
-                    "description": "Subagent-only JSON Schema for the child agent's final structured result. When set, the child must call report_result before the task can succeed."
+                    "description": "JSON Schema for a required final structured result. Local child agents must call report_result; external A2A agents must return a structured data artifact."
                 },
                 "message_schema": {
                     "type": "object",
-                    "description": "Subagent-only JSON Schema for structured progress messages. When set, the child receives report_task_progress and valid calls post data messages to the task thread."
+                    "description": "JSON Schema for structured progress messages from local child agents. When set, the child receives report_task_progress. External A2A targets reject this option explicitly."
                 },
                 "public_context": {
                     "type": "object",
@@ -1915,7 +1945,7 @@ impl Tool for UnifiedSpawnAgentTool {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": 86400,
-                    "description": "External-A2A-only foreground/wait timeout."
+                    "description": "External-A2A-only foreground timeout."
                 },
                 "wake_on_completion": {
                     "type": "boolean",
@@ -1973,10 +2003,17 @@ impl Tool for UnifiedSpawnAgentTool {
                 "lifetime=\"detached\" is only valid for local session targets (subagent or agent), not external_a2a.",
             );
         }
+        if target_type == "external_a2a"
+            && arguments
+                .get("message_schema")
+                .is_some_and(|schema| !schema.is_null())
+        {
+            return ToolExecutionResult::tool_error(
+                "message_schema is not supported for external_a2a targets because remote agents cannot receive report_task_progress.",
+            );
+        }
 
-        provider
-            .execute_with_context(self.normalize_arguments(arguments), context)
-            .await
+        provider.execute_with_context(arguments, context).await
     }
 
     fn requires_context(&self) -> bool {
@@ -3113,6 +3150,7 @@ mod tests {
             "fake_crm",
             "fake_financial",
             "loop_detection",
+            "usage_limit_auto_continue",
             "tool_call_repair",
             "error_disclosure",
             "prompt_canary_guardrail",
@@ -5260,6 +5298,16 @@ mod tests {
         assert_eq!(
             spawn_agent_defs[0].parameters()["properties"]["target"]["properties"]["type"]["enum"],
             serde_json::json!(["subagent", "external_a2a"])
+        );
+        assert_eq!(
+            spawn_agent_defs[0].parameters()["properties"]["mode"]["enum"],
+            serde_json::json!(["background", "foreground"])
+        );
+        assert!(
+            !spawn_agent_defs[0].parameters()["properties"]["mode"]["description"]
+                .as_str()
+                .expect("mode description")
+                .contains("wait")
         );
     }
 

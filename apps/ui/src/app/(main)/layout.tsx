@@ -13,6 +13,7 @@ import { CommandPaletteContext, useCommandPaletteState } from "@/hooks/use-comma
 import {
   getLoginRedirectPath,
   isBackendNavigationPath,
+  navigateToLogin,
   RETURN_TO_STORAGE_KEY,
   sanitizeReturnTo,
 } from "@/lib/auth-redirect";
@@ -34,7 +35,13 @@ function MainLayoutInner({ children }: MainLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { isAuthenticated, isLoading: authLoading, requiresAuth, authUnavailable } = useAuth();
+  const {
+    config,
+    isAuthenticated,
+    isLoading: authLoading,
+    requiresAuth,
+    authUnavailable,
+  } = useAuth();
   const { isLoading: orgLoading } = useOrg();
   const notificationsEnabled = useFeatureFlag("notifications");
   const commandPalette = useCommandPaletteState();
@@ -59,9 +66,21 @@ function MainLayoutInner({ children }: MainLayoutProps) {
   // Redirect to login if auth is required but user is not authenticated
   useEffect(() => {
     if (!authLoading && !authUnavailable && requiresAuth && !isAuthenticated) {
-      router.replace(getLoginRedirectPath(pathname, searchParams));
+      navigateToLogin(
+        getLoginRedirectPath(pathname, searchParams, config?.login_origin),
+        router.replace,
+      );
     }
-  }, [authLoading, authUnavailable, requiresAuth, isAuthenticated, router, pathname, searchParams]);
+  }, [
+    authLoading,
+    authUnavailable,
+    requiresAuth,
+    isAuthenticated,
+    router,
+    pathname,
+    searchParams,
+    config?.login_origin,
+  ]);
 
   // After OAuth login, check sessionStorage for a pending return_to redirect
   useEffect(() => {

@@ -114,7 +114,7 @@ TaskMessage {
 - For subagents the channel carries only cross-boundary messages — the child
   transcript is not mirrored; `links.child_session_id` points at the full
   conversation.
-- Schema-bound subagents can post structured progress with a child-only
+- Schema-bound local delegation children can post structured progress with a child-only
   `report_task_progress` tool. Valid calls append outbound messages containing a
   single `data` part; invalid payloads return a validation error so the child
   can retry.
@@ -161,7 +161,7 @@ update); `post` and `output` are content (thread and stream). This keeps
 | `subagent` | create child session, send instructions | `send_message(child)` | child question → `request_input`; final message → `post` + terminal state |
 | `external_agent` | A2A `message/send` | `message/send` with `remote_task_id` | `reconcile` polls `tasks/get`; remote artifacts → `artifact` |
 | `background_tool` | run `execute_background` with the sink | rarely used | direct sink calls (existing `BackgroundEventSink` is a strict subset) |
-| `session` | create a detached peer session | n/a | visibility-only task; cancel detaches tracking and never stops the peer session |
+| `session` | create a detached peer session | n/a | `cancel` cooperatively cancels the peer session (standard send/cancel path) and settles the tracking task `canceled` — cancel means cancel, not detach-only (EVE-766) |
 | `monitor` | created by `spawn_background` with a `schedule` arg | n/a (schedule-driven) | schedule fire → probe runs (or placeholder message); one-shot → `succeeded`; recurring stays `running` |
 
 A monitor is a long-lived task (`running` until canceled or exhausted).
@@ -204,17 +204,25 @@ Results are modeled apart from status:
 - **Artifacts**: typed links (file, PR, child session) on the record.
 
 Task kinds may require a structured result by storing `spec.result_schema` as a
-JSON Schema. For subagent tasks, that schema injects a child-only
-`report_result` tool. The tool validates its arguments, writes the JSON object
-to `result_path`, and updates the task record. If a schema-bound subagent
-reaches a successful terminal child status without a recorded `result_path`, the
-task settles as `failed` with `error.kind = "no_result"`. Tasks without
-`spec.result_schema` keep their existing summary-only behavior.
+JSON Schema. Local child-session kinds (`subagent`, `session`, and
+`agent_handoff`) inject the shared child-only `report_result` tool. It validates
+its arguments, writes the JSON object to `/.tasks/{task_id}/result.json`, and
+updates the task record. If a schema-bound local child reaches a successful
+terminal status without a recorded `result_path`, the task settles as `failed`
+with `error.kind = "no_result"`.
 
-Subagent tasks may also declare `spec.message_schema` as a JSON Schema. That
-schema injects a child-only `report_task_progress` tool; valid calls are recorded as
-outbound task messages with `data` content, and background tasks use
-`wake_policy: on_activity` so those messages wake the parent session.
+External A2A tasks cannot receive local tools. For `external_agent`, the first
+structured data artifact on the terminal A2A task is validated against
+`spec.result_schema`. A valid value uses the same task-result path; a mismatch
+settles as `failed`/`schema_mismatch`, and absent data settles as
+`failed`/`no_result`. Tasks without `spec.result_schema` keep their existing
+summary-only or legacy snapshot behavior.
+
+Local child-session tasks may also declare `spec.message_schema`. That schema
+injects the shared child-only `report_task_progress` tool; valid calls are
+recorded as outbound task messages with `data` content, and background tasks
+use `wake_policy: on_activity` so those messages wake the parent session.
+External A2A spawning rejects `message_schema` explicitly.
 
 ### Retention (TTL)
 
@@ -273,6 +281,13 @@ cancel, and on completion the summary plus artifact links. Chips render purely
 from the snapshot, so new kinds appear with no frontend work. The current
 resources tab becomes tasks + resources.
 
+A cross-session **Work view** (EVE-756) reuses the same snapshot-driven chips
+and the per-session task detail card over the org-scoped `GET /v1/tasks`,
+grouping tasks by `root_session_id` into a delegation tree (root session →
+owning sessions → tasks). It has no org-wide event stream, so it reconciles the
+same `task.created`/`task.updated` snapshots by `task_id` across one per-session
+SSE subscription per owning session.
+
 ## Agent-facing tools
 
 Generic tools replace the per-kind query/messaging tools:
@@ -293,6 +308,9 @@ providers (`subagent`, `agent`, and/or `external_a2a`). Every spawn creates a
 task and returns its `task_id`. Blocking
 (foreground) spawns also create task records: same object, and the UI shows it
 live while the parent turn waits; background is a mode, not a different entity.
+All delegation providers parse the shared `background | foreground` execution
+vocabulary natively; the dispatcher owns one model-facing enum and performs no
+provider-specific mode translation.
 
 Naming cleanup: `task` parameters that carry instruction text were renamed to
 `instructions` so "task" unambiguously means the lifecycle object. The
@@ -381,7 +399,10 @@ The optional `root_session_id` filter (EVE-680) narrows the list to a single
 delegation tree — the root session's own tasks plus every descendant's. A
 session's tree root is denormalized onto `sessions.root_session_id` (a top-level
 session is its own root; a subagent child inherits its parent's root, set at
-session creation and backfilled by migration 094) and mirrored onto
+session creation and backfilled by migration 094). A detached `session` task's
+peer is created with an internal, org-validated root override, so detached task
+chains stay grouped with and spend against the origin tree; ordinary forks do
+not set this override. The root is mirrored onto
 `session_tasks.root_session_id` at task creation, so the whole tree is one
 indexed lookup with no parent-chain walk. The filter parses to a session id and
 stays inside the org semijoin, so it never crosses the tenant boundary.
@@ -559,8 +580,10 @@ No backward compatibility is required; data migrates forward once:
   `unified_worker::schedule_next_activity`'s signal-consume boundary, persisted
   through the durable signal store, with exactly-once across worker restart) is
   **not** wired in part A — it needs live Postgres/NATS/gRPC to validate and is
-  deferred to a reviewed follow-up. The cross-session Work view (part B) depends
-  on EVE-680's `root_session_id` and is also deferred.
+  deferred to a reviewed follow-up. The cross-session Work view (part B, EVE-756)
+  builds on EVE-680's `root_session_id` and is now implemented in `apps/ui`
+  (grouped delegation tree over `GET /v1/tasks`, reusing the per-session chips
+  and task detail).
 - Background tool cancellation is cooperative: runs with a task record
   heartbeat every ~2s and poll `cancel_requested_at`, winding down to
   `canceled` when set (works across worker processes).

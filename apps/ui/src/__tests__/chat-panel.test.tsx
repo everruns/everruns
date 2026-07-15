@@ -24,6 +24,8 @@ const mockSessionContext = {
   isActive: false,
   reasoningEffort: "",
   setReasoningEffort: jest.fn(),
+  verbosity: "",
+  setVerbosity: jest.fn(),
   setIsWaitingForResponse: jest.fn(),
   isThinking: false,
   streamingText: "",
@@ -50,9 +52,17 @@ jest.mock("@/components/session/session-task-chips", () => ({
   SessionTaskChips: () => null,
 }));
 
+// The participants rail pulls in org context + participant queries; this suite
+// tests chat behavior, not the rail.
+jest.mock("@/components/session/session-participants-rail", () => ({
+  SessionParticipantsRail: () => null,
+}));
+
 jest.mock("@/hooks", () => ({
   useModels: () => ({ data: [] }),
   useProviders: () => ({ data: [] }),
+  useAgents: () => ({ data: [] }),
+  useSessionParticipants: () => ({ data: [] }),
   useImageAttachments: () => ({
     pendingImages: [],
     allUploaded: true,

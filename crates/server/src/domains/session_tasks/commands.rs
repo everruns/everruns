@@ -765,6 +765,7 @@ mod tests {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
             workspace_id: None,
         })
         .await
@@ -801,6 +802,7 @@ mod tests {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
             workspace_id: None,
         })
         .await
@@ -838,6 +840,7 @@ mod tests {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: Some(parent),
+            budget_root_session_id: None,
             workspace_id: None,
         })
         .await
@@ -1715,6 +1718,7 @@ mod tests {
                 blueprint_id: None,
                 blueprint_config: None,
                 parent_session_id: None,
+                budget_root_session_id: None,
                 workspace_id: None,
             })
             .await
@@ -1804,6 +1808,7 @@ mod tests {
                 blueprint_id: None,
                 blueprint_config: None,
                 parent_session_id: None,
+                budget_root_session_id: None,
                 workspace_id: None,
             })
             .await

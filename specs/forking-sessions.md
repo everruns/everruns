@@ -122,6 +122,9 @@ sets `forked_from_session_id` to the spawning session while leaving
 `parent_session_id = NULL`; lineage is provenance, not subagent nesting.
 Lineage is one level of provenance metadata; forks of forks and detached
 sessions spawned by detached sessions simply point at their immediate source.
+Lineage alone never changes budget ownership: ordinary user forks remain their
+own `root_session_id`. Only trusted detached-spawn creation carries the separate
+internal budget-root override, which public HTTP session creation strips.
 
 ## Fork point
 

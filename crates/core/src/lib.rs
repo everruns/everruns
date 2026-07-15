@@ -84,6 +84,7 @@ pub mod budget;
 // These are DB-agnostic entity types used by both API and worker
 pub mod agent;
 pub mod agent_identity;
+pub mod agent_trigger;
 pub mod app;
 pub mod ard_attachment;
 pub mod capability_dto;
@@ -152,6 +153,7 @@ pub mod driver_registry;
 pub mod error;
 pub mod guardrail_checks;
 pub mod guardrail_gallery;
+pub mod llm_error_hook;
 pub mod llm_retry;
 pub mod message;
 pub mod message_filter;
@@ -161,6 +163,7 @@ pub mod openresponses_protocol;
 pub mod openresponses_types;
 pub mod outline;
 pub mod output_guardrail;
+pub mod path_identity;
 pub mod platform_definition;
 pub mod platform_store;
 pub mod resource_ownership;
@@ -205,6 +208,9 @@ pub use error::{
     AgentLoopError, FileSystemError, FileSystemErrorClass, LlmError, LlmErrorKind, Result,
     StoreResultExt, classify_fs_error, from_json, json_val,
 };
+pub use llm_error_hook::{
+    LlmErrorContext, LlmErrorHook, LlmErrorHookOutcome, LlmErrorHookServices,
+};
 pub use message::{
     ContentPart, ContentType, Controls, ExternalActor, ImageContentPart, ImageFileContentPart,
     InputContentPart, Message, MessageRole, ReasoningConfig, TextContentPart, ToolCallContentPart,
@@ -235,7 +241,8 @@ pub use traits::{
 pub use user_facing_error::{
     ErrorDisclosure, UserFacingError, UserFacingErrorContext, UserFacingErrorFields,
     classify_runtime_error_message, codes as user_facing_error_codes, is_provider_quota_message,
-    metadata_keys as user_facing_error_metadata_keys, trim_error_chain_prefixes,
+    is_usage_limit_message, metadata_keys as user_facing_error_metadata_keys,
+    parse_usage_limit_reset_at, trim_error_chain_prefixes,
 };
 pub use workspace_roots::{
     ADDITIONAL_ROOTS_MOUNT, PRIMARY_WORKSPACE_ROOT_NAME, RelPath, ResolvedPath, WorkspaceRoot,
@@ -295,8 +302,8 @@ pub use driver_registry::{
     DriverFactory, DriverId, DriverOAuthConfig, DriverOAuthFlow, DriverRegistry, EmbedRequest,
     EmbedResponse, EmbeddingsDriver, EmbeddingsDriverError, EmbeddingsDriverFactory, LlmCallConfig,
     LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamEvent, ProviderConfig, ServiceKind,
-    fold_system_messages,
+    LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamError, LlmStreamEvent, ProviderConfig,
+    ServiceKind, fold_system_messages,
 };
 
 // LLM retry types re-exports
@@ -414,6 +421,7 @@ pub use agent::{
     generate_agent_public_id, validate_addressable_name, validate_agent_public_id,
 };
 pub use agent_identity::{AgentIdentity, AgentIdentityStatus};
+pub use agent_trigger::{AgentTrigger, AgentTriggerType, ScheduleTriggerConfig};
 pub use app::{
     A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentVersionPolicy,
     ApiEndpointChannelConfig, App, AppChannel, AppEndpointAuthConfig, AppEndpointAuthMode,
@@ -520,7 +528,7 @@ pub use typed_id::{
     IdParseError, ImageId, KnowledgeBaseId, KnowledgeEntryId, LeasedResourceId, McpServerId,
     MemoryId, MessageId, ModelId, NotificationId, OrgId, PaymentAccountId, PaymentAttemptId,
     PaymentPolicyId, PluginInstallId, PluginMarketplaceId, PrincipalId, ProviderId, ScheduleId,
-    SessionId, SessionParticipantId, SkillId, TurnId, TypedId, WorkspaceId,
+    SessionId, SessionParticipantId, SkillId, TriggerId, TurnId, TypedId, WorkspaceId,
 };
 pub use wake_queue::{PendingWake, SessionWakeQueue, wake_text_for};
 

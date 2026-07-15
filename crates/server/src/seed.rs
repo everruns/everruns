@@ -124,6 +124,8 @@ mod seed_ids {
     pub const O1_PREVIEW: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021e);
 
     // Anthropic Models (0x300-0x3FF)
+    pub const CLAUDE_SONNET_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030c);
+    pub const CLAUDE_OPUS_4_8: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030d);
     pub const CLAUDE_OPUS_4_7: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000309);
     pub const CLAUDE_SONNET_4_6: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030a);
     pub const CLAUDE_HAIKU_4_6: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030b);
@@ -137,12 +139,16 @@ mod seed_ids {
     pub const CLAUDE_3_5_HAIKU: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000308);
     // 1M-context variants (`[1m]` model ids), 0x3a0+ sub-range.
     pub const CLAUDE_OPUS_4_7_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a7);
+    pub const CLAUDE_SONNET_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a5);
 
     // LlmSim Models (0x400-0x4FF)
     pub const LLMSIM_DEFAULT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000401);
     pub const LLMSIM_LATENCY: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000402);
 
     // Gemini Models (0x600-0x6FF)
+    pub const GEMINI_31_PRO_PREVIEW: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000604);
+    pub const GEMINI_35_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000605);
+    pub const GEMINI_31_FLASH_LITE: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000606);
     pub const GEMINI_25_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000601);
     pub const GEMINI_25_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000602);
     pub const GEMINI_20_FLASH: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000603);
@@ -2025,6 +2031,34 @@ const SEED_MODELS: &[SeedModel] = &[
         enabled: false,
         is_favorite: false,
     },
+    // Anthropic current-gen (Opus 4.8, Sonnet 5)
+    SeedModel {
+        id: seed_ids::CLAUDE_OPUS_4_8,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-opus-4-8",
+        display_name: "Claude Opus 4.8",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        id: seed_ids::CLAUDE_SONNET_5,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-sonnet-5",
+        display_name: "Claude Sonnet 5",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        // 1M-context twin of the 200K base above (driver sends the `context-1m`
+        // beta header for `[1m]` ids). Keeps a 1M Sonnet in the default picker
+        // now that the bare `claude-sonnet-5` profile is the 200K variant.
+        id: seed_ids::CLAUDE_SONNET_5_1M,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-sonnet-5[1m]",
+        display_name: "Claude Sonnet 5 (1M)",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
     // Anthropic Claude 4.7 / 4.6 series
     SeedModel {
         id: seed_ids::CLAUDE_OPUS_4_7,
@@ -2050,7 +2084,7 @@ const SEED_MODELS: &[SeedModel] = &[
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
         model_id: "claude-sonnet-4-6",
         display_name: "Claude Sonnet 4.6",
-        enabled: true,     // Enabled by default
+        enabled: false,    // Superseded by Sonnet 5
         is_favorite: true, // Favorite model
     },
     SeedModel {
@@ -2129,14 +2163,39 @@ const SEED_MODELS: &[SeedModel] = &[
         enabled: false,
         is_favorite: false,
     },
-    // Google Gemini
+    // Google Gemini 3.x series (current gen)
+    SeedModel {
+        id: seed_ids::GEMINI_31_PRO_PREVIEW,
+        provider_id: seed_ids::GEMINI_PROVIDER,
+        model_id: "gemini-3.1-pro-preview",
+        display_name: "Gemini 3.1 Pro Preview",
+        enabled: false,
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        id: seed_ids::GEMINI_35_FLASH,
+        provider_id: seed_ids::GEMINI_PROVIDER,
+        model_id: "gemini-3.5-flash",
+        display_name: "Gemini 3.5 Flash",
+        enabled: false,
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        id: seed_ids::GEMINI_31_FLASH_LITE,
+        provider_id: seed_ids::GEMINI_PROVIDER,
+        model_id: "gemini-3.1-flash-lite",
+        display_name: "Gemini 3.1 Flash Lite",
+        enabled: false,
+        is_favorite: false,
+    },
+    // Google Gemini 2.x series (superseded)
     SeedModel {
         id: seed_ids::GEMINI_25_PRO,
         provider_id: seed_ids::GEMINI_PROVIDER,
         model_id: "gemini-2.5-pro",
         display_name: "Gemini 2.5 Pro",
         enabled: false,
-        is_favorite: true, // Favorite model
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::GEMINI_25_FLASH,
@@ -2144,7 +2203,7 @@ const SEED_MODELS: &[SeedModel] = &[
         model_id: "gemini-2.5-flash",
         display_name: "Gemini 2.5 Flash",
         enabled: false,
-        is_favorite: true, // Favorite model
+        is_favorite: false,
     },
     SeedModel {
         id: seed_ids::GEMINI_20_FLASH,
@@ -2190,8 +2249,8 @@ const SEED_MODELS: &[SeedModel] = &[
     },
 ];
 
-/// Default model ID for org settings seeding (GPT-5.5)
-const DEFAULT_MODEL_ID: Uuid = seed_ids::GPT_5_5;
+/// Default model ID for org settings seeding (GPT-5.6 Sol)
+const DEFAULT_MODEL_ID: Uuid = seed_ids::GPT_5_6_SOL;
 
 /// Seed organization settings (default model, etc.)
 async fn seed_organization_settings(db: &StorageBackend) -> anyhow::Result<SeedResult> {
@@ -3342,6 +3401,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_seed_all_sets_default_and_seeds_opus_48() {
+        let db = make_db();
+        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
+
+        // Platform default model is GPT-5.6 Sol.
+        let settings = db
+            .get_organization_settings(DEFAULT_ORG_ID)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            settings.default_model_id,
+            Some(everruns_core::ModelId::from_uuid(seed_ids::GPT_5_6_SOL)),
+        );
+
+        // Claude Opus 4.8 is seeded for the Anthropic provider, enabled and
+        // marked favorite (the recommended Anthropic model).
+        let opus = db
+            .get_model(DEFAULT_ORG_ID, seed_ids::CLAUDE_OPUS_4_8)
+            .await
+            .unwrap()
+            .expect("claude-opus-4-8 should be seeded");
+        assert_eq!(opus.model_id, "claude-opus-4-8");
+        assert!(opus.enabled, "claude-opus-4-8 should be enabled");
+        assert!(opus.is_favorite, "claude-opus-4-8 should be favorite");
+    }
+
+    #[tokio::test]
     async fn test_seed_all_second_run_all_unchanged() {
         let db = make_db();
         let _ = seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
@@ -3526,6 +3615,66 @@ mod tests {
         assert!(
             result.updated >= 1,
             "should detect model display_name change"
+        );
+    }
+
+    /// End-to-end catalog check: after seeding, the current-generation models
+    /// must surface for the picker. `claude-sonnet-5` (and its 1M twin) is the
+    /// enabled favorite Sonnet while the superseded `claude-sonnet-4-6` is
+    /// disabled, and the Gemini 3.x models are catalogued. Guards against the
+    /// profile registry and seed catalog drifting apart again.
+    #[tokio::test]
+    async fn test_seed_surfaces_current_gen_models() {
+        let db = make_db();
+        seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
+            .await
+            .unwrap();
+
+        let by_id = |models: &[crate::storage::models::ModelRow]| {
+            models
+                .iter()
+                .map(|m| (m.model_id.clone(), (m.enabled, m.is_favorite)))
+                .collect::<std::collections::HashMap<_, _>>()
+        };
+
+        let anthropic = db
+            .list_models_for_provider(DEFAULT_ORG_ID, seed_ids::ANTHROPIC_PROVIDER)
+            .await
+            .unwrap();
+        let anthropic = by_id(&anthropic);
+        assert_eq!(
+            anthropic.get("claude-sonnet-5"),
+            Some(&(true, true)),
+            "Sonnet 5 must be the enabled favorite Sonnet"
+        );
+        assert_eq!(
+            anthropic.get("claude-sonnet-5[1m]"),
+            Some(&(true, true)),
+            "Sonnet 5 (1M) twin must be seeded and enabled"
+        );
+        assert_eq!(
+            anthropic.get("claude-sonnet-4-6").map(|v| v.0),
+            Some(false),
+            "Sonnet 4.6 must be demoted to disabled once superseded by Sonnet 5"
+        );
+
+        let gemini = db
+            .list_models_for_provider(DEFAULT_ORG_ID, seed_ids::GEMINI_PROVIDER)
+            .await
+            .unwrap();
+        let gemini = by_id(&gemini);
+        assert!(
+            gemini.contains_key("gemini-3.1-pro-preview"),
+            "Gemini 3.1 Pro Preview must be catalogued"
+        );
+        assert_eq!(
+            gemini.get("gemini-3.5-flash").map(|v| v.1),
+            Some(true),
+            "Gemini 3.5 Flash must be catalogued as a favorite"
+        );
+        assert!(
+            gemini.contains_key("gemini-3.1-flash-lite"),
+            "Gemini 3.1 Flash Lite must be catalogued"
         );
     }
 

@@ -814,6 +814,7 @@ async fn find_or_create_session(
                         parallel_tool_calls: None,
                         parent_session_id: None,
                         forked_from_session_id: None,
+                        budget_root_session_id: None,
                         seed: everruns_core::SessionSeedMode::Fresh,
                     },
                 )
@@ -978,20 +979,21 @@ fn is_terminal_public_output_message(
     assistant_emitted_delta || !public_content_parts_to_string(&message.content).is_empty()
 }
 
-fn ensure_assistant_message_id(
-    state: &mut AgUiStreamState,
-    event: &everruns_core::Event,
-) -> AgUiMessageId {
+/// Returns the AG-UI `messageId` for the assistant message currently being
+/// streamed, allocating a fresh id the first time a message scope opens.
+///
+/// The id is message-scoped, not turn-scoped: `close_assistant_text_without_finishing`
+/// clears the cached id at every non-terminal message boundary, so a commentary
+/// message and the final answer within one turn receive distinct ids. The id is a
+/// random public identifier and is never derived from `turn_id`, so the internal
+/// turn uuid is never exposed on the public AG-UI transport.
+///
+/// Once EVE-772 lands `message_id` on the streaming lifecycle events, this should
+/// key off the streamed `message_id` so the AG-UI id equals the stored `Message.id`.
+fn ensure_assistant_message_id(state: &mut AgUiStreamState) -> AgUiMessageId {
     state
         .assistant_message_id
-        .get_or_insert_with(|| {
-            event
-                .context
-                .turn_id
-                .as_ref()
-                .map(|id| AgUiMessageId::from(id.uuid()))
-                .unwrap_or_else(AgUiMessageId::random)
-        })
+        .get_or_insert_with(AgUiMessageId::random)
         .clone()
 }
 
@@ -1106,7 +1108,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
     match event.event_type.as_str() {
         "output.message.delta" => {
             if let Ok(data) = parse_event_data::<OutputMessageDeltaData>(event) {
-                let message_id = ensure_assistant_message_id(state, event);
+                let message_id = ensure_assistant_message_id(state);
                 if !state.assistant_content_started {
                     state
                         .queue
@@ -1131,7 +1133,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
                     close_assistant_text_without_finishing(state);
                     return;
                 }
-                let message_id = ensure_assistant_message_id(state, event);
+                let message_id = ensure_assistant_message_id(state);
                 if !state.assistant_content_started {
                     state
                         .queue
@@ -1220,7 +1222,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             state.public_tool_activity_opened_thinking = false;
         }
         "tool.started" if parse_event_data::<ToolStartedData>(event).is_ok() => {
-            ensure_assistant_message_id(state, event);
+            ensure_assistant_message_id(state);
             state.active_tool_activity_count += 1;
             match state.tool_visibility {
                 AgUiToolVisibility::None => {}
@@ -1236,7 +1238,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             }
         }
         "tool.completed" if parse_event_data::<ToolCompletedData>(event).is_ok() => {
-            ensure_assistant_message_id(state, event);
+            ensure_assistant_message_id(state);
             state.active_tool_activity_count = state.active_tool_activity_count.saturating_sub(1);
             push_public_tool_activity_end(state);
         }
@@ -1731,6 +1733,26 @@ mod tests {
             "The Base harness is the default execution wrapper."
         );
         assert!(state.finished);
+
+        // EVE-773: the commentary message and the final answer are distinct AG-UI
+        // messages, so they must carry distinct message-scoped ids, and neither may
+        // leak the raw turn uuid onto the public transport.
+        let start_ids: Vec<&AgUiMessageId> = state
+            .queue
+            .iter()
+            .filter_map(|event| match event {
+                AgUiEvent::TextMessageStart(event) => Some(&event.message_id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(start_ids.len(), 2);
+        assert_ne!(
+            start_ids[0], start_ids[1],
+            "commentary and final answer must have distinct messageIds"
+        );
+        let turn_message_id = AgUiMessageId::from(turn_id.uuid());
+        assert_ne!(*start_ids[0], turn_message_id);
+        assert_ne!(*start_ids[1], turn_message_id);
     }
 
     #[tokio::test]
@@ -1920,9 +1942,12 @@ mod tests {
         );
         translate_event(&mut state, &output_completed);
 
-        let expected_message_id = AgUiMessageId::from(turn_id.uuid());
+        // The public messageId is message-scoped and must never be the raw turn uuid.
+        let turn_message_id = AgUiMessageId::from(turn_id.uuid());
         match &state.queue[5] {
-            AgUiEvent::TextMessageStart(event) => assert_eq!(event.message_id, expected_message_id),
+            AgUiEvent::TextMessageStart(event) => {
+                assert_ne!(event.message_id, turn_message_id);
+            }
             _ => panic!("expected text start event"),
         }
     }

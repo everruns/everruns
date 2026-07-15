@@ -6,7 +6,7 @@ use crate::auth::audit;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
-    extract::{Query, State},
+    extract::{ConnectInfo, Extension, Query, State},
     http::{HeaderMap, StatusCode},
     routing::{get, patch, post},
 };
@@ -16,6 +16,7 @@ use everruns_core::{AuditEvent, ManagementAction, validate_org_public_id};
 
 use super::common::{ListResponse, impl_auth_state};
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
@@ -270,6 +271,7 @@ pub async fn update_profile(
     State(state): State<UsersState>,
     auth: AuthUser,
     org: ResolvedOrg,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     Json(req): Json<UpdateProfileRequest>,
 ) -> Result<Json<ProfileResponse>, StatusCode> {
@@ -297,7 +299,7 @@ pub async fn update_profile(
         AuditEvent::management(ManagementAction::SettingsUpdated, org.org_id, Some(auth.id))
             .target("user", auth.id.to_string())
             .detail("action", "profile_updated");
-    if let Some(ip) = audit::client_ip(&headers) {
+    if let Some(ip) = audit::client_ip_from_connect_info(connect_info, &headers) {
         builder = builder.ip(ip);
     }
     audit::emit_event(state.db.clone(), builder.build());

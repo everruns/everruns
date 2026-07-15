@@ -67,13 +67,22 @@ Parameters:
 | `target.id` | yes | Target key from capability config. |
 | `mode` | no | `background` by default when task tracking is available; `foreground` blocks for the child-session result; `invite` joins the target to the current session. |
 | `public_context` | no | Non-secret structured context appended to the child task. |
+| `result_schema` | no | JSON Schema for a required final machine result from the child session. |
+| `message_schema` | no | JSON Schema for structured progress messages from the child session. |
 
 Authorization, child-session creation, task kind, and result handling match the
 original handoff contract for `background` and `foreground`. Background mode creates an
 `agent_handoff` task with `wake_policy = on_terminal`, sends the initial
 instructions from a detached watcher, heartbeats the task while waiting, and
 settles the task with the child session's terminal status and last assistant
-message. If task tracking is unavailable, an omitted mode degrades to
+message. If `result_schema` is set, the child receives `report_result`; a valid
+call writes `/.tasks/{task_id}/result.json`, and a successful child that omits
+the call settles as `failed` with `error.kind = "no_result"`. Foreground mode
+returns that JSON object instead of prose. If `message_schema` is set, the child
+receives `report_task_progress`; valid data messages use `wake_policy =
+on_activity` in background mode. These tools and validators are shared with
+subagents. Invite mode rejects both schema options because it creates no child
+task. If task tracking is unavailable, an omitted mode degrades to
 `foreground`; explicit `background` is rejected.
 
 Invite mode is for targets that can collaborate inside the host session's
@@ -98,9 +107,12 @@ Behavior:
 6. Persist parent/child metadata through the existing subagent session fields.
 7. Create a `session_tasks` row of kind `agent_handoff` (distinct from
    `subagent`) with `links.child_session_id` set and `spec` carrying
-   `target_id`/`external_agent_id`/`mode`.
+   `target_id`/`external_agent_id`/`mode` and any declared result or message
+   schema.
 8. Send the task to the child session.
-9. In foreground mode, block until the child session idles and return its last assistant message.
+9. In foreground mode, block until the child session idles and return its
+   validated structured result when declared, otherwise its last assistant
+   message.
 
 ### Monitoring and Steering
 

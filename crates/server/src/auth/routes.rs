@@ -5,7 +5,7 @@
 use axum::{
     Json, Router,
     body::Body,
-    extract::{FromRef, Path, Query, State},
+    extract::{ConnectInfo, Extension, FromRef, Path, Query, State},
     http::{HeaderMap, Request, StatusCode},
     middleware::{self, Next},
     response::{Redirect, Response},
@@ -16,6 +16,7 @@ use chrono::{Duration, Utc};
 use everruns_core::{DEFAULT_ORG_ID, OrgRole};
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -301,6 +302,10 @@ pub struct OAuthCallbackQuery {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AuthConfigResponse {
     pub mode: String,
+    /// Trusted configured origin hosting the login page. Absent means the
+    /// frontend's same-origin `/login` route.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub login_origin: Option<String>,
     pub password_auth_enabled: bool,
     pub oauth_providers: Vec<String>,
     pub signup_enabled: bool,
@@ -449,6 +454,7 @@ pub fn routes(state: BuiltinAuthBackend) -> Router {
 pub async fn get_auth_config(State(state): State<BuiltinAuthBackend>) -> Json<AuthConfigResponse> {
     Json(AuthConfigResponse {
         mode: state.config.mode.as_str().to_string(),
+        login_origin: state.config.login_origin.clone(),
         password_auth_enabled: state.config.password_auth_enabled(),
         oauth_providers: oauth_providers(&state.config),
         signup_enabled: state.config.signup_enabled(),
@@ -493,11 +499,12 @@ async fn enforce_auth_captcha(
 /// POST /v1/auth/login - Login with email and password
 pub async fn login(
     State(state): State<BuiltinAuthBackend>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     jar: CookieJar,
     Json(req): Json<LoginRequest>,
 ) -> Result<(CookieJar, Json<TokenResponse>), AuthError> {
-    let ip = audit::client_ip(&headers);
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
 
     // In admin mode, check admin credentials directly (no database lookup)
     if state.config.mode == AuthMode::Admin {
@@ -647,7 +654,7 @@ pub async fn login(
             .as_array()
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     };
 
     audit::emit(
@@ -734,12 +741,16 @@ impl axum::response::IntoResponse for RegisterOutcome {
 /// POST /v1/auth/register - Register a new user
 pub async fn register(
     State(state): State<BuiltinAuthBackend>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     jar: CookieJar,
     Json(req): Json<RegisterRequest>,
 ) -> Result<RegisterOutcome, AuthError> {
-    // Check if signup is enabled
-    if state.config.disable_signup {
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
+
+    // Check if signup is enabled. Admin mode accepts password login for the
+    // configured administrator, but must not expose public self-registration.
+    if !state.config.signup_enabled() {
         return Err(AuthError::forbidden("Registration is disabled"));
     }
 
@@ -787,7 +798,7 @@ pub async fn register(
                 DEFAULT_ORG_ID,
                 None,
                 "auth.register.existing_email",
-                audit::client_ip(&headers),
+                ip.clone(),
                 serde_json::json!({}),
             );
             return Ok(RegisterOutcome::ConfirmationSent(OkResponse::ok()));
@@ -868,14 +879,14 @@ pub async fn register(
     issue_verification_email(&state, user.id, &user.email).await;
 
     if state.config.signup_email_confirm {
-        // No session until the emailed confirmation link is clicked — the
-        // verify-email endpoint mints it (see `verify_email`).
+        // No session is minted during confirm-mode signup. The emailed link
+        // only verifies the address; users sign in explicitly afterward.
         audit::emit(
             state.db.clone(),
             DEFAULT_ORG_ID,
             Some(user.id),
             "auth.register.pending_confirmation",
-            audit::client_ip(&headers),
+            ip.clone(),
             serde_json::json!({}),
         );
         return Ok(RegisterOutcome::ConfirmationSent(OkResponse::ok()));
@@ -892,7 +903,7 @@ pub async fn register(
         roles: vec!["user".to_string()],
         is_platform_user: false,
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     };
 
     audit::emit(
@@ -900,7 +911,7 @@ pub async fn register(
         DEFAULT_ORG_ID,
         Some(auth_user.id),
         "auth.register.success",
-        audit::client_ip(&headers),
+        ip,
         serde_json::json!({}),
     );
 
@@ -915,10 +926,13 @@ pub async fn register(
 /// primary flow for browser clients since the cookie is HttpOnly.
 pub async fn refresh_token(
     State(state): State<BuiltinAuthBackend>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     jar: CookieJar,
     body: Option<Json<RefreshTokenRequest>>,
 ) -> Result<(CookieJar, Json<TokenResponse>), AuthError> {
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
+
     // Prefer JSON body, fall back to cookie
     let refresh_token_value = if let Some(Json(req)) = body {
         req.refresh_token
@@ -981,7 +995,7 @@ pub async fn refresh_token(
             .as_array()
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     };
 
     audit::emit(
@@ -989,7 +1003,7 @@ pub async fn refresh_token(
         DEFAULT_ORG_ID,
         Some(auth_user.id),
         "auth.token_refresh.success",
-        audit::client_ip(&headers),
+        ip,
         serde_json::json!({}),
     );
 
@@ -1157,7 +1171,7 @@ pub async fn oauth_redirect(
 fn oauth_failure_redirect(config: &super::config::AuthConfig, category: &str) -> Redirect {
     let url = format!(
         "{}/login?error={category}",
-        config.frontend_url.trim_end_matches('/')
+        config.login_origin().trim_end_matches('/')
     );
     Redirect::to(&url)
 }
@@ -1172,11 +1186,13 @@ fn oauth_failure_redirect(config: &super::config::AuthConfig, category: &str) ->
 /// (everything else). The state cookie is cleared on every outcome.
 pub async fn oauth_callback(
     State(state): State<BuiltinAuthBackend>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     Path(provider): Path<String>,
     Query(query): Query<OAuthCallbackQuery>,
     jar: CookieJar,
 ) -> (CookieJar, Redirect) {
+    let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
     let cleared_jar = jar
         .clone()
         .remove(Cookie::build(OAUTH_STATE_COOKIE).path("/"));
@@ -1188,7 +1204,7 @@ pub async fn oauth_callback(
             DEFAULT_ORG_ID,
             None,
             "auth.oauth.failure",
-            audit::client_ip(&headers),
+            audit::client_ip(peer_addr, &headers),
             serde_json::json!({"provider": provider, "reason": "provider_error", "error": err}),
         );
         let category = if err == "access_denied" {
@@ -1207,7 +1223,11 @@ pub async fn oauth_callback(
         );
     };
 
-    match oauth_callback_inner(&state, &headers, &provider, &code, &cb_state, jar).await {
+    match oauth_callback_inner(
+        &state, peer_addr, &headers, &provider, &code, &cb_state, jar,
+    )
+    .await
+    {
         Ok(ok) => ok,
         Err(e) => {
             // Map the failure onto a coarse, safe category the login page renders
@@ -1231,6 +1251,7 @@ pub async fn oauth_callback(
 /// branded `/login?error=…` redirect.
 async fn oauth_callback_inner(
     state: &BuiltinAuthBackend,
+    peer_addr: Option<SocketAddr>,
     headers: &HeaderMap,
     provider: &str,
     code: &str,
@@ -1288,7 +1309,7 @@ async fn oauth_callback_inner(
             DEFAULT_ORG_ID,
             None,
             "auth.oauth.failure",
-            audit::client_ip(headers),
+            audit::client_ip(peer_addr, headers),
             serde_json::json!({"provider": provider, "reason": "exchange_failed"}),
         );
         AuthError::unauthorized("OAuth authentication failed")
@@ -1310,7 +1331,7 @@ async fn oauth_callback_inner(
             DEFAULT_ORG_ID,
             None,
             "auth.oauth.failure",
-            audit::client_ip(headers),
+            audit::client_ip(peer_addr, headers),
             serde_json::json!({"provider": provider, "reason": reason}),
         );
         return Err(AuthError::forbidden("OAuth account not permitted"));
@@ -1388,7 +1409,7 @@ async fn oauth_callback_inner(
                 DEFAULT_ORG_ID,
                 Some(linked.id),
                 "auth.oauth.linked",
-                audit::client_ip(headers),
+                audit::client_ip(peer_addr, headers),
                 serde_json::json!({"provider": provider}),
             );
             tracing::info!(
@@ -1467,7 +1488,7 @@ async fn oauth_callback_inner(
             .as_array()
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     };
 
     audit::emit(
@@ -1475,7 +1496,7 @@ async fn oauth_callback_inner(
         DEFAULT_ORG_ID,
         Some(auth_user.id),
         "auth.oauth.success",
-        audit::client_ip(headers),
+        audit::client_ip(peer_addr, headers),
         serde_json::json!({"provider": provider}),
     );
 
@@ -1574,7 +1595,10 @@ async fn send_verification_email(state: &BuiltinAuthBackend, to: &str, raw_token
 /// response is identical to a fresh signup, and THIS email is the only place
 /// the user learns they already have an account (anti-enumeration).
 async fn send_account_exists_email(state: &BuiltinAuthBackend, to: &str) {
-    let url = format!("{}/login", state.config.frontend_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/login",
+        state.config.login_origin().trim_end_matches('/')
+    );
     let subject = "You already have an Everruns account";
     let text = format!(
         "Someone (probably you) tried to create an Everruns account with this email — but you already have one.Log in here:{url}Forgot your password? Use \"Reset your password\" on the login page. If this wasn't you, you can safely ignore this email."
@@ -1713,9 +1737,8 @@ pub async fn reset_password(
 /// POST /v1/auth/verify-email - Mark the user's email verified.
 pub async fn verify_email(
     State(state): State<BuiltinAuthBackend>,
-    jar: CookieJar,
     Json(req): Json<VerifyEmailRequest>,
-) -> Result<(CookieJar, Json<OkResponse>), AuthError> {
+) -> Result<Json<OkResponse>, AuthError> {
     let token_hash = crate::api::org_invitations::hash_invite_token(&req.token);
     let user_id = state
         .db
@@ -1742,37 +1765,7 @@ pub async fn verify_email(
             AuthError::internal("Email verification failed")
         })?;
 
-    // The single-use token proves control of the mailbox, so the confirmation
-    // link doubles as sign-in (required by confirm-mode signup, where no
-    // session exists before this point; harmless otherwise). Best-effort: a
-    // session failure must not fail verification itself.
-    let jar = match state.db.get_user(user_id).await {
-        Ok(Some(user)) => {
-            let organizations = builtin::fetch_user_organizations(&state.db, user.id)
-                .await
-                .unwrap_or_default();
-            let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
-            let auth_user = AuthUser {
-                id: user.id,
-                email: user.email,
-                name: user.name,
-                roles,
-                is_platform_user: false,
-                auth_method: AuthMethod::Jwt,
-                organizations: builtin::organizations_or_default(organizations),
-            };
-            match generate_token_response(&state, jar.clone(), &auth_user).await {
-                Ok((jar, _json)) => jar,
-                Err(err) => {
-                    tracing::warn!(error = %err.error, "verify-email session mint failed");
-                    jar
-                }
-            }
-        }
-        _ => jar,
-    };
-
-    Ok((jar, OkResponse::ok()))
+    Ok(OkResponse::ok())
 }
 
 /// POST /v1/auth/resend-verification - Re-send a verification email.
@@ -1913,6 +1906,15 @@ async fn get_or_create_admin_user(
         })?;
 
     let user = if let Some(user) = existing_user {
+        let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
+        if !roles.iter().any(|role| role == "admin") {
+            tracing::error!(
+                user_id = %user.id,
+                email = %user.email,
+                "Configured admin email collides with a non-admin account"
+            );
+            return Err(AuthError::unauthorized("Login failed"));
+        }
         user
     } else {
         // Create admin user
@@ -2005,7 +2007,7 @@ async fn get_or_create_admin_user(
             .as_array()
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     })
 }
 
@@ -2398,6 +2400,7 @@ mod oauth_state_tests {
     // Password reset + email verification
     // ========================================================================
 
+    use crate::auth::backend::AuthBackend;
     use crate::auth::config::AuthConfig;
     use crate::storage::StorageBackend;
     use crate::storage::models::CreateUserRow;
@@ -2462,6 +2465,7 @@ mod oauth_state_tests {
         let db = state.db.clone();
         let outcome = register(
             State(state.clone()),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -2493,6 +2497,7 @@ mod oauth_state_tests {
         let db = state.db.clone();
         let _ = register(
             State(state.clone()),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -2520,8 +2525,9 @@ mod oauth_state_tests {
     async fn register_does_not_join_default_org_by_default() {
         let state = full_mode_backend();
         let db = state.db.clone();
-        register(
+        let outcome = register(
             State(state.clone()),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -2533,6 +2539,25 @@ mod oauth_state_tests {
         )
         .await
         .expect("register should succeed");
+
+        let RegisterOutcome::Session(status, jar, Json(tokens)) = outcome else {
+            panic!("default mode must return an instant session");
+        };
+        assert_eq!(status, StatusCode::CREATED);
+        assert!(
+            jar.get(ORG_COOKIE_NAME).is_none(),
+            "zero-org signup must not receive a synthetic org cookie"
+        );
+
+        let auth_user = state
+            .validate_token(&tokens.access_token)
+            .await
+            .expect("issued access token should validate");
+        assert!(
+            auth_user.organizations.is_empty(),
+            "issued token must preserve zero-org memberships, got {:?}",
+            auth_user.organizations
+        );
 
         let user = db
             .get_user_by_email("solo@example.com")
@@ -2575,6 +2600,7 @@ mod oauth_state_tests {
         );
         register(
             State(state.clone()),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -2634,6 +2660,79 @@ mod oauth_state_tests {
             .await
             .expect("create OAuth-only user");
         user.id
+    }
+
+    #[tokio::test]
+    async fn admin_mode_register_is_disabled() {
+        let config = AuthConfig {
+            mode: AuthMode::Admin,
+            admin: Some(super::super::config::AdminConfig {
+                email: "admin@example.com".to_string(),
+                password: "password12345".to_string(),
+            }),
+            ..Default::default()
+        };
+        let state = BuiltinAuthBackend::new(
+            config,
+            Arc::new(StorageBackend::in_memory()),
+            Arc::new(crate::platform::oss_platform_definition()),
+        );
+
+        let err = register(
+            State(state),
+            None,
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(RegisterRequest {
+                email: "attacker@example.com".to_string(),
+                password: "password12345".to_string(),
+                name: None,
+                captcha_token: None,
+            }),
+        )
+        .await
+        .expect_err("admin mode must not allow self-registration");
+        assert_eq!(err.status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn admin_login_rejects_non_admin_email_collision() {
+        let config = AuthConfig {
+            mode: AuthMode::Admin,
+            admin: Some(super::super::config::AdminConfig {
+                email: "admin@example.com".to_string(),
+                password: "password12345".to_string(),
+            }),
+            ..Default::default()
+        };
+        let db = Arc::new(StorageBackend::in_memory());
+        let attacker_id = seed_local_user(&db, " ADMIN@example.com ", "attacker12345").await;
+        let state = BuiltinAuthBackend::new(
+            config,
+            db.clone(),
+            Arc::new(crate::platform::oss_platform_definition()),
+        );
+
+        let err = login(
+            State(state),
+            None,
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(LoginRequest {
+                email: "admin@example.com".to_string(),
+                password: "password12345".to_string(),
+            }),
+        )
+        .await
+        .expect_err("admin bootstrap must fail closed on non-admin collision");
+        assert_eq!(err.status, StatusCode::UNAUTHORIZED);
+        assert!(
+            db.list_user_organizations(attacker_id)
+                .await
+                .unwrap()
+                .is_empty(),
+            "colliding user must not be promoted into any org"
+        );
     }
 
     #[tokio::test]
@@ -2796,13 +2895,9 @@ mod oauth_state_tests {
             .create_email_verification_token(user_id, &hash, Utc::now() - Duration::minutes(1))
             .await
             .unwrap();
-        let err = verify_email(
-            State(state),
-            CookieJar::new(),
-            Json(VerifyEmailRequest { token: raw }),
-        )
-        .await
-        .expect_err("expired token must be rejected");
+        let err = verify_email(State(state), Json(VerifyEmailRequest { token: raw }))
+            .await
+            .expect_err("expired token must be rejected");
         assert_eq!(err.status, StatusCode::BAD_REQUEST);
     }
 
@@ -2833,20 +2928,14 @@ mod oauth_state_tests {
             .await
             .unwrap();
 
-        let (jar, _ok) = verify_email(
+        let _ = verify_email(
             State(state.clone()),
-            CookieJar::new(),
             Json(VerifyEmailRequest { token: raw }),
         )
         .await
         .expect("verify should succeed");
 
         assert!(db.get_user(user_id).await.unwrap().unwrap().email_verified);
-        // The confirmation link doubles as sign-in: session cookies are set.
-        assert!(
-            jar.get("access_token").is_some(),
-            "verify must mint a session"
-        );
     }
 
     #[tokio::test]
@@ -2854,7 +2943,6 @@ mod oauth_state_tests {
         let state = test_backend();
         let err = verify_email(
             State(state),
-            CookieJar::new(),
             Json(VerifyEmailRequest {
                 token: "bad".to_string(),
             }),
@@ -2926,6 +3014,7 @@ mod oauth_state_tests {
         let state = full_mode_backend();
         let err = register(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -2946,6 +3035,7 @@ mod oauth_state_tests {
         seed_local_user(&state.db, "cap@example.com", "password12345").await;
         let err = login(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(LoginRequest {
@@ -2985,6 +3075,7 @@ mod oauth_state_tests {
         for _ in 0..25 {
             let result = login(
                 State(state.clone()),
+                None,
                 HeaderMap::new(),
                 CookieJar::new(),
                 Json(LoginRequest {
@@ -3005,6 +3096,7 @@ mod oauth_state_tests {
         seed_local_user(&state.db, "fresh@example.com", "password12345").await;
         let err = login(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(LoginRequest {
@@ -3025,6 +3117,7 @@ mod oauth_state_tests {
         let db = state.db.clone();
         let RegisterOutcome::Session(_status, jar, _json) = register(
             State(state.clone()),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -3097,6 +3190,7 @@ mod oauth_state_tests {
         );
         let err = register(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -3120,6 +3214,7 @@ mod oauth_state_tests {
         let frontend = state.config.frontend_url.trim_end_matches('/').to_string();
         let (_jar, redirect) = oauth_callback(
             State(state),
+            None,
             HeaderMap::new(),
             Path("google".to_string()),
             Query(OAuthCallbackQuery {
@@ -3147,6 +3242,7 @@ mod oauth_state_tests {
         let frontend = state.config.frontend_url.trim_end_matches('/').to_string();
         let (_jar, redirect) = oauth_callback(
             State(state),
+            None,
             HeaderMap::new(),
             Path("google".to_string()),
             Query(OAuthCallbackQuery {
@@ -3165,6 +3261,34 @@ mod oauth_state_tests {
             .unwrap_or_default()
             .to_string();
         assert_eq!(location, format!("{frontend}/login?error=oauth_failed"));
+    }
+
+    #[tokio::test]
+    async fn oauth_callback_failure_honors_configured_login_origin() {
+        use axum::response::IntoResponse;
+        let mut state = full_mode_backend();
+        state.config.login_origin = Some("https://id.example.com".to_string());
+        let (_jar, redirect) = oauth_callback(
+            State(state),
+            None,
+            HeaderMap::new(),
+            Path("google".to_string()),
+            Query(OAuthCallbackQuery {
+                code: None,
+                state: None,
+                error: Some("access_denied".to_string()),
+            }),
+            CookieJar::new(),
+        )
+        .await;
+        let response = redirect.into_response();
+        assert_eq!(
+            response
+                .headers()
+                .get(axum::http::header::LOCATION)
+                .and_then(|value| value.to_str().ok()),
+            Some("https://id.example.com/login?error=oauth_cancelled")
+        );
     }
 
     // --- signup email-confirm mode (AUTH_SIGNUP_EMAIL_CONFIRM) ---
@@ -3188,6 +3312,7 @@ mod oauth_state_tests {
         let db = state.db.clone();
         let outcome = register(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -3219,6 +3344,7 @@ mod oauth_state_tests {
         seed_local_user(&state.db, "taken@example.com", "password12345").await;
         let outcome = register(
             State(state.clone()),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -3238,6 +3364,7 @@ mod oauth_state_tests {
         let state = full_mode_backend();
         let err = register(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {

@@ -148,6 +148,10 @@ pub struct CreateSessionRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(ignore)]
     pub forked_from_session_id: Option<SessionId>,
+    /// Internal: org-validated budget root for detached peer sessions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(ignore)]
+    pub budget_root_session_id: Option<SessionId>,
     /// Internal: how to seed a detached peer session from its lineage source.
     #[serde(default)]
     #[schema(ignore)]
@@ -576,16 +580,16 @@ pub async fn create_session(
 
 /// Strip request fields that only trusted internal dispatch paths may set.
 ///
-/// `parent_session_id` is internal-only metadata used for subagent/handoff
-/// ownership. The trusted spawn flow sets it via `DirectPlatformStore`, which
-/// dispatches the `CreateSession` command directly and never passes through
-/// this HTTP handler. Any value on an inbound public request is therefore a
-/// forgery attempt (cross-session/cross-org parent link) and is dropped here,
-/// at the untrusted boundary — the command layer intentionally trusts the
-/// caller-set value so the spawn path (which runs as the session owner, not an
-/// internal caller) keeps working.
+/// Trusted worker dispatch sets these fields by invoking the domain command
+/// directly. Values supplied at the public HTTP boundary are forgery attempts
+/// and must never influence delegation ownership, lineage, or budget linkage.
 fn strip_internal_only_fields(req: &mut CreateSessionRequest) {
+    // THREAT[TM-TENANT-014]: Never let public callers select delegation or
+    // budget ownership metadata.
     req.parent_session_id = None;
+    req.forked_from_session_id = None;
+    req.budget_root_session_id = None;
+    req.seed = SessionSeedMode::Fresh;
 }
 
 /// POST /v1/sessions/{session_id}/fork - Fork a session into an independent copy
@@ -1093,17 +1097,38 @@ mod tests {
     }
 
     #[test]
-    fn strip_internal_only_fields_drops_client_supplied_parent_session_id() {
+    fn strip_internal_only_fields_drops_client_supplied_delegation_metadata() {
         // A public HTTP client must not be able to forge the internal-only
         // parent link; the boundary drops any caller-supplied value.
         let json = format!(r#"{{"harness_id": "{}"}}"#, TEST_HARNESS_ID);
         let mut req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
         req.parent_session_id = Some(SessionId::new());
+        req.forked_from_session_id = Some(SessionId::new());
+        req.budget_root_session_id = Some(SessionId::new());
+        req.seed = SessionSeedMode::Fork;
         assert!(req.parent_session_id.is_some());
 
         strip_internal_only_fields(&mut req);
 
         assert_eq!(req.parent_session_id, None);
+        assert_eq!(req.forked_from_session_id, None);
+        assert_eq!(req.budget_root_session_id, None);
+        assert_eq!(req.seed, SessionSeedMode::Fresh);
+    }
+
+    #[test]
+    fn strip_internal_only_fields_drops_client_supplied_fork_lineage_and_seed() {
+        // Public clients must not be able to trigger internal detached-spawn
+        // seeding from another session via the generic create-session API.
+        let mut req: CreateSessionRequest =
+            serde_json::from_str(&format!(r#"{{"harness_id": "{}"}}"#, TEST_HARNESS_ID)).unwrap();
+        req.forked_from_session_id = Some(SessionId::new());
+        req.seed = SessionSeedMode::Fork;
+
+        strip_internal_only_fields(&mut req);
+
+        assert_eq!(req.forked_from_session_id, None);
+        assert_eq!(req.seed, SessionSeedMode::Fresh);
     }
 
     #[test]

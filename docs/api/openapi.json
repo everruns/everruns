@@ -974,6 +974,333 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/triggers": {
+      "get": {
+        "tags": [
+          "agent-triggers"
+        ],
+        "description": "List an agent's triggers. Set include_archived=true to also return archived triggers.",
+        "operationId": "list_agent_triggers",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "description": "Include archived triggers (default false).",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent triggers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentTrigger"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "agent-triggers"
+        ],
+        "summary": "POST /v1/agents/{agent_id}/triggers",
+        "operationId": "create_agent_trigger",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentTriggerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Trigger created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTrigger"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/triggers/{trigger_id}": {
+      "get": {
+        "tags": [
+          "agent-triggers"
+        ],
+        "summary": "GET /v1/agents/{agent_id}/triggers/{trigger_id}",
+        "operationId": "get_agent_trigger",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "trigger_id",
+            "in": "path",
+            "description": "Trigger ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trigger",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTrigger"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Trigger not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "agent-triggers"
+        ],
+        "summary": "DELETE /v1/agents/{agent_id}/triggers/{trigger_id}",
+        "operationId": "delete_agent_trigger",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "trigger_id",
+            "in": "path",
+            "description": "Trigger ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Trigger archived"
+          },
+          "404": {
+            "description": "Trigger not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "agent-triggers"
+        ],
+        "summary": "PATCH|PUT /v1/agents/{agent_id}/triggers/{trigger_id}",
+        "operationId": "update_agent_trigger",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "trigger_id",
+            "in": "path",
+            "description": "Trigger ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgentTriggerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Trigger updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTrigger"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Trigger not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger": {
+      "post": {
+        "tags": [
+          "agent-triggers"
+        ],
+        "summary": "POST /v1/agents/{agent_id}/triggers/{trigger_id}/trigger",
+        "operationId": "trigger_agent_trigger",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "trigger_id",
+            "in": "path",
+            "description": "Trigger ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trigger fired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerAgentTriggerOutput"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Trigger not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/versions": {
       "get": {
         "tags": [
@@ -15451,6 +15778,75 @@
         ],
         "example": "active"
       },
+      "AgentTrigger": {
+        "type": "object",
+        "description": "AgentTrigger is a durable, agent-owned invocation trigger.",
+        "required": [
+          "id",
+          "agent_id",
+          "trigger_type",
+          "config",
+          "enabled",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "Agent that owns this trigger.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
+          "archived_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Archive timestamp."
+          },
+          "config": {
+            "description": "Type-specific configuration (parsed via typed accessors)."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp."
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Delete timestamp."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the trigger is currently active."
+          },
+          "id": {
+            "type": "string",
+            "description": "External identifier (trg_<32-hex>). Shown as `id` in API.",
+            "example": "trg_01933b5a000070008000000000000001"
+          },
+          "trigger_type": {
+            "$ref": "#/components/schemas/AgentTriggerType",
+            "description": "The kind of event that fires this trigger."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp."
+          }
+        }
+      },
+      "AgentTriggerType": {
+        "type": "string",
+        "description": "The kind of event that fires an agent trigger. Only scheduled triggers exist\ntoday; the enum leaves room for webhook/event triggers later.",
+        "enum": [
+          "schedule"
+        ]
+      },
       "AgentVersion": {
         "type": "object",
         "description": "Immutable snapshot of an Agent's authored and resolved runtime config.",
@@ -17618,6 +18014,13 @@
               "null"
             ],
             "description": "Speed (service tier) for this message turn: \"flex\", \"default\", or\n\"priority\". Only sent to providers whose model profile advertises a\nspeed config (OpenAI `service_tier`)."
+          },
+          "verbosity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Verbosity for this message turn: \"low\", \"medium\", or \"high\". Only sent\nto providers whose model profile advertises a verbosity config (OpenAI\n`verbosity`)."
           }
         }
       },
@@ -17838,6 +18241,39 @@
                 "type": "client_side"
               }
             ]
+          }
+        }
+      },
+      "CreateAgentTriggerRequest": {
+        "type": "object",
+        "description": "Request to create a schedule trigger on an agent.",
+        "required": [
+          "cron_expression",
+          "message"
+        ],
+        "properties": {
+          "cron_expression": {
+            "type": "string",
+            "description": "Cron expression that drives the durable schedule. Accepts 5-field\n(min hour day month weekday) or 7-field (sec … year) form.",
+            "example": "0 9 * * *"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the trigger is active on creation (default `true`)."
+          },
+          "message": {
+            "type": "string",
+            "description": "Message content or `{{template}}` sent when the schedule fires.",
+            "example": "Run the daily digest"
+          },
+          "session_mode": {
+            "$ref": "#/components/schemas/InvocationSessionMode",
+            "description": "Whether invocations reuse a stable session or create a new one."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone identifier for cron evaluation (default `UTC`).",
+            "example": "UTC"
           }
         }
       },
@@ -21335,10 +21771,12 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional path glob (`**/*.rs`, `docs/*.md`)."
           },
           "pattern": {
-            "type": "string"
+            "type": "string",
+            "description": "Regex pattern to search for."
           }
         }
       },
@@ -28165,6 +28603,17 @@
           "tool_search": {
             "type": "boolean",
             "description": "Whether the model supports tool_search (deferred tool loading).\nWhen true, the driver can use namespaces and defer_loading to reduce\ntoken usage for large tool sets. Currently supported by GPT-5.4 and newer."
+          },
+          "verbosity": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/VerbosityConfig",
+                "description": "Verbosity configuration, for models that expose output-length\ncontrol (OpenAI `verbosity`)."
+              }
+            ]
           }
         }
       },
@@ -32157,6 +32606,32 @@
           }
         }
       },
+      "ScheduleTriggerConfig": {
+        "type": "object",
+        "description": "Typed configuration for a `Schedule` trigger.\n\n`message` is also the template body. `{{path.to.value}}` placeholders are\nexpanded at invocation time. Mirrors `app::ScheduleChannelConfig`.",
+        "required": [
+          "cron_expression",
+          "message"
+        ],
+        "properties": {
+          "cron_expression": {
+            "type": "string",
+            "description": "Cron expression that drives the durable schedule."
+          },
+          "message": {
+            "type": "string",
+            "description": "Message content or template sent when the schedule fires."
+          },
+          "session_mode": {
+            "$ref": "#/components/schemas/InvocationSessionMode",
+            "description": "Whether invocations reuse a stable session or create a new one."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone identifier for cron evaluation."
+          }
+        }
+      },
       "SchedulesListResponse": {
         "type": "object",
         "description": "Schedules list response",
@@ -34766,6 +35241,22 @@
           }
         }
       },
+      "TriggerAgentTriggerOutput": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "created_session"
+        ],
+        "properties": {
+          "created_session": {
+            "type": "boolean"
+          },
+          "session_id": {
+            "$ref": "#/components/schemas/sessionId",
+            "description": "Session's prefixed public identifier."
+          }
+        }
+      },
       "TriggerResponse": {
         "type": "object",
         "description": "Manual trigger response",
@@ -35207,6 +35698,46 @@
                 },
                 "type": "client_side"
               }
+            ]
+          }
+        }
+      },
+      "UpdateAgentTriggerRequest": {
+        "type": "object",
+        "description": "Request to update a schedule trigger. Only provided fields change; the rest\nare preserved from the stored config.",
+        "properties": {
+          "cron_expression": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/InvocationSessionMode"
+              }
+            ]
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
             ]
           }
         }
@@ -36462,6 +36993,54 @@
             "type": "string",
             "description": "Full SKILL.md content to validate, including the YAML frontmatter and the markdown body.",
             "example": "---\nname: refund-policy\ndescription: Issue refunds inside the policy window.\n---\n\nUse this when a customer asks for a refund within 30 days of purchase."
+          }
+        }
+      },
+      "Verbosity": {
+        "type": "string",
+        "description": "Verbosity level for models that support output-length control.\nWire values map 1:1 to the OpenAI `verbosity` request parameter:\n`low` (terse), `medium` (balanced, provider default), `high`\n(comprehensive). Independent of `ReasoningEffort`, which tunes the\namount of reasoning rather than the length of the final answer.",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      "VerbosityConfig": {
+        "type": "object",
+        "description": "Verbosity configuration for a model",
+        "required": [
+          "values",
+          "default"
+        ],
+        "properties": {
+          "default": {
+            "$ref": "#/components/schemas/Verbosity",
+            "description": "Default verbosity for this model"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VerbosityValue"
+            },
+            "description": "Available verbosity values for this model"
+          }
+        }
+      },
+      "VerbosityValue": {
+        "type": "object",
+        "description": "Named verbosity value for UI display",
+        "required": [
+          "value",
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name (e.g., \"Low\", \"High\")"
+          },
+          "value": {
+            "$ref": "#/components/schemas/Verbosity",
+            "description": "The API value (e.g., \"low\", \"high\")"
           }
         }
       },
@@ -39799,6 +40378,12 @@
         "description": "Prefixed identifier with 'paypol' prefix",
         "example": "paypol_01933b5a00007000800000000000001",
         "pattern": "^paypol_[0-9a-f]{32}$"
+      },
+      "sessionId": {
+        "type": "string",
+        "description": "Prefixed identifier with 'session' prefix",
+        "example": "session_01933b5a00007000800000000000001",
+        "pattern": "^session_[0-9a-f]{32}$"
       }
     }
   },
@@ -39890,6 +40475,10 @@
     {
       "name": "harnesses",
       "description": "Harness management endpoints"
+    },
+    {
+      "name": "agent-triggers",
+      "description": "Agent-owned schedule trigger endpoints"
     },
     {
       "name": "skills",

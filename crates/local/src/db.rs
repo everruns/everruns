@@ -10,6 +10,7 @@
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use parking_lot::Mutex;
 use rusqlite::Connection;
@@ -44,6 +45,7 @@ impl SqliteDb {
         // restarts; foreign_keys keeps message rows tied to their task.
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", true)?;
+        conn.busy_timeout(Duration::from_secs(5))?;
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
         })
@@ -56,6 +58,14 @@ impl SqliteDb {
     ) -> LocalResult<T> {
         let guard = self.conn.lock();
         f(&guard).map_err(LocalError::from)
+    }
+
+    pub(crate) fn with_conn_mut<T>(
+        &self,
+        f: impl FnOnce(&mut Connection) -> rusqlite::Result<T>,
+    ) -> LocalResult<T> {
+        let mut guard = self.conn.lock();
+        f(&mut guard).map_err(LocalError::from)
     }
 }
 

@@ -31,6 +31,8 @@ function renderSelection(models: ModelWithProvider[]) {
       defaultModel: undefined,
       reasoningEffort: "",
       setReasoningEffort: () => undefined,
+      verbosity: "",
+      setVerbosity: () => undefined,
     }),
   );
 }
