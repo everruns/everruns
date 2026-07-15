@@ -28357,7 +28357,7 @@
             "items": {
               "$ref": "#/components/schemas/CostTier"
             },
-            "description": "Tiered pricing that applies above certain context thresholds.\nWhen present, the base cost fields apply up to the tier threshold,\nand each tier's costs apply for tokens beyond that threshold."
+            "description": "Tiered pricing that applies when prompt tokens exceed context thresholds.\nWhen present, the highest matching tier replaces the base rates for the\nwhole request."
           },
           "input": {
             "type": "number",
