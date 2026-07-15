@@ -879,8 +879,8 @@ pub async fn register(
     issue_verification_email(&state, user.id, &user.email).await;
 
     if state.config.signup_email_confirm {
-        // No session until the emailed confirmation link is clicked — the
-        // verify-email endpoint mints it (see `verify_email`).
+        // No session is minted during confirm-mode signup. The emailed link
+        // only verifies the address; users sign in explicitly afterward.
         audit::emit(
             state.db.clone(),
             DEFAULT_ORG_ID,
@@ -1737,9 +1737,8 @@ pub async fn reset_password(
 /// POST /v1/auth/verify-email - Mark the user's email verified.
 pub async fn verify_email(
     State(state): State<BuiltinAuthBackend>,
-    jar: CookieJar,
     Json(req): Json<VerifyEmailRequest>,
-) -> Result<(CookieJar, Json<OkResponse>), AuthError> {
+) -> Result<Json<OkResponse>, AuthError> {
     let token_hash = crate::api::org_invitations::hash_invite_token(&req.token);
     let user_id = state
         .db
@@ -1766,37 +1765,7 @@ pub async fn verify_email(
             AuthError::internal("Email verification failed")
         })?;
 
-    // The single-use token proves control of the mailbox, so the confirmation
-    // link doubles as sign-in (required by confirm-mode signup, where no
-    // session exists before this point; harmless otherwise). Best-effort: a
-    // session failure must not fail verification itself.
-    let jar = match state.db.get_user(user_id).await {
-        Ok(Some(user)) => {
-            let organizations = builtin::fetch_user_organizations(&state.db, user.id)
-                .await
-                .unwrap_or_default();
-            let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
-            let auth_user = AuthUser {
-                id: user.id,
-                email: user.email,
-                name: user.name,
-                roles,
-                is_platform_user: false,
-                auth_method: AuthMethod::Jwt,
-                organizations,
-            };
-            match generate_token_response(&state, jar.clone(), &auth_user).await {
-                Ok((jar, _json)) => jar,
-                Err(err) => {
-                    tracing::warn!(error = %err.error, "verify-email session mint failed");
-                    jar
-                }
-            }
-        }
-        _ => jar,
-    };
-
-    Ok((jar, OkResponse::ok()))
+    Ok(OkResponse::ok())
 }
 
 /// POST /v1/auth/resend-verification - Re-send a verification email.
@@ -2926,13 +2895,9 @@ mod oauth_state_tests {
             .create_email_verification_token(user_id, &hash, Utc::now() - Duration::minutes(1))
             .await
             .unwrap();
-        let err = verify_email(
-            State(state),
-            CookieJar::new(),
-            Json(VerifyEmailRequest { token: raw }),
-        )
-        .await
-        .expect_err("expired token must be rejected");
+        let err = verify_email(State(state), Json(VerifyEmailRequest { token: raw }))
+            .await
+            .expect_err("expired token must be rejected");
         assert_eq!(err.status, StatusCode::BAD_REQUEST);
     }
 
@@ -2963,20 +2928,14 @@ mod oauth_state_tests {
             .await
             .unwrap();
 
-        let (jar, _ok) = verify_email(
+        let _ = verify_email(
             State(state.clone()),
-            CookieJar::new(),
             Json(VerifyEmailRequest { token: raw }),
         )
         .await
         .expect("verify should succeed");
 
         assert!(db.get_user(user_id).await.unwrap().unwrap().email_verified);
-        // The confirmation link doubles as sign-in: session cookies are set.
-        assert!(
-            jar.get("access_token").is_some(),
-            "verify must mint a session"
-        );
     }
 
     #[tokio::test]
@@ -2984,7 +2943,6 @@ mod oauth_state_tests {
         let state = test_backend();
         let err = verify_email(
             State(state),
-            CookieJar::new(),
             Json(VerifyEmailRequest {
                 token: "bad".to_string(),
             }),
