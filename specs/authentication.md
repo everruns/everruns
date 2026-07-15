@@ -219,10 +219,10 @@ email/password signup is an explicit, enumeration-safe two-step flow:
   address sends a "you already have an account" email instead. Both cases
   return the same `200 { "ok": true }` — the emailed body is the only place
   the two outcomes diverge.
-- `POST /v1/auth/verify-email` consumes the single-use token, marks the email
-  verified, and (best-effort) mints a session — the confirmation link doubles
-  as sign-in. Session minting on verify applies in all modes; the token
-  proves control of the mailbox.
+- `POST /v1/auth/verify-email` consumes the single-use token and marks the
+  email verified. It does not mint a session; after confirmation the user signs
+  in explicitly so verification links cannot overwrite another browser's
+  existing session.
 - `/v1/auth/config` advertises `signup_email_confirm` so the UI renders the
   "Check your email" landing (identical copy for new and existing addresses)
   instead of expecting tokens.

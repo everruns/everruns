@@ -19,6 +19,7 @@ import type {
   CreateEvalRunRequest,
   EvalRun,
 } from "@/lib/api/types";
+import { MAX_COMPARE_RUNS } from "@/lib/eval-run-comparison";
 import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
 import { createCrudHooks } from "./create-crud-hooks";
@@ -112,8 +113,10 @@ export function useEvalRunComparison(evalId: string | undefined, runIds: string[
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
+  const boundedRunIds = runIds.slice(0, MAX_COMPARE_RUNS);
+
   const queries = useQueries({
-    queries: runIds.map((runId) => ({
+    queries: boundedRunIds.map((runId) => ({
       queryKey: [...queryKeys.evals.runDetail(evalId ?? "", runId), org],
       queryFn: () => getEvalRun(evalId!, runId),
       enabled: !!evalId && !!org && !!runId,
@@ -124,6 +127,7 @@ export function useEvalRunComparison(evalId: string | undefined, runIds: string[
     runs: queries.map((q) => q.data).filter((d): d is EvalRun => !!d),
     isLoading: orgLoading || queries.some((q) => q.isLoading),
     isError: queries.some((q) => q.isError),
+    errors: queries.map((q) => q.error).filter((error): error is Error => error instanceof Error),
   };
 }
 
