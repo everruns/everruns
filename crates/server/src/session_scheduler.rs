@@ -923,6 +923,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn monitor_probe_registry_excludes_network_and_filesystem_tools() {
+        let registry = everruns_core::ToolRegistry::with_monitor_probe_defaults();
+
+        assert!(
+            registry.has("get_current_time"),
+            "context-free probe tools remain available"
+        );
+        assert!(
+            !registry.has("web_fetch"),
+            "scheduled probes must not run network-capable tools without the worker/API ToolContext"
+        );
+        assert!(
+            !registry.has("read_file"),
+            "scheduled probes must not run filesystem tools without the worker/API ToolContext"
+        );
+    }
+
+    #[tokio::test]
     async fn probe_monitor_records_tool_result_not_placeholder() {
         let db = make_db();
         let session_id = SessionId::new();
@@ -938,7 +956,7 @@ mod tests {
         .await;
 
         let registry = make_registry(db.clone());
-        let tool_registry = Arc::new(everruns_core::ToolRegistry::with_defaults());
+        let tool_registry = Arc::new(everruns_core::ToolRegistry::with_monitor_probe_defaults());
 
         let probe_ran = fire_monitor_tasks(
             &registry,
@@ -986,7 +1004,7 @@ mod tests {
         let task = create_monitor_task(&db, session_id, schedule_id).await;
 
         let registry = make_registry(db.clone());
-        let tool_registry = Arc::new(everruns_core::ToolRegistry::with_defaults());
+        let tool_registry = Arc::new(everruns_core::ToolRegistry::with_monitor_probe_defaults());
 
         let probe_ran = fire_monitor_tasks(
             &registry,
