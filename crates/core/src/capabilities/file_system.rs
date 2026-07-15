@@ -641,11 +641,18 @@ fn coerce_top_level_edit(arguments: &Value) -> std::result::Result<Option<TextEd
         return Ok(None);
     }
 
-    let old_text = old_text_arg.and_then(Value::as_str).unwrap_or_default();
-    let new_text = new_text_arg.and_then(Value::as_str).unwrap_or_default();
+    let old_text = old_text_arg
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Legacy top-level old_text must be a string".to_string())?;
+    let new_text = new_text_arg
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Legacy top-level new_text must be a string".to_string())?;
 
-    // Empty old_text carries no replacement target: treat as a placeholder stub.
+    // Empty legacy placeholders carry no replacement target.
     if old_text.is_empty() {
+        if !new_text.is_empty() {
+            return Err("Legacy top-level old_text cannot be empty".to_string());
+        }
         return Ok(None);
     }
 
@@ -2569,6 +2576,42 @@ mod tests {
         assert_eq!(edits.len(), 1);
         assert_eq!(edits[0].old_text, "hello");
         assert_eq!(edits[0].new_text, "world");
+    }
+
+    #[test]
+    fn test_parse_text_edits_allows_legacy_top_level_deletion() {
+        // Backward-compat: an explicit empty-string replacement is still a valid
+        // deletion edit when both legacy scalar fields are well-formed strings.
+        let edits = parse_text_edits(&json!({
+            "old_text": "remove me",
+            "new_text": ""
+        }))
+        .expect("explicit legacy deletion edit should be accepted");
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].old_text, "remove me");
+        assert_eq!(edits[0].new_text, "");
+    }
+
+    #[test]
+    fn test_parse_text_edits_rejects_malformed_legacy_top_level_new_text() {
+        let missing_err = parse_text_edits(&json!({
+            "old_text": "remove me"
+        }))
+        .unwrap_err();
+        assert!(
+            missing_err.contains("new_text"),
+            "error should mention new_text: {missing_err}"
+        );
+
+        let non_string_err = parse_text_edits(&json!({
+            "old_text": "remove me",
+            "new_text": null
+        }))
+        .unwrap_err();
+        assert!(
+            non_string_err.contains("new_text"),
+            "error should mention new_text: {non_string_err}"
+        );
     }
 
     #[test]
