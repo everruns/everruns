@@ -11,12 +11,12 @@
 
 use std::time::Instant;
 
-use everruns_core::capabilities::{LuaCapability, VirtualBashCapability};
+use everruns_core::capabilities::{BashkitShellCapability, LuaCapability};
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::session_file::InitialFile;
 use everruns_core::{
-    AgentId, CapabilityRegistry, HarnessId, DriverId, MessageRole, ResolvedModel,
-    PlatformDefinition, SessionId,
+    AgentId, CapabilityRegistry, DriverId, HarnessId, MessageRole, PlatformDefinition,
+    ResolvedModel, SessionId,
 };
 use everruns_runtime::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 
@@ -95,7 +95,7 @@ struct RunMetrics {
 
 fn platform() -> PlatformDefinition {
     let mut caps = CapabilityRegistry::new();
-    caps.register(VirtualBashCapability);
+    caps.register(BashkitShellCapability);
     caps.register(LuaCapability);
 
     let mut drivers = DriverRegistry::new();
@@ -106,12 +106,7 @@ fn platform() -> PlatformDefinition {
     PlatformDefinition::new(caps, drivers)
 }
 
-async fn run_one(
-    task: &Task,
-    capability: &str,
-    model: &ResolvedModel,
-    seed: u64,
-) -> RunMetrics {
+async fn run_one(task: &Task, capability: &str, model: &ResolvedModel, seed: u64) -> RunMetrics {
     let harness_id = HarnessId::from_seed(seed as u128);
     let agent_id = AgentId::from_seed(seed as u128);
     let session_id = SessionId::from_seed(seed as u128);

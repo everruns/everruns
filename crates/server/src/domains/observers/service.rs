@@ -128,9 +128,38 @@ impl ObserverService {
         Self { db }
     }
 
+    /// Verify every `llm_judge` scorer that names a model references one the
+    /// org can actually use. A judge with no `model_id` falls back to the org
+    /// default at scoring time, so only explicit ids are checked here.
+    ///
+    /// This mirrors runtime resolution (`get_model` is org-scoped and
+    /// enabled-only, same as `ProviderResolverService::resolve_model`): without
+    /// it a saved observer would point at an inaccessible model and silently
+    /// `skip` every score at scoring time instead of failing fast on save.
+    async fn validate_model_access(
+        &self,
+        org_id: i64,
+        scorers: &[ObserverScorerConfig],
+    ) -> Result<()> {
+        for scorer in scorers {
+            if let ScorerMethod::LlmJudge(judge) = &scorer.method
+                && let Some(model_id) = judge.model_id
+                && self.db.get_model(org_id, model_id.uuid()).await?.is_none()
+            {
+                anyhow::bail!(BadRequestError::new(format!(
+                    "scorer '{}' references a model that is not available to this organization",
+                    scorer.key
+                )));
+            }
+        }
+        Ok(())
+    }
+
     pub async fn create(&self, caller: &Caller, req: CreateObserverRequest) -> Result<Observer> {
         let sampling_rate = req.sampling_rate.unwrap_or(0.1);
         validate(sampling_rate, &req.scorers)?;
+        self.validate_model_access(caller.org_id, &req.scorers)
+            .await?;
 
         let active = self.db.count_active_observers(caller.org_id).await?;
         if active >= max_observers_per_org() {
@@ -200,6 +229,13 @@ impl ObserverService {
             None => serde_json::from_value(existing.scorers.clone())?,
         };
         validate(effective_rate, &effective_scorers)?;
+        // Only re-check models when the scorers are actually being changed; an
+        // unrelated patch (e.g. pause) must not fail because a previously valid
+        // model was later disabled.
+        if req.scorers.is_some() {
+            self.validate_model_access(caller.org_id, &effective_scorers)
+                .await?;
+        }
 
         let status = match req.status {
             Some(status) => {
@@ -435,5 +471,170 @@ mod tests {
         // not values derived from the internal row UUID.
         assert_eq!(scores[0].public_id, score_public);
         assert_eq!(scores[0].observer_id, observer.public_id);
+    }
+
+    use crate::storage::models::{CreateModelRow, CreateProviderRow};
+    use everruns_core::observer::LlmJudgeConfig;
+    use everruns_core::typed_id::ModelId;
+
+    /// Create a model in `org_id` and return its id. `enabled` controls whether
+    /// it is usable (disabled models are invisible to `get_model`).
+    async fn create_model(db: &StorageBackend, org_id: i64, enabled: bool) -> ModelId {
+        let provider = db
+            .create_provider(
+                org_id,
+                CreateProviderRow {
+                    name: "p".into(),
+                    provider_type: "openai".into(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        db.create_model(
+            org_id,
+            CreateModelRow {
+                provider_id: provider.id,
+                model_id: "gpt-test".into(),
+                display_name: "GPT Test".into(),
+                capabilities: vec![],
+                is_favorite: false,
+                enabled,
+                source: "manual".into(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .unwrap()
+        .id
+    }
+
+    fn judge_scorer(key: &str, model_id: Option<ModelId>) -> ObserverScorerConfig {
+        ObserverScorerConfig {
+            key: key.into(),
+            scope: ObserverScope::Turn,
+            method: ScorerMethod::LlmJudge(LlmJudgeConfig {
+                rubric: "score the answer".into(),
+                model_id,
+                pass_threshold: 0.5,
+            }),
+        }
+    }
+
+    fn create_req(scorers: Vec<ObserverScorerConfig>) -> CreateObserverRequest {
+        CreateObserverRequest {
+            name: "o".into(),
+            description: None,
+            match_config: None,
+            sampling_rate: Some(1.0),
+            scorers,
+        }
+    }
+
+    #[tokio::test]
+    async fn create_accepts_judge_with_accessible_model() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = ObserverService::new(db.clone());
+        let caller = Caller::internal(1);
+        let model = create_model(&db, 1, true).await;
+
+        svc.create(&caller, create_req(vec![judge_scorer("q", Some(model))]))
+            .await
+            .expect("accessible model should be accepted");
+    }
+
+    #[tokio::test]
+    async fn create_accepts_judge_without_model() {
+        // No explicit model means "use the org default" at scoring time, so it
+        // must be accepted even when the org has no model configured here.
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = ObserverService::new(db.clone());
+        let caller = Caller::internal(1);
+
+        svc.create(&caller, create_req(vec![judge_scorer("q", None)]))
+            .await
+            .expect("judge without a model should be accepted");
+    }
+
+    #[tokio::test]
+    async fn create_rejects_judge_with_unknown_model() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = ObserverService::new(db.clone());
+        let caller = Caller::internal(1);
+
+        let err = svc
+            .create(
+                &caller,
+                create_req(vec![judge_scorer("q", Some(ModelId::new()))]),
+            )
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not available to this organization"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn create_rejects_judge_with_disabled_model() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = ObserverService::new(db.clone());
+        let caller = Caller::internal(1);
+        let model = create_model(&db, 1, false).await;
+
+        let err = svc
+            .create(&caller, create_req(vec![judge_scorer("q", Some(model))]))
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not available to this organization"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn create_rejects_model_from_another_org() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = ObserverService::new(db.clone());
+        // Model lives in org 2; caller is org 1 and must not be able to use it.
+        let other_model = create_model(&db, 2, true).await;
+        let caller = Caller::internal(1);
+
+        let err = svc
+            .create(
+                &caller,
+                create_req(vec![judge_scorer("q", Some(other_model))]),
+            )
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not available to this organization"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn update_rechecks_model_access_when_scorers_change() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = ObserverService::new(db.clone());
+        let caller = Caller::internal(1);
+        let observer = svc
+            .create(&caller, create_req(vec![contains_scorer("k", "x")]))
+            .await
+            .unwrap();
+
+        let err = svc
+            .update(
+                &caller,
+                &observer.public_id.to_string(),
+                UpdateObserverRequest {
+                    name: None,
+                    description: None,
+                    match_config: None,
+                    sampling_rate: None,
+                    scorers: Some(vec![judge_scorer("q", Some(ModelId::new()))]),
+                    status: None,
+                },
+            )
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("not available to this organization"), "{err}");
     }
 }

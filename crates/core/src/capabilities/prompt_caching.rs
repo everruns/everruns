@@ -101,14 +101,7 @@ impl Capability for PromptCachingCapability {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = PromptCachingCapability::new();
-        assert_eq!(cap.id(), PROMPT_CACHING_CAPABILITY_ID);
-        assert_eq!(cap.name(), "Prompt Caching");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert!(cap.tools().is_empty());
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_default_strategy() {

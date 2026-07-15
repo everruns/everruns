@@ -32,6 +32,7 @@ use sqlx::PgPool;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::task::JoinHandle;
 use tracing::{debug, error, info, warn};
 
 /// Default interval between GC sweeps (6 hours). Orphans are harmless besides
@@ -320,19 +321,19 @@ async fn sweep_with_live_keys(
 /// in-memory dev backend or a PostgreSQL deployment running the default inline
 /// (`db`) storage. Those backends keep bytes inline in PostgreSQL and have no
 /// external objects, so there is nothing to garbage-collect.
-pub fn spawn_blob_gc_task(db: Arc<StorageBackend>, config: BlobGcConfig) {
+pub fn spawn_blob_gc_task(db: Arc<StorageBackend>, config: BlobGcConfig) -> Option<JoinHandle<()>> {
     let Some(blob_store) = db.blob_store() else {
         debug!("Blob GC disabled: no object-storage backend (inline/db storage has no orphans)");
-        return;
+        return None;
     };
     let Some(pool) = db.pool().cloned() else {
         // Object-storage is only wired on the PostgreSQL backend; defensive.
         debug!("Blob GC disabled: no PostgreSQL pool");
-        return;
+        return None;
     };
     if !config.enabled() {
         info!("Blob GC disabled (STORAGE_BLOB_GC_INTERVAL_SECONDS=0)");
-        return;
+        return None;
     }
 
     info!(
@@ -343,7 +344,7 @@ pub fn spawn_blob_gc_task(db: Arc<StorageBackend>, config: BlobGcConfig) {
         "Starting object-storage blob GC background task"
     );
 
-    tokio::spawn(async move {
+    Some(tokio::spawn(async move {
         let mut ticker = tokio::time::interval(config.interval);
         ticker.tick().await; // skip the immediate first tick
 
@@ -360,7 +361,7 @@ pub fn spawn_blob_gc_task(db: Arc<StorageBackend>, config: BlobGcConfig) {
                 }
             }
         }
-    });
+    }))
 }
 
 #[cfg(test)]
@@ -548,8 +549,8 @@ mod tests {
 
     #[tokio::test]
     async fn sweep_deletes_old_orphans_keeps_live() {
-        use object_store::ObjectStore;
         use object_store::path::Path as ObjectPath;
+        use object_store::{ObjectStore, ObjectStoreExt};
 
         let inner: Arc<dyn ObjectStore> = Arc::new(object_store::memory::InMemory::new());
         let store: SharedBlobStore =

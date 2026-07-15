@@ -121,6 +121,7 @@ impl Tool for KvStoreTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Key-Value Store");
         Some(crate::tool_narration::narrate_secret_store(
@@ -331,6 +332,7 @@ impl Tool for SecretStoreTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Secret Store");
         Some(crate::tool_narration::narrate_secret_store(
@@ -642,27 +644,7 @@ mod tests {
         assert!(!is_internal_secret_name("api_key"));
     }
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = SessionStorageCapability;
-        assert_eq!(cap.id(), "session_storage");
-        assert_eq!(cap.name(), "Storage");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("database"));
-        assert_eq!(cap.category(), Some("Storage"));
-    }
-
-    #[test]
-    fn test_capability_has_two_tools() {
-        let cap = SessionStorageCapability;
-        let tools = cap.tools();
-
-        assert_eq!(tools.len(), 2);
-
-        let tool_names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(tool_names.contains(&"kv_store"));
-        assert!(tool_names.contains(&"secret_store"));
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_capability_has_system_prompt() {
@@ -671,12 +653,6 @@ mod tests {
         assert!(prompt.contains("kv_store"));
         assert!(prompt.contains("secret_store"));
         assert!(prompt.contains("encrypted"));
-    }
-
-    #[test]
-    fn test_tools_require_context() {
-        assert!(KvStoreTool.requires_context());
-        assert!(SecretStoreTool.requires_context());
     }
 
     #[tokio::test]

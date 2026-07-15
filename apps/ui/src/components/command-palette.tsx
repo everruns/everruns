@@ -69,8 +69,29 @@ function groupResults(
 
 export function CommandPalette() {
   const { open, setOpen } = useCommandPalette();
-  const router = useRouter();
   const pathname = usePathname();
+
+  // Close on route change
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname, setOpen]);
+
+  return (
+    <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Backdrop className="data-[open]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[open]:fade-in-0 data-[closed]:animation-duration-[200ms] fixed inset-0 z-50 bg-black/50" />
+        <DialogPrimitive.Popup className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]">
+          {/* Mount the search UI (and its data fetching) only while open, so we
+              don't fetch every entity list on every page load. */}
+          {open && <CommandPaletteContent setOpen={setOpen} />}
+        </DialogPrimitive.Popup>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
+}
+
+function CommandPaletteContent({ setOpen }: { setOpen: (open: boolean) => void }) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -82,20 +103,10 @@ export function CommandPalette() {
   // Flat list for keyboard navigation
   const flatResults = grouped.flatMap((g) => g.items);
 
-  // Close on route change
+  // Focus input once the palette mounts.
   useEffect(() => {
-    setOpen(false);
-  }, [pathname, setOpen]);
-
-  // Reset state when opening
-  useEffect(() => {
-    if (open) {
-      setQuery("");
-      setSelectedIndex(0);
-      // Focus input after dialog renders
-      requestAnimationFrame(() => inputRef.current?.focus());
-    }
-  }, [open]);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, []);
 
   // Reset selected index when query changes.
   useEffect(() => {
@@ -154,94 +165,85 @@ export function CommandPalette() {
   let flatIndex = 0;
 
   return (
-    <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Backdrop className="data-[open]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[open]:fade-in-0 data-[closed]:animation-duration-[200ms] fixed inset-0 z-50 bg-black/50" />
-        <DialogPrimitive.Popup
-          className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]"
+    <div className="bg-background w-full max-w-lg border shadow-2xl animate-in fade-in-0 zoom-in-95 duration-150">
+      {/* Search input */}
+      <div className="flex items-center gap-3 border-b px-4">
+        <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
-        >
-          <div className="bg-background w-full max-w-lg border shadow-2xl animate-in fade-in-0 zoom-in-95 duration-150">
-            {/* Search input */}
-            <div className="flex items-center gap-3 border-b px-4">
-              <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-              <input
-                ref={inputRef}
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search pages, organizations, agents..."
-                className="flex-1 bg-transparent py-3.5 text-sm outline-none placeholder:text-muted-foreground"
-                aria-label="Search pages, organizations, agents"
-              />
-              <kbd className="hidden sm:inline-flex h-5 items-center gap-1 border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
-                ESC
-              </kbd>
-            </div>
+          placeholder="Search pages, organizations, agents..."
+          className="flex-1 bg-transparent py-3.5 text-sm outline-none placeholder:text-muted-foreground"
+          aria-label="Search pages, organizations, agents"
+        />
+        <kbd className="hidden sm:inline-flex h-5 items-center gap-1 border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
+          ESC
+        </kbd>
+      </div>
 
-            {/* Results */}
-            <div ref={listRef} className="max-h-[min(50vh,400px)] overflow-y-auto p-1.5">
-              {flatResults.length === 0 && query.trim() ? (
-                <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                  No results for &ldquo;{query}&rdquo;
-                </div>
-              ) : (
-                grouped.map((group) => (
-                  <div key={group.category}>
-                    <div className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
-                      {CATEGORY_LABELS[group.category]}
-                    </div>
-                    {group.items.map((result) => {
-                      const idx = flatIndex++;
-                      const isSelected = idx === selectedIndex;
-                      return (
-                        <button
-                          key={result.id}
-                          type="button"
-                          data-selected={isSelected}
-                          className={cn(
-                            "flex w-full items-center gap-3 px-3 py-2 text-sm transition-colors",
-                            isSelected
-                              ? "bg-accent text-accent-foreground"
-                              : "text-foreground hover:bg-accent/50",
-                          )}
-                          onClick={() => navigate(result)}
-                          onMouseEnter={() => setSelectedIndex(idx)}
-                        >
-                          <result.icon className="h-4 w-4 shrink-0 text-muted-foreground" />
-                          <div className="flex-1 text-left min-w-0">
-                            <span className="truncate block">{result.title}</span>
-                            {result.subtitle && (
-                              <span className="truncate block text-xs text-muted-foreground">
-                                {result.subtitle}
-                              </span>
-                            )}
-                          </div>
-                          {isSelected && (
-                            <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ))
-              )}
-            </div>
-
-            {/* Footer hints */}
-            <div className="flex items-center gap-4 border-t px-4 py-2 text-[11px] text-muted-foreground">
-              <span className="inline-flex items-center gap-1">
-                <ArrowUp className="h-3 w-3" />
-                <ArrowDown className="h-3 w-3" />
-                navigate
-              </span>
-              <span className="inline-flex items-center gap-1">
-                <CornerDownLeft className="h-3 w-3" />
-                select
-              </span>
-            </div>
+      {/* Results */}
+      <div ref={listRef} className="max-h-[min(50vh,400px)] overflow-y-auto p-1.5">
+        {flatResults.length === 0 && query.trim() ? (
+          <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+            No results for &ldquo;{query}&rdquo;
           </div>
-        </DialogPrimitive.Popup>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
+        ) : (
+          grouped.map((group) => (
+            <div key={group.category}>
+              <div className="px-3 py-1.5 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
+                {CATEGORY_LABELS[group.category]}
+              </div>
+              {group.items.map((result) => {
+                const idx = flatIndex++;
+                const isSelected = idx === selectedIndex;
+                return (
+                  <button
+                    key={result.id}
+                    type="button"
+                    data-selected={isSelected}
+                    className={cn(
+                      "flex w-full items-center gap-3 px-3 py-2 text-sm transition-colors",
+                      isSelected
+                        ? "bg-accent text-accent-foreground"
+                        : "text-foreground hover:bg-accent/50",
+                    )}
+                    onClick={() => navigate(result)}
+                    onMouseEnter={() => setSelectedIndex(idx)}
+                  >
+                    <result.icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <div className="flex-1 text-left min-w-0">
+                      <span className="truncate block">{result.title}</span>
+                      {result.subtitle && (
+                        <span className="truncate block text-xs text-muted-foreground">
+                          {result.subtitle}
+                        </span>
+                      )}
+                    </div>
+                    {isSelected && (
+                      <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Footer hints */}
+      <div className="flex items-center gap-4 border-t px-4 py-2 text-[11px] text-muted-foreground">
+        <span className="inline-flex items-center gap-1">
+          <ArrowUp className="h-3 w-3" />
+          <ArrowDown className="h-3 w-3" />
+          navigate
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <CornerDownLeft className="h-3 w-3" />
+          select
+        </span>
+      </div>
+    </div>
   );
 }

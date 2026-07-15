@@ -35,6 +35,7 @@ pub type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
 
 /// Response body for resource stats.
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(as = ResourceStats)]
 pub struct ResourceStatsResponse {
     /// Total number of sessions ever created for this resource.
     #[schema(example = 1_842u64)]
@@ -1767,11 +1768,7 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_error_response_new() {
-        let error = ErrorResponse::new("Test error");
-        assert_eq!(error.detail.as_deref(), Some("Test error"));
-    }
+    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
     fn test_error_response_into_response() {
@@ -1831,27 +1828,6 @@ mod tests {
         let (status, json) = none.ok_or_not_found_json("Agent").unwrap_err();
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_eq!(json.0.detail.as_deref(), Some("Agent not found"));
-    }
-
-    #[test]
-    fn test_list_response_new() {
-        let list = ListResponse::new(vec![1, 2, 3]);
-        assert_eq!(list.data, vec![1, 2, 3]);
-    }
-
-    #[test]
-    fn test_list_response_from_vec() {
-        let list: ListResponse<i32> = vec![1, 2, 3].into();
-        assert_eq!(list.data, vec![1, 2, 3]);
-    }
-
-    #[test]
-    fn test_paginated_response_new() {
-        let response = PaginatedResponse::new(vec![1, 2, 3], 100, 0, 20);
-        assert_eq!(response.data, vec![1, 2, 3]);
-        assert_eq!(response.total, 100);
-        assert_eq!(response.offset, 0);
-        assert_eq!(response.limit, 20);
     }
 
     #[test]
@@ -2120,20 +2096,6 @@ mod tests {
             value["ui_link"],
             "https://app.example/capabilities/compaction"
         );
-    }
-
-    #[test]
-    fn test_pagination_new() {
-        let pagination = Pagination::new(10, 20);
-        assert_eq!(pagination.offset, 10);
-        assert_eq!(pagination.limit, 20);
-    }
-
-    #[test]
-    fn test_pagination_default() {
-        let pagination = Pagination::default();
-        assert_eq!(pagination.offset, 0);
-        assert_eq!(pagination.limit, 0);
     }
 
     #[test]

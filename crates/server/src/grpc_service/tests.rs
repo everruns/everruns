@@ -376,6 +376,114 @@ fn proto_session_id(session: &proto::Session) -> everruns_core::SessionId {
     everruns_core::SessionId::from_uuid(id.value.parse().expect("uuid session id"))
 }
 
+struct DenyGrpcSessionManageResolver;
+
+impl everruns_core::PermissionResolver for DenyGrpcSessionManageResolver {
+    fn has_permission(
+        &self,
+        caller: &everruns_core::Caller,
+        permission: &everruns_core::Permission,
+    ) -> bool {
+        *permission != everruns_core::Permission::OrgSessionsManage
+            && everruns_core::DefaultPermissionResolver.has_permission(caller, permission)
+    }
+
+    fn caller_permissions(&self, caller: &everruns_core::Caller) -> Vec<everruns_core::Permission> {
+        everruns_core::DefaultPermissionResolver
+            .caller_permissions(caller)
+            .into_iter()
+            .filter(|permission| *permission != everruns_core::Permission::OrgSessionsManage)
+            .collect()
+    }
+}
+
+#[tokio::test]
+async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
+    use crate::storage::models::{CreateSessionRow, CreateUserRow};
+
+    let mut service = test_worker_service().await;
+    let user = service
+        .db
+        .create_user(CreateUserRow {
+            email: "grpc-session-authority@example.com".to_string(),
+            name: "gRPC Session Authority".to_string(),
+            avatar_url: None,
+            external_id: None,
+            roles: vec![],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: Some("test".to_string()),
+            auth_provider_id: None,
+        })
+        .await
+        .unwrap();
+    service
+        .db
+        .ensure_membership(user.id, everruns_core::DEFAULT_ORG_ID, "owner")
+        .await
+        .unwrap();
+    let session = service
+        .db
+        .create_session(CreateSessionRow {
+            workspace_id: None,
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            resolved_owner_user_id: Some(user.id),
+            title: Some("authority root".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
+        })
+        .await
+        .unwrap();
+
+    let response = service
+        .authorize_session_creation(Request::new(AuthorizeSessionCreationRequest {
+            org_id: session.org_id,
+            session_id: session.id.to_string(),
+        }))
+        .await
+        .expect("owner authority")
+        .into_inner();
+    assert_eq!(response.budget_root_session_id, session.id.to_string());
+
+    let foreign = service
+        .authorize_session_creation(Request::new(AuthorizeSessionCreationRequest {
+            org_id: session.org_id + 1,
+            session_id: session.id.to_string(),
+        }))
+        .await
+        .expect_err("cross-org authority lookup must fail");
+    assert_eq!(foreign.code(), tonic::Code::NotFound);
+
+    service.set_permission_resolver(Arc::new(DenyGrpcSessionManageResolver));
+    let denied = service
+        .authorize_session_creation(Request::new(AuthorizeSessionCreationRequest {
+            org_id: session.org_id,
+            session_id: session.id.to_string(),
+        }))
+        .await
+        .expect_err("active permission resolver must be honored");
+    assert_eq!(denied.code(), tonic::Code::PermissionDenied);
+}
+
 async fn start_grpc_test_server(
     service: WorkerServiceImpl,
 ) -> (
@@ -424,9 +532,8 @@ async fn start_grpc_test_server(
 
 #[tokio::test]
 async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
-    use everruns_core::capabilities::{AgentHandoffCapability, Capability, SubagentCapability};
     use everruns_core::platform_store::PlatformStore;
-    use everruns_core::tools::ToolExecutionResult;
+    use everruns_core::tools::{Tool, ToolExecutionResult};
 
     let service = test_worker_service_with_completing_runner().await;
     let parent = create_grpc_test_session(&service).await;
@@ -486,23 +593,28 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
     let mut context = everruns_core::traits::ToolContext::new(parent_id);
     context.platform_store = Some(adapter.clone());
     context.session_store = Some(adapter.clone());
+    context.session_creation_authority = Some(Arc::new(
+        everruns_worker::grpc_adapters::GrpcSessionCreationAuthority::new(
+            client.clone(),
+            everruns_core::DEFAULT_ORG_ID,
+            parent_id,
+        ),
+    ));
 
-    let spawn_tool = SubagentCapability
-        .tools()
-        .into_iter()
-        .find(|tool| tool.name() == "spawn_subagent")
-        .expect("spawn_subagent tool");
+    let spawn_tool = everruns_core::capabilities::SpawnSubagentAsAgentTool;
     let spawn_result = spawn_tool
         .execute_with_context(
             serde_json::json!({
                 "name": "gRPC Subagent",
-                "instructions": "Exercise spawn_subagent through the gRPC platform adapter"
+                "instructions": "Exercise spawn_agent subagent delegation through the gRPC platform adapter",
+                "target": { "type": "subagent" },
+                "mode": "foreground"
             }),
             &context,
         )
         .await;
     let ToolExecutionResult::Success(spawn_value) = spawn_result else {
-        panic!("spawn_subagent should succeed over grpc, got {spawn_result:?}");
+        panic!("spawn_agent subagent target should succeed over grpc, got {spawn_result:?}");
     };
     assert_eq!(spawn_value["status"], "completed");
     assert_eq!(spawn_value["result"], "Child completed through gRPC");
@@ -516,8 +628,36 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .await
         .expect("get spawned subagent")
         .expect("spawned subagent exists");
-    // parent_session_id is set on spawn (nesting guard); name/status now live on the task record.
+    // parent_session_id is set on spawn for delegation tree tracking; name/status now live on the task record.
     assert_eq!(subagent.parent_session_id, Some(parent_id));
+
+    let detached_result = spawn_tool
+        .execute_with_context(
+            serde_json::json!({
+                "name": "gRPC Detached Peer",
+                "instructions": "Exercise authorized detached creation through the worker path",
+                "target": { "type": "subagent" },
+                "lifetime": "detached",
+                "mode": "foreground"
+            }),
+            &context,
+        )
+        .await;
+    let ToolExecutionResult::Success(detached_value) = detached_result else {
+        panic!("authorized detached spawn should succeed over grpc, got {detached_result:?}");
+    };
+    let detached_id: everruns_core::SessionId = detached_value["subagent_id"]
+        .as_str()
+        .expect("detached id")
+        .parse()
+        .expect("detached id parses");
+    let detached = adapter
+        .get_session_by_id(detached_id)
+        .await
+        .expect("get detached peer")
+        .expect("detached peer exists");
+    assert_eq!(detached.parent_session_id, None);
+    assert_eq!(detached.forked_from_session_id, Some(parent_id));
 
     let target_agent = adapter
         .create_agent(
@@ -539,25 +679,23 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
             "required_scopes": ["fake_aws:rds:create"]
         }]
     });
-    let handoff_tool = AgentHandoffCapability
-        .tools_with_config(&handoff_config)
-        .into_iter()
-        .find(|tool| tool.name() == "start_agent_handoff")
-        .expect("start_agent_handoff tool");
+    let handoff_tool = everruns_core::capabilities::SpawnAgentHandoffTool::new(&handoff_config);
 
     context.connection_resolver = Some(Arc::new(AllowingConnectionResolver));
     let handoff_result = handoff_tool
         .execute_with_context(
             serde_json::json!({
-                "target": "target",
-                "instructions": "Exercise start_agent_handoff through the gRPC platform adapter",
+                "name": "gRPC Handoff Target",
+                "instructions": "Exercise spawn_agent handoff delegation through the gRPC platform adapter",
+                "target": { "type": "agent", "id": "target" },
+                "mode": "foreground",
                 "public_context": { "ticket": "EVE-538" }
             }),
             &context,
         )
         .await;
     let ToolExecutionResult::Success(handoff_value) = handoff_result else {
-        panic!("start_agent_handoff should succeed over grpc, got {handoff_result:?}");
+        panic!("spawn_agent handoff target should succeed over grpc, got {handoff_result:?}");
     };
     assert_eq!(handoff_value["status"], "completed");
     assert_eq!(handoff_value["result"], "Child completed through gRPC");
@@ -651,6 +789,19 @@ fn test_require_grpc_auth_token_panics_without_env() {
 }
 
 #[test]
+fn test_require_grpc_auth_token_result_errors_without_env() {
+    let _lock = lock_env();
+    unsafe { std::env::remove_var("WORKER_GRPC_AUTH_TOKEN") };
+
+    let error = require_grpc_auth_token_result().expect_err("missing token should error");
+    assert!(
+        error
+            .to_string()
+            .contains("WORKER_GRPC_AUTH_TOKEN must be set")
+    );
+}
+
+#[test]
 fn test_require_grpc_auth_token_returns_value() {
     let _lock = lock_env();
     unsafe { std::env::set_var("WORKER_GRPC_AUTH_TOKEN", "test-token-123") };
@@ -672,6 +823,28 @@ fn test_grpc_server_tls_returns_none_when_no_env_vars() {
         config.is_none(),
         "Should return None when TLS not configured"
     );
+}
+
+#[test]
+fn test_grpc_server_tls_result_errors_on_missing_cert_file() {
+    let _lock = lock_env();
+    unsafe {
+        std::env::set_var("WORKER_GRPC_TLS_CERT", "/nonexistent/cert.pem");
+        std::env::set_var("WORKER_GRPC_TLS_KEY", "/nonexistent/key.pem");
+        std::env::remove_var("WORKER_GRPC_TLS_CA_CERT");
+    }
+
+    let error = grpc_server_tls_from_env_result().expect_err("missing cert should error");
+    assert!(
+        error
+            .to_string()
+            .contains("Failed to read WORKER_GRPC_TLS_CERT")
+    );
+
+    unsafe {
+        std::env::remove_var("WORKER_GRPC_TLS_CERT");
+        std::env::remove_var("WORKER_GRPC_TLS_KEY");
+    }
 }
 
 #[test]

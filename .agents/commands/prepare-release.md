@@ -50,8 +50,8 @@ See `specs/release-process.md` for the full release process specification.
    ```
 
    **Sub-crate path-dependency pins** - Several sub-crates pin sibling crates
-   by exact version (e.g. `crates/core/Cargo.toml` pins `everruns-config`,
-   `everruns-openui`, `everruns-a2ui`). These must match the workspace version
+   by exact version (e.g. `crates/core/Cargo.toml` pins `everruns-openui`,
+   `everruns-a2ui`). These must match the workspace version
    or the `publish-crates` workflow rejects the tag. Run the helper after
    bumping the workspace version:
 

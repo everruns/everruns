@@ -389,9 +389,11 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
         activity_id: &str,
         result: serde_json::Value,
     ) -> Result<ProcessResult, ExecutorError> {
-        // Load events to get current sequence (length = next expected sequence)
-        let events = self.store.load_events(workflow_id).await?;
-        let current_sequence = events.len() as i32;
+        // Next expected sequence == event count (sequences are contiguous from 0).
+        // Use COUNT instead of materializing + deserializing the entire event log
+        // just to read its length; process_workflow replays (snapshot-optimized)
+        // on its own. EVE-639.
+        let current_sequence = self.store.count_events(workflow_id).await? as i32;
 
         // Append completion event
         let completion_event = WorkflowEvent::ActivityCompleted {
@@ -418,9 +420,9 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
         error: ActivityError,
         will_retry: bool,
     ) -> Result<ProcessResult, ExecutorError> {
-        // Load events to get current sequence (length = next expected sequence)
-        let events = self.store.load_events(workflow_id).await?;
-        let current_sequence = events.len() as i32;
+        // Next expected sequence == event count (contiguous from 0). See
+        // on_activity_completed; avoids a redundant full event-log load. EVE-639.
+        let current_sequence = self.store.count_events(workflow_id).await? as i32;
 
         // Append failure event
         let failure_event = WorkflowEvent::ActivityFailed {
@@ -453,9 +455,9 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
         workflow_id: Uuid,
         timer_id: &str,
     ) -> Result<ProcessResult, ExecutorError> {
-        // Load events to get current sequence (length = next expected sequence)
-        let events = self.store.load_events(workflow_id).await?;
-        let current_sequence = events.len() as i32;
+        // Next expected sequence == event count (contiguous from 0). See
+        // on_activity_completed; avoids a redundant full event-log load. EVE-639.
+        let current_sequence = self.store.count_events(workflow_id).await? as i32;
 
         // Append timer fired event
         let timer_event = WorkflowEvent::TimerFired {

@@ -12,9 +12,9 @@ Verify that an app's agent identity can be changed after creation.
 
 ## Steps
 
-1. Navigate to the app's edit page
-2. Change the assigned identity to a different one
-3. Save
+1. Navigate to the app's detail page
+2. In the "Agent identity" rail control, select a different identity
+3. The change saves automatically
 
 ## Expected Result
 

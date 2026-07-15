@@ -17,7 +17,8 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use crate::typed_id::{
-    AgentId, AppId, EvalCaseId, EvalId, EvalResultId, EvalRunId, HarnessId, SessionId,
+    AgentId, AppId, EvalCaseId, EvalDatasetId, EvalId, EvalResultId, EvalRunId, HarnessId,
+    SessionId,
 };
 
 #[cfg(feature = "openapi")]
@@ -75,6 +76,17 @@ pub enum EvalTarget {
     App {
         #[cfg_attr(feature = "openapi", schema(value_type = String))]
         app_id: AppId,
+    },
+    /// Label-only target for externally-executed runs (e.g. imported from Mira).
+    ///
+    /// Carries provider/model labels and opaque params instead of session setup:
+    /// external runs are ingested already-complete, so everruns never builds a
+    /// session from this. Mirrors a provider-agnostic `(provider, model)` pair.
+    External {
+        provider: String,
+        model: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        params: Option<serde_json::Value>,
     },
 }
 
@@ -153,6 +165,43 @@ impl From<&str> for EvalRunStatus {
 }
 
 // ============================================
+// Eval Run Source
+// ============================================
+
+/// Where an eval run came from.
+///
+/// `Internal` runs are executed by everruns (sessions spawned per case).
+/// `External` runs are ingested already-complete from an external eval system
+/// (e.g. Mira) via the import API; everruns hosts and visualizes them but never
+/// executes them. See proposals/mira-results-publishing.md.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum EvalRunSource {
+    #[default]
+    Internal,
+    External,
+}
+
+impl std::fmt::Display for EvalRunSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EvalRunSource::Internal => write!(f, "internal"),
+            EvalRunSource::External => write!(f, "external"),
+        }
+    }
+}
+
+impl From<&str> for EvalRunSource {
+    fn from(s: &str) -> Self {
+        match s {
+            "external" => EvalRunSource::External,
+            _ => EvalRunSource::Internal,
+        }
+    }
+}
+
+// ============================================
 // Case Result Status
 // ============================================
 
@@ -167,6 +216,9 @@ pub enum CaseResultStatus {
     Failed,
     Errored,
     Timeout,
+    /// Case was not executed (e.g. an external system skipped it: model
+    /// unavailable, filtered out). Excluded from pass/fail tallies.
+    Skipped,
 }
 
 impl std::fmt::Display for CaseResultStatus {
@@ -178,6 +230,7 @@ impl std::fmt::Display for CaseResultStatus {
             CaseResultStatus::Failed => write!(f, "failed"),
             CaseResultStatus::Errored => write!(f, "errored"),
             CaseResultStatus::Timeout => write!(f, "timeout"),
+            CaseResultStatus::Skipped => write!(f, "skipped"),
         }
     }
 }
@@ -190,6 +243,7 @@ impl From<&str> for CaseResultStatus {
             "failed" => CaseResultStatus::Failed,
             "errored" => CaseResultStatus::Errored,
             "timeout" => CaseResultStatus::Timeout,
+            "skipped" => CaseResultStatus::Skipped,
             _ => CaseResultStatus::Pending,
         }
     }
@@ -467,6 +521,15 @@ pub struct EvalRun {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub filter_tags: Option<Vec<String>>,
     pub status: EvalRunStatus,
+    /// Whether everruns executed this run (`internal`) or it was imported from
+    /// an external eval system (`external`).
+    #[serde(default)]
+    pub source: EvalRunSource,
+    /// Provenance for external runs: which system produced them, version, link
+    /// back, and any environment labels. `None` for internal runs. Open-vocab
+    /// JSON so new attribution fields need no schema change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attribution: Option<serde_json::Value>,
     /// What triggered this run.
     pub triggered_by: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -479,6 +542,73 @@ pub struct EvalRun {
     /// Case results (populated on detail view).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub results: Vec<EvalCaseResult>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+// ============================================
+// Eval Run Dataset (async dataset export — specs/dataset-export.md)
+// ============================================
+
+/// Status of an async dataset export.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum EvalDatasetStatus {
+    /// Enqueued, export not started yet.
+    Pending,
+    /// Export in progress.
+    Running,
+    /// Export finished; NDJSON `body` is available on the detail view.
+    Completed,
+    /// Export failed; see `error_message`.
+    Failed,
+}
+
+impl std::fmt::Display for EvalDatasetStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EvalDatasetStatus::Pending => write!(f, "pending"),
+            EvalDatasetStatus::Running => write!(f, "running"),
+            EvalDatasetStatus::Completed => write!(f, "completed"),
+            EvalDatasetStatus::Failed => write!(f, "failed"),
+        }
+    }
+}
+
+impl From<&str> for EvalDatasetStatus {
+    fn from(s: &str) -> Self {
+        match s {
+            "running" => EvalDatasetStatus::Running,
+            "completed" => EvalDatasetStatus::Completed,
+            "failed" => EvalDatasetStatus::Failed,
+            _ => EvalDatasetStatus::Pending,
+        }
+    }
+}
+
+/// An async dataset-export handle: the durable result of enqueuing a dataset
+/// export from a completed eval run. The `body` (NDJSON) is only populated on
+/// the `GET .../dataset/{dataset_id}` detail view once `status` is `completed`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct EvalRunDataset {
+    #[serde(rename = "id")]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "evaldataset_01933b5a000070008000000000000001"))]
+    pub public_id: EvalDatasetId,
+    /// The eval run this dataset was exported from.
+    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    pub eval_run_id: EvalRunId,
+    pub status: EvalDatasetStatus,
+    /// Number of NDJSON records (surviving cases). Set on completion.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub record_count: Option<u64>,
+    /// Failure detail when `status` is `failed`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+    /// The produced NDJSON. Only present on the detail view once completed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub body: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

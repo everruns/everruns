@@ -49,6 +49,10 @@ pub struct FeatureFlags {
     pub agent_delegation: bool,
     /// Observers (online scoring of production sessions). Experimental.
     pub observers: bool,
+    /// Public Chat (isolated, public-facing chat web app + `public_chat`
+    /// channel). Experimental. Gates the public endpoints, channel creation,
+    /// the builder UI, and the public web route. See `specs/public-chat.md`.
+    pub public_chat: bool,
 }
 
 /// Untyped API representation of feature flags: a generic `{ "<flag>": bool }` map.
@@ -146,6 +150,12 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
              manually reviewing each one.",
         experimental: true,
     },
+    FeatureFlagDefinition {
+        name: "public_chat",
+        label: "Public Chat",
+        description: "Isolated, public-facing chat web app and the public_chat channel.",
+        experimental: true,
+    },
 ];
 
 impl FeatureFlags {
@@ -166,6 +176,7 @@ impl FeatureFlags {
             voice: opt_in("voice", system.voice),
             agent_delegation: opt_in("agent_delegation", system.agent_delegation),
             observers: opt_in("observers", system.observers),
+            public_chat: opt_in("public_chat", system.public_chat),
         }
     }
 
@@ -180,6 +191,7 @@ impl FeatureFlags {
             voice: experimental_flag("FEATURE_VOICE", grade),
             agent_delegation: experimental_flag("FEATURE_AGENT_DELEGATION", grade),
             observers: experimental_flag("FEATURE_OBSERVERS", grade),
+            public_chat: experimental_flag("FEATURE_PUBLIC_CHAT", grade),
         }
     }
 
@@ -205,6 +217,7 @@ impl FeatureFlags {
             ("voice".to_string(), self.voice),
             ("agent_delegation".to_string(), self.agent_delegation),
             ("observers".to_string(), self.observers),
+            ("public_chat".to_string(), self.public_chat),
         ]))
     }
 
@@ -219,6 +232,7 @@ impl FeatureFlags {
             "voice" => self.voice,
             "agent_delegation" => self.agent_delegation,
             "observers" => self.observers,
+            "public_chat" => self.public_chat,
             _ => false,
         }
     }
@@ -235,6 +249,7 @@ impl FeatureFlags {
             voice: true,
             agent_delegation: true,
             observers: true,
+            public_chat: true,
         }
     }
 }
@@ -391,6 +406,7 @@ mod tests {
             voice: true,
             agent_delegation: true,
             observers: true,
+            public_chat: true,
         };
         assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("notifications"));
@@ -400,6 +416,7 @@ mod tests {
         assert!(flags.is_enabled("voice"));
         assert!(flags.is_enabled("agent_delegation"));
         assert!(flags.is_enabled("observers"));
+        assert!(flags.is_enabled("public_chat"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
@@ -414,6 +431,7 @@ mod tests {
             voice: true,
             agent_delegation: true,
             observers: true,
+            public_chat: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"global_chat\":true"));

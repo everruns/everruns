@@ -135,11 +135,18 @@ pub const OPENROUTER_GPT4O_MINI: ProviderModelConfig = ProviderModelConfig::new(
 );
 
 // Fireworks AI serves open models via an OpenAI-compatible Chat Completions
-// API. kimi-k2p5 is a chat + tool-calling model. Exercises the Chat Completions
-// streaming path against a third (non-OpenAI/Azure) host.
-pub const FIREWORKS_KIMI: ProviderModelConfig = ProviderModelConfig::new(
+// API. The point of this case is to exercise our OpenAI-protocol driver's
+// streaming + tool-calling path against a third (non-OpenAI/Azure) host — not
+// to probe a model's intelligence — so the model must call tools reliably for
+// the `test_tool_call` assertion to be deterministic. Kimi K2 is purpose-built
+// for agentic tool use and calls tools deterministically. Fireworks has
+// churned its serverless catalog repeatedly: `gpt-oss-120b` flaked the "must
+// call tool" assert (#2550/#2556), and `llama-v3p3-70b-instruct` (#2597) was
+// then de-listed from the account entirely ("Model not available"). Kimi K2 is
+// a current, dependable tool-caller in the served catalog.
+pub const FIREWORKS_KIMI_K2: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Fireworks,
-    "accounts/fireworks/models/kimi-k2p5",
+    "accounts/fireworks/models/kimi-k2p6",
     "FIREWORKS_API_KEY",
 );
 
@@ -256,6 +263,89 @@ macro_rules! skip_if_quota {
                 }
             }
         }
+    }};
+}
+
+/// Substrings that mark a *transient* live-transport failure (network blip,
+/// streaming-decode hiccup, timeout) rather than a real, reproducible error.
+/// These tests hit real provider endpoints, so a single transport hiccup should
+/// be retried, not reported as a regression — e.g. the observed flake
+/// `LLM error: Stream error: Transport error: error decoding response body`.
+pub fn is_transient_transport_error(err: &str) -> bool {
+    let e = err.to_ascii_lowercase();
+    [
+        "transport error",
+        "stream error",
+        "error decoding response body",
+        "connection reset",
+        "connection closed",
+        "connection error",
+        "connection refused",
+        "timed out",
+        "timeout",
+        "broken pipe",
+        "incomplete message",
+        "unexpected eof",
+        "tls",
+    ]
+    .iter()
+    .any(|s| e.contains(s))
+}
+
+/// Run a live turn with bounded retries against real-model non-determinism and
+/// transient transport failures. `$run` is a block that builds a runner and
+/// awaits a turn, evaluating to a `TurnResult`; it is re-run up to `$max` times.
+///
+/// Returns `None` when the provider is out of quota (caller should skip), or
+/// `Some(result)` for the first attempt that satisfies the `$ok` predicate —
+/// otherwise the last attempt after exhausting retries, so the caller's own
+/// assertions still produce a precise failure message. Retries fire when a turn
+/// hit a transient transport error or `$ok` was not yet met.
+///
+/// Exported via `#[macro_export]` so every test binary that includes this
+/// shared module can use it. `is_quota_exhausted`, `is_transient_transport_error`,
+/// and `TurnResult` are referenced unqualified and resolve at each call site
+/// (the test files already glob-import this module and `TurnResult`).
+#[macro_export]
+macro_rules! run_live_turn {
+    ($config:expr, $max:expr, $ok:expr, $run:block) => {{
+        let ok_fn = $ok;
+        let mut outcome: Option<TurnResult> = None;
+        for attempt in 1..=$max {
+            let result: TurnResult = $run;
+            if !result.success {
+                if let Some(err) = result.error.as_deref() {
+                    if is_quota_exhausted(err) {
+                        eprintln!("SKIP: {} out of quota: {}", $config.label(), err);
+                        outcome = None;
+                        break;
+                    }
+                }
+            }
+            if ok_fn(&result) {
+                outcome = Some(result);
+                break;
+            }
+            let transient = !result.success
+                && result
+                    .error
+                    .as_deref()
+                    .is_some_and(is_transient_transport_error);
+            eprintln!(
+                "{}: attempt {attempt}/{} not acceptable \
+                 (success={}, transient_transport={}, tool_calls={}, iterations={}, error={:?}); {}",
+                $config.label(),
+                $max,
+                result.success,
+                transient,
+                result.tool_calls_count,
+                result.iterations,
+                result.error,
+                if attempt < $max { "retrying" } else { "giving up" },
+            );
+            outcome = Some(result);
+        }
+        outcome
     }};
 }
 

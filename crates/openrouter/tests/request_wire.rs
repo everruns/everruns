@@ -20,6 +20,8 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 fn base_config(model: &str) -> LlmCallConfig {
     LlmCallConfig {
+        speed: None,
+        verbosity: None,
         model: model.to_string(),
         temperature: None,
         max_tokens: None,
@@ -31,6 +33,7 @@ fn base_config(model: &str) -> LlmCallConfig {
         prompt_cache: None,
         openrouter_routing: None,
         parallel_tool_calls: None,
+        volatile_suffix_len: 0,
     }
 }
 

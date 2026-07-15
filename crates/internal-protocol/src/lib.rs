@@ -448,6 +448,11 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
         .default_model_id
         .as_ref()
         .map(|u| prefixed_id("model", u));
+    let harness_id_str = value
+        .harness_id
+        .as_ref()
+        .map(|u| prefixed_id("harness", u))
+        .ok_or(ConversionError::MissingField("harness_id"))?;
 
     let json = serde_json::json!({
         "id": id_str,
@@ -456,6 +461,7 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
         "description": if value.description.is_empty() { None } else { Some(&value.description) },
         "system_prompt": value.system_prompt,
         "default_model_id": model_id_str,
+        "harness_id": harness_id_str,
         "tags": tags,
         "capabilities": capabilities,
         "status": value.status,
@@ -489,6 +495,7 @@ pub fn schema_agent_to_proto(value: &everruns_core::Agent) -> proto::Agent {
             .collect(),
         display_name: value.display_name.clone(),
         parallel_tool_calls: value.parallel_tool_calls,
+        harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
     }
 }
 
@@ -666,6 +673,7 @@ pub fn proto_session_to_schema(
         "owner": Option::<serde_json::Value>::None,
         "effective_owner": Option::<serde_json::Value>::None,
         "title": if value.title.is_empty() { None } else { Some(&value.title) },
+        "goal": value.goal.clone(),
         "locale": if value.locale.is_empty() { None } else { Some(&value.locale) },
         "tags": tags,
         "model_id": model_id_str,
@@ -693,6 +701,7 @@ pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session
             .agent_version_id
             .map(|id| uuid_to_proto_uuid(id.uuid())),
         title: value.title.clone().unwrap_or_default(),
+        goal: value.goal.clone(),
         locale: value.locale.clone().unwrap_or_default(),
         status: value.status.to_string(),
         created_at: Some(datetime_to_proto_timestamp(value.created_at)),
@@ -1266,6 +1275,454 @@ pub fn schema_grep_match_to_proto(value: &everruns_core::GrepMatch) -> proto::Gr
 }
 
 // ============================================================================
+// Session task registry conversions (EVE-642)
+// ============================================================================
+//
+// Native protobuf conversions for the session-task RPC payloads. These replace
+// the previous JSON-in-protobuf byte fields so the data is serialized once by
+// protobuf framing and consumed directly on the worker. everruns-core remains
+// the source of truth for lifecycle invariants (apply_task_update etc.).
+
+use everruns_core::session_task as st;
+
+fn session_task_state_to_proto(state: st::SessionTaskState) -> proto::SessionTaskState {
+    match state {
+        st::SessionTaskState::Queued => proto::SessionTaskState::Queued,
+        st::SessionTaskState::Running => proto::SessionTaskState::Running,
+        st::SessionTaskState::AwaitingInput => proto::SessionTaskState::AwaitingInput,
+        st::SessionTaskState::Succeeded => proto::SessionTaskState::Succeeded,
+        st::SessionTaskState::Failed => proto::SessionTaskState::Failed,
+        st::SessionTaskState::Canceled => proto::SessionTaskState::Canceled,
+    }
+}
+
+fn proto_to_session_task_state(state: proto::SessionTaskState) -> st::SessionTaskState {
+    match state {
+        // Unspecified defaults to Queued to match `From<&str>` on the domain enum.
+        proto::SessionTaskState::Unspecified | proto::SessionTaskState::Queued => {
+            st::SessionTaskState::Queued
+        }
+        proto::SessionTaskState::Running => st::SessionTaskState::Running,
+        proto::SessionTaskState::AwaitingInput => st::SessionTaskState::AwaitingInput,
+        proto::SessionTaskState::Succeeded => st::SessionTaskState::Succeeded,
+        proto::SessionTaskState::Failed => st::SessionTaskState::Failed,
+        proto::SessionTaskState::Canceled => st::SessionTaskState::Canceled,
+    }
+}
+
+fn wake_policy_to_proto(policy: st::TaskWakePolicy) -> proto::TaskWakePolicy {
+    match policy {
+        st::TaskWakePolicy::Silent => proto::TaskWakePolicy::Silent,
+        st::TaskWakePolicy::OnTerminal => proto::TaskWakePolicy::OnTerminal,
+        st::TaskWakePolicy::OnActivity => proto::TaskWakePolicy::OnActivity,
+    }
+}
+
+fn proto_to_wake_policy(policy: proto::TaskWakePolicy) -> st::TaskWakePolicy {
+    match policy {
+        proto::TaskWakePolicy::Unspecified | proto::TaskWakePolicy::Silent => {
+            st::TaskWakePolicy::Silent
+        }
+        proto::TaskWakePolicy::OnTerminal => st::TaskWakePolicy::OnTerminal,
+        proto::TaskWakePolicy::OnActivity => st::TaskWakePolicy::OnActivity,
+    }
+}
+
+fn direction_to_proto(direction: st::TaskMessageDirection) -> proto::TaskMessageDirection {
+    match direction {
+        st::TaskMessageDirection::Inbound => proto::TaskMessageDirection::Inbound,
+        st::TaskMessageDirection::Outbound => proto::TaskMessageDirection::Outbound,
+    }
+}
+
+fn proto_to_direction(direction: proto::TaskMessageDirection) -> st::TaskMessageDirection {
+    match direction {
+        // Unspecified defaults to Inbound to match `From<&str>` on the domain enum.
+        proto::TaskMessageDirection::Unspecified | proto::TaskMessageDirection::Inbound => {
+            st::TaskMessageDirection::Inbound
+        }
+        proto::TaskMessageDirection::Outbound => st::TaskMessageDirection::Outbound,
+    }
+}
+
+fn progress_to_proto(p: &st::TaskProgress) -> proto::TaskProgressProto {
+    proto::TaskProgressProto {
+        current: p.current,
+        total: p.total,
+        unit: p.unit.clone(),
+        label: p.label.clone(),
+    }
+}
+
+fn proto_to_progress(p: proto::TaskProgressProto) -> st::TaskProgress {
+    st::TaskProgress {
+        current: p.current,
+        total: p.total,
+        unit: p.unit,
+        label: p.label,
+    }
+}
+
+// Free-form JSON fields (spec, expected, message Data) carry canonical
+// serde_json bytes: they are already `serde_json::Value`s, so serializing them
+// exactly once is cheaper than walking them into a google.protobuf.Value tree
+// (see benches/session_task_encoding.rs). Serialization of an in-memory Value
+// does not fail in practice; a hit on the fallback signals upstream corruption
+// and is logged rather than silently dropped.
+fn json_value_to_bytes(value: &serde_json::Value) -> Vec<u8> {
+    serde_json::to_vec(value).unwrap_or_else(|e| {
+        tracing::error!(error = %e, "internal-protocol: failed to encode free-form JSON; emitting null");
+        b"null".to_vec()
+    })
+}
+
+/// Decode canonical JSON bytes back into a Value. Empty bytes decode to Null so
+/// an absent proto `bytes` field maps to `Value::Null` (the schema default).
+fn bytes_to_json_value(bytes: &[u8]) -> serde_json::Value {
+    if bytes.is_empty() {
+        return serde_json::Value::Null;
+    }
+    serde_json::from_slice(bytes).unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "internal-protocol: invalid free-form JSON bytes; using null");
+        serde_json::Value::Null
+    })
+}
+
+fn input_request_to_proto(r: &st::TaskInputRequest) -> proto::TaskInputRequestProto {
+    proto::TaskInputRequestProto {
+        id: r.id.clone(),
+        prompt: r.prompt.clone(),
+        // None -> empty bytes; Some(v) -> canonical JSON bytes.
+        expected_json: r
+            .expected
+            .as_ref()
+            .map(json_value_to_bytes)
+            .unwrap_or_default(),
+    }
+}
+
+fn proto_to_input_request(r: proto::TaskInputRequestProto) -> st::TaskInputRequest {
+    st::TaskInputRequest {
+        id: r.id,
+        prompt: r.prompt,
+        expected: if r.expected_json.is_empty() {
+            None
+        } else {
+            Some(bytes_to_json_value(&r.expected_json))
+        },
+    }
+}
+
+fn task_error_to_proto(e: &st::TaskError) -> proto::TaskErrorProto {
+    proto::TaskErrorProto {
+        kind: e.kind.clone(),
+        message: e.message.clone(),
+    }
+}
+
+fn proto_to_task_error(e: proto::TaskErrorProto) -> st::TaskError {
+    st::TaskError {
+        kind: e.kind,
+        message: e.message,
+    }
+}
+
+fn artifact_to_proto(a: &st::TaskArtifact) -> proto::TaskArtifactProto {
+    proto::TaskArtifactProto {
+        name: a.name.clone(),
+        artifact_type: a.artifact_type.clone(),
+        path: a.path.clone(),
+        url: a.url.clone(),
+    }
+}
+
+fn proto_to_artifact(a: proto::TaskArtifactProto) -> st::TaskArtifact {
+    st::TaskArtifact {
+        name: a.name,
+        artifact_type: a.artifact_type,
+        path: a.path,
+        url: a.url,
+    }
+}
+
+fn links_to_proto(l: &st::TaskLinks) -> proto::TaskLinksProto {
+    proto::TaskLinksProto {
+        child_session_id: l.child_session_id.map(|id| uuid_to_proto_uuid(id.uuid())),
+        remote_task_id: l.remote_task_id.clone(),
+        resource_ids: l.resource_ids.clone(),
+    }
+}
+
+fn proto_to_links(l: proto::TaskLinksProto) -> st::TaskLinks {
+    st::TaskLinks {
+        child_session_id: l
+            .child_session_id
+            .map(|u| SessionId::from_uuid(parse_uuid_lenient(&u.value))),
+        remote_task_id: l.remote_task_id,
+        resource_ids: l.resource_ids,
+    }
+}
+
+fn message_part_to_proto(part: &st::TaskMessagePart) -> proto::TaskMessagePartProto {
+    use proto::task_message_part_proto::Part;
+    let part = match part {
+        st::TaskMessagePart::Text { text } => Part::Text(text.clone()),
+        st::TaskMessagePart::Data { data } => Part::DataJson(json_value_to_bytes(data)),
+    };
+    proto::TaskMessagePartProto { part: Some(part) }
+}
+
+fn proto_to_message_part(part: proto::TaskMessagePartProto) -> st::TaskMessagePart {
+    use proto::task_message_part_proto::Part;
+    match part.part {
+        Some(Part::Text(text)) => st::TaskMessagePart::Text { text },
+        Some(Part::DataJson(data)) => st::TaskMessagePart::Data {
+            data: bytes_to_json_value(&data),
+        },
+        // A part with no variant set is malformed; represent it as empty text
+        // rather than dropping the message. Logged so the loss is visible.
+        None => {
+            tracing::warn!(
+                "internal-protocol: task message part missing variant; using empty text"
+            );
+            st::TaskMessagePart::Text {
+                text: String::new(),
+            }
+        }
+    }
+}
+
+/// Parse a raw UUID string leniently (session ids are validated upstream).
+fn parse_uuid_lenient(value: &str) -> uuid::Uuid {
+    uuid::Uuid::parse_str(value).unwrap_or_else(|e| {
+        tracing::warn!(value = %value, error = %e, "internal-protocol: invalid session UUID; using nil");
+        uuid::Uuid::nil()
+    })
+}
+
+/// Convert a domain `SessionTask` to its native proto message.
+pub fn session_task_to_proto(task: &st::SessionTask) -> proto::SessionTaskProto {
+    proto::SessionTaskProto {
+        id: task.id.clone(),
+        session_id: Some(uuid_to_proto_uuid(task.session_id.uuid())),
+        kind: task.kind.clone(),
+        display_name: task.display_name.clone(),
+        spec_json: json_value_to_bytes(&task.spec),
+        state: session_task_state_to_proto(task.state) as i32,
+        state_detail: task.state_detail.clone(),
+        progress: task.progress.as_ref().map(progress_to_proto),
+        input_request: task.input_request.as_ref().map(input_request_to_proto),
+        cancel_requested_at: task.cancel_requested_at.map(datetime_to_proto_timestamp),
+        summary: task.summary.clone(),
+        result_path: task.result_path.clone(),
+        artifacts: task.artifacts.iter().map(artifact_to_proto).collect(),
+        error: task.error.as_ref().map(task_error_to_proto),
+        attempt: task.attempt,
+        worker_id: task.worker_id.clone(),
+        heartbeat_at: task.heartbeat_at.map(datetime_to_proto_timestamp),
+        links: Some(links_to_proto(&task.links)),
+        wake_policy: wake_policy_to_proto(task.wake_policy) as i32,
+        created_at: Some(datetime_to_proto_timestamp(task.created_at)),
+        started_at: task.started_at.map(datetime_to_proto_timestamp),
+        finished_at: task.finished_at.map(datetime_to_proto_timestamp),
+        updated_at: Some(datetime_to_proto_timestamp(task.updated_at)),
+    }
+}
+
+/// Convert a native proto `SessionTaskProto` back to the domain struct.
+pub fn proto_to_session_task(
+    p: proto::SessionTaskProto,
+) -> Result<st::SessionTask, ConversionError> {
+    // Capture enum accessors before moving owned fields out of `p`.
+    let state = proto_to_session_task_state(p.state());
+    let wake_policy = proto_to_wake_policy(p.wake_policy());
+    let session_uuid = p
+        .session_id
+        .ok_or(ConversionError::MissingField("session_id"))?;
+    Ok(st::SessionTask {
+        id: p.id,
+        session_id: SessionId::from_uuid(parse_uuid_lenient(&session_uuid.value)),
+        // Storage-derived (EVE-680); surfaced on API storage reads via
+        // `SessionTaskRow::to_task`, not carried over the worker protocol.
+        root_session_id: None,
+        kind: p.kind,
+        display_name: p.display_name,
+        spec: bytes_to_json_value(&p.spec_json),
+        state,
+        state_detail: p.state_detail,
+        progress: p.progress.map(proto_to_progress),
+        input_request: p.input_request.map(proto_to_input_request),
+        cancel_requested_at: p
+            .cancel_requested_at
+            .as_ref()
+            .map(proto_timestamp_to_datetime),
+        summary: p.summary,
+        result_path: p.result_path,
+        artifacts: p.artifacts.into_iter().map(proto_to_artifact).collect(),
+        error: p.error.map(proto_to_task_error),
+        attempt: p.attempt,
+        worker_id: p.worker_id,
+        heartbeat_at: p.heartbeat_at.as_ref().map(proto_timestamp_to_datetime),
+        links: p.links.map(proto_to_links).unwrap_or_default(),
+        wake_policy,
+        created_at: p
+            .created_at
+            .as_ref()
+            .map(proto_timestamp_to_datetime)
+            .ok_or(ConversionError::MissingField("created_at"))?,
+        started_at: p.started_at.as_ref().map(proto_timestamp_to_datetime),
+        finished_at: p.finished_at.as_ref().map(proto_timestamp_to_datetime),
+        updated_at: p
+            .updated_at
+            .as_ref()
+            .map(proto_timestamp_to_datetime)
+            .ok_or(ConversionError::MissingField("updated_at"))?,
+    })
+}
+
+/// Convert a domain `CreateSessionTask` to its native proto message.
+pub fn create_session_task_to_proto(
+    input: &st::CreateSessionTask,
+) -> proto::CreateSessionTaskProto {
+    proto::CreateSessionTaskProto {
+        session_id: Some(uuid_to_proto_uuid(input.session_id.uuid())),
+        id: input.id.clone(),
+        kind: input.kind.clone(),
+        display_name: input.display_name.clone(),
+        spec_json: json_value_to_bytes(&input.spec),
+        state: session_task_state_to_proto(input.state) as i32,
+        links: Some(links_to_proto(&input.links)),
+        wake_policy: wake_policy_to_proto(input.wake_policy) as i32,
+    }
+}
+
+/// Convert a native proto `CreateSessionTaskProto` back to the domain struct.
+pub fn proto_to_create_session_task(
+    p: proto::CreateSessionTaskProto,
+) -> Result<st::CreateSessionTask, ConversionError> {
+    // Capture enum accessors before moving owned fields out of `p`.
+    let state = proto_to_session_task_state(p.state());
+    let wake_policy = proto_to_wake_policy(p.wake_policy());
+    let session_uuid = p
+        .session_id
+        .ok_or(ConversionError::MissingField("session_id"))?;
+    Ok(st::CreateSessionTask {
+        session_id: SessionId::from_uuid(parse_uuid_lenient(&session_uuid.value)),
+        id: p.id,
+        kind: p.kind,
+        display_name: p.display_name,
+        spec: bytes_to_json_value(&p.spec_json),
+        state,
+        links: p.links.map(proto_to_links).unwrap_or_default(),
+        wake_policy,
+    })
+}
+
+/// Convert a domain `SessionTaskUpdate` to its native proto message.
+pub fn session_task_update_to_proto(u: &st::SessionTaskUpdate) -> proto::SessionTaskUpdateProto {
+    proto::SessionTaskUpdateProto {
+        state: u.state.map(|s| session_task_state_to_proto(s) as i32),
+        state_detail: u.state_detail.clone(),
+        progress: u.progress.as_ref().map(progress_to_proto),
+        input_request: u.input_request.as_ref().map(input_request_to_proto),
+        summary: u.summary.clone(),
+        result_path: u.result_path.clone(),
+        artifacts: u
+            .artifacts
+            .as_ref()
+            .map(|list| proto::TaskArtifactListProto {
+                artifacts: list.iter().map(artifact_to_proto).collect(),
+            }),
+        error: u.error.as_ref().map(task_error_to_proto),
+        links: u.links.as_ref().map(links_to_proto),
+        worker_id: u.worker_id.clone(),
+        heartbeat_at: u.heartbeat_at.map(datetime_to_proto_timestamp),
+        expected_attempt: u.expected_attempt,
+        increment_attempt: u.increment_attempt,
+    }
+}
+
+/// Convert a native proto `SessionTaskUpdateProto` back to the domain struct.
+pub fn proto_to_session_task_update(p: proto::SessionTaskUpdateProto) -> st::SessionTaskUpdate {
+    st::SessionTaskUpdate {
+        // `state` is an enum field wrapped in optional; decode the raw i32 only
+        // when present so an absent update leaves the field unchanged.
+        state: p.state.map(|s| {
+            proto_to_session_task_state(
+                proto::SessionTaskState::try_from(s)
+                    .unwrap_or(proto::SessionTaskState::Unspecified),
+            )
+        }),
+        state_detail: p.state_detail,
+        progress: p.progress.map(proto_to_progress),
+        input_request: p.input_request.map(proto_to_input_request),
+        summary: p.summary,
+        result_path: p.result_path,
+        artifacts: p
+            .artifacts
+            .map(|list| list.artifacts.into_iter().map(proto_to_artifact).collect()),
+        error: p.error.map(proto_to_task_error),
+        links: p.links.map(proto_to_links),
+        worker_id: p.worker_id,
+        heartbeat_at: p.heartbeat_at.as_ref().map(proto_timestamp_to_datetime),
+        expected_attempt: p.expected_attempt,
+        increment_attempt: p.increment_attempt,
+    }
+}
+
+/// Convert a domain `TaskMessage` to its native proto message.
+pub fn task_message_to_proto(m: &st::TaskMessage) -> proto::TaskMessageProto {
+    proto::TaskMessageProto {
+        id: m.id.clone(),
+        task_id: m.task_id.clone(),
+        direction: direction_to_proto(m.direction) as i32,
+        content: m.content.iter().map(message_part_to_proto).collect(),
+        in_reply_to: m.in_reply_to.clone(),
+        created_at: Some(datetime_to_proto_timestamp(m.created_at)),
+    }
+}
+
+/// Convert a native proto `TaskMessageProto` back to the domain struct.
+pub fn proto_to_task_message(
+    p: proto::TaskMessageProto,
+) -> Result<st::TaskMessage, ConversionError> {
+    let direction = p.direction();
+    Ok(st::TaskMessage {
+        id: p.id,
+        task_id: p.task_id,
+        direction: proto_to_direction(direction),
+        content: p.content.into_iter().map(proto_to_message_part).collect(),
+        in_reply_to: p.in_reply_to,
+        created_at: p
+            .created_at
+            .as_ref()
+            .map(proto_timestamp_to_datetime)
+            .ok_or(ConversionError::MissingField("created_at"))?,
+    })
+}
+
+/// Convert a domain `NewTaskMessage` to its native proto message.
+pub fn new_task_message_to_proto(m: &st::NewTaskMessage) -> proto::NewTaskMessageProto {
+    proto::NewTaskMessageProto {
+        direction: direction_to_proto(m.direction) as i32,
+        content: m.content.iter().map(message_part_to_proto).collect(),
+        in_reply_to: m.in_reply_to.clone(),
+        expected_attempt: m.expected_attempt,
+    }
+}
+
+/// Convert a native proto `NewTaskMessageProto` back to the domain struct.
+pub fn proto_to_new_task_message(p: proto::NewTaskMessageProto) -> st::NewTaskMessage {
+    let direction = p.direction();
+    st::NewTaskMessage {
+        direction: proto_to_direction(direction),
+        content: p.content.into_iter().map(proto_to_message_part).collect(),
+        in_reply_to: p.in_reply_to,
+        expected_attempt: p.expected_attempt,
+    }
+}
+
+// ============================================================================
 // Helper functions
 // ============================================================================
 
@@ -1421,6 +1878,7 @@ mod tests {
             description: Some("Test description".to_string()),
             system_prompt: "You are a helpful assistant".to_string(),
             default_model_id: None,
+            harness_id: everruns_core::HarnessId::new(),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -1488,6 +1946,7 @@ mod tests {
             description: None,
             system_prompt: "You are a helpful assistant".to_string(),
             default_model_id: None,
+            harness_id: everruns_core::HarnessId::new(),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -1691,6 +2150,7 @@ mod tests {
             owner: None,
             effective_owner: None,
             title: Some("Test Session".to_string()),
+            goal: None,
             locale: None,
             preview: None,
             output_preview: None,
@@ -1843,6 +2303,7 @@ mod tests {
             owner: None,
             effective_owner: None,
             title: None,
+            goal: None,
             locale: None,
             preview: None,
             output_preview: None,
@@ -1919,5 +2380,210 @@ mod tests {
             parse_message_role("something_unknown"),
             MessageRole::User
         ));
+    }
+
+    // ------------------------------------------------------------------------
+    // Session task registry native-proto round-trip fidelity (EVE-642)
+    // ------------------------------------------------------------------------
+
+    fn sample_session_task() -> st::SessionTask {
+        st::SessionTask {
+            id: "task_abc123".to_string(),
+            session_id: SessionId::new(),
+            root_session_id: None,
+            kind: st::TASK_KIND_SUBAGENT.to_string(),
+            display_name: "Investigate flake".to_string(),
+            spec: serde_json::json!({
+                "instructions": "run tests",
+                "retries": 3,
+                "nested": { "a": [1, 2, 3], "b": null, "flag": true },
+            }),
+            state: st::SessionTaskState::AwaitingInput,
+            state_detail: Some("iteration 4/10".to_string()),
+            progress: Some(st::TaskProgress {
+                current: Some(4),
+                total: Some(10),
+                unit: Some("steps".to_string()),
+                label: Some("running".to_string()),
+            }),
+            input_request: Some(st::TaskInputRequest {
+                id: "req_1".to_string(),
+                prompt: "Approve?".to_string(),
+                expected: Some(serde_json::json!({ "type": "boolean" })),
+            }),
+            cancel_requested_at: Some(Utc.timestamp_opt(1_700_000_100, 0).unwrap()),
+            summary: Some("did the thing".to_string()),
+            result_path: Some("/.tasks/task_abc123/result.json".to_string()),
+            artifacts: vec![
+                st::TaskArtifact {
+                    name: "report".to_string(),
+                    artifact_type: "file".to_string(),
+                    path: Some("/report.md".to_string()),
+                    url: None,
+                },
+                st::TaskArtifact {
+                    name: "pr".to_string(),
+                    artifact_type: "url".to_string(),
+                    path: None,
+                    url: Some("https://example.com/pr/1".to_string()),
+                },
+            ],
+            error: Some(st::TaskError {
+                kind: "timeout".to_string(),
+                message: "exceeded deadline".to_string(),
+            }),
+            attempt: 2,
+            worker_id: Some("worker-7".to_string()),
+            heartbeat_at: Some(Utc.timestamp_opt(1_700_000_200, 500_000_000).unwrap()),
+            links: st::TaskLinks {
+                child_session_id: Some(SessionId::new()),
+                remote_task_id: Some("rt_9".to_string()),
+                resource_ids: vec!["res_1".to_string(), "res_2".to_string()],
+            },
+            wake_policy: st::TaskWakePolicy::OnActivity,
+            created_at: Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
+            started_at: Some(Utc.timestamp_opt(1_700_000_050, 0).unwrap()),
+            finished_at: None,
+            updated_at: Utc.timestamp_opt(1_700_000_300, 0).unwrap(),
+        }
+    }
+
+    /// Full round-trip must preserve the task through the native proto and back
+    /// so switching the wire format from JSON-in-bytes to native protobuf is
+    /// lossless. Comparison is done via canonical JSON so the numeric widening
+    /// in `google.protobuf.Value` (spec/expected) is accounted for.
+    #[test]
+    fn session_task_native_proto_round_trip() {
+        let original = sample_session_task();
+        let proto = session_task_to_proto(&original);
+        let restored = proto_to_session_task(proto).expect("round-trip");
+
+        let a = serde_json::to_value(&original).unwrap();
+        let b = serde_json::to_value(&restored).unwrap();
+        assert_eq!(a, b, "session task must survive native-proto round-trip");
+    }
+
+    #[test]
+    fn create_session_task_native_proto_round_trip() {
+        let original = st::CreateSessionTask {
+            session_id: SessionId::new(),
+            id: Some("task_seed".to_string()),
+            kind: st::TASK_KIND_BACKGROUND_TOOL.to_string(),
+            display_name: "seed".to_string(),
+            spec: serde_json::json!({ "k": "v", "n": 12 }),
+            state: st::SessionTaskState::Running,
+            links: st::TaskLinks {
+                child_session_id: None,
+                remote_task_id: Some("rt".to_string()),
+                resource_ids: vec!["res".to_string()],
+            },
+            wake_policy: st::TaskWakePolicy::OnTerminal,
+        };
+        let proto = create_session_task_to_proto(&original);
+        let restored = proto_to_create_session_task(proto).expect("round-trip");
+
+        assert_eq!(
+            serde_json::to_value(&original).unwrap(),
+            serde_json::to_value(&restored).unwrap()
+        );
+    }
+
+    #[test]
+    fn session_task_update_native_proto_round_trip() {
+        // A fully-populated update (all Option/Vec fields set).
+        let full = st::SessionTaskUpdate {
+            state: Some(st::SessionTaskState::Failed),
+            state_detail: Some("boom".to_string()),
+            progress: Some(st::TaskProgress {
+                current: Some(1),
+                total: None,
+                unit: None,
+                label: Some("x".to_string()),
+            }),
+            input_request: Some(st::TaskInputRequest {
+                id: "r".to_string(),
+                prompt: "p".to_string(),
+                expected: None,
+            }),
+            summary: Some("s".to_string()),
+            result_path: Some("/r.json".to_string()),
+            artifacts: Some(vec![st::TaskArtifact {
+                name: "a".to_string(),
+                artifact_type: "file".to_string(),
+                path: Some("/a".to_string()),
+                url: None,
+            }]),
+            error: Some(st::TaskError {
+                kind: "orphaned".to_string(),
+                message: "m".to_string(),
+            }),
+            links: Some(st::TaskLinks::default()),
+            worker_id: Some("w".to_string()),
+            heartbeat_at: Some(Utc.timestamp_opt(1_700_000_000, 0).unwrap()),
+            expected_attempt: Some(3),
+            increment_attempt: true,
+        };
+        let restored = proto_to_session_task_update(session_task_update_to_proto(&full));
+        assert_eq!(
+            serde_json::to_value(&full).unwrap(),
+            serde_json::to_value(&restored).unwrap()
+        );
+
+        // An empty update must stay empty: crucially, an absent `artifacts`
+        // must not become `Some(vec![])`, which would wrongly clear artifacts.
+        let empty = st::SessionTaskUpdate::default();
+        let restored_empty = proto_to_session_task_update(session_task_update_to_proto(&empty));
+        assert!(restored_empty.state.is_none());
+        assert!(
+            restored_empty.artifacts.is_none(),
+            "absent artifacts update must round-trip as None, not Some(empty)"
+        );
+        assert!(!restored_empty.increment_attempt);
+        assert!(restored_empty.expected_attempt.is_none());
+
+        // An explicit empty artifact list (clear all) must survive as Some(empty).
+        let clear = st::SessionTaskUpdate {
+            artifacts: Some(vec![]),
+            ..Default::default()
+        };
+        let restored_clear = proto_to_session_task_update(session_task_update_to_proto(&clear));
+        assert_eq!(restored_clear.artifacts, Some(vec![]));
+    }
+
+    #[test]
+    fn task_message_native_proto_round_trip() {
+        let msg = st::TaskMessage {
+            id: "tmsg_1".to_string(),
+            task_id: "task_1".to_string(),
+            direction: st::TaskMessageDirection::Outbound,
+            content: vec![
+                st::TaskMessagePart::text("hello"),
+                st::TaskMessagePart::Data {
+                    data: serde_json::json!({ "k": [1, 2], "b": true }),
+                },
+            ],
+            in_reply_to: Some("tmsg_0".to_string()),
+            created_at: Utc.timestamp_opt(1_700_000_000, 0).unwrap(),
+        };
+        let restored = proto_to_task_message(task_message_to_proto(&msg)).expect("round-trip");
+        assert_eq!(
+            serde_json::to_value(&msg).unwrap(),
+            serde_json::to_value(&restored).unwrap()
+        );
+    }
+
+    #[test]
+    fn new_task_message_native_proto_round_trip() {
+        let msg = st::NewTaskMessage {
+            direction: st::TaskMessageDirection::Inbound,
+            content: vec![st::TaskMessagePart::text("answer")],
+            in_reply_to: Some("req_1".to_string()),
+            expected_attempt: Some(5),
+        };
+        let restored = proto_to_new_task_message(new_task_message_to_proto(&msg));
+        assert_eq!(
+            serde_json::to_value(&msg).unwrap(),
+            serde_json::to_value(&restored).unwrap()
+        );
     }
 }

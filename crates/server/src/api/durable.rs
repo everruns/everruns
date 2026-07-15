@@ -2362,95 +2362,7 @@ mod tests {
         )
     }
 
-    #[test]
-    fn test_durable_snapshot_serialization() {
-        let snapshot = DurableSnapshot {
-            health: HealthResponse {
-                status: "healthy".to_string(),
-                total_workers: 2,
-                active_workers: 2,
-                workers_accepting: 2,
-                total_capacity: 10,
-                current_load: 3,
-                load_percentage: 30.0,
-                pending_tasks: 5,
-                claimed_tasks: 3,
-                completed_tasks: 20,
-                failed_tasks: 1,
-                started_tasks: 24,
-                running_workflows: 1,
-                pending_workflows: 0,
-                completed_workflows: 10,
-                failed_workflows: 0,
-                started_workflows: 11,
-                dlq_size: 0,
-                event_delivery: None,
-            },
-            workers: vec![],
-            workflows: WorkflowsListResponse {
-                data: vec![],
-                total: 0,
-            },
-            tasks: TasksListResponse {
-                data: vec![],
-                total: 0,
-            },
-            dlq: DlqListResponse {
-                data: vec![],
-                total: 0,
-            },
-            circuit_breakers: CircuitBreakersListResponse {
-                data: vec![],
-                total: 0,
-            },
-            metrics_history: vec![MetricsPoint {
-                timestamp: Utc::now(),
-                running_workflows: 1,
-                pending_workflows: 0,
-                pending_tasks: 5,
-                claimed_tasks: 3,
-                active_workers: 2,
-                load_percentage: 30.0,
-                dlq_size: 0,
-                tasks_completed_total: 42,
-                tasks_failed_total: 1,
-                tasks_started_total: 46,
-                workflows_completed_total: 10,
-                workflows_failed_total: 0,
-                workflows_started_total: 11,
-            }],
-        };
-
-        let json = serde_json::to_string(&snapshot).unwrap();
-        assert!(json.contains("\"status\":\"healthy\""));
-        assert!(json.contains("\"active_workers\":2"));
-        assert!(json.contains("\"load_percentage\":30.0"));
-        assert!(json.contains("\"metrics_history\""));
-        assert!(json.contains("\"tasks_completed_total\":42"));
-    }
-
-    #[test]
-    fn test_workflow_snapshot_serialization() {
-        let snapshot = WorkflowSnapshot {
-            workflow: WorkflowResponse {
-                id: Uuid::nil(),
-                workflow_type: "test_workflow".to_string(),
-                status: "running".to_string(),
-                input: serde_json::json!({"key": "value"}),
-                result: None,
-                error: None,
-                created_at: Utc::now(),
-                started_at: Some(Utc::now()),
-                completed_at: None,
-            },
-            events: vec![],
-        };
-
-        let json = serde_json::to_string(&snapshot).unwrap();
-        assert!(json.contains("\"workflow_type\":\"test_workflow\""));
-        assert!(json.contains("\"status\":\"running\""));
-        assert!(json.contains("\"events\":[]"));
-    }
+    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
     fn test_health_response_from_system_health() {
@@ -2740,34 +2652,6 @@ mod tests {
     }
 
     #[test]
-    fn test_workers_summary_serialization_includes_summary() {
-        let workers = vec![
-            make_worker("w1", "active", 10, 3),
-            make_worker("w2", "draining", 8, 1),
-        ];
-
-        let resp = build_workers_list(workers);
-        let json = serde_json::to_string(&resp).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-
-        // Verify summary field exists and has correct values
-        assert!(
-            parsed["summary"].is_object(),
-            "summary must be present in JSON"
-        );
-        assert_eq!(parsed["summary"]["active"], 1);
-        assert_eq!(parsed["summary"]["draining"], 1);
-        assert_eq!(parsed["summary"]["stopped"], 0);
-        assert_eq!(parsed["summary"]["total_capacity"], 10);
-        assert_eq!(parsed["summary"]["total_load"], 3);
-
-        // Verify top-level fields
-        assert_eq!(parsed["total"], 2);
-        assert!(parsed["data"].is_array());
-        assert_eq!(parsed["data"].as_array().unwrap().len(), 2);
-    }
-
-    #[test]
     fn test_workers_summary_only_active_contribute_to_capacity() {
         // Edge case: a draining worker with high load should NOT inflate totals
         let workers = vec![
@@ -2983,75 +2867,6 @@ mod tests {
     // started_tasks / started_workflows coverage
     // ============================================
 
-    #[test]
-    fn test_health_response_serialization_includes_started_fields() {
-        let response = HealthResponse {
-            status: "healthy".to_string(),
-            total_workers: 2,
-            active_workers: 2,
-            workers_accepting: 2,
-            total_capacity: 10,
-            current_load: 3,
-            load_percentage: 30.0,
-            pending_tasks: 5,
-            claimed_tasks: 3,
-            completed_tasks: 20,
-            failed_tasks: 1,
-            started_tasks: 24,
-            running_workflows: 1,
-            pending_workflows: 0,
-            completed_workflows: 10,
-            failed_workflows: 0,
-            started_workflows: 11,
-            dlq_size: 0,
-            event_delivery: None,
-        };
-
-        let json = serde_json::to_string(&response).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-
-        // Verify started_tasks and started_workflows are present with correct values
-        assert_eq!(parsed["started_tasks"], 24);
-        assert_eq!(parsed["started_workflows"], 11);
-        // Verify they coexist with existing count fields
-        assert_eq!(parsed["completed_tasks"], 20);
-        assert_eq!(parsed["failed_tasks"], 1);
-        assert_eq!(parsed["completed_workflows"], 10);
-        assert_eq!(parsed["failed_workflows"], 0);
-    }
-
-    #[test]
-    fn test_metrics_point_serialization_includes_started_totals() {
-        let point = MetricsPoint {
-            timestamp: Utc::now(),
-            running_workflows: 3,
-            pending_workflows: 1,
-            pending_tasks: 5,
-            claimed_tasks: 2,
-            active_workers: 4,
-            load_percentage: 25.5,
-            dlq_size: 0,
-            tasks_completed_total: 100,
-            tasks_failed_total: 2,
-            tasks_started_total: 107,
-            workflows_completed_total: 50,
-            workflows_failed_total: 1,
-            workflows_started_total: 54,
-        };
-
-        let json = serde_json::to_string(&point).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-
-        // Verify started totals are present
-        assert_eq!(parsed["tasks_started_total"], 107);
-        assert_eq!(parsed["workflows_started_total"], 54);
-        // Verify they coexist with completed/failed totals
-        assert_eq!(parsed["tasks_completed_total"], 100);
-        assert_eq!(parsed["tasks_failed_total"], 2);
-        assert_eq!(parsed["workflows_completed_total"], 50);
-        assert_eq!(parsed["workflows_failed_total"], 1);
-    }
-
     #[tokio::test]
     async fn test_metrics_collector_stores_and_retrieves_started_totals() {
         let collector = MetricsCollector::new(10);
@@ -3115,78 +2930,6 @@ mod tests {
         assert_eq!(task_start_delta, 8);
         let wf_start_delta = points[1].workflows_started_total - points[0].workflows_started_total;
         assert_eq!(wf_start_delta, 6);
-    }
-
-    #[test]
-    fn test_durable_snapshot_includes_started_fields() {
-        let snapshot = DurableSnapshot {
-            health: HealthResponse {
-                status: "healthy".to_string(),
-                total_workers: 1,
-                active_workers: 1,
-                workers_accepting: 1,
-                total_capacity: 10,
-                current_load: 2,
-                load_percentage: 20.0,
-                pending_tasks: 3,
-                claimed_tasks: 2,
-                completed_tasks: 50,
-                failed_tasks: 5,
-                started_tasks: 60,
-                running_workflows: 2,
-                pending_workflows: 1,
-                completed_workflows: 30,
-                failed_workflows: 3,
-                started_workflows: 36,
-                dlq_size: 0,
-                event_delivery: None,
-            },
-            workers: vec![],
-            workflows: WorkflowsListResponse {
-                data: vec![],
-                total: 0,
-            },
-            tasks: TasksListResponse {
-                data: vec![],
-                total: 0,
-            },
-            dlq: DlqListResponse {
-                data: vec![],
-                total: 0,
-            },
-            circuit_breakers: CircuitBreakersListResponse {
-                data: vec![],
-                total: 0,
-            },
-            metrics_history: vec![MetricsPoint {
-                timestamp: Utc::now(),
-                running_workflows: 2,
-                pending_workflows: 1,
-                pending_tasks: 3,
-                claimed_tasks: 2,
-                active_workers: 1,
-                load_percentage: 20.0,
-                dlq_size: 0,
-                tasks_completed_total: 50,
-                tasks_failed_total: 5,
-                tasks_started_total: 60,
-                workflows_completed_total: 30,
-                workflows_failed_total: 3,
-                workflows_started_total: 36,
-            }],
-        };
-
-        let json = serde_json::to_string(&snapshot).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
-
-        // Verify health section has started fields
-        assert_eq!(parsed["health"]["started_tasks"], 60);
-        assert_eq!(parsed["health"]["started_workflows"], 36);
-
-        // Verify metrics_history points have started totals
-        let point = &parsed["metrics_history"][0];
-        assert_eq!(point["tasks_started_total"], 60);
-        assert_eq!(point["workflows_started_total"], 36);
     }
 
     #[test]
@@ -3670,9 +3413,12 @@ mod tests {
             fn auth_config_response(&self) -> AuthConfigResponse {
                 AuthConfigResponse {
                     mode: "full".to_string(),
+                    login_origin: None,
                     password_auth_enabled: false,
                     signup_enabled: false,
                     oauth_providers: vec![],
+                    signup_email_confirm: false,
+                    captcha: None,
                 }
             }
         }

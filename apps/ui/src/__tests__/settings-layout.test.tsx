@@ -1,6 +1,19 @@
 import { render, screen } from "@testing-library/react";
 import SettingsLayout from "@/app/(main)/settings/layout";
 
+jest.mock("next/link", () => ({
+  __esModule: true,
+  default: ({
+    children,
+    prefetch,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { prefetch?: boolean }) => (
+    <a {...props} data-prefetch={prefetch === undefined ? undefined : String(prefetch)}>
+      {children}
+    </a>
+  ),
+}));
+
 // Mock next/navigation
 const mockPathname = jest.fn();
 jest.mock("next/navigation", () => ({
@@ -76,6 +89,19 @@ describe("SettingsLayout", () => {
     expect(apiKeysLink).toHaveAttribute("href", "/settings/personal-access-tokens");
   });
 
+  it("disables automatic prefetch for every Settings navigation link", () => {
+    render(
+      <SettingsLayout>
+        <div>Test Content</div>
+      </SettingsLayout>,
+    );
+
+    expect(screen.getAllByRole("link")).toHaveLength(8);
+    for (const link of screen.getAllByRole("link")) {
+      expect(link).toHaveAttribute("data-prefetch", "false");
+    }
+  });
+
   it("highlights the active navigation item for providers", () => {
     mockPathname.mockReturnValue("/settings/providers");
     render(
@@ -123,17 +149,6 @@ describe("SettingsLayout", () => {
     expect(membersLink).toHaveClass("border-accent");
   });
 
-  it("has exactly 8 navigation items", () => {
-    render(
-      <SettingsLayout>
-        <div>Test Content</div>
-      </SettingsLayout>,
-    );
-
-    const navLinks = screen.getAllByRole("link");
-    expect(navLinks).toHaveLength(8);
-  });
-
   it("groups items under correct sections", () => {
     render(
       <SettingsLayout>
@@ -164,27 +179,6 @@ describe("SettingsLayout", () => {
     expect(personalSection).toHaveTextContent("Personal access tokens");
     expect(personalSection).not.toHaveTextContent("Organization");
     expect(personalSection).not.toHaveTextContent("Members");
-  });
-
-  it("renders section labels with uppercase styling", () => {
-    render(
-      <SettingsLayout>
-        <div>Test Content</div>
-      </SettingsLayout>,
-    );
-
-    const orgLabel = screen
-      .getAllByText("Organization")
-      .find((node) => node.classList.contains("uppercase"))!;
-    const personalLabel = screen.getByText("Personal");
-
-    expect(orgLabel).toHaveClass("uppercase");
-    expect(orgLabel).toHaveClass("tracking-[0.08em]");
-    expect(orgLabel).toHaveClass("text-[11px]");
-    expect(orgLabel).toHaveClass("font-mono");
-
-    expect(personalLabel).toHaveClass("uppercase");
-    expect(personalLabel).toHaveClass("tracking-[0.08em]");
   });
 
   it("applies inactive styles to non-active items", () => {

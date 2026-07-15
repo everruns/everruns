@@ -26,8 +26,9 @@ use uuid::Uuid;
 use crate::grpc_adapters::{
     GrpcAgentStore, GrpcBudgetChecker, GrpcClient, GrpcEventEmitter, GrpcHarnessStore,
     GrpcImageArtifactStore, GrpcImageResolver, GrpcLeasedResourceStore, GrpcMessageRetriever,
-    GrpcPaymentAuthority, GrpcProviderCredentialStore, GrpcProviderStore, GrpcSessionFileStore,
-    GrpcSessionSqlDbStore, GrpcSessionStorageStore, GrpcSessionStore,
+    GrpcOutboundToolRateLimiter, GrpcPaymentAuthority, GrpcProviderCredentialStore,
+    GrpcProviderStore, GrpcSessionCreationAuthority, GrpcSessionFileStore, GrpcSessionSqlDbStore,
+    GrpcSessionStorageStore, GrpcSessionStore,
 };
 use crate::mcp_executor::McpServerInfo;
 use crate::worker_adapters::{TurnContext, WorkerAdapters};
@@ -481,6 +482,27 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         ))
     }
 
+    fn session_creation_authority(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Option<Arc<dyn everruns_core::traits::SessionCreationAuthority>> {
+        Some(Arc::new(GrpcSessionCreationAuthority::new(
+            self.client.clone(),
+            org_id,
+            session_id,
+        )))
+    }
+
+    fn outbound_tool_rate_limiter(
+        &self,
+        _org_id: i64,
+    ) -> Option<Arc<dyn everruns_core::traits::OutboundToolRateLimiter>> {
+        Some(Arc::new(GrpcOutboundToolRateLimiter::new(
+            self.client.clone(),
+        )))
+    }
+
     fn stream_heartbeater(&self) -> Option<Arc<dyn everruns_core::StreamHeartbeater>> {
         self.stream_heartbeater.clone()
     }
@@ -493,6 +515,17 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     ) -> Result<serde_json::Value> {
         self.client
             .invoke_scheduled_app_channel(org_id, app_id, channel_id)
+            .await
+    }
+
+    async fn invoke_agent_trigger(
+        &self,
+        org_id: i64,
+        agent_id: &str,
+        trigger_id: &str,
+    ) -> Result<serde_json::Value> {
+        self.client
+            .invoke_agent_trigger(org_id, agent_id, trigger_id)
             .await
     }
 

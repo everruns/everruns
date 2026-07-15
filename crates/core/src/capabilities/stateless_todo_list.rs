@@ -120,6 +120,7 @@ impl Tool for WriteTodosTool {
         _tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_write_todos(phase, locale))
     }
@@ -294,25 +295,7 @@ impl Tool for WriteTodosTool {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_capability_metadata() {
-        let capability = StatelessTodoListCapability;
-
-        assert_eq!(capability.id(), "stateless_todo_list");
-        assert_eq!(capability.name(), "Task Management");
-        assert_eq!(capability.icon(), Some("list-checks"));
-        assert_eq!(capability.category(), Some("Core"));
-        assert_eq!(capability.status(), CapabilityStatus::Available);
-    }
-
-    #[test]
-    fn test_capability_has_tools() {
-        let capability = StatelessTodoListCapability;
-        let tools = capability.tools();
-
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "write_todos");
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_capability_has_system_prompt() {

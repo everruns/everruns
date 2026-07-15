@@ -5,6 +5,7 @@ mod agent_check_rules;
 mod agent_health_checks;
 mod agent_identities;
 mod agent_identity_connections;
+mod agent_triggers;
 mod agents;
 mod app_channels;
 mod apps;
@@ -32,12 +33,14 @@ mod reporting;
 mod schedules;
 mod session_files;
 mod session_git;
+mod session_participants;
 mod session_resources;
 mod session_storage;
 mod session_tasks;
 mod sessions;
 mod skills;
 mod user_connections;
+mod user_preferences;
 mod users;
 mod workspaces;
 
@@ -45,7 +48,7 @@ mod workspaces;
 mod tests;
 
 use anyhow::Result;
-use everruns_config::{env_duration_secs, env_or};
+use everruns_core::config::{env_duration_secs, env_or};
 use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 

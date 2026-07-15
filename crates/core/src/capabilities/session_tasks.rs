@@ -2,8 +2,8 @@
 //
 // Generic agent-facing tools over the session task registry
 // (specs/session-tasks.md): list_tasks / get_task / message_task /
-// cancel_task / wait_task. Spawning stays per-capability (spawn_subagent,
-// spawn_agent, spawn_background) — every spawn creates a task and returns its
+// cancel_task / wait_task. Spawning stays with each creation surface
+// (spawn_agent, spawn_background) — every spawn creates a task and returns its
 // task_id; these tools provide the uniform query/messaging/cancel/wait plane.
 //
 // Decision: tools degrade gracefully when `context.session_task_registry` is
@@ -104,15 +104,7 @@ fn require_task_registry(
     })
 }
 
-fn require_str<'a>(args: &'a Value, field: &str) -> Result<&'a str, ToolExecutionResult> {
-    args.get(field)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| {
-            ToolExecutionResult::tool_error(format!("Missing required parameter: {field}"))
-        })
-}
+use super::util::require_str_trimmed as require_str;
 
 async fn load_task(
     context: &ToolContext,
@@ -202,45 +194,51 @@ impl Tool for ListTasksTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let registry = match require_task_registry(context) {
-            Ok(r) => r,
-            Err(e) => return e,
-        };
-        let state = match arguments.get("state").and_then(Value::as_str) {
-            Some(raw) => match SessionTaskState::parse(raw) {
-                Some(state) => Some(state),
-                None => {
-                    return ToolExecutionResult::tool_error(format!(
-                        "Unknown state filter \"{raw}\". Valid states: queued, running, \
-                         awaiting_input, succeeded, failed, canceled."
-                    ));
-                }
-            },
-            None => None,
-        };
-        let filter = SessionTaskFilter {
-            kind: arguments
-                .get("kind")
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .map(ToString::to_string),
-            state,
-        };
-        let tasks = match registry.list(context.session_id, Some(&filter)).await {
-            Ok(tasks) => tasks,
-            Err(e) => return ToolExecutionResult::internal_error(e),
-        };
-        let entries = tasks.iter().map(compact_task_json).collect::<Vec<_>>();
-        ToolExecutionResult::success(json!({
-            "tasks": entries,
-            "count": entries.len(),
-        }))
+        list_tasks_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn list_tasks_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let registry = require_task_registry(context)?;
+    let state = match arguments.get("state").and_then(Value::as_str) {
+        Some(raw) => match SessionTaskState::parse(raw) {
+            Some(state) => Some(state),
+            None => {
+                return Ok(ToolExecutionResult::tool_error(format!(
+                    "Unknown state filter \"{raw}\". Valid states: queued, running, \
+                     awaiting_input, succeeded, failed, canceled."
+                )));
+            }
+        },
+        None => None,
+    };
+    let filter = SessionTaskFilter {
+        kind: arguments
+            .get("kind")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(ToString::to_string),
+        state,
+    };
+    let tasks = registry
+        .list(context.session_id, Some(&filter))
+        .await
+        .map_err(ToolExecutionResult::internal_error)?;
+    let entries = tasks.iter().map(compact_task_json).collect::<Vec<_>>();
+    Ok(ToolExecutionResult::success(json!({
+        "tasks": entries,
+        "count": entries.len(),
+    })))
 }
 
 // =============================================================================
@@ -292,36 +290,36 @@ impl Tool for GetTaskTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let task_id = match require_str(&arguments, "task_id") {
-            Ok(id) => id,
-            Err(e) => return e,
-        };
-        let task = match load_task(context, task_id).await {
-            Ok(task) => task,
-            Err(e) => return e,
-        };
-        let registry = match require_task_registry(context) {
-            Ok(r) => r,
-            Err(e) => return e,
-        };
-        let messages = registry
-            .list_messages(
-                context.session_id,
-                task_id,
-                Some(GET_TASK_MESSAGE_LIMIT),
-                None,
-            )
+        get_task_impl(arguments, context)
             .await
-            .unwrap_or_default();
-        ToolExecutionResult::success(json!({
-            "task": full_task_json(&task),
-            "messages": messages.iter().map(message_json).collect::<Vec<_>>(),
-        }))
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn get_task_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let task_id = require_str(&arguments, "task_id")?;
+    let task = load_task(context, task_id).await?;
+    let registry = require_task_registry(context)?;
+    let messages = registry
+        .list_messages(
+            context.session_id,
+            task_id,
+            Some(GET_TASK_MESSAGE_LIMIT),
+            None,
+        )
+        .await
+        .unwrap_or_default();
+    Ok(ToolExecutionResult::success(json!({
+        "task": full_task_json(&task),
+        "messages": messages.iter().map(message_json).collect::<Vec<_>>(),
+    })))
 }
 
 // =============================================================================
@@ -379,74 +377,68 @@ impl Tool for MessageTaskTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let task_id = match require_str(&arguments, "task_id") {
-            Ok(id) => id.to_string(),
-            Err(e) => return e,
-        };
-        let message = match require_str(&arguments, "message") {
-            Ok(m) => m.to_string(),
-            Err(e) => return e,
-        };
-        let in_reply_to = arguments
-            .get("in_reply_to")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(ToString::to_string);
-
-        let task = match load_task(context, &task_id).await {
-            Ok(task) => task,
-            Err(e) => return e,
-        };
-        let registry = match require_task_registry(context) {
-            Ok(r) => r,
-            Err(e) => return e,
-        };
-
-        let mut new_message = NewTaskMessage::inbound_text(message);
-        new_message.in_reply_to = in_reply_to;
-        let recorded = match registry
-            .record_message(context.session_id, &task_id, new_message)
+        message_task_impl(arguments, context)
             .await
-        {
-            Ok(recorded) => recorded,
-            Err(e) => return ToolExecutionResult::internal_error(e),
-        };
-
-        // Best-effort delivery: the message is durably recorded either way;
-        // report delivery outcome instead of failing the whole call.
-        let delivery = match find_task_executor(&task.kind) {
-            Some(executor) => {
-                // Re-read: recording an input-request answer returns the task
-                // to running before the executor sees it.
-                let current = registry
-                    .get(context.session_id, &task_id)
-                    .await
-                    .ok()
-                    .flatten()
-                    .unwrap_or(task);
-                match executor.deliver(&current, &recorded, context).await {
-                    Ok(()) => "delivered".to_string(),
-                    Err(e) => format!("failed: {e}"),
-                }
-            }
-            None => format!(
-                "failed: no executor registered for task kind '{}'",
-                task.kind
-            ),
-        };
-
-        ToolExecutionResult::success(json!({
-            "task_id": task_id,
-            "message_id": recorded.id,
-            "recorded": true,
-            "delivery": delivery,
-        }))
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn message_task_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let task_id = require_str(&arguments, "task_id")?.to_string();
+    let message = require_str(&arguments, "message")?.to_string();
+    let in_reply_to = arguments
+        .get("in_reply_to")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(ToString::to_string);
+
+    let task = load_task(context, &task_id).await?;
+    let registry = require_task_registry(context)?;
+
+    let mut new_message = NewTaskMessage::inbound_text(message);
+    new_message.in_reply_to = in_reply_to;
+    let recorded = registry
+        .record_message(context.session_id, &task_id, new_message)
+        .await
+        .map_err(ToolExecutionResult::internal_error)?;
+
+    // Best-effort delivery: the message is durably recorded either way;
+    // report delivery outcome instead of failing the whole call.
+    let delivery = match find_task_executor(&task.kind) {
+        Some(executor) => {
+            // Re-read: recording an input-request answer returns the task
+            // to running before the executor sees it.
+            let current = registry
+                .get(context.session_id, &task_id)
+                .await
+                .ok()
+                .flatten()
+                .unwrap_or(task);
+            match executor.deliver(&current, &recorded, context).await {
+                Ok(()) => "delivered".to_string(),
+                Err(e) => format!("failed: {e}"),
+            }
+        }
+        None => format!(
+            "failed: no executor registered for task kind '{}'",
+            task.kind
+        ),
+    };
+
+    Ok(ToolExecutionResult::success(json!({
+        "task_id": task_id,
+        "message_id": recorded.id,
+        "recorded": true,
+        "delivery": delivery,
+    })))
 }
 
 // =============================================================================
@@ -466,7 +458,7 @@ impl Tool for CancelTaskTool {
     }
 
     fn description(&self) -> &str {
-        "Request cooperative cancellation of a task. The task winds down and may still end succeeded or failed."
+        "Request cooperative cancellation of a task. The task winds down and may still end succeeded or failed. For a detached `session` task this also cancels the peer session (not just the tracking chip)."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -496,51 +488,54 @@ impl Tool for CancelTaskTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let task_id = match require_str(&arguments, "task_id") {
-            Ok(id) => id.to_string(),
-            Err(e) => return e,
-        };
-        let registry = match require_task_registry(context) {
-            Ok(r) => r,
-            Err(e) => return e,
-        };
-        let task = match registry.request_cancel(context.session_id, &task_id).await {
-            Ok(Some(task)) => task,
-            Ok(None) => {
-                return ToolExecutionResult::tool_error(format!(
-                    "No task found with id: {task_id}"
-                ));
-            }
-            Err(e) => return ToolExecutionResult::internal_error(e),
-        };
-
-        // Best-effort executor wind-down; the intent is recorded regardless.
-        let executor_result = if task.state.is_terminal() {
-            "task already terminal".to_string()
-        } else {
-            match find_task_executor(&task.kind) {
-                Some(executor) => match executor.cancel(&task, context).await {
-                    Ok(()) => "cancellation requested".to_string(),
-                    Err(e) => format!("failed: {e}"),
-                },
-                None => format!(
-                    "no executor registered for task kind '{}'; cancel intent recorded",
-                    task.kind
-                ),
-            }
-        };
-
-        ToolExecutionResult::success(json!({
-            "task_id": task_id,
-            "state": task.state,
-            "cancel_requested": true,
-            "executor": executor_result,
-        }))
+        cancel_task_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
     }
+}
+
+async fn cancel_task_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let task_id = require_str(&arguments, "task_id")?.to_string();
+    let registry = require_task_registry(context)?;
+    let task = match registry.request_cancel(context.session_id, &task_id).await {
+        Ok(Some(task)) => task,
+        Ok(None) => {
+            return Ok(ToolExecutionResult::tool_error(format!(
+                "No task found with id: {task_id}"
+            )));
+        }
+        Err(e) => return Err(ToolExecutionResult::internal_error(e)),
+    };
+
+    // Best-effort executor wind-down; the intent is recorded regardless.
+    let executor_result = if task.state.is_terminal() {
+        "task already terminal".to_string()
+    } else {
+        match find_task_executor(&task.kind) {
+            Some(executor) => match executor.cancel(&task, context).await {
+                Ok(()) => "cancellation requested".to_string(),
+                Err(e) => format!("failed: {e}"),
+            },
+            None => format!(
+                "no executor registered for task kind '{}'; cancel intent recorded",
+                task.kind
+            ),
+        }
+    };
+
+    Ok(ToolExecutionResult::success(json!({
+        "task_id": task_id,
+        "state": task.state,
+        "cancel_requested": true,
+        "executor": executor_result,
+    })))
 }
 
 // =============================================================================
@@ -597,49 +592,52 @@ impl Tool for WaitTaskTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let task_id = match require_str(&arguments, "task_id") {
-            Ok(id) => id.to_string(),
-            Err(e) => return e,
-        };
-        let timeout_secs = arguments
-            .get("timeout_seconds")
-            .and_then(Value::as_u64)
-            .unwrap_or(DEFAULT_WAIT_TIMEOUT_SECS);
-        let deadline = Instant::now() + Duration::from_secs(timeout_secs);
-        let mut polls: u64 = 0;
-
-        loop {
-            let task = match load_task(context, &task_id).await {
-                Ok(task) => task,
-                Err(e) => return e,
-            };
-            if task.state.is_terminal() || task.state == SessionTaskState::AwaitingInput {
-                return ToolExecutionResult::success(json!({
-                    "task": full_task_json(&task),
-                    "timed_out": false,
-                }));
-            }
-            if Instant::now() >= deadline {
-                return ToolExecutionResult::success(json!({
-                    "task": full_task_json(&task),
-                    "timed_out": true,
-                    "message": format!("Task {task_id} still {} after {timeout_secs}s", task.state),
-                }));
-            }
-            polls += 1;
-            // Refresh polled kinds (e.g. remote A2A tasks) periodically so the
-            // registry snapshot converges even when nothing pushes updates.
-            if polls.is_multiple_of(WAIT_RECONCILE_EVERY)
-                && let Some(executor) = find_task_executor(&task.kind)
-            {
-                let _ = executor.reconcile(&task, context).await;
-            }
-            sleep(WAIT_POLL_INTERVAL).await;
-        }
+        wait_task_impl(arguments, context)
+            .await
+            .unwrap_or_else(|e| e)
     }
 
     fn requires_context(&self) -> bool {
         true
+    }
+}
+
+async fn wait_task_impl(
+    arguments: Value,
+    context: &ToolContext,
+) -> Result<ToolExecutionResult, ToolExecutionResult> {
+    let task_id = require_str(&arguments, "task_id")?.to_string();
+    let timeout_secs = arguments
+        .get("timeout_seconds")
+        .and_then(Value::as_u64)
+        .unwrap_or(DEFAULT_WAIT_TIMEOUT_SECS);
+    let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+    let mut polls: u64 = 0;
+
+    loop {
+        let task = load_task(context, &task_id).await?;
+        if task.state.is_terminal() || task.state == SessionTaskState::AwaitingInput {
+            return Ok(ToolExecutionResult::success(json!({
+                "task": full_task_json(&task),
+                "timed_out": false,
+            })));
+        }
+        if Instant::now() >= deadline {
+            return Ok(ToolExecutionResult::success(json!({
+                "task": full_task_json(&task),
+                "timed_out": true,
+                "message": format!("Task {task_id} still {} after {timeout_secs}s", task.state),
+            })));
+        }
+        polls += 1;
+        // Refresh polled kinds (e.g. remote A2A tasks) periodically so the
+        // registry snapshot converges even when nothing pushes updates.
+        if polls.is_multiple_of(WAIT_RECONCILE_EVERY)
+            && let Some(executor) = find_task_executor(&task.kind)
+        {
+            let _ = executor.reconcile(&task, context).await;
+        }
+        sleep(WAIT_POLL_INTERVAL).await;
     }
 }
 
@@ -706,17 +704,18 @@ pub(crate) mod tests {
 
         async fn list(
             &self,
-            _session_id: SessionId,
+            session_id: SessionId,
             filter: Option<&SessionTaskFilter>,
         ) -> crate::error::Result<Vec<SessionTask>> {
             let tasks = self.tasks.lock().unwrap();
             Ok(tasks
                 .values()
                 .filter(|task| {
-                    filter.is_none_or(|f| {
-                        f.kind.as_deref().is_none_or(|kind| task.kind == kind)
-                            && f.state.is_none_or(|state| task.state == state)
-                    })
+                    task.session_id == session_id
+                        && filter.is_none_or(|f| {
+                            f.kind.as_deref().is_none_or(|kind| task.kind == kind)
+                                && f.state.is_none_or(|state| task.state == state)
+                        })
                 })
                 .cloned()
                 .collect())
@@ -896,24 +895,7 @@ pub(crate) mod tests {
             .unwrap()
     }
 
-    #[test]
-    fn capability_basics() {
-        let cap = SessionTasksCapability;
-        assert_eq!(cap.id(), SESSION_TASKS_CAPABILITY_ID);
-        assert_eq!(cap.category(), Some("Orchestration"));
-        let tools = cap.tools();
-        let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert_eq!(
-            names,
-            vec![
-                "list_tasks",
-                "get_task",
-                "message_task",
-                "cancel_task",
-                "wait_task"
-            ]
-        );
-    }
+    // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[tokio::test]
     async fn tools_error_without_registry() {

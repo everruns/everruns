@@ -503,9 +503,6 @@ pub async fn end_call(
     path = "/v1/agents/{agent_id}/voice/sessions",
     request_body = VoiceCallRequest,
     responses((status = 201, description = "Agent session and realtime call created", body = VoiceSessionResponse<VoiceCallResponse>)),
-    extensions(
-        ("x-cost-tier" = json!("paid")),
-    ),
     tag = "voice"
 )]
 pub async fn create_agent_voice_session(
@@ -523,8 +520,10 @@ pub async fn create_agent_voice_session(
         harness_id: None,
         harness_name: None,
         agent_id: Some(agent_id),
+        agent_name: None,
         agent_identity_id: None,
         title: Some("Voice session".to_string()),
+        goal: None,
         locale: None,
         tags: vec!["voice".to_string()],
         model_id: None,
@@ -538,6 +537,9 @@ pub async fn create_agent_voice_session(
         max_iterations: None,
         parallel_tool_calls: None,
         parent_session_id: None,
+        forked_from_session_id: None,
+        budget_root_session_id: None,
+        seed: everruns_core::SessionSeedMode::Fresh,
     })
     .run(&state.ctx(&org))
     .await?;
@@ -556,9 +558,6 @@ pub async fn create_agent_voice_session(
     responses(
         (status = 200, description = "Platform chat session and realtime call created", body = VoiceSessionResponse<VoiceCallResponse>),
         (status = 404, description = "Platform Chat (global_chat) or voice feature is disabled for the org"),
-    ),
-    extensions(
-        ("x-cost-tier" = json!("paid")),
     ),
     tag = "voice"
 )]
@@ -1431,6 +1430,7 @@ fn build_voice_message_command(session_id: SessionId, data: &VoiceTranscriptData
             role: MessageRole::User,
             content: vec![InputContentPart::text(data.accumulated.trim().to_string())],
         },
+        addressed_participant_id: None,
         controls: None,
         metadata: Some(metadata),
         tags: Some(vec!["voice".to_string()]),

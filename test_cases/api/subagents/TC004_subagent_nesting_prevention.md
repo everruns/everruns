@@ -2,7 +2,7 @@
 
 ## Description
 
-Verify that a subagent (a session with `parent_session_id` set) cannot spawn another subagent. The `spawn_subagent` tool must return an error: "nesting not allowed".
+Verify that a subagent (a session with `parent_session_id` set) cannot spawn another subagent. The `spawn_agent` tool must return an error: "nesting not allowed".
 
 ## Preconditions
 
@@ -72,14 +72,14 @@ Verify that a subagent (a session with `parent_session_id` set) cannot spawn ano
 
 | Check | Expected |
 |-------|----------|
-| Parent spawned Child | `tool.called` with `tool_name: "spawn_subagent"` and `arguments.name: "Child"` |
-| Spawn completed | `tool.completed` for `spawn_subagent` with result |
+| Parent spawned Child | `tool.called` with `tool_name: "spawn_agent"` and `arguments.name: "Child"` |
+| Spawn completed | `tool.completed` for `spawn_agent` with result |
 
 ### Child Session Assertions
 
 | Check | Expected |
 |-------|----------|
-| Child attempted spawn | Child session events contain `tool.called` with `tool_name: "spawn_subagent"` |
+| Child attempted spawn | Child session events contain `tool.called` with `tool_name: "spawn_agent"` |
 | Nesting rejected | Child session events contain `tool.completed` with error containing "nesting not allowed" |
 | No grandchild session | No session exists with `parent_session_id` matching the child session ID |
 
@@ -94,7 +94,7 @@ Verify that a subagent (a session with `parent_session_id` set) cannot spawn ano
 
 ```bash
 # Assert: parent spawned a child
-curl -s ".../sessions/{session_id}/events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "spawn_subagent")] | length > 0'
+curl -s ".../sessions/{session_id}/events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "spawn_agent")] | length > 0'
 
 # Assert: child tried and failed to spawn
 curl -s ".../sessions/{child_session_id}/events" | jq '[.data[] | select(.type == "tool.completed")] | map(select(.data.result | contains("nesting not allowed"))) | length > 0'

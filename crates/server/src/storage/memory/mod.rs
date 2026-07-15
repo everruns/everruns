@@ -11,6 +11,7 @@ mod agent_check_rules;
 mod agent_health_checks;
 mod agent_identities;
 mod agent_identity_connections;
+mod agent_triggers;
 mod agents;
 mod app_channels;
 mod apps;
@@ -37,6 +38,7 @@ mod reporting;
 mod schedules;
 mod session_files;
 mod session_git;
+mod session_participants;
 mod session_resources;
 mod session_storage;
 mod session_tasks;
@@ -44,6 +46,7 @@ mod sessions;
 mod skills;
 pub mod subagent_spawn_handles;
 mod user_connections;
+mod user_preferences;
 mod users;
 mod workspaces;
 
@@ -54,10 +57,13 @@ use chrono::{DateTime, Utc};
 use everruns_core::{
     AgentId, AgentIdentityId, AgentVersionId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId,
     HarnessId, ImageId, LeasedResourceId, McpServerId, MessageId, ModelId, NotificationId,
-    PluginMarketplaceId, PrincipalId, ProviderId, ScheduleId, SessionId, SkillId,
+    PluginMarketplaceId, PrincipalId, ProviderId, ScheduleId, SessionId, SessionParticipantId,
+    SkillId, TriggerId,
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
+#[cfg(test)]
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use uuid::Uuid;
 
 use super::models::*;
@@ -102,6 +108,7 @@ pub struct InMemoryDatabase {
     agents: RwLock<HashMap<AgentId, AgentRow>>,
     agent_versions: RwLock<HashMap<AgentVersionId, AgentVersionRow>>,
     sessions: RwLock<HashMap<SessionId, SessionRow>>,
+    session_participants: RwLock<HashMap<SessionParticipantId, SessionParticipantRow>>,
     events: RwLock<HashMap<EventId, EventRow>>,
     providers: RwLock<HashMap<ProviderId, ProviderRow>>,
     models: RwLock<HashMap<ModelId, ModelRow>>,
@@ -125,6 +132,8 @@ pub struct InMemoryDatabase {
     session_secrets: RwLock<HashMap<(SessionId, String), SessionSecretRow>>,
     // User connections (external service accounts)
     user_connections: RwLock<HashMap<Uuid, UserConnectionRow>>,
+    // User preferences: (user_id, key) -> row
+    user_preferences: RwLock<HashMap<(Uuid, String), UserPreferenceRow>>,
     // Pinned sessions: (user_id, session_id) -> (org_id, pinned_at)
     pinned_sessions: RwLock<HashMap<(Uuid, SessionId), PinnedSessionData>>,
     // Durable UI notifications
@@ -147,6 +156,8 @@ pub struct InMemoryDatabase {
     app_channels: RwLock<HashMap<Uuid, AppChannelRow>>,
     // Agent identities (virtual principals)
     agent_identities: RwLock<HashMap<AgentIdentityId, AgentIdentityRow>>,
+    // Agent triggers (agent-owned invocation triggers)
+    agent_triggers: RwLock<HashMap<TriggerId, AgentTriggerRow>>,
     principals: RwLock<HashMap<PrincipalId, PrincipalRow>>,
     // Agent identity connections (identity-scoped external accounts)
     agent_identity_connections: RwLock<HashMap<Uuid, AgentIdentityConnectionRow>>,
@@ -158,6 +169,8 @@ pub struct InMemoryDatabase {
     eval_cases: RwLock<HashMap<Uuid, EvalCaseRow>>,
     eval_runs: RwLock<HashMap<Uuid, EvalRunRow>>,
     eval_case_results: RwLock<HashMap<Uuid, EvalCaseResultRow>>,
+    eval_run_datasets: RwLock<HashMap<Uuid, EvalRunDatasetRow>>,
+    eval_run_share_tokens: RwLock<HashMap<Uuid, EvalRunShareTokenRow>>,
     agent_health_check_runs: RwLock<HashMap<Uuid, AgentHealthCheckRunRow>>,
     agent_check_rules: RwLock<HashMap<Uuid, AgentCheckRuleRow>>,
     observers: RwLock<HashMap<Uuid, ObserverRow>>,
@@ -192,8 +205,17 @@ pub struct InMemoryDatabase {
     plugin_installs: RwLock<HashMap<Uuid, PluginInstallRow>>,
     // Organization task webhooks (outbound HTTP on terminal task transitions)
     org_task_webhooks: RwLock<Vec<OrgTaskWebhookRow>>,
+    // Per-task push-notification configs (EVE-682): session/task-scoped webhooks
+    session_task_push_configs: RwLock<Vec<SessionTaskPushConfigRow>>,
     // OSS-owned organization invitations (EVE-602)
     org_invitations: RwLock<Vec<OrgInvitationRow>>,
+    // Native-auth account-recovery tokens (hashed, single-use, short-TTL).
+    password_reset_tokens: RwLock<Vec<auth::AccountRecoveryToken>>,
+    email_verification_tokens: RwLock<Vec<auth::AccountRecoveryToken>>,
+    #[cfg(test)]
+    session_list_lookup_count: AtomicUsize,
+    #[cfg(test)]
+    session_list_lookup_delay_ms: AtomicU64,
 }
 
 impl Default for InMemoryDatabase {
@@ -212,6 +234,8 @@ impl Default for InMemoryDatabase {
                 updated_at: now,
                 external_id: None,
                 created_by: None,
+                // Default org is pre-provisioned and already onboarded.
+                onboarding_completed_at: Some(now),
             },
         );
 
@@ -249,6 +273,7 @@ impl Default for InMemoryDatabase {
             agents: RwLock::new(HashMap::new()),
             agent_versions: RwLock::new(HashMap::new()),
             sessions: RwLock::new(HashMap::new()),
+            session_participants: RwLock::new(HashMap::new()),
             events: RwLock::new(HashMap::new()),
             providers: RwLock::new(HashMap::new()),
             models: RwLock::new(HashMap::new()),
@@ -267,6 +292,7 @@ impl Default for InMemoryDatabase {
             session_key_values: RwLock::new(HashMap::new()),
             session_secrets: RwLock::new(HashMap::new()),
             user_connections: RwLock::new(HashMap::new()),
+            user_preferences: RwLock::new(HashMap::new()),
             pinned_sessions: RwLock::new(HashMap::new()),
             notifications: RwLock::new(HashMap::new()),
             notification_turn_requests: RwLock::new(HashMap::new()),
@@ -279,6 +305,7 @@ impl Default for InMemoryDatabase {
             apps: RwLock::new(HashMap::new()),
             app_channels: RwLock::new(HashMap::new()),
             agent_identities: RwLock::new(HashMap::new()),
+            agent_triggers: RwLock::new(HashMap::new()),
             principals: RwLock::new(HashMap::new()),
             agent_identity_connections: RwLock::new(HashMap::new()),
             org_settings: RwLock::new(HashMap::new()),
@@ -287,6 +314,8 @@ impl Default for InMemoryDatabase {
             eval_cases: RwLock::new(HashMap::new()),
             eval_runs: RwLock::new(HashMap::new()),
             eval_case_results: RwLock::new(HashMap::new()),
+            eval_run_datasets: RwLock::new(HashMap::new()),
+            eval_run_share_tokens: RwLock::new(HashMap::new()),
             agent_health_check_runs: RwLock::new(HashMap::new()),
             agent_check_rules: RwLock::new(HashMap::new()),
             observers: RwLock::new(HashMap::new()),
@@ -312,7 +341,14 @@ impl Default for InMemoryDatabase {
             plugin_marketplaces: RwLock::new(plugin_marketplaces),
             plugin_installs: RwLock::new(HashMap::new()),
             org_task_webhooks: RwLock::new(Vec::new()),
+            session_task_push_configs: RwLock::new(Vec::new()),
             org_invitations: RwLock::new(Vec::new()),
+            password_reset_tokens: RwLock::new(Vec::new()),
+            email_verification_tokens: RwLock::new(Vec::new()),
+            #[cfg(test)]
+            session_list_lookup_count: AtomicUsize::new(0),
+            #[cfg(test)]
+            session_list_lookup_delay_ms: AtomicU64::new(0),
         }
     }
 }
@@ -324,5 +360,32 @@ impl InMemoryDatabase {
 
     pub(crate) fn now() -> DateTime<Utc> {
         Utc::now()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn record_session_list_lookup(&self) {
+        self.session_list_lookup_count
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reset_session_list_lookup_count(&self) {
+        self.session_list_lookup_count.store(0, Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn session_list_lookup_count(&self) -> usize {
+        self.session_list_lookup_count.load(Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_session_list_lookup_delay_ms(&self, delay_ms: u64) {
+        self.session_list_lookup_delay_ms
+            .store(delay_ms, Ordering::Relaxed);
+    }
+
+    #[cfg(test)]
+    pub(crate) fn session_list_lookup_delay_ms(&self) -> u64 {
+        self.session_list_lookup_delay_ms.load(Ordering::Relaxed)
     }
 }

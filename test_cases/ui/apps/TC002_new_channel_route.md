@@ -6,8 +6,8 @@ Verifies Add channel opens a reload-safe full-page route with channel type cards
 
 ## Preconditions
 
-- `AUTH_MODE=none`
-- `just start-dev --no-watch` is running
+- A local (`AUTH_MODE=none`) or authenticated deployed Everruns UI is available
+- The tester is signed in and has access to the target organization when authentication is enabled
 - A draft or published App exists
 
 ## Test Data
@@ -25,7 +25,7 @@ Verifies Add channel opens a reload-safe full-page route with channel type cards
 1. Navigate to the App detail page.
 2. Click Add channel.
 3. Verify the browser URL is `/apps/{appId}/channels/new`.
-4. Verify the four channel type cards are visible: Schedule, Webhook, AG-UI, Slack.
+4. Verify the five channel type cards are visible: Schedule, Webhook, AG-UI, FCP, Slack.
 5. Select Schedule.
 6. Choose the Hourly :30 preset.
 7. Enter `America/Chicago` as the timezone.

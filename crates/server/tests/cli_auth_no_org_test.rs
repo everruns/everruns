@@ -52,6 +52,7 @@ async fn test_cli_exchange_no_orgs_returns_422() {
         db: db.clone(),
         auth: auth_state,
         frontend_url: "http://localhost:3000".to_string(),
+        login_origin: None,
         base_url: "http://localhost:9000".to_string(),
     };
     let router = cli_auth_routes(cli_state);
@@ -154,6 +155,7 @@ async fn test_cli_exchange_code_is_one_time_use() {
         db: db.clone(),
         auth: auth_state,
         frontend_url: "http://localhost:3000".to_string(),
+        login_origin: None,
         base_url: "http://localhost:9000".to_string(),
     };
     let router = cli_auth_routes(cli_state);

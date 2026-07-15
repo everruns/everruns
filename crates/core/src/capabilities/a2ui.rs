@@ -63,22 +63,8 @@ impl Capability for A2UiCapability {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capabilities::CapabilityRegistry;
 
-    #[test]
-    fn capability_metadata() {
-        let cap = A2UiCapability;
-        assert_eq!(cap.id(), A2UI_CAPABILITY_ID);
-        assert_eq!(cap.name(), "A2UI");
-        assert_eq!(cap.category(), Some("UI"));
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-    }
-
-    #[test]
-    fn capability_has_no_tools() {
-        let cap = A2UiCapability;
-        assert!(cap.tools().is_empty());
-    }
+    // Metadata/tool-list/registration constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn capability_has_system_prompt() {
@@ -94,27 +80,6 @@ mod tests {
     fn capability_features() {
         let cap = A2UiCapability;
         assert_eq!(cap.features(), vec!["a2ui"]);
-    }
-
-    #[test]
-    fn capability_in_registry() {
-        let registry = CapabilityRegistry::with_builtins();
-        let cap = registry.get(A2UI_CAPABILITY_ID).expect("registered");
-        assert_eq!(cap.id(), A2UI_CAPABILITY_ID);
-        assert!(cap.system_prompt_addition().is_some());
-    }
-
-    #[test]
-    fn capability_coexists_with_openui() {
-        let registry = CapabilityRegistry::with_builtins();
-        assert!(
-            registry.get("openui").is_some(),
-            "openui should stay registered"
-        );
-        assert!(
-            registry.get(A2UI_CAPABILITY_ID).is_some(),
-            "a2ui should be registered"
-        );
     }
 
     #[test]

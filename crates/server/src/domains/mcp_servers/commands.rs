@@ -120,6 +120,7 @@ impl Command for CreateMcpServer {
 
         let settings = McpServerSettings {
             auth_mode,
+            protocol_mode: req.protocol_mode.unwrap_or_default(),
             oauth: None,
         };
 
@@ -314,6 +315,9 @@ impl Command for UpdateMcpServerCmd {
             if settings.auth_mode != McpServerAuthMode::OAuth {
                 settings.oauth = None;
             }
+        }
+        if let Some(protocol_mode) = req.protocol_mode {
+            settings.protocol_mode = protocol_mode;
         }
         if req.api_key.is_some() && settings.auth_mode != McpServerAuthMode::ApiKey {
             return Err(CommandError::bad_request(

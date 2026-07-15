@@ -553,6 +553,7 @@ pub trait Tool: Send + Sync {
         _tool_call: &crate::tool_types::ToolCall,
         _phase: crate::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         None
     }
@@ -1138,24 +1139,6 @@ impl Tool for SpawnBackgroundTool {
                 );
             };
 
-            // Enforce per-session cap, per-org cap, and minimum recurring cron
-            // interval (shared with the create_schedule tool).
-            match crate::session_schedule::enforce_create_limits(
-                schedule_store.as_ref(),
-                context.session_id,
-                schedule_request.cron_expression.as_deref(),
-            )
-            .await
-            {
-                Ok(()) => {}
-                Err(crate::session_schedule::ScheduleLimitError::Store(err)) => {
-                    return ToolExecutionResult::internal_error(err);
-                }
-                Err(crate::session_schedule::ScheduleLimitError::Rejected(msg)) => {
-                    return ToolExecutionResult::tool_error(msg);
-                }
-            }
-
             let description = build_background_schedule_description(
                 tool_name,
                 &tool_args,
@@ -1164,7 +1147,7 @@ impl Tool for SpawnBackgroundTool {
             );
 
             return match schedule_store
-                .create_schedule(
+                .create_schedule_enforcing_limits(
                     context.session_id,
                     description,
                     schedule_request.cron_expression.clone(),
@@ -1233,7 +1216,12 @@ impl Tool for SpawnBackgroundTool {
                         "task_id": monitor_task_id,
                     }))
                 }
-                Err(err) => ToolExecutionResult::internal_error(err),
+                Err(crate::session_schedule::ScheduleLimitError::Store(err)) => {
+                    ToolExecutionResult::internal_error(err)
+                }
+                Err(crate::session_schedule::ScheduleLimitError::Rejected(msg)) => {
+                    ToolExecutionResult::tool_error(msg)
+                }
             };
         }
 
@@ -2306,6 +2294,10 @@ mod tests {
 
     #[async_trait]
     impl crate::traits::SessionFileSystem for TestFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             _session_id: SessionId,
@@ -2586,6 +2578,13 @@ mod tests {
         }
         async fn get_session_by_id(&self, _id: SessionId) -> crate::Result<Option<crate::Session>> {
             Ok(None)
+        }
+        async fn add_agent_session_participant(
+            &self,
+            _session_id: SessionId,
+            _agent_id: AgentId,
+        ) -> crate::Result<crate::SessionParticipant> {
+            unreachable!()
         }
         async fn get_session_context_report(
             &self,
@@ -3887,6 +3886,7 @@ mod tests {
         crate::session_task::SessionTask {
             id: "t-reattach".to_string(),
             session_id: SessionId::new(),
+            root_session_id: None,
             kind: crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
             display_name: "Reattach test".to_string(),
             spec,

@@ -15,11 +15,10 @@
 // creates the appropriate gen-ai spans. No direct tracing in drivers.
 
 use async_trait::async_trait;
-use eventsource_stream::Eventsource;
 use futures::StreamExt;
 use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::borrow::Cow;
 use std::sync::{Arc, Mutex};
 
@@ -29,10 +28,12 @@ use crate::driver_registry::{
 };
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::llm_retry::{
-    LlmRetryConfig, RateLimitInfo, RetryMetadata, is_rate_limit_status, is_transient_error,
-    is_transient_send_error, send_error_message,
+    LlmRetryConfig, RateLimitInfo, RetryDecision, RetryMetadata, SendOutcome, is_rate_limit_status,
+    retry_request, send_error_message,
 };
-use crate::tool_types::{ToolCall, ToolDefinition};
+use crate::stream_accumulator::StreamToolCallAccumulator;
+use crate::stream_reconnect::connect_sse_with_reconnect;
+use crate::tool_types::ToolDefinition;
 use crate::user_facing_error::is_provider_quota_message;
 
 const DEFAULT_API_URL: &str = "https://api.openai.com/v1/chat/completions";
@@ -260,6 +261,128 @@ impl OpenAIProtocolChatDriver {
         &self.client
     }
 
+    /// Send one streaming chat-completion request, applying the shared
+    /// header-phase retry loop (transient send failures, 429, and 5xx), and
+    /// return the raw response plus its retry metadata.
+    ///
+    /// Invoked once per reconnect attempt by [`connect_sse_with_reconnect`]. It
+    /// re-sends the identical request and consumes no body bytes, so retrying it
+    /// is idempotent. The classifier preserves OpenAI's terminal classification
+    /// and error messages exactly.
+    async fn send_chat_completion_request(
+        &self,
+        request: &OpenAiRequest,
+        model: &str,
+    ) -> Result<(reqwest::Response, RetryMetadata)> {
+        let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+
+        retry_request(
+            &self.retry_config,
+            "OpenAIProtocolDriver",
+            || async {
+                // Apply auth: a pluggable provider (e.g. OAuth bearer token)
+                // takes precedence over the default host-keyed `api-key` /
+                // bearer logic. An auth-provider failure is fatal (no retry).
+                let request_builder = self.client.post(&self.api_url);
+                let request_builder = match &self.auth_provider {
+                    Some(provider) => {
+                        let (name, value) =
+                            provider.auth_header().await.map_err(SendOutcome::Fatal)?;
+                        request_builder.header(name, value)
+                    }
+                    None => apply_openai_api_auth(request_builder, &self.api_url, &self.api_key),
+                };
+                request_builder
+                    .header("Content-Type", "application/json")
+                    .json(request)
+                    .send()
+                    .await
+                    .map_err(SendOutcome::Send)
+            },
+            |response, attempts, can_retry| {
+                let last_error = Arc::clone(&last_error);
+                let model = model.to_string();
+                async move {
+                    let status = response.status();
+
+                    if can_retry {
+                        // Parse rate limit info from headers before consuming body.
+                        let rate_limit_info = if is_rate_limit_status(status) {
+                            Some(RateLimitInfo::from_openai_headers(response.headers()))
+                        } else {
+                            None
+                        };
+
+                        let error_text = response.text().await.unwrap_or_default();
+
+                        // Don't retry a request-too-large error (not transient).
+                        if is_openai_request_too_large(status, &error_text) {
+                            return RetryDecision::Terminal(AgentLoopError::request_too_large(
+                                format!("OpenAI API error ({}): {}", status, error_text),
+                            ));
+                        }
+
+                        // Exhausted billing quota is surfaced as a 429 but is not
+                        // transient — fail fast instead of burning retries.
+                        if is_provider_quota_message(&error_text) {
+                            return RetryDecision::Terminal(AgentLoopError::llm_kind(
+                                LlmErrorKind::QuotaExhausted,
+                                format!("OpenAI API error ({}): {}", status, error_text),
+                            ));
+                        }
+
+                        let wait = rate_limit_info
+                            .as_ref()
+                            .map(|info| info.recommended_wait(&self.retry_config, attempts))
+                            .unwrap_or_else(|| self.retry_config.calculate_backoff(attempts));
+
+                        *last_error.lock().unwrap() = Some(error_text);
+                        return RetryDecision::Retry {
+                            wait,
+                            rate_limit_info,
+                        };
+                    }
+
+                    // Non-retryable error or max retries exceeded
+                    let error_text = response.text().await.unwrap_or_default();
+                    let error_msg = format!("OpenAI API error ({}): {}", status, error_text);
+
+                    // Check if this is a model-not-found error
+                    if is_openai_model_not_found(status, &error_text) {
+                        return RetryDecision::Terminal(AgentLoopError::model_not_available(model));
+                    }
+
+                    // Check if this is a request-too-large error
+                    if is_openai_request_too_large(status, &error_text) {
+                        return RetryDecision::Terminal(AgentLoopError::request_too_large(
+                            error_msg,
+                        ));
+                    }
+
+                    // Attach the semantic error kind while the HTTP status and
+                    // body are still available (see LlmErrorKind).
+                    let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
+
+                    if attempts > 0 {
+                        return RetryDecision::Terminal(AgentLoopError::llm_kind(
+                            kind,
+                            format!(
+                                "{} (after {} retries, last error: {})",
+                                error_msg,
+                                attempts,
+                                last_error.lock().unwrap().take().unwrap_or_default()
+                            ),
+                        ));
+                    }
+
+                    RetryDecision::Terminal(AgentLoopError::llm_kind(kind, error_msg))
+                }
+            },
+            |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
+        )
+        .await
+    }
+
     fn convert_role(role: &LlmMessageRole) -> &'static str {
         match role {
             LlmMessageRole::System => "system",
@@ -420,169 +543,21 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                 .as_ref()
                 .filter(|e| !e.eq_ignore_ascii_case("none"))
                 .cloned(),
+            service_tier: config.speed.clone(),
+            verbosity: config.verbosity.clone(),
             metadata,
         };
 
-        // Retry loop for rate limit (429) and transient errors
-        let mut retry_metadata = RetryMetadata::default();
-        let mut last_error: Option<String> = None;
-
-        let response = loop {
-            // Apply auth: a pluggable provider (e.g. OAuth bearer token) takes
-            // precedence over the default host-keyed `api-key` / bearer logic.
-            let request_builder = self.client.post(&self.api_url);
-            let request_builder = match &self.auth_provider {
-                Some(provider) => {
-                    let (name, value) = provider.auth_header().await?;
-                    request_builder.header(name, value)
-                }
-                None => apply_openai_api_auth(request_builder, &self.api_url, &self.api_key),
-            };
-
-            let response = match request_builder
-                .header("Content-Type", "application/json")
-                .json(&request)
-                .send()
-                .await
-            {
-                Ok(response) => response,
-                Err(e) => {
-                    // A send failure never produced an HTTP response, so it
-                    // bypasses the status-based retry below. Connection-level
-                    // errors (incl. a stale pooled keep-alive connection,
-                    // EVE-635) are transient — retry them with backoff, matching
-                    // SDK `APIConnectionError` behavior.
-                    if is_transient_send_error(&e)
-                        && retry_metadata.attempts < self.retry_config.max_retries
-                    {
-                        let wait_duration =
-                            self.retry_config.calculate_backoff(retry_metadata.attempts);
-                        tracing::warn!(
-                            error = %e,
-                            attempt = retry_metadata.attempts + 1,
-                            max_retries = self.retry_config.max_retries,
-                            wait_secs = wait_duration.as_secs_f64(),
-                            "OpenAIProtocolDriver: transient connection error sending request, retrying"
-                        );
-                        retry_metadata.record_retry(wait_duration, None);
-                        last_error = Some(format!("Failed to send request: {e}"));
-                        tokio::time::sleep(wait_duration).await;
-                        continue;
-                    }
-                    return Err(AgentLoopError::llm(send_error_message(
-                        &e,
-                        retry_metadata.attempts,
-                    )));
-                }
-            };
-
-            let status = response.status();
-
-            if status.is_success() {
-                // Success - exit retry loop
-                break response;
-            }
-
-            // Check if this is a retryable error
-            if is_transient_error(status) && retry_metadata.attempts < self.retry_config.max_retries
-            {
-                // Parse rate limit info from headers before consuming response body
-                let rate_limit_info = if is_rate_limit_status(status) {
-                    Some(RateLimitInfo::from_openai_headers(response.headers()))
-                } else {
-                    None
-                };
-
-                let error_text = response.text().await.unwrap_or_default();
-
-                // Don't retry if this is a request-too-large error (not transient)
-                if is_openai_request_too_large(status, &error_text) {
-                    return Err(AgentLoopError::request_too_large(format!(
-                        "OpenAI API error ({}): {}",
-                        status, error_text
-                    )));
-                }
-
-                // Exhausted billing quota is surfaced as a 429 but is not
-                // transient — fail fast instead of burning retries.
-                if is_provider_quota_message(&error_text) {
-                    return Err(AgentLoopError::llm_kind(
-                        LlmErrorKind::QuotaExhausted,
-                        format!("OpenAI API error ({}): {}", status, error_text),
-                    ));
-                }
-
-                // Calculate wait duration
-                let wait_duration = rate_limit_info
-                    .as_ref()
-                    .map(|info| info.recommended_wait(&self.retry_config, retry_metadata.attempts))
-                    .unwrap_or_else(|| {
-                        self.retry_config.calculate_backoff(retry_metadata.attempts)
-                    });
-
-                tracing::warn!(
-                    status = %status,
-                    attempt = retry_metadata.attempts + 1,
-                    max_retries = self.retry_config.max_retries,
-                    wait_secs = wait_duration.as_secs_f64(),
-                    retry_after = ?rate_limit_info.as_ref().and_then(|i| i.retry_after_secs),
-                    "OpenAIProtocolDriver: rate limit or transient error, retrying"
-                );
-
-                // Record retry attempt
-                retry_metadata.record_retry(wait_duration, rate_limit_info);
-                last_error = Some(error_text);
-
-                // Wait before retry
-                tokio::time::sleep(wait_duration).await;
-                continue;
-            }
-
-            // Non-retryable error or max retries exceeded
-            let error_text = response.text().await.unwrap_or_default();
-            let error_msg = format!("OpenAI API error ({}): {}", status, error_text);
-
-            // Check if this is a model-not-found error
-            if is_openai_model_not_found(status, &error_text) {
-                return Err(AgentLoopError::model_not_available(config.model.clone()));
-            }
-
-            // Check if this is a request-too-large error
-            if is_openai_request_too_large(status, &error_text) {
-                return Err(AgentLoopError::request_too_large(error_msg));
-            }
-
-            // Attach the semantic error kind while the HTTP status and body
-            // are still available (see LlmErrorKind).
-            let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
-
-            // If we exhausted retries, include that in the error message
-            if retry_metadata.attempts > 0 {
-                return Err(AgentLoopError::llm_kind(
-                    kind,
-                    format!(
-                        "{} (after {} retries, last error: {})",
-                        error_msg,
-                        retry_metadata.attempts,
-                        last_error.unwrap_or_default()
-                    ),
-                ));
-            }
-
-            return Err(AgentLoopError::llm_kind(kind, error_msg));
-        };
-
-        // Log successful retry recovery
-        if retry_metadata.had_retries() {
-            tracing::info!(
-                attempts = retry_metadata.attempts,
-                total_wait_secs = retry_metadata.total_retry_wait.as_secs_f64(),
-                "OpenAIProtocolDriver: request succeeded after retries"
-            );
-        }
-
-        let byte_stream = response.bytes_stream();
-        let event_stream = byte_stream.eventsource();
+        // Establish the SSE stream, transparently reconnecting on a transport
+        // failure that lands before the first event is decoded (the "error
+        // decoding response body" flake). Header-phase retries (429/5xx and
+        // transient send failures) are handled inside the per-attempt send;
+        // this adds the body-phase reconnect the official SDKs get for free.
+        let (event_stream, retry_metadata) =
+            connect_sse_with_reconnect(&self.retry_config, "OpenAIProtocolDriver", |_attempt| {
+                self.send_chat_completion_request(&request, &config.model)
+            })
+            .await?;
 
         let model = config.model.clone();
         let total_tokens = Arc::new(Mutex::new(0u32));
@@ -591,7 +566,7 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         // OpenAI-compatible gateways (e.g. OpenRouter) report an authoritative
         // per-request cost in `usage.cost`; direct OpenAI leaves it absent.
         let provider_cost_usd = Arc::new(Mutex::new(Option::<f64>::None));
-        let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
+        let accumulated_tool_calls = Arc::new(Mutex::new(StreamToolCallAccumulator::new()));
         let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
         // Captured from the first streaming chunk that carries an id field.
         // OpenRouter sets this to a "gen-..." identifier on every completion.
@@ -623,10 +598,9 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                         let event = match result {
                             Ok(event) => event,
                             Err(e) => {
-                                return vec![Ok(LlmStreamEvent::Error(format!(
-                                    "Stream error: {}",
-                                    e
-                                )))];
+                                return vec![Ok(LlmStreamEvent::Error(
+                                    format!("Stream error: {}", e).into(),
+                                ))];
                             }
                         };
 
@@ -727,10 +701,9 @@ impl ChatDriver for OpenAIProtocolChatDriver {
                                 }
                                 vec![Ok(LlmStreamEvent::TextDelta(String::new()))]
                             }
-                            Err(e) => vec![Ok(LlmStreamEvent::Error(format!(
-                                "Failed to parse chunk: {}",
-                                e
-                            )))],
+                            Err(e) => vec![Ok(LlmStreamEvent::Error(
+                                format!("Failed to parse chunk: {}", e).into(),
+                            ))],
                         }
                     }
                 })
@@ -862,6 +835,15 @@ struct OpenAiRequest {
     parallel_tool_calls: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     reasoning_effort: Option<String>,
+    /// Speed selector: OpenAI service tier ("flex", "default", "priority").
+    /// Omitted when `None` so the provider keeps its default ("auto") routing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    service_tier: Option<String>,
+    /// Verbosity selector ("low", "medium", "high"). Top-level field on the
+    /// Chat Completions API. Omitted when `None` so the provider keeps its
+    /// default ("medium") output length.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    verbosity: Option<String>,
     /// Metadata for tracking API usage (up to 16 key-value pairs).
     /// Useful for correlating requests with session_id, agent_id, org_id, etc.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1007,20 +989,6 @@ struct OpenAiStreamFunction {
     arguments: Option<String>,
 }
 
-/// Parses each accumulated tool call's argument string (assembled from streamed
-/// fragments) into JSON, falling back to an empty object on parse failure.
-fn finalize_tool_calls(tool_calls: Vec<ToolCall>) -> Vec<ToolCall> {
-    tool_calls
-        .into_iter()
-        .map(|mut tc| {
-            if let Some(args_str) = tc.arguments.as_str() {
-                tc.arguments = serde_json::from_str(args_str).unwrap_or(json!({}));
-            }
-            tc
-        })
-        .collect()
-}
-
 /// Drains tool calls that were accumulated but not yet emitted, returning a
 /// final `ToolCalls` event for the `[DONE]` handler. Returns `None` when nothing
 /// is pending (the common case, since the finish chunk normally drains them).
@@ -1028,37 +996,30 @@ fn finalize_tool_calls(tool_calls: Vec<ToolCall>) -> Vec<ToolCall> {
 /// The fallback may only emit calls when the provider omitted a finish reason or
 /// reported `tool_calls`. Non-tool finish reasons such as `length` and
 /// `content_filter` indicate an incomplete or rejected response, so pending
-/// calls are discarded instead of being executed.
+/// calls are discarded instead of being executed. Malformed streamed argument
+/// JSON is likewise dropped (via the accumulator's strict flush) because this
+/// fallback runs without an explicit final tool-call completion chunk.
 fn take_pending_tool_calls(
-    accumulated_tool_calls: &mut Vec<ToolCall>,
+    accumulated_tool_calls: &mut StreamToolCallAccumulator,
     finish_reason: Option<&str>,
 ) -> Option<LlmStreamEvent> {
     if accumulated_tool_calls.is_empty() {
         return None;
     }
 
-    let calls = std::mem::take(accumulated_tool_calls);
+    // A non-tool finish reason means the response was cut/rejected; drain the
+    // accumulator (so a repeated flush cannot re-emit) but do not execute.
     if !matches!(finish_reason, None | Some("tool_calls")) {
+        let _ = accumulated_tool_calls.take_finalized();
         return None;
     }
 
-    finalize_pending_tool_calls(calls).map(LlmStreamEvent::ToolCalls)
-}
-
-/// Finalizes fallback-flushed tool calls. Unlike the normal `tool_calls` finish
-/// path, this rejects malformed streamed argument JSON instead of converting it
-/// to `{}` because fallback flushing happens without an explicit final tool-call
-/// completion chunk.
-fn finalize_pending_tool_calls(tool_calls: Vec<ToolCall>) -> Option<Vec<ToolCall>> {
-    tool_calls
-        .into_iter()
-        .map(|mut tc| {
-            if let Some(args_str) = tc.arguments.as_str() {
-                tc.arguments = serde_json::from_str(args_str).ok()?;
-            }
-            Some(tc)
-        })
-        .collect()
+    let calls = accumulated_tool_calls.take_pending_strict();
+    if calls.is_empty() {
+        None
+    } else {
+        Some(LlmStreamEvent::ToolCalls(calls))
+    }
 }
 
 /// Processes a single chat-completion stream choice, updating the running
@@ -1073,40 +1034,20 @@ fn finalize_pending_tool_calls(tool_calls: Vec<ToolCall>) -> Option<Vec<ToolCall
 fn process_stream_choice(
     choice: &OpenAiStreamChoice,
     total_tokens: &mut u32,
-    accumulated_tool_calls: &mut Vec<ToolCall>,
+    accumulated_tool_calls: &mut StreamToolCallAccumulator,
     finish_reason: &mut Option<String>,
 ) -> LlmStreamEvent {
-    // Accumulate streamed tool-call fragments.
+    // Accumulate streamed tool-call fragments, keyed by the chunk `index`. The
+    // shared accumulator appends argument fragments in place (EVE-636: amortized
+    // O(total)) and parses the JSON once at finalize.
     if let Some(tool_calls) = &choice.delta.tool_calls {
         for tc in tool_calls {
-            let idx = tc.index as usize;
-            while accumulated_tool_calls.len() <= idx {
-                accumulated_tool_calls.push(ToolCall {
-                    id: String::new(),
-                    name: String::new(),
-                    arguments: json!(""),
-                });
-            }
-
-            if let Some(id) = &tc.id {
-                accumulated_tool_calls[idx].id = id.clone();
-            }
-            if let Some(function) = &tc.function {
-                if let Some(name) = &function.name {
-                    accumulated_tool_calls[idx].name = name.clone();
-                }
-                if let Some(args) = &function.arguments {
-                    // EVE-636: accumulate fragments in place via push_str
-                    // (amortized O(total)) instead of re-copying + re-boxing into
-                    // a Value per delta (O(n^2)). `arguments` is kept as a
-                    // Value::String here and parsed once at finish via
-                    // finalize_tool_calls.
-                    if let serde_json::Value::String(s) = &mut accumulated_tool_calls[idx].arguments
-                    {
-                        s.push_str(args);
-                    }
-                }
-            }
+            accumulated_tool_calls.apply_indexed_delta(
+                tc.index,
+                tc.id.as_deref(),
+                tc.function.as_ref().and_then(|f| f.name.as_deref()),
+                tc.function.as_ref().and_then(|f| f.arguments.as_deref()),
+            );
         }
         return LlmStreamEvent::TextDelta(String::new());
     }
@@ -1127,8 +1068,7 @@ fn process_stream_choice(
         *finish_reason = Some(fr.clone());
 
         if fr == "tool_calls" && !accumulated_tool_calls.is_empty() {
-            let calls = std::mem::take(accumulated_tool_calls);
-            return LlmStreamEvent::ToolCalls(finalize_tool_calls(calls));
+            return LlmStreamEvent::ToolCalls(accumulated_tool_calls.take_finalized());
         }
     }
 
@@ -1142,6 +1082,7 @@ fn process_stream_choice(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_convert_message_preserves_multiple_system_messages() {
@@ -1203,6 +1144,8 @@ mod tests {
         // OpenAI streaming API requires stream_options.include_usage=true
         // to return token usage in the response
         let request = OpenAiRequest {
+            verbosity: None,
+            service_tier: None,
             model: "gpt-4o".to_string(),
             messages: vec![OpenAiMessage {
                 role: "user".to_string(),
@@ -1235,6 +1178,8 @@ mod tests {
         metadata.insert("agent_id".to_string(), "agent_xyz789".to_string());
 
         let request = OpenAiRequest {
+            verbosity: None,
+            service_tier: None,
             model: "gpt-4o".to_string(),
             messages: vec![OpenAiMessage {
                 role: "user".to_string(),
@@ -1535,6 +1480,8 @@ mod tests {
         // When reasoning_effort is "none", it should be filtered out
         // to avoid "Unrecognized request argument" errors on non-thinking models
         let request = OpenAiRequest {
+            verbosity: None,
+            service_tier: None,
             model: "gpt-4o-mini".to_string(),
             messages: vec![OpenAiMessage {
                 role: "user".to_string(),
@@ -1565,6 +1512,8 @@ mod tests {
     #[test]
     fn test_reasoning_effort_high_is_included() {
         let request = OpenAiRequest {
+            verbosity: None,
+            service_tier: None,
             model: "o3-mini".to_string(),
             messages: vec![OpenAiMessage {
                 role: "user".to_string(),
@@ -1596,6 +1545,8 @@ mod tests {
     fn test_request_serializes_parallel_tool_calls() {
         fn build(flag: Option<bool>) -> serde_json::Value {
             let request = OpenAiRequest {
+                verbosity: None,
+                service_tier: None,
                 model: "gpt-4o-mini".to_string(),
                 messages: vec![OpenAiMessage {
                     role: "user".to_string(),
@@ -1622,6 +1573,70 @@ mod tests {
         assert_eq!(build(Some(false))["parallel_tool_calls"], false);
     }
 
+    /// The speed selector serializes as `service_tier` only when set, so the
+    /// provider's default ("auto") routing applies when unset.
+    #[test]
+    fn test_request_serializes_service_tier() {
+        fn build(tier: Option<&str>) -> serde_json::Value {
+            let request = OpenAiRequest {
+                service_tier: tier.map(str::to_string),
+                verbosity: None,
+                model: "gpt-4o-mini".to_string(),
+                messages: vec![OpenAiMessage {
+                    role: "user".to_string(),
+                    content: Some(OpenAiContent::Text("Hello".to_string())),
+                    tool_calls: None,
+                    tool_call_id: None,
+                }],
+                temperature: None,
+                max_tokens: None,
+                stream: true,
+                stream_options: None,
+                tools: None,
+                parallel_tool_calls: None,
+                reasoning_effort: None,
+                metadata: None,
+            };
+            serde_json::to_value(&request).unwrap()
+        }
+
+        assert!(build(None).get("service_tier").is_none());
+        assert_eq!(build(Some("flex"))["service_tier"], "flex");
+        assert_eq!(build(Some("priority"))["service_tier"], "priority");
+    }
+
+    /// Verbosity serializes as a top-level `verbosity` field only when set, so
+    /// the provider's default output length applies when unset.
+    #[test]
+    fn test_request_serializes_verbosity() {
+        fn build(verbosity: Option<&str>) -> serde_json::Value {
+            let request = OpenAiRequest {
+                service_tier: None,
+                verbosity: verbosity.map(str::to_string),
+                model: "gpt-5.6-sol".to_string(),
+                messages: vec![OpenAiMessage {
+                    role: "user".to_string(),
+                    content: Some(OpenAiContent::Text("Hello".to_string())),
+                    tool_calls: None,
+                    tool_call_id: None,
+                }],
+                temperature: None,
+                max_tokens: None,
+                stream: true,
+                stream_options: None,
+                tools: None,
+                parallel_tool_calls: None,
+                reasoning_effort: None,
+                metadata: None,
+            };
+            serde_json::to_value(&request).unwrap()
+        }
+
+        assert!(build(None).get("verbosity").is_none());
+        assert_eq!(build(Some("low"))["verbosity"], "low");
+        assert_eq!(build(Some("high"))["verbosity"], "high");
+    }
+
     // ------------------------------------------------------------------
     // EVE-522: streaming chunk handling (process_stream_choice)
     // ------------------------------------------------------------------
@@ -1636,7 +1651,7 @@ mod tests {
     #[test]
     fn test_empty_content_finish_chunk_still_emits_tool_calls() {
         let mut total_tokens = 0u32;
-        let mut acc: Vec<ToolCall> = Vec::new();
+        let mut acc = StreamToolCallAccumulator::new();
         let mut finish_reason: Option<String> = None;
 
         // Chunk 2: tool_calls delta opens the call (id + name).
@@ -1698,7 +1713,7 @@ mod tests {
     #[test]
     fn test_non_empty_content_is_emitted() {
         let mut total_tokens = 0u32;
-        let mut acc: Vec<ToolCall> = Vec::new();
+        let mut acc = StreamToolCallAccumulator::new();
         let mut finish_reason: Option<String> = None;
 
         let e = process_stream_choice(
@@ -1717,7 +1732,7 @@ mod tests {
     #[test]
     fn test_tool_call_arguments_accumulate_across_many_chunks() {
         let mut total_tokens = 0u32;
-        let mut acc: Vec<ToolCall> = Vec::new();
+        let mut acc = StreamToolCallAccumulator::new();
         let mut finish_reason: Option<String> = None;
 
         // Open the call (id + name, empty initial arguments).
@@ -1751,8 +1766,9 @@ mod tests {
             expected.push_str(&frag);
         }
 
-        // Mid-stream: accumulated as a raw string, not yet parsed.
-        assert_eq!(acc[0].arguments.as_str(), Some(expected.as_str()));
+        // Mid-stream the shared accumulator holds the fragments as a raw string
+        // (parsed once at finalize); its own unit tests cover that internal, so
+        // here we assert the observable finish-chunk result concatenates exactly.
 
         // Finish chunk: parsed exactly once into the structured value.
         let e = process_stream_choice(
@@ -1779,7 +1795,7 @@ mod tests {
     #[test]
     fn test_finish_chunk_without_content_emits_tool_calls() {
         let mut total_tokens = 0u32;
-        let mut acc: Vec<ToolCall> = Vec::new();
+        let mut acc = StreamToolCallAccumulator::new();
         let mut finish_reason: Option<String> = None;
 
         process_stream_choice(
@@ -1806,16 +1822,21 @@ mod tests {
         }
     }
 
+    /// Seed a single tool-call slot into an accumulator the way the streamed
+    /// chunks would (id + name + raw argument buffer), so the fallback-flush
+    /// tests exercise the real accumulation path.
+    fn seeded_acc(id: &str, name: &str, arguments: &str) -> StreamToolCallAccumulator {
+        let mut acc = StreamToolCallAccumulator::new();
+        acc.apply_indexed_delta(0, Some(id), Some(name), Some(arguments));
+        acc
+    }
+
     /// The [DONE] fallback flushes accumulated-but-unemitted tool calls when no
     /// finish reason was reported and drains the accumulator; once drained it
     /// returns None.
     #[test]
     fn test_take_pending_tool_calls_flushes_then_drains_without_finish_reason() {
-        let mut acc = vec![ToolCall {
-            id: "call_1".to_string(),
-            name: "read_file".to_string(),
-            arguments: json!(r#"{"path":"Cargo.toml"}"#),
-        }];
+        let mut acc = seeded_acc("call_1", "read_file", r#"{"path":"Cargo.toml"}"#);
 
         match take_pending_tool_calls(&mut acc, None) {
             Some(LlmStreamEvent::ToolCalls(calls)) => {
@@ -1831,11 +1852,7 @@ mod tests {
 
     #[test]
     fn test_take_pending_tool_calls_discards_non_tool_finish_reason() {
-        let mut acc = vec![ToolCall {
-            id: "call_cut".to_string(),
-            name: "read_file".to_string(),
-            arguments: json!(r#"{"path":"#),
-        }];
+        let mut acc = seeded_acc("call_cut", "read_file", r#"{"path":"#);
 
         assert!(take_pending_tool_calls(&mut acc, Some("length")).is_none());
         assert!(
@@ -1846,11 +1863,7 @@ mod tests {
 
     #[test]
     fn test_take_pending_tool_calls_rejects_malformed_fallback_arguments() {
-        let mut acc = vec![ToolCall {
-            id: "call_cut".to_string(),
-            name: "read_file".to_string(),
-            arguments: json!(r#"{"path":"#),
-        }];
+        let mut acc = seeded_acc("call_cut", "read_file", r#"{"path":"#);
 
         assert!(take_pending_tool_calls(&mut acc, None).is_none());
         assert!(
@@ -1862,7 +1875,7 @@ mod tests {
     #[test]
     fn test_non_tool_finish_reason_leaves_pending_calls_for_done_discard() {
         let mut total_tokens = 0u32;
-        let mut acc: Vec<ToolCall> = Vec::new();
+        let mut acc = StreamToolCallAccumulator::new();
         let mut finish_reason: Option<String> = None;
 
         process_stream_choice(
@@ -1885,17 +1898,6 @@ mod tests {
         assert_eq!(finish_reason.as_deref(), Some("length"));
         assert!(take_pending_tool_calls(&mut acc, finish_reason.as_deref()).is_none());
         assert!(acc.is_empty());
-    }
-
-    #[test]
-    fn test_finalize_tool_calls_parses_arguments() {
-        let calls = vec![ToolCall {
-            id: "call_1".to_string(),
-            name: "read_file".to_string(),
-            arguments: json!(r#"{"path":"src/main.rs"}"#),
-        }];
-        let finalized = finalize_tool_calls(calls);
-        assert_eq!(finalized[0].arguments, json!({"path": "src/main.rs"}));
     }
 
     #[test]

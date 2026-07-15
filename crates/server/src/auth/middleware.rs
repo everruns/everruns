@@ -67,6 +67,41 @@ impl AuthError {
         }
     }
 
+    /// Generic 400 for malformed/invalid input that is not an auth failure.
+    /// Used by account-recovery endpoints for invalid/expired/used tokens, where
+    /// a generic message avoids leaking which condition was hit.
+    pub fn bad_request(message: &str) -> Self {
+        Self {
+            error: message.to_string(),
+            status: StatusCode::BAD_REQUEST,
+            code: Some("bad_request"),
+        }
+    }
+
+    /// 409 for a request that is well-formed but conflicts with existing state
+    /// where the caller has already proven ownership — e.g. an OAuth callback
+    /// whose verified email already has an Everruns account bound to another
+    /// sign-in method. The caller completed the provider handshake, so naming
+    /// the conflict is not account enumeration (they own the mailbox).
+    pub fn conflict(message: &str) -> Self {
+        Self {
+            error: message.to_string(),
+            status: StatusCode::CONFLICT,
+            code: Some("conflict"),
+        }
+    }
+
+    /// 429 for per-account / per-address throttles (login stuffing, email
+    /// bombing). Message stays generic — the throttle itself must not become
+    /// an enumeration oracle.
+    pub fn too_many_requests(message: &str) -> Self {
+        Self {
+            error: message.to_string(),
+            status: StatusCode::TOO_MANY_REQUESTS,
+            code: Some("rate_limited"),
+        }
+    }
+
     /// Internal server error. Use for storage/DB or other server-side failures
     /// so clients can distinguish a real auth failure (401) from a transient
     /// server error. The message must stay generic — never leak internals.
@@ -1051,9 +1086,12 @@ mod tests {
         fn auth_config_response(&self) -> AuthConfigResponse {
             AuthConfigResponse {
                 mode: "full".into(),
+                login_origin: None,
                 password_auth_enabled: false,
                 oauth_providers: vec![],
                 signup_enabled: false,
+                signup_email_confirm: false,
+                captcha: None,
             }
         }
     }
@@ -1179,9 +1217,12 @@ mod tests {
         fn auth_config_response(&self) -> AuthConfigResponse {
             AuthConfigResponse {
                 mode: "full".into(),
+                login_origin: None,
                 password_auth_enabled: false,
                 oauth_providers: vec![],
                 signup_enabled: false,
+                signup_email_confirm: false,
+                captcha: None,
             }
         }
     }
@@ -1395,9 +1436,12 @@ mod tests {
         fn auth_config_response(&self) -> AuthConfigResponse {
             AuthConfigResponse {
                 mode: "full".into(),
+                login_origin: None,
                 password_auth_enabled: false,
                 oauth_providers: vec![],
                 signup_enabled: false,
+                signup_email_confirm: false,
+                captcha: None,
             }
         }
     }

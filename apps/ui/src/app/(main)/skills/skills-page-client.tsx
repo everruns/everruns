@@ -43,6 +43,7 @@ import {
   IconTile,
   PageControlStrip,
   SectionTabs,
+  EmptyState,
   PageColumns,
   PageMain,
   PageRail,
@@ -371,26 +372,29 @@ export default function SkillsPageClient() {
               </div>
             }
             emptyState={
-              <div className="border border-dashed py-12 text-center">
-                <BookOpen className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-                <p className="mb-4 text-muted-foreground">
-                  {search.trim() || statusTab !== "active"
+              <EmptyState
+                icon={<BookOpen />}
+                title={
+                  search.trim() || statusTab !== "active"
                     ? "No skills match your filters."
-                    : "No skills yet"}
-                </p>
-                {!search.trim() && statusTab === "active" && (
-                  <div className="flex justify-center gap-2">
-                    <Button variant="outline" onClick={() => setUploadSkillOpen(true)}>
-                      <Upload className="h-4 w-4 mr-2" />
-                      Upload ZIP
-                    </Button>
-                    <Button onClick={() => setAddSkillOpen(true)}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Skill
-                    </Button>
-                  </div>
-                )}
-              </div>
+                    : "No skills yet"
+                }
+                action={
+                  !search.trim() &&
+                  statusTab === "active" && (
+                    <>
+                      <Button variant="outline" onClick={() => setUploadSkillOpen(true)}>
+                        <Upload className="size-4" />
+                        Upload ZIP
+                      </Button>
+                      <Button variant="accent" onClick={() => setAddSkillOpen(true)}>
+                        <Plus className="size-4" />
+                        Add Skill
+                      </Button>
+                    </>
+                  )
+                }
+              />
             }
           >
             {(items) => (

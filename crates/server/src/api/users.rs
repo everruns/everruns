@@ -6,7 +6,7 @@ use crate::auth::audit;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
-    extract::{Query, State},
+    extract::{ConnectInfo, Extension, Query, State},
     http::{HeaderMap, StatusCode},
     routing::{get, patch, post},
 };
@@ -16,6 +16,7 @@ use everruns_core::{AuditEvent, ManagementAction, validate_org_public_id};
 
 use super::common::{ListResponse, impl_auth_state};
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
@@ -270,6 +271,7 @@ pub async fn update_profile(
     State(state): State<UsersState>,
     auth: AuthUser,
     org: ResolvedOrg,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     Json(req): Json<UpdateProfileRequest>,
 ) -> Result<Json<ProfileResponse>, StatusCode> {
@@ -297,7 +299,7 @@ pub async fn update_profile(
         AuditEvent::management(ManagementAction::SettingsUpdated, org.org_id, Some(auth.id))
             .target("user", auth.id.to_string())
             .detail("action", "profile_updated");
-    if let Some(ip) = audit::client_ip(&headers) {
+    if let Some(ip) = audit::client_ip_from_connect_info(connect_info, &headers) {
         builder = builder.ip(ip);
     }
     audit::emit_event(state.db.clone(), builder.build());
@@ -461,37 +463,7 @@ pub async fn export_user_data(
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_user_serialization() {
-        let user = User {
-            id: "123".to_string(),
-            email: "test@example.com".to_string(),
-            name: "Test User".to_string(),
-            avatar_url: None,
-            roles: vec!["user".to_string()],
-            auth_provider: Some("local".to_string()),
-            created_at: Utc::now(),
-        };
-
-        let json = serde_json::to_string(&user).unwrap();
-        assert!(json.contains("test@example.com"));
-        assert!(json.contains("Test User"));
-    }
-
-    #[test]
-    fn test_list_users_query_deserialize() {
-        let query: ListUsersQuery = serde_json::from_str(r#"{"search": "test"}"#).unwrap();
-        assert_eq!(query.search, Some("test".to_string()));
-
-        let query: ListUsersQuery = serde_json::from_str(r#"{}"#).unwrap();
-        assert_eq!(query.search, None);
-    }
-
-    #[test]
-    fn test_update_profile_request_deserialize() {
-        let req: UpdateProfileRequest = serde_json::from_str(r#"{"name": "New Name"}"#).unwrap();
-        assert_eq!(req.name, "New Name");
-    }
+    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
     fn test_profile_response_serialization() {

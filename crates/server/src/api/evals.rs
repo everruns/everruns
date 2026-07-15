@@ -7,7 +7,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 #[cfg(test)]
 use serde_json::{Map, Value};
 
@@ -22,9 +22,11 @@ use crate::domains::evals::EvalService;
 use crate::domains::evals::dataset::ExportEvalRunDatasetRequest;
 use crate::domains::evals::runner::EvalRunContext;
 use crate::domains::evals::{
-    BulkUpdateEvalRunScores, CancelEvalRun, CreateEval, CreateEvalCase, CreateEvalRun, DeleteEval,
-    DeleteEvalCase, ExportEvalRunArtifacts, ExportEvalRunDataset, GetEval, GetEvalCase, GetEvalRun,
-    ListEvalCases, ListEvalRuns, ListEvals, UpdateEval, UpdateEvalCase, UpdateEvalResultScores,
+    BulkUpdateEvalRunScores, CancelEvalRun, CreateEval, CreateEvalCase, CreateEvalRun,
+    CreateEvalRunShare, DeleteEval, DeleteEvalCase, EvalImportPreflightCmd, ExportEvalRunArtifacts,
+    ExportEvalRunDataset, GetEval, GetEvalCase, GetEvalRun, GetEvalRunDataset, GetEvalRunShare,
+    ImportAtifTrajectories, ImportEvalRun, ListEvalCases, ListEvalRuns, ListEvals,
+    RevokeEvalRunShare, UpdateEval, UpdateEvalCase, UpdateEvalResultScores,
 };
 use crate::storage::StorageBackend;
 use everruns_core::Caller;
@@ -233,6 +235,147 @@ pub struct BulkUpdateEvalRunScoresRequest {
     pub metadata: Option<serde_json::Value>,
 }
 
+// ============================================
+// Import (external eval results) — everruns as host/viewer.
+// See proposals/mira-results-publishing.md.
+// ============================================
+
+/// A whole external run group: one external run, one entry per eval. Maps to
+/// one everruns EvalRun per eval, all sharing `source.run_id`.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct ImportEvalRunRequest {
+    pub source: ImportEvalSource,
+    pub evals: Vec<ImportEvalGroup>,
+}
+
+/// Attribution for the external system that produced the run.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct ImportEvalSource {
+    /// External system name, e.g. "mira".
+    pub system: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    /// Stable external run id: cross-eval group key + idempotency key.
+    pub run_id: String,
+    /// Optional environment/labels (git commit, host, etc.).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// One eval's worth of results within the run. The eval is upserted by `name`.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct ImportEvalGroup {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<String>,
+    pub cases: Vec<ImportEvalCaseEntry>,
+}
+
+/// One case result. The case is upserted by `name` (identity-only: everruns
+/// never re-executes it).
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct ImportEvalCaseEntry {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Display-only input turns shown in the UI.
+    #[serde(default)]
+    pub input: Vec<String>,
+    /// Provider/model labels this result was produced against.
+    pub target: ImportEvalTarget,
+    pub status: ImportCaseStatus,
+    /// Named, attributed scores. Stored opaque; everruns does not re-grade.
+    #[serde(default)]
+    pub scores: Vec<ImportScore>,
+    /// Normalized transcript (messages, tool calls, events, parts, files).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transcript: Option<serde_json::Value>,
+    /// Open-vocab metrics bag (cost_usd, cache/reasoning tokens, ttft, ...).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metrics: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turns: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
+
+/// Provider/model labels for an externally-executed result.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct ImportEvalTarget {
+    pub provider: String,
+    pub model: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub params: Option<serde_json::Value>,
+}
+
+/// Verdict for an imported case (trusted as-is; not recomputed).
+#[derive(Debug, Clone, Copy, Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ImportCaseStatus {
+    Passed,
+    Failed,
+    Errored,
+    Timeout,
+    Skipped,
+}
+
+impl ImportCaseStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ImportCaseStatus::Passed => "passed",
+            ImportCaseStatus::Failed => "failed",
+            ImportCaseStatus::Errored => "errored",
+            ImportCaseStatus::Timeout => "timeout",
+            ImportCaseStatus::Skipped => "skipped",
+        }
+    }
+}
+
+/// A single named score from an external scorer.
+#[derive(Debug, Clone, Deserialize, Serialize, ToSchema)]
+pub struct ImportScore {
+    pub scorer: String,
+    pub value: f64,
+    pub pass: bool,
+    #[serde(default)]
+    pub reason: String,
+    /// Scorer was not applicable (excluded from aggregate).
+    #[serde(default)]
+    pub na: bool,
+}
+
+/// Result of an ATIF trajectory import (specs/atif-adoption.md): eval cases
+/// created/updated from imported trajectories, upserted by case name.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AtifImportReport {
+    /// Number of eval cases created.
+    pub created: u64,
+    /// Number of existing eval cases updated (matched by name).
+    pub updated: u64,
+    /// Public ids of the affected cases, in import order.
+    pub case_ids: Vec<String>,
+}
+
+/// Preflight capability report so optional-feature clients (e.g. Mira) can
+/// check before publishing instead of failing mid-import.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct EvalImportPreflight {
+    /// Whether the `evals` feature is enabled for this org.
+    pub evals_enabled: bool,
+    /// Whether the caller may import (holds eval-management permission).
+    pub can_import: bool,
+}
+
 /// Query parameters for listing evals
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct ListEvalsQuery {
@@ -244,13 +387,95 @@ pub struct ListEvalsQuery {
 // Routes
 // ============================================
 
+// ============================================
+// Share links (read-only public views).
+// See specs/evals.md, specs/public-endpoints.md.
+// ============================================
+
+/// A freshly minted share link. The raw `token` is returned once and never
+/// stored; build the public URL `/shared/eval-runs/<token>` from it.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct EvalRunShareLink {
+    pub token: String,
+    pub token_prefix: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Whether a run currently has an active share link.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct EvalRunShareStatus {
+    pub active: bool,
+}
+
+/// Attribution shown on a public share (external runs). Display fields only.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PublicAttribution {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub system: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+/// Sanitized, anonymous view of one eval run, returned by the public share
+/// endpoint. Omits org/internal ids, session ids, internal targets, and
+/// attribution env labels — only the shared content remains.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PublicEvalRun {
+    pub id: String,
+    pub status: EvalRunStatus,
+    pub source: EvalRunSource,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attribution: Option<PublicAttribution>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<RunSummary>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub results: Vec<PublicEvalCaseResult>,
+}
+
+/// One case result in a public run view.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct PublicEvalCaseResult {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub case_name: Option<String>,
+    /// Only label-only (external) targets are exposed; internal targets are dropped.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<EvalTarget>,
+    pub status: CaseResultStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scores: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub transcript: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metrics: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub turns: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub latency_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
+
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/evals", post(create_eval).get(list_evals))
+        // Import (external eval results). Static segments take priority over
+        // `{eval_id}`, so these never shadow eval-by-id routes.
+        .route("/v1/evals/import", post(import_eval_run))
+        .route("/v1/evals/import/preflight", get(import_preflight))
         .route(
             "/v1/evals/{eval_id}",
             get(get_eval).patch(update_eval).delete(delete_eval),
         )
+        // ATIF trajectory import → eval cases (specs/atif-adoption.md).
+        .route("/v1/evals/{eval_id}/atif_import", post(import_atif))
         // Cases
         .route(
             "/v1/evals/{eval_id}/cases",
@@ -271,6 +496,10 @@ pub fn routes(state: AppState) -> Router {
             "/v1/evals/{eval_id}/runs/{run_id}/dataset",
             post(export_run_dataset),
         )
+        .route(
+            "/v1/evals/{eval_id}/runs/{run_id}/dataset/{dataset_id}",
+            get(get_run_dataset),
+        )
         .route("/v1/evals/{eval_id}/runs/{run_id}/cancel", post(cancel_run))
         .route(
             "/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores",
@@ -280,7 +509,108 @@ pub fn routes(state: AppState) -> Router {
             "/v1/evals/{eval_id}/runs/{run_id}/scores",
             patch(bulk_update_run_scores),
         )
+        // Read-only share link (mint / status / revoke).
+        .route(
+            "/v1/evals/{eval_id}/runs/{run_id}/share",
+            post(create_run_share)
+                .get(get_run_share)
+                .delete(revoke_run_share),
+        )
+        // Public, UNAUTHENTICATED read of a shared run (no auth extractor).
+        .route("/v1/public/eval-runs/{token}", get(public_eval_run))
         .with_state(state)
+}
+
+// ============================================
+// Share-link handlers
+// ============================================
+
+async fn create_run_share(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((eval_id, run_id)): Path<(String, String)>,
+) -> ApiResult<EvalRunShareLink> {
+    let link = CreateEvalRunShare { eval_id, run_id }
+        .run(&state.ctx(&org))
+        .await?;
+    Ok(Json(link))
+}
+
+async fn get_run_share(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((eval_id, run_id)): Path<(String, String)>,
+) -> ApiResult<EvalRunShareStatus> {
+    let status = GetEvalRunShare { eval_id, run_id }
+        .run(&state.ctx(&org))
+        .await?;
+    Ok(Json(status))
+}
+
+async fn revoke_run_share(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((eval_id, run_id)): Path<(String, String)>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    state
+        .dispatcher(&org)
+        .run_no_content(RevokeEvalRunShare { eval_id, run_id })
+        .await
+}
+
+/// Public, unauthenticated read of a shared eval run. No auth extractor ⇒
+/// anonymous; the token is the authorization. Unknown/revoked/expired ⇒ 404.
+async fn public_eval_run(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+) -> Result<Json<PublicEvalRun>, (StatusCode, Json<ErrorResponse>)> {
+    match state.service.resolve_public_share(&token).await {
+        Ok(Some(run)) => Ok(Json(run)),
+        Ok(None) => Err((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse::new("Shared run not found")),
+        )),
+        Err(_) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse::new("internal_error")),
+        )),
+    }
+}
+
+// ============================================
+// Import handlers
+// ============================================
+
+async fn import_eval_run(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Json(req): Json<ImportEvalRunRequest>,
+) -> ApiResult<ListResponse<EvalRun>> {
+    let runs = ImportEvalRun { req }.run(&state.ctx(&org)).await?;
+    Ok(Json(ListResponse::new(runs)))
+}
+
+async fn import_preflight(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+) -> ApiResult<EvalImportPreflight> {
+    let report = EvalImportPreflightCmd {}.run(&state.ctx(&org)).await?;
+    Ok(Json(report))
+}
+
+/// Import ATIF trajectories as eval cases. Accepts NDJSON (one trajectory per
+/// line) or JSON (array, single object, or `{ "trajectories": [...] }`) as the
+/// raw body, so both content types work without a wrapper schema.
+async fn import_atif(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(eval_id): Path<String>,
+    body: String,
+) -> ApiResult<AtifImportReport> {
+    let report = ImportAtifTrajectories { eval_id, body }
+        .run(&state.ctx(&org))
+        .await?;
+    Ok(Json(report))
 }
 
 // ============================================
@@ -463,29 +793,40 @@ async fn export_run_artifacts(
     ))
 }
 
+/// Enqueue an async dataset export and return the handle (202 Accepted).
+///
+/// The NDJSON is produced by a background job; fetch it once ready via
+/// `GET .../dataset/{dataset_id}`.
 async fn export_run_dataset(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((eval_id, run_id)): Path<(String, String)>,
     Json(req): Json<ExportEvalRunDatasetRequest>,
-) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
-    let export = ExportEvalRunDataset {
+) -> Result<(StatusCode, Json<EvalRunDataset>), (StatusCode, Json<ErrorResponse>)> {
+    let dataset = ExportEvalRunDataset {
         eval_id,
         run_id,
         req,
     }
     .run(&state.ctx(&org))
     .await?;
-    let body = Body::from(Bytes::from(export.body));
+    Ok((StatusCode::ACCEPTED, Json(dataset)))
+}
 
-    Ok((
-        StatusCode::OK,
-        [(
-            axum::http::header::CONTENT_TYPE,
-            "application/x-ndjson".to_string(),
-        )],
-        body,
-    ))
+/// Fetch a dataset-export handle: status, and (once completed) the NDJSON body.
+async fn get_run_dataset(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((eval_id, run_id, dataset_id)): Path<(String, String, String)>,
+) -> ApiResult<EvalRunDataset> {
+    state
+        .dispatcher(&org)
+        .run(GetEvalRunDataset {
+            eval_id,
+            run_id,
+            dataset_id,
+        })
+        .await
 }
 
 async fn cancel_run(

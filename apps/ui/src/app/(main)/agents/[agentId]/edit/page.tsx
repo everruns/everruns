@@ -49,6 +49,7 @@ import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { NetworkAccessEditor, normalizeNetworkAccess } from "@/components/network-access-editor";
 import { ModelPicker } from "@/components/models/model-picker";
+import { HarnessSelect } from "@/components/harness/harness-select";
 import { Trash2, Eye, Edit2, Check, X, Loader2, Boxes, Pencil } from "lucide-react";
 import {
   agentFormSchema,
@@ -66,6 +67,7 @@ interface FormData {
   description: string;
   system_prompt: string;
   tags: string;
+  harness_id: string;
   default_model_id: string;
 }
 
@@ -101,6 +103,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
         description: "",
         system_prompt: "",
         tags: "",
+        harness_id: "",
         default_model_id: "",
       };
     }
@@ -110,6 +113,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
       description: agent.description || "",
       system_prompt: agent.system_prompt,
       tags: joinTags(agent.tags),
+      harness_id: agent.harness_id || "",
       default_model_id: agent.default_model_id || "",
     };
   }, [agent]);
@@ -183,6 +187,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
           description: parsed.data.description,
           system_prompt: parsed.data.system_prompt,
           tags,
+          harness_id: parsed.data.harness_id,
           default_model_id: parsed.data.default_model_id,
           // Only include capabilities if they changed
           ...(capabilitiesChanged && { capabilities: capabilitiesToSave }),
@@ -397,6 +402,26 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                       disabled={isSaving || isReadOnly}
                     />
                     <p className="text-xs text-muted-foreground">Comma-separated list of tags</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="harness">
+                      Harness <span className="text-destructive">*</span>
+                    </Label>
+                    <HarnessSelect
+                      id="harness"
+                      value={formData.harness_id}
+                      onValueChange={(value) => handleFormChange("harness_id", value)}
+                      disabled={isSaving || isReadOnly}
+                      placeholder="Select a harness"
+                    />
+                    {fieldErrors.harness_id && (
+                      <p className="text-xs text-destructive">{fieldErrors.harness_id}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      The base execution harness this agent runs on. Sessions started from this
+                      agent inherit it.
+                    </p>
                   </div>
 
                   <div className="space-y-2">

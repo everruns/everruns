@@ -9,7 +9,7 @@ use aes_gcm::{
 use anyhow::{Context, Result};
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use moka::sync::Cache;
-use rand::RngCore;
+use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -162,12 +162,13 @@ impl EncryptionService {
         // Wrap DEK with primary KEK
         let mut dek_nonce_bytes = [0u8; NONCE_SIZE];
         rand::rng().fill_bytes(&mut dek_nonce_bytes);
-        let dek_nonce = Nonce::from_slice(&dek_nonce_bytes);
+        let dek_nonce = Nonce::try_from(&dek_nonce_bytes[..])
+            .map_err(|e| anyhow::anyhow!("Invalid DEK nonce length: {}", e))?;
 
         let wrapped_dek = self
             .primary_key
             .cipher
-            .encrypt(dek_nonce, dek_bytes.as_ref())
+            .encrypt(&dek_nonce, dek_bytes.as_ref())
             .map_err(|e| anyhow::anyhow!("Failed to wrap DEK: {}", e))?;
 
         // Encrypt plaintext with DEK
@@ -176,10 +177,11 @@ impl EncryptionService {
 
         let mut data_nonce_bytes = [0u8; NONCE_SIZE];
         rand::rng().fill_bytes(&mut data_nonce_bytes);
-        let data_nonce = Nonce::from_slice(&data_nonce_bytes);
+        let data_nonce = Nonce::try_from(&data_nonce_bytes[..])
+            .map_err(|e| anyhow::anyhow!("Invalid data nonce length: {}", e))?;
 
         let ciphertext = dek_cipher
-            .encrypt(data_nonce, plaintext)
+            .encrypt(&data_nonce, plaintext)
             .map_err(|e| anyhow::anyhow!("Encryption failed: {}", e))?;
 
         // Build payload (combine DEK nonce + wrapped DEK for dek_wrapped field)
@@ -245,10 +247,11 @@ impl EncryptionService {
             }
 
             let (dek_nonce_bytes, wrapped_dek) = dek_wrapped_bytes.split_at(NONCE_SIZE);
-            let dek_nonce = Nonce::from_slice(dek_nonce_bytes);
+            let dek_nonce = Nonce::try_from(dek_nonce_bytes)
+                .map_err(|e| anyhow::anyhow!("Invalid DEK nonce length: {}", e))?;
 
             let unwrapped = kek_cipher
-                .decrypt(dek_nonce, wrapped_dek)
+                .decrypt(&dek_nonce, wrapped_dek)
                 .map_err(|e| anyhow::anyhow!("Failed to unwrap DEK: {}", e))?;
 
             if unwrapped.len() != DEK_SIZE {
@@ -266,14 +269,15 @@ impl EncryptionService {
         let data_nonce_bytes = BASE64
             .decode(&payload.nonce)
             .context("Failed to decode nonce")?;
-        let data_nonce = Nonce::from_slice(&data_nonce_bytes);
+        let data_nonce = Nonce::try_from(&data_nonce_bytes[..])
+            .map_err(|e| anyhow::anyhow!("Invalid data nonce length: {}", e))?;
 
         let ciphertext = BASE64
             .decode(&payload.ciphertext)
             .context("Failed to decode ciphertext")?;
 
         let plaintext = dek_cipher
-            .decrypt(data_nonce, ciphertext.as_ref())
+            .decrypt(&data_nonce, ciphertext.as_ref())
             .map_err(|e| anyhow::anyhow!("Decryption failed (data may be corrupted): {}", e))?;
 
         Ok(plaintext)

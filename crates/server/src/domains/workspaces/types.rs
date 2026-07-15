@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(as = Workspace)]
 pub struct WorkspaceResponse {
     #[schema(example = "wsp_01933b5a000070008000000000000001")]
     pub id: String,

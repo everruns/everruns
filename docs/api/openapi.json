@@ -946,7 +946,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResourceStatsResponse"
+                  "$ref": "#/components/schemas/ResourceStats"
                 }
               }
             }
@@ -963,6 +963,333 @@
           },
           "500": {
             "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/triggers": {
+      "get": {
+        "tags": [
+          "agent-triggers"
+        ],
+        "description": "List an agent's triggers. Set include_archived=true to also return archived triggers.",
+        "operationId": "list_agent_triggers",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "description": "Include archived triggers (default false).",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent triggers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentTrigger"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "agent-triggers"
+        ],
+        "summary": "POST /v1/agents/{agent_id}/triggers",
+        "operationId": "create_agent_trigger",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentTriggerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Trigger created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTrigger"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/triggers/{trigger_id}": {
+      "get": {
+        "tags": [
+          "agent-triggers"
+        ],
+        "summary": "GET /v1/agents/{agent_id}/triggers/{trigger_id}",
+        "operationId": "get_agent_trigger",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "trigger_id",
+            "in": "path",
+            "description": "Trigger ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trigger",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTrigger"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Trigger not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "agent-triggers"
+        ],
+        "summary": "DELETE /v1/agents/{agent_id}/triggers/{trigger_id}",
+        "operationId": "delete_agent_trigger",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "trigger_id",
+            "in": "path",
+            "description": "Trigger ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Trigger archived"
+          },
+          "404": {
+            "description": "Trigger not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "agent-triggers"
+        ],
+        "summary": "PATCH|PUT /v1/agents/{agent_id}/triggers/{trigger_id}",
+        "operationId": "update_agent_trigger",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "trigger_id",
+            "in": "path",
+            "description": "Trigger ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAgentTriggerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Trigger updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTrigger"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Trigger not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger": {
+      "post": {
+        "tags": [
+          "agent-triggers"
+        ],
+        "summary": "POST /v1/agents/{agent_id}/triggers/{trigger_id}/trigger",
+        "operationId": "trigger_agent_trigger",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "trigger_id",
+            "in": "path",
+            "description": "Trigger ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Trigger fired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggerAgentTriggerOutput"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Trigger not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -1371,8 +1698,7 @@
               }
             }
           }
-        },
-        "x-cost-tier": "paid"
+        }
       }
     },
     "/v1/apps": {
@@ -1850,18 +2176,8 @@
               }
             }
           },
-          "403": {
-            "description": "App is not published or channel disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
           "404": {
-            "description": "App or channel not found",
+            "description": "App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2826,18 +3142,8 @@
               }
             }
           },
-          "403": {
-            "description": "App is not published or channel disabled",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
-                }
-              }
-            }
-          },
           "404": {
-            "description": "App or channel not found",
+            "description": "App or channel not found, not published, or channel disabled (collapsed to a single generic 404 to prevent app-existence enumeration)",
             "content": {
               "application/json": {
                 "schema": {
@@ -5579,7 +5885,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ResourceStatsResponse"
+                  "$ref": "#/components/schemas/ResourceStats"
                 }
               }
             }
@@ -7084,7 +7390,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListResponse_MemoryResponse"
+                  "$ref": "#/components/schemas/ListResponse_Memory"
                 }
               }
             }
@@ -7113,7 +7419,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryResponse"
+                  "$ref": "#/components/schemas/Memory"
                 }
               }
             }
@@ -7165,7 +7471,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryResponse"
+                  "$ref": "#/components/schemas/Memory"
                 }
               }
             }
@@ -7248,7 +7554,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryResponse"
+                  "$ref": "#/components/schemas/Memory"
                 }
               }
             }
@@ -7416,7 +7722,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListResponse_GrepResultEntry"
+                  "$ref": "#/components/schemas/ListResponse_MemoryGrepResult"
                 }
               }
             }
@@ -7784,7 +8090,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MemoryResponse"
+                  "$ref": "#/components/schemas/Memory"
                 }
               }
             }
@@ -8365,6 +8671,67 @@
         ]
       }
     },
+    "/v1/orgs/{org}/onboarding/complete": {
+      "post": {
+        "tags": [
+          "Organizations"
+        ],
+        "summary": "POST /v1/orgs/:org/onboarding/complete - Mark the org's onboarding wizard as\nfinished (or skipped). Idempotent: the timestamp is set only when NULL.",
+        "description": "Authz mirrors the org-scoped mutations above (admin+), but resolves\nmembership/role from the DB rather than the auth token — a brand-new org may\nnot yet appear in the caller's token, and onboarding completion is exactly\nthat just-created case.",
+        "operationId": "complete_org_onboarding",
+        "parameters": [
+          {
+            "name": "org",
+            "in": "path",
+            "description": "Organization public ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Onboarding marked complete",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not an admin of the organization",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Organization not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          },
+          {
+            "cookieAuth": []
+          }
+        ]
+      }
+    },
     "/v1/payments/accounts": {
       "get": {
         "tags": [
@@ -8862,6 +9229,653 @@
           },
           "404": {
             "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugin_marketplaces": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /v1/plugin_marketplaces",
+        "operationId": "list_plugin_marketplaces",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search by name (case-insensitive substring match).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of plugin marketplaces"
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "POST /v1/plugin_marketplaces",
+        "operationId": "create_plugin_marketplace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePluginMarketplaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Marketplace created"
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugin_marketplaces/{id}": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /v1/plugin_marketplaces/{id}",
+        "operationId": "get_plugin_marketplace",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Marketplace ID (plgmkt_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Marketplace found"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "DELETE /v1/plugin_marketplaces/{id}",
+        "operationId": "delete_plugin_marketplace",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Marketplace ID (plgmkt_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Marketplace deleted"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "PATCH /v1/plugin_marketplaces/{id}",
+        "operationId": "update_plugin_marketplace",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Marketplace ID (plgmkt_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePluginMarketplaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Marketplace updated"
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugin_marketplaces/{id}/plugins": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /v1/plugin_marketplaces/{id}/plugins",
+        "operationId": "get_marketplace_catalog",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Marketplace ID (plgmkt_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Catalog entries"
+          },
+          "400": {
+            "description": "Marketplace not yet synced",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugin_marketplaces/{id}/sync": {
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "POST /v1/plugin_marketplaces/{id}/sync",
+        "operationId": "sync_plugin_marketplace",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Marketplace ID (plgmkt_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Marketplace synced"
+          },
+          "400": {
+            "description": "Sync not supported or source error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugins": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /v1/plugins",
+        "operationId": "list_plugins",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search by name (case-insensitive substring match).",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of installed plugins"
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "POST /v1/plugins",
+        "operationId": "install_plugin",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstallPluginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Plugin installed"
+          },
+          "400": {
+            "description": "Compilation or source error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Plugin already installed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugins/{id}": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "GET /v1/plugins/{id}",
+        "operationId": "get_plugin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Plugin install ID (plugin_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Installed plugin"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "DELETE /v1/plugins/{id}",
+        "operationId": "uninstall_plugin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Plugin install ID (plugin_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Plugin uninstalled"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "PATCH /v1/plugins/{id}",
+        "operationId": "patch_installed_plugin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Plugin install ID (plugin_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateInstalledPluginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Plugin updated"
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/plugins/{id}/update": {
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "POST /v1/plugins/{id}/update",
+        "operationId": "update_plugin",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Plugin install ID (plugin_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Plugin updated"
+          },
+          "400": {
+            "description": "No marketplace or source error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
             "content": {
               "application/json": {
                 "schema": {
@@ -9993,8 +11007,7 @@
           "500": {
             "description": "Internal server error"
           }
-        },
-        "x-cost-tier": "paid"
+        }
       }
     },
     "/v1/sessions/chat": {
@@ -10075,8 +11088,7 @@
           "404": {
             "description": "Platform Chat (global_chat) or voice feature is disabled for the org"
           }
-        },
-        "x-cost-tier": "paid"
+        }
       }
     },
     "/v1/sessions/stats": {
@@ -10854,8 +11866,8 @@
         "tags": [
           "sessions"
         ],
-        "summary": "Export session messages as a JSONL file",
-        "description": "Returns all materialized messages (user, agent) as newline-delimited JSON.\nDelta events are excluded. Each line is a complete JSON object representing one message.\nThe response includes `Content-Disposition: attachment` for browser download.",
+        "summary": "Export session messages as a JSONL file (default) or as an ATIF trajectory",
+        "description": "Default (`format=jsonl`): all materialized messages (user, agent) as\nnewline-delimited JSON, one complete JSON object per line; delta events are\nexcluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document\nfolded from the session's event log (see `specs/atif-adoption.md`); image\ncontent parts are exported as ATIF multimodal ContentParts. When an image\ncannot be materialized (an inline image with neither a URL nor bytes) it is\nflattened to an `\"[image]\"` marker and the response carries an\n`X-Atif-Images-Omitted` header with that count (usually 0 and absent).\nDocuments over the 50 MiB `ATIF_EXPORT_MAX_BYTES` cap are rejected with 413.\nThe response includes `Content-Disposition: attachment` for browser\ndownload.",
         "operationId": "export_session_jsonl",
         "parameters": [
           {
@@ -10866,23 +11878,60 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Output format: jsonl (default) or atif",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "segmented",
+            "in": "query",
+            "description": "ATIF only: return byte-bounded segments linked by continued_trajectory_ref instead of one document",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "ATIF segmented export: opaque continuation cursor from the previous segment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "JSONL file with one message per line",
+            "description": "JSONL file with one message per line, or one ATIF trajectory JSON document (images export as multimodal ContentParts; X-Atif-Images-Omitted header only when an image could not be materialized). With segmented=true, one ATIF segment linked forward by continued_trajectory_ref.",
             "content": {
               "application/x-ndjson": {}
             }
           },
           "400": {
-            "description": "Invalid ID format"
+            "description": "Invalid ID format, or malformed/foreign segmented-export cursor"
           },
           "403": {
             "description": "Forbidden"
           },
           "404": {
             "description": "Session not found"
+          },
+          "413": {
+            "description": "ATIF document exceeds the 50 MiB export cap; retry with segmented=true for a recoverable chunked export",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
           },
           "500": {
             "description": "Internal server error"
@@ -10958,8 +12007,7 @@
           "500": {
             "description": "Internal server error"
           }
-        },
-        "x-cost-tier": "paid"
+        }
       }
     },
     "/v1/sessions/{session_id}/git/branches": {
@@ -11332,8 +12380,156 @@
           "500": {
             "description": "Internal server error"
           }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/participants": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /v1/sessions/{session_id}/participants - List session participants",
+        "operationId": "list_session_participants",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session participant history",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SessionParticipant"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "POST /v1/sessions/{session_id}/participants - Add a session participant",
+        "operationId": "add_session_participant",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddSessionParticipantRequest"
+              }
+            }
+          },
+          "required": true
         },
-        "x-cost-tier": "paid"
+        "responses": {
+          "201": {
+            "description": "Participant added successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionParticipant"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid participant request"
+          },
+          "404": {
+            "description": "Session or agent not found"
+          },
+          "409": {
+            "description": "Participant conflicts with current membership"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/participants/{participant_id}": {
+      "delete": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "DELETE /v1/sessions/{session_id}/participants/{participant_id} - Leave a participant",
+        "operationId": "leave_session_participant",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "participant_id",
+            "in": "path",
+            "description": "Participant ID (prefixed, e.g., part_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Participant left successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionParticipant"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid ID"
+          },
+          "404": {
+            "description": "Session or participant not found"
+          },
+          "409": {
+            "description": "Host participant cannot leave through this endpoint"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
       }
     },
     "/v1/sessions/{session_id}/pin": {
@@ -11945,6 +13141,154 @@
           },
           "404": {
             "description": "Session or task not found"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/tasks/{task_id}/push-configs": {
+      "get": {
+        "tags": [
+          "session-tasks"
+        ],
+        "summary": "List per-task push-notification configs.",
+        "operationId": "list_push_configs",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "Task ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Push configs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/TaskPushConfig"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session or task not found"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "session-tasks"
+        ],
+        "summary": "Create a per-task push-notification config.",
+        "operationId": "create_push_config",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "Task ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePushConfigBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Created push config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskPushConfig"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request (bad URL or event_filter)"
+          },
+          "404": {
+            "description": "Session or task not found"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}": {
+      "delete": {
+        "tags": [
+          "session-tasks"
+        ],
+        "summary": "Delete a per-task push-notification config.",
+        "operationId": "delete_push_config",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "description": "Task ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "config_id",
+            "in": "path",
+            "description": "Push config ID (tpc_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Push config deleted"
+          },
+          "404": {
+            "description": "Session, task, or push config not found"
           }
         }
       }
@@ -12899,6 +14243,15 @@
             }
           },
           {
+            "name": "root_session_id",
+            "in": "query",
+            "description": "Only tasks whose owning session's delegation-tree root is this session",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
             "name": "limit",
             "in": "query",
             "description": "Max tasks, newest first (default 100, max 500)",
@@ -13142,7 +14495,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ListResponse_WorkspaceResponse"
+                  "$ref": "#/components/schemas/ListResponse_Workspace"
                 }
               }
             }
@@ -13171,7 +14524,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkspaceResponse"
+                  "$ref": "#/components/schemas/Workspace"
                 }
               }
             }
@@ -13223,7 +14576,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkspaceResponse"
+                  "$ref": "#/components/schemas/Workspace"
                 }
               }
             }
@@ -13306,7 +14659,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/WorkspaceResponse"
+                  "$ref": "#/components/schemas/Workspace"
                 }
               }
             }
@@ -13903,7 +15256,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeleteResponse"
+                  "$ref": "#/components/schemas/DeleteFileResponse"
                 }
               }
             }
@@ -14107,6 +15460,38 @@
           }
         }
       },
+      "AddSessionParticipantRequest": {
+        "type": "object",
+        "description": "Request to add a participant to a session.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Agent to add when `kind` is `agent`.",
+            "example": "agent_01933b5a00007000800000000000001"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionParticipantKind",
+            "description": "Participant kind to add."
+          },
+          "role": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SessionParticipantRole",
+                "description": "Participant role. Omit for ordinary members. Host assignment is managed by session creation."
+              }
+            ]
+          }
+        }
+      },
       "Agent": {
         "type": "object",
         "description": "Agent configuration for agentic loop.\nAn agent defines the behavior and capabilities of an AI assistant.",
@@ -14114,6 +15499,7 @@
           "id",
           "name",
           "system_prompt",
+          "harness_id",
           "status",
           "created_at",
           "updated_at"
@@ -14197,6 +15583,11 @@
             ],
             "description": "Source version for a forked agent.",
             "example": "agentver_01933b5a00007000800000000000001"
+          },
+          "harness_id": {
+            "type": "string",
+            "description": "Harness that supplies the base execution environment for this agent.",
+            "example": "harness_01933b5a00007000800000000000001"
           },
           "id": {
             "type": "string",
@@ -14386,6 +15777,75 @@
           "deleted"
         ],
         "example": "active"
+      },
+      "AgentTrigger": {
+        "type": "object",
+        "description": "AgentTrigger is a durable, agent-owned invocation trigger.",
+        "required": [
+          "id",
+          "agent_id",
+          "trigger_type",
+          "config",
+          "enabled",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "description": "Agent that owns this trigger.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
+          "archived_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Archive timestamp."
+          },
+          "config": {
+            "description": "Type-specific configuration (parsed via typed accessors)."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Creation timestamp."
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Delete timestamp."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the trigger is currently active."
+          },
+          "id": {
+            "type": "string",
+            "description": "External identifier (trg_<32-hex>). Shown as `id` in API.",
+            "example": "trg_01933b5a000070008000000000000001"
+          },
+          "trigger_type": {
+            "$ref": "#/components/schemas/AgentTriggerType",
+            "description": "The kind of event that fires this trigger."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Last update timestamp."
+          }
+        }
+      },
+      "AgentTriggerType": {
+        "type": "string",
+        "description": "The kind of event that fires an agent trigger. Only scheduled triggers exist\ntoday; the enum leaves room for webhook/event triggers later.",
+        "enum": [
+          "schedule"
+        ]
       },
       "AgentVersion": {
         "type": "object",
@@ -14595,6 +16055,18 @@
               "null"
             ],
             "description": "OpenAPI `$ref` to the request-body schema, when the action takes one\n(e.g. `#/components/schemas/UpdateSessionRequest`). Lets a tool-calling\nagent fetch the input shape without scanning the whole spec."
+          }
+        }
+      },
+      "ApiKeyConnectionRequest": {
+        "type": "object",
+        "description": "Request body for API-key-based connections (e.g., Brave Search)",
+        "required": [
+          "api_key"
+        ],
+        "properties": {
+          "api_key": {
+            "type": "string"
           }
         }
       },
@@ -15096,7 +16568,7 @@
           },
           "channel_type": {
             "$ref": "#/components/schemas/ChannelType",
-            "description": "Channel kind (slack, ag_ui, webhook, a2a, fcp)."
+            "description": "Channel kind (slack, ag_ui, webhook, a2a, fcp, public_chat)."
           },
           "completed_at": {
             "type": [
@@ -15209,6 +16681,10 @@
               ],
               "description": "Provider id used to resolve a user-scoped bearer token."
             },
+            "protocol_mode": {
+              "$ref": "#/components/schemas/McpProtocolMode",
+              "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
+            },
             "tool_discovery": {
               "type": "boolean",
               "description": "Whether to discover tool definitions live from this server."
@@ -15294,6 +16770,149 @@
           }
         }
       },
+      "Budget": {
+        "type": "object",
+        "description": "Budget — a spending cap for a subject in a currency.\nAPI response DTO.",
+        "required": [
+          "id",
+          "organization_id",
+          "subject_type",
+          "subject_id",
+          "currency",
+          "limit",
+          "balance",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "balance": {
+            "type": "number",
+            "format": "double",
+            "description": "Current remaining balance (limit minus consumed)."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "currency": {
+            "type": "string",
+            "description": "Currency: \"usd\", \"tokens\", \"credits\", or custom."
+          },
+          "id": {
+            "type": "string",
+            "example": "bdgt_01933b5a00007000800000000000001"
+          },
+          "limit": {
+            "type": "number",
+            "format": "double",
+            "description": "Hard limit — budget ceiling."
+          },
+          "metadata": {
+            "description": "Arbitrary metadata."
+          },
+          "organization_id": {
+            "type": "string"
+          },
+          "period": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BudgetPeriod",
+                "description": "Optional period for recurring budgets."
+              }
+            ]
+          },
+          "period_started_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the current period started (used to detect period rollover for\n`Duration` / `Rolling` periods, and to display \"resets at\" in the UI).\n`None` for budgets without a period."
+          },
+          "soft_limit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Soft limit — triggers pause/warn when balance drops below this."
+          },
+          "status": {
+            "$ref": "#/components/schemas/BudgetStatus"
+          },
+          "subject_id": {
+            "type": "string",
+            "description": "Public ID of the subject entity."
+          },
+          "subject_type": {
+            "$ref": "#/components/schemas/BudgetSubjectType"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "BudgetCheckResult": {
+        "type": "object",
+        "description": "Result of checking all budgets for a session.",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "description": "Most restrictive action across all budgets."
+          },
+          "balance": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Remaining balance on the most restrictive budget."
+          },
+          "budget_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Budget that triggered the action."
+          },
+          "currency": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Currency of the most restrictive budget."
+          },
+          "error_code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Stable error code for user-facing budget failures."
+          },
+          "error_fields": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Structured interpolation fields for localized error rendering."
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable message (set when action != \"continue\")."
+          }
+        }
+      },
       "BudgetEventData": {
         "type": "object",
         "description": "Data for budget lifecycle events (warning, paused, exhausted, resumed).",
@@ -15338,6 +16957,92 @@
             "description": "Soft limit threshold (present for warning/paused events)."
           }
         }
+      },
+      "BudgetPeriod": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Sliding window of a configurable number of seconds.",
+            "required": [
+              "seconds",
+              "type"
+            ],
+            "properties": {
+              "seconds": {
+                "type": "integer",
+                "format": "int64",
+                "minimum": 0
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "duration"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Rolling window described as a humanized string (\"5h\", \"24h\", \"30d\").",
+            "required": [
+              "window",
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "rolling"
+                ]
+              },
+              "window": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Calendar-aligned (`hour`, `day`, `week`, `month`, `year`).",
+            "required": [
+              "unit",
+              "type"
+            ],
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": [
+                  "calendar"
+                ]
+              },
+              "unit": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "Budget period configuration for recurring budgets.\n\nPeriods drive automatic balance reset:\n- `Duration` is a fixed-length sliding window (e.g. last 5 hours, last 30 days)\n  measured from `Budget::period_started_at`. When the window elapses the\n  balance is reset to `limit` and the window restarts.\n- `Calendar` aligns to a calendar boundary (`hour | day | week | month | year`)\n  in UTC. The balance resets when the next boundary is crossed.\n- `Rolling` is preserved for backwards compatibility and parses common\n  shorthand (`24h`, `5h`, `7d`, `30d`) into a `Duration`-equivalent reset\n  policy."
+      },
+      "BudgetStatus": {
+        "type": "string",
+        "description": "Budget status.",
+        "enum": [
+          "active",
+          "paused",
+          "exhausted",
+          "disabled"
+        ]
+      },
+      "BudgetSubjectType": {
+        "type": "string",
+        "description": "Subject type: what entity this budget constrains.",
+        "enum": [
+          "session",
+          "agent",
+          "user",
+          "organization",
+          "app",
+          "app_channel"
+        ]
       },
       "BuiltinTool": {
         "type": "object",
@@ -15692,7 +17397,8 @@
           "webhook",
           "a2a",
           "fcp",
-          "api_endpoint"
+          "api_endpoint",
+          "public_chat"
         ],
         "example": "webhook"
       },
@@ -15977,6 +17683,39 @@
           "strategy": {
             "type": "string",
             "description": "Strategy used in this step."
+          }
+        }
+      },
+      "Connection": {
+        "type": "object",
+        "description": "Connection info returned in API responses (never includes token)",
+        "required": [
+          "provider",
+          "connection_type",
+          "connected_at"
+        ],
+        "properties": {
+          "connected_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "connection_type": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "provider_username": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scopes": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -16268,6 +18007,20 @@
                 "description": "Reasoning configuration"
               }
             ]
+          },
+          "speed": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Speed (service tier) for this message turn: \"flex\", \"default\", or\n\"priority\". Only sent to providers whose model profile advertises a\nspeed config (OpenAI `service_tier`)."
+          },
+          "verbosity": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Verbosity for this message turn: \"low\", \"medium\", or \"high\". Only sent\nto providers whose model profile advertises a verbosity config (OpenAI\n`verbosity`)."
           }
         }
       },
@@ -16374,6 +18127,22 @@
             "description": "Human-readable display name shown in UI.\nFalls back to `name` when absent.",
             "example": "Customer Support Agent"
           },
+          "harness_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Harness ID used as this agent's base execution environment. If omitted,\nthe org's built-in `generic` harness is used.",
+            "example": "harness_01933b5a00007000800000000000001"
+          },
+          "harness_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Addressable harness name. Alternative to `harness_id`.",
+            "example": "generic"
+          },
           "id": {
             "type": [
               "string",
@@ -16472,6 +18241,39 @@
                 "type": "client_side"
               }
             ]
+          }
+        }
+      },
+      "CreateAgentTriggerRequest": {
+        "type": "object",
+        "description": "Request to create a schedule trigger on an agent.",
+        "required": [
+          "cron_expression",
+          "message"
+        ],
+        "properties": {
+          "cron_expression": {
+            "type": "string",
+            "description": "Cron expression that drives the durable schedule. Accepts 5-field\n(min hour day month weekday) or 7-field (sec … year) form.",
+            "example": "0 9 * * *"
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the trigger is active on creation (default `true`)."
+          },
+          "message": {
+            "type": "string",
+            "description": "Message content or `{{template}}` sent when the schedule fires.",
+            "example": "Run the daily digest"
+          },
+          "session_mode": {
+            "$ref": "#/components/schemas/InvocationSessionMode",
+            "description": "Whether invocations reuse a stable session or create a new one."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone identifier for cron evaluation (default `UTC`).",
+            "example": "UTC"
           }
         }
       },
@@ -16590,6 +18392,62 @@
             "type": "string",
             "description": "Branch name (e.g., \"feature-xyz\")",
             "example": "feature/refund-flow"
+          }
+        }
+      },
+      "CreateBudgetRequest": {
+        "type": "object",
+        "description": "Request body for creating a spending budget.",
+        "required": [
+          "subject_type",
+          "subject_id",
+          "currency",
+          "limit"
+        ],
+        "properties": {
+          "currency": {
+            "type": "string",
+            "description": "Unit in which usage and the limit are measured.",
+            "example": "usd"
+          },
+          "limit": {
+            "type": "number",
+            "format": "double",
+            "description": "Hard spending ceiling for the budget.",
+            "example": 100.0
+          },
+          "metadata": {
+            "description": "Free-form metadata attached to this resource."
+          },
+          "period": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/BudgetPeriod",
+                "description": "Optional recurring reset period for the budget balance."
+              }
+            ]
+          },
+          "soft_limit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Optional threshold that triggers a warning or pause before exhaustion.",
+            "example": 20.0
+          },
+          "subject_id": {
+            "type": "string",
+            "description": "Public identifier of the constrained resource.",
+            "example": "agent_01933b5a00007000800000000000001"
+          },
+          "subject_type": {
+            "type": "string",
+            "description": "Kind of resource constrained by the budget.",
+            "example": "agent"
           }
         }
       },
@@ -16945,6 +18803,17 @@
             "description": "The name of the MCP server. Must be unique.",
             "example": "atlassian-mcp-server"
           },
+          "protocol_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/McpProtocolMode",
+                "description": "Protocol-era policy. Defaults to `auto` (negotiates legacy/current/RC)."
+              }
+            ]
+          },
           "transport_type": {
             "$ref": "#/components/schemas/McpServerTransportType",
             "description": "Transport type. Currently only \"http\" is supported.\nExample shape is defined on `McpServerTransportType`."
@@ -17075,6 +18944,14 @@
           "message"
         ],
         "properties": {
+          "addressed_participant_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional active agent participant to address for this turn. When omitted,\nthe session host remains the responder.",
+            "example": "part_01933b5a00007000800000000000001"
+          },
           "controls": {
             "oneOf": [
               {
@@ -17337,6 +19214,32 @@
           }
         }
       },
+      "CreatePluginMarketplaceRequest": {
+        "type": "object",
+        "description": "Request body for creating a plugin marketplace.",
+        "required": [
+          "name",
+          "source_type",
+          "source"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Unique name within the org (kebab-case, e.g. `my-org-plugins`).",
+            "example": "everruns-plugins"
+          },
+          "source": {
+            "type": "string",
+            "description": "Source value. For `github`: `\"owner/repo\"`. For `url`: full HTTPS URL.\nFor `local_path` (dev only): absolute filesystem path.",
+            "example": "everruns/plugins"
+          },
+          "source_type": {
+            "type": "string",
+            "description": "Source type: `github`, `url`, or `local_path` (dev/test only).",
+            "example": "github"
+          }
+        }
+      },
       "CreateProviderRequest": {
         "type": "object",
         "description": "Request to create a new LLM provider",
@@ -17392,6 +19295,38 @@
                 "description": "Trace/observability link configuration. Stored as a per-provider override\nof the driver's default templates; omit to keep driver defaults."
               }
             ]
+          }
+        }
+      },
+      "CreatePushConfigBody": {
+        "type": "object",
+        "description": "Request body for creating a per-task push config.",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "event_filter": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Events that trigger delivery. Defaults to `[\"terminal\"]`."
+          },
+          "secret": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional HMAC-SHA256 signing secret (never returned once set).",
+            "example": "whsec_example_signing_secret_placeholder"
+          },
+          "url": {
+            "type": "string",
+            "description": "URL to POST task events to.",
+            "example": "https://hooks.example.com/everruns/tasks"
           }
         }
       },
@@ -17513,7 +19448,7 @@
               "string",
               "null"
             ],
-            "description": "ID of the agent to work in this session (optional, format: agent_{32-hex}).",
+            "description": "ID of the agent to work in this session (optional, format: agent_{32-hex}).\nWhen supplied without a harness, the session inherits the agent's harness.\nMutually exclusive with `agent_name`.",
             "example": "agent_01933b5a00007000800000000000001"
           },
           "agent_identity_id": {
@@ -17523,6 +19458,14 @@
             ],
             "description": "Optional resident agent identity used for unattended/background execution.",
             "example": "identity_01933b5a00007000800000000000001"
+          },
+          "agent_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name of the agent to work in this session (optional).\nAlternative to `agent_id` — looked up by name within the org.\nMutually exclusive with `agent_id`.",
+            "example": "support"
           },
           "capabilities": {
             "type": "array",
@@ -17541,12 +19484,20 @@
               }
             ]
           },
+          "goal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional objective for the session. Visible to the agent at system-prompt level.",
+            "example": "Investigate the queue latency regression and propose a fix"
+          },
           "harness_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "ID of the harness for this session (format: harness_{32-hex}).\nIf omitted, the org default harness is used. New orgs default that to Generic.\nMutually exclusive with `harness_name`.",
+            "description": "ID of the harness for this session (format: harness_{32-hex}).\nIf omitted, the harness is derived from the agent (when one is supplied),\nelse the org default harness, else the built-in fallback. New orgs default\nthat to Generic. Mutually exclusive with `harness_name`.",
             "example": "harness_01933b5a00007000800000000000001"
           },
           "harness_name": {
@@ -17988,15 +19939,7 @@
           }
         }
       },
-      "DeleteQuery": {
-        "type": "object",
-        "properties": {
-          "recursive": {
-            "type": "boolean"
-          }
-        }
-      },
-      "DeleteResponse": {
+      "DeleteFileResponse": {
         "type": "object",
         "description": "Response for delete operation",
         "required": [
@@ -18004,6 +19947,14 @@
         ],
         "properties": {
           "deleted": {
+            "type": "boolean"
+          }
+        }
+      },
+      "DeleteQuery": {
+        "type": "object",
+        "properties": {
+          "recursive": {
             "type": "boolean"
           }
         }
@@ -19268,6 +21219,14 @@
             "description": "Override the agent assigned to the fork.",
             "example": "agent_01933b5a00007000800000000000001"
           },
+          "goal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Goal for the fork. Omitted inherits the parent's goal.",
+            "example": "Try the async rewrite from this state"
+          },
           "locale": {
             "type": [
               "string",
@@ -19812,10 +21771,12 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Optional path glob (`**/*.rs`, `docs/*.md`)."
           },
           "pattern": {
-            "type": "string"
+            "type": "string",
+            "description": "Regex pattern to search for."
           }
         }
       },
@@ -19835,22 +21796,6 @@
           },
           "path": {
             "type": "string"
-          }
-        }
-      },
-      "GrepResultEntry": {
-        "type": "object",
-        "required": [
-          "path",
-          "size_bytes"
-        ],
-        "properties": {
-          "path": {
-            "type": "string"
-          },
-          "size_bytes": {
-            "type": "integer",
-            "format": "int64"
           }
         }
       },
@@ -20944,6 +22889,26 @@
           }
         }
       },
+      "InstallPluginRequest": {
+        "type": "object",
+        "description": "Request body for installing a plugin from a marketplace catalog entry.",
+        "required": [
+          "marketplace_id",
+          "plugin_name"
+        ],
+        "properties": {
+          "marketplace_id": {
+            "type": "string",
+            "description": "Public ID of the marketplace to install from.",
+            "example": "plgmkt_01933b5a000070008000000000000001"
+          },
+          "plugin_name": {
+            "type": "string",
+            "description": "Name of the plugin entry in the marketplace catalog.",
+            "example": "microsoft-docs"
+          }
+        }
+      },
       "InvocationSessionMode": {
         "type": "string",
         "description": "How app-triggered invocations route into sessions.",
@@ -21460,6 +23425,65 @@
           "cleanup_failed"
         ]
       },
+      "LedgerEntry": {
+        "type": "object",
+        "description": "Immutable ledger entry recording resource consumption or credit against a budget.",
+        "required": [
+          "id",
+          "budget_id",
+          "amount",
+          "meter_source",
+          "created_at"
+        ],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "format": "double",
+            "description": "Positive = debit (consumption), negative = credit (top-up/refund)."
+          },
+          "budget_id": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "meter_source": {
+            "type": "string",
+            "description": "Which meter produced this: \"llm_tokens\", \"tool_calls\", etc."
+          },
+          "ref_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Reference entity ID."
+          },
+          "ref_type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Reference entity type: \"llm_generation\", \"tool_execution\", \"manual\"."
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Session context for this entry."
+          }
+        }
+      },
       "ListAppRunsQuery": {
         "type": "object",
         "description": "Query parameters for listing recent app invocation runs — a relative\ntime window and an optional bucketing hint for the dashboard.",
@@ -21614,6 +23638,7 @@
                 "id",
                 "name",
                 "system_prompt",
+                "harness_id",
                 "status",
                 "created_at",
                 "updated_at"
@@ -21697,6 +23722,11 @@
                   ],
                   "description": "Source version for a forked agent.",
                   "example": "agentver_01933b5a00007000800000000000001"
+                },
+                "harness_id": {
+                  "type": "string",
+                  "description": "Harness that supplies the base execution environment for this agent.",
+                  "example": "harness_01933b5a00007000800000000000001"
                 },
                 "id": {
                   "type": "string",
@@ -22202,35 +24232,6 @@
                 },
                 "path": {
                   "type": "string"
-                }
-              }
-            },
-            "description": "Array of items returned by the list operation."
-          }
-        }
-      },
-      "ListResponse_GrepResultEntry": {
-        "type": "object",
-        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
-        "required": [
-          "data"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": [
-                "path",
-                "size_bytes"
-              ],
-              "properties": {
-                "path": {
-                  "type": "string"
-                },
-                "size_bytes": {
-                  "type": "integer",
-                  "format": "int64"
                 }
               }
             },
@@ -22904,6 +24905,10 @@
                   ],
                   "description": "Stable provider id used for user-scoped OAuth connections."
                 },
+                "protocol_mode": {
+                  "$ref": "#/components/schemas/McpProtocolMode",
+                  "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
+                },
                 "status": {
                   "$ref": "#/components/schemas/McpServerStatus",
                   "description": "Current lifecycle status of the MCP server."
@@ -22928,56 +24933,7 @@
           }
         }
       },
-      "ListResponse_MemoryFileInfo": {
-        "type": "object",
-        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
-        "required": [
-          "data"
-        ],
-        "properties": {
-          "data": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": [
-                "path",
-                "is_directory",
-                "size_bytes",
-                "created_at",
-                "updated_at"
-              ],
-              "properties": {
-                "content_hash": {
-                  "type": [
-                    "string",
-                    "null"
-                  ]
-                },
-                "created_at": {
-                  "type": "string",
-                  "format": "date-time"
-                },
-                "is_directory": {
-                  "type": "boolean"
-                },
-                "path": {
-                  "type": "string"
-                },
-                "size_bytes": {
-                  "type": "integer",
-                  "format": "int64"
-                },
-                "updated_at": {
-                  "type": "string",
-                  "format": "date-time"
-                }
-              }
-            },
-            "description": "Array of items returned by the list operation."
-          }
-        }
-      },
-      "ListResponse_MemoryResponse": {
+      "ListResponse_Memory": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
         "required": [
@@ -22992,6 +24948,7 @@
               "required": [
                 "id",
                 "name",
+                "scope",
                 "source_type",
                 "source",
                 "is_readonly",
@@ -23065,6 +25022,27 @@
                   "description": "Human-readable name. Safe to render in user-facing messages.",
                   "example": "design-docs"
                 },
+                "owner_agent_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Owning agent when `scope = agent`.",
+                  "example": "agent_01933b5a000070008000000000000001"
+                },
+                "owner_user_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "uuid",
+                  "description": "Owning user when `scope = user`."
+                },
+                "scope": {
+                  "type": "string",
+                  "description": "Ownership scope (`org`, `agent`, or `user`).",
+                  "example": "org"
+                },
                 "source": {
                   "$ref": "#/components/schemas/MemorySourceResponse",
                   "description": "Source-specific configuration (git remote, github repo, manual upload)."
@@ -23089,6 +25067,84 @@
                   "format": "date-time",
                   "description": "Timestamp when this resource was last updated (RFC 3339).",
                   "example": "2026-05-25T08:00:00Z"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_MemoryFileInfo": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "is_directory",
+                "size_bytes",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "content_hash": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "is_directory": {
+                  "type": "boolean"
+                },
+                "path": {
+                  "type": "string"
+                },
+                "size_bytes": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_MemoryGrepResult": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "size_bytes"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "size_bytes": {
+                  "type": "integer",
+                  "format": "int64"
                 }
               }
             },
@@ -23248,6 +25304,14 @@
                 "name": {
                   "type": "string",
                   "description": "Display name"
+                },
+                "onboarding_completed_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time",
+                  "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
                 },
                 "updated_at": {
                   "type": "string",
@@ -23998,6 +26062,10 @@
                         "null"
                       ],
                       "description": "Stable provider id used for user-scoped OAuth connections."
+                    },
+                    "protocol_mode": {
+                      "$ref": "#/components/schemas/McpProtocolMode",
+                      "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
                     },
                     "status": {
                       "$ref": "#/components/schemas/McpServerStatus",
@@ -24839,7 +26907,7 @@
           }
         }
       },
-      "ListResponse_WorkspaceResponse": {
+      "ListResponse_Workspace": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
         "required": [
@@ -25480,6 +27548,17 @@
           }
         }
       },
+      "McpProtocolMode": {
+        "type": "string",
+        "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\nRC path first and transparently falls back to the stateful handshake when a\nserver demands it, so a single configuration speaks to legacy, current, and\nRC servers without operator action. The pinned variants skip negotiation\nwhen an operator knows a server's era (or to work around a server that\nmis-signals it).",
+        "enum": [
+          "auto",
+          "legacy",
+          "stable",
+          "rc"
+        ],
+        "example": "auto"
+      },
       "McpServer": {
         "type": "object",
         "description": "MCP Server configuration.\nRepresents a remote MCP server that can provide tools and resources.",
@@ -25557,6 +27636,10 @@
               "null"
             ],
             "description": "Stable provider id used for user-scoped OAuth connections."
+          },
+          "protocol_mode": {
+            "$ref": "#/components/schemas/McpProtocolMode",
+            "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
           },
           "status": {
             "$ref": "#/components/schemas/McpServerStatus",
@@ -25638,6 +27721,134 @@
           }
         }
       },
+      "Memory": {
+        "type": "object",
+        "description": "Response body for memory.",
+        "required": [
+          "id",
+          "name",
+          "scope",
+          "source_type",
+          "source",
+          "is_readonly",
+          "sync_status",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "archived_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp when this resource was archived, if any (RFC 3339).",
+            "example": "2026-05-26T00:00:00Z"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339).",
+            "example": "2026-04-01T10:00:00Z"
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339).",
+            "example": "2026-05-26T00:00:00Z"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Living design documents synced from GitHub"
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "example": "mem_01933b5a000070008000000000000001"
+          },
+          "is_readonly": {
+            "type": "boolean",
+            "description": "Whether the memory is mounted read-only into sessions. Read-only memories accept no writes from the session sandbox.",
+            "example": false
+          },
+          "last_sync_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Most recent sync error message; cleared on the next successful sync.",
+            "example": "ssh: connect to host github.com port 22: Connection timed out"
+          },
+          "last_synced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp of the most recent successful sync (RFC 3339). `None` if never synced.",
+            "example": "2026-05-25T08:00:00Z"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "design-docs"
+          },
+          "owner_agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Owning agent when `scope = agent`.",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
+          "owner_user_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Owning user when `scope = user`."
+          },
+          "scope": {
+            "type": "string",
+            "description": "Ownership scope (`org`, `agent`, or `user`).",
+            "example": "org"
+          },
+          "source": {
+            "$ref": "#/components/schemas/MemorySourceResponse",
+            "description": "Source-specific configuration (git remote, github repo, manual upload)."
+          },
+          "source_type": {
+            "type": "string",
+            "description": "Source kind discriminator (`manual`, `git`, `github`). Determines which `source` variant is populated.",
+            "example": "github"
+          },
+          "status": {
+            "type": "string",
+            "description": "Current lifecycle status.",
+            "example": "active"
+          },
+          "sync_status": {
+            "type": "string",
+            "description": "Current sync status (`idle`, `syncing`, `succeeded`, `failed`). Only meaningful when `source_type` is `git` or `github`.",
+            "example": "succeeded"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this resource was last updated (RFC 3339).",
+            "example": "2026-05-25T08:00:00Z"
+          }
+        }
+      },
       "MemoryFile": {
         "type": "object",
         "required": [
@@ -25716,109 +27927,19 @@
           }
         }
       },
-      "MemoryResponse": {
+      "MemoryGrepResult": {
         "type": "object",
-        "description": "Response body for memory.",
         "required": [
-          "id",
-          "name",
-          "source_type",
-          "source",
-          "is_readonly",
-          "sync_status",
-          "status",
-          "created_at",
-          "updated_at"
+          "path",
+          "size_bytes"
         ],
         "properties": {
-          "archived_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp when this resource was archived, if any (RFC 3339).",
-            "example": "2026-05-26T00:00:00Z"
+          "path": {
+            "type": "string"
           },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this resource was created (RFC 3339).",
-            "example": "2026-04-01T10:00:00Z"
-          },
-          "deleted_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339).",
-            "example": "2026-05-26T00:00:00Z"
-          },
-          "description": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Human-readable description. Safe to render in user-facing messages.",
-            "example": "Living design documents synced from GitHub"
-          },
-          "id": {
-            "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-            "example": "mem_01933b5a000070008000000000000001"
-          },
-          "is_readonly": {
-            "type": "boolean",
-            "description": "Whether the memory is mounted read-only into sessions. Read-only memories accept no writes from the session sandbox.",
-            "example": false
-          },
-          "last_sync_error": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "description": "Most recent sync error message; cleared on the next successful sync.",
-            "example": "ssh: connect to host github.com port 22: Connection timed out"
-          },
-          "last_synced_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp of the most recent successful sync (RFC 3339). `None` if never synced.",
-            "example": "2026-05-25T08:00:00Z"
-          },
-          "name": {
-            "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages.",
-            "example": "design-docs"
-          },
-          "source": {
-            "$ref": "#/components/schemas/MemorySourceResponse",
-            "description": "Source-specific configuration (git remote, github repo, manual upload)."
-          },
-          "source_type": {
-            "type": "string",
-            "description": "Source kind discriminator (`manual`, `git`, `github`). Determines which `source` variant is populated.",
-            "example": "github"
-          },
-          "status": {
-            "type": "string",
-            "description": "Current lifecycle status.",
-            "example": "active"
-          },
-          "sync_status": {
-            "type": "string",
-            "description": "Current sync status (`idle`, `syncing`, `succeeded`, `failed`). Only meaningful when `source_type` is `git` or `github`.",
-            "example": "succeeded"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this resource was last updated (RFC 3339).",
-            "example": "2026-05-25T08:00:00Z"
+          "size_bytes": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },
@@ -26445,6 +28566,17 @@
             ],
             "description": "Release date (YYYY-MM-DD format)"
           },
+          "speed": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SpeedConfig",
+                "description": "Speed (service tier) configuration, for models served with\nselectable latency/price tiers (OpenAI `service_tier`)."
+              }
+            ]
+          },
           "structured_output": {
             "type": "boolean",
             "description": "Whether the model supports structured output (JSON mode)"
@@ -26471,6 +28603,17 @@
           "tool_search": {
             "type": "boolean",
             "description": "Whether the model supports tool_search (deferred tool loading).\nWhen true, the driver can use namespaces and defer_loading to reduce\ntoken usage for large tool sets. Currently supported by GPT-5.4 and newer."
+          },
+          "verbosity": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/VerbosityConfig",
+                "description": "Verbosity configuration, for models that expose output-length\ncontrol (OpenAI `verbosity`)."
+              }
+            ]
           }
         }
       },
@@ -26828,6 +28971,14 @@
             "type": "string",
             "description": "Display name"
           },
+          "onboarding_completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the org's creator finished or skipped the setup wizard. `null` means\nonboarding is still incomplete, which the UI uses to resume the user at\n`/orgs/{id}/setup`. Seeded/default and externally-synced orgs are complete."
+          },
           "updated_at": {
             "type": "string",
             "format": "date-time",
@@ -27114,6 +29265,14 @@
                   ],
                   "description": "Session this one was forked from. NULL for sessions that were not forked.\nDistinct from `parent_session_id` (subagent nesting): forking is a\nuser-initiated \"branch from here\" relationship."
                 },
+                "goal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Session objective visible to the runtime agent at system-prompt level.",
+                  "example": "Investigate the queue latency regression"
+                },
                 "harness_id": {
                   "type": "string",
                   "description": "ID of the harness for this session (format: harness_{32-hex}).",
@@ -27232,7 +29391,7 @@
                     "string",
                     "null"
                   ],
-                  "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the nesting guard in spawn_subagent."
+                  "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed to compute governed subagent delegation depth."
                 },
                 "preview": {
                   "type": [
@@ -27596,6 +29755,10 @@
             "description": "Total number of items matching the query (across all pages).",
             "minimum": 0
           }
+        },
+        "x-sdk-response-wrapper": {
+          "kind": "list",
+          "model": "#/components/schemas/CapabilityInfo"
         }
       },
       "PaginatedResponse_WithUrls_ResourceWithCounts_Agent": {
@@ -27621,6 +29784,7 @@
                         "id",
                         "name",
                         "system_prompt",
+                        "harness_id",
                         "status",
                         "created_at",
                         "updated_at"
@@ -27704,6 +29868,11 @@
                           ],
                           "description": "Source version for a forked agent.",
                           "example": "agentver_01933b5a00007000800000000000001"
+                        },
+                        "harness_id": {
+                          "type": "string",
+                          "description": "Harness that supplies the base execution environment for this agent.",
+                          "example": "harness_01933b5a00007000800000000000001"
                         },
                         "id": {
                           "type": "string",
@@ -27898,6 +30067,10 @@
             "description": "Total number of items matching the query (across all pages).",
             "minimum": 0
           }
+        },
+        "x-sdk-response-wrapper": {
+          "kind": "list",
+          "model": "#/components/schemas/Agent"
         }
       },
       "PaginatedResponse_WithUrls_Session": {
@@ -28037,6 +30210,14 @@
                       ],
                       "description": "Session this one was forked from. NULL for sessions that were not forked.\nDistinct from `parent_session_id` (subagent nesting): forking is a\nuser-initiated \"branch from here\" relationship."
                     },
+                    "goal": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Session objective visible to the runtime agent at system-prompt level.",
+                      "example": "Investigate the queue latency regression"
+                    },
                     "harness_id": {
                       "type": "string",
                       "description": "ID of the harness for this session (format: harness_{32-hex}).",
@@ -28155,7 +30336,7 @@
                         "string",
                         "null"
                       ],
-                      "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the nesting guard in spawn_subagent."
+                      "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed to compute governed subagent delegation depth."
                     },
                     "preview": {
                       "type": [
@@ -28311,6 +30492,10 @@
             "description": "Total number of items matching the query (across all pages).",
             "minimum": 0
           }
+        },
+        "x-sdk-response-wrapper": {
+          "kind": "list",
+          "model": "#/components/schemas/Session"
         }
       },
       "PaymentAccount": {
@@ -29790,7 +31975,7 @@
           }
         }
       },
-      "ResourceStatsResponse": {
+      "ResourceStats": {
         "type": "object",
         "description": "Response body for resource stats.",
         "required": [
@@ -29941,6 +32126,23 @@
             "description": "Sessions currently paused waiting for client-side tool results.",
             "example": 2,
             "minimum": 0
+          }
+        }
+      },
+      "ResumeSessionResponse": {
+        "type": "object",
+        "description": "Result of resuming budgets paused for a session.",
+        "required": [
+          "resumed_budgets",
+          "session_id"
+        ],
+        "properties": {
+          "resumed_budgets": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "session_id": {
+            "type": "string"
           }
         }
       },
@@ -30404,6 +32606,32 @@
           }
         }
       },
+      "ScheduleTriggerConfig": {
+        "type": "object",
+        "description": "Typed configuration for a `Schedule` trigger.\n\n`message` is also the template body. `{{path.to.value}}` placeholders are\nexpanded at invocation time. Mirrors `app::ScheduleChannelConfig`.",
+        "required": [
+          "cron_expression",
+          "message"
+        ],
+        "properties": {
+          "cron_expression": {
+            "type": "string",
+            "description": "Cron expression that drives the durable schedule."
+          },
+          "message": {
+            "type": "string",
+            "description": "Message content or template sent when the schedule fires."
+          },
+          "session_mode": {
+            "$ref": "#/components/schemas/InvocationSessionMode",
+            "description": "Whether invocations reuse a stable session or create a new one."
+          },
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone identifier for cron evaluation."
+          }
+        }
+      },
       "SchedulesListResponse": {
         "type": "object",
         "description": "Schedules list response",
@@ -30608,6 +32836,14 @@
             ],
             "description": "Session this one was forked from. NULL for sessions that were not forked.\nDistinct from `parent_session_id` (subagent nesting): forking is a\nuser-initiated \"branch from here\" relationship."
           },
+          "goal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Session objective visible to the runtime agent at system-prompt level.",
+            "example": "Investigate the queue latency regression"
+          },
           "harness_id": {
             "type": "string",
             "description": "ID of the harness for this session (format: harness_{32-hex}).",
@@ -30726,7 +32962,7 @@
               "string",
               "null"
             ],
-            "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the nesting guard in spawn_subagent."
+            "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed to compute governed subagent delegation depth."
           },
           "preview": {
             "type": [
@@ -30999,6 +33235,84 @@
             ]
           }
         }
+      },
+      "SessionParticipant": {
+        "type": "object",
+        "description": "Session participant - an agent or user that has joined a session.",
+        "required": [
+          "id",
+          "session_id",
+          "kind",
+          "principal_id",
+          "role",
+          "joined_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Present for agent participants.",
+            "example": "agent_01933b5a00007000800000000000001"
+          },
+          "agent_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Immutable agent version captured for an agent participant when known.",
+            "example": "agentver_01933b5a00007000800000000000001"
+          },
+          "id": {
+            "type": "string",
+            "description": "Unique identifier for the participant row (format: part_{32-hex}).",
+            "example": "part_01933b5a00007000800000000000001"
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/SessionParticipantKind"
+          },
+          "left_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "principal_id": {
+            "type": "string",
+            "description": "Principal that joined the session.",
+            "example": "principal_01933b5a000070008000000000000001"
+          },
+          "role": {
+            "$ref": "#/components/schemas/SessionParticipantRole"
+          },
+          "session_id": {
+            "type": "string",
+            "description": "Session this participant belongs to.",
+            "example": "session_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "SessionParticipantKind": {
+        "type": "string",
+        "description": "Kind of actor participating in a session.",
+        "enum": [
+          "agent",
+          "user"
+        ]
+      },
+      "SessionParticipantRole": {
+        "type": "string",
+        "description": "Role a participant has inside a session.",
+        "enum": [
+          "host",
+          "member"
+        ]
       },
       "SessionRef": {
         "type": "object",
@@ -31291,6 +33605,13 @@
               "null"
             ],
             "description": "Machine result in the session VFS: `/.tasks/{task_id}/result.json`."
+          },
+          "root_session_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Root of the owning session's delegation tree (EVE-680). Populated on\nAPI reads from the denormalized storage column so cross-session tooling\n(e.g. the Work view) can group a whole tree's tasks by one id. `None`\nfor a top-level session that is its own root, or when unavailable.\nStorage-derived, never client-settable on create."
           },
           "session_id": {
             "type": "string",
@@ -31622,6 +33943,54 @@
               "type": "string"
             },
             "description": "Non-fatal warnings (style, deprecated patterns, optional fields missing). Emitted alongside a `valid` result."
+          }
+        }
+      },
+      "Speed": {
+        "type": "string",
+        "description": "Speed level for models that expose a latency/price service tier.\nWire values map 1:1 to the OpenAI `service_tier` request parameter:\n`flex` (slower, cheaper), `default` (standard), `priority` (faster,\npremium). `auto` is deliberately not offered — omitting the field\npreserves the provider's default routing.",
+        "enum": [
+          "flex",
+          "default",
+          "priority"
+        ]
+      },
+      "SpeedConfig": {
+        "type": "object",
+        "description": "Speed configuration for a model",
+        "required": [
+          "values",
+          "default"
+        ],
+        "properties": {
+          "default": {
+            "$ref": "#/components/schemas/Speed",
+            "description": "Default speed for this model"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SpeedValue"
+            },
+            "description": "Available speed values for this model"
+          }
+        }
+      },
+      "SpeedValue": {
+        "type": "object",
+        "description": "Named speed value for UI display",
+        "required": [
+          "value",
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name (e.g., \"Flex\", \"Fast\")"
+          },
+          "value": {
+            "$ref": "#/components/schemas/Speed",
+            "description": "The API value (e.g., \"flex\", \"priority\")"
           }
         }
       },
@@ -31976,6 +34345,54 @@
           }
         ],
         "description": "One content part of a task message."
+      },
+      "TaskPushConfig": {
+        "type": "object",
+        "description": "Public view of a per-task push config. The stored secret is NEVER returned —\nonly `has_secret` signals whether one is configured.",
+        "required": [
+          "id",
+          "url",
+          "has_secret",
+          "event_filter",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the config was created (RFC 3339).",
+            "example": "2026-07-11T00:00:00Z"
+          },
+          "event_filter": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Events that trigger delivery (terminal, awaiting_input, message)."
+          },
+          "has_secret": {
+            "type": "boolean",
+            "description": "Whether a signing secret is configured (the secret itself is never returned).",
+            "example": true
+          },
+          "id": {
+            "type": "string",
+            "description": "Public identifier (tpc_<32-hex-chars>).",
+            "example": "tpc_9f8c2b1a4e7d4c3b8a1f2e3d4c5b6a7f"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the config was last updated (RFC 3339).",
+            "example": "2026-07-11T00:00:00Z"
+          },
+          "url": {
+            "type": "string",
+            "description": "Target URL that receives POST deliveries.",
+            "example": "https://hooks.example.com/everruns/tasks"
+          }
+        }
       },
       "TaskResponse": {
         "type": "object",
@@ -32771,6 +35188,26 @@
           }
         }
       },
+      "TopUpRequest": {
+        "type": "object",
+        "required": [
+          "amount"
+        ],
+        "properties": {
+          "amount": {
+            "type": "number",
+            "format": "double",
+            "description": "Amount credited back to the budget balance."
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages."
+          }
+        }
+      },
       "TranscriptRepairAction": {
         "type": "string",
         "description": "Action taken during transcript repair for a dangling tool call.",
@@ -32801,6 +35238,22 @@
               "null"
             ],
             "description": "The tool name, if known."
+          }
+        }
+      },
+      "TriggerAgentTriggerOutput": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "created_session"
+        ],
+        "properties": {
+          "created_session": {
+            "type": "boolean"
+          },
+          "session_id": {
+            "$ref": "#/components/schemas/sessionId",
+            "description": "Session's prefixed public identifier."
           }
         }
       },
@@ -33108,6 +35561,22 @@
             "description": "Human-readable display name shown in UI.",
             "example": "Updated Support Agent"
           },
+          "harness_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Harness ID used as this agent's base execution environment. Omit to leave unchanged.",
+            "example": "harness_01933b5a00007000800000000000001"
+          },
+          "harness_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Addressable harness name. Alternative to `harness_id`; omit to leave unchanged.",
+            "example": "generic"
+          },
           "initial_files": {
             "type": [
               "array",
@@ -33233,6 +35702,46 @@
           }
         }
       },
+      "UpdateAgentTriggerRequest": {
+        "type": "object",
+        "description": "Request to update a schedule trigger. Only provided fields change; the rest\nare preserved from the stored config.",
+        "properties": {
+          "cron_expression": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/InvocationSessionMode"
+              }
+            ]
+          },
+          "timezone": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "UpdateAppRequest": {
         "type": "object",
         "description": "Request to update an app. Only provided fields will be updated.",
@@ -33303,6 +35812,39 @@
                 "description": "Lifecycle status (draft or archived). Use publish/unpublish endpoints for publishing."
               }
             ]
+          }
+        }
+      },
+      "UpdateBudgetRequest": {
+        "type": "object",
+        "description": "Request body for changing a spending budget.",
+        "properties": {
+          "limit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Replacement hard spending ceiling.",
+            "example": 150.0
+          },
+          "metadata": {
+            "description": "Free-form metadata attached to this resource."
+          },
+          "soft_limit": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Replacement soft threshold, or null to remove the threshold."
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Current lifecycle status."
           }
         }
       },
@@ -33503,6 +36045,19 @@
           }
         }
       },
+      "UpdateInstalledPluginRequest": {
+        "type": "object",
+        "description": "Request body for updating an installed plugin (status only; use POST .../update for recompile).",
+        "properties": {
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "New lifecycle status: `active` or `disabled`."
+          }
+        }
+      },
       "UpdateKnowledgeBaseRequest": {
         "type": "object",
         "description": "Request body for the `update_knowledge_base` operation.",
@@ -33668,6 +36223,17 @@
             ],
             "description": "The name of the MCP server.",
             "example": "updated-mcp-server"
+          },
+          "protocol_mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/McpProtocolMode",
+                "description": "Protocol-era policy (`auto`, `legacy`, `stable`, `rc`)."
+              }
+            ]
           },
           "status": {
             "oneOf": [
@@ -34020,6 +36586,24 @@
           }
         }
       },
+      "UpdatePluginMarketplaceRequest": {
+        "type": "object",
+        "description": "Request body for updating a plugin marketplace.",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "UpdateProfileRequest": {
         "type": "object",
         "description": "Request to update current user's profile",
@@ -34238,6 +36822,14 @@
             "description": "Optional resident agent identity used for unattended/background execution.",
             "example": "identity_01933b5a00007000800000000000001"
           },
+          "goal": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Updated session objective.",
+            "example": "Summarize the incident and list remediations"
+          },
           "locale": {
             "type": [
               "string",
@@ -34401,6 +36993,54 @@
             "type": "string",
             "description": "Full SKILL.md content to validate, including the YAML frontmatter and the markdown body.",
             "example": "---\nname: refund-policy\ndescription: Issue refunds inside the policy window.\n---\n\nUse this when a customer asks for a refund within 30 days of purchase."
+          }
+        }
+      },
+      "Verbosity": {
+        "type": "string",
+        "description": "Verbosity level for models that support output-length control.\nWire values map 1:1 to the OpenAI `verbosity` request parameter:\n`low` (terse), `medium` (balanced, provider default), `high`\n(comprehensive). Independent of `ReasoningEffort`, which tunes the\namount of reasoning rather than the length of the final answer.",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ]
+      },
+      "VerbosityConfig": {
+        "type": "object",
+        "description": "Verbosity configuration for a model",
+        "required": [
+          "values",
+          "default"
+        ],
+        "properties": {
+          "default": {
+            "$ref": "#/components/schemas/Verbosity",
+            "description": "Default verbosity for this model"
+          },
+          "values": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/VerbosityValue"
+            },
+            "description": "Available verbosity values for this model"
+          }
+        }
+      },
+      "VerbosityValue": {
+        "type": "object",
+        "description": "Named verbosity value for UI display",
+        "required": [
+          "value",
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Display name (e.g., \"Low\", \"High\")"
+          },
+          "value": {
+            "$ref": "#/components/schemas/Verbosity",
+            "description": "The API value (e.g., \"low\", \"high\")"
           }
         }
       },
@@ -34894,6 +37534,7 @@
               "id",
               "name",
               "system_prompt",
+              "harness_id",
               "status",
               "created_at",
               "updated_at"
@@ -34977,6 +37618,11 @@
                 ],
                 "description": "Source version for a forked agent.",
                 "example": "agentver_01933b5a00007000800000000000001"
+              },
+              "harness_id": {
+                "type": "string",
+                "description": "Harness that supplies the base execution environment for this agent.",
+                "example": "harness_01933b5a00007000800000000000001"
               },
               "id": {
                 "type": "string",
@@ -35111,7 +37757,11 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`.",
+        "x-sdk-response-wrapper": {
+          "kind": "resource",
+          "model": "#/components/schemas/Agent"
+        }
       },
       "WithUrls_App": {
         "allOf": [
@@ -35481,7 +38131,11 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`.",
+        "x-sdk-response-wrapper": {
+          "kind": "resource",
+          "model": "#/components/schemas/CapabilityInfo"
+        }
       },
       "WithUrls_DeclarativeCapability": {
         "allOf": [
@@ -35873,6 +38527,10 @@
                   "null"
                 ],
                 "description": "Stable provider id used for user-scoped OAuth connections."
+              },
+              "protocol_mode": {
+                "$ref": "#/components/schemas/McpProtocolMode",
+                "description": "Protocol-era adoption policy for the MCP client (`auto` negotiates)."
               },
               "status": {
                 "$ref": "#/components/schemas/McpServerStatus",
@@ -36292,6 +38950,7 @@
                   "id",
                   "name",
                   "system_prompt",
+                  "harness_id",
                   "status",
                   "created_at",
                   "updated_at"
@@ -36375,6 +39034,11 @@
                     ],
                     "description": "Source version for a forked agent.",
                     "example": "agentver_01933b5a00007000800000000000001"
+                  },
+                  "harness_id": {
+                    "type": "string",
+                    "description": "Harness that supplies the base execution environment for this agent.",
+                    "example": "harness_01933b5a00007000800000000000001"
                   },
                   "id": {
                     "type": "string",
@@ -36533,7 +39197,11 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`.",
+        "x-sdk-response-wrapper": {
+          "kind": "resource",
+          "model": "#/components/schemas/Agent"
+        }
       },
       "WithUrls_ResourceWithCounts_Harness": {
         "allOf": [
@@ -36884,6 +39552,14 @@
                 ],
                 "description": "Session this one was forked from. NULL for sessions that were not forked.\nDistinct from `parent_session_id` (subagent nesting): forking is a\nuser-initiated \"branch from here\" relationship."
               },
+              "goal": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Session objective visible to the runtime agent at system-prompt level.",
+                "example": "Investigate the queue latency regression"
+              },
               "harness_id": {
                 "type": "string",
                 "description": "ID of the harness for this session (format: harness_{32-hex}).",
@@ -37002,7 +39678,7 @@
                   "string",
                   "null"
                 ],
-                "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed as the nesting guard in spawn_subagent."
+                "description": "Parent session that spawned this subagent. NULL for top-level sessions.\nUsed to compute governed subagent delegation depth."
               },
               "preview": {
                 "type": [
@@ -37122,7 +39798,11 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`.",
+        "x-sdk-response-wrapper": {
+          "kind": "resource",
+          "model": "#/components/schemas/Session"
+        }
       },
       "WithUrls_Skill": {
         "allOf": [
@@ -37604,7 +40284,7 @@
           }
         }
       },
-      "WorkspaceResponse": {
+      "Workspace": {
         "type": "object",
         "required": [
           "id",
@@ -37698,6 +40378,12 @@
         "description": "Prefixed identifier with 'paypol' prefix",
         "example": "paypol_01933b5a00007000800000000000001",
         "pattern": "^paypol_[0-9a-f]{32}$"
+      },
+      "sessionId": {
+        "type": "string",
+        "description": "Prefixed identifier with 'session' prefix",
+        "example": "session_01933b5a00007000800000000000001",
+        "pattern": "^session_[0-9a-f]{32}$"
       }
     }
   },
@@ -37789,6 +40475,10 @@
     {
       "name": "harnesses",
       "description": "Harness management endpoints"
+    },
+    {
+      "name": "agent-triggers",
+      "description": "Agent-owned schedule trigger endpoints"
     },
     {
       "name": "skills",

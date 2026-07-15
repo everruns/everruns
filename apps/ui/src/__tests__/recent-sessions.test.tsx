@@ -27,6 +27,7 @@ function createAgent(overrides?: Partial<Agent>): Agent {
   return {
     id: "agent-1",
     name: "Test Agent",
+    harness_id: "harness_test",
     display_name: null,
     description: null,
     system_prompt: "You are helpful",

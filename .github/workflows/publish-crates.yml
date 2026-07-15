@@ -132,7 +132,6 @@ jobs:
 
           dependency_versions = {
               "crates/core/Cargo.toml": [
-                  "everruns-config",
                   "everruns-openui",
                   "everruns-a2ui",
               ],
@@ -224,7 +223,6 @@ jobs:
 
           VERSION="${{ steps.release.outputs.version }}"
           CRATES=(
-            everruns-config
             everruns-openui
             everruns-a2ui
             everruns-core

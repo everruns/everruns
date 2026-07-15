@@ -5,6 +5,7 @@
 use super::service::{McpServerService, McpServerSettings};
 use crate::storage::StorageBackend;
 use everruns_core::{McpServer, McpServerAuthMode, McpServerStatus, McpServerTransportType};
+// `settings.protocol_mode` is read below.
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -35,6 +36,7 @@ pub fn row_to_mcp_server(row: &McpServerRow) -> McpServer {
         transport_type: McpServerTransportType::from(row.transport_type.as_str()),
         status: McpServerStatus::from(row.status.as_str()),
         auth_mode: settings.auth_mode,
+        protocol_mode: settings.protocol_mode,
         oauth_provider_id,
         api_key_set: row.api_key_set,
         headers,

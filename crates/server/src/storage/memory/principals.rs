@@ -85,6 +85,28 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    pub async fn get_principals_for_session_list(
+        &self,
+        org_id: i64,
+        principal_ids: &[PrincipalId],
+        resolved_user_ids: &[Uuid],
+    ) -> Result<Vec<PrincipalRow>> {
+        Ok(self
+            .principals
+            .read()
+            .values()
+            .filter(|row| {
+                row.org_id == org_id
+                    && (principal_ids.contains(&row.id)
+                        || (row.kind == "user"
+                            && row
+                                .subject_id
+                                .is_some_and(|id| resolved_user_ids.contains(&id))))
+            })
+            .cloned()
+            .collect())
+    }
+
     pub async fn list_principals_by_resolved_user(
         &self,
         org_id: i64,

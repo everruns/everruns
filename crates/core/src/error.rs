@@ -38,6 +38,29 @@ pub enum LlmErrorKind {
 }
 
 impl LlmErrorKind {
+    /// Classify a provider's stable machine-readable error code.
+    pub fn from_provider_code(code: &str) -> Option<Self> {
+        let code = code.trim().to_ascii_lowercase();
+        match code.as_str() {
+            "insufficient_quota" | "billing_hard_limit_reached" | "credit_balance_too_low" => {
+                Some(Self::QuotaExhausted)
+            }
+            "authentication_error" | "invalid_api_key" | "permission_denied" => {
+                Some(Self::Authentication)
+            }
+            "rate_limit_exceeded" | "rate_limit_error" | "overloaded_error" => {
+                Some(Self::RateLimited)
+            }
+            "server_error"
+            | "internal_error"
+            | "processing_error"
+            | "service_unavailable"
+            | "timeout" => Some(Self::Unavailable),
+            "invalid_request_error" | "model_not_found" => Some(Self::InvalidRequest),
+            _ => None,
+        }
+    }
+
     /// Classify a provider HTTP error from status code + response body.
     ///
     /// Quota/billing patterns are checked before the status code because
@@ -51,7 +74,9 @@ impl LlmErrorKind {
         match status {
             401 | 403 => LlmErrorKind::Authentication,
             429 => LlmErrorKind::RateLimited,
-            408 | 500..=599 => LlmErrorKind::Unavailable,
+            408 | 409 => LlmErrorKind::Unavailable,
+            501 => LlmErrorKind::Other,
+            500..=599 => LlmErrorKind::Unavailable,
             400..=499 => LlmErrorKind::InvalidRequest,
             _ => LlmErrorKind::Other,
         }
@@ -316,6 +341,23 @@ impl AgentLoopError {
         }
     }
 
+    /// Check whether an LLM failure is safe to retry.
+    ///
+    /// Semantic driver classification is authoritative. Untyped legacy errors
+    /// retain the message-based fallback until all drivers preserve structure.
+    pub fn is_transient_llm_error(&self) -> bool {
+        match self {
+            AgentLoopError::Llm(err) => match err.kind {
+                LlmErrorKind::RateLimited | LlmErrorKind::Unavailable => true,
+                LlmErrorKind::Authentication
+                | LlmErrorKind::QuotaExhausted
+                | LlmErrorKind::InvalidRequest => false,
+                LlmErrorKind::Other => crate::llm_retry::is_transient_error_message(&err.message),
+            },
+            _ => false,
+        }
+    }
+
     /// Check if this error is deterministic and should never be retried.
     ///
     /// Non-retryable errors reference data that is permanently gone (e.g. a
@@ -434,6 +476,115 @@ impl<T, E: std::fmt::Display> StoreResultExt<T> for std::result::Result<T, E> {
 }
 
 // ============================================================================
+// SessionFileSystem error classification (EVE-645)
+// ============================================================================
+
+/// Typed classification of a `SessionFileSystem` failure.
+///
+/// The file-system tools (`crates/core/src/capabilities/file_system.rs`) decide
+/// whether a failure is a *tool error* (surfaced to the agent verbatim — bad
+/// input it can correct) or an *internal error* (logged, generic copy). They
+/// previously made that call with `msg.contains("readonly")` / `"is a
+/// directory"` / `"not found"` style sniffs against the stringified error.
+///
+/// The `SessionFileSystem` trait returns `anyhow::Result<T>` and has 10+
+/// implementors across crates, so widening the trait's error type is out of
+/// scope. Instead, [`classify_fs_error`] gives a single typed seam: it
+/// downcasts to [`FileSystemError`] when an implementor opts in, and otherwise
+/// falls back to the legacy substring heuristics in one place. Implementors can
+/// migrate to returning `FileSystemError` (via `anyhow::Error::new`)
+/// incrementally without changing behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileSystemErrorClass {
+    /// The target (or a path component) does not exist.
+    NotFound,
+    /// The target is read-only and cannot be written or deleted.
+    ReadOnly,
+    /// Expected a file but the path is a directory.
+    IsADirectory,
+    /// Expected a directory but the path is not one.
+    NotADirectory,
+    /// A non-recursive delete refused a non-empty directory.
+    NotEmpty,
+    /// No recognized client-correctable condition; treat as internal.
+    Other,
+}
+
+/// Typed `SessionFileSystem` error. Implementors may return this (wrapped in
+/// `anyhow::Error`) so [`classify_fs_error`] resolves the class without string
+/// matching. Each variant carries the human-facing message so the file tools
+/// can keep surfacing the same text to the agent.
+#[derive(Debug, Error)]
+pub enum FileSystemError {
+    #[error("{0}")]
+    NotFound(String),
+    #[error("{0}")]
+    ReadOnly(String),
+    #[error("{0}")]
+    IsADirectory(String),
+    #[error("{0}")]
+    NotADirectory(String),
+    #[error("{0}")]
+    NotEmpty(String),
+}
+
+impl FileSystemError {
+    fn class(&self) -> FileSystemErrorClass {
+        match self {
+            FileSystemError::NotFound(_) => FileSystemErrorClass::NotFound,
+            FileSystemError::ReadOnly(_) => FileSystemErrorClass::ReadOnly,
+            FileSystemError::IsADirectory(_) => FileSystemErrorClass::IsADirectory,
+            FileSystemError::NotADirectory(_) => FileSystemErrorClass::NotADirectory,
+            FileSystemError::NotEmpty(_) => FileSystemErrorClass::NotEmpty,
+        }
+    }
+}
+
+/// Classify a `SessionFileSystem` failure into a [`FileSystemErrorClass`].
+///
+/// Prefers a typed [`FileSystemError`] in the error chain; falls back to the
+/// legacy substring heuristics (the single remaining place they live) so
+/// untyped implementors keep their current routing. Behavior is identical to
+/// the previous inline `msg.contains(...)` checks in `file_system.rs`:
+/// "readonly" and "is a directory" mark client-correctable write failures,
+/// "not found" / "not a directory" mark client-correctable read failures, and
+/// "not empty" / "recursive" mark client-correctable delete failures.
+pub fn classify_fs_error<E>(err: &E) -> FileSystemErrorClass
+where
+    E: std::error::Error + 'static,
+{
+    // Prefer a typed FileSystemError anywhere in the source chain so an
+    // implementor that opts in is classified without string matching. Works
+    // whether the error is a bare FileSystemError or wrapped (e.g. inside
+    // `AgentLoopError::Internal(anyhow!(FileSystemError::..))`).
+    let mut source: Option<&(dyn std::error::Error + 'static)> = Some(err);
+    while let Some(current) = source {
+        if let Some(typed) = current.downcast_ref::<FileSystemError>() {
+            return typed.class();
+        }
+        source = current.source();
+    }
+
+    let msg = err.to_string();
+    // Note: real-disk backends emit "read-only" (hyphenated); the legacy check
+    // only matched "readonly", so we preserve that exact behavior rather than
+    // silently widening it.
+    if msg.contains("readonly") {
+        FileSystemErrorClass::ReadOnly
+    } else if msg.contains("is a directory") {
+        FileSystemErrorClass::IsADirectory
+    } else if msg.contains("not a directory") {
+        FileSystemErrorClass::NotADirectory
+    } else if msg.contains("not empty") || msg.contains("recursive") {
+        FileSystemErrorClass::NotEmpty
+    } else if msg.contains("not found") {
+        FileSystemErrorClass::NotFound
+    } else {
+        FileSystemErrorClass::Other
+    }
+}
+
+// ============================================================================
 // JSON Helpers
 // ============================================================================
 
@@ -460,6 +611,79 @@ pub fn from_json<T: DeserializeOwned + Default>(value: serde_json::Value) -> T {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // EVE-645: classify_fs_error must prefer the typed FileSystemError and
+    // otherwise reproduce the exact substring routing the file tools used to
+    // inline. These cases pin both paths against the real producer messages.
+    #[test]
+    fn classify_fs_error_prefers_typed_variant() {
+        let err = FileSystemError::ReadOnly("x".into());
+        assert_eq!(classify_fs_error(&err), FileSystemErrorClass::ReadOnly);
+        let err = FileSystemError::IsADirectory("x".into());
+        assert_eq!(classify_fs_error(&err), FileSystemErrorClass::IsADirectory);
+    }
+
+    #[test]
+    fn classify_fs_error_substring_fallback_matches_real_producers() {
+        // Real producers raise these as `AgentLoopError::store(...)`, whose
+        // Display is "Message store error: <msg>" — the substrings still match.
+        let cases = [
+            (
+                "Cannot modify readonly file: /a",
+                FileSystemErrorClass::ReadOnly,
+            ),
+            (
+                "Cannot delete readonly file: /a",
+                FileSystemErrorClass::ReadOnly,
+            ),
+            (
+                "write target is a directory: /a",
+                FileSystemErrorClass::IsADirectory,
+            ),
+            (
+                "Path is not a directory: /a",
+                FileSystemErrorClass::NotADirectory,
+            ),
+            (
+                "workspace root is not a directory: /a",
+                FileSystemErrorClass::NotADirectory,
+            ),
+            ("Directory not found: /a", FileSystemErrorClass::NotFound),
+            (
+                "Directory is not empty. Use recursive=true to delete",
+                FileSystemErrorClass::NotEmpty,
+            ),
+            (
+                "Cannot delete root directory without recursive flag",
+                FileSystemErrorClass::NotEmpty,
+            ),
+            (
+                "recursive delete failed for /a: io",
+                FileSystemErrorClass::NotEmpty,
+            ),
+            ("disk full", FileSystemErrorClass::Other),
+        ];
+        for (msg, expected) in cases {
+            let err = AgentLoopError::store(msg);
+            assert_eq!(classify_fs_error(&err), expected, "msg: {msg}");
+        }
+    }
+
+    // A typed FileSystemError returned directly (the seam an implementor opts
+    // into) is classified without touching the message text.
+    #[test]
+    fn classify_fs_error_classifies_typed_directly() {
+        let err = FileSystemError::NotEmpty("anything at all".into());
+        assert_eq!(classify_fs_error(&err), FileSystemErrorClass::NotEmpty);
+    }
+
+    // The hyphenated "read-only" from real-disk backends did NOT match the
+    // legacy "readonly" check and must not now; preserve that exactly.
+    #[test]
+    fn classify_fs_error_does_not_match_hyphenated_read_only() {
+        let err = AgentLoopError::store("file is read-only: /a");
+        assert_eq!(classify_fs_error(&err), FileSystemErrorClass::Other);
+    }
 
     #[test]
     fn test_is_request_too_large_returns_true_for_typed_error() {

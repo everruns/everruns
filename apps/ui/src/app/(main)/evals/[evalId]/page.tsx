@@ -164,34 +164,55 @@ function CaseCard({
   );
 }
 
-function RunRow({ evalId, run }: { evalId: string; run: EvalRun }) {
+function RunRow({
+  evalId,
+  run,
+  selected,
+  onToggleSelect,
+}: {
+  evalId: string;
+  run: EvalRun;
+  selected?: boolean;
+  onToggleSelect?: (runId: string) => void;
+}) {
   return (
-    <Link href={`/evals/${evalId}/runs/${run.id}`} className="block">
-      <Card className="hover:border-primary/50 transition-colors cursor-pointer">
-        <CardContent className="flex items-center justify-between py-4">
-          <div className="flex items-center gap-4">
-            <Badge variant={runStatusVariant(run.status)}>{run.status}</Badge>
-            <span className="text-sm text-muted-foreground">
-              {new Date(run.created_at).toLocaleString()}
-            </span>
-            <span className="text-xs text-muted-foreground">by {run.triggered_by}</span>
-            {run.target && <TargetBadge target={run.target} />}
-          </div>
-          <div className="flex items-center gap-4 text-sm">
-            {run.summary && (
-              <>
-                <span className={passRateColor(run.summary.pass_rate)}>
-                  {(run.summary.pass_rate * 100).toFixed(0)}% pass
-                </span>
-                <span className="text-muted-foreground">
-                  {run.summary.passed}/{run.summary.total} passed
-                </span>
-              </>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
+    <div className="flex items-center gap-3">
+      {onToggleSelect && (
+        <input
+          type="checkbox"
+          checked={!!selected}
+          onChange={() => onToggleSelect(run.id)}
+          aria-label={`Select run for comparison`}
+          className="h-4 w-4 shrink-0 cursor-pointer"
+        />
+      )}
+      <Link href={`/evals/${evalId}/runs/${run.id}`} className="block flex-1">
+        <Card className="hover:border-primary/50 transition-colors cursor-pointer">
+          <CardContent className="flex items-center justify-between py-4">
+            <div className="flex items-center gap-4">
+              <Badge variant={runStatusVariant(run.status)}>{run.status}</Badge>
+              <span className="text-sm text-muted-foreground">
+                {new Date(run.created_at).toLocaleString()}
+              </span>
+              <span className="text-xs text-muted-foreground">by {run.triggered_by}</span>
+              {run.target && <TargetBadge target={run.target} />}
+            </div>
+            <div className="flex items-center gap-4 text-sm">
+              {run.summary && (
+                <>
+                  <span className={passRateColor(run.summary.pass_rate)}>
+                    {(run.summary.pass_rate * 100).toFixed(0)}% pass
+                  </span>
+                  <span className="text-muted-foreground">
+                    {run.summary.passed}/{run.summary.total} passed
+                  </span>
+                </>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </Link>
+    </div>
   );
 }
 
@@ -320,6 +341,12 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("cases");
   const [showAddCase, setShowAddCase] = useState(false);
+  const [selectedRuns, setSelectedRuns] = useState<string[]>([]);
+
+  const toggleRunSelection = (runId: string) =>
+    setSelectedRuns((prev) =>
+      prev.includes(runId) ? prev.filter((id) => id !== runId) : [...prev, runId],
+    );
 
   const { data: ev, isLoading: evalLoading } = useEval(evalId);
   usePageTitle(ev?.name ?? null, "Eval");
@@ -497,8 +524,29 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
               </div>
             ) : (
               <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground">
+                    Select runs to compare them case by case.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    disabled={selectedRuns.length < 2}
+                    onClick={() =>
+                      router.push(`/evals/${evalId}/compare?runs=${selectedRuns.join(",")}`)
+                    }
+                  >
+                    Compare ({selectedRuns.length})
+                  </Button>
+                </div>
                 {runs.map((run) => (
-                  <RunRow key={run.id} evalId={evalId} run={run} />
+                  <RunRow
+                    key={run.id}
+                    evalId={evalId}
+                    run={run}
+                    selected={selectedRuns.includes(run.id)}
+                    onToggleSelect={toggleRunSelection}
+                  />
                 ))}
               </div>
             )}

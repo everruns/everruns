@@ -223,7 +223,7 @@ impl TelemetryConfig {
     /// - `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT`: Record input/output content (standard OTel)
     /// - `OTEL_RECORD_CONTENT`: Legacy alias for content recording
     pub fn from_env() -> Self {
-        use everruns_config::{env_bool, env_opt_string, env_string};
+        use crate::config::{env_bool, env_opt_string, env_string};
 
         let sdk_disabled = env_bool("OTEL_SDK_DISABLED", false);
 

@@ -322,6 +322,7 @@ impl Tool for ListSkillsTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         crate::tool_narration::narrate_skill(&tool_call.name, &tool_call.arguments, phase, locale)
     }
@@ -450,6 +451,7 @@ impl Tool for ActivateSkillFromVfsTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         crate::tool_narration::narrate_skill(&tool_call.name, &tool_call.arguments, phase, locale)
     }
@@ -777,6 +779,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for MockFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             session_id: SessionId,
@@ -1007,16 +1013,9 @@ mod tests {
     // Capability Trait Tests
     // ========================================================================
 
-    #[test]
-    fn test_skills_capability_metadata() {
-        let cap = SkillsCapability;
-
-        assert_eq!(cap.id(), "skills");
-        assert_eq!(cap.name(), "Agent Skills");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("wand"));
-        assert_eq!(cap.category(), Some("Core"));
-    }
+    // Metadata, tool-list, dependency, and builtin-registration constants are
+    // covered registry-wide by `builtin_capabilities_satisfy_registry_invariants`
+    // in `capabilities::tests`; the per-capability constant mirrors were removed.
 
     #[test]
     fn test_skills_has_system_prompt() {
@@ -1024,44 +1023,6 @@ mod tests {
         let prompt = cap.system_prompt_addition().unwrap();
 
         assert!(prompt.contains("/workspace/.agents/skills/"));
-    }
-
-    #[test]
-    fn test_skills_provides_tools() {
-        let cap = SkillsCapability;
-        let tools = cap.tools();
-        assert_eq!(tools.len(), 2);
-        assert_eq!(tools[0].name(), "list_skills");
-        assert_eq!(tools[1].name(), "activate_skill");
-    }
-
-    #[test]
-    fn test_skills_tool_definitions() {
-        let cap = SkillsCapability;
-        let defs = cap.tool_definitions();
-        assert_eq!(defs.len(), 2);
-
-        let names: Vec<&str> = defs.iter().map(|d| d.name()).collect();
-        assert!(names.contains(&"list_skills"));
-        assert!(names.contains(&"activate_skill"));
-    }
-
-    #[test]
-    fn test_skills_dependencies() {
-        let cap = SkillsCapability;
-        assert_eq!(cap.dependencies(), vec!["session_file_system"]);
-    }
-
-    #[test]
-    fn test_skills_registered_as_builtin() {
-        let registry = crate::capabilities::CapabilityRegistry::with_builtins();
-        assert!(
-            registry.has("skills"),
-            "skills capability should be a built-in"
-        );
-        let cap = registry.get("skills").unwrap();
-        assert_eq!(cap.name(), "Agent Skills");
-        assert_eq!(cap.category(), Some("Core"));
     }
 
     // ========================================================================

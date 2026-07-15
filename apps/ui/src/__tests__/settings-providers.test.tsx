@@ -2,6 +2,7 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode } from "react";
 import ProvidersPage from "@/app/(main)/settings/providers/page";
+import { CredentialFields } from "@/app/(main)/settings/providers/credential-fields";
 
 jest.mock("next/link", () => ({
   __esModule: true,
@@ -120,6 +121,42 @@ jest.mock("@/lib/query-keys", () => ({
     organizations: { all: ["organizations"], detail: (id: string) => ["organization", id] },
   },
 }));
+
+describe("CredentialFields", () => {
+  const apiKeySchema = {
+    fields: [
+      { name: "api_key", label: "API Key", field_type: "password" as const, required: true },
+    ],
+    instructions_markdown: "",
+  };
+
+  it("marks required ungrouped credentials as required by default", () => {
+    render(
+      <CredentialFields
+        schema={apiKeySchema}
+        values={{}}
+        onChange={jest.fn()}
+        idPrefix="credentials"
+      />,
+    );
+
+    expect(screen.getByLabelText("API Key")).toBeRequired();
+  });
+
+  it("does not require credentials when the add flow allows empty OAuth setup", () => {
+    render(
+      <CredentialFields
+        schema={apiKeySchema}
+        values={{}}
+        onChange={jest.fn()}
+        idPrefix="credentials"
+        allowEmptySubmit
+      />,
+    );
+
+    expect(screen.getByLabelText("API Key")).not.toBeRequired();
+  });
+});
 
 describe("ProvidersPage", () => {
   let queryClient: QueryClient;

@@ -165,8 +165,9 @@ service WorkerService {
 
     // === Session task registry ===
     // Background work owned by a session (specs/session-tasks.md).
-    // Task and message payloads travel as canonical core JSON (bytes) so the
-    // rich record shape stays defined in one place (everruns-core).
+    // Task and message payloads travel as native protobuf messages (EVE-642):
+    // serialized once by protobuf framing, consumed directly on the worker.
+    // Lifecycle invariants stay defined in one place (everruns-core).
     rpc CreateSessionTask(CreateSessionTaskRequest) returns (SessionTaskResponse);
     rpc UpdateSessionTask(UpdateSessionTaskRequest) returns (OptionalSessionTaskResponse);
     rpc GetSessionTask(GetSessionTaskRequest) returns (OptionalSessionTaskResponse);
@@ -274,6 +275,7 @@ service WorkerService {
     rpc PlatformSendMessage(PlatformSendMessageRequest) returns (PlatformSendMessageResponse);
     rpc PlatformGetMessages(PlatformGetMessagesRequest) returns (PlatformGetMessagesResponse);
     rpc InvokeScheduledAppChannel(InvokeScheduledAppChannelRequest) returns (InvokeScheduledAppChannelResponse);
+    rpc InvokeAgentTrigger(InvokeAgentTriggerRequest) returns (InvokeAgentTriggerResponse);
 
     // Turn management
     rpc PlatformWaitForIdle(PlatformWaitForIdleRequest) returns (PlatformWaitForIdleResponse);
@@ -284,13 +286,19 @@ service WorkerService {
     // Base URL for UI links
     rpc PlatformGetBaseUrl(PlatformGetBaseUrlRequest) returns (PlatformGetBaseUrlResponse);
 
-    // === Budget operations ===
+    // === Budget and rate-limit operations ===
     // Check budget status for a session (used by check_budget tool)
     rpc CheckBudgetsForSession(CheckBudgetsForSessionRequest) returns (CheckBudgetsForSessionResponse);
+
+    // Gate outbound tool calls through the control-plane org rate limiter.
+    rpc CheckOutboundToolRateLimit(CheckOutboundToolRateLimitRequest) returns (CheckOutboundToolRateLimitResponse);
 
     // === Machine payment operations ===
     // Execute a paid capability request through the control-plane payment authority.
     rpc ExecuteMachinePayment(ExecuteMachinePaymentRequest) returns (ExecuteMachinePaymentResponse);
+
+    // Authorize detached peer-session creation as the current session owner.
+    rpc AuthorizeSessionCreation(AuthorizeSessionCreationRequest) returns (AuthorizeSessionCreationResponse);
 }
 
 // ============================================================================
@@ -360,6 +368,7 @@ message Agent {
     repeated string capability_ids = 11;
     optional string display_name = 12;
     optional bool parallel_tool_calls = 13;
+    optional Uuid harness_id = 14;
 }
 
 message GetAgentRequest {
@@ -435,11 +444,12 @@ message Session {
     optional Uuid resolved_owner_user_id = 17;
     // Captured immutable agent version for runtime provenance
     optional Uuid agent_version_id = 18;
-    // Parent session ID for subagent and agent handoff sessions (nesting guard).
+    // Parent session ID for subagent and agent handoff sessions (depth tracking).
     optional Uuid parent_session_id = 19;
     optional string blueprint_id = 23;
     optional string blueprint_config_json = 24;
     optional bool parallel_tool_calls = 25;
+    optional string goal = 26;
 }
 
 message GetSessionRequest {
@@ -1159,6 +1169,8 @@ message McpServerInfo {
     map<string, string> headers = 5;
     string auth_mode = 6;
     optional string oauth_provider_id = 7;
+    // Protocol-era adoption policy: "auto" (default), "legacy", "stable", "rc".
+    string protocol_mode = 8;
 }
 
 // Request to get MCP server by name prefix (e.g., "microsoft_learn" from tool name "mcp_microsoft_learn__search")
@@ -1790,6 +1802,17 @@ message InvokeScheduledAppChannelResponse {
     bool created_session = 2;
 }
 
+message InvokeAgentTriggerRequest {
+    int64 org_id = 1;
+    string agent_id = 2;
+    string trigger_id = 3;
+}
+
+message InvokeAgentTriggerResponse {
+    string session_id = 1;
+    bool created_session = 2;
+}
+
 // === Turn management ===
 
 message PlatformWaitForIdleRequest {
@@ -1859,6 +1882,14 @@ message CheckBudgetsForSessionResponse {
     optional string hint = 3;
 }
 
+message CheckOutboundToolRateLimitRequest {
+    string org_key = 1;
+}
+
+message CheckOutboundToolRateLimitResponse {
+    bool allowed = 1;
+}
+
 // === Machine payment messages ===
 
 message ExecuteMachinePaymentRequest {
@@ -1881,6 +1912,15 @@ message ExecuteMachinePaymentResponse {
     optional string rail = 3;
     google.protobuf.Value response = 4;
     google.protobuf.Value receipt = 5;
+}
+
+message AuthorizeSessionCreationRequest {
+    int64 org_id = 1;
+    string session_id = 2;
+}
+
+message AuthorizeSessionCreationResponse {
+    string budget_root_session_id = 1;
 }
 
 // ============================================
@@ -1941,26 +1981,192 @@ message DeregisterSessionResourceResponse {
 }
 
 // === Session task registry messages ===
+//
+// EVE-642: Task and message payloads are modeled as native protobuf messages so
+// the ~20 structural fields (ids, enums, timestamps, nested TaskLinks/TaskError/
+// artifacts) are serialized once by protobuf framing and consumed directly on
+// the worker — no whole-struct JSON encode/decode into a byte field, no
+// per-element Vec re-encode on list handlers.
+//
+// The genuinely free-form fields (kind-specific `spec`, input-request
+// `expected`, and message `Data` parts) carry canonical serde_json bytes: they
+// are already JSON-shaped `serde_json::Value`s, so serializing them exactly once
+// as compact JSON is cheaper than walking them into a google.protobuf.Value tree
+// (measured — see benches/session_task_encoding.rs). everruns-core remains the
+// source of truth for lifecycle invariants (apply_task_update, new_session_task).
+
+// Lifecycle state (mirrors everruns_core::session_task::SessionTaskState).
+enum SessionTaskState {
+    SESSION_TASK_STATE_UNSPECIFIED = 0;
+    SESSION_TASK_STATE_QUEUED = 1;
+    SESSION_TASK_STATE_RUNNING = 2;
+    SESSION_TASK_STATE_AWAITING_INPUT = 3;
+    SESSION_TASK_STATE_SUCCEEDED = 4;
+    SESSION_TASK_STATE_FAILED = 5;
+    SESSION_TASK_STATE_CANCELED = 6;
+}
+
+// Wake policy (mirrors everruns_core::session_task::TaskWakePolicy).
+enum TaskWakePolicy {
+    TASK_WAKE_POLICY_UNSPECIFIED = 0;
+    TASK_WAKE_POLICY_SILENT = 1;
+    TASK_WAKE_POLICY_ON_TERMINAL = 2;
+    TASK_WAKE_POLICY_ON_ACTIVITY = 3;
+}
+
+// Direction of a task message (mirrors TaskMessageDirection).
+enum TaskMessageDirection {
+    TASK_MESSAGE_DIRECTION_UNSPECIFIED = 0;
+    TASK_MESSAGE_DIRECTION_INBOUND = 1;
+    TASK_MESSAGE_DIRECTION_OUTBOUND = 2;
+}
+
+// Progress shape (mirrors everruns_core::background::BackgroundProgress).
+message TaskProgressProto {
+    optional uint64 current = 1;
+    optional uint64 total = 2;
+    optional string unit = 3;
+    optional string label = 4;
+}
+
+// Structured ask posted by a task awaiting input (mirrors TaskInputRequest).
+message TaskInputRequestProto {
+    string id = 1;
+    string prompt = 2;
+    // Free-form expected-answer descriptor; canonical serde_json bytes. Absent
+    // (empty) means None.
+    bytes expected_json = 3;
+}
+
+// Terminal error detail (mirrors TaskError).
+message TaskErrorProto {
+    string kind = 1;
+    string message = 2;
+}
+
+// Typed artifact link (mirrors TaskArtifact).
+message TaskArtifactProto {
+    string name = 1;
+    string artifact_type = 2;  // serde rename "type"
+    optional string path = 3;
+    optional string url = 4;
+}
+
+// Cross-references owned by a task (mirrors TaskLinks).
+message TaskLinksProto {
+    optional Uuid child_session_id = 1;
+    optional string remote_task_id = 2;
+    repeated string resource_ids = 3;
+}
+
+// A unit of background work owned by a session (mirrors SessionTask).
+message SessionTaskProto {
+    string id = 1;
+    Uuid session_id = 2;
+    string kind = 3;
+    string display_name = 4;
+    // Kind-specific spec; canonical serde_json bytes (free-form JSON value).
+    bytes spec_json = 5;
+    SessionTaskState state = 6;
+    optional string state_detail = 7;
+    optional TaskProgressProto progress = 8;
+    optional TaskInputRequestProto input_request = 9;
+    optional Timestamp cancel_requested_at = 10;
+    optional string summary = 11;
+    optional string result_path = 12;
+    repeated TaskArtifactProto artifacts = 13;
+    optional TaskErrorProto error = 14;
+    int32 attempt = 15;
+    optional string worker_id = 16;
+    optional Timestamp heartbeat_at = 17;
+    TaskLinksProto links = 18;
+    TaskWakePolicy wake_policy = 19;
+    Timestamp created_at = 20;
+    optional Timestamp started_at = 21;
+    optional Timestamp finished_at = 22;
+    Timestamp updated_at = 23;
+}
+
+// Input for creating a task (mirrors CreateSessionTask).
+message CreateSessionTaskProto {
+    Uuid session_id = 1;
+    optional string id = 2;
+    string kind = 3;
+    string display_name = 4;
+    // Kind-specific spec; canonical serde_json bytes (free-form JSON value).
+    bytes spec_json = 5;
+    SessionTaskState state = 6;
+    TaskLinksProto links = 7;
+    TaskWakePolicy wake_policy = 8;
+}
+
+// Partial update (mirrors SessionTaskUpdate). All Option fields are absent when
+// unchanged; the field-presence semantics match the Rust struct.
+message SessionTaskUpdateProto {
+    optional SessionTaskState state = 1;
+    optional string state_detail = 2;
+    optional TaskProgressProto progress = 3;
+    optional TaskInputRequestProto input_request = 4;
+    optional string summary = 5;
+    optional string result_path = 6;
+    // Present (possibly empty) replaces the artifact list; absent leaves it.
+    optional TaskArtifactListProto artifacts = 7;
+    optional TaskErrorProto error = 8;
+    optional TaskLinksProto links = 9;
+    optional string worker_id = 10;
+    optional Timestamp heartbeat_at = 11;
+    optional int32 expected_attempt = 12;
+    bool increment_attempt = 13;
+}
+
+// Wrapper so an absent artifacts update is distinguishable from an empty list.
+message TaskArtifactListProto {
+    repeated TaskArtifactProto artifacts = 1;
+}
+
+// One content part of a task message (mirrors TaskMessagePart).
+message TaskMessagePartProto {
+    oneof part {
+        string text = 1;
+        // Free-form data part; canonical serde_json bytes.
+        bytes data_json = 2;
+    }
+}
+
+// A stored message exchanged between a session and a task (mirrors TaskMessage).
+message TaskMessageProto {
+    string id = 1;
+    string task_id = 2;
+    TaskMessageDirection direction = 3;
+    repeated TaskMessagePartProto content = 4;
+    optional string in_reply_to = 5;
+    Timestamp created_at = 6;
+}
+
+// Input for recording a message (mirrors NewTaskMessage).
+message NewTaskMessageProto {
+    TaskMessageDirection direction = 1;
+    repeated TaskMessagePartProto content = 2;
+    optional string in_reply_to = 3;
+    optional int32 expected_attempt = 4;
+}
 
 message CreateSessionTaskRequest {
-    // everruns_core::session_task::CreateSessionTask as JSON
-    bytes create_json = 1;
+    CreateSessionTaskProto create = 1;
 }
 
 message SessionTaskResponse {
-    // everruns_core::session_task::SessionTask as JSON
-    bytes task_json = 1;
+    SessionTaskProto task = 1;
 }
 
 message OptionalSessionTaskResponse {
-    optional bytes task_json = 1;
+    optional SessionTaskProto task = 1;
 }
 
 message UpdateSessionTaskRequest {
     Uuid session_id = 1;
     string task_id = 2;
-    // everruns_core::session_task::SessionTaskUpdate as JSON
-    bytes update_json = 3;
+    SessionTaskUpdateProto update = 3;
 }
 
 message GetSessionTaskRequest {
@@ -1975,7 +2181,7 @@ message ListSessionTasksRequest {
 }
 
 message ListSessionTasksResponse {
-    repeated bytes task_json = 1;
+    repeated SessionTaskProto tasks = 1;
 }
 
 message RequestCancelSessionTaskRequest {
@@ -1986,13 +2192,11 @@ message RequestCancelSessionTaskRequest {
 message RecordSessionTaskMessageRequest {
     Uuid session_id = 1;
     string task_id = 2;
-    // everruns_core::session_task::NewTaskMessage as JSON
-    bytes message_json = 3;
+    NewTaskMessageProto message = 3;
 }
 
 message SessionTaskMessageResponse {
-    // everruns_core::session_task::TaskMessage as JSON
-    bytes message_json = 1;
+    TaskMessageProto message = 1;
 }
 
 message ListSessionTaskMessagesRequest {
@@ -2002,7 +2206,7 @@ message ListSessionTaskMessagesRequest {
 }
 
 message ListSessionTaskMessagesResponse {
-    repeated bytes message_json = 1;
+    repeated TaskMessageProto messages = 1;
 }
 
 // === List orphaned session tasks ===

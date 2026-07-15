@@ -1,7 +1,9 @@
 use super::queries as q;
-use crate::api::messages::Message;
+use crate::api::messages::{Message, MessageRole};
 use crate::domains::common::*;
 use crate::domains::messages::CreateMessageContext;
+use everruns_core::typed_id::{AgentId, SessionId, SessionParticipantId};
+use everruns_core::{SessionParticipantKind, SessionParticipantRole};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -10,6 +12,8 @@ pub struct CreateMessage {
     /// Session's prefixed public identifier.
     pub session_id: String,
     pub message: crate::api::messages::InputMessage,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub addressed_participant_id: Option<SessionParticipantId>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub controls: Option<everruns_core::Controls>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -42,8 +46,15 @@ impl Command for CreateMessage {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Message, CommandError> {
+        if self.message.role != MessageRole::User {
+            return Err(CommandError::bad_request(
+                "Only user messages can be created through this endpoint",
+            ));
+        }
+
         let mut req = crate::api::messages::CreateMessageRequest {
             message: self.message,
+            addressed_participant_id: self.addressed_participant_id,
             controls: self.controls,
             metadata: self.metadata,
             tags: self.tags,
@@ -58,6 +69,19 @@ impl Command for CreateMessage {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Session"))?;
+        let session_row = ctx
+            .db
+            .get_session(ctx.org_id(), session_id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Session"))?;
+        let responder_agent_id = resolve_responder_agent_id(
+            ctx,
+            session_id,
+            session_row.agent_id,
+            req.addressed_participant_id,
+        )
+        .await?;
 
         q::message_service(ctx)?
             .create(
@@ -65,7 +89,7 @@ impl Command for CreateMessage {
                     org_id: ctx.org_id(),
                     user_id: ctx.caller.user_id,
                     harness_id: session.harness_id.uuid(),
-                    agent_id: session.agent_id.map(|id| id.uuid()),
+                    agent_id: responder_agent_id.map(|id| id.uuid()),
                     session_id: session_id.uuid(),
                     event_metadata: None,
                     request_id: self.request_id,
@@ -78,6 +102,52 @@ impl Command for CreateMessage {
 }
 
 inventory::submit! { CommandDescriptor::of::<CreateMessage>() }
+
+async fn resolve_responder_agent_id(
+    ctx: &Ctx,
+    session_id: SessionId,
+    default_agent_id: Option<AgentId>,
+    addressed_participant_id: Option<SessionParticipantId>,
+) -> Result<Option<AgentId>, CommandError> {
+    let Some(participant_id) = addressed_participant_id else {
+        return Ok(default_agent_id);
+    };
+
+    let participants = ctx
+        .db
+        .list_session_participants(ctx.org_id(), session_id)
+        .await
+        .map_err(classify_anyhow)?;
+    let participant = participants
+        .iter()
+        .find(|row| row.id == participant_id)
+        .ok_or_else(|| CommandError::not_found("Participant"))?;
+
+    if participant.left_at.is_some() {
+        return Err(CommandError::conflict(
+            "Addressed participant is no longer active",
+        ));
+    }
+    if participant.kind != SessionParticipantKind::Agent.to_string() {
+        return Err(CommandError::bad_request(
+            "Addressed participant must be an agent",
+        ));
+    }
+
+    let agent_id = participant.agent_id.ok_or_else(|| {
+        CommandError::internal(anyhow::anyhow!("agent participant missing agent_id"))
+    })?;
+
+    if participant.role != SessionParticipantRole::Host.to_string()
+        && participant.role != SessionParticipantRole::Member.to_string()
+    {
+        return Err(CommandError::bad_request(
+            "Addressed participant has an unsupported role",
+        ));
+    }
+
+    Ok(Some(agent_id))
+}
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListMessages {
@@ -125,12 +195,33 @@ inventory::submit! { CommandDescriptor::of::<ListMessages>() }
 #[derive(Debug, Serialize)]
 pub struct ExportSessionJsonl {
     pub body: String,
+    /// Image content parts that could not be materialized into an ATIF image
+    /// ContentPart and were flattened to `"[image]"` markers in the ATIF
+    /// document (typically 0, since most images export as content parts; always
+    /// 0 for the JSONL format, which keeps parts verbatim). Surfaced by the HTTP
+    /// route as the `X-Atif-Images-Omitted` header.
+    pub atif_images_omitted: usize,
+}
+
+/// Output format for session export.
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, ToSchema, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SessionExportFormat {
+    /// One materialized message per line (`application/x-ndjson`).
+    #[default]
+    Jsonl,
+    /// A single ATIF trajectory document folded from the session's event log
+    /// (`application/json`). See `specs/atif-adoption.md`.
+    Atif,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ExportSessionMessages {
     /// Session's prefixed public identifier.
     pub session_id: String,
+    /// Output format (defaults to `jsonl`).
+    #[serde(default)]
+    pub format: SessionExportFormat,
 }
 
 impl Command for ExportSessionMessages {
@@ -157,6 +248,32 @@ impl Command for ExportSessionMessages {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Session"))?;
+
+        if self.format == SessionExportFormat::Atif {
+            // Fold the full event log into one ATIF trajectory document.
+            // Secret scrubbing is always applied by the ATIF builder.
+            let event_service = crate::services::EventService::new(
+                ctx.db.clone(),
+                crate::event_delivery::EventDelivery::in_memory(),
+            );
+            let events = event_service
+                .list(session_id.uuid(), None, None, &[], &[], None, None)
+                .await
+                .map_err(classify_anyhow)?;
+            let trajectory = crate::atif::build_trajectory(
+                Some(&session_id.to_string()),
+                &events,
+                serde_json::Map::new(),
+                crate::atif::AtifOptions::default(),
+            );
+            let body = serde_json::to_string(&trajectory.document)
+                .map_err(|e| CommandError::internal(e.into()))?;
+            return Ok(ExportSessionJsonl {
+                body,
+                atif_images_omitted: trajectory.images_omitted,
+            });
+        }
+
         let messages = q::message_service(ctx)?
             .list(session_id.uuid())
             .await
@@ -170,8 +287,393 @@ impl Command for ExportSessionMessages {
             body.push('\n');
         }
 
-        Ok(ExportSessionJsonl { body })
+        Ok(ExportSessionJsonl {
+            body,
+            atif_images_omitted: 0,
+        })
     }
 }
 
 inventory::submit! { CommandDescriptor::of::<ExportSessionMessages>() }
+
+/// One byte-bounded segment of a segmented ATIF session export, ready for the
+/// HTTP route.
+#[derive(Debug)]
+pub struct SegmentExport {
+    /// Serialized standalone ATIF-v1.7 document for this segment.
+    pub body: String,
+    /// Images flattened to markers within this segment (per-segment
+    /// `X-Atif-Images-Omitted`).
+    pub images_omitted: usize,
+    /// Opaque cursor for the next segment, or `None` on the final/only segment.
+    pub next_cursor: Option<String>,
+    /// 0-based index of this segment in the chain.
+    pub segment_index: usize,
+}
+
+/// Build one segment of a segmented ATIF export.
+///
+/// Deliberately NOT a registered `Command`: segmentation is an HTTP-only
+/// concern, so it is kept off the MCP/CLI scripting catalog (which exposes the
+/// whole-document `export_session_messages`). It still reuses the same
+/// org-scoped session resolution and event fetch as `ExportSessionMessages`, so
+/// tenant scoping is identical — the session is resolved from the path and the
+/// cursor only selects a step offset within THAT session.
+pub async fn export_session_segment(
+    ctx: &Ctx,
+    session_id_str: &str,
+    cursor: Option<&str>,
+    max_bytes: usize,
+    link_base: &str,
+) -> Result<SegmentExport, CommandError> {
+    let session_id = q::parse_session_id(session_id_str)?;
+    q::session_service(ctx)?
+        .get(&ctx.caller, session_id.uuid(), None)
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Session"))?;
+
+    if let Some(raw_cursor) = cursor {
+        // THREAT[TM-DOS/TM-API]: reject malformed, oversized, or foreign-session
+        // cursors before loading the session event log or folding ATIF steps.
+        crate::atif::decode_segment_cursor(raw_cursor, &session_id.to_string()).map_err(|e| {
+            CommandError::bad_request(e.to_string()).with_code("atif_cursor_invalid")
+        })?;
+    }
+
+    let event_service = crate::services::EventService::new(
+        ctx.db.clone(),
+        crate::event_delivery::EventDelivery::in_memory(),
+    );
+    let events = event_service
+        .list(session_id.uuid(), None, None, &[], &[], None, None)
+        .await
+        .map_err(classify_anyhow)?;
+
+    let segment = crate::atif::build_segment(
+        &session_id.to_string(),
+        &events,
+        crate::atif::AtifOptions::default(),
+        cursor,
+        max_bytes,
+        link_base,
+    )
+    .map_err(|e| CommandError::bad_request(e.to_string()).with_code("atif_cursor_invalid"))?;
+
+    let body =
+        serde_json::to_string(&segment.document).map_err(|e| CommandError::internal(e.into()))?;
+    Ok(SegmentExport {
+        body,
+        images_omitted: segment.images_omitted,
+        next_cursor: segment.next_cursor,
+        segment_index: segment.segment_index,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::api::messages::{InputContentPart, InputMessage};
+    use crate::domains::sessions::SessionService;
+    use crate::event_delivery::EventDelivery;
+    use crate::storage::StorageBackend;
+    use crate::storage::models::{
+        AgentRow, CreateAgentRow, CreateHarnessRow, CreateSessionParticipantRow, CreateSessionRow,
+        SessionParticipantRow, SessionRow,
+    };
+    use async_trait::async_trait;
+    use everruns_core::typed_id::{HarnessId, MessageId};
+    use everruns_core::{Caller, DEFAULT_ORG_ID, PrincipalId};
+    use everruns_worker::AgentRunner;
+    use std::sync::{Arc, Mutex};
+    use tokio::time::{Duration, sleep};
+
+    #[derive(Default)]
+    struct RecordingRunner {
+        calls: Mutex<Vec<Option<AgentId>>>,
+    }
+
+    impl RecordingRunner {
+        fn calls(&self) -> Vec<Option<AgentId>> {
+            self.calls.lock().expect("runner calls lock").clone()
+        }
+    }
+
+    #[async_trait]
+    impl AgentRunner for RecordingRunner {
+        async fn start_run(
+            &self,
+            _org_id: i64,
+            _session_id: SessionId,
+            _harness_id: HarnessId,
+            agent_id: Option<AgentId>,
+            _input_message_id: MessageId,
+            _request_id: Option<String>,
+        ) -> anyhow::Result<()> {
+            self.calls.lock().expect("runner calls lock").push(agent_id);
+            Ok(())
+        }
+
+        async fn resume_after_tool_results(&self, _session_id: SessionId) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn cancel_run(&self, _session_id: SessionId) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn is_running(&self, _session_id: SessionId) -> bool {
+            false
+        }
+
+        async fn active_count(&self) -> usize {
+            self.calls.lock().expect("runner calls lock").len()
+        }
+    }
+
+    struct RoutingFixture {
+        ctx: Ctx,
+        runner: Arc<RecordingRunner>,
+        host_agent: AgentRow,
+        guest_agent: AgentRow,
+        session: SessionRow,
+        guest_participant: SessionParticipantRow,
+        user_participant: SessionParticipantRow,
+    }
+
+    async fn setup_routing_fixture() -> RoutingFixture {
+        let db = Arc::new(StorageBackend::in_memory());
+        let harness = db
+            .create_harness(
+                DEFAULT_ORG_ID,
+                CreateHarnessRow {
+                    name: "routing-harness".to_string(),
+                    display_name: None,
+                    description: None,
+                    system_prompt: Some("You are helpful.".to_string()),
+                    parent_harness_id: None,
+                    default_model_id: None,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    embedder_metadata: serde_json::json!({}),
+                    is_built_in: false,
+                },
+            )
+            .await
+            .expect("create harness");
+
+        let host_agent = seed_agent(&db, harness.id, "routing-host").await;
+        let guest_agent = seed_agent(&db, harness.id, "routing-guest").await;
+        let session = db
+            .create_session(CreateSessionRow {
+                org_id: DEFAULT_ORG_ID,
+                app_id: None,
+                harness_id: Some(harness.id),
+                agent_id: Some(host_agent.id),
+                agent_identity_id: None,
+                owner_principal_id: PrincipalId::from_seed(DEFAULT_ORG_ID as u128),
+                resolved_owner_user_id: None,
+                title: Some("Routing session".to_string()),
+                locale: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                system_prompt: None,
+                initial_files: serde_json::json!([]),
+                hints: None,
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+                blueprint_id: None,
+                blueprint_config: None,
+                parent_session_id: None,
+                budget_root_session_id: None,
+                workspace_id: None,
+            })
+            .await
+            .expect("create session");
+        let guest_participant = db
+            .create_session_participant(CreateSessionParticipantRow {
+                org_id: DEFAULT_ORG_ID,
+                session_id: session.id,
+                kind: SessionParticipantKind::Agent,
+                agent_id: Some(guest_agent.id),
+                agent_version_id: None,
+                principal_id: session.owner_principal_id,
+                role: SessionParticipantRole::Member,
+                joined_at: None,
+            })
+            .await
+            .expect("create guest participant");
+        let user_participant = db
+            .list_session_participants(DEFAULT_ORG_ID, session.id)
+            .await
+            .expect("list participants")
+            .into_iter()
+            .find(|row| row.kind == SessionParticipantKind::User.to_string())
+            .expect("user participant");
+
+        let runner = Arc::new(RecordingRunner::default());
+        let runner_trait: Arc<dyn AgentRunner> = runner.clone();
+        let message_service = Arc::new(crate::domains::messages::MessageService::new(
+            db.clone(),
+            runner_trait,
+            false,
+            EventDelivery::in_memory(),
+        ));
+        let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db.clone(), None)
+            .with_session_service(Arc::new(SessionService::new(db)))
+            .with_message_service(message_service);
+
+        RoutingFixture {
+            ctx,
+            runner,
+            host_agent,
+            guest_agent,
+            session,
+            guest_participant,
+            user_participant,
+        }
+    }
+
+    async fn seed_agent(db: &StorageBackend, harness_id: HarnessId, name: &str) -> AgentRow {
+        db.create_agent(
+            DEFAULT_ORG_ID,
+            CreateAgentRow {
+                public_id: AgentId::new().to_string(),
+                name: name.to_string(),
+                display_name: None,
+                description: None,
+                system_prompt: format!("You are {name}."),
+                default_model_id: None,
+                harness_id,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+            },
+        )
+        .await
+        .expect("create agent")
+    }
+
+    fn user_input(text: &str) -> InputMessage {
+        InputMessage {
+            role: MessageRole::User,
+            content: vec![InputContentPart::text(text)],
+        }
+    }
+
+    fn create_message_command(
+        session_id: SessionId,
+        addressed_participant_id: Option<SessionParticipantId>,
+    ) -> CreateMessage {
+        CreateMessage {
+            session_id: session_id.to_string(),
+            message: user_input("hello"),
+            addressed_participant_id,
+            controls: None,
+            metadata: None,
+            tags: None,
+            external_actor: None,
+            request_id: None,
+        }
+    }
+
+    async fn wait_for_runner_calls(runner: &RecordingRunner, expected_len: usize) {
+        for _ in 0..20 {
+            if runner.calls().len() >= expected_len {
+                return;
+            }
+            sleep(Duration::from_millis(10)).await;
+        }
+        panic!(
+            "runner recorded {} calls, expected at least {expected_len}",
+            runner.calls().len()
+        );
+    }
+
+    #[tokio::test]
+    async fn unaddressed_turn_routes_to_host_agent() {
+        let fixture = setup_routing_fixture().await;
+
+        create_message_command(fixture.session.id, None)
+            .execute(&fixture.ctx)
+            .await
+            .expect("create message");
+
+        wait_for_runner_calls(&fixture.runner, 1).await;
+        assert_eq!(fixture.runner.calls(), vec![Some(fixture.host_agent.id)]);
+    }
+
+    #[tokio::test]
+    async fn addressed_turn_routes_to_guest_agent() {
+        let fixture = setup_routing_fixture().await;
+
+        create_message_command(fixture.session.id, Some(fixture.guest_participant.id))
+            .execute(&fixture.ctx)
+            .await
+            .expect("create message");
+
+        wait_for_runner_calls(&fixture.runner, 1).await;
+        assert_eq!(fixture.runner.calls(), vec![Some(fixture.guest_agent.id)]);
+    }
+
+    #[tokio::test]
+    async fn addressed_user_participant_is_rejected() {
+        let fixture = setup_routing_fixture().await;
+
+        let err = create_message_command(fixture.session.id, Some(fixture.user_participant.id))
+            .execute(&fixture.ctx)
+            .await
+            .expect_err("user participant cannot be addressed for agent routing");
+
+        assert_eq!(err.status().as_u16(), 400);
+        assert!(fixture.runner.calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn left_guest_participant_is_rejected() {
+        let fixture = setup_routing_fixture().await;
+        fixture
+            .ctx
+            .db
+            .leave_session_participant(
+                DEFAULT_ORG_ID,
+                fixture.session.id,
+                fixture.guest_participant.id,
+            )
+            .await
+            .expect("leave guest");
+
+        let err = create_message_command(fixture.session.id, Some(fixture.guest_participant.id))
+            .execute(&fixture.ctx)
+            .await
+            .expect_err("left participant cannot be addressed");
+
+        assert_eq!(err.status().as_u16(), 409);
+        assert!(fixture.runner.calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn agent_role_input_is_rejected_before_turn_starts() {
+        let fixture = setup_routing_fixture().await;
+        let mut command = create_message_command(fixture.session.id, None);
+        command.message.role = MessageRole::Agent;
+
+        let err = command
+            .execute(&fixture.ctx)
+            .await
+            .expect_err("agent input role cannot create a user turn");
+
+        assert_eq!(err.status().as_u16(), 400);
+        assert!(fixture.runner.calls().is_empty());
+    }
+}

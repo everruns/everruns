@@ -2421,7 +2421,15 @@ pub struct VoiceSessionFailedData {
 /// - `session.activated` → SessionActivatedData
 /// - `session.idled` → SessionIdledData
 /// - `file.written` → FileWrittenData
-#[derive(Debug, Clone, Serialize, Deserialize)]
+// `untagged` is retained ONLY for encoding and schema, not decoding:
+//   - `Serialize` emits the payload inline (the event `type` lives as a sibling
+//     field on `Event`/`EventRequest`, never inside `data`), and
+//   - the OpenAPI schema renders as a `oneOf` of the payload schemas.
+// Decoding never goes through serde's untagged matching. The single source of
+// truth for the `type` -> variant mapping is `event_data_kinds!` below, used by
+// `deserialize_event_data`. `EventData` deliberately does NOT derive
+// `Deserialize`, so the declaration order of variants is irrelevant.
+#[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[cfg_attr(feature = "openapi", schema(
@@ -2434,15 +2442,8 @@ pub enum EventData {
     InputMessage(InputMessageData),
 
     // Output events (lifecycle: started → delta* → completed)
-    // NOTE: OutputMessageDelta must come BEFORE OutputMessageStarted for untagged enum deserialization.
-    // OutputMessageDelta has more required fields (turn_id, delta, accumulated) while
-    // OutputMessageStarted only requires turn_id (model is optional). If OutputMessageStarted
-    // comes first, it will match OutputMessageDelta JSON and discard delta/accumulated fields.
     OutputMessageDelta(OutputMessageDeltaData),
     OutputMessageStarted(OutputMessageStartedData),
-    // OutputMessageReplaced has more required fields than OutputMessageCompleted's
-    // optional-heavy schema, so it is listed before to keep untagged
-    // deserialization deterministic.
     OutputMessageReplaced(OutputMessageReplacedData),
     OutputMessageCompleted(OutputMessageCompletedData),
 
@@ -2472,30 +2473,12 @@ pub enum EventData {
     LlmGeneration(LlmGenerationData),
 
     // Extended thinking events (for models with reasoning like Claude)
-    // NOTE: ReasonThinkingDelta must come BEFORE ReasonThinkingStarted/Completed for untagged enum deserialization.
-    // ReasonThinkingDelta has more required fields (turn_id, delta, accumulated) while
-    // ReasonThinkingStarted/Completed have fewer required fields. If simpler types come first,
-    // they will match their JSON and discard delta/accumulated fields.
-    //
-    // ReasonItem (durable opaque reasoning record) must come BEFORE the
-    // ReasonThinking* variants for the same reason: ReasonThinkingStartedData
-    // only requires `turn_id`, so a `reason.item` JSON payload would otherwise
-    // bind to ReasonThinkingStarted and silently lose `provider`, `item_id`,
-    // `encrypted_content`, etc.
     ReasonThinkingDelta(ReasonThinkingDeltaData),
     ReasonItem(ReasonItemData),
     ReasonThinkingStarted(ReasonThinkingStartedData),
     ReasonThinkingCompleted(ReasonThinkingCompletedData),
 
-    // NOTE: TurnSealed requires both `turn_id` and `reason`, so it is more
-    // specific than the turn_id-only variants and is placed here (before
-    // TurnCancelled) so untagged deserialization binds `turn.sealed` payloads
-    // to it rather than to a looser turn_id-only variant.
     TurnSealed(TurnSealedData),
-
-    // NOTE: TurnCancelled is placed at the end (before Raw/Session events) because it only
-    // requires turn_id. If placed earlier, it would greedily match JSON for other turn_id-based
-    // events (OutputMessageStarted, ReasonThinkingStarted, etc.) and discard their specific fields.
     TurnCancelled(TurnCancelledData),
 
     // Session events
@@ -2544,63 +2527,6 @@ pub enum EventData {
 }
 
 impl EventData {
-    /// Get the event type constant for this data.
-    /// For Unsupported events, returns "unsupported" (internal use only).
-    pub fn event_type(&self) -> &'static str {
-        match self {
-            EventData::InputMessage(_) => INPUT_MESSAGE,
-            EventData::OutputMessageStarted(_) => OUTPUT_MESSAGE_STARTED,
-            EventData::OutputMessageDelta(_) => OUTPUT_MESSAGE_DELTA,
-            EventData::OutputMessageReplaced(_) => OUTPUT_MESSAGE_REPLACED,
-            EventData::OutputMessageCompleted(_) => OUTPUT_MESSAGE_COMPLETED,
-            EventData::TurnStarted(_) => TURN_STARTED,
-            EventData::TurnCompleted(_) => TURN_COMPLETED,
-            EventData::TurnFailed(_) => TURN_FAILED,
-            EventData::TurnSealed(_) => TURN_SEALED,
-            EventData::TurnCancelled(_) => TURN_CANCELLED,
-            EventData::ReasonStarted(_) => REASON_STARTED,
-            EventData::ReasonCompleted(_) => REASON_COMPLETED,
-            EventData::ReasonRecovered(_) => REASON_RECOVERED,
-            EventData::CapabilityUsage(_) => CAPABILITY_USAGE,
-            EventData::ActStarted(_) => ACT_STARTED,
-            EventData::ActCompleted(_) => ACT_COMPLETED,
-            EventData::ToolStarted(_) => TOOL_STARTED,
-            EventData::ToolCompleted(_) => TOOL_COMPLETED,
-            EventData::ToolProgress(_) => TOOL_PROGRESS,
-            EventData::ToolOutputDelta(_) => TOOL_OUTPUT_DELTA,
-            EventData::ToolCallRequested(_) => TOOL_CALL_REQUESTED,
-            EventData::TranscriptRepaired(_) => TRANSCRIPT_REPAIRED,
-            EventData::ToolCallRepaired(_) => TOOL_CALL_REPAIRED,
-            EventData::LlmGeneration(_) => LLM_GENERATION,
-            EventData::ReasonThinkingDelta(_) => REASON_THINKING_DELTA,
-            EventData::ReasonThinkingStarted(_) => REASON_THINKING_STARTED,
-            EventData::ReasonThinkingCompleted(_) => REASON_THINKING_COMPLETED,
-            EventData::ReasonItem(_) => REASON_ITEM,
-            EventData::SessionStarted(_) => SESSION_STARTED,
-            EventData::SessionActivated(_) => SESSION_ACTIVATED,
-            EventData::SessionIdled(_) => SESSION_IDLED,
-            EventData::TaskCreated(_) => TASK_CREATED,
-            EventData::TaskUpdated(_) => TASK_UPDATED,
-            EventData::TaskMessageSent(_) => TASK_MESSAGE_SENT,
-            EventData::TaskMessageReceived(_) => TASK_MESSAGE_RECEIVED,
-            EventData::ContextCompacting(_) => CONTEXT_COMPACTING,
-            EventData::ContextCompacted(_) => CONTEXT_COMPACTED,
-            EventData::FileWritten(_) => FILE_WRITTEN,
-            EventData::BudgetWarning(_) => BUDGET_WARNING,
-            EventData::BudgetPaused(_) => BUDGET_PAUSED,
-            EventData::BudgetExhausted(_) => BUDGET_EXHAUSTED,
-            EventData::BudgetResumed(_) => BUDGET_RESUMED,
-            EventData::VoiceSessionStarted(_) => VOICE_SESSION_STARTED,
-            EventData::VoiceInputTranscriptDelta(_) => VOICE_INPUT_TRANSCRIPT_DELTA,
-            EventData::VoiceInputTranscriptCompleted(_) => VOICE_INPUT_TRANSCRIPT_COMPLETED,
-            EventData::VoiceOutputTranscriptDelta(_) => VOICE_OUTPUT_TRANSCRIPT_DELTA,
-            EventData::VoiceOutputTranscriptCompleted(_) => VOICE_OUTPUT_TRANSCRIPT_COMPLETED,
-            EventData::VoiceSessionEnded(_) => VOICE_SESSION_ENDED,
-            EventData::VoiceSessionFailed(_) => VOICE_SESSION_FAILED,
-            EventData::Unsupported { .. } => "unsupported",
-        }
-    }
-
     /// Check if this is an unsupported event type.
     /// Unsupported events should be filtered before API responses.
     pub fn is_unsupported(&self) -> bool {
@@ -2618,168 +2544,142 @@ impl EventData {
     }
 }
 
-/// Deserialize event data from JSON based on event_type.
+/// Single source of truth for event identity.
 ///
-/// This function uses the event_type to select the correct EventData variant,
-/// avoiding issues with serde's untagged enum deserialization where simpler
-/// types (fewer required fields) might incorrectly match before more complex ones.
+/// Each entry maps an event `type` string to its [`EventData`] variant and the
+/// payload struct that variant carries. The macro generates both directions from
+/// this one list:
+///   - [`EventData::event_type`] (variant -> `type` string), and
+///   - [`deserialize_event_data`] (`type` string -> variant).
 ///
-/// # Arguments
-/// * `event_type` - The event type string (e.g., "reason.thinking.completed")
-/// * `data` - The JSON value to deserialize
-///
-/// # Returns
-/// The deserialized EventData variant, or EventData::Unsupported if the type is unknown.
-/// Unsupported events log a warning and should be filtered before API responses.
-pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> EventData {
-    let result =
-        match event_type {
-            INPUT_MESSAGE => serde_json::from_value::<InputMessageData>(data.clone())
-                .map(EventData::InputMessage),
-            OUTPUT_MESSAGE_STARTED => {
-                serde_json::from_value::<OutputMessageStartedData>(data.clone())
-                    .map(EventData::OutputMessageStarted)
+/// Keeping them in one place means the two can never drift out of sync, which is
+/// why there is no separate hand-written dispatcher. Encoding and the OpenAPI
+/// schema are handled by the `#[serde(untagged)]` `Serialize` derive on the enum;
+/// declaration order there is irrelevant because decoding is driven entirely by
+/// the `type` string below.
+macro_rules! event_data_kinds {
+    ($( $variant:ident($data:ty) = $type_const:path ),+ $(,)?) => {
+        impl EventData {
+            /// Get the event type constant for this data.
+            /// For Unsupported events, returns "unsupported" (internal use only).
+            pub fn event_type(&self) -> &'static str {
+                match self {
+                    $( EventData::$variant(_) => $type_const, )+
+                    EventData::Unsupported { .. } => "unsupported",
+                }
             }
-            OUTPUT_MESSAGE_DELTA => serde_json::from_value::<OutputMessageDeltaData>(data.clone())
-                .map(EventData::OutputMessageDelta),
-            OUTPUT_MESSAGE_REPLACED => {
-                serde_json::from_value::<OutputMessageReplacedData>(data.clone())
-                    .map(EventData::OutputMessageReplaced)
-            }
-            OUTPUT_MESSAGE_COMPLETED => {
-                serde_json::from_value::<OutputMessageCompletedData>(data.clone())
-                    .map(EventData::OutputMessageCompleted)
-            }
-            TURN_STARTED => {
-                serde_json::from_value::<TurnStartedData>(data.clone()).map(EventData::TurnStarted)
-            }
-            TURN_COMPLETED => serde_json::from_value::<TurnCompletedData>(data.clone())
-                .map(EventData::TurnCompleted),
-            TURN_FAILED => {
-                serde_json::from_value::<TurnFailedData>(data.clone()).map(EventData::TurnFailed)
-            }
-            TURN_SEALED => {
-                serde_json::from_value::<TurnSealedData>(data.clone()).map(EventData::TurnSealed)
-            }
-            TURN_CANCELLED => serde_json::from_value::<TurnCancelledData>(data.clone())
-                .map(EventData::TurnCancelled),
-            REASON_STARTED => serde_json::from_value::<ReasonStartedData>(data.clone())
-                .map(EventData::ReasonStarted),
-            REASON_COMPLETED => serde_json::from_value::<ReasonCompletedData>(data.clone())
-                .map(EventData::ReasonCompleted),
-            REASON_RECOVERED => serde_json::from_value::<ReasonRecoveredData>(data.clone())
-                .map(EventData::ReasonRecovered),
-            CAPABILITY_USAGE => serde_json::from_value::<CapabilityUsageData>(data.clone())
-                .map(EventData::CapabilityUsage),
-            ACT_STARTED => {
-                serde_json::from_value::<ActStartedData>(data.clone()).map(EventData::ActStarted)
-            }
-            ACT_COMPLETED => serde_json::from_value::<ActCompletedData>(data.clone())
-                .map(EventData::ActCompleted),
-            TOOL_STARTED => {
-                serde_json::from_value::<ToolStartedData>(data.clone()).map(EventData::ToolStarted)
-            }
-            TOOL_COMPLETED => serde_json::from_value::<ToolCompletedData>(data.clone())
-                .map(EventData::ToolCompleted),
-            TOOL_PROGRESS => serde_json::from_value::<ToolProgressData>(data.clone())
-                .map(EventData::ToolProgress),
-            TOOL_OUTPUT_DELTA => serde_json::from_value::<ToolOutputDeltaData>(data.clone())
-                .map(EventData::ToolOutputDelta),
-            TOOL_CALL_REQUESTED => serde_json::from_value::<ToolCallRequestedData>(data.clone())
-                .map(EventData::ToolCallRequested),
-            TRANSCRIPT_REPAIRED => serde_json::from_value::<TranscriptRepairedData>(data.clone())
-                .map(EventData::TranscriptRepaired),
-            TOOL_CALL_REPAIRED => serde_json::from_value::<ToolCallRepairedData>(data.clone())
-                .map(EventData::ToolCallRepaired),
-            LLM_GENERATION => serde_json::from_value::<LlmGenerationData>(data.clone())
-                .map(EventData::LlmGeneration),
-            REASON_THINKING_STARTED => {
-                serde_json::from_value::<ReasonThinkingStartedData>(data.clone())
-                    .map(EventData::ReasonThinkingStarted)
-            }
-            REASON_THINKING_DELTA => {
-                serde_json::from_value::<ReasonThinkingDeltaData>(data.clone())
-                    .map(EventData::ReasonThinkingDelta)
-            }
-            REASON_THINKING_COMPLETED => {
-                serde_json::from_value::<ReasonThinkingCompletedData>(data.clone())
-                    .map(EventData::ReasonThinkingCompleted)
-            }
-            REASON_ITEM => {
-                serde_json::from_value::<ReasonItemData>(data.clone()).map(EventData::ReasonItem)
-            }
-            SESSION_STARTED => serde_json::from_value::<SessionStartedData>(data.clone())
-                .map(EventData::SessionStarted),
-            SESSION_ACTIVATED => serde_json::from_value::<SessionActivatedData>(data.clone())
-                .map(EventData::SessionActivated),
-            SESSION_IDLED => serde_json::from_value::<SessionIdledData>(data.clone())
-                .map(EventData::SessionIdled),
-            CONTEXT_COMPACTING => serde_json::from_value::<ContextCompactingData>(data.clone())
-                .map(EventData::ContextCompacting),
-            CONTEXT_COMPACTED => serde_json::from_value::<ContextCompactedData>(data.clone())
-                .map(EventData::ContextCompacted),
-            FILE_WRITTEN => {
-                serde_json::from_value::<FileWrittenData>(data.clone()).map(EventData::FileWritten)
-            }
-            BUDGET_WARNING => serde_json::from_value::<BudgetEventData>(data.clone())
-                .map(EventData::BudgetWarning),
-            BUDGET_PAUSED => {
-                serde_json::from_value::<BudgetEventData>(data.clone()).map(EventData::BudgetPaused)
-            }
-            BUDGET_EXHAUSTED => serde_json::from_value::<BudgetEventData>(data.clone())
-                .map(EventData::BudgetExhausted),
-            BUDGET_RESUMED => serde_json::from_value::<BudgetEventData>(data.clone())
-                .map(EventData::BudgetResumed),
-            VOICE_SESSION_STARTED => {
-                serde_json::from_value::<VoiceSessionStartedData>(data.clone())
-                    .map(EventData::VoiceSessionStarted)
-            }
-            VOICE_INPUT_TRANSCRIPT_DELTA => {
-                serde_json::from_value::<VoiceTranscriptData>(data.clone())
-                    .map(EventData::VoiceInputTranscriptDelta)
-            }
-            VOICE_INPUT_TRANSCRIPT_COMPLETED => {
-                serde_json::from_value::<VoiceTranscriptData>(data.clone())
-                    .map(EventData::VoiceInputTranscriptCompleted)
-            }
-            VOICE_OUTPUT_TRANSCRIPT_DELTA => {
-                serde_json::from_value::<VoiceTranscriptData>(data.clone())
-                    .map(EventData::VoiceOutputTranscriptDelta)
-            }
-            VOICE_OUTPUT_TRANSCRIPT_COMPLETED => {
-                serde_json::from_value::<VoiceTranscriptData>(data.clone())
-                    .map(EventData::VoiceOutputTranscriptCompleted)
-            }
-            VOICE_SESSION_ENDED => serde_json::from_value::<VoiceSessionEndedData>(data.clone())
-                .map(EventData::VoiceSessionEnded),
-            VOICE_SESSION_FAILED => serde_json::from_value::<VoiceSessionFailedData>(data.clone())
-                .map(EventData::VoiceSessionFailed),
-            TASK_CREATED => serde_json::from_value::<SessionTaskEventData>(data.clone())
-                .map(EventData::TaskCreated),
-            TASK_UPDATED => serde_json::from_value::<SessionTaskEventData>(data.clone())
-                .map(EventData::TaskUpdated),
-            TASK_MESSAGE_SENT => serde_json::from_value::<TaskMessageEventData>(data.clone())
-                .map(EventData::TaskMessageSent),
-            TASK_MESSAGE_RECEIVED => serde_json::from_value::<TaskMessageEventData>(data.clone())
-                .map(EventData::TaskMessageReceived),
-            _ => {
-                // Unknown event type - return as unsupported with warning
-                return EventData::unsupported(event_type.to_string(), data);
-            }
-        };
-
-    // If deserialization fails, return as unsupported
-    result.unwrap_or_else(|e| {
-        tracing::warn!(
-            event_type = %event_type,
-            error = %e,
-            "Failed to deserialize known event type - treating as unsupported"
-        );
-        EventData::Unsupported {
-            event_type: event_type.to_string(),
-            data,
         }
-    })
+
+        /// Deserialize event data from JSON based on `event_type`.
+        ///
+        /// The outer `type` string selects the variant, avoiding serde's untagged
+        /// matching where a payload with fewer required fields could shadow a more
+        /// specific one.
+        ///
+        /// # Returns
+        /// The deserialized [`EventData`] variant. Unknown event types, and known
+        /// types whose payload fails to decode, fall back to
+        /// [`EventData::Unsupported`] (logged) rather than erroring or panicking.
+        /// Unsupported events should be filtered before API responses.
+        pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> EventData {
+            let result = match event_type {
+                $(
+                    $type_const => serde_json::from_value::<$data>(data.clone())
+                        .map(EventData::$variant),
+                )+
+                _ => return EventData::unsupported(event_type.to_string(), data),
+            };
+
+            result.unwrap_or_else(|e| {
+                tracing::warn!(
+                    event_type = %event_type,
+                    error = %e,
+                    "Failed to deserialize known event type - treating as unsupported"
+                );
+                EventData::Unsupported {
+                    event_type: event_type.to_string(),
+                    data,
+                }
+            })
+        }
+    };
+}
+
+event_data_kinds! {
+    // Input events
+    InputMessage(InputMessageData) = INPUT_MESSAGE,
+
+    // Output events
+    OutputMessageStarted(OutputMessageStartedData) = OUTPUT_MESSAGE_STARTED,
+    OutputMessageDelta(OutputMessageDeltaData) = OUTPUT_MESSAGE_DELTA,
+    OutputMessageReplaced(OutputMessageReplacedData) = OUTPUT_MESSAGE_REPLACED,
+    OutputMessageCompleted(OutputMessageCompletedData) = OUTPUT_MESSAGE_COMPLETED,
+
+    // Turn lifecycle events
+    TurnStarted(TurnStartedData) = TURN_STARTED,
+    TurnCompleted(TurnCompletedData) = TURN_COMPLETED,
+    TurnFailed(TurnFailedData) = TURN_FAILED,
+    TurnSealed(TurnSealedData) = TURN_SEALED,
+    TurnCancelled(TurnCancelledData) = TURN_CANCELLED,
+
+    // Atom lifecycle events
+    ReasonStarted(ReasonStartedData) = REASON_STARTED,
+    ReasonCompleted(ReasonCompletedData) = REASON_COMPLETED,
+    ReasonRecovered(ReasonRecoveredData) = REASON_RECOVERED,
+    CapabilityUsage(CapabilityUsageData) = CAPABILITY_USAGE,
+    ActStarted(ActStartedData) = ACT_STARTED,
+    ActCompleted(ActCompletedData) = ACT_COMPLETED,
+    ToolStarted(ToolStartedData) = TOOL_STARTED,
+    ToolCompleted(ToolCompletedData) = TOOL_COMPLETED,
+    ToolProgress(ToolProgressData) = TOOL_PROGRESS,
+    ToolOutputDelta(ToolOutputDeltaData) = TOOL_OUTPUT_DELTA,
+    ToolCallRequested(ToolCallRequestedData) = TOOL_CALL_REQUESTED,
+
+    // Recovery / repair events
+    TranscriptRepaired(TranscriptRepairedData) = TRANSCRIPT_REPAIRED,
+    ToolCallRepaired(ToolCallRepairedData) = TOOL_CALL_REPAIRED,
+
+    // LLM events
+    LlmGeneration(LlmGenerationData) = LLM_GENERATION,
+
+    // Extended thinking events
+    ReasonThinkingStarted(ReasonThinkingStartedData) = REASON_THINKING_STARTED,
+    ReasonThinkingDelta(ReasonThinkingDeltaData) = REASON_THINKING_DELTA,
+    ReasonThinkingCompleted(ReasonThinkingCompletedData) = REASON_THINKING_COMPLETED,
+    ReasonItem(ReasonItemData) = REASON_ITEM,
+
+    // Session events
+    SessionStarted(SessionStartedData) = SESSION_STARTED,
+    SessionActivated(SessionActivatedData) = SESSION_ACTIVATED,
+    SessionIdled(SessionIdledData) = SESSION_IDLED,
+
+    // Context compaction events
+    ContextCompacting(ContextCompactingData) = CONTEXT_COMPACTING,
+    ContextCompacted(ContextCompactedData) = CONTEXT_COMPACTED,
+
+    // File events
+    FileWritten(FileWrittenData) = FILE_WRITTEN,
+
+    // Budget events (all four share BudgetEventData)
+    BudgetWarning(BudgetEventData) = BUDGET_WARNING,
+    BudgetPaused(BudgetEventData) = BUDGET_PAUSED,
+    BudgetExhausted(BudgetEventData) = BUDGET_EXHAUSTED,
+    BudgetResumed(BudgetEventData) = BUDGET_RESUMED,
+
+    // Voice events
+    VoiceSessionStarted(VoiceSessionStartedData) = VOICE_SESSION_STARTED,
+    VoiceInputTranscriptDelta(VoiceTranscriptData) = VOICE_INPUT_TRANSCRIPT_DELTA,
+    VoiceInputTranscriptCompleted(VoiceTranscriptData) = VOICE_INPUT_TRANSCRIPT_COMPLETED,
+    VoiceOutputTranscriptDelta(VoiceTranscriptData) = VOICE_OUTPUT_TRANSCRIPT_DELTA,
+    VoiceOutputTranscriptCompleted(VoiceTranscriptData) = VOICE_OUTPUT_TRANSCRIPT_COMPLETED,
+    VoiceSessionEnded(VoiceSessionEndedData) = VOICE_SESSION_ENDED,
+    VoiceSessionFailed(VoiceSessionFailedData) = VOICE_SESSION_FAILED,
+
+    // Session task lifecycle events
+    TaskCreated(SessionTaskEventData) = TASK_CREATED,
+    TaskUpdated(SessionTaskEventData) = TASK_UPDATED,
+    TaskMessageSent(TaskMessageEventData) = TASK_MESSAGE_SENT,
+    TaskMessageReceived(TaskMessageEventData) = TASK_MESSAGE_RECEIVED,
 }
 
 /// Macro to generate From implementations for EventData variants.
@@ -2845,7 +2745,10 @@ impl EventData {
             VOICE_INPUT_TRANSCRIPT_COMPLETED => EventData::VoiceInputTranscriptCompleted(data),
             VOICE_OUTPUT_TRANSCRIPT_DELTA => EventData::VoiceOutputTranscriptDelta(data),
             VOICE_OUTPUT_TRANSCRIPT_COMPLETED => EventData::VoiceOutputTranscriptCompleted(data),
-            _ => panic!("Unknown voice transcript event type: {event_type}"),
+            _ => EventData::unsupported(
+                event_type.to_string(),
+                serde_json::to_value(&data).unwrap_or(serde_json::Value::Null),
+            ),
         }
     }
 }
@@ -2859,7 +2762,10 @@ impl EventData {
             BUDGET_PAUSED => EventData::BudgetPaused(data),
             BUDGET_EXHAUSTED => EventData::BudgetExhausted(data),
             BUDGET_RESUMED => EventData::BudgetResumed(data),
-            _ => panic!("Unknown budget event type: {event_type}"),
+            _ => EventData::unsupported(
+                event_type.to_string(),
+                serde_json::to_value(&data).unwrap_or(serde_json::Value::Null),
+            ),
         }
     }
 }
@@ -3513,8 +3419,8 @@ mod tests {
 
     #[test]
     fn test_output_message_delta_deserialization_preserves_fields() {
-        // This test verifies that OutputMessageDelta deserializes correctly with all fields
-        // (regression test for the untagged enum ordering fix)
+        // Verify OutputMessageDelta decodes with all fields preserved through the
+        // type-driven dispatcher (regression guard for field-dropping decode bugs).
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = OutputMessageDeltaData {
             turn_id,
@@ -3525,8 +3431,8 @@ mod tests {
         // Serialize to JSON
         let json = serde_json::to_value(EventData::OutputMessageDelta(data.clone())).unwrap();
 
-        // Deserialize back
-        let deserialized: EventData = serde_json::from_value(json).unwrap();
+        // Deserialize back through the real (type-driven) decode path
+        let deserialized = deserialize_event_data(OUTPUT_MESSAGE_DELTA, json);
 
         // Verify it's OutputMessageDelta and fields are preserved
         match deserialized {
@@ -3551,8 +3457,8 @@ mod tests {
         // Serialize to JSON
         let json = serde_json::to_value(EventData::OutputMessageStarted(data.clone())).unwrap();
 
-        // Deserialize back
-        let deserialized: EventData = serde_json::from_value(json).unwrap();
+        // Deserialize back through the real (type-driven) decode path
+        let deserialized = deserialize_event_data(OUTPUT_MESSAGE_STARTED, json);
 
         // Verify it's OutputMessageStarted and fields are preserved
         match deserialized {
@@ -3566,9 +3472,10 @@ mod tests {
 
     #[test]
     fn test_reason_thinking_started_deserialization() {
-        // NOTE: ReasonThinkingStartedData and OutputMessageStartedData have identical structures
-        // (turn_id + model), so serde's untagged enum can't distinguish them.
-        // This test uses deserialize_event_data() which uses the event_type to select the correct variant.
+        // NOTE: ReasonThinkingStartedData and OutputMessageStartedData have identical
+        // structures (turn_id + model), so a payload alone can't distinguish them.
+        // Decoding therefore goes through deserialize_event_data(), which selects the
+        // correct variant from the event_type.
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = ReasonThinkingStartedData {
             turn_id,
@@ -3757,22 +3664,20 @@ mod tests {
         }
     }
 
-    /// `EventData` is `#[serde(untagged)]`, so variant order shifts which
-    /// variant a JSON object resolves to. `ReasonThinkingStartedData` only
-    /// requires `turn_id`, so a `reason.item` payload bound to it would
-    /// silently drop `provider`, `item_id`, etc. Guard the relative ordering
-    /// of the two reasoning variants here. (Cross-variant overlap with
-    /// `OutputMessageStartedData` is an existing untagged-enum limitation
-    /// across the protocol; canonical parsing goes through
-    /// `deserialize_event_data` which dispatches on the outer `type` string.)
+    /// `ReasonThinkingStartedData` only requires `turn_id`, so a richer
+    /// `reason.item` payload also satisfies it structurally. Decoding does not
+    /// rely on serde to disambiguate (`EventData` has no `Deserialize` impl, so
+    /// variant declaration order is irrelevant); `deserialize_event_data`
+    /// selects the variant from the outer `type` string. Guard that the overlap
+    /// exists and that type dispatch resolves `reason.item` to `ReasonItem`
+    /// (keeping `provider`, `item_id`, …) rather than the looser
+    /// `ReasonThinkingStarted`.
     #[test]
-    fn test_reason_item_variant_precedes_reason_thinking_started() {
-        // Find variant positions in the source order. We rely on the enum's
-        // discriminant-order property: when serializing an untagged enum,
-        // serde tries variants in declaration order at deserialization.
-        // Build a payload whose only reasoning-variant candidates are
-        // ReasonThinkingStarted (turn_id + optional model) and ReasonItem
-        // (turn_id + provider + item_id + …) and confirm ReasonItem wins.
+    fn test_reason_item_resolves_via_type_dispatch_despite_overlap() {
+        // The two reasoning variants overlap structurally: ReasonThinkingStarted
+        // (turn_id + optional model) accepts any superset, while ReasonItem
+        // (turn_id + provider + item_id + …) is richer. Confirm both parse in
+        // isolation, then that type dispatch picks ReasonItem.
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let json = serde_json::json!({
             "turn_id": turn_id.to_string(),
@@ -3784,11 +3689,10 @@ mod tests {
             "token_count": 7,
         });
 
-        // Try the two candidate variants in isolation. ReasonThinkingStarted
-        // greedily matches because it ignores unknown fields, so the safe
-        // contract is "if you have to pick one, pick ReasonItem". We assert
-        // both succeed in isolation (proving the overlap) and verify the
-        // dispatcher resolves correctly given the event_type.
+        // Both candidate structs accept the payload in isolation
+        // (ReasonThinkingStarted ignores the extra fields), proving the overlap.
+        // The canonical path disambiguates via the event_type, not via any
+        // declaration order.
         let as_thinking: ReasonThinkingStartedData =
             serde_json::from_value(json.clone()).expect("thinking ignores extra fields");
         assert_eq!(as_thinking.turn_id, turn_id);
