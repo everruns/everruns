@@ -156,3 +156,10 @@ export function consumeReturnTo(): string | null {
   sessionStorage.removeItem(RETURN_TO_STORAGE_KEY);
   return stored;
 }
+
+/** Resolve a post-auth target while clearing any stored one-shot redirect. */
+export function getPostAuthTarget(returnTo: string | null | undefined): string {
+  const sanitized = sanitizeReturnTo(returnTo);
+  const stored = consumeReturnTo();
+  return sanitized || stored || "/dashboard";
+}

@@ -3,6 +3,7 @@ import {
   buildSignupHref,
   consumeReturnTo,
   getLoginRedirectPath,
+  getPostAuthTarget,
   isFullPageLoginRedirect,
   navigateToLogin,
   persistReturnTo,
@@ -152,5 +153,29 @@ describe("return_to session storage", () => {
     persistReturnTo("//evil.com");
     expect(sessionStorage.getItem(RETURN_TO_STORAGE_KEY)).toBeNull();
     expect(consumeReturnTo()).toBeNull();
+  });
+});
+
+describe("getPostAuthTarget", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it("uses the URL return_to and clears any stored one-shot redirect", () => {
+    persistReturnTo("/invite/token123");
+
+    expect(getPostAuthTarget("/invite/token123")).toBe("/invite/token123");
+    expect(sessionStorage.getItem(RETURN_TO_STORAGE_KEY)).toBeNull();
+  });
+
+  it("falls back to the stored return_to when the URL has none", () => {
+    persistReturnTo("/settings/providers");
+
+    expect(getPostAuthTarget(null)).toBe("/settings/providers");
+    expect(sessionStorage.getItem(RETURN_TO_STORAGE_KEY)).toBeNull();
+  });
+
+  it("falls back to dashboard when no safe target exists", () => {
+    expect(getPostAuthTarget("https://evil.com")).toBe("/dashboard");
   });
 });
