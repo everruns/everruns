@@ -11533,6 +11533,7 @@ export interface components {
       accumulated: string;
       /** @description The new text chunk */
       delta: string;
+      phase?: null | components["schemas"]["ExecutionPhase"];
       /**
        * @description Turn ID this delta belongs to
        * @example turn_01933b5a00007000800000000000001
@@ -11583,6 +11584,7 @@ export interface components {
       iteration?: number | null;
       /** @description Optional model name being used */
       model?: string | null;
+      phase?: null | components["schemas"]["ExecutionPhase"];
       /**
        * @description Turn ID this output belongs to
        * @example turn_01933b5a00007000800000000000001

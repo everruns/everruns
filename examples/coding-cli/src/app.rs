@@ -2071,6 +2071,7 @@ mod tests {
                 turn_id: TurnId::new(),
                 model: None,
                 iteration: Some(3),
+                phase: None,
             },
         );
 

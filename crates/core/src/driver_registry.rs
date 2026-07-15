@@ -141,6 +141,16 @@ pub enum LlmStreamEvent {
     },
     /// Tool calls from the LLM
     ToolCalls(Vec<ToolCall>),
+    /// Provider-native execution phase for the current assistant message,
+    /// surfaced mid-stream before completion (EVE-774).
+    ///
+    /// Only emitted by providers whose stream carries a native phase ahead of
+    /// the terminal `Done` metadata (OpenAI Responses exposes it on
+    /// `response.output_item.added`). Consumers use it as a best-effort hint to
+    /// classify streamed assistant text as commentary vs final answer; the
+    /// authoritative value is still the completed `Message.phase`. Other
+    /// providers never emit this and stay unclassified until completion.
+    MessagePhase(crate::message::ExecutionPhase),
     /// Streaming completed
     Done(Box<LlmCompletionMetadata>),
     /// Error during streaming
@@ -288,6 +298,9 @@ pub trait ChatDriver: Send + Sync {
                     }
                 }
                 LlmStreamEvent::ToolCalls(calls) => tool_calls = calls,
+                // Streamed phase hint is a mid-stream refinement only; the
+                // non-streaming collector relies on the terminal Done metadata.
+                LlmStreamEvent::MessagePhase(_) => {}
                 LlmStreamEvent::Done(meta) => metadata = *meta,
                 LlmStreamEvent::Error(err) => {
                     return Err(crate::error::AgentLoopError::llm_kind(

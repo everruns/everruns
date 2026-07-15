@@ -310,6 +310,7 @@ mod tests {
                 turn_id: TurnId::new(),
                 delta: "hello".to_string(),
                 accumulated: "hello".to_string(),
+                phase: None,
             }),
             metadata: None,
             tags: None,
