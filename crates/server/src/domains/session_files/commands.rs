@@ -93,19 +93,22 @@ impl Command for ListWorkspaceFiles {
 
     async fn execute(self, ctx: &Ctx) -> Result<GetResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        let workspace_key = q::verify_session(ctx, session_id).await?;
+        let access = q::verify_session(ctx, session_id).await?;
 
-        let files = if self.recursive {
+        let mut files = if self.recursive {
             q::service(ctx)
-                .list_all(workspace_key)
+                .list_all(access.workspace_key)
                 .await
                 .map_err(q::classify_storage)?
         } else {
             q::service(ctx)
-                .list_directory(workspace_key, "/")
+                .list_directory(access.workspace_key, "/")
                 .await
                 .map_err(q::classify_storage)?
         };
+        if !access.user_memory_allowed {
+            files = q::redact_user_memory_files(files, |file| &file.path);
+        }
         Ok(GetResponse::Listing(ListResponse::new(files)))
     }
 }
@@ -140,31 +143,35 @@ impl Command for GetWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<GetResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        let workspace_key = q::verify_session(ctx, session_id).await?;
+        let access = q::verify_session(ctx, session_id).await?;
         let path = q::normalize_path(&self.path);
+        access.ensure_user_memory_access(&path)?;
         let stat = q::service(ctx)
-            .stat(workspace_key, &path)
+            .stat(access.workspace_key, &path)
             .await
             .map_err(q::classify_storage)?;
 
         match stat {
             Some(s) if s.is_directory => {
-                let files = if self.recursive {
+                let mut files = if self.recursive {
                     q::service(ctx)
-                        .list_all(workspace_key)
+                        .list_all(access.workspace_key)
                         .await
                         .map_err(q::classify_storage)?
                 } else {
                     q::service(ctx)
-                        .list_directory(workspace_key, &path)
+                        .list_directory(access.workspace_key, &path)
                         .await
                         .map_err(q::classify_storage)?
                 };
+                if self.recursive && !access.user_memory_allowed {
+                    files = q::redact_user_memory_files(files, |file| &file.path);
+                }
                 Ok(GetResponse::Listing(ListResponse::new(files)))
             }
             Some(_) => {
                 let file = q::service(ctx)
-                    .read_file(workspace_key, &path)
+                    .read_file(access.workspace_key, &path)
                     .await
                     .map_err(q::classify_storage)?
                     .ok_or_else(|| CommandError::not_found("File"))?;
@@ -208,6 +215,8 @@ impl Command for CreateWorkspaceFile {
         let session_id = q::parse_session_id(&self.session_id)?;
         let workspace_key = q::verify_session_for_write(ctx, session_id).await?;
         let path = q::normalize_path(&self.path);
+        let access = q::verify_session(ctx, session_id).await?;
+        access.ensure_user_memory_mutation_access(&path)?;
         if q::is_reserved_path(&path) {
             return Err(CommandError::bad_request(
                 "Paths starting with '_' are reserved for system actions",
@@ -301,6 +310,8 @@ impl Command for UpdateWorkspaceFile {
         let session_id = q::parse_session_id(&self.session_id)?;
         let workspace_key = q::verify_session_for_write(ctx, session_id).await?;
         let path = q::normalize_path(&self.path);
+        let access = q::verify_session(ctx, session_id).await?;
+        access.ensure_user_memory_mutation_access(&path)?;
         if q::is_reserved_path(&path) {
             return Err(CommandError::bad_request(
                 "Paths starting with '_' are reserved for system actions",
@@ -373,6 +384,8 @@ impl Command for DeleteWorkspaceFile {
         let session_id = q::parse_session_id(&self.session_id)?;
         let workspace_key = q::verify_session_for_write(ctx, session_id).await?;
         let path = q::normalize_path(&self.path);
+        let access = q::verify_session(ctx, session_id).await?;
+        access.ensure_user_memory_mutation_access(&path)?;
         let deleted = q::service(ctx)
             .delete(workspace_key, &path, self.recursive)
             .await
@@ -411,14 +424,13 @@ impl Command for MoveWorkspaceFile {
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         let workspace_key = q::verify_session_for_write(ctx, session_id).await?;
+        let src_path = q::normalize_path(&self.req.src_path);
+        let dst_path = q::normalize_path(&self.req.dst_path);
+        let access = q::verify_session(ctx, session_id).await?;
+        access.ensure_user_memory_mutation_access(&src_path)?;
+        access.ensure_user_memory_mutation_access(&dst_path)?;
         q::service(ctx)
-            .move_file(
-                workspace_key,
-                MoveFileInput {
-                    src_path: self.req.src_path,
-                    dst_path: self.req.dst_path,
-                },
-            )
+            .move_file(workspace_key, MoveFileInput { src_path, dst_path })
             .await
             .map_err(map_move_or_copy_error)?
             .ok_or_else(|| CommandError::not_found("Source"))
@@ -455,14 +467,13 @@ impl Command for CopyWorkspaceFile {
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         let workspace_key = q::verify_session_for_write(ctx, session_id).await?;
+        let src_path = q::normalize_path(&self.req.src_path);
+        let dst_path = q::normalize_path(&self.req.dst_path);
+        let access = q::verify_session(ctx, session_id).await?;
+        access.ensure_user_memory_mutation_access(&src_path)?;
+        access.ensure_user_memory_mutation_access(&dst_path)?;
         q::service(ctx)
-            .copy_file(
-                workspace_key,
-                CopyFileInput {
-                    src_path: self.req.src_path,
-                    dst_path: self.req.dst_path,
-                },
-            )
+            .copy_file(workspace_key, CopyFileInput { src_path, dst_path })
             .await
             .map_err(map_move_or_copy_error)?
             .ok_or_else(|| CommandError::not_found("Source"))
@@ -502,10 +513,10 @@ impl Command for GrepWorkspaceFiles {
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<GrepResult>, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        let workspace_key = q::verify_session(ctx, session_id).await?;
-        q::service(ctx)
+        let access = q::verify_session(ctx, session_id).await?;
+        let results = q::service(ctx)
             .grep(
-                workspace_key,
+                access.workspace_key,
                 GrepInput {
                     pattern: self.req.pattern,
                     path_pattern: self.req.path_pattern,
@@ -519,7 +530,18 @@ impl Command for GrepWorkspaceFiles {
                 } else {
                     q::classify_storage(error)
                 }
-            })
+            })?;
+        // Non-owners must not see matches under the private `/memory/user`
+        // subtree. Redact those results (consistent with recursive `list`)
+        // instead of failing the whole scan, so workspace-wide grep stays
+        // available to callers that can't be resolved as the session owner
+        // (e.g. no-auth/dev deployments).
+        let results = if access.user_memory_allowed {
+            results
+        } else {
+            q::redact_user_memory_files(results, |result| &result.path)
+        };
+        Ok(results)
     }
 }
 
@@ -556,10 +578,11 @@ impl Command for StatWorkspaceFile {
 
     async fn execute(self, ctx: &Ctx) -> Result<FileStat, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        let workspace_key = q::verify_session(ctx, session_id).await?;
+        let access = q::verify_session(ctx, session_id).await?;
         let path = q::normalize_path(&self.req.path);
+        access.ensure_user_memory_access(&path)?;
         q::service(ctx)
-            .stat(workspace_key, &path)
+            .stat(access.workspace_key, &path)
             .await
             .map_err(q::classify_storage)?
             .ok_or_else(|| CommandError::not_found("Path"))
@@ -570,9 +593,10 @@ inventory::submit! { CommandDescriptor::of::<StatWorkspaceFile>() }
 
 #[cfg(test)]
 mod tests {
-    use super::CreateWorkspaceFile;
+    use super::{CreateWorkspaceFile, GetWorkspaceFile, GrepWorkspaceFiles};
     use crate::domains::common::{Command, CommandErrorKind, Ctx};
-    use crate::domains::session_files::types::CreateFileRequest;
+    use crate::domains::session_files::queries as q;
+    use crate::domains::session_files::types::{CreateFileRequest, GrepRequest};
     use crate::services::CapabilityService;
     use crate::storage::StorageBackend;
     use crate::storage::models::{CreateSessionRow, CreateWorkspaceRow};
@@ -624,6 +648,7 @@ mod tests {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
             workspace_id,
         }
     }
@@ -646,6 +671,139 @@ mod tests {
             is_platform_user: false,
             is_internal: false,
         }
+    }
+
+    #[tokio::test]
+    async fn legacy_session_file_read_rejects_other_users_private_memory() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let owner_user_id = Uuid::new_v4();
+        let mut row = session_row(None);
+        row.resolved_owner_user_id = Some(owner_user_id);
+        let session = db.create_session(row).await.expect("create session");
+        let file_service = crate::domains::session_files::WorkspaceFileService::new(db.clone());
+        file_service
+            .create_file(
+                session.workspace_id,
+                crate::domains::session_files::CreateFileInput {
+                    path: "/memory/user/secret.md".to_string(),
+                    content: Some("private".to_string()),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .expect("seed private user memory file");
+
+        let mut caller = owner_caller();
+        caller.user_id = Some(Uuid::new_v4());
+        let ctx = Ctx::minimal_for_test(caller, db, None);
+
+        let err = GetWorkspaceFile {
+            session_id: session.id.to_string(),
+            path: "/memory/user/secret.md".to_string(),
+            recursive: false,
+        }
+        .run(&ctx)
+        .await
+        .expect_err("other users must not read private user memory");
+        assert!(matches!(err.kind, CommandErrorKind::Forbidden(_)));
+    }
+
+    /// Grep must stay available to non-owners (and unresolved callers such as
+    /// no-auth/dev), returning workspace matches while redacting any hits under
+    /// the private `/memory/user` subtree rather than failing the whole scan.
+    #[tokio::test]
+    async fn grep_redacts_private_memory_for_non_owner() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let owner_user_id = Uuid::new_v4();
+        let mut row = session_row(None);
+        row.resolved_owner_user_id = Some(owner_user_id);
+        let session = db.create_session(row).await.expect("create session");
+        let file_service = crate::domains::session_files::WorkspaceFileService::new(db.clone());
+        file_service
+            .create_file(
+                session.workspace_id,
+                crate::domains::session_files::CreateFileInput {
+                    path: "/notes.txt".to_string(),
+                    content: Some("needle in workspace".to_string()),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .expect("seed workspace file");
+        file_service
+            .create_file(
+                session.workspace_id,
+                crate::domains::session_files::CreateFileInput {
+                    path: "/memory/user/secret.md".to_string(),
+                    content: Some("needle in private memory".to_string()),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .expect("seed private user memory file");
+
+        // Caller is not the resolved owner -> user memory must be redacted.
+        let mut caller = owner_caller();
+        caller.user_id = Some(Uuid::new_v4());
+        let ctx = Ctx::minimal_for_test(caller, db, None);
+
+        let results = GrepWorkspaceFiles {
+            session_id: session.id.to_string(),
+            req: GrepRequest {
+                pattern: "needle".to_string(),
+                path_pattern: None,
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect("grep must remain available to non-owners");
+
+        assert!(
+            results.iter().any(|r| r.path == "/notes.txt"),
+            "workspace match must be returned"
+        );
+        assert!(
+            !results.iter().any(|r| q::is_user_memory_path(&r.path)),
+            "private /memory/user matches must be redacted"
+        );
+    }
+
+    #[tokio::test]
+    async fn legacy_session_file_read_allows_owner_private_memory() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let owner_user_id = Uuid::new_v4();
+        let mut row = session_row(None);
+        row.resolved_owner_user_id = Some(owner_user_id);
+        let session = db.create_session(row).await.expect("create session");
+        let file_service = crate::domains::session_files::WorkspaceFileService::new(db.clone());
+        file_service
+            .create_file(
+                session.workspace_id,
+                crate::domains::session_files::CreateFileInput {
+                    path: "/memory/user/secret.md".to_string(),
+                    content: Some("private".to_string()),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .expect("seed private user memory file");
+
+        let mut caller = owner_caller();
+        caller.user_id = Some(owner_user_id);
+        let ctx = Ctx::minimal_for_test(caller, db, None);
+
+        GetWorkspaceFile {
+            session_id: session.id.to_string(),
+            path: "/memory/user/secret.md".to_string(),
+            recursive: false,
+        }
+        .run(&ctx)
+        .await
+        .expect("owner can read private user memory");
     }
 
     /// Active-status gate: once a workspace is archived, legacy session-fs

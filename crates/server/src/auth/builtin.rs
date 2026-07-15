@@ -7,9 +7,7 @@
 
 use async_trait::async_trait;
 use axum::Router;
-use everruns_core::{
-    DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgMembership, OrgRole, PlatformDefinition,
-};
+use everruns_core::{OrgMembership, OrgRole, PlatformDefinition};
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;
@@ -37,7 +35,8 @@ const PAT_CACHE_MAX_CAPACITY: u64 = 10_000;
 /// This is the default for OSS deployments.
 ///
 /// HARNESS-SEED SAFETY NET (see also `specs/authentication.md`):
-/// `register` and `oauth_callback` both add new users to `DEFAULT_ORG_ID`.
+/// When default-org auto-join is enabled, `register` and `oauth_callback`
+/// add new users to `DEFAULT_ORG_ID`.
 /// The background seed task (see `seed::spawn_seed_task_with_platform_definition`)
 /// provisions built-in harnesses for that org, but it runs asynchronously
 /// with a 500 ms initial delay — so a user who signs up during the startup
@@ -252,17 +251,9 @@ impl BuiltinAuthBackend {
             return Err(AuthError::unauthorized("Invalid or expired token"));
         };
 
-        // Fetch organization memberships for the user
+        // Fetch real organization memberships for the user. A zero-org user must
+        // stay zero-org so onboarding can create an isolated tenant-owned org.
         let organizations = fetch_user_organizations(&self.db, user_id).await?;
-
-        // If user has no organizations, fall back to default organization
-        if organizations.is_empty() {
-            tracing::warn!(
-                user_id = %user_id,
-                "User has no organizations, falling back to default org"
-            );
-        }
-        let organizations = organizations_or_default(organizations);
 
         let roles: Vec<String> = serde_json::from_value(user.roles).map_err(|e| {
             tracing::error!(user_id = %user_id, error = %e, "Failed to decode JWT user roles");
@@ -353,6 +344,7 @@ impl AuthBackend for BuiltinAuthBackend {
             db: self.db.clone(),
             auth: auth_state,
             frontend_url: self.config.frontend_url.clone(),
+            login_origin: self.config.login_origin.clone(),
             base_url: api_base_url,
         };
         let cli_routes = super::cli_auth::cli_auth_routes(cli_state);
@@ -371,6 +363,7 @@ impl AuthBackend for BuiltinAuthBackend {
             db: self.db.clone(),
             auth: auth_state.clone(),
             frontend_url: self.config.frontend_url.clone(),
+            login_origin: self.config.login_origin.clone(),
             base_url: api_base_url.clone(),
         };
         let mcp_oauth_state = super::mcp_oauth::McpOAuthState {
@@ -379,6 +372,7 @@ impl AuthBackend for BuiltinAuthBackend {
             jwt_service: self.jwt_service.clone(),
             issuer_url: root_url_from_api_base(&api_base_url),
             frontend_url: self.config.frontend_url.clone(),
+            login_origin: self.config.login_origin.clone(),
             rate_limiter: self.rate_limiter.clone(),
         };
         Some(
@@ -399,6 +393,7 @@ impl AuthBackend for BuiltinAuthBackend {
 
         AuthConfigResponse {
             mode: self.config.mode.as_str().to_string(),
+            login_origin: self.config.login_origin.clone(),
             password_auth_enabled: self.config.password_auth_enabled(),
             oauth_providers,
             signup_enabled: self.config.signup_enabled(),
@@ -427,20 +422,6 @@ pub(super) async fn fetch_user_organizations(
             role: row.role.parse::<OrgRole>().unwrap_or(OrgRole::Member),
         })
         .collect())
-}
-
-/// Return organizations as-is, or fall back to default org membership if empty
-pub(super) fn organizations_or_default(organizations: Vec<OrgMembership>) -> Vec<OrgMembership> {
-    if organizations.is_empty() {
-        vec![OrgMembership {
-            org_id: DEFAULT_ORG_ID,
-            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
-            name: "Default Organization".to_string(),
-            role: OrgRole::Member,
-        }]
-    } else {
-        organizations
-    }
 }
 
 #[cfg(test)]

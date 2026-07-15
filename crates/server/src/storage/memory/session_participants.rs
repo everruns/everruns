@@ -1,5 +1,6 @@
 use super::super::models::*;
 use super::InMemoryDatabase;
+use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
 use anyhow::{Result, bail};
 use everruns_core::{
     SessionId, SessionParticipantId, SessionParticipantKind, SessionParticipantRole,
@@ -136,6 +137,7 @@ impl InMemoryDatabase {
             .cloned()
             .collect();
         rows.sort_by_key(|row| (row.joined_at, row.created_at, row.id.uuid()));
+        rows.truncate(MAX_SESSION_PARTICIPANT_HISTORY + 1);
         Ok(rows)
     }
 
@@ -213,6 +215,21 @@ impl InMemoryDatabase {
             }
         }
 
+        if input.kind == SessionParticipantKind::Agent
+            && input.role == SessionParticipantRole::Member
+        {
+            let has_active_agent = self.session_participants.read().values().any(|row| {
+                row.session_id == input.session_id
+                    && row.kind == "agent"
+                    && row.role == "member"
+                    && row.agent_id == input.agent_id
+                    && row.left_at.is_none()
+            });
+            if has_active_agent {
+                bail!("session already has an active agent participant for this agent");
+            }
+        }
+
         Ok(())
     }
 
@@ -237,6 +254,18 @@ impl InMemoryDatabase {
             });
             if has_active_user {
                 bail!("session already has an active user participant for this principal");
+            }
+        }
+        if row.kind == "agent" && row.role == "member" {
+            let has_active_agent = self.session_participants.read().values().any(|existing| {
+                existing.session_id == row.session_id
+                    && existing.kind == "agent"
+                    && existing.role == "member"
+                    && existing.agent_id == row.agent_id
+                    && existing.left_at.is_none()
+            });
+            if has_active_agent {
+                bail!("session already has an active agent participant for this agent");
             }
         }
         self.session_participants.write().insert(row.id, row);

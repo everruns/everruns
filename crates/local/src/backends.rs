@@ -18,6 +18,9 @@ use everruns_runtime::{PlatformStoreFactory, RuntimeBackends, ScheduleStoreFacto
 use crate::db::SqliteDb;
 use crate::platform_store::{LocalPlatformStore, LocalSessionRunner};
 use crate::profile::LocalProfile;
+use crate::schedule_runner::{
+    LocalScheduleRunner, LocalScheduleRunnerConfig, LocalScheduleRunnerHandle,
+};
 use crate::schedule_store::LocalScheduleStore;
 use crate::task_registry::LocalSessionTaskRegistry;
 
@@ -104,6 +107,29 @@ impl LocalBackends {
             self.org_id,
             self.profile.owner_principal_id,
         )
+    }
+
+    /// Start the in-process schedule runner with production defaults.
+    ///
+    /// Retain the returned handle for the host lifetime and call
+    /// [`LocalScheduleRunnerHandle::shutdown`] during graceful shutdown.
+    pub fn start_schedule_runner(
+        &self,
+        runner: Arc<dyn LocalSessionRunner>,
+    ) -> Result<LocalScheduleRunnerHandle> {
+        self.start_schedule_runner_with_config(runner, LocalScheduleRunnerConfig::default())
+    }
+
+    /// Start the in-process schedule runner with custom polling and claim settings.
+    pub fn start_schedule_runner_with_config(
+        &self,
+        runner: Arc<dyn LocalSessionRunner>,
+        config: LocalScheduleRunnerConfig,
+    ) -> Result<LocalScheduleRunnerHandle> {
+        LocalScheduleRunner::new(self.schedule_store()?, runner)
+            .with_config(config)
+            .start()
+            .map_err(everruns_core::AgentLoopError::from)
     }
 
     /// Attach a platform store factory built from a caller-supplied

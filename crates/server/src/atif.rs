@@ -29,6 +29,7 @@ use everruns_core::events::{
 };
 use everruns_core::message::{ContentPart, Message};
 use serde_json::{Map, Value, json};
+use std::collections::HashMap;
 
 use crate::domains::evals::dataset::{REDACTED, sanitize_value};
 
@@ -265,6 +266,10 @@ fn fold_messages(messages: &[Message], redact: bool) -> Vec<Value> {
     let mut steps: Vec<Value> = Vec::new();
     // Index of the agent step that trailing tool results attach observations to.
     let mut open_agent: Option<usize> = None;
+    // Model-view tool result messages carry only a call id. Preserve the
+    // originating tool name from prior assistant messages so structural
+    // subagent links are only emitted for real spawn_agent results.
+    let mut tool_names_by_call_id: HashMap<String, String> = HashMap::new();
 
     for message in messages {
         let ts = json!(message.created_at.to_rfc3339());
@@ -308,6 +313,7 @@ fn fold_messages(messages: &[Message], redact: bool) -> Vec<Value> {
                     .tool_calls()
                     .iter()
                     .map(|tc| {
+                        tool_names_by_call_id.insert(tc.id.clone(), tc.name.clone());
                         json!({
                             "tool_call_id": tc.id,
                             "function_name": tc.name,
@@ -332,8 +338,13 @@ fn fold_messages(messages: &[Message], redact: bool) -> Vec<Value> {
             }
             MessageRole::ToolResult => {
                 let mut omitted = Vec::new();
+                let tool_name = message.tool_result_content().and_then(|tr| {
+                    tool_names_by_call_id
+                        .get(&tr.tool_call_id)
+                        .map(String::as_str)
+                });
                 let Some(observation) =
-                    message_tool_result_observation(message, redact, &mut omitted)
+                    message_tool_result_observation(message, redact, &mut omitted, tool_name)
                 else {
                     continue;
                 };
@@ -396,6 +407,7 @@ fn message_tool_result_observation(
     message: &Message,
     redact: bool,
     omitted: &mut Vec<Value>,
+    tool_name: Option<&str>,
 ) -> Option<Value> {
     let tr = message.tool_result_content()?;
     let base = if let Some(err) = &tr.error {
@@ -447,9 +459,12 @@ fn message_tool_result_observation(
         }),
     );
     obs.insert("extra".to_string(), Value::Object(extra));
-    // Subagent linkage parity with the event fold: a spawn result carries the
-    // child session id under `subagent_id`.
-    if let Some(res) = &tr.result
+    // Subagent linkage parity with the event fold: only spawn_agent results
+    // treat `subagent_id` as structural metadata. Other tools may return a
+    // user-controlled field with that name, which must remain content and
+    // therefore be redacted with the observation body.
+    if tool_name == Some("spawn_agent")
+        && let Some(res) = &tr.result
         && let Some(id) = res.get("subagent_id").and_then(Value::as_str)
         && !id.is_empty()
     {
@@ -563,6 +578,14 @@ impl SegmentCursor {
     }
 }
 
+/// Validate and decode the cheap, session-bound parts of a segmented ATIF cursor.
+///
+/// This must run before loading or folding session events in request handlers so
+/// malformed, oversized, or foreign-session cursors fail without expensive work.
+pub fn decode_segment_cursor(cursor: &str, expected_session: &str) -> Result<usize, CursorError> {
+    SegmentCursor::decode(cursor, expected_session)
+}
+
 /// A rejected cursor. Rendered as an HTTP 400 by the export route; never a panic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CursorError(pub &'static str);
@@ -611,23 +634,22 @@ pub fn build_segment(
     max_bytes: usize,
     link_base: &str,
 ) -> Result<SegmentedTrajectory, CursorError> {
+    // Validate attacker-controlled cursor syntax/session binding before the
+    // expensive event fold. Only the offset bounds check needs folded step count.
+    let start = match cursor {
+        None => 0,
+        Some(raw) => decode_segment_cursor(raw, session_id)?,
+    };
+
     let folded = fold_events(events, options.redact_content);
     let all_steps = folded.steps;
     let total = all_steps.len();
 
-    // Resolve the start offset from the cursor (validated, session-bound).
-    let start = match cursor {
-        None => 0,
-        Some(raw) => {
-            let off = SegmentCursor::decode(raw, session_id)?;
-            // An offset at/after the end is only valid when it is exactly the
-            // end (an empty session, or a client re-fetching past the tail).
-            if off > total {
-                return Err(CursorError("cursor offset is past the end of the session"));
-            }
-            off
-        }
-    };
+    // An offset at/after the end is only valid when it is exactly the end (an
+    // empty session, or a client re-fetching past the tail).
+    if start > total {
+        return Err(CursorError("cursor offset is past the end of the session"));
+    }
 
     // Segment index is derivable from the offset only when segments are uniform,
     // which they are not (byte-bounded). Recompute it by replaying the greedy
@@ -2413,6 +2435,49 @@ mod tests {
         assert_eq!(
             redacted["steps"][1]["tool_calls"][0]["function_name"],
             json!("spawn_agent")
+        );
+    }
+
+    #[test]
+    fn message_fold_does_not_link_non_spawn_subagent_ids() {
+        let session = SessionId::new();
+        let (run, result) = sample_run_and_result(session);
+        let fake_child = "patient-alice@example.internal";
+
+        let lookup_call = ToolCall {
+            id: "call_lookup".to_string(),
+            name: "lookup_patient".to_string(),
+            arguments: json!({"patient": "alice"}),
+        };
+        let messages = vec![
+            Message::user("lookup alice"),
+            Message::assistant_with_tools("checking", vec![lookup_call]),
+            Message::tool_result(
+                "call_lookup",
+                Some(json!({"subagent_id": fake_child, "status": "matched"})),
+                None,
+            ),
+        ];
+
+        let redacted = build_case_record_from_messages(
+            &run,
+            &result,
+            &messages,
+            AtifOptions {
+                redact_content: true,
+            },
+        );
+        let observation = &redacted["steps"][1]["observation"]["results"][0];
+        assert_eq!(observation["content"], json!(REDACTED));
+        assert!(
+            observation.get("subagent_trajectory_ref").is_none(),
+            "non-spawn tool result subagent_id stays redacted content, not a structural link"
+        );
+        assert!(
+            !serde_json::to_string(&redacted)
+                .unwrap()
+                .contains(fake_child),
+            "redacted ATIF output must not leak non-spawn subagent_id content"
         );
     }
 

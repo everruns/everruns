@@ -476,6 +476,20 @@ pub fn sanitize_exec_output(text: &str, max_bytes: usize) -> String {
     priority_aware_truncate(&cleaned, max_bytes)
 }
 
+/// Truncate an exec stream according to the process outcome.
+///
+/// Error-priority matching is useful for failed commands, but source/search
+/// output from successful commands can legitimately contain words such as
+/// `error`. Treating those lines as diagnostics can hide the leading matches,
+/// so successful output uses the predictable head/tail window instead.
+pub fn truncate_exec_stream(text: &str, max_bytes: usize, exit_code: i32) -> String {
+    if exit_code == 0 {
+        middle_truncate(text, max_bytes)
+    } else {
+        priority_aware_truncate(text, max_bytes)
+    }
+}
+
 // ============================================================================
 // Priority-aware truncation (EVE-246)
 // ============================================================================

@@ -13,9 +13,18 @@ import { ChatComposer } from "@/components/chat/chat-composer";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import type { PendingImage } from "@/lib/api/images";
-import type { ReasoningEffortConfig } from "@/lib/api/types";
+import type { ReasoningEffortConfig, VerbosityConfig } from "@/lib/api/types";
 
 const reasoningEffortConfig: ReasoningEffortConfig = {
+  default: "medium",
+  values: [
+    { value: "low", name: "Low" },
+    { value: "medium", name: "Medium" },
+    { value: "high", name: "High" },
+  ],
+};
+
+const verbosityConfig: VerbosityConfig = {
   default: "medium",
   values: [
     { value: "low", name: "Low" },
@@ -29,6 +38,7 @@ export default function DevChatComponentsPage() {
   const [inputValue, setInputValue] = useState("/ship tighten the tool transcript UI");
   const [selectedModelId, setSelectedModelId] = useState(devModels[0]?.id ?? "");
   const [reasoningEffort, setReasoningEffort] = useState("medium");
+  const [verbosity, setVerbosity] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>(() => makePendingImages());
 
   const emptyToolResults = useMemo(() => new Map(), []);
@@ -140,6 +150,14 @@ export default function DevChatComponentsPage() {
                     value
                   }
                   onReasoningEffortChange={setReasoningEffort}
+                  supportsVerbosity
+                  verbosity={verbosity}
+                  verbosityConfig={verbosityConfig}
+                  defaultVerbosityName="Medium"
+                  getVerbosityName={(value) =>
+                    verbosityConfig.values.find((item) => item.value === value)?.name ?? value
+                  }
+                  onVerbosityChange={setVerbosity}
                   isActive={false}
                   cancelCurrentTurn={{
                     mutate: () => undefined,

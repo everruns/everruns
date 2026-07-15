@@ -3613,6 +3613,67 @@ async fn seed_structured_result(server: &TestServer, session_id: &str, result: V
         .expect("write result file");
 }
 
+async fn seed_non_schema_result_path(server: &TestServer, session_id: &str, result: Value) {
+    use everruns_core::session_task::{
+        CreateSessionTask, SessionTaskState, SessionTaskUpdate, new_session_task,
+    };
+    use everruns_server::storage::models::CreateSessionFileRow;
+
+    let sid = session_id.parse::<SessionId>().expect("valid session id");
+    let session = server
+        .db
+        .get_session(DEFAULT_ORG_ID, sid)
+        .await
+        .expect("get_session")
+        .expect("session exists");
+
+    let task = new_session_task(
+        CreateSessionTask {
+            session_id: sid,
+            id: None,
+            kind: "background_tool".to_string(),
+            display_name: "background result".to_string(),
+            spec: json!({ "tool": "internal_scan" }),
+            state: SessionTaskState::Running,
+            links: Default::default(),
+            wake_policy: Default::default(),
+        },
+        chrono::Utc::now(),
+    );
+    server
+        .db
+        .create_session_task(&task)
+        .await
+        .expect("create non-schema task");
+
+    let path = format!("/.background/{}/result.json", task.id);
+    server
+        .db
+        .update_session_task(
+            sid,
+            &task.id,
+            SessionTaskUpdate {
+                state: Some(SessionTaskState::Succeeded),
+                result_path: Some(path.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("set non-schema result_path");
+
+    server
+        .db
+        .create_session_file(CreateSessionFileRow {
+            session_id: SessionId::from_uuid(session.workspace_id),
+            path,
+            content: Some(serde_json::to_vec(&result).unwrap()),
+            is_directory: false,
+            is_readonly: false,
+        })
+        .await
+        .expect("write non-schema result file");
+}
+
 /// EVE-728: when a task reported a schema-bound `result.json`, `tasks/get`
 /// surfaces it under `result.structured_result` for Tasks clients — not just
 /// the last-message / status snapshot.
@@ -3651,6 +3712,29 @@ async fn test_mcp_tasks_get_surfaces_structured_result() {
 
     assert_eq!(resp["result"]["taskId"].as_str(), Some(task_id.as_str()));
     assert_eq!(resp["result"]["result"]["structured_result"], expected);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_tasks_get_ignores_non_schema_result_path() {
+    let server = TestServer::in_memory().await;
+
+    let run = mcp_task_tool_call(&server, "agent_run", json!({ "message": "task result" })).await;
+    let task_id = run["result"]["taskId"].as_str().unwrap().to_string();
+
+    seed_non_schema_result_path(&server, &task_id, json!({ "internal": "tool-output" })).await;
+
+    let resp = mcp_call_with_headers(
+        &server,
+        "tasks/get",
+        json!({ "taskId": task_id }),
+        vec![("MCP-Protocol-Version", MCP_PROTOCOL_VERSION_2026)],
+    )
+    .await;
+
+    assert!(
+        resp["result"]["result"].get("structured_result").is_none(),
+        "non-schema result_path leaked as structured_result: {resp}"
+    );
 }
 
 /// tasks/get for 2025-* is method_not_found (extension doesn't exist there).

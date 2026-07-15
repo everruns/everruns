@@ -595,6 +595,7 @@ async fn seed_run_with_session_events(server: &TestServer) -> (String, String) {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
             workspace_id: None,
         })
         .await
@@ -1006,6 +1007,7 @@ async fn seed_run_with_tool_iterations(
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
             workspace_id: None,
         })
         .await
@@ -1361,6 +1363,7 @@ async fn seed_session_with_raw_events(
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
             workspace_id: None,
         })
         .await

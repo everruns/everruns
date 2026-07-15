@@ -261,16 +261,21 @@ impl MemoryFileService {
         // bubbling up from Postgres as a generic 500.
         regex::Regex::new(pattern)
             .map_err(|e| MemoryFsError::InvalidPattern(format!("pattern: {e}")))?;
-        if let Some(pp) = path_pattern {
-            regex::Regex::new(pp)
-                .map_err(|e| MemoryFsError::InvalidPattern(format!("path_pattern: {e}")))?;
-        }
+        let path_matcher = path_pattern
+            .map(everruns_core::session_path::GrepPathPattern::new)
+            .transpose()
+            .map_err(|e| MemoryFsError::InvalidPattern(format!("path_pattern: {e}")))?;
         let rows = self
             .db
-            .grep_memory_files(memory_id, pattern, path_pattern, GREP_MAX_FILE_BYTES)
+            .grep_memory_files(memory_id, pattern, None, GREP_MAX_FILE_BYTES)
             .await?;
         Ok(rows
             .into_iter()
+            .filter(|row| {
+                path_matcher
+                    .as_ref()
+                    .is_none_or(|matcher| matcher.is_match(&row.path))
+            })
             .map(|r| GrepMatchInfo {
                 path: r.path,
                 size_bytes: r.size_bytes,
@@ -606,6 +611,34 @@ mod tests {
         let hits = svc.grep(mem.id, "quick", None).await.unwrap();
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].path, "/notes/alpha.md");
+    }
+
+    #[tokio::test]
+    async fn grep_filters_paths_with_globs() {
+        let db = make_db();
+        let mem = seed_memory(&db, false).await;
+        let svc = MemoryFileService::new(db.clone());
+
+        for path in ["/notes/alpha.md", "/notes/nested/beta.md", "/notes.txt"] {
+            svc.create_file(
+                &mem,
+                NewFileInput {
+                    path: path.into(),
+                    content: Some("needle".into()),
+                    is_directory: false,
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        let hits = svc
+            .grep(mem.id, "needle", Some("notes/*.md"))
+            .await
+            .unwrap();
+        let paths: Vec<_> = hits.into_iter().map(|hit| hit.path).collect();
+
+        assert_eq!(paths, vec!["/notes/alpha.md"]);
     }
 
     #[tokio::test]

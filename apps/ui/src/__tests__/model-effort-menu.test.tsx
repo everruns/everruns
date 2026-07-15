@@ -39,6 +39,12 @@ function renderMenu(overrides: Partial<React.ComponentProps<typeof ModelEffortMe
       defaultEffortName="Medium"
       getReasoningEffortName={(value) => value}
       onReasoningEffortChange={() => undefined}
+      supportsVerbosity={false}
+      verbosity=""
+      verbosityConfig={undefined}
+      defaultVerbosityName="Medium"
+      getVerbosityName={(value) => value}
+      onVerbosityChange={() => undefined}
       {...overrides}
     />,
   );
