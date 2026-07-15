@@ -13,6 +13,7 @@
 // `specs/a2a-channel.md` / `specs/mcp.md`.
 
 use everruns_core::SessionId;
+use everruns_core::session_task::{SessionTask, TASK_KIND_SUBAGENT, task_result_path};
 use serde_json::Value;
 
 use crate::storage::StorageBackend;
@@ -48,14 +49,11 @@ pub async fn read_structured_task_result(
         return Ok(None);
     };
 
-    // Owned tasks that reported a structured result. `result_path` is only ever
-    // set by `report_result`, which requires a declared `result_schema`, so its
-    // presence alone is a sufficient marker — no need to re-inspect the spec.
     let rows = db.list_session_tasks(session_id, None, None).await?;
-    let mut best: Option<everruns_core::SessionTask> = None;
+    let mut best: Option<SessionTask> = None;
     for row in &rows {
         let task = row.to_task()?;
-        if task.result_path.is_none() {
+        if !is_structured_result_task(&task) {
             continue;
         }
         match &best {
@@ -80,4 +78,13 @@ pub async fn read_structured_task_result(
     };
     let value = serde_json::from_slice::<Value>(&bytes)?;
     Ok(Some(value))
+}
+
+fn is_structured_result_task(task: &SessionTask) -> bool {
+    task.kind == TASK_KIND_SUBAGENT
+        && task.spec.get("result_schema").is_some_and(Value::is_object)
+        && task
+            .result_path
+            .as_deref()
+            .is_some_and(|path| path == task_result_path(&task.id))
 }

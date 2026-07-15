@@ -218,7 +218,7 @@ impl LlmErrorHook for UsageLimitAutoContinueHook {
         let scheduled_at = (reset_time + delay).max(now + delay);
 
         match store
-            .create_schedule(
+            .create_schedule_enforcing_limits(
                 ctx.session_id,
                 cfg.prompt.clone(),
                 None,
@@ -238,11 +238,10 @@ impl LlmErrorHook for UsageLimitAutoContinueHook {
                 // now that a continuation was actually scheduled.
                 LlmErrorHookOutcome::noop().with_error_field("auto_continue", true)
             }
-            Err(e) => {
+            Err(_) => {
                 tracing::warn!(
                     session_id = %ctx.session_id,
-                    error = %e,
-                    "usage_limit_auto_continue: failed to schedule continuation"
+                    "usage_limit_auto_continue: failed to schedule continuation within schedule limits"
                 );
                 LlmErrorHookOutcome::noop()
             }
@@ -329,6 +328,7 @@ mod tests {
     #[derive(Default)]
     struct RecordingScheduleStore {
         created: Mutex<Vec<(String, Option<chrono::DateTime<chrono::Utc>>)>>,
+        active_schedules: u32,
     }
 
     #[async_trait]
@@ -385,7 +385,7 @@ mod tests {
             &self,
             _session_id: SessionId,
         ) -> crate::error::Result<u32> {
-            Ok(0)
+            Ok(self.active_schedules)
         }
 
         async fn count_active_org_schedules(&self) -> crate::error::Result<u32> {
@@ -428,6 +428,31 @@ mod tests {
             outcome.extra_error_fields.get("auto_continue"),
             Some(&json!(true))
         );
+    }
+
+    #[tokio::test]
+    async fn handler_enforces_schedule_limits_before_auto_continue() {
+        let store = Arc::new(RecordingScheduleStore {
+            active_schedules: crate::session_schedule::MAX_ACTIVE_SCHEDULES_PER_SESSION,
+            ..Default::default()
+        });
+        let services = LlmErrorHookServices {
+            schedule_store: Some(store.clone()),
+        };
+        let fields = usage_limit_fields(1_783_767_823);
+        let config = json!({});
+        let ctx = LlmErrorContext {
+            session_id: SessionId::new(),
+            error_code: user_facing_error_codes::PROVIDER_USAGE_LIMIT_REACHED,
+            error_fields: &fields,
+            config: &config,
+            services: &services,
+        };
+
+        let outcome = UsageLimitAutoContinueHook.on_llm_error(&ctx).await;
+
+        assert!(store.created.lock().unwrap().is_empty());
+        assert_eq!(outcome, LlmErrorHookOutcome::noop());
     }
 
     #[tokio::test]

@@ -1117,6 +1117,21 @@ mod tests {
     }
 
     #[test]
+    fn strip_internal_only_fields_drops_client_supplied_fork_lineage_and_seed() {
+        // Public clients must not be able to trigger internal detached-spawn
+        // seeding from another session via the generic create-session API.
+        let mut req: CreateSessionRequest =
+            serde_json::from_str(&format!(r#"{{"harness_id": "{}"}}"#, TEST_HARNESS_ID)).unwrap();
+        req.forked_from_session_id = Some(SessionId::new());
+        req.seed = SessionSeedMode::Fork;
+
+        strip_internal_only_fields(&mut req);
+
+        assert_eq!(req.forked_from_session_id, None);
+        assert_eq!(req.seed, SessionSeedMode::Fresh);
+    }
+
+    #[test]
     fn test_create_session_request_missing_harness_id_is_none() {
         let json = r#"{}"#;
         let req: CreateSessionRequest = serde_json::from_str(json).unwrap();

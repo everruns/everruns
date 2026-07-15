@@ -15,7 +15,6 @@ use super::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SpawnMode, SystemPromptContext,
 };
 use crate::config_layer::{AgentConfigOverlay, normalize_initial_file_path};
-use crate::harness::Harness;
 use crate::platform_store::PlatformCreateSessionRequest;
 use crate::session::{SessionSeedMode, SubagentStatus};
 use crate::session_task::{
@@ -472,18 +471,22 @@ fn invite_conflict_message(
         .or_else(|| mcp_conflict_message(host, guest))
 }
 
-async fn harness_overlay(
+async fn harness_chain_overlay(
     store: &dyn crate::platform_store::PlatformStore,
     harness_id: HarnessId,
 ) -> Result<AgentConfigOverlay, ToolExecutionResult> {
-    let harness = store
-        .get_harness(harness_id)
+    let chain = store
+        .get_harness_chain(harness_id)
         .await
-        .map_err(ToolExecutionResult::internal_error)?
-        .ok_or_else(|| {
-            ToolExecutionResult::tool_error(format!("Harness not found: {harness_id}"))
-        })?;
-    Ok(AgentConfigOverlay::from(&harness))
+        .map_err(ToolExecutionResult::internal_error)?;
+    if chain.is_empty() {
+        return Err(ToolExecutionResult::tool_error(format!(
+            "Harness not found: {harness_id}"
+        )));
+    }
+    Ok(AgentConfigOverlay::fold(
+        chain.iter().map(AgentConfigOverlay::from),
+    ))
 }
 
 async fn invite_mode_overlays(
@@ -491,7 +494,7 @@ async fn invite_mode_overlays(
     parent_session: &crate::session::Session,
     target: &AgentHandoffTargetConfig,
 ) -> Result<(AgentConfigOverlay, AgentConfigOverlay), ToolExecutionResult> {
-    let mut host_layers = vec![harness_overlay(store, parent_session.harness_id).await?];
+    let mut host_layers = vec![harness_chain_overlay(store, parent_session.harness_id).await?];
     if let Some(agent_id) = parent_session.agent_id {
         let host_agent = store
             .get_agent_by_id(agent_id)
@@ -504,13 +507,6 @@ async fn invite_mode_overlays(
     }
     host_layers.push(AgentConfigOverlay::from(parent_session));
 
-    let target_harness: Harness = store
-        .get_harness(target.harness_id)
-        .await
-        .map_err(ToolExecutionResult::internal_error)?
-        .ok_or_else(|| {
-            ToolExecutionResult::tool_error(format!("Harness not found: {}", target.harness_id))
-        })?;
     let target_agent = store
         .get_agent_by_id(target.agent_id)
         .await
@@ -522,7 +518,7 @@ async fn invite_mode_overlays(
     Ok((
         AgentConfigOverlay::fold(host_layers),
         AgentConfigOverlay::fold([
-            AgentConfigOverlay::from(&target_harness),
+            harness_chain_overlay(store, target.harness_id).await?,
             AgentConfigOverlay::from(&target_agent),
         ]),
     ))
@@ -1795,6 +1791,63 @@ mod tests {
         assert_eq!(
             participants[0].role,
             crate::session::SessionParticipantRole::Member
+        );
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_handoff_invite_rejects_inherited_harness_capability_conflict() {
+        let mut store_value = MockPlatformStore::new();
+        let parent_harness_id = HarnessId::new();
+        let child_harness_id = HarnessId::new();
+        let mut parent_harness = store_value.harness.clone();
+        parent_harness.id = parent_harness_id;
+        parent_harness.parent_harness_id = None;
+        parent_harness.capabilities = vec![crate::AgentCapabilityConfig::with_config(
+            "web_fetch",
+            json!({"max_bytes": 1024}),
+        )];
+        let mut child_harness = store_value.harness.clone();
+        child_harness.id = child_harness_id;
+        child_harness.parent_harness_id = Some(parent_harness_id);
+        child_harness.capabilities = vec![];
+        store_value.session.harness_id = child_harness_id;
+        store_value.agent.capabilities = vec![crate::AgentCapabilityConfig::with_config(
+            "web_fetch",
+            json!({"max_bytes": 2048}),
+        )];
+        {
+            let mut harnesses = store_value.extra_harnesses.lock().unwrap();
+            harnesses.insert(parent_harness_id, parent_harness);
+            harnesses.insert(child_harness_id, child_harness);
+        }
+        let store = Arc::new(store_value);
+        let config = target_config(store.agent.public_id, child_harness_id, vec![]);
+        let tool = spawn_agent_tool(&config);
+        let context = context(store.clone(), None);
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "name": "AWS Operator Invite",
+                    "instructions": "Join this incident session",
+                    "target": { "type": "agent", "id": "aws_operator" },
+                    "mode": "invite"
+                }),
+                &context,
+            )
+            .await;
+
+        assert!(matches!(result, ToolExecutionResult::ToolError(message)
+                if message.contains("Invite-mode handoff cannot join target")
+                    && message.contains("capability `web_fetch`")
+                    && message.contains("Use background or foreground mode")));
+        assert!(
+            store
+                .joined_participants
+                .lock()
+                .expect("participants lock")
+                .is_empty(),
+            "conflicting inherited harness invite must not join the participant"
         );
     }
 

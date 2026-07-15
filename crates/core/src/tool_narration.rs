@@ -676,22 +676,34 @@ pub fn narrate_write_todos(phase: ToolNarrationPhase, locale: Option<&str>) -> S
     }
 }
 
-/// `web_fetch` narration (English-only for now; UK falls back to English).
+/// `web_fetch` narration, distinguishing inline fetches from file downloads.
 pub fn narrate_web_fetch(
     arguments: &Value,
     phase: ToolNarrationPhase,
     locale: Option<&str>,
 ) -> String {
     let value = safe_arg_str(arguments, &["url", "uri"]).map(url_display);
-    let verbs = pick(
-        locale,
-        ("Fetch URL", "Fetched URL", "Could not fetch URL"),
-        (
-            "Завантажую URL",
-            "Завантажив URL",
-            "Не вдалося завантажити URL",
-        ),
-    );
+    let is_download = arguments
+        .get("save_to_file")
+        .and_then(Value::as_str)
+        .is_some_and(|path| !path.trim().is_empty());
+    let verbs = if is_download {
+        pick(
+            locale,
+            ("Download URL", "Downloaded URL", "Could not download URL"),
+            (
+                "Завантажую URL",
+                "Завантажив URL",
+                "Не вдалося завантажити URL",
+            ),
+        )
+    } else {
+        pick(
+            locale,
+            ("Fetch URL", "Fetched URL", "Could not fetch URL"),
+            ("Отримую URL", "Отримав URL", "Не вдалося отримати URL"),
+        )
+    };
     labeled_phrase(verbs.0, verbs.1, verbs.2, value, phase)
 }
 
@@ -1052,7 +1064,40 @@ mod tests {
         // Ukrainian locale must not fall back to English (no mixed-language UI).
         assert_eq!(
             narrate_web_fetch(&a, ToolNarrationPhase::Completed, Some("uk")),
-            "Завантажив URL: example.com/page"
+            "Отримав URL: example.com/page"
+        );
+    }
+
+    #[test]
+    fn web_fetch_helper_narrates_download_when_save_path_is_present() {
+        let a = args(json!({
+            "url": "https://example.com/file?token=abc",
+            "save_to_file": "/downloads/file"
+        }));
+        assert_eq!(
+            narrate_web_fetch(&a, ToolNarrationPhase::Started, None),
+            "Download URL: example.com/file"
+        );
+        assert_eq!(
+            narrate_web_fetch(&a, ToolNarrationPhase::Completed, None),
+            "Downloaded URL: example.com/file"
+        );
+        assert_eq!(
+            narrate_web_fetch(&a, ToolNarrationPhase::Failed, None),
+            "Could not download URL: example.com/file"
+        );
+        assert_eq!(
+            narrate_web_fetch(&a, ToolNarrationPhase::Completed, Some("uk")),
+            "Завантажив URL: example.com/file"
+        );
+
+        let blank = args(json!({
+            "url": "https://example.com/file",
+            "save_to_file": "   "
+        }));
+        assert_eq!(
+            narrate_web_fetch(&blank, ToolNarrationPhase::Completed, None),
+            "Fetched URL: example.com/file"
         );
     }
 

@@ -5,21 +5,31 @@ import { renderHook, act, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode } from "react";
 import type { SessionTask } from "@/lib/api/types";
-import { useOrgTasks } from "@/hooks/use-org-tasks";
+import {
+  ORG_TASKS_LIST_LIMIT,
+  ORG_TASKS_LIVE_SESSION_LIMIT,
+  liveOrgTaskSessionIds,
+  useOrgTasks,
+} from "@/hooks/use-org-tasks";
 
 // Capture SSE listeners the hook registers so the test can push events.
 const mockSseListeners: Record<string, Array<(e: MessageEvent) => void>> = {};
+const mockStreams: Array<{ close: jest.Mock }> = [];
 
 jest.mock("@/lib/event-stream", () => ({
-  createEventStream: jest.fn(() => ({
-    addEventListener: (type: string, listener: (e: MessageEvent) => void) => {
-      (mockSseListeners[type] ||= []).push(listener);
-    },
-    removeEventListener: () => {},
-    close: jest.fn(),
-    onopen: null,
-    onerror: null,
-  })),
+  createEventStream: jest.fn(() => {
+    const stream = {
+      addEventListener: (type: string, listener: (e: MessageEvent) => void) => {
+        (mockSseListeners[type] ||= []).push(listener);
+      },
+      removeEventListener: () => {},
+      close: jest.fn(),
+      onopen: null,
+      onerror: null,
+    };
+    mockStreams.push(stream);
+    return stream;
+  }),
 }));
 
 const initialTask: SessionTask = {
@@ -35,10 +45,10 @@ const initialTask: SessionTask = {
   updated_at: new Date().toISOString(),
 } as unknown as SessionTask;
 
-const mockListOrgTasks = jest.fn(async () => [initialTask]);
+const mockListOrgTasks = jest.fn(async (_options?: unknown) => [initialTask]);
 
 jest.mock("@/lib/api/session-tasks", () => ({
-  listOrgTasks: () => mockListOrgTasks(),
+  listOrgTasks: (options?: unknown) => mockListOrgTasks(options),
 }));
 
 jest.mock("@/lib/api/events", () => ({
@@ -65,6 +75,7 @@ describe("useOrgTasks SSE reconciliation", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    mockStreams.length = 0;
     for (const key of Object.keys(mockSseListeners)) delete mockSseListeners[key];
   });
 
@@ -93,6 +104,7 @@ describe("useOrgTasks SSE reconciliation", () => {
     expect(result.current.data).toHaveLength(1);
     // No second snapshot fetch was needed to reflect the delta.
     expect(mockListOrgTasks).toHaveBeenCalledTimes(1);
+    expect(mockListOrgTasks).toHaveBeenCalledWith({ limit: ORG_TASKS_LIST_LIMIT });
   });
 
   it("appends a newly created task from a task.created snapshot", async () => {
@@ -108,5 +120,56 @@ describe("useOrgTasks SSE reconciliation", () => {
 
     await waitFor(() => expect(result.current.data).toHaveLength(2));
     expect(result.current.data?.map((t) => t.id)).toEqual(["task_1", "task_2"]);
+  });
+
+  describe("subscription limits", () => {
+    it("keeps only a capped newest-session live window", () => {
+      const tasks = Array.from({ length: ORG_TASKS_LIVE_SESSION_LIMIT + 5 }, (_, index) => ({
+        ...initialTask,
+        id: `task_${index}`,
+        session_id: `session-${String(index).padStart(2, "0")}`,
+      })) as SessionTask[];
+
+      expect(liveOrgTaskSessionIds(tasks)).toHaveLength(ORG_TASKS_LIVE_SESSION_LIMIT);
+      expect(liveOrgTaskSessionIds(tasks)).not.toContain(
+        `session-${String(ORG_TASKS_LIVE_SESSION_LIMIT + 1).padStart(2, "0")}`,
+      );
+    });
+
+    it("opens at most the capped number of session streams for a large snapshot", async () => {
+      mockListOrgTasks.mockResolvedValueOnce(
+        Array.from({ length: ORG_TASKS_LIVE_SESSION_LIMIT + 10 }, (_, index) => ({
+          ...initialTask,
+          id: `task_${index}`,
+          session_id: `session-${index}`,
+        })) as SessionTask[],
+      );
+
+      renderHook(() => useOrgTasks(), { wrapper });
+
+      await waitFor(() => expect(mockStreams).toHaveLength(ORG_TASKS_LIVE_SESSION_LIMIT));
+    });
+
+    it("coalesces connected invalidations from multiple session streams", async () => {
+      const invalidateQueries = jest.spyOn(queryClient, "invalidateQueries");
+      mockListOrgTasks.mockResolvedValueOnce(
+        Array.from({ length: 3 }, (_, index) => ({
+          ...initialTask,
+          id: `task_${index}`,
+          session_id: `session-${index}`,
+        })) as SessionTask[],
+      );
+
+      renderHook(() => useOrgTasks(), { wrapper });
+      await waitFor(() => expect(mockSseListeners.connected).toHaveLength(3));
+
+      act(() => {
+        for (const handler of mockSseListeners.connected ?? []) {
+          handler({ data: "{}" } as MessageEvent);
+        }
+      });
+
+      await waitFor(() => expect(invalidateQueries).toHaveBeenCalledTimes(1));
+    });
   });
 });

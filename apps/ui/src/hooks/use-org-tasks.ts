@@ -4,12 +4,10 @@
 // task_id — identical to `useSessionTasks`, but fanned out across sessions.
 //
 // There is no org-wide SSE endpoint; the event stream is per-session
-// (`/v1/sessions/{id}/sse`). So this hook opens one stream per distinct owning
-// session present in the current snapshot and reconciles `task.created` /
-// `task.updated` (full snapshots) into the single org task cache by task_id.
-// When the set of sessions changes, the streams are torn down and reopened.
-// Brand-new sessions not yet in the snapshot are picked up on the next
-// snapshot refetch (each stream re-invalidates on `connected`).
+// (`/v1/sessions/{id}/sse`). To avoid turning an org-wide task snapshot into
+// unbounded persistent streams, this hook subscribes only to a capped newest-task
+// session window and reconciles `task.created` / `task.updated` (full snapshots)
+// into the single org task cache by task_id.
 "use client";
 
 import { useEffect, useMemo } from "react";
@@ -22,6 +20,29 @@ import { createReconnectTracker } from "@/lib/sse-reconnect";
 import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
 import type { SessionTask } from "@/lib/api/types";
+
+export const ORG_TASKS_LIVE_SESSION_LIMIT = 20;
+export const ORG_TASKS_LIST_LIMIT = 100;
+
+const connectedInvalidationTimers = new WeakMap<QueryClient, ReturnType<typeof setTimeout>>();
+
+function invalidateOrgTasksSoon(queryClient: QueryClient) {
+  if (connectedInvalidationTimers.has(queryClient)) return;
+  const timer = setTimeout(() => {
+    connectedInvalidationTimers.delete(queryClient);
+    queryClient.invalidateQueries({ queryKey: queryKeys.orgTasks.list() });
+  }, 0);
+  connectedInvalidationTimers.set(queryClient, timer);
+}
+
+export function liveOrgTaskSessionIds(tasks: SessionTask[]): string[] {
+  const ids = new Set<string>();
+  for (const task of tasks) {
+    ids.add(task.session_id);
+    if (ids.size >= ORG_TASKS_LIVE_SESSION_LIMIT) break;
+  }
+  return Array.from(ids).sort();
+}
 
 /** Subscribe to one session's SSE stream, reconciling task snapshots into the
  *  shared org task cache. Returns a disposer that stops reconnects and closes
@@ -47,9 +68,8 @@ function subscribeSession(sessionId: string, queryClient: QueryClient): () => vo
 
     source.addEventListener("connected", () => {
       tracker.reset();
-      // Close the fetch-then-subscribe gap and pick up tasks from sessions that
-      // were not yet in the snapshot when we subscribed.
-      queryClient.invalidateQueries({ queryKey: queryKeys.orgTasks.list() });
+      // Close the fetch-then-subscribe gap without refetching once per stream.
+      invalidateOrgTasksSoon(queryClient);
     });
 
     source.addEventListener("disconnecting", (messageEvent) => {
@@ -125,17 +145,16 @@ export function useOrgTasks() {
 
   const query = useQuery({
     queryKey: queryKeys.orgTasks.list(),
-    queryFn: () => listOrgTasks(),
+    queryFn: () => listOrgTasks({ limit: ORG_TASKS_LIST_LIMIT }),
     enabled,
   });
 
-  // Distinct owning sessions in the snapshot, as a stable key so the effect only
-  // re-subscribes when the session set actually changes (not on every patch).
-  const sessionIdsKey = useMemo(() => {
-    const ids = new Set<string>();
-    for (const task of query.data ?? []) ids.add(task.session_id);
-    return Array.from(ids).sort().join(",");
-  }, [query.data]);
+  // Capped owning sessions in the newest-first snapshot, as a stable key so the
+  // effect only re-subscribes when the live session window actually changes.
+  const sessionIdsKey = useMemo(
+    () => liveOrgTaskSessionIds(query.data ?? []).join(","),
+    [query.data],
+  );
 
   useEffect(() => {
     if (!enabled || !sessionIdsKey) return;

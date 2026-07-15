@@ -1,5 +1,6 @@
 use super::super::models::*;
 use super::Database;
+use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
 use anyhow::{Result, bail};
 use everruns_core::{
     SessionId, SessionParticipantId, SessionParticipantKind, SessionParticipantRole,
@@ -85,10 +86,12 @@ impl Database {
             FROM session_participants
             WHERE org_id = $1 AND session_id = $2
             ORDER BY joined_at ASC, created_at ASC, id ASC
+            LIMIT $3
             "#,
         )
         .bind(org_id)
         .bind(session_id.uuid())
+        .bind((MAX_SESSION_PARTICIPANT_HISTORY + 1) as i64)
         .fetch_all(&self.pool)
         .await
         .map_err(Into::into)

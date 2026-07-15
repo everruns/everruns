@@ -27,6 +27,11 @@ use crate::api::common::Pagination;
 /// oversized delete; large backlogs drain over successive reaper ticks.
 const MAX_RETENTION_PRUNE_LIMIT: i64 = 1000;
 
+/// Hard cap for participant history returned in one session response.
+/// Storage queries fetch one extra row so callers can reject oversized histories
+/// instead of allocating or serializing unbounded attacker-created rows.
+pub const MAX_SESSION_PARTICIPANT_HISTORY: usize = 512;
+
 const TASK_ARTIFACT_ROOTS: &[&str] = &["/.tasks", "/.background", "/.agent-runs"];
 
 fn task_artifact_delete_root(result_path: &str) -> Option<&str> {
