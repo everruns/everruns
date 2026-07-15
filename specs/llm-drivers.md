@@ -55,7 +55,7 @@ graph TD
 
 1. **Trait Definition**: See `crates/core/src/driver_registry.rs` for `ChatDriver` trait, `LlmStreamEvent`, `ProviderType`, and `LlmCallConfig`.
 
-2. **Streaming Response**: Drivers return a stream of `LlmStreamEvent` (TextDelta, ToolCalls, ThinkingDelta, ThinkingSignature, Done, Error).
+2. **Streaming Response**: Drivers return a stream of `LlmStreamEvent` (TextDelta, ToolCalls, ThinkingDelta, ThinkingSignature, Done, Error). In-band provider failures use `LlmStreamError` so stable provider code and HTTP status survive the driver boundary.
 
 3. **Provider Types**: `OpenAI` (Responses API), `OpenAICompletions` (Chat Completions), `Anthropic`, `Gemini`, `Bedrock` (AWS Bedrock ConverseStream), `Mai` (Microsoft MAI via Azure AI Foundry, OpenAI-compatible Chat Completions), `Fireworks` (Fireworks AI open models, OpenAI-compatible Chat Completions), `LlmSim` (testing).
 
@@ -89,14 +89,13 @@ on-demand from `ProviderConfig`. All real built-in providers require API keys;
 via `ProviderMetadata`). See `crates/core/src/driver_registry.rs` for
 `DriverRegistry` and `DriverDescriptor`.
 
-### Egress Boundary
+### Host-Owned Transport
 
-Provider drivers and model discovery must route outbound HTTP through
-`EgressService` (see `specs/egress.md`). Drivers still own provider-specific
-request construction, streaming parse logic, retry classification, and error
-mapping, but they should not create direct external HTTP clients as the final
-transport. This keeps workers and control-plane processes compatible with a
-future remote Egress Gateway and airgapped deployments.
+Provider drivers and model discovery use direct provider HTTP clients. They are
+host-owned platform services: provider endpoints and credentials come from
+deployment/org provider configuration, not from agent-authored URLs or
+tenant/agent egress policy. Drivers still own provider-specific request
+construction, streaming parse logic, retry classification, and error mapping.
 
 ### Message Types
 
@@ -117,6 +116,8 @@ future remote Egress Gateway and airgapped deployments.
    - `max_tokens`: Optional token limit
    - `tools`: Tool definitions
    - `reasoning_effort`: Optional reasoning level (low, medium, high)
+   - `speed`: Optional speed selector (flex, default, priority), sent as OpenAI `service_tier`
+   - `verbosity`: Optional verbosity selector (low, medium, high), sent as OpenAI `verbosity`
    - `metadata`: Optional request metadata for provider-side correlation
    - `previous_response_id`: Optional OpenAI Responses continuation handle
    - `tool_search`: Optional deferred tool-loading config
@@ -157,7 +158,7 @@ Agents can override `max_tokens` via agent config. Cost guardrails should be con
 
 Extended thinking allows models to perform chain-of-thought reasoning before generating responses. Supported by both Anthropic Claude and OpenAI o-series/GPT-5 models.
 
-Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5, Opus 4.8/4.7, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5 and Opus 4.8/4.7 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/anthropic/src/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/core/src/llm_model_profiles.rs`.
+Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5, Opus 4.8/4.7, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5 and Opus 4.8/4.7 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/anthropic/src/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/core/src/model_profiles.rs`.
 
 #### Stream Events
 
@@ -196,6 +197,18 @@ Reasoning parameters are validated at two levels to prevent API errors from non-
    on; the API rejects them with a 400).
 
 The UI also prevents setting reasoning on non-thinking models (checks `profile.reasoning` and `profile.reasoning_effort`).
+
+### Speed (Service Tier)
+
+The speed selector maps to OpenAI's `service_tier` request parameter: `flex` trades latency for batch-rate pricing, `priority` buys faster and more consistent latency at a premium, `default` pins the standard tier. The API rejects values outside the closed set at message creation. It is resolved per turn from the latest user message's `controls.speed` and guarded like reasoning effort: ReasonAtom strips the value (with a warning log) when the model profile carries no `speed` config, and unknown models pass through. When unset, the field is omitted so the provider keeps its default (`auto`) routing.
+
+Per-model availability lives in the model profile's `speed` config, sourced from OpenAI's official tier tables — the API pricing page for Flex, the Priority-processing docs for first-party priority models, and the specialized Codex priority table (models without a tier row get no config). Profiles mask the config for every provider surface except first-party OpenAI — Azure and gateways have their own capacity models. Both OpenAI drivers (Responses and Chat Completions) serialize the value verbatim as `service_tier`; other drivers ignore it.
+
+### Verbosity
+
+The verbosity selector maps to OpenAI's `verbosity` request parameter (`low`, `medium`, `high`): a hint for how expansive the final answer should be, orthogonal to reasoning effort (which tunes how much the model thinks). The API rejects values outside the closed set at message creation. It is resolved per turn from the latest user message's `controls.verbosity` and guarded like speed: ReasonAtom strips the value (with a warning log) when the model profile carries no `verbosity` config, and unknown models pass through. When unset, the field is omitted so the provider keeps its default (`medium`).
+
+The two OpenAI drivers place the field differently: the Responses API nests it under `text.verbosity`, while the Chat Completions API takes it as a top-level `verbosity` field. Other drivers ignore it. Per-model availability lives in the model profile's `verbosity` config (currently the GPT-5.5 and GPT-5.6 series).
 
 ### Completion Metadata
 
@@ -572,7 +585,19 @@ The following HTTP status codes trigger automatic retry:
 - `429` - Too Many Requests (Rate Limited)
 - `5xx` - Server Errors (except 501 Not Implemented)
 
-In-band stream errors (provider errors inside an accepted SSE stream) are **not** retried at the atom level to avoid duplicate user-visible error messages. The driver-level HTTP retry handles transient failures before the stream is established.
+In-band stream errors inside an accepted response are retried only when all of
+the following hold:
+
+- no text, thinking, tool call, or completion output has been produced
+- the structured provider code or HTTP status classifies the error as transient
+- the bounded default retry budget has not been exhausted
+
+Provider code is authoritative, followed by HTTP status; message matching is a
+compatibility fallback for legacy drivers. `processing_error`, provider server
+errors, ordinary rate limits, and transient HTTP statuses receive bounded retry.
+Authentication, invalid-request, and exhausted billing/quota errors fail fast.
+Once output exists, the runtime preserves it as a partial success instead of
+replaying the generation and risking duplicate visible output.
 
 ### Rate Limit Header Support
 

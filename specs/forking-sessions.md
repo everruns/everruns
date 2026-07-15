@@ -42,7 +42,10 @@ later change is a deliberate one.
 ## What gets copied
 
 Session-scoped state falls into three buckets: **copy**, **skip**, and
-**re-derive**.
+**re-derive**. Detached session spawning reuses this lineage/copy machinery:
+`seed = "fork"` uses the same copy set as a fork, `seed = "workspace"` copies
+workspace files only, and `seed = "fresh"` records lineage without copying
+state.
 
 ### Copy
 
@@ -114,8 +117,14 @@ record fork provenance:
 
 Both surface on the `Session` model and API response. Listing a session's forks
 is `GET /v1/sessions?forked_from={id}` (filter), and the child carries
-`forked_from_session_id` for "forked from …" UI. Lineage is one level of
-provenance metadata; forks of forks simply point at their immediate parent.
+`forked_from_session_id` for "forked from …" UI. Detached session spawning also
+sets `forked_from_session_id` to the spawning session while leaving
+`parent_session_id = NULL`; lineage is provenance, not subagent nesting.
+Lineage is one level of provenance metadata; forks of forks and detached
+sessions spawned by detached sessions simply point at their immediate source.
+Lineage alone never changes budget ownership: ordinary user forks remain their
+own `root_session_id`. Only trusted detached-spawn creation carries the separate
+internal budget-root override, which public HTTP session creation strips.
 
 ## Fork point
 

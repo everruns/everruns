@@ -6,8 +6,8 @@ Verifies the Edit Channel page supports schedule editing, pause/enable, run now,
 
 ## Preconditions
 
-- `AUTH_MODE=none`
-- `just start-dev --no-watch` is running
+- A local (`AUTH_MODE=none`) or authenticated deployed Everruns UI is available
+- The tester is signed in and has access to the target organization when authentication is enabled
 - A published App exists with an enabled schedule channel
 
 ## Test Data

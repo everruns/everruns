@@ -16,6 +16,7 @@ describe("form validation schemas", () => {
       description: " Handles tickets ",
       system_prompt: " Be concise ",
       default_model_id: " gpt-5.4 ",
+      harness_id: " harness_generic ",
     });
 
     expect(parsed).toEqual({
@@ -24,6 +25,7 @@ describe("form validation schemas", () => {
       description: "Handles tickets",
       system_prompt: "Be concise",
       default_model_id: "gpt-5.4",
+      harness_id: "harness_generic",
       tags: "",
     });
   });

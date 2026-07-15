@@ -6,12 +6,15 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { Sidebar } from "@/components/layout/sidebar";
 import { EarlyAccessBanner } from "@/components/layout/early-access-banner";
+import { VerifyEmailBanner } from "@/components/layout/verify-email-banner";
 import { CommandPalette } from "@/components/command-palette";
 import { AuthUnavailableState } from "@/components/layout/auth-unavailable-state";
 import { CommandPaletteContext, useCommandPaletteState } from "@/hooks/use-command-palette";
 import {
   getLoginRedirectPath,
   isBackendNavigationPath,
+  navigateToLogin,
+  RETURN_TO_STORAGE_KEY,
   sanitizeReturnTo,
 } from "@/lib/auth-redirect";
 import { useAuth } from "@/providers/auth-provider";
@@ -32,7 +35,13 @@ function MainLayoutInner({ children }: MainLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { isAuthenticated, isLoading: authLoading, requiresAuth, authUnavailable } = useAuth();
+  const {
+    config,
+    isAuthenticated,
+    isLoading: authLoading,
+    requiresAuth,
+    authUnavailable,
+  } = useAuth();
   const { isLoading: orgLoading } = useOrg();
   const notificationsEnabled = useFeatureFlag("notifications");
   const commandPalette = useCommandPaletteState();
@@ -57,15 +66,27 @@ function MainLayoutInner({ children }: MainLayoutProps) {
   // Redirect to login if auth is required but user is not authenticated
   useEffect(() => {
     if (!authLoading && !authUnavailable && requiresAuth && !isAuthenticated) {
-      router.replace(getLoginRedirectPath(pathname, searchParams));
+      navigateToLogin(
+        getLoginRedirectPath(pathname, searchParams, config?.login_origin),
+        router.replace,
+      );
     }
-  }, [authLoading, authUnavailable, requiresAuth, isAuthenticated, router, pathname, searchParams]);
+  }, [
+    authLoading,
+    authUnavailable,
+    requiresAuth,
+    isAuthenticated,
+    router,
+    pathname,
+    searchParams,
+    config?.login_origin,
+  ]);
 
   // After OAuth login, check sessionStorage for a pending return_to redirect
   useEffect(() => {
     if (!authLoading && !authUnavailable && isAuthenticated) {
-      const pendingReturnTo = sanitizeReturnTo(sessionStorage.getItem("everruns_return_to"));
-      sessionStorage.removeItem("everruns_return_to");
+      const pendingReturnTo = sanitizeReturnTo(sessionStorage.getItem(RETURN_TO_STORAGE_KEY));
+      sessionStorage.removeItem(RETURN_TO_STORAGE_KEY);
       if (pendingReturnTo) {
         // Backend paths (e.g. /oauth/authorize, /api/v1/auth/cli/callback,
         // or /v1/... when frontend and backend share an origin) need a
@@ -112,6 +133,7 @@ function MainLayoutInner({ children }: MainLayoutProps) {
   const appChrome = (
     <div className="flex h-screen flex-col">
       <EarlyAccessBanner />
+      <VerifyEmailBanner />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main className="flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>

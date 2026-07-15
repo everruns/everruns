@@ -20,7 +20,7 @@ Why `X-Request-ID` and not W3C `traceparent`? `traceparent` is the official dist
 
 The persistent conversation identifier that spans multiple turns.
 
-- **Format**: `sess_{32-hex}` (see `specs/id-schema.md`)
+- **Format**: `session_{32-hex}` (see `specs/id-schema.md`)
 - **Source**: URL path parameter in session-scoped endpoints.
 - **Scope**: All HTTP handlers and background tasks operating on a session record this on their tracing span.
 
@@ -81,7 +81,7 @@ The `RequestIdLayer` must sit outside `TraceLayer` so the span has the ID when i
 | `RequestIdLayer` Tower middleware | `crates/server/src/middleware/request_id.rs` |
 | `http_access_log_layer` middleware | `crates/server/src/middleware/access_log.rs` |
 | Middleware wiring + custom `TraceLayer` span | `crates/server/src/app_builder.rs` |
-| `request_id` in `CreateMessageContext` | `crates/server/src/services/message.rs` |
+| `request_id` in `CreateMessageContext` | `crates/server/src/domains/messages/service.rs` |
 | `request_id` in `AgentRunner::start_run` | `crates/worker/src/runner.rs` |
 | `request_id` in `DurableTurnInput` | `crates/worker/src/durable_runner.rs` |
 | `session_id` span recording | `crates/server/src/api/messages.rs` |

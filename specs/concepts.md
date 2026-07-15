@@ -4,11 +4,11 @@ Everruns is a durable agentic harness engine. This document describes the core e
 
 ## High Level
 
-Harness and Agent are **configuration containers** — they hold capabilities and define behavior. At runtime, their configuration merges into a **RuntimeAgent** which executes inside a Session.
+Harness and Agent are **configuration containers** — they hold capabilities and define behavior. Each Agent stores the Harness it runs on by default. At runtime, their configuration merges into a **RuntimeAgent** which executes inside a Session.
 
 ```mermaid
 graph LR
-    Harness -->|has| Agent
+    Agent -->|uses| Harness
     Harness -->|has| Capability
     Agent -->|has| Capability
 
@@ -33,7 +33,7 @@ graph LR
     class App deploy
 ```
 
-- **Solid arrows** — configuration ownership: Harness has Agents and Capabilities, Agent has Capabilities
+- **Solid arrows** — configuration references: Agent uses a Harness, Harness has Capabilities, Agent has Capabilities
 - **Dashed arrows** — runtime assembly: each entity produces an `AgentConfigOverlay`, overlays fold into a single effective config, which resolves into a RuntimeAgent (see [AgentConfigOverlay](#agentconfigoverlay))
 - **Purple** — deployment: App binds Harness + Agent to an external channel and creates sessions from incoming messages
 
@@ -50,7 +50,8 @@ Top-level entity that represents a setup for agent execution. Defines infrastruc
 Domain-specific or task-specific configuration for the agentic loop. Defines system prompt, default LLM model, and enabled capabilities.
 
 - Many agents in the system
-- A session may or may not have an agent assigned
+- Each agent has exactly one assigned harness (`harness_id`), defaulting to the org's built-in `generic` harness at creation when omitted
+- A session may or may not have an agent assigned; creating a session from an agent runs it on the agent's harness (agent-first creation)
 - Agents can be assigned or changed during a session's lifetime
 - Agent has capabilities with position ordering
 - Agent references a default LLM model
@@ -61,10 +62,17 @@ Working instance of an agentic loop. Configured by its harness and situationally
 
 - Many sessions in the system
 - Each session has an assigned harness
-- Agent is optional and can change over the session's lifetime
+- Session creation is agent-first: `POST /v1/sessions { agent_id | agent_name }` resolves the harness from the agent, so you address the agent and the runtime follows. Precedence when resolving the session harness: an explicit request harness wins, then the agent's harness, then the org default, then the built-in fallback
+- Agent is optional and can change over the session's lifetime; a no-agent session still requires (or defaults) a harness directly. `session.agent_id` is the denormalized pointer to the active host agent.
+- Session participants record the agents and users attached to a session. At most one active agent participant may have the `host` role.
 - Sessions can have own capabilities, additive to agent capabilities
 - Sessions can override the LLM model
 - Status: `started` → `active` → `idle` (sessions work indefinitely)
+- Session relationships are split by purpose: `parent_session_id` models
+  subagent/linked execution nesting, while fork/detached-spawn provenance is
+  lineage metadata (`forked_from_session_id`) and does not affect nesting guards.
+- Sessions may carry a `goal`, an objective shown in lists and injected into the
+  runtime prompt as session metadata rather than as a user message.
 
 ### Capability
 
@@ -100,7 +108,7 @@ See `crates/core/src/config_layer.rs` for implementation.
 
 **Overlay chain:**
 
-Harnesses support single-parent inheritance. `HarnessStore::get_harness_chain()` returns the full inheritance chain (root-to-leaf). Each harness in the chain becomes its own overlay, folded alongside the optional agent and session overlays.
+Harnesses support single-parent inheritance. An Agent stores the leaf harness it uses by default; `HarnessStore::get_harness_chain()` returns that harness's full inheritance chain (root-to-leaf). Each harness in the chain becomes its own overlay, folded alongside the optional agent and session overlays.
 
 ```
  harness_root   harness_child   harness_leaf     agent       session
@@ -181,6 +189,9 @@ A per-session isolated virtual filesystem stored in PostgreSQL.
 
 - Paths are relative to `/workspace`
 - Capabilities can mount initial files and directories
+- Server-managed scoped memory reserves `/memory/agent` and `/memory/user`
+  for private agent/user context; caller-supplied files and capability mounts
+  cannot claim `/memory/*`.
 - Shared between the FileSystem and BashkitShell capabilities
 - Files support an optional read-only flag
 

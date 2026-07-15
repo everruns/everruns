@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCreateApp } from "@/hooks/use-apps";
-import { usePageTitle } from "@/hooks";
+import { useAgents, usePageTitle } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -35,6 +35,19 @@ export default function NewAppPage() {
   // Validation runs on submit, then errors stay live as fields change (mirrors
   // the design's "Create draft → inline error" flow rather than disabling the button).
   const [submitted, setSubmitted] = useState(false);
+
+  const { data: agents = [] } = useAgents();
+
+  // Agent-first prefill: selecting an agent seeds the harness from the agent's
+  // own harness (still editable). The picker stays visible so a no-agent app can
+  // choose its own harness, and so a user can override the agent's harness.
+  const handleAgentChange = (nextAgentId: string) => {
+    setAgentId(nextAgentId);
+    const agent = agents.find((candidate) => candidate.id === nextAgentId);
+    if (agent?.harness_id) {
+      setHarnessId(agent.harness_id);
+    }
+  };
 
   const nameError = submitted && !name.trim();
   const harnessError = submitted && !harnessId;
@@ -148,7 +161,7 @@ export default function NewAppPage() {
                 </Label>
                 <AgentSelect
                   value={agentId}
-                  onValueChange={setAgentId}
+                  onValueChange={handleAgentChange}
                   includeNoneOption
                   noneLabel="Choose later"
                   className="w-full"

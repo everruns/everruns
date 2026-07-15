@@ -87,7 +87,8 @@ fn execution_limits() -> ExecutionLimits {
 /// authority: `working_dir` is resolved through it to an absolute path in the
 /// same namespace the file tools use, so a model that learns a path from
 /// `read_file` can pass it straight to `cd`. With no `working_dir`, the shell
-/// starts at the store's display root (`/workspace`). The tuple is
+/// starts at the store's display root (`/workspace` for VFS stores, the host
+/// root for real-disk stores). The tuple is
 /// `(cwd, workspace_env)`.
 fn resolve_shell_workspace(
     store: &dyn SessionFileSystem,
@@ -292,6 +293,7 @@ impl Tool for BashTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Bash");
         Some(crate::tool_narration::narrate_shell_exec(
@@ -1378,6 +1380,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for MockFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             session_id: SessionId,

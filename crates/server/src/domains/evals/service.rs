@@ -867,6 +867,88 @@ impl EvalService {
     }
 
     // ============================================
+    // Import (ATIF trajectories → eval cases)
+    // ============================================
+
+    /// Create/update eval cases from ATIF trajectories (specs/atif-adoption.md).
+    ///
+    /// Idempotent: the case `name` (derived from the trajectory's
+    /// `extra.case_name`/`source_key`/ids) is the natural key — re-importing
+    /// the same trajectories converges instead of duplicating. Org-scoped via
+    /// the eval lookup inside `create_case`/`update_case`.
+    pub async fn import_atif_cases(
+        &self,
+        caller: &Caller,
+        eval_public_id: &str,
+        drafts: Vec<crate::atif::AtifCaseDraft>,
+    ) -> Result<crate::api::evals::AtifImportReport> {
+        // Existing case names within the target eval (also 404s cross-org ids).
+        let mut by_name: HashMap<String, String> = self
+            .list_cases(caller, eval_public_id)
+            .await?
+            .into_iter()
+            .map(|c| (c.name.clone(), c.public_id.to_string()))
+            .collect();
+
+        let mut created = 0u64;
+        let mut updated = 0u64;
+        let mut case_ids = Vec::with_capacity(drafts.len());
+        for draft in drafts {
+            if let Some(case_id) = by_name.get(&draft.name).cloned() {
+                let req = UpdateEvalCaseRequest {
+                    name: None,
+                    description: Some(draft.description),
+                    target: None,
+                    tags: None,
+                    conversation: Some(draft.conversation),
+                    post: None,
+                    artifacts: None,
+                    scorers: None,
+                    max_turns: None,
+                    timeout_seconds: None,
+                    position: None,
+                };
+                let case = self
+                    .update_case(caller, eval_public_id, &case_id, req)
+                    .await?
+                    .ok_or_else(|| ResourceNotFoundError::new("EvalCase"))?;
+                updated += 1;
+                case_ids.push(case.public_id.to_string());
+            } else {
+                let name = draft.name.clone();
+                let req = CreateEvalCaseRequest {
+                    name: draft.name,
+                    description: Some(draft.description),
+                    target: None,
+                    tags: Some(vec!["atif-import".to_string()]),
+                    conversation: draft.conversation,
+                    post: None,
+                    artifacts: None,
+                    // ATIF carries no assertion semantics; imported cases start
+                    // unscored and users attach scorers afterwards.
+                    scorers: vec![],
+                    max_turns: None,
+                    timeout_seconds: None,
+                    position: None,
+                };
+                let case = self.create_case(caller, eval_public_id, req).await?;
+                created += 1;
+                let case_id = case.public_id.to_string();
+                // Track the new name so duplicate names within one import
+                // batch update instead of creating twins.
+                by_name.insert(name, case_id.clone());
+                case_ids.push(case_id);
+            }
+        }
+
+        Ok(crate::api::evals::AtifImportReport {
+            created,
+            updated,
+            case_ids,
+        })
+    }
+
+    // ============================================
     // Share links (read-only public views)
     // ============================================
 

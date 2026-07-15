@@ -35,7 +35,7 @@ pub const VERBOSE_BUDGET: usize = 16 * 1024;
 /// model can `read_file` the persisted log when it needs more detail.
 ///
 /// Sized so that even after the `PersistOutputHook` appends its
-/// `[full output saved to /workspace/outputs/... (NN KiB) — use read_file ...]`
+/// `[full output saved to <display path> (NN KiB) — use read_file ...]`
 /// pointer (~120 bytes), the full inline `stdout` field stays ≤ ~512 bytes.
 pub const AUTO_SUCCESS_BUDGET: usize = 384;
 
@@ -474,6 +474,20 @@ pub fn build_bytes_read_file_result(
 pub fn sanitize_exec_output(text: &str, max_bytes: usize) -> String {
     let cleaned = clean_exec_output(text);
     priority_aware_truncate(&cleaned, max_bytes)
+}
+
+/// Truncate an exec stream according to the process outcome.
+///
+/// Error-priority matching is useful for failed commands, but source/search
+/// output from successful commands can legitimately contain words such as
+/// `error`. Treating those lines as diagnostics can hide the leading matches,
+/// so successful output uses the predictable head/tail window instead.
+pub fn truncate_exec_stream(text: &str, max_bytes: usize, exit_code: i32) -> String {
+    if exit_code == 0 {
+        middle_truncate(text, max_bytes)
+    } else {
+        priority_aware_truncate(text, max_bytes)
+    }
 }
 
 // ============================================================================

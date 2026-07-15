@@ -1,6 +1,19 @@
 import { render, screen } from "@testing-library/react";
 import SettingsLayout from "@/app/(main)/settings/layout";
 
+jest.mock("next/link", () => ({
+  __esModule: true,
+  default: ({
+    children,
+    prefetch,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { prefetch?: boolean }) => (
+    <a {...props} data-prefetch={prefetch === undefined ? undefined : String(prefetch)}>
+      {children}
+    </a>
+  ),
+}));
+
 // Mock next/navigation
 const mockPathname = jest.fn();
 jest.mock("next/navigation", () => ({
@@ -74,6 +87,19 @@ describe("SettingsLayout", () => {
     expect(profileLink).toHaveAttribute("href", "/settings/profile");
     expect(connectionsLink).toHaveAttribute("href", "/settings/connections");
     expect(apiKeysLink).toHaveAttribute("href", "/settings/personal-access-tokens");
+  });
+
+  it("disables automatic prefetch for every Settings navigation link", () => {
+    render(
+      <SettingsLayout>
+        <div>Test Content</div>
+      </SettingsLayout>,
+    );
+
+    expect(screen.getAllByRole("link")).toHaveLength(8);
+    for (const link of screen.getAllByRole("link")) {
+      expect(link).toHaveAttribute("data-prefetch", "false");
+    }
   });
 
   it("highlights the active navigation item for providers", () => {

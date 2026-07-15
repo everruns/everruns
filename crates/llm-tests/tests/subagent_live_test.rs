@@ -1,11 +1,11 @@
-// Live end-to-end test for background spawn_subagent against a real LLM
+// Live end-to-end test for background spawn_agent subagent delegation against a real LLM
 // through the runtime: InProcessRuntime + the local-host PlatformStore
 // (`everruns-local` owns the embeddable PlatformStore implementation the
 // subagent tools require; `everruns-runtime` deliberately has none) + the
 // SQLite LocalSessionTaskRegistry.
 //
 // No mocks anywhere in the loop:
-// - a real model decides to call spawn_subagent from plain instructions
+// - a real model decides to call spawn_agent from plain instructions
 // - the tool returns while the parent turn is still running (background default)
 // - the detached watcher creates the child session and drives its REAL LLM turn
 // - the task settles Succeeded with the child's actual reply as the summary
@@ -130,7 +130,7 @@ impl LocalSessionRunner for RuntimeRunner {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn background_spawn_subagent_live_end_to_end() {
+async fn background_spawn_agent_subagent_live_end_to_end() {
     let config = ANTHROPIC_HAIKU;
     let Some(model) = config.model() else {
         eprintln!("Skipping: {} not set", config.label());
@@ -188,13 +188,13 @@ async fn background_spawn_subagent_live_end_to_end() {
         .expect("runtime builds");
     runtime_cell.set(runtime.clone()).ok().expect("set once");
 
-    // 1. Parent turn: the real model must choose to call spawn_subagent.
+    // 1. Parent turn: the real model must choose to call spawn_agent.
     let turn = runtime
         .run_text_turn(
             parent_id,
             &format!(
-                "Call the spawn_subagent tool once, with name \"Echo\" and instructions \
-                 \"Reply with exactly the word {CHILD_MARKER} and nothing else.\". \
+                "Call the spawn_agent tool once, with target.type \"subagent\", name \"Echo\", \
+                 and instructions \"Reply with exactly the word {CHILD_MARKER} and nothing else.\". \
                  Do not pass a mode. After the tool returns, tell me the task id it reported."
             ),
         )
@@ -206,8 +206,8 @@ async fn background_spawn_subagent_live_end_to_end() {
     let spawn_call = parent_messages
         .iter()
         .flat_map(|m| m.tool_calls())
-        .find(|tc| tc.name == "spawn_subagent")
-        .expect("the live model should have called spawn_subagent");
+        .find(|tc| tc.name == "spawn_agent")
+        .expect("the live model should have called spawn_agent");
     assert!(
         spawn_call.arguments.to_string().contains(CHILD_MARKER),
         "spawn args should carry the child instructions: {}",
@@ -219,7 +219,7 @@ async fn background_spawn_subagent_live_end_to_end() {
     let task = tasks
         .iter()
         .find(|t| t.kind == "subagent")
-        .expect("spawn_subagent should have registered a subagent task");
+        .expect("spawn_agent should have registered a subagent task");
     assert_eq!(task.spec["mode"], "background");
 
     // 3. The detached watcher drives the child's real turn; wait for settle.

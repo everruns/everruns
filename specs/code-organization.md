@@ -246,8 +246,8 @@ just test-workflow    # Run workflow tests
 **Goal:** Validate LLM client implementations against real APIs.
 
 **Test files:**
-- `crates/core/tests/agent_run_basic.rs` - Basic completion + tool calls
-- `crates/core/tests/agent_run_with_thinking.rs` - Extended thinking (Anthropic)
+- `crates/llm-tests/tests/agent_run_basic.rs` - Basic completion + tool calls
+- `crates/llm-tests/tests/agent_run_with_thinking.rs` - Extended thinking (Anthropic)
 
 **Requirements:**
 - `ANTHROPIC_API_KEY` and/or `OPENAI_API_KEY` environment variables

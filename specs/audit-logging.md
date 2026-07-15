@@ -92,7 +92,8 @@ Policy: `AUDIT_LOG_VIEW` requires `OrgAuditLogsView`.
 - **Tenant isolation**: All queries include `org_id` filter
 - **Admin-only access**: Policy-gated, not just role check
 - **No mutation API**: Audit logs are append-only; no update/delete endpoints
-- **IP tracking**: Client IP captured from proxy headers for forensics
+- **IP tracking**: Client IP uses the auth rate limiter's trusted-proxy
+  extraction contract before proxy headers are recorded for forensics
 - **JSONB details**: Freeform but never contains secrets (PII limited to IDs)
 
 ## Threat Model References

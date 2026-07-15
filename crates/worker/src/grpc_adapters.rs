@@ -22,7 +22,8 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
 use everruns_core::{
-    Agent, Harness, HarnessStatus, Message, MessageFilter, MessageRole, Session, SessionStatus,
+    Agent, Harness, HarnessStatus, Message, MessageFilter, MessageRole, Session,
+    SessionParticipant, SessionStatus,
 };
 use everruns_internal_protocol::proto;
 use everruns_internal_protocol::{
@@ -525,6 +526,29 @@ impl GrpcClient {
             "created_session": response.created_session,
         }))
     }
+
+    pub async fn invoke_agent_trigger(
+        &self,
+        org_id: i64,
+        agent_id: &str,
+        trigger_id: &str,
+    ) -> Result<serde_json::Value> {
+        let mut client = self.inner.lock().await;
+        let response = client
+            .invoke_agent_trigger(proto::InvokeAgentTriggerRequest {
+                org_id,
+                agent_id: agent_id.to_string(),
+                trigger_id: trigger_id.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+
+        let response = response.into_inner();
+        Ok(serde_json::json!({
+            "session_id": response.session_id,
+            "created_session": response.created_session,
+        }))
+    }
 }
 
 // ============================================================================
@@ -760,6 +784,13 @@ pub struct GrpcPaymentAuthority {
     agent_id: Option<String>,
 }
 
+/// Session-creation authority backed by the control-plane permission resolver.
+pub struct GrpcSessionCreationAuthority {
+    client: GrpcClient,
+    org_id: i64,
+    session_id: SessionId,
+}
+
 impl GrpcBudgetChecker {
     pub fn new(client: GrpcClient, org_id: i64) -> Self {
         Self {
@@ -787,6 +818,16 @@ impl GrpcPaymentAuthority {
     pub fn with_agent_id(mut self, agent_id: Option<String>) -> Self {
         self.agent_id = agent_id;
         self
+    }
+}
+
+impl GrpcSessionCreationAuthority {
+    pub fn new(client: GrpcClient, org_id: i64, session_id: SessionId) -> Self {
+        Self {
+            client,
+            org_id,
+            session_id,
+        }
     }
 }
 
@@ -1132,6 +1173,12 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         .as_ref()
         .map(|u| proto_uuid_to_uuid(Some(u)))
         .transpose()?;
+    let harness_id = proto_agent
+        .harness_id
+        .as_ref()
+        .map(|u| proto_uuid_to_uuid(Some(u)))
+        .transpose()?
+        .ok_or_else(|| anyhow::anyhow!("proto Agent missing harness_id"))?;
 
     let status = match proto_agent.status.to_lowercase().as_str() {
         "active" => everruns_core::AgentStatus::Active,
@@ -1148,6 +1195,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         description: non_empty_string(proto_agent.description),
         system_prompt: proto_agent.system_prompt,
         default_model_id: default_model_id.map(|u| u.into()),
+        harness_id: harness_id.into(),
         default_version_id: None,
         forked_from_agent_id: None,
         forked_from_version_id: None,
@@ -1361,6 +1409,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         owner: None,
         effective_owner: None,
         title: non_empty_string(proto_session.title),
+        goal: proto_session.goal.clone(),
         locale: non_empty_string(proto_session.locale),
         preview: None,
         output_preview: None,
@@ -1514,6 +1563,10 @@ fn proto_model_with_provider_to_model(proto: proto::ResolvedModel) -> Result<Res
 
 #[async_trait]
 impl SessionFileSystem for GrpcAdapter {
+    fn is_mount_resolver(&self) -> bool {
+        false
+    }
+
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let mut client = self.client.inner.lock().await;
 
@@ -3246,10 +3299,54 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         .await
     }
 
+    async fn create_session_with_options(
+        &self,
+        request: everruns_core::platform_store::PlatformCreateSessionRequest,
+    ) -> Result<Session> {
+        self.execute_platform_command(
+            "create_session",
+            serde_json::json!({
+                "harness_id": request.harness_id.to_string(),
+                "agent_id": request.agent_id.map(|id| id.to_string()),
+                "title": request.title,
+                "goal": request.goal,
+                "locale": request.locale,
+                "tags": ["managed"],
+                "capabilities": [],
+                "tools": [],
+                "mcp_servers": {},
+                "initial_files": [],
+                "blueprint_id": request.blueprint_id,
+                "blueprint_config": request.blueprint_config,
+                "parent_session_id": request.parent_session_id.map(|id| id.to_string()),
+                "forked_from_session_id": request.forked_from_session_id.map(|id| id.to_string()),
+                "budget_root_session_id": request.budget_root_session_id.map(|id| id.to_string()),
+                "seed": request.seed,
+            }),
+        )
+        .await
+    }
+
     async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>> {
         self.execute_platform_lookup(
             "get_session",
             serde_json::json!({ "session_id": id.to_string() }),
+        )
+        .await
+    }
+
+    async fn add_agent_session_participant(
+        &self,
+        session_id: SessionId,
+        agent_id: AgentId,
+    ) -> Result<SessionParticipant> {
+        self.execute_platform_command(
+            "add_session_participant",
+            serde_json::json!({
+                "session_id": session_id.to_string(),
+                "kind": "agent",
+                "agent_id": agent_id.to_string(),
+            }),
         )
         .await
     }
@@ -3794,6 +3891,32 @@ impl everruns_core::traits::PaymentAuthority for GrpcPaymentAuthority {
             rail,
             response: body,
             receipt,
+        })
+    }
+}
+
+#[async_trait]
+impl everruns_core::traits::SessionCreationAuthority for GrpcSessionCreationAuthority {
+    async fn authorize_session_creation(
+        &self,
+        session_id: SessionId,
+    ) -> everruns_core::error::Result<SessionId> {
+        if session_id != self.session_id {
+            return Err(AgentLoopError::tool(
+                "session-creation authority is scoped to the current session",
+            ));
+        }
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .authorize_session_creation(proto::AuthorizeSessionCreationRequest {
+                org_id: self.org_id,
+                session_id: session_id.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+        SessionId::parse(&response.budget_root_session_id).map_err(|error| {
+            AgentLoopError::store(format!("Invalid budget root session id: {error}"))
         })
     }
 }

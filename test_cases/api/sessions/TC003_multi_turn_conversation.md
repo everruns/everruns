@@ -6,14 +6,16 @@ Verify that an agent maintains context across multiple turns in the same session
 
 ## Preconditions
 
-- API server running (`just start-dev`)
+- API server running locally (`just start-dev`) or a deployed API is available
+- Set `BASE_URL` to the API origin (for example, `http://localhost:9300`)
+- For authenticated deployments, configure `curl` with the required authorization and organization headers
 - LLM API keys configured
 
 ## Test Data
 
 | Field | Value |
 |-------|-------|
-| Agent Name | Memory Agent |
+| Agent Name | memory-agent |
 | Agent Prompt | You are a helpful assistant. Remember context from previous messages. |
 | Message 1 | My name is Alice. |
 | Message 2 | What is my name? |
@@ -22,10 +24,10 @@ Verify that an agent maintains context across multiple turns in the same session
 
 1. Create agent:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "${BASE_URL}/api/v1/agents" \
      -H "Content-Type: application/json" \
      -d '{
-       "name": "Memory Agent",
+       "name": "memory-agent",
        "system_prompt": "You are a helpful assistant. Remember context from previous messages."
      }'
    ```
@@ -33,7 +35,7 @@ Verify that an agent maintains context across multiple turns in the same session
 
 2. Create session:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions" \
+   curl -s -X POST "${BASE_URL}/api/v1/sessions" \
      -H "Content-Type: application/json" \
      -d '{"agent_id": "{agent_id}"}'
    ```
@@ -41,7 +43,7 @@ Verify that an agent maintains context across multiple turns in the same session
 
 3. Send first message:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions/{session_id}/messages" \
+   curl -s -X POST "${BASE_URL}/api/v1/sessions/{session_id}/messages" \
      -H "Content-Type: application/json" \
      -d '{
        "message": {
@@ -55,7 +57,7 @@ Verify that an agent maintains context across multiple turns in the same session
 
 5. Send second message:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions/{session_id}/messages" \
+   curl -s -X POST "${BASE_URL}/api/v1/sessions/{session_id}/messages" \
      -H "Content-Type: application/json" \
      -d '{
        "message": {
@@ -69,7 +71,7 @@ Verify that an agent maintains context across multiple turns in the same session
 
 7. Get all messages:
    ```bash
-   curl -s "http://localhost:9300/api/v1/sessions/{session_id}/messages"
+   curl -s "${BASE_URL}/api/v1/sessions/{session_id}/messages"
    ```
 
 ## Expected Result

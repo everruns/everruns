@@ -3,7 +3,10 @@
 // Mirrors the PostgreSQL repository exactly; lifecycle invariants come from
 // `everruns_core::session_task::apply_task_update` in both backends.
 
-use super::super::models::{NewSessionTaskMessageRow, SessionTaskMessageRow, SessionTaskRow};
+use super::super::models::{
+    CreateSessionTaskPushConfig, NewSessionTaskMessageRow, SessionTaskMessageRow,
+    SessionTaskPushConfigRow, SessionTaskRow,
+};
 use super::InMemoryDatabase;
 use anyhow::Result;
 use everruns_core::SessionId;
@@ -13,7 +16,15 @@ impl InMemoryDatabase {
     /// Insert a task. Idempotent on `id`: when the row already exists it is
     /// returned unchanged and the `bool` is false.
     pub async fn create_session_task(&self, task: &SessionTask) -> Result<(SessionTaskRow, bool)> {
-        let row = SessionTaskRow::from_task(task)?;
+        let mut row = SessionTaskRow::from_task(task)?;
+        // EVE-680: denormalize the owning session's tree root onto the task,
+        // mirroring the Postgres subquery. Read sessions before locking tasks to
+        // keep a consistent lock order.
+        row.root_session_id = self
+            .sessions
+            .read()
+            .get(&task.session_id)
+            .and_then(|s| s.root_session_id);
         let mut tasks = self.session_tasks.write();
         if let Some(existing) = tasks.get(&row.id) {
             // Idempotency is scoped to the owning session: an id that exists
@@ -67,12 +78,14 @@ impl InMemoryDatabase {
     /// PostgreSQL repository: org scoping is the authoritative multitenancy
     /// boundary — a task is only returned when its owning session belongs to
     /// the org.
+    #[allow(clippy::too_many_arguments)]
     pub async fn list_org_session_tasks(
         &self,
         org_id: i64,
         kind: Option<&str>,
         state: Option<&str>,
         created_after: Option<chrono::DateTime<chrono::Utc>>,
+        root_session_id: Option<SessionId>,
         limit: i64,
     ) -> Result<Vec<SessionTaskRow>> {
         // Sessions owned by the org — the multitenancy boundary, mirroring the
@@ -93,6 +106,7 @@ impl InMemoryDatabase {
                     && kind.is_none_or(|k| row.kind == k)
                     && state.is_none_or(|s| row.state == s)
                     && created_after.is_none_or(|c| row.created_at >= c)
+                    && root_session_id.is_none_or(|r| row.root_session_id == Some(r))
             })
             .cloned()
             .collect();
@@ -147,6 +161,62 @@ impl InMemoryDatabase {
         row.cancel_requested_at = Some(now);
         row.updated_at = now;
         Ok(Some((row.clone(), true)))
+    }
+
+    // ============================================
+    // Per-task push-notification configs (EVE-682)
+    // ============================================
+
+    pub async fn create_task_push_config(
+        &self,
+        input: CreateSessionTaskPushConfig,
+    ) -> Result<SessionTaskPushConfigRow> {
+        let now = Self::now();
+        let mut configs = self.session_task_push_configs.write();
+        let id = configs.iter().map(|c| c.id).max().unwrap_or(0) + 1;
+        let row = SessionTaskPushConfigRow {
+            id,
+            public_id: input.public_id,
+            session_id: input.session_id,
+            task_id: input.task_id,
+            url: input.url,
+            secret: input.secret,
+            event_filter: input.event_filter,
+            created_at: now,
+            updated_at: now,
+        };
+        configs.push(row.clone());
+        Ok(row)
+    }
+
+    pub async fn list_task_push_configs(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> Result<Vec<SessionTaskPushConfigRow>> {
+        let mut rows: Vec<_> = self
+            .session_task_push_configs
+            .read()
+            .iter()
+            .filter(|c| c.session_id == session_id && c.task_id == task_id)
+            .cloned()
+            .collect();
+        rows.sort_by_key(|c| (c.created_at, c.id));
+        Ok(rows)
+    }
+
+    pub async fn delete_task_push_config(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        public_id: &str,
+    ) -> Result<bool> {
+        let mut configs = self.session_task_push_configs.write();
+        let before = configs.len();
+        configs.retain(|c| {
+            !(c.session_id == session_id && c.task_id == task_id && c.public_id == public_id)
+        });
+        Ok(configs.len() < before)
     }
 
     pub async fn insert_session_task_message(
@@ -356,6 +426,7 @@ mod tests {
         let row = SessionTaskRow {
             id: id.to_string(),
             session_id,
+            root_session_id: Some(session_id),
             kind: "background_tool".to_string(),
             display_name: "t".to_string(),
             spec: serde_json::json!({}),
@@ -393,6 +464,35 @@ mod tests {
                 in_reply_to: None,
                 created_at: Utc::now(),
             });
+    }
+
+    #[test]
+    fn to_task_surfaces_root_session_id() {
+        // EVE-681: the delegation-tree root is denormalized on the row and must
+        // now round-trip onto the core SessionTask so cross-session tooling
+        // (the Work view) can group a whole tree by one id.
+        let db = InMemoryDatabase::new();
+        let session_id = SessionId::new();
+        let root = SessionId::new();
+        terminal_row(&db, session_id, "task_root", "running", None, None);
+        db.session_tasks
+            .write()
+            .get_mut("task_root")
+            .unwrap()
+            .root_session_id = Some(root);
+
+        let row = db.session_tasks.read().get("task_root").unwrap().clone();
+        let task = row.to_task().expect("to_task");
+        assert_eq!(task.root_session_id, Some(root));
+
+        // A NULL root column surfaces as None (top-level session / unavailable).
+        db.session_tasks
+            .write()
+            .get_mut("task_root")
+            .unwrap()
+            .root_session_id = None;
+        let row = db.session_tasks.read().get("task_root").unwrap().clone();
+        assert_eq!(row.to_task().expect("to_task").root_session_id, None);
     }
 
     #[tokio::test]

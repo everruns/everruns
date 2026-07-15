@@ -24,7 +24,7 @@ import { useOrg } from "@/providers/org-provider";
 import type { PostTaskMessageRequest, SessionTask, TaskMessage } from "@/lib/api/types";
 
 /** Replace the matching task by ID, or append when new. */
-function upsertTask(tasks: SessionTask[] | undefined, task: SessionTask): SessionTask[] {
+export function upsertTask(tasks: SessionTask[] | undefined, task: SessionTask): SessionTask[] {
   if (!tasks) return [task];
   const index = tasks.findIndex((t) => t.id === task.id);
   if (index === -1) return [...tasks, task];
