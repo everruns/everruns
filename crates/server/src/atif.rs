@@ -578,6 +578,14 @@ impl SegmentCursor {
     }
 }
 
+/// Validate and decode the cheap, session-bound parts of a segmented ATIF cursor.
+///
+/// This must run before loading or folding session events in request handlers so
+/// malformed, oversized, or foreign-session cursors fail without expensive work.
+pub fn decode_segment_cursor(cursor: &str, expected_session: &str) -> Result<usize, CursorError> {
+    SegmentCursor::decode(cursor, expected_session)
+}
+
 /// A rejected cursor. Rendered as an HTTP 400 by the export route; never a panic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CursorError(pub &'static str);
@@ -626,23 +634,22 @@ pub fn build_segment(
     max_bytes: usize,
     link_base: &str,
 ) -> Result<SegmentedTrajectory, CursorError> {
+    // Validate attacker-controlled cursor syntax/session binding before the
+    // expensive event fold. Only the offset bounds check needs folded step count.
+    let start = match cursor {
+        None => 0,
+        Some(raw) => decode_segment_cursor(raw, session_id)?,
+    };
+
     let folded = fold_events(events, options.redact_content);
     let all_steps = folded.steps;
     let total = all_steps.len();
 
-    // Resolve the start offset from the cursor (validated, session-bound).
-    let start = match cursor {
-        None => 0,
-        Some(raw) => {
-            let off = SegmentCursor::decode(raw, session_id)?;
-            // An offset at/after the end is only valid when it is exactly the
-            // end (an empty session, or a client re-fetching past the tail).
-            if off > total {
-                return Err(CursorError("cursor offset is past the end of the session"));
-            }
-            off
-        }
-    };
+    // An offset at/after the end is only valid when it is exactly the end (an
+    // empty session, or a client re-fetching past the tail).
+    if start > total {
+        return Err(CursorError("cursor offset is past the end of the session"));
+    }
 
     // Segment index is derivable from the offset only when segments are uniform,
     // which they are not (byte-bounded). Recompute it by replaying the greedy
