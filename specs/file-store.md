@@ -291,9 +291,11 @@ The following behaviors hold across all implementations:
    itself MUST fail with an error, not return `Ok(false)`.
 4. **`stat_file` on root** returns a synthetic directory entry; the root
    always exists.
-5. **`grep_files`** searches text files only. Implementations are free to
-   skip binary content, oversized files, and explicitly excluded
-   directories. `path_pattern` filters canonical workspace paths using globs:
+5. **`grep_files`** searches text files only. The content `pattern` uses Rust
+   [`regex`](https://docs.rs/regex) syntax and is compiled once before scanning;
+   an invalid pattern returns an explicit error. Implementations are free to
+   skip binary content, oversized files, and explicitly excluded directories.
+   `path_pattern` filters canonical workspace paths using globs:
    `*` and `?` match within one path segment, `**` crosses directories, and
    bracket classes and brace alternation are supported. A basename-only glob
    such as `*.txt` matches at any depth. `/workspace` and supported host-absolute

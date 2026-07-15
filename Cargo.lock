@@ -3075,6 +3075,7 @@ dependencies = [
  "everruns-openai",
  "futures",
  "ignore",
+ "regex",
  "serde",
  "serde_json",
  "sha2 0.11.0",
