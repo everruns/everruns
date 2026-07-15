@@ -3334,7 +3334,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
     assert!(
         our_results_after
             .iter()
-            .all(|(ret_session_id, _, _)| **ret_session_id == session_id),
+            .all(|(ret_session_id, _, _)| *ret_session_id == session_id),
         "session_id mismatch in results"
     );
 
