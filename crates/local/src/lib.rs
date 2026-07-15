@@ -7,6 +7,8 @@
 //!   over SQLite, persisting tasks and their message channel.
 //! - [`LocalScheduleStore`] — a [`everruns_core::traits::SessionScheduleStore`]
 //!   over SQLite, with an additive JSON metadata bag (see its module docs).
+//! - [`LocalScheduleRunner`] — an explicitly managed in-process executor that
+//!   claims due schedules and delivers them through [`LocalSessionRunner`].
 //! - [`LocalPlatformStore`] — a [`everruns_core::platform_store::PlatformStore`]
 //!   implementing the subagent-critical core honestly and returning explicit
 //!   unsupported errors for platform-management-only operations.
@@ -27,6 +29,7 @@ mod error;
 mod platform_store;
 mod profile;
 mod runtime_builder;
+mod schedule_runner;
 mod schedule_store;
 mod task_registry;
 
@@ -36,5 +39,8 @@ pub use error::{LocalError, LocalResult};
 pub use platform_store::{LocalPlatformStore, LocalSessionRunner};
 pub use profile::LocalProfile;
 pub use runtime_builder::LocalRuntimeBuilder;
+pub use schedule_runner::{
+    LocalScheduleRunner, LocalScheduleRunnerConfig, LocalScheduleRunnerHandle,
+};
 pub use schedule_store::LocalScheduleStore;
 pub use task_registry::LocalSessionTaskRegistry;

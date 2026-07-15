@@ -55,6 +55,7 @@ export const agentFormSchema = z.object({
   display_name: optionalString(),
   description: optionalString(),
   system_prompt: requiredString("System prompt"),
+  harness_id: requiredString("Harness"),
   default_model_id: optionalString(),
   tags: z.preprocess(trimInput, z.string()).optional().default(""),
 });
@@ -101,6 +102,21 @@ export const mcpServerFormSchema = z
       });
     }
   });
+
+/**
+ * Edit schema for an existing MCP server. Covers the mutable identity fields
+ * (name, description, url) plus protocol compatibility. Auth mode and the API
+ * key are managed via their own dedicated flows and are intentionally omitted.
+ */
+export const mcpServerEditFormSchema = z.object({
+  name: requiredString("Name"),
+  description: optionalString(),
+  url: requiredString("URL").refine(
+    (value) => z.url().safeParse(value).success,
+    "URL must be a valid absolute URL",
+  ),
+  protocol_mode: z.enum(["auto", "legacy", "stable", "rc"]),
+});
 
 export const apiKeySecretSchema = z.object({
   api_key: requiredString("API key"),

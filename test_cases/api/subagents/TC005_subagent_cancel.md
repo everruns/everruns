@@ -15,7 +15,7 @@ Verify that `cancel_task` delivers a cooperative cancellation request to a subag
 |-------|-------|
 | Agent Name | Cancel Tester |
 | Capabilities | `subagents`, `session_tasks` |
-| System Prompt | You are an orchestrator. Spawn subagents and cancel them using cancel_task when instructed. Use the task_id returned by spawn_subagent. |
+| System Prompt | You are an orchestrator. Spawn subagents and cancel them using cancel_task when instructed. Use the task_id returned by spawn_agent. |
 | First Message | Spawn a subagent named "Worker" with task "Write a long story about a dragon." Record the task_id. |
 | Second Message | Cancel the Worker subagent using cancel_task with Worker's task_id. |
 
@@ -27,7 +27,7 @@ Verify that `cancel_task` delivers a cooperative cancellation request to a subag
      -H "Content-Type: application/json" \
      -d '{
        "name": "Cancel Tester",
-       "system_prompt": "You are an orchestrator. Spawn subagents and cancel them using cancel_task when instructed. Use the task_id returned by spawn_subagent.",
+       "system_prompt": "You are an orchestrator. Spawn subagents and cancel them using cancel_task when instructed. Use the task_id returned by spawn_agent.",
        "capabilities": ["subagents", "session_tasks"]
      }'
    ```
@@ -80,8 +80,8 @@ Verify that `cancel_task` delivers a cooperative cancellation request to a subag
 
 | Check | Expected |
 |-------|----------|
-| Worker spawned | `tool.called` with `tool_name: "spawn_subagent"` and `arguments.name: "Worker"` |
-| Spawn completed | `tool.completed` for `spawn_subagent` with `task_id` in result |
+| Worker spawned | `tool.called` with `tool_name: "spawn_agent"` and `arguments.name: "Worker"` |
+| Spawn completed | `tool.completed` for `spawn_agent` with `task_id` in result |
 
 ### Cancel Phase Assertions
 

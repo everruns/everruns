@@ -441,6 +441,7 @@ impl Tool for DaytonaExecTool {
         tool_call: &everruns_core::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Daytona");
         Some(everruns_core::tool_narration::narrate_shell_exec(

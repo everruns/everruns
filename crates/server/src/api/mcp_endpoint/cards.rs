@@ -425,6 +425,7 @@ mod tests {
             description: Some("Answers FAQs.\n<script>x</script>".into()),
             system_prompt: "you help".into(),
             default_model_id: None,
+            harness_id: everruns_core::HarnessId::from_uuid(uuid::Uuid::nil()),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,

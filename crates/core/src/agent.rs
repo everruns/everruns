@@ -17,7 +17,7 @@ use crate::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
 use crate::network_access::NetworkAccessList;
 use crate::session_file::InitialFile;
 use crate::tool_types::ToolDefinition;
-use crate::typed_id::{AgentId, AgentVersionId, ModelId, PrincipalId};
+use crate::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId, PrincipalId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -222,6 +222,9 @@ pub struct Agent {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001"))]
     pub default_model_id: Option<ModelId>,
+    /// Harness that supplies the base execution environment for this agent.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "harness_01933b5a00007000800000000000001"))]
+    pub harness_id: HarnessId,
     /// Default immutable version used by deployments that choose the default policy.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001"))]
@@ -407,6 +410,7 @@ mod tests {
             description: None,
             system_prompt: "test".to_string(),
             default_model_id: None,
+            harness_id: "harness_01933b5a000070008000000000000001".parse().unwrap(),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -441,6 +445,7 @@ mod tests {
             "name": "test",
             "display_name": "Test",
             "system_prompt": "test",
+            "harness_id": "harness_01933b5a000070008000000000000001",
             "status": "active",
             "tags": [],
             "created_at": "2024-01-01T00:00:00Z",

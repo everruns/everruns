@@ -40,6 +40,34 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    pub async fn upsert_session_key_value(
+        &self,
+        input: UpsertSessionKeyValue,
+    ) -> Result<SessionKeyValueRow> {
+        let now = Self::now();
+        let map_key = (input.session_id, input.key.clone());
+        let mut storage = self.session_key_values.write();
+
+        let row = if let Some(existing) = storage.get_mut(&map_key) {
+            existing.value = input.value;
+            existing.updated_at = now;
+            existing.clone()
+        } else {
+            let row = SessionKeyValueRow {
+                id: Uuid::now_v7(),
+                session_id: input.session_id,
+                key: input.key,
+                value: input.value,
+                created_at: now,
+                updated_at: now,
+            };
+            storage.insert(map_key, row.clone());
+            row
+        };
+
+        Ok(row)
+    }
+
     pub async fn list_session_secrets(
         &self,
         session_id: Uuid,
@@ -57,6 +85,19 @@ impl InMemoryDatabase {
             .collect();
         secrets.sort_by_key(|secret| secret.name.clone());
         Ok(secrets)
+    }
+
+    pub async fn get_session_secret(
+        &self,
+        session_id: Uuid,
+        name: &str,
+    ) -> Result<Option<SessionSecretRow>> {
+        let session_id = SessionId::from_uuid(session_id);
+        Ok(self
+            .session_secrets
+            .read()
+            .get(&(session_id, name.to_string()))
+            .cloned())
     }
 
     pub async fn upsert_session_secret(

@@ -25,6 +25,7 @@ impl InMemoryDatabase {
             description: input.description,
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
+            harness_id: input.harness_id,
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -71,6 +72,7 @@ impl InMemoryDatabase {
                 && existing.display_name == input.display_name
                 && existing.description == input.description
                 && existing.system_prompt == input.system_prompt
+                && existing.harness_id == input.harness_id
                 && existing.tags == input.tags
                 && existing.initial_files == input.initial_files
                 && existing.tools == input.tools
@@ -84,6 +86,7 @@ impl InMemoryDatabase {
                 display_name: input.display_name,
                 description: input.description,
                 system_prompt: input.system_prompt,
+                harness_id: input.harness_id,
                 tags: input.tags,
                 initial_files: input.initial_files,
                 tools: input.tools,
@@ -104,6 +107,7 @@ impl InMemoryDatabase {
             description: input.description,
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
+            harness_id: input.harness_id,
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -139,6 +143,16 @@ impl InMemoryDatabase {
             .get(&id)
             .filter(|a| a.org_id == org_id)
             .cloned())
+    }
+
+    pub async fn get_agents_by_ids(&self, org_id: i64, ids: &[AgentId]) -> Result<Vec<AgentRow>> {
+        Ok(self
+            .agents
+            .read()
+            .values()
+            .filter(|row| row.org_id == org_id && ids.contains(&row.id))
+            .cloned()
+            .collect())
     }
 
     /// Look up the owning org for an agent by its public_id (cross-org resolver).
@@ -247,6 +261,9 @@ impl InMemoryDatabase {
             if let Some(default_model_id) = input.default_model_id {
                 agent.default_model_id = Some(default_model_id);
             }
+            if let Some(harness_id) = input.harness_id {
+                agent.harness_id = harness_id;
+            }
             if let Some(default_version_id) = input.default_version_id {
                 agent.default_version_id = Some(default_version_id);
             }
@@ -336,6 +353,7 @@ impl InMemoryDatabase {
             agent.description = input.description;
             agent.system_prompt = input.system_prompt;
             agent.default_model_id = input.default_model_id;
+            agent.harness_id = input.harness_id;
             agent.tags = input.tags;
             agent.initial_files = input.initial_files;
             agent.tools = input.tools;
@@ -357,6 +375,7 @@ impl InMemoryDatabase {
                 description: input.description,
                 system_prompt: input.system_prompt,
                 default_model_id: input.default_model_id,
+                harness_id: input.harness_id,
                 default_version_id: None,
                 forked_from_agent_id: None,
                 forked_from_version_id: None,
@@ -404,6 +423,7 @@ impl InMemoryDatabase {
             agent.description = input.description;
             agent.system_prompt = input.system_prompt;
             agent.default_model_id = input.default_model_id;
+            agent.harness_id = input.harness_id;
             agent.tags = input.tags;
             agent.initial_files = input.initial_files;
             agent.tools = input.tools;
@@ -426,6 +446,7 @@ impl InMemoryDatabase {
                 description: input.description,
                 system_prompt: input.system_prompt,
                 default_model_id: input.default_model_id,
+                harness_id: input.harness_id,
                 default_version_id: None,
                 forked_from_agent_id: None,
                 forked_from_version_id: None,
@@ -590,6 +611,28 @@ impl InMemoryDatabase {
             .map(|(_, c)| c.clone())
             .collect();
         result.sort_by_key(|c| c.position);
+        Ok(result)
+    }
+
+    pub async fn get_agent_capabilities_by_agent_ids(
+        &self,
+        org_id: i64,
+        agent_ids: &[AgentId],
+    ) -> Result<Vec<AgentCapabilityRow>> {
+        let agents = self.agents.read();
+        let mut result: Vec<_> = self
+            .agent_capabilities
+            .read()
+            .values()
+            .filter(|row| {
+                agent_ids.contains(&row.agent_id)
+                    && agents
+                        .get(&row.agent_id)
+                        .is_some_and(|agent| agent.org_id == org_id)
+            })
+            .cloned()
+            .collect();
+        result.sort_by_key(|row| (row.agent_id.uuid(), row.position));
         Ok(result)
     }
 

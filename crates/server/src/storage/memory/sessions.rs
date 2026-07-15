@@ -17,6 +17,29 @@ impl InMemoryDatabase {
         let now = Self::now();
         let id = SessionId::new();
 
+        // THREAT[TM-TENANT-014]: Resolve the explicit detached budget root
+        // under the creating org.
+        // Canonicalizing through the referenced row preserves the origin root
+        // across detached chains and rejects cross-org linkage.
+        let root_session_id = if let Some(budget_root) = input.budget_root_session_id {
+            let sessions = self.sessions.read();
+            let referenced = sessions
+                .get(&budget_root)
+                .filter(|row| row.org_id == input.org_id)
+                .ok_or_else(|| anyhow::anyhow!("budget root session not found in organization"))?;
+            referenced.root_session_id.unwrap_or(budget_root)
+        } else {
+            match input.parent_session_id {
+                Some(parent) => self
+                    .sessions
+                    .read()
+                    .get(&parent)
+                    .and_then(|p| p.root_session_id)
+                    .unwrap_or(parent),
+                None => id,
+            }
+        };
+
         // Attach to an existing workspace when requested (validated by the
         // service before reaching storage); otherwise auto-create a default
         // workspace whose UUID equals the session id — matches the Postgres
@@ -58,6 +81,7 @@ impl InMemoryDatabase {
             owner_principal_id: input.owner_principal_id,
             resolved_owner_user_id: input.resolved_owner_user_id,
             title: input.title,
+            goal: None,
             locale: input.locale,
             tags: input.tags,
             model_id: input.model_id,
@@ -79,16 +103,20 @@ impl InMemoryDatabase {
             total_output_tokens: 0,
             total_cache_read_tokens: 0,
             total_cache_creation_tokens: 0,
+            turn_count: 0,
+            tool_call_count: 0,
             total_actual_cost_usd: 0.0,
             total_estimated_cost_usd: 0.0,
             total_cost_usd: 0.0,
             parent_session_id: input.parent_session_id,
+            root_session_id: Some(root_session_id),
             forked_from_session_id: None,
             forked_from_sequence: None,
             blueprint_id: input.blueprint_id,
             blueprint_config: input.blueprint_config,
         };
         self.sessions.write().insert(id, row.clone());
+        self.insert_initial_session_participants(&row).await?;
         self.enqueue_reporting_outbox(
             row.org_id,
             "session",
@@ -525,6 +553,9 @@ impl InMemoryDatabase {
             }
             if let Some(title) = input.title {
                 session.title = Some(title);
+            }
+            if let Some(goal) = input.goal {
+                session.goal = Some(goal);
             }
             input
                 .agent_identity_id

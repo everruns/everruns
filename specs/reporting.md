@@ -137,7 +137,11 @@ the correctness mechanism.
 The server runs a built-in reporting background task for PostgreSQL storage. It
 is controlled by `REPORTING_BACKGROUND_ENABLED`,
 `REPORTING_PROJECTOR_INTERVAL_SECS`, `REPORTING_PROJECTOR_LIMIT`,
-`REPORTING_BACKFILL_INTERVAL_SECS`, and `REPORTING_BACKFILL_LIMIT`.
+`REPORTING_REPAIR_INTERVAL_SECS`, and `REPORTING_REPAIR_LIMIT`. Periodic repair
+walks supported event sources in bounded, indexed slices behind a durable
+watermark, checks exact fact source keys, and wraps after reaching the current
+tail. It does not run a full historical backfill. Full backfill remains an
+explicit admin operation.
 
 ## Idempotency
 
@@ -459,8 +463,9 @@ Backfills:
 - Backfills are idempotent and resumable.
 - Backfills must be rate-limited per org and globally.
 - The initial backfill/reconciler enqueues missing event, session,
-  LLM-generation, and usage-ledger work from canonical tables. It is available
-  as an admin operation and also runs periodically in the background.
+  LLM-generation, and usage-ledger work from canonical tables. Full historical
+  reconciliation is available as an admin operation. The background task only
+  performs bounded event repair using its durable cursor.
 
 Retention:
 

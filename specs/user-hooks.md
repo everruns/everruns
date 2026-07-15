@@ -420,7 +420,7 @@ No breaking changes to existing user configs.
 | `HookEvent`, `HookMatcher`, `HookOutcome`, `UserHookSpec`, `ExecutorSpec`, `OnError`, `HookId`, `HookSource` | `crates/core/src/user_hook_types.rs` |
 | `HookExecutor` trait + `BashHookExecutor` | `crates/core/src/hook_executor.rs` |
 | `PreToolUseHook` trait | `crates/core/src/atoms/act_hooks.rs` (alongside existing hooks) |
-| `SessionLifecycleHook`, `TurnLifecycleHook` traits | _(planned)_ `crates/core/src/lifecycle_hooks.rs` — not present yet; lands with the lifecycle-event wire-ins |
+| `SessionLifecycleHook`, `TurnLifecycleHook` traits | `crates/core/src/lifecycle_hooks.rs` — defines both traits plus `BashLifecycleHook` |
 | `HookAdapterBuilder` (spec → adapter) | `crates/core/src/hook_adapter.rs` |
 | `Capability::user_hooks()` default + collection extension | `crates/core/src/capabilities/mod.rs` |
 | `user_hooks` capability | `crates/core/src/capabilities/user_hooks.rs` |

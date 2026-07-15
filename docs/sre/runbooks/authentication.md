@@ -59,6 +59,7 @@ export AUTH_GITHUB_CLIENT_SECRET=your-github-client-secret
 | `AUTH_MODE` | No | `none`, `admin`, or `full` (default: `none`) |
 | `PUBLIC_APP_URL` | For OAuth | Public app origin used to derive auth callback URLs |
 | `AUTH_BASE_URL` | No | Override callback base URL when it differs from `PUBLIC_APP_URL` + `API_PREFIX` |
+| `AUTH_LOGIN_ORIGIN` | No | Trusted remote origin hosting `/login`; set identically for server and UI runtimes |
 | `AUTH_JWT_SECRET` | For admin/full | JWT signing secret (min 32 chars recommended) |
 
 ### Admin Mode Settings

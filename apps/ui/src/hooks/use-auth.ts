@@ -111,8 +111,18 @@ export function useResetPassword() {
  * Hook for the verify-email mutation.
  */
 export function useVerifyEmail() {
+  const queryClient = useQueryClient();
+
   return useMutation({
     mutationFn: (request: VerifyEmailRequest) => verifyEmail(request),
+    onSuccess: async () => {
+      // EVE-716: verifying the email also signs the user in (the endpoint sets a
+      // valid session). Refetch the current-user query so post-verification
+      // navigation sees the freshly authenticated (zero-org) user and resumes
+      // onboarding, instead of being bounced to /login by the stale
+      // pre-verification unauthenticated cache.
+      await queryClient.refetchQueries({ queryKey: authKeys.user() });
+    },
   });
 }
 

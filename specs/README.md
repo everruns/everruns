@@ -25,6 +25,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/api-streaming.md` - SSE streaming conventions for API endpoints
 - `specs/api-examples.md` - Per-operation request/response examples on `#[utoipa::path]` handlers
 - `specs/api-llm-extensions.md` - LLM-specific OpenAPI extensions (`x-llm-*`)
+- `specs/api-sdk-extensions.md` - SDK model semantics in OpenAPI (`x-sdk-*`)
 - `specs/public-endpoints.md` - Public endpoints, error sanitization contract, stable public code set
 - `specs/error-disclosure.md` - Semantic driver error kinds and session error-disclosure modes
 - `specs/events.md` - Event types, SSE streaming, contract and compatibility guarantees
@@ -49,10 +50,12 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/agent-blueprints.md` - Pre-built agent definitions
 - `specs/agent-versions.md` - Immutable Agent configuration snapshots
 - `specs/agent-handoff.md` - Agent handoff behavior
+- `specs/agent-triggers.md` - Agent triggers (agent wakes itself on a schedule; reuses the durable scheduler)
 - `specs/user-hooks.md` - User-authored lifecycle hooks for agent execution
 - `specs/agent-reliability-tests.md` - Agent execution reliability tests
 - `specs/subagents.md` - Subagent orchestration
 - `specs/session-tasks.md` - Session task registry for background work
+- `specs/session-participants.md` - Session participants (host/member agents and users, addressed-turn routing, invite-mode handoff)
 - `specs/session-resources.md` - Session resource registry
 - `specs/leased-resources.md` - Generic lease primitive
 - `specs/session-sandbox.md` - Managed session-owned sandbox capability and lifecycle
@@ -142,6 +145,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/swe-bench-lite.md` - SWE-bench Lite evaluation harness
 - `specs/reporting.md` - Async reporting
 - `specs/dataset-export.md` - Reward-labeled trajectory dataset export from eval runs
+- `specs/atif-adoption.md` - ATIF (Agent Trajectory Interchange Format) export/import adoption
 - `specs/reporting-backends.md` - Phase 3 reference evaluation
 - `specs/fail-rs-testing.md` - Failure injection testing with fail-rs
 

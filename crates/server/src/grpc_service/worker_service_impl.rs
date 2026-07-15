@@ -7,7 +7,7 @@ use crate::domains::common::CommandErrorKind;
 const COMMAND_API_VERSION_V1: &str = "v1";
 const MAX_EXECUTE_COMMAND_PARAMS_BYTES: usize = 1024 * 1024;
 const DEFAULT_TURN_CONTEXT_MESSAGE_LIMIT: i32 = 200;
-const MAX_TURN_CONTEXT_MESSAGE_LIMIT: i32 = 5_000;
+const MAX_TURN_CONTEXT_MESSAGE_LIMIT: i32 = crate::storage::repository::MESSAGE_SAFETY_LIMIT as i32;
 
 fn normalize_turn_context_message_limit(requested_limit: Option<i32>, default_limit: i32) -> i32 {
     let normalized_default = default_limit.clamp(1, MAX_TURN_CONTEXT_MESSAGE_LIMIT);
@@ -469,6 +469,7 @@ impl WorkerService for WorkerServiceImpl {
                 session_id,
                 crate::api::sessions::UpdateSessionRequest {
                     title: Some(req.title),
+                    goal: None,
                     agent_identity_id: everruns_durable::UpdateField::Unchanged,
                     locale: None,
                     tags: None,
@@ -3668,6 +3669,8 @@ impl WorkerService for WorkerServiceImpl {
             description: req.description,
             system_prompt: req.system_prompt,
             default_model_id: None,
+            harness_id: None,
+            harness_name: None,
             tags: vec![],
             capabilities,
             initial_files: vec![],
@@ -3705,6 +3708,8 @@ impl WorkerService for WorkerServiceImpl {
             description: req.description,
             system_prompt: req.system_prompt,
             default_model_id: None,
+            harness_id: None,
+            harness_name: None,
             tags: None,
             capabilities: None,
             initial_files: None,
@@ -3813,8 +3818,10 @@ impl WorkerService for WorkerServiceImpl {
             harness_id: Some(everruns_core::HarnessId::from_uuid(harness_id)),
             harness_name: None,
             agent_id: agent_public_id,
+            agent_name: None,
             agent_identity_id: None,
             title: req.title,
+            goal: None,
             locale: req.locale,
             tags: vec![],
             model_id: None,
@@ -3828,6 +3835,9 @@ impl WorkerService for WorkerServiceImpl {
             max_iterations: None,
             parallel_tool_calls: None,
             parent_session_id: None,
+            forked_from_session_id: None,
+            budget_root_session_id: None,
+            seed: everruns_core::SessionSeedMode::Fresh,
         };
 
         let session = if let Some(blueprint_id) = req.blueprint_id {
@@ -3979,6 +3989,39 @@ impl WorkerService for WorkerServiceImpl {
         .map_err(command_error_to_status)?;
 
         Ok(Response::new(InvokeScheduledAppChannelResponse {
+            session_id: result.session_id.to_string(),
+            created_session: result.created_session,
+        }))
+    }
+
+    async fn invoke_agent_trigger(
+        &self,
+        request: Request<InvokeAgentTriggerRequest>,
+    ) -> Result<Response<InvokeAgentTriggerResponse>, Status> {
+        let req = request.into_inner();
+        let runner = self
+            .runner
+            .clone()
+            .ok_or_else(|| Status::unavailable("Agent runner not available"))?;
+        let message_service = crate::domains::messages::MessageService::new(
+            self.db.clone(),
+            runner,
+            false,
+            self.event_service.event_delivery().clone(),
+        );
+
+        let result = crate::domains::agent_triggers::invoke_agent_trigger(
+            &self.db,
+            &self.session_service,
+            &message_service,
+            req.org_id,
+            &req.agent_id,
+            &req.trigger_id,
+        )
+        .await
+        .map_err(command_error_to_status)?;
+
+        Ok(Response::new(InvokeAgentTriggerResponse {
             session_id: result.session_id.to_string(),
             created_session: result.created_session,
         }))
@@ -4326,6 +4369,43 @@ impl WorkerService for WorkerServiceImpl {
             receipt: Some(everruns_internal_protocol::json_to_proto_value(
                 &response.receipt,
             )),
+        }))
+    }
+
+    async fn authorize_session_creation(
+        &self,
+        request: Request<AuthorizeSessionCreationRequest>,
+    ) -> Result<Response<AuthorizeSessionCreationResponse>, Status> {
+        // THREAT[TM-AUTHZ-014]: Resolve the current session owner server-side;
+        // the worker cannot supply a user identity for this decision.
+        let req = request.into_inner();
+        let session_id = everruns_core::SessionId::parse(&req.session_id)
+            .or_else(|_| {
+                uuid::Uuid::parse_str(&req.session_id).map(everruns_core::SessionId::from_uuid)
+            })
+            .map_err(|error| Status::invalid_argument(format!("Invalid session_id: {error}")))?;
+        let session = self
+            .db
+            .get_session(req.org_id, session_id)
+            .await
+            .map_err(|error| Status::internal(format!("Failed to load session: {error}")))?
+            .ok_or_else(|| Status::not_found("Session not found"))?;
+        let user_id = session.resolved_owner_user_id.ok_or_else(|| {
+            Status::permission_denied(
+                "Detached session creation requires a user-owned session with a resolved owner",
+            )
+        })?;
+        let caller = crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user_id)
+            .await
+            .map_err(|error| {
+                Status::permission_denied(format!("Failed to resolve session owner: {error}"))
+            })?;
+        crate::domains::sessions::SESSION_MANAGE
+            .evaluate_with(self.permission_resolver.as_ref(), &caller)
+            .map_err(|error| Status::permission_denied(error.message))?;
+        let root_session_id = session.root_session_id.unwrap_or(session.id);
+        Ok(Response::new(AuthorizeSessionCreationResponse {
+            budget_root_session_id: root_session_id.to_string(),
         }))
     }
 }

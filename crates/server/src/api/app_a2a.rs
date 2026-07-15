@@ -719,11 +719,47 @@ async fn handle_tasks_get(
         Err(err) => return internal_error(err).into_response(),
     };
 
+    // EVE-728: surface the task's deterministic structured result (result.json
+    // reported via a `result_schema`, EVE-678) as an A2A artifact. Reading is
+    // org-scoped (TM-A2A-012) and the channel-binding check above already
+    // fenced the session to this API key's channel, so a leaked session id from
+    // another channel cannot exfiltrate its result.
+    let structured_result = match crate::domains::session_tasks::read_structured_task_result(
+        &state.db,
+        auth.org_id,
+        session_id,
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(err) => return internal_error(err).into_response(),
+    };
+
     let mut task = build_task_json(session.id, state_label, None);
+    if let Some(result) = structured_result
+        && let Some(obj) = task.as_object_mut()
+    {
+        obj.insert(
+            "artifacts".to_string(),
+            json!([a2a_result_artifact(result)]),
+        );
+    }
     if legacy_response {
         task = legacy_task_json(task);
     }
     (StatusCode::OK, rpc_success(rpc_id, task)).into_response()
+}
+
+/// Wrap a task's structured `result.json` (EVE-678) as an A2A `Artifact` with a
+/// single `DataPart`, so `tasks/get` callers receive the deterministic machine
+/// result rather than only the last-message / status text. Shape follows the
+/// A2A `Artifact` model (`artifactId` + `name` + typed `parts`).
+fn a2a_result_artifact(result: Value) -> Value {
+    json!({
+        "artifactId": "result",
+        "name": "result",
+        "parts": [{ "kind": "data", "data": result }],
+    })
 }
 
 /// THREAT[TM-A2A-012]: `tasks/cancel` performs a destructive action on a

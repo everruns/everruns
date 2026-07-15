@@ -120,6 +120,7 @@ impl Tool for WriteTodosTool {
         _tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_write_todos(phase, locale))
     }

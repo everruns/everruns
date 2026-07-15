@@ -5,21 +5,24 @@
 // is a mount + the default cwd, not a per-store prefix. This proves that
 // `read_file`, `grep_files`, the on-disk files themselves, the bash cwd, and
 // cwd-relative resolution all agree on the same root — and that repointing the
-// host root (the worktree-switch scenario) moves every surface together while
-// the model-facing namespace stays a stable `/workspace`.
+// host root (the worktree-switch scenario) moves every surface together.
 
-use everruns_core::capabilities::BashTool;
+use everruns_core::atoms::PostToolExecHook;
+use everruns_core::capabilities::{BashTool, DistillOutputHook, PersistOutputHook};
+use everruns_core::tool_types::{
+    BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
+};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
-use everruns_core::{MountFs, SessionFileSystem, SessionId};
-use everruns_runtime::RealDiskFileStore;
+use everruns_core::{MountFs, SessionFileSystem, SessionId, WorkspaceRootSet};
+use everruns_runtime::{InMemorySessionFileStore, RealDiskFileStore, multi_root_file_system};
 use serde_json::json;
 use std::sync::Arc;
 use tempfile::TempDir;
 
 /// Run `pwd` through the bash tool and return the reported working directory.
 async fn bash_pwd(ctx: &ToolContext) -> String {
-    match BashTool
+    match BashTool::default()
         .execute_with_context(json!({ "commands": "pwd" }), ctx)
         .await
     {
@@ -30,6 +33,135 @@ async fn bash_pwd(ctx: &ToolContext) -> String {
             .to_string(),
         other => panic!("bash pwd did not succeed: {other:?}"),
     }
+}
+
+fn output_tool_def(persist_output: bool) -> ToolDefinition {
+    let hints = if persist_output {
+        ToolHints::default().with_persist_output(true)
+    } else {
+        ToolHints::default()
+    };
+    ToolDefinition::Builtin(BuiltinTool {
+        name: "test_output".to_string(),
+        display_name: None,
+        description: "test output".to_string(),
+        parameters: json!({}),
+        policy: ToolPolicy::Auto,
+        category: None,
+        deferrable: DeferrablePolicy::default(),
+        hints,
+        full_parameters: None,
+    })
+}
+
+fn output_tool_call() -> ToolCall {
+    ToolCall {
+        id: "call_paths".to_string(),
+        name: "test_output".to_string(),
+        arguments: json!({}),
+    }
+}
+
+async fn assert_output_pointers_follow_store(store: Arc<dyn SessionFileSystem>) {
+    let session = SessionId::from_seed(662);
+    let context = ToolContext::with_file_store(session, store.clone());
+    let root = store.display_root();
+    let stdout_path = format!("{root}/outputs/call_paths.stdout");
+    let stderr_path = format!("{root}/outputs/call_paths.stderr");
+    let mut result = ToolResult {
+        tool_call_id: "call_paths".to_string(),
+        result: Some(json!({
+            "stdout": "stdout body",
+            "stderr": "stderr body",
+            "exit_code": 0,
+        })),
+        images: None,
+        error: None,
+        connection_required: None,
+        raw_output: Some("stdout body\n--- stderr ---\nstderr body".to_string()),
+    };
+
+    PersistOutputHook
+        .after_exec(
+            &output_tool_call(),
+            &output_tool_def(true),
+            &mut result,
+            &context,
+        )
+        .await;
+
+    let value = result.result.as_ref().unwrap();
+    assert_eq!(value["full_output"], json!(stdout_path));
+    assert_eq!(value["output_files"], json!([stdout_path, stderr_path]));
+    for pointer in value["output_files"].as_array().unwrap() {
+        assert!(
+            store
+                .read_file(session, pointer.as_str().unwrap())
+                .await
+                .unwrap()
+                .is_some(),
+            "model-visible output pointer must be readable by file tools"
+        );
+    }
+    assert!(
+        value["stdout"]
+            .as_str()
+            .unwrap()
+            .contains(&store.display_path("/outputs/call_paths.stdout"))
+    );
+}
+
+async fn assert_distillation_pointer_follows_store(store: Arc<dyn SessionFileSystem>) {
+    let session = SessionId::from_seed(663);
+    let context = ToolContext::with_file_store(session, store.clone());
+    let rows: Vec<_> = (0..2000)
+        .map(|i| json!({"id": i, "name": format!("row-{i}")}))
+        .collect();
+    let mut result = ToolResult {
+        tool_call_id: "call_paths".to_string(),
+        result: Some(json!({"rows": rows})),
+        images: None,
+        error: None,
+        connection_required: None,
+        raw_output: None,
+    };
+
+    DistillOutputHook
+        .after_exec(
+            &output_tool_call(),
+            &output_tool_def(false),
+            &mut result,
+            &context,
+        )
+        .await;
+
+    let expected = store.display_path("/outputs/call_paths.stdout");
+    let value = result.result.as_ref().unwrap();
+    assert_eq!(value["full_output"], json!(expected));
+    assert_eq!(value["output_files"], json!([expected]));
+    assert!(value["distill_note"].as_str().unwrap().contains(&expected));
+    assert!(store.read_file(session, &expected).await.unwrap().is_some());
+}
+
+#[tokio::test]
+async fn persisted_output_paths_follow_real_disk_mount_and_vfs_identity() {
+    let direct_root = TempDir::new().unwrap();
+    let direct: Arc<dyn SessionFileSystem> =
+        Arc::new(RealDiskFileStore::new(direct_root.path()).unwrap());
+    assert_output_pointers_follow_store(direct.clone()).await;
+    assert_distillation_pointer_follows_store(direct).await;
+
+    let mounted_root = TempDir::new().unwrap();
+    let mounted = MountFs::wrap(Arc::new(
+        RealDiskFileStore::new(mounted_root.path()).unwrap(),
+    ));
+    assert_output_pointers_follow_store(mounted.clone()).await;
+    assert_distillation_pointer_follows_store(mounted).await;
+
+    let memory: Arc<dyn SessionFileSystem> = Arc::new(InMemorySessionFileStore::new());
+    assert_eq!(memory.display_root(), "/workspace");
+    assert_output_pointers_follow_store(memory.clone()).await;
+    assert_distillation_pointer_follows_store(memory).await;
 }
 
 #[tokio::test]
@@ -59,6 +191,15 @@ async fn all_surfaces_agree_on_root_across_worktree_switch() {
         .unwrap();
     assert_eq!(read.content.as_deref(), Some("ALPHA"));
     assert_eq!(read.path, "/marker.txt");
+    let direct = backend
+        .read_file(session, "/marker.txt")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        read.path, direct.path,
+        "MountFs preserves primary result paths"
+    );
 
     // cwd-relative resolution agrees: cwd defaults to /workspace.
     let relative = store
@@ -80,10 +221,17 @@ async fn all_surfaces_agree_on_root_across_worktree_switch() {
         "ALPHA"
     );
 
-    // The model-facing namespace is a stable /workspace, even on real disk.
-    assert_eq!(store.display_root(), "/workspace");
-    assert_eq!(store.display_path("/marker.txt"), "/workspace/marker.txt");
-    assert_eq!(bash_pwd(&ctx).await, "/workspace");
+    // Mount routing does not replace the real-disk store's host path identity.
+    assert_eq!(store.display_root(), root_a.display().to_string());
+    assert_eq!(
+        store.display_path("/marker.txt"),
+        root_a.join("marker.txt").display().to_string()
+    );
+    assert_eq!(
+        store.resolve_path("marker.txt"),
+        root_a.join("marker.txt").display().to_string()
+    );
+    assert_eq!(bash_pwd(&ctx).await, root_a.display().to_string());
 
     // --- Switch to Worktree B (the embedder moved worktrees) ---
     let worktree_b = TempDir::new().unwrap();
@@ -120,7 +268,84 @@ async fn all_surfaces_agree_on_root_across_worktree_switch() {
         "worktree A is untouched by writes after the switch"
     );
 
-    // The model-facing namespace is unchanged: still /workspace.
-    assert_eq!(store.display_root(), "/workspace");
-    assert_eq!(bash_pwd(&ctx).await, "/workspace");
+    // The visible namespace follows the backing store after the switch.
+    assert_eq!(store.display_root(), root_b.display().to_string());
+    assert_eq!(
+        store.display_path("/marker.txt"),
+        root_b.join("marker.txt").display().to_string()
+    );
+    assert_eq!(bash_pwd(&ctx).await, root_b.display().to_string());
+}
+
+#[tokio::test]
+async fn multi_root_display_and_containment_contract() {
+    let session = SessionId::from_seed(661);
+    let primary = TempDir::new().unwrap();
+    let secondary = TempDir::new().unwrap();
+    let outside = TempDir::new().unwrap();
+    let roots = WorkspaceRootSet::new(
+        primary.path(),
+        [("backend".to_string(), secondary.path().to_path_buf())],
+    )
+    .unwrap();
+    let store = multi_root_file_system(&roots).unwrap();
+
+    assert_eq!(
+        store.display_root(),
+        roots.primary_host_root().display().to_string()
+    );
+    assert_eq!(
+        store.display_path("/src/lib.rs"),
+        roots
+            .primary_host_root()
+            .join("src/lib.rs")
+            .display()
+            .to_string()
+    );
+
+    let primary_file = store
+        .write_file(session, "src/lib.rs", "primary", "text")
+        .await
+        .unwrap();
+    assert_eq!(primary_file.path, "/src/lib.rs");
+    assert_eq!(
+        std::fs::read_to_string(primary.path().join("src/lib.rs")).unwrap(),
+        "primary"
+    );
+
+    let secondary_file = store
+        .write_file(
+            session,
+            "/workspace/roots/backend/Cargo.toml",
+            "secondary",
+            "text",
+        )
+        .await
+        .unwrap();
+    assert_eq!(secondary_file.path, "/workspace/roots/backend/Cargo.toml");
+    assert_eq!(
+        store.display_path(&secondary_file.path),
+        "/workspace/roots/backend/Cargo.toml"
+    );
+    assert_eq!(
+        std::fs::read_to_string(secondary.path().join("Cargo.toml")).unwrap(),
+        "secondary"
+    );
+
+    let traversal = store
+        .read_file(session, "/workspace/roots/backend/../escape")
+        .await
+        .unwrap_err();
+    assert!(traversal.to_string().contains("path traversal rejected"));
+
+    let outside_path = outside.path().join("secret.txt");
+    std::fs::write(&outside_path, "secret").unwrap();
+    let containment = store
+        .read_file(session, outside_path.to_str().unwrap())
+        .await
+        .unwrap();
+    assert!(
+        containment.is_none(),
+        "an absolute path outside every registered root cannot expose that host file"
+    );
 }

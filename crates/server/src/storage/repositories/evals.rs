@@ -360,26 +360,57 @@ impl Database {
             .into());
         }
 
+        let case_count: (i64,) =
+            sqlx::query_as("SELECT COUNT(*)::bigint FROM eval_cases WHERE eval_id = $1")
+                .bind(input.eval_id)
+                .fetch_one(&mut *tx)
+                .await?;
+        if case_count.0 > max_cases_per_run as i64 {
+            return Err(CreateEvalRunError::TooManyCases {
+                cases: case_count.0 as usize,
+                limit: max_cases_per_run,
+            }
+            .into());
+        }
+
+        let case_ids: Vec<(Uuid,)> = sqlx::query_as(
+            r#"
+            SELECT id
+            FROM eval_cases
+            WHERE eval_id = $1
+            ORDER BY position ASC, created_at ASC
+            LIMIT $2
+            "#,
+        )
+        .bind(input.eval_id)
+        .bind(max_cases_per_run as i64 + 1)
+        .fetch_all(&mut *tx)
+        .await?;
+
+        // Keep the selected case snapshot bounded even if cases are inserted
+        // after the count query under PostgreSQL's default read-committed mode.
+        if case_ids.len() > max_cases_per_run {
+            return Err(CreateEvalRunError::TooManyCases {
+                cases: case_ids.len(),
+                limit: max_cases_per_run,
+            }
+            .into());
+        }
+
+        let case_ids: Vec<Uuid> = case_ids.into_iter().map(|(id,)| id).collect();
         let cases = sqlx::query_as::<_, EvalCaseRow>(
             r#"
             SELECT id, eval_id, public_id, name, description, target, tags, conversation, post, artifacts, scorers,
                    max_turns, timeout_seconds, position, created_at, updated_at
             FROM eval_cases
-            WHERE eval_id = $1
+            WHERE eval_id = $1 AND id = ANY($2)
             ORDER BY position ASC, created_at ASC
             "#,
         )
         .bind(input.eval_id)
+        .bind(&case_ids)
         .fetch_all(&mut *tx)
         .await?;
-
-        if cases.len() > max_cases_per_run {
-            return Err(CreateEvalRunError::TooManyCases {
-                cases: cases.len(),
-                limit: max_cases_per_run,
-            }
-            .into());
-        }
 
         let row = sqlx::query_as::<_, EvalRunRow>(
             r#"

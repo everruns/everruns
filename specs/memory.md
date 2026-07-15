@@ -2,11 +2,10 @@
 
 ## Abstract
 
-Memories are org-scoped, named, persistent stores that users mount into
-session workspaces through the `memory` capability. Memories provide shared,
-durable, governed state that survives across sessions and can be projected
-into many sessions either read-only as reference, or read-write as shared
-working state.
+Memories are persistent file stores mounted into session workspaces. The
+default scope is org-wide and user-selected through the `memory` capability.
+Everruns also has server-managed `agent` and `user` scoped memories for
+private durable context that follows an agent or user across sessions.
 
 This spec is the durable design intent for the Memory tier. The file surface
 is the only surface implemented today (it descends from the earlier
@@ -33,7 +32,10 @@ but the mount API is shaped so they can be added without a breaking change.
 
 | Name        | Description                                                       |
 |-------------|-------------------------------------------------------------------|
-| **Memory**  | Org-scoped, named store. Public ID prefix: `mem_`.                |
+| **Memory**  | Persistent file store. Public ID prefix: `mem_`.                 |
+| **Org Memory** | User-managed shared store selected by the `memory` capability. |
+| **Agent Memory** | Server-managed store owned by one agent and mounted at `/memory/agent` for sessions hosted by that agent. |
+| **User Memory** | Server-managed store owned by one user and mounted at `/memory/user` for private one-user/default sessions. |
 | **Manual Memory** | User-managed Memory whose files can be edited directly.     |
 | **Source-backed Memory** | Provider-synced Memory populated from an external repository and exposed read-only. |
 | **Memory File** | A file or directory entry inside a Memory.                    |
@@ -60,6 +62,9 @@ Memories follow the standard building-block lifecycle from `specs/models.md`:
 | `public_id`               | TEXT        | `mem_<32-hex>`. Unique per `org_id`.                   |
 | `name`                    | VARCHAR     | Unique within `org_id` while not deleted.              |
 | `description`             | TEXT?       |                                                        |
+| `scope`                   | VARCHAR     | `org` / `agent` / `user`. Defaults to `org`.           |
+| `owner_agent_id`          | UUID?       | Required for `scope = agent`; otherwise NULL.          |
+| `owner_user_id`           | UUID?       | Required for `scope = user`; otherwise NULL.           |
 | `source_type`             | VARCHAR     | `manual` / `github` / `git`. Defaults to `manual`.     |
 | `source_config`           | JSONB       | Non-secret source coordinates. `{}` for manual.        |
 | `is_readonly`             | BOOL        | True for source-backed Memories.                       |
@@ -73,6 +78,10 @@ Memories follow the standard building-block lifecycle from `specs/models.md`:
 | `archived_at` / `deleted_at` | TIMESTAMPTZ? |                                                     |
 
 `UNIQUE(org_id, public_id)` and `UNIQUE(org_id, name) WHERE status != 'deleted'`.
+Scoped memories additionally enforce one active `agent` memory per
+`(org_id, owner_agent_id)` and one active `user` memory per
+`(org_id, owner_user_id)`. Non-org scoped memories are server-managed manual,
+read-write stores; source-backed sync is only user-facing for org memories.
 
 `source_config` never stores provider credentials. GitHub sources use the
 creator's GitHub connection or a future agent identity connection at sync time.
@@ -167,7 +176,11 @@ memory archival/deletion is handled gracefully against this snapshot.
 
 * `memory` must reference an `active` Memory in the current org. Cross-org
   references are rejected without leaking existence of other-org Memories.
+* The public `memory` capability can mount only org-scoped Memories. Agent and
+  user scoped Memories are mounted automatically by the server.
 * `path` must normalize under `/workspace`.
+* `/memory/*` is reserved for server-managed scoped memory and cannot be used
+  by caller-supplied initial files or capability mounts.
 * `mode` defaults to `readonly` when omitted.
 * Reject duplicate mount paths.
 * Reject overlapping mount paths in V1 (one mount path cannot be a prefix of
@@ -176,6 +189,24 @@ memory archival/deletion is handled gracefully against this snapshot.
   capability mounts.
 
 ## Runtime Mount Semantics
+
+### Scoped Memory Mounts
+
+When creating a session, the server lazily creates missing scoped Memories and
+mounts their current file tree into the session workspace:
+
+* Host agent memory: `/memory/agent`, read-write, one Memory per active agent.
+* User memory: `/memory/user`, read-write, one Memory per user. V1 mounts this
+  only into the default one-session workspace where the workspace is private to
+  that session owner. It is intentionally not materialized into caller-attached
+  shared workspaces until runtime mounts are participant-local rather than
+  workspace-wide.
+
+Guest agent memory follows the same ownership model, but fully isolated
+`/memory/agent` paths for multiple agent participants in one shared workspace
+require a participant-local runtime mount context. Until that exists, the
+server must not merge another agent's private memory into a shared
+workspace-wide `/memory/agent` path.
 
 ### Read
 

@@ -2,7 +2,7 @@
 
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::{Context, Result};
-use clap::Subcommand;
+use clap::{Subcommand, ValueEnum};
 use everruns_sdk::{CreateBudgetRequest, Everruns};
 use futures::StreamExt;
 use std::collections::HashMap;
@@ -12,11 +12,13 @@ use std::collections::HashMap;
 pub enum SessionsCommand {
     /// Create a new session
     Create {
-        /// Harness ID or name (e.g. harness_xxx or "generic"). Omit to use org default.
+        /// Harness ID or name (e.g. harness_xxx or "generic"). Omit to derive
+        /// from the agent (when given), else the org default.
         #[arg(long, short = 'H')]
         harness: Option<String>,
 
-        /// Agent ID (optional, e.g. agent_xxx)
+        /// Agent ID or name (optional, e.g. agent_xxx or "support"). When set
+        /// without --harness, the session runs on the agent's harness.
         #[arg(long, short)]
         agent: Option<String>,
 
@@ -102,7 +104,7 @@ pub enum SessionsCommand {
         session: String,
     },
 
-    /// Export session messages as JSONL
+    /// Export session messages as JSONL or an ATIF trajectory
     Export {
         /// Session ID (e.g. session_xxx)
         session: String,
@@ -110,7 +112,31 @@ pub enum SessionsCommand {
         /// Output file path (defaults to stdout)
         #[arg(long, short)]
         output: Option<String>,
+
+        /// Export format: `jsonl` (one message per line, default) or `atif`
+        /// (a single ATIF trajectory JSON document)
+        #[arg(long, value_enum, default_value_t = ExportFormat::Jsonl)]
+        format: ExportFormat,
     },
+}
+
+/// Session export wire format selected by `sessions export --format`.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, ValueEnum)]
+pub enum ExportFormat {
+    /// Newline-delimited JSON, one message per line.
+    Jsonl,
+    /// A single ATIF (Agent Trajectory Interchange Format) JSON document.
+    Atif,
+}
+
+impl ExportFormat {
+    /// The `format` query-parameter value understood by the export API.
+    fn as_query_value(self) -> &'static str {
+        match self {
+            ExportFormat::Jsonl => "jsonl",
+            ExportFormat::Atif => "atif",
+        }
+    }
 }
 
 pub async fn run(
@@ -175,7 +201,13 @@ pub async fn run(
         SessionsCommand::Export {
             session,
             output: file_path,
-        } => export(client, output, quiet, session, file_path).await,
+            format,
+        } => {
+            export(
+                client, api_url, api_key, org_id, output, quiet, session, file_path, format,
+            )
+            .await
+        }
     }
 }
 
@@ -353,7 +385,15 @@ fn build_create_session_body(args: CreateSessionArgs) -> Result<serde_json::Valu
             body.insert("harness_name".to_string(), serde_json::json!(h));
         }
     }
-    insert_opt_string(&mut body, "agent_id", args.agent_id);
+    // Accept an agent id or name; a bare name resolves server-side and the
+    // session inherits the agent's harness when no harness is supplied.
+    if let Some(a) = args.agent_id {
+        if is_prefixed_id(&a, "agent") {
+            body.insert("agent_id".to_string(), serde_json::json!(a));
+        } else {
+            body.insert("agent_name".to_string(), serde_json::json!(a));
+        }
+    }
     insert_opt_string(&mut body, "agent_identity_id", args.agent_identity_id);
     insert_opt_string(&mut body, "title", args.title);
     insert_opt_string(&mut body, "locale", args.locale);
@@ -402,7 +442,7 @@ fn build_create_session_body(args: CreateSessionArgs) -> Result<serde_json::Valu
     Ok(serde_json::Value::Object(body))
 }
 
-fn is_prefixed_id(value: &str, prefix: &str) -> bool {
+pub(crate) fn is_prefixed_id(value: &str, prefix: &str) -> bool {
     let expected = format!("{prefix}_");
     let Some(rest) = value.strip_prefix(&expected) else {
         return false;
@@ -940,30 +980,90 @@ fn truncate_str(s: &str, max: usize) -> String {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn export(
     client: &Everruns,
+    api_url: &str,
+    api_key: &str,
+    org_id: Option<&str>,
     output: OutputFormat,
     quiet: bool,
     session_id: String,
     file_path: Option<String>,
+    format: ExportFormat,
 ) -> Result<()> {
-    let body = client
-        .sessions()
-        .export(&session_id)
-        .await
-        .context("Failed to export session")?;
+    // JSONL stays on the SDK path (unchanged default). ATIF isn't exposed by
+    // the SDK's `export()` yet, so hit the export endpoint directly with the
+    // `format` query parameter. See EVE-685.
+    let body = match format {
+        ExportFormat::Jsonl => client
+            .sessions()
+            .export(&session_id)
+            .await
+            .context("Failed to export session")?,
+        ExportFormat::Atif => export_raw(api_url, api_key, org_id, &session_id, format).await?,
+    };
 
     if let Some(path) = file_path {
         std::fs::write(&path, &body).with_context(|| format!("Failed to write to {}", path))?;
         if output.is_text() && !quiet {
-            let line_count = body.lines().count();
-            eprintln!("Exported {} messages to {}", line_count, path);
+            // JSONL is line-per-message; ATIF is a single JSON document, so a
+            // line count would be misleading. Report bytes for ATIF instead.
+            match format {
+                ExportFormat::Jsonl => {
+                    eprintln!("Exported {} messages to {}", body.lines().count(), path)
+                }
+                ExportFormat::Atif => {
+                    eprintln!(
+                        "Exported ATIF trajectory ({} bytes) to {}",
+                        body.len(),
+                        path
+                    )
+                }
+            }
         }
     } else {
         print!("{}", body);
     }
 
     Ok(())
+}
+
+/// Fetch a session export directly from `GET /v1/sessions/{id}/export` with an
+/// explicit `format`, for formats the SDK client does not yet expose.
+async fn export_raw(
+    api_url: &str,
+    api_key: &str,
+    org_id: Option<&str>,
+    session_id: &str,
+    format: ExportFormat,
+) -> Result<String> {
+    let http = reqwest::Client::new();
+    // `format` is a fixed enum-derived token (`jsonl`/`atif`), so it is safe to
+    // interpolate directly into the query string.
+    let mut req = http
+        .get(format!(
+            "{}/v1/sessions/{}/export?format={}",
+            api_url.trim_end_matches('/'),
+            session_id,
+            format.as_query_value(),
+        ))
+        .header("Authorization", format!("Bearer {}", api_key));
+    let env_org = std::env::var("EVERRUNS_ORG_ID").ok();
+    if let Some(org) = org_id.or(env_org.as_deref()) {
+        req = req.header("X-Org-Id", org);
+    }
+
+    let resp = req.send().await.context("Failed to export session")?;
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Export session failed ({}): {}", status, body);
+    }
+
+    resp.text()
+        .await
+        .context("Failed to read session export response")
 }
 
 fn capitalize_first(s: &str) -> String {
@@ -1215,7 +1315,7 @@ mod tests {
     fn test_build_create_session_body_new_fields() {
         let body = build_create_session_body(CreateSessionArgs {
             harness: Some("generic".into()),
-            agent_id: Some("agent_abc".into()),
+            agent_id: Some("agent_00000000000000000000000000000001".into()),
             title: Some("Debug".into()),
             locale: Some("uk-UA".into()),
             model_id: Some("model_abc".into()),
@@ -1232,7 +1332,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(body["harness_name"], "generic");
-        assert_eq!(body["agent_id"], "agent_abc");
+        assert_eq!(body["agent_id"], "agent_00000000000000000000000000000001");
         assert_eq!(body["agent_identity_id"], "identity_abc");
         assert_eq!(body["locale"], "uk-UA");
         assert_eq!(body["system_prompt"], "Be concise");
@@ -1279,6 +1379,50 @@ mod tests {
     }
 
     #[test]
+    fn test_build_create_session_body_detects_agent_id_vs_name() {
+        // A strict prefixed id maps to `agent_id`; anything else is an agent name.
+        let by_id = build_create_session_body(CreateSessionArgs {
+            harness: None,
+            agent_id: Some("agent_00000000000000000000000000000001".into()),
+            title: None,
+            locale: None,
+            model_id: None,
+            agent_identity_id: None,
+            system_prompt: None,
+            tags: vec![],
+            raw_capabilities: vec![],
+            raw_hints: vec![],
+            raw_hints_json: None,
+            network_allow: vec![],
+            network_block: vec![],
+            max_iterations: None,
+        })
+        .unwrap();
+        assert_eq!(by_id["agent_id"], "agent_00000000000000000000000000000001");
+        assert!(by_id.get("agent_name").is_none());
+
+        let by_name = build_create_session_body(CreateSessionArgs {
+            harness: None,
+            agent_id: Some("support".into()),
+            title: None,
+            locale: None,
+            model_id: None,
+            agent_identity_id: None,
+            system_prompt: None,
+            tags: vec![],
+            raw_capabilities: vec![],
+            raw_hints: vec![],
+            raw_hints_json: None,
+            network_allow: vec![],
+            network_block: vec![],
+            max_iterations: None,
+        })
+        .unwrap();
+        assert_eq!(by_name["agent_name"], "support");
+        assert!(by_name.get("agent_id").is_none());
+    }
+
+    #[test]
     fn test_build_create_session_body_keeps_harness_prefix_names() {
         let body = build_create_session_body(CreateSessionArgs {
             harness: Some("harness_generic".into()),
@@ -1308,5 +1452,36 @@ mod tests {
         assert_eq!(format_budget_amount(2000000.0, "tokens"), "2000000 tokens");
         assert_eq!(format_budget_amount(50.0, "credits"), "50 credits");
         assert_eq!(format_budget_amount(100.0, "gems"), "100 gems");
+    }
+
+    #[test]
+    fn export_format_maps_to_api_query_value() {
+        assert_eq!(ExportFormat::Jsonl.as_query_value(), "jsonl");
+        assert_eq!(ExportFormat::Atif.as_query_value(), "atif");
+    }
+
+    #[test]
+    fn export_command_parses_format_flag_and_defaults_to_jsonl() {
+        use clap::Parser;
+
+        #[derive(Parser)]
+        struct Wrapper {
+            #[command(subcommand)]
+            cmd: SessionsCommand,
+        }
+
+        // Default (no --format) is JSONL, preserving prior behavior.
+        let parsed = Wrapper::parse_from(["x", "export", "session_123"]);
+        match parsed.cmd {
+            SessionsCommand::Export { format, .. } => assert_eq!(format, ExportFormat::Jsonl),
+            _ => panic!("expected export command"),
+        }
+
+        // Explicit --format atif is accepted.
+        let parsed = Wrapper::parse_from(["x", "export", "session_123", "--format", "atif"]);
+        match parsed.cmd {
+            SessionsCommand::Export { format, .. } => assert_eq!(format, ExportFormat::Atif),
+            _ => panic!("expected export command"),
+        }
     }
 }
