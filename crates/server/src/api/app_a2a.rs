@@ -1636,6 +1636,7 @@ mod tests {
             turn_id: TurnId::new(),
             model: None,
             iteration: None,
+            phase: None,
         });
         assert!(translate_session_event(&data, "t", "c").is_none());
     }

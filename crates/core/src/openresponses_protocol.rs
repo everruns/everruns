@@ -1219,11 +1219,15 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                     }
 
                                     Some("response.output_item.added") => {
-                                        // New output item added - may be function call
-                                        if let Some(item) = json.get("item")
-                                            && item.get("type").and_then(|t| t.as_str())
-                                                == Some("function_call")
-                                        {
+                                        // New output item added - may be a function
+                                        // call or an assistant message carrying a
+                                        // native phase.
+                                        let item_type = json
+                                            .get("item")
+                                            .and_then(|i| i.get("type"))
+                                            .and_then(|t| t.as_str());
+                                        if item_type == Some("function_call") {
+                                            let item = json.get("item").unwrap();
                                             let id = item
                                                 .get("id")
                                                 .and_then(|c| c.as_str())
@@ -1251,6 +1255,21 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                                     name,
                                                     arguments: String::new(),
                                                 });
+                                            }
+                                        } else if item_type == Some("message") {
+                                            // Surface the assistant item's native
+                                            // phase mid-stream as a best-effort hint
+                                            // (EVE-774); Done metadata stays
+                                            // authoritative.
+                                            if let Some(phase) = json
+                                                .get("item")
+                                                .and_then(|i| i.get("phase"))
+                                                .and_then(|p| p.as_str())
+                                                .and_then(
+                                                    crate::message::ExecutionPhase::from_provider_str,
+                                                )
+                                            {
+                                                return Ok(LlmStreamEvent::MessagePhase(phase));
                                             }
                                         }
                                         Ok(LlmStreamEvent::TextDelta(String::new()))
@@ -1532,24 +1551,38 @@ fn handle_streaming_event(
         }
 
         StreamingEvent::OutputItemAdded { item, .. } => {
-            if let Some(types::OutputItem::FunctionCall {
-                id, call_id, name, ..
-            }) = item
-            {
-                let mut acc = accumulated_tool_calls.lock().unwrap();
-                if let Some(tc) = acc.iter_mut().find(|t| t.id == id) {
-                    tc.name = name;
-                    tc.call_id = call_id;
-                } else {
-                    acc.push(ToolCallAccumulator {
-                        id,
-                        call_id,
-                        name,
-                        arguments: String::new(),
-                    });
+            match item {
+                Some(types::OutputItem::FunctionCall {
+                    id, call_id, name, ..
+                }) => {
+                    let mut acc = accumulated_tool_calls.lock().unwrap();
+                    if let Some(tc) = acc.iter_mut().find(|t| t.id == id) {
+                        tc.name = name;
+                        tc.call_id = call_id;
+                    } else {
+                        acc.push(ToolCallAccumulator {
+                            id,
+                            call_id,
+                            name,
+                            arguments: String::new(),
+                        });
+                    }
+                    LlmStreamEvent::TextDelta(String::new())
                 }
+                // OpenAI Responses stamps the assistant item's phase on
+                // `response.output_item.added`, i.e. before any text delta of
+                // that item. Surface it as a best-effort streamed hint (EVE-774)
+                // so consumers can classify commentary vs final answer while
+                // streaming; the terminal Done metadata stays authoritative.
+                Some(types::OutputItem::Message {
+                    phase: Some(phase_str),
+                    ..
+                }) => match crate::message::ExecutionPhase::from_provider_str(&phase_str) {
+                    Some(phase) => LlmStreamEvent::MessagePhase(phase),
+                    None => LlmStreamEvent::TextDelta(String::new()),
+                },
+                _ => LlmStreamEvent::TextDelta(String::new()),
             }
-            LlmStreamEvent::TextDelta(String::new())
         }
 
         StreamingEvent::OutputItemDone { item, .. } => {
@@ -4051,6 +4084,87 @@ mod tests {
                 assert!(token_count.is_none());
             }
             other => panic!("Expected ReasonItem event, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn output_item_added_message_surfaces_native_phase_hint() {
+        use std::sync::Mutex;
+
+        // EVE-774: OpenAI Responses stamps the assistant item's phase on
+        // `response.output_item.added` (before any text delta). The driver must
+        // surface it as a mid-stream `MessagePhase` hint.
+        for (wire, expected) in [
+            ("commentary", crate::message::ExecutionPhase::Commentary),
+            ("final_answer", crate::message::ExecutionPhase::FinalAnswer),
+        ] {
+            let event: StreamingEvent = serde_json::from_value(serde_json::json!({
+                "type": "response.output_item.added",
+                "sequence_number": 1,
+                "output_index": 0,
+                "item": {
+                    "type": "message",
+                    "id": "msg_001",
+                    "status": "in_progress",
+                    "role": "assistant",
+                    "content": [],
+                    "phase": wire,
+                }
+            }))
+            .expect("output_item.added should deserialize");
+
+            let result = handle_streaming_event(
+                event,
+                &Mutex::new(0),
+                &Mutex::new(0),
+                &Mutex::new(None),
+                &Mutex::new(Vec::new()),
+                &Mutex::new(None),
+                "gpt-5".to_string(),
+                None,
+            );
+
+            match result {
+                LlmStreamEvent::MessagePhase(phase) => assert_eq!(phase, expected),
+                other => panic!("Expected MessagePhase({expected:?}), got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn output_item_added_message_without_phase_is_noop() {
+        use std::sync::Mutex;
+
+        // A message item that carries no phase yields no hint (empty text delta),
+        // never a fabricated phase.
+        let event: StreamingEvent = serde_json::from_value(serde_json::json!({
+            "type": "response.output_item.added",
+            "sequence_number": 1,
+            "output_index": 0,
+            "item": {
+                "type": "message",
+                "id": "msg_002",
+                "status": "in_progress",
+                "role": "assistant",
+                "content": [],
+            }
+        }))
+        .expect("output_item.added should deserialize");
+
+        let result = handle_streaming_event(
+            event,
+            &Mutex::new(0),
+            &Mutex::new(0),
+            &Mutex::new(None),
+            &Mutex::new(Vec::new()),
+            &Mutex::new(None),
+            "gpt-5".to_string(),
+            None,
+        );
+
+        match result {
+            LlmStreamEvent::TextDelta(d) => assert!(d.is_empty()),
+            other => panic!("Expected empty TextDelta, got {other:?}"),
         }
     }
 
