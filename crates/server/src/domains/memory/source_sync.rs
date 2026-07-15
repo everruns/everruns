@@ -547,6 +547,9 @@ mod tests {
                     public_id: MemoryId::new().to_string(),
                     name: "Repo".to_string(),
                     description: None,
+                    scope: "org".to_string(),
+                    owner_agent_id: None,
+                    owner_user_id: None,
                     source_type: "git".to_string(),
                     source_config: serde_json::json!({
                         "provider": "git",
@@ -609,6 +612,9 @@ mod tests {
                     public_id: MemoryId::new().to_string(),
                     name: "Repo".to_string(),
                     description: None,
+                    scope: "org".to_string(),
+                    owner_agent_id: None,
+                    owner_user_id: None,
                     source_type: "git".to_string(),
                     source_config: serde_json::json!({
                         "provider": "git",

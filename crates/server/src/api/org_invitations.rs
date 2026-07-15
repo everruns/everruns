@@ -24,7 +24,7 @@ use crate::storage::StorageBackend;
 use crate::storage::models::CreateOrgInvitation;
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{ConnectInfo, Extension, Path, State},
     http::{HeaderMap, StatusCode},
     routing::{get, post},
 };
@@ -32,6 +32,7 @@ use everruns_core::{AuditEvent, EmailError, EmailMessage, EmailSender, Managemen
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -607,6 +608,7 @@ pub async fn create_invite(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
     user: AuthUser,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     Json(req): Json<CreateInviteRequest>,
 ) -> Result<(StatusCode, Json<CreateInviteResponse>), (StatusCode, Json<ErrorResponse>)> {
@@ -632,7 +634,7 @@ pub async fn create_invite(
     .target("invitation", &created.row.public_id)
     .detail("email", created.row.email.clone())
     .detail("role", created.row.role.clone());
-    if let Some(ip) = audit::client_ip(&headers) {
+    if let Some(ip) = audit::client_ip_from_connect_info(connect_info, &headers) {
         builder = builder.ip(ip);
     }
     audit::emit_event(state.db.clone(), builder.build());
@@ -664,6 +666,7 @@ pub async fn revoke_invite(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
     user: AuthUser,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     Path((_org, invite_id)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -682,7 +685,7 @@ pub async fn revoke_invite(
         Some(user.id),
     )
     .target("invitation", &invite_id);
-    if let Some(ip) = audit::client_ip(&headers) {
+    if let Some(ip) = audit::client_ip_from_connect_info(connect_info, &headers) {
         builder = builder.ip(ip);
     }
     audit::emit_event(state.db.clone(), builder.build());
@@ -694,6 +697,7 @@ pub async fn revoke_invite(
 pub async fn accept_invite(
     State(state): State<AppState>,
     user: AuthUser,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     Path(token): Path<String>,
 ) -> Result<Json<AcceptInviteResponse>, (StatusCode, Json<ErrorResponse>)> {
@@ -713,7 +717,7 @@ pub async fn accept_invite(
         AuditEvent::management(ManagementAction::InvitationAccepted, org_id, Some(user.id))
             .target("member", user.id.to_string())
             .detail("role", accepted.role.clone());
-    if let Some(ip) = audit::client_ip(&headers) {
+    if let Some(ip) = audit::client_ip_from_connect_info(connect_info, &headers) {
         builder = builder.ip(ip);
     }
     audit::emit_event(state.db.clone(), builder.build());

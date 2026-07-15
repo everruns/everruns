@@ -10,16 +10,20 @@
 
 ## Abstract
 
+> **Status: implemented.** The `everruns-mcp` crate exists and the runtime
+> builds `mcp_tool_definitions` from its scoped servers
+> (`crates/runtime/src/mcp.rs`, `crates/runtime/src/runtime.rs`). The paragraph
+> below records the original problem state that motivated the extraction.
+
 The MCP client already works on the control plane: org-managed and scoped
 `mcpServers` are discovered and executed by `everruns-worker` /
-`everruns-server`. The **in-process runtime cannot reach any of it**. The
-dependency direction is `core ← runtime ← worker ← server`, the live MCP
-client (`call_mcp_tool`, `fetch_mcp_tools`, auth resolution) lives in
-`worker`/`server`, and the runtime hardcodes `mcp_tool_definitions: vec![]`
-(`crates/runtime/src/runtime.rs:524`). The example coding CLI embeds the
-runtime with no server, so today it has no MCP at all — even though the
-runtime builders already accept `.mcp_servers(ScopedMcpServers)` and plumb it
-into `Harness`/`Agent`/`Session`.
+`everruns-server`. Originally the **in-process runtime could not reach any of
+it**: the dependency direction is `core ← runtime ← worker ← server`, the live
+MCP client (`call_mcp_tool`, `fetch_mcp_tools`, auth resolution) lived in
+`worker`/`server`, and the runtime hardcoded `mcp_tool_definitions: vec![]`. The
+example coding CLI embeds the runtime with no server, so it originally had no
+MCP at all — even though the runtime builders already accepted
+`.mcp_servers(ScopedMcpServers)` and plumbed it into `Harness`/`Agent`/`Session`.
 
 This spec records the decision to **extract the transport-agnostic MCP client
 into a new `everruns-mcp` crate** that `runtime`, `worker`, and `server` all

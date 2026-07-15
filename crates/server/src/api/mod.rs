@@ -8,6 +8,7 @@ pub mod ag_ui;
 pub mod agent_examples;
 pub mod agent_identities;
 pub mod agent_identity_connections;
+pub mod agent_triggers;
 pub mod agents;
 pub mod app_a2a;
 pub mod app_api;

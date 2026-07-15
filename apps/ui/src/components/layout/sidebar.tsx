@@ -39,6 +39,7 @@ import {
   Shield,
   Telescope,
   UserRound,
+  Waypoints,
   Workflow,
   Cog,
   Cpu,
@@ -61,6 +62,8 @@ export type NavigationItem = {
   name: string;
   href: string;
   icon: React.ComponentType<{ className?: string }>;
+  activePrefix?: string;
+  prefetch?: boolean;
   flag?: keyof FeatureFlags;
   exact?: boolean;
   experimental?: boolean;
@@ -90,6 +93,7 @@ export const defaultTopNavigation: NavigationItem[] = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Reports", href: "/reports", icon: ChartColumn },
   { name: "Sessions", href: "/sessions", icon: MessageSquare },
+  { name: "Work", href: "/work", icon: Waypoints },
 ];
 
 export const defaultBuildingBlocksNavigation: NavigationItem[] = [
@@ -115,7 +119,13 @@ export const defaultBuildingBlocksNavigation: NavigationItem[] = [
 ];
 
 export const defaultBottomNavigation: NavigationItem[] = [
-  { name: "Settings", href: "/settings", icon: Settings },
+  {
+    name: "Settings",
+    href: "/settings/organization",
+    icon: Settings,
+    activePrefix: "/settings",
+    prefetch: false,
+  },
 ];
 
 export const defaultDurableNavigation: NavigationItem[] = [

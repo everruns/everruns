@@ -398,6 +398,16 @@ impl ReportingService {
         }
     }
 
+    pub async fn repair_missing_event_projections(&self, limit: i64) -> Result<i64, CommandError> {
+        match self.db.as_ref() {
+            StorageBackend::Postgres(db) => PostgresReportingProjector::new(db.pool().clone())
+                .repair_missing_event_projections(limit)
+                .await
+                .map_err(classify_anyhow),
+            StorageBackend::InMemory(_) => Ok(0),
+        }
+    }
+
     pub async fn backfill_missing(
         &self,
         org_id: Option<i64>,

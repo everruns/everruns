@@ -140,6 +140,7 @@ mod tests {
     fn test_native_support_lookup() {
         // Claude 4-family models support hosted tool_search; 3.x do not.
         assert!(model_supports_native_tool_search("claude-opus-4-8"));
+        assert!(model_supports_native_tool_search("claude-sonnet-5"));
         assert!(model_supports_native_tool_search("claude-sonnet-4-6"));
         assert!(model_supports_native_tool_search("claude-haiku-4-5"));
         assert!(model_supports_native_tool_search("claude-fable-5"));

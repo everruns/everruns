@@ -21,7 +21,7 @@
 # ============================================================================
 # Server runtime (distroless, matches Dockerfile.unified `server` stage)
 # ============================================================================
-FROM gcr.io/distroless/cc-debian12:nonroot@sha256:b0ae8e989418b458e0f25489bc3be523718938a2b70864cc0f6a00af1ddbd985 AS server
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:66aa873a4a14fb164aa01296058efd8253744606d72715e45acface073359faa AS server
 
 WORKDIR /app
 
@@ -40,7 +40,7 @@ CMD ["/app/everruns-server"]
 # ============================================================================
 # Worker runtime (distroless, matches Dockerfile.unified `worker` stage)
 # ============================================================================
-FROM gcr.io/distroless/cc-debian12:nonroot@sha256:b0ae8e989418b458e0f25489bc3be523718938a2b70864cc0f6a00af1ddbd985 AS worker
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:66aa873a4a14fb164aa01296058efd8253744606d72715e45acface073359faa AS worker
 
 WORKDIR /app
 

@@ -21,6 +21,7 @@
 // See `specs/cli.md` (Initial Files Hidden Path Policy) and threat
 // `TM-FS-009` in `specs/threat-model.md`.
 
+use super::sessions::is_prefixed_id;
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::{Context, Result};
 use clap::Subcommand;
@@ -62,6 +63,11 @@ pub enum AgentsCommand {
         #[arg(long)]
         model: Option<String>,
 
+        /// Harness ID or name (e.g. harness_xxx or "generic").
+        /// Omit to default to the org's generic harness.
+        #[arg(long, short = 'H')]
+        harness: Option<String>,
+
         /// Tags (repeatable)
         #[arg(long, short)]
         tag: Vec<String>,
@@ -99,6 +105,10 @@ pub enum AgentsCommand {
         /// Default model ID (e.g. mod_xxx)
         #[arg(long)]
         model: Option<String>,
+
+        /// Harness ID or name (e.g. harness_xxx or "generic")
+        #[arg(long, short = 'H')]
+        harness: Option<String>,
 
         /// Tags (repeatable)
         #[arg(long, short)]
@@ -146,12 +156,14 @@ pub async fn run(
             system_prompt,
             description,
             model,
+            harness,
             tag,
         } => {
             let use_default_file = name.is_none()
                 && system_prompt.is_none()
                 && description.is_none()
                 && model.is_none()
+                && harness.is_none()
                 && tag.is_empty();
             let file = resolve_agent_file(file, use_default_file);
             if let Some(path) = file {
@@ -159,6 +171,7 @@ pub async fn run(
                     || system_prompt.is_some()
                     || description.is_some()
                     || model.is_some()
+                    || harness.is_some()
                     || !tag.is_empty()
                 {
                     eprintln!("Warning: CLI flag overrides are ignored when --file is used");
@@ -186,6 +199,7 @@ pub async fn run(
                     system_prompt,
                     description,
                     model,
+                    harness,
                     tag,
                 )
                 .await
@@ -200,6 +214,7 @@ pub async fn run(
             system_prompt,
             description,
             model,
+            harness,
             tag,
         } => {
             let use_default_file = agent_id.is_none()
@@ -207,6 +222,7 @@ pub async fn run(
                 && system_prompt.is_none()
                 && description.is_none()
                 && model.is_none()
+                && harness.is_none()
                 && tag.is_empty();
             let file = resolve_agent_file(file, use_default_file);
             if let Some(path) = file {
@@ -215,6 +231,7 @@ pub async fn run(
                     || system_prompt.is_some()
                     || description.is_some()
                     || model.is_some()
+                    || harness.is_some()
                     || !tag.is_empty()
                 {
                     eprintln!("Warning: CLI flag overrides are ignored when --file is used");
@@ -245,6 +262,7 @@ pub async fn run(
                     system_prompt,
                     description,
                     model,
+                    harness,
                     tag,
                 )
                 .await
@@ -993,6 +1011,17 @@ fn parse_agent_file_as_json(path: &Path, content: &str) -> Result<serde_json::Va
     Ok(val)
 }
 
+/// Apply a `--harness` value to the request, detecting a strict harness id
+/// (`harness_<32-hex>`) vs. an addressable name (e.g. `generic`). Mirrors the
+/// `sessions create --harness` detection so the two commands behave the same.
+fn apply_harness(req: CreateAgentRequest, harness: Option<String>) -> CreateAgentRequest {
+    match harness {
+        Some(h) if is_prefixed_id(&h, "harness") => req.harness_id(h),
+        Some(h) => req.harness_name(h),
+        None => req,
+    }
+}
+
 /// Create agent from CLI flags using SDK
 #[allow(clippy::too_many_arguments)]
 async fn create_from_flags(
@@ -1003,6 +1032,7 @@ async fn create_from_flags(
     system_prompt: Option<String>,
     description: Option<String>,
     model: Option<String>,
+    harness: Option<String>,
     tags: Vec<String>,
 ) -> Result<()> {
     let name = name.context("--name is required")?;
@@ -1015,6 +1045,7 @@ async fn create_from_flags(
     if let Some(model_id) = model {
         req = req.default_model_id(model_id);
     }
+    req = apply_harness(req, harness);
     if !tags.is_empty() {
         req = req.tags(tags);
     }
@@ -1046,6 +1077,7 @@ async fn update_from_flags(
     system_prompt: Option<String>,
     description: Option<String>,
     model: Option<String>,
+    harness: Option<String>,
     tags: Vec<String>,
 ) -> Result<()> {
     let name = name.context("--name is required for update without --file")?;
@@ -1059,6 +1091,7 @@ async fn update_from_flags(
     if let Some(model_id) = model {
         req = req.default_model_id(model_id);
     }
+    req = apply_harness(req, harness);
     if !tags.is_empty() {
         req = req.tags(tags);
     }
@@ -1174,6 +1207,42 @@ mod tests {
         let agent: ImportedAgent = serde_json::from_str(json).unwrap();
         assert_eq!(agent.id, "agent_abc");
         assert_eq!(agent.name, "test");
+    }
+
+    #[test]
+    fn test_apply_harness_detects_strict_id() {
+        let id = "harness_00000000000000000000000000000001";
+        let req = apply_harness(CreateAgentRequest::new("a", "p"), Some(id.to_string()));
+        assert_eq!(req.harness_id.as_deref(), Some(id));
+        assert!(req.harness_name.is_none());
+    }
+
+    #[test]
+    fn test_apply_harness_treats_bare_name_as_name() {
+        let req = apply_harness(
+            CreateAgentRequest::new("a", "p"),
+            Some("generic".to_string()),
+        );
+        assert_eq!(req.harness_name.as_deref(), Some("generic"));
+        assert!(req.harness_id.is_none());
+    }
+
+    #[test]
+    fn test_apply_harness_keeps_prefix_names_as_name() {
+        // "harness_generic" is not a strict harness id (not 32 hex), so it is a name.
+        let req = apply_harness(
+            CreateAgentRequest::new("a", "p"),
+            Some("harness_generic".to_string()),
+        );
+        assert_eq!(req.harness_name.as_deref(), Some("harness_generic"));
+        assert!(req.harness_id.is_none());
+    }
+
+    #[test]
+    fn test_apply_harness_none_sets_nothing() {
+        let req = apply_harness(CreateAgentRequest::new("a", "p"), None);
+        assert!(req.harness_id.is_none());
+        assert!(req.harness_name.is_none());
     }
 
     #[test]

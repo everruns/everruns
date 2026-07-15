@@ -7,7 +7,10 @@ use everruns_core::atoms::{
     ActAtom, ActInput, ActResult, Atom, InputAtom, InputAtomInput, InputAtomResult, ReasonAtom,
     ReasonInput, ReasonResult,
 };
-use everruns_core::capabilities::{SystemPromptContext, collect_capabilities_with_configs};
+use everruns_core::capabilities::{
+    SystemPromptContext, collect_capabilities_with_configs, report_result_tool_for_child_session,
+    report_task_progress_tool_for_child_session,
+};
 use everruns_core::events::{
     EventContext, EventRequest, OutputMessageCompletedData, SessionActivatedData, SessionIdledData,
     TurnCompletedData, TurnFailedData, TurnStartedData,
@@ -16,11 +19,13 @@ use everruns_core::message::{ContentPart, Message};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::platform_store::PlatformStore;
 use everruns_core::session::SessionStatus;
+use everruns_core::tools::Tool;
 use everruns_core::traits::{
     AgentStore, BudgetChecker, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver,
     LeasedResourceStore, PaymentAuthority, ProviderCredentialStore, ProviderStore, ResolvedModel,
-    SessionFileSystem, SessionMutator, SessionResourceRegistry, SessionScheduleStore,
-    SessionSqlDbStoreRef, SessionStorageStore, SessionStore, UserConnectionResolver,
+    SessionCreationAuthority, SessionFileSystem, SessionMutator, SessionResourceRegistry,
+    SessionScheduleStore, SessionSqlDbStoreRef, SessionStorageStore, SessionStore,
+    UserConnectionResolver,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::vector_store::KnowledgeIndexSearch;
@@ -186,6 +191,14 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
+    fn session_creation_authority(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+    ) -> Option<Arc<dyn SessionCreationAuthority>> {
+        None
+    }
+
     /// Per-org outbound tool-call rate limiter (TM-TOOL-009).
     /// Default: `None` (no rate limiting — suitable for in-process / test environments).
     fn outbound_tool_rate_limiter(
@@ -257,6 +270,54 @@ struct RuntimeExecutionCapabilities {
     post_tool_hooks: Vec<Arc<dyn everruns_core::PostToolExecHook>>,
     pre_tool_hooks: Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>>,
     tool_call_hooks: Vec<Arc<dyn everruns_core::ToolCallHook>>,
+    subagent_nesting_policy: everruns_core::SubagentNestingPolicy,
+}
+
+fn subagent_nesting_policy_from_configs(
+    resolved_capability_configs: &[everruns_core::capability_types::AgentCapabilityConfig],
+) -> everruns_core::SubagentNestingPolicy {
+    let subagents_config = resolved_capability_configs.iter().find(|config| {
+        config.capability_id() == everruns_core::capabilities::SUBAGENTS_CAPABILITY_ID
+    });
+
+    let configured_depth = subagents_config
+        .and_then(|config| {
+            config
+                .config
+                .get("max_subagent_depth")
+                .or_else(|| config.config.get("max_depth"))
+        })
+        .and_then(|value| value.as_u64())
+        .and_then(|value| u32::try_from(value).ok());
+    let configured_max_active = subagents_config
+        .and_then(|config| {
+            config
+                .config
+                .get("max_active_descendant_tasks")
+                .or_else(|| config.config.get("max_concurrent_descendant_tasks"))
+        })
+        .and_then(|value| value.as_u64())
+        .and_then(|value| u32::try_from(value).ok());
+    let configured_max_total = subagents_config
+        .and_then(|config| config.config.get("max_total_descendant_tasks"))
+        .and_then(|value| value.as_u64())
+        .and_then(|value| u32::try_from(value).ok());
+    let configured_max_active_detached = subagents_config
+        .and_then(|config| config.config.get("max_active_detached_tasks"))
+        .and_then(|value| value.as_u64())
+        .and_then(|value| u32::try_from(value).ok());
+    let configured_max_total_detached = subagents_config
+        .and_then(|config| config.config.get("max_total_detached_tasks"))
+        .and_then(|value| value.as_u64())
+        .and_then(|value| u32::try_from(value).ok());
+
+    everruns_core::SubagentNestingPolicy::default()
+        .with_agent_override(configured_depth)
+        .with_agent_task_caps_override(configured_max_active, configured_max_total)
+        .with_agent_detached_task_caps_override(
+            configured_max_active_detached,
+            configured_max_total_detached,
+        )
 }
 
 /// Collect and finalize user-hook specs for a session from its resolved
@@ -364,6 +425,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
             tool_call_hooks: Vec::new(),
+            subagent_nesting_policy: everruns_core::SubagentNestingPolicy::default(),
         });
     }
 
@@ -503,6 +565,9 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         post_tool_hooks,
         pre_tool_hooks,
         tool_call_hooks,
+        subagent_nesting_policy: subagent_nesting_policy_from_configs(
+            &resolved.resolved_capability_configs,
+        ),
     })
 }
 
@@ -1066,9 +1131,30 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
         }
     }
 
-    let turn_context = adapter
+    let mut turn_context = adapter
         .load_turn_context(org_id, input.context.session_id)
         .await?;
+    if let Some(registry) = adapter.session_task_registry() {
+        let session_store = adapter.session_store(org_id);
+        if let Some(tool) = report_result_tool_for_child_session(
+            input.context.session_id,
+            session_store.as_ref(),
+            registry.as_ref(),
+        )
+        .await?
+        {
+            turn_context.mcp_tool_definitions.push(tool.to_definition());
+        }
+        if let Some(tool) = report_task_progress_tool_for_child_session(
+            input.context.session_id,
+            session_store.as_ref(),
+            registry.as_ref(),
+        )
+        .await?
+        {
+            turn_context.mcp_tool_definitions.push(tool.to_definition());
+        }
+    }
 
     let mut atom = ReasonAtom::new(
         adapter.harness_store(org_id),
@@ -1101,6 +1187,11 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
     }
     if let Some(utility_llm_service) = adapter.utility_llm_service() {
         atom = atom.with_utility_llm_service(utility_llm_service);
+    }
+    // Schedule store powers the `usage_limit_auto_continue` capability, which
+    // schedules a continuation after a provider usage limit resets.
+    if let Some(schedule_store) = adapter.schedule_store(org_id) {
+        atom = atom.with_schedule_store(schedule_store);
     }
 
     let input = ReasonInput {
@@ -1195,6 +1286,35 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     .await?;
     let mut tool_registry = execution_capabilities.tool_registry;
 
+    if input
+        .tool_definitions
+        .iter()
+        .any(|definition| definition.name() == "report_result")
+        && let Some(registry) = adapter.session_task_registry()
+        && let Some(tool) = report_result_tool_for_child_session(
+            input.context.session_id,
+            adapter.session_store(org_id).as_ref(),
+            registry.as_ref(),
+        )
+        .await?
+    {
+        tool_registry.register_boxed(Box::new(tool.with_file_store(adapter.file_store())));
+    }
+    if input
+        .tool_definitions
+        .iter()
+        .any(|definition| definition.name() == "report_task_progress")
+        && let Some(registry) = adapter.session_task_registry()
+        && let Some(tool) = report_task_progress_tool_for_child_session(
+            input.context.session_id,
+            adapter.session_store(org_id).as_ref(),
+            registry.as_ref(),
+        )
+        .await?
+    {
+        tool_registry.register_boxed(Box::new(tool));
+    }
+
     // Register the session's MCP tools as first-class registry tools, so they
     // execute through the regular `ToolExecutor` path and are visible to
     // everything that introspects the registry (spawn_background, tool_search,
@@ -1233,7 +1353,8 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
             .with_capability_registry(adapter.capability_registry())
             .with_post_tool_hooks(execution_capabilities.post_tool_hooks)
             .with_pre_tool_hooks(execution_capabilities.pre_tool_hooks)
-            .with_tool_call_hooks(execution_capabilities.tool_call_hooks);
+            .with_tool_call_hooks(execution_capabilities.tool_call_hooks)
+            .with_subagent_nesting_policy(execution_capabilities.subagent_nesting_policy);
 
     if let Some(storage_store) = adapter.storage_store() {
         atom = atom.with_storage_store(storage_store);
@@ -1285,6 +1406,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     }
     if let Some(payment_authority) = adapter.payment_authority(org_id, input.agent_id) {
         atom = atom.with_payment_authority(payment_authority);
+    }
+    if let Some(authority) = adapter.session_creation_authority(org_id, input.context.session_id) {
+        atom = atom.with_session_creation_authority(authority);
     }
     if let Some(limiter) = adapter.outbound_tool_rate_limiter(org_id) {
         atom = atom.with_outbound_tool_rate_limiter(limiter);

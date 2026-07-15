@@ -28,13 +28,22 @@ pub fn parse_session_id(
         .map_err(|e| CommandError::bad_request(format!("Invalid session ID: {e}")))
 }
 
+/// Resolve the harness for a new session using the agent-first precedence (D4):
+/// explicit request harness → the agent's harness → org default → built-in
+/// fallback. `agent_harness_id` is `None` for no-agent sessions, in which case
+/// behavior is unchanged from harness-first creation.
 pub async fn resolve_session_harness_id(
     db: &StorageBackend,
     org_id: i64,
     requested_harness_id: Option<HarnessId>,
+    agent_harness_id: Option<HarnessId>,
     fallback_harness_name: Option<&str>,
 ) -> anyhow::Result<HarnessId> {
     if let Some(harness_id) = requested_harness_id {
+        return Ok(harness_id);
+    }
+
+    if let Some(harness_id) = agent_harness_id {
         return Ok(harness_id);
     }
 

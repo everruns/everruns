@@ -12,6 +12,12 @@
 //! - Context-aware tool that requires session filesystem access
 //! - SearchCapable impl delegates grep to SessionFileSystem::grep_files for
 //!   single-query indexed search instead of per-file linear scan
+//! - Outbound HTTP (curl/wget) is opt-in via per-capability config
+//!   `{"enable_http": true}` and only functions when the runtime provides an
+//!   `EgressService`: every request crosses the egress boundary through
+//!   `egress_transport::BashkitEgressTransport` (see `specs/egress.md`).
+//!   Without the config flag - or without an egress service in context - the
+//!   shell has no network path at all, preserving the historical default.
 //!
 //! Trust boundary (TM-AGENT-005, TM-BASH-001..016):
 //! - `risk_level()` returns `High`. Per the capability admin-only tier contract
@@ -26,12 +32,15 @@
 //!   creation/update only, not runtime). New assignments by non-admin members
 //!   are rejected with HTTP 403. The legacy `virtual_bash` alias resolves to
 //!   this capability through the registry, so the gate covers it too.
-//! - Rationale: `bashkit_shell` exposes scripted code execution. Even though
-//!   the bashkit sandbox provides workspace-only filesystem access and no
-//!   real network, the combination of arbitrary command composition + LLM-
-//!   driven invocation makes this a meaningful trust elevation versus
+//! - Rationale: `bashkit_shell` exposes scripted code execution. The bashkit
+//!   sandbox provides workspace-only filesystem access and no network by
+//!   default (outbound HTTP is opt-in config routed through the egress
+//!   boundary); still, the combination of arbitrary command composition +
+//!   LLM-driven invocation makes this a meaningful trust elevation versus
 //!   single-purpose tools. Org admins are the only principals expected to
 //!   accept that surface for shared agents.
+
+mod egress_transport;
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 use crate::background::{
@@ -46,8 +55,8 @@ use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use bashkit::{
     Bash, BashBuilder, BashTool as BashkitTool, DirEntry, ExecutionLimits, FileSystem,
-    FileSystemExt, FileType, Metadata, OutputCallback, SearchCapabilities, SearchCapable,
-    SearchMatch as BashkitSearchMatch, SearchProvider, SearchQuery, SearchResults,
+    FileSystemExt, FileType, Metadata, NetworkAllowlist, OutputCallback, SearchCapabilities,
+    SearchCapable, SearchMatch as BashkitSearchMatch, SearchProvider, SearchQuery, SearchResults,
     Tool as BashkitToolTrait, TraceEventKind, TraceMode,
 };
 use serde_json::{Value, json};
@@ -78,7 +87,8 @@ fn execution_limits() -> ExecutionLimits {
 /// authority: `working_dir` is resolved through it to an absolute path in the
 /// same namespace the file tools use, so a model that learns a path from
 /// `read_file` can pass it straight to `cd`. With no `working_dir`, the shell
-/// starts at the store's display root (`/workspace`). The tuple is
+/// starts at the store's display root (`/workspace` for VFS stores, the host
+/// root for real-disk stores). The tuple is
 /// `(cwd, workspace_env)`.
 fn resolve_shell_workspace(
     store: &dyn SessionFileSystem,
@@ -212,7 +222,45 @@ impl Capability for BashkitShellCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(BashTool)]
+        vec![Box::new(BashTool::default())]
+    }
+
+    fn tools_with_config(&self, config: &serde_json::Value) -> Vec<Box<dyn Tool>> {
+        let enable_http = config
+            .get("enable_http")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        vec![Box::new(BashTool { enable_http })]
+    }
+
+    fn config_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "enable_http": {
+                    "type": "boolean",
+                    "title": "Allow outbound HTTP (curl/wget)",
+                    "description": "Let shell scripts make outbound HTTP requests. Every \
+                                    request is routed through the platform egress boundary, \
+                                    where the network access list and system allowlist are \
+                                    enforced.",
+                    "default": false
+                }
+            }
+        }))
+    }
+
+    fn validate_config(&self, config: &serde_json::Value) -> Result<(), String> {
+        if config.is_null() {
+            return Ok(());
+        }
+        if !config.is_object() {
+            return Err("bashkit_shell config must be an object".to_string());
+        }
+        match config.get("enable_http") {
+            None | Some(serde_json::Value::Bool(_)) => Ok(()),
+            Some(other) => Err(format!("enable_http must be a boolean, got {other}")),
+        }
     }
 
     fn dependencies(&self) -> Vec<&'static str> {
@@ -230,7 +278,13 @@ impl Capability for BashkitShellCapability {
 // ============================================================================
 
 /// Tool to execute bash commands in a sandboxed environment
-pub struct BashTool;
+#[derive(Default)]
+pub struct BashTool {
+    /// Opt-in outbound HTTP for curl/wget, set from per-capability config
+    /// `{"enable_http": true}`. Only effective when the execution context
+    /// provides an `EgressService` (see `configure_http`).
+    enable_http: bool,
+}
 
 #[async_trait]
 impl Tool for BashTool {
@@ -239,6 +293,7 @@ impl Tool for BashTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Bash");
         Some(crate::tool_narration::narrate_shell_exec(
@@ -349,7 +404,9 @@ impl Tool for BashTool {
             .limits(execution_limits())
             .max_memory(10 * 1024 * 1024) // 10 MB — prevent OOM from untrusted input
             .trace_mode(TraceMode::Redacted);
-        let mut bash = install_observability_hooks(builder, context.session_id).build();
+        let builder = install_observability_hooks(builder, context.session_id);
+        let builder = configure_http(builder, self.enable_http, context);
+        let mut bash = builder.build();
 
         // Stream output via tool.output.delta events for live UI/CLI rendering.
         // bashkit's exec_streaming calls OutputCallback with (stdout_chunk, stderr_chunk)
@@ -569,7 +626,9 @@ impl BackgroundExecutableTool for BashTool {
             .limits(execution_limits())
             .max_memory(10 * 1024 * 1024)
             .trace_mode(TraceMode::Redacted);
-        let mut bash = install_observability_hooks(builder, context.session_id).build();
+        let builder = install_observability_hooks(builder, context.session_id);
+        let builder = configure_http(builder, self.enable_http, &context);
+        let mut bash = builder.build();
 
         let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
         let (partial_tx, partial_rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
@@ -706,8 +765,8 @@ impl BackgroundExecutableTool for BashTool {
 // structural metadata (tool name, arg count, exit code, byte lengths) but
 // never the argument values or builtin stdout — those surfaces can carry
 // tenant paths, URLs, or embedded secrets. HTTP hooks (`before_http` /
-// `after_http`) require bashkit's `http_client` feature, which everruns does
-// not enable for `bashkit_shell` (TM-BASH-003: no network builtins).
+// `after_http`) are registered in `configure_http` when outbound HTTP is
+// enabled (TM-BASH-003: off by default, egress-routed when on).
 fn install_observability_hooks(builder: BashBuilder, session_id: SessionId) -> BashBuilder {
     use bashkit::hooks::{ErrorEvent, HookAction, ToolEvent, ToolResult};
     builder
@@ -748,6 +807,102 @@ fn install_observability_hooks(builder: BashBuilder, session_id: SessionId) -> B
             );
             HookAction::Continue(ev)
         }))
+}
+
+/// Enable outbound HTTP for curl/wget when the per-capability config opted in
+/// AND the execution context provides an egress service.
+///
+/// Design (specs/egress.md migration step 3, bashkit `specs/http-transport.md`):
+/// bashkit keeps its full HTTP policy pipeline — `allow_all()` retains the
+/// private-IP-blocking SSRF precheck whose resolve-then-check result is
+/// forwarded as pinned addresses — while connectivity is owned by
+/// [`egress_transport::BashkitEgressTransport`], so the merged
+/// `NetworkAccessList` and the deployment-wide system allowlist are enforced
+/// at the egress boundary for every hop (curl/wget re-dispatch redirects).
+///
+/// THREAT[TM-BASH-003]: with `enable_http` off (the default) this function is
+/// a no-op and the interpreter has no network path. When on, there is no
+/// direct-dial fallback: absent an egress service the shell stays offline
+/// rather than opening host-local connectivity.
+///
+/// Bot-auth request signing mirrors web_fetch: server-wide
+/// `BOT_AUTH_SIGNING_KEY_SEED` (+ optional `BOT_AUTH_AGENT_FQDN`,
+/// `BOT_AUTH_VALIDITY_SECS`) transparently signs every outbound request
+/// before it reaches the transport (bashkit `specs/request-signing.md`).
+fn configure_http(builder: BashBuilder, enable_http: bool, context: &ToolContext) -> BashBuilder {
+    if !enable_http {
+        return builder;
+    }
+    let Some(egress) = context.egress_service.clone() else {
+        tracing::warn!(
+            capability = "bashkit_shell",
+            session_id = %context.session_id,
+            "enable_http set but no egress service in context; shell HTTP stays disabled"
+        );
+        return builder;
+    };
+    let session_id = context.session_id;
+    let mut builder = builder
+        .network(NetworkAllowlist::allow_all())
+        .http_transport(Arc::new(egress_transport::BashkitEgressTransport::new(
+            egress,
+            context.network_access.clone(),
+        )))
+        // Observational HTTP hooks (bashkit-requirements.md): log method and
+        // status only — URLs and headers can carry tenant data or secrets.
+        .before_http(Box::new(move |ev: bashkit::hooks::HttpRequestEvent| {
+            tracing::debug!(
+                target: "bashkit.hook",
+                capability = "bashkit_shell",
+                session_id = %session_id,
+                event = "before_http",
+                method = %ev.method,
+                header_count = ev.headers.len(),
+                "outbound http request"
+            );
+            bashkit::hooks::HookAction::Continue(ev)
+        }))
+        .after_http(Box::new(move |ev: bashkit::hooks::HttpResponseEvent| {
+            tracing::debug!(
+                target: "bashkit.hook",
+                capability = "bashkit_shell",
+                session_id = %session_id,
+                event = "after_http",
+                status = ev.status,
+                "outbound http response"
+            );
+            bashkit::hooks::HookAction::Continue(ev)
+        }));
+    if let Some(bot_auth) = bot_auth_config_from_env() {
+        builder = builder.bot_auth(bot_auth);
+    }
+    builder
+}
+
+/// Read the server-wide bot-auth signing config once (same env contract as
+/// `web_fetch`; see `specs/fetchkit.md` "Bot-auth"). Returns a fresh clone per
+/// call site because `BashBuilder::bot_auth` takes ownership.
+fn bot_auth_config_from_env() -> Option<bashkit::BotAuthConfig> {
+    static CONFIG: LazyLock<Option<bashkit::BotAuthConfig>> = LazyLock::new(|| {
+        let seed = std::env::var("BOT_AUTH_SIGNING_KEY_SEED").ok()?;
+        let mut config = match bashkit::BotAuthConfig::from_base64_seed(&seed) {
+            Ok(config) => config,
+            Err(e) => {
+                tracing::warn!(error = %e, "invalid BOT_AUTH_SIGNING_KEY_SEED, bashkit bot-auth disabled");
+                return None;
+            }
+        };
+        if let Ok(fqdn) = std::env::var("BOT_AUTH_AGENT_FQDN") {
+            config = config.with_agent_fqdn(&fqdn);
+        }
+        if let Ok(secs) = std::env::var("BOT_AUTH_VALIDITY_SECS")
+            && let Ok(secs) = secs.parse::<u64>()
+        {
+            config = config.with_validity_secs(secs);
+        }
+        Some(config)
+    });
+    CONFIG.clone()
 }
 
 /// Bounded diagnostic preview for hook log fields. The return value is
@@ -1225,6 +1380,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for MockFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             session_id: SessionId,
@@ -1510,7 +1669,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bash_without_context() {
-        let tool = BashTool;
+        let tool = BashTool::default();
         let result = tool.execute(json!({"commands": "echo hello"})).await;
 
         if let ToolExecutionResult::ToolError(msg) = result {
@@ -1522,7 +1681,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bash_missing_command() {
-        let tool = BashTool;
+        let tool = BashTool::default();
         let context = ToolContext::new(SessionId::new());
 
         let result = tool.execute_with_context(json!({}), &context).await;
@@ -1536,7 +1695,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_bash_no_file_store() {
-        let tool = BashTool;
+        let tool = BashTool::default();
         let context = ToolContext::new(SessionId::new());
 
         let result = tool
@@ -1567,7 +1726,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_echo_command() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         let result = tool
             .execute_with_context(json!({"commands": "echo hello world"}), &context)
@@ -1585,7 +1744,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_pwd_default_workspace() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         let result = tool
             .execute_with_context(json!({"commands": "pwd"}), &context)
@@ -1602,7 +1761,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_env_variables() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Test HOME
         let result = tool
@@ -1638,7 +1797,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_lang_env_default() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Default locale (None) should set LANG to en-US
         let result = tool
@@ -1655,7 +1814,7 @@ mod tests {
     async fn test_bash_lang_env_from_context_locale() {
         let (mut context, _) = create_context_with_mock_store();
         context.locale = Some("uk-UA".to_string());
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         let result = tool
             .execute_with_context(json!({"commands": "echo $LANG"}), &context)
@@ -1670,7 +1829,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_write_and_read_file() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Write a file
         let result = tool
@@ -1695,7 +1854,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_pipe_command() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         let result = tool
             .execute_with_context(json!({"commands": "echo hello | cat"}), &context)
@@ -1712,7 +1871,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_arithmetic() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         let result = tool
             .execute_with_context(json!({"commands": "echo $((2 + 3 * 4))"}), &context)
@@ -1728,7 +1887,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_command_substitution() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         let result = tool
             .execute_with_context(json!({"commands": "echo $(echo nested)"}), &context)
@@ -1753,7 +1912,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_write_from_root_succeeds() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Writing and reading back a path outside /workspace round-trips.
         let result = tool
@@ -1775,7 +1934,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_read_missing_file_fails_as_not_found() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // A nonexistent path resolves but has no file — `cat` fails with a
         // non-zero exit, not a containment error.
@@ -1805,7 +1964,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_mkdir_from_root_succeeds() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         let result = tool
             .execute_with_context(json!({"commands": "mkdir /tmp/sub && echo done"}), &context)
@@ -1827,7 +1986,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_custom_working_dir() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // First create the directory
         let result = tool
@@ -1860,7 +2019,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_false_command_exit_code() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         let result = tool
             .execute_with_context(json!({"commands": "false"}), &context)
@@ -1877,7 +2036,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_true_command_exit_code() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         let result = tool
             .execute_with_context(json!({"commands": "true"}), &context)
@@ -2162,7 +2321,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_max_input_bytes_limit() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Create a script larger than 1MB limit
         let large_script = "echo ".to_string() + &"x".repeat(1_100_000);
@@ -2193,7 +2352,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_loop_within_limit() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Execute a loop within the 10000 iteration limit
         let command = "i=0; while [ $i -lt 100 ]; do i=$((i + 1)); done; echo $i";
@@ -2214,7 +2373,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_function_calls() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Test basic function definition and calls (non-recursive to avoid stack issues)
         let command = r#"
@@ -2245,7 +2404,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_arithmetic_expressions() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Test various arithmetic expressions (shallow nesting to avoid stack issues)
         let command = "echo $((1 + 2 * 3))";
@@ -2266,7 +2425,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_commands_within_limit() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Execute multiple commands within the 1000 command limit
         let command = "for i in $(seq 1 100); do true; done; echo done";
@@ -2291,7 +2450,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_execute_script_by_absolute_path() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Create a script file
         let result = tool
@@ -2322,7 +2481,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_execute_script_with_args() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Create a script that uses arguments
         let result = tool
@@ -2352,7 +2511,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_execute_script_without_shebang() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Create a script without shebang
         let result = tool
@@ -2379,7 +2538,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_execute_nonexistent_script() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Try to execute a script that doesn't exist
         let result = tool
@@ -2405,7 +2564,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_execute_script_in_nested_dir() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Create nested directory structure and script
         let setup = tool
@@ -2435,7 +2594,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_file_mode_is_executable() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Write a file and check that test -x reports it as executable
         let result = tool
@@ -2463,7 +2622,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_execute_script_with_exit_code() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Create a script that exits with a specific code
         let result = tool
@@ -2502,7 +2661,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_overwrite_existing_file() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Write a file
         let result = tool
@@ -2543,7 +2702,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_append_to_existing_file() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Create file
         let result = tool
@@ -2633,7 +2792,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_redirect_creates_parent_dirs() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Write to a nested path — parent dirs should be auto-created
         let result = tool
@@ -2726,13 +2885,13 @@ mod tests {
 
     #[test]
     fn test_bash_tool_display_name() {
-        let tool = BashTool;
+        let tool = BashTool::default();
         assert_eq!(tool.display_name(), Some("Bash"));
     }
 
     #[test]
     fn test_bash_tool_parameters_schema_structure() {
-        let tool = BashTool;
+        let tool = BashTool::default();
         let schema = tool.parameters_schema();
 
         // Verify required fields
@@ -2857,7 +3016,7 @@ mod tests {
     #[tokio::test]
     async fn test_bash_grep_uses_indexed_search() {
         let (context, _) = create_context_with_mock_store();
-        let tool = BashTool;
+        let tool = BashTool::default();
 
         // Create files
         tool.execute_with_context(
@@ -2886,7 +3045,7 @@ mod tests {
 
     #[test]
     fn test_parameters_schema_delegates_to_bashkit() {
-        let tool = BashTool;
+        let tool = BashTool::default();
         let schema = tool.parameters_schema();
         let bashkit_schema = BASHKIT_TOOL.input_schema();
 
@@ -2990,5 +3149,205 @@ mod tests {
             tool_calls.load(Ordering::Relaxed) >= 1,
             "after_tool hook should fire at least once for `echo`"
         );
+    }
+
+    // ========================================================================
+    // Outbound HTTP via egress (enable_http config)
+    // ========================================================================
+
+    mod http_tests {
+        use super::*;
+        use crate::capabilities::bashkit_shell::egress_transport::tests::MockEgress;
+        use crate::egress::{EgressError, EgressRequestKind, EgressSigning};
+        use crate::network_access::NetworkAccessList;
+
+        fn http_context(egress: Option<Arc<MockEgress>>) -> ToolContext {
+            let (mut context, _) = create_context_with_mock_store();
+            if let Some(egress) = egress {
+                context.egress_service = Some(egress);
+            }
+            context
+        }
+
+        #[tokio::test]
+        async fn http_disabled_by_default_even_with_egress_available() {
+            let egress = Arc::new(MockEgress::with_responses(vec![]));
+            let context = http_context(Some(egress.clone()));
+            let tool = BashTool::default();
+
+            let result = tool
+                .execute_with_context(
+                    json!({"commands": "curl -s http://93.184.216.34/ 2>&1; echo rc=$?"}),
+                    &context,
+                )
+                .await;
+
+            let ToolExecutionResult::Success(output) = result else {
+                panic!("expected success result");
+            };
+            let combined = format!("{}{}", output["stdout"], output["stderr"]);
+            assert!(
+                !combined.contains("rc=0"),
+                "curl must fail without enable_http, got: {combined}"
+            );
+            assert!(
+                egress.requests.lock().unwrap().is_empty(),
+                "no request may reach egress when HTTP is disabled"
+            );
+        }
+
+        #[tokio::test]
+        async fn http_enable_without_egress_service_stays_offline() {
+            let context = http_context(None);
+            let tool = BashTool { enable_http: true };
+
+            let result = tool
+                .execute_with_context(
+                    json!({"commands": "curl -s http://93.184.216.34/ 2>&1; echo rc=$?"}),
+                    &context,
+                )
+                .await;
+
+            let ToolExecutionResult::Success(output) = result else {
+                panic!("expected success result");
+            };
+            let combined = format!("{}{}", output["stdout"], output["stderr"]);
+            assert!(
+                !combined.contains("rc=0"),
+                "curl must fail without an egress service, got: {combined}"
+            );
+        }
+
+        #[tokio::test]
+        async fn curl_routes_through_egress_and_forwards_policy_metadata() {
+            let egress = Arc::new(MockEgress::with_responses(vec![MockEgress::ok(
+                200,
+                &[("content-type", "text/plain")],
+                "egress-ok",
+            )]));
+            let acl = NetworkAccessList::allow_only(["93.184.216.34"]);
+            let mut context = http_context(Some(egress.clone()));
+            context.network_access = Some(acl.clone());
+            let tool = BashTool { enable_http: true };
+
+            let result = tool
+                .execute_with_context(
+                    json!({"commands": "curl -s http://93.184.216.34/data"}),
+                    &context,
+                )
+                .await;
+
+            let ToolExecutionResult::Success(output) = result else {
+                panic!("expected success result");
+            };
+            assert_eq!(output["exit_code"], 0, "stderr: {}", output["stderr"]);
+            assert!(
+                output["stdout"].as_str().unwrap().contains("egress-ok"),
+                "stdout: {}",
+                output["stdout"]
+            );
+
+            let requests = egress.requests.lock().unwrap();
+            assert_eq!(requests.len(), 1);
+            let request = &requests[0];
+            assert_eq!(request.method, "GET");
+            assert_eq!(request.url, "http://93.184.216.34/data");
+            assert_eq!(request.kind, EgressRequestKind::Capability);
+            assert_eq!(request.signing, EgressSigning::PlatformDefault);
+            assert_eq!(request.network_access, Some(acl));
+            assert!(request.timeout_ms.is_some(), "deadline must be forwarded");
+            // IP-literal host: bashkit's SSRF precheck pins the validated
+            // address so the egress boundary can enforce resolve-then-check.
+            let (host, addrs) = request.pinned_addrs.as_ref().expect("pinned addrs");
+            assert_eq!(host, "93.184.216.34");
+            assert_eq!(addrs[0].ip().to_string(), "93.184.216.34");
+            assert_eq!(addrs[0].port(), 80);
+        }
+
+        #[tokio::test]
+        async fn egress_denial_surfaces_as_curl_access_denied_exit_7() {
+            let egress = Arc::new(MockEgress::with_responses(vec![Err(
+                EgressError::NetworkAccessDenied {
+                    url: "http://93.184.216.34/blocked".to_string(),
+                },
+            )]));
+            let context = http_context(Some(egress));
+            let tool = BashTool { enable_http: true };
+
+            let result = tool
+                .execute_with_context(
+                    json!({"commands": "curl -s http://93.184.216.34/blocked"}),
+                    &context,
+                )
+                .await;
+
+            let ToolExecutionResult::Success(output) = result else {
+                panic!("expected success result");
+            };
+            assert_eq!(output["exit_code"], 7, "stderr: {}", output["stderr"]);
+            assert!(
+                output["stderr"].as_str().unwrap().contains("access denied"),
+                "stderr: {}",
+                output["stderr"]
+            );
+            assert!(
+                output["stderr"]
+                    .as_str()
+                    .unwrap()
+                    .contains("blocked by network policy"),
+                "stderr: {}",
+                output["stderr"]
+            );
+        }
+
+        #[tokio::test]
+        async fn oversized_egress_response_surfaces_as_curl_exit_63() {
+            // 11 MB body exceeds bashkit's 10 MB default cap; the transport
+            // maps it to TooLarge before the interpreter sees the body.
+            let big = "x".repeat(11 * 1024 * 1024);
+            let egress = Arc::new(MockEgress::with_responses(vec![MockEgress::ok(
+                200,
+                &[("content-type", "text/plain")],
+                &big,
+            )]));
+            let context = http_context(Some(egress));
+            let tool = BashTool { enable_http: true };
+
+            let result = tool
+                .execute_with_context(
+                    json!({"commands": "curl -s http://93.184.216.34/huge"}),
+                    &context,
+                )
+                .await;
+
+            let ToolExecutionResult::Success(output) = result else {
+                panic!("expected success result");
+            };
+            assert_eq!(output["exit_code"], 63, "stderr: {}", output["stderr"]);
+            assert!(
+                output["stderr"]
+                    .as_str()
+                    .unwrap()
+                    .contains("response too large"),
+                "stderr: {}",
+                output["stderr"]
+            );
+        }
+
+        #[test]
+        fn validate_config_accepts_bool_and_rejects_other_types() {
+            let cap = BashkitShellCapability;
+            assert!(cap.validate_config(&serde_json::Value::Null).is_ok());
+            assert!(cap.validate_config(&json!({})).is_ok());
+            assert!(cap.validate_config(&json!({"enable_http": true})).is_ok());
+            assert!(cap.validate_config(&json!({"enable_http": "yes"})).is_err());
+            assert!(cap.validate_config(&json!("nope")).is_err());
+        }
+
+        #[test]
+        fn config_schema_exposes_enable_http() {
+            let schema = BashkitShellCapability.config_schema().unwrap();
+            assert!(schema["properties"]["enable_http"]["type"] == "boolean");
+        }
     }
 }

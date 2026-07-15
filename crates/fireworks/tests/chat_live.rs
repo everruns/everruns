@@ -3,7 +3,7 @@
 //! Exercises a real streamed chat completion through `FireworksChatDriver` plus
 //! live `/models` discovery and profile mapping. These are the live counterparts
 //! to the wiremock unit tests. (Live tool-calling is covered by the shared
-//! `everruns-llm-tests` matrix via the `FIREWORKS_GPT_OSS` case.)
+//! `everruns-llm-tests` matrix via the `FIREWORKS_KIMI_K2` case.)
 //!
 //! Ignored by default (requires network + `FIREWORKS_API_KEY`); run manually:
 //!   `doppler run -- cargo test -p everruns-fireworks --test chat_live -- --ignored --nocapture`
@@ -27,6 +27,8 @@ async fn fireworks_chat_streams_response() {
     let driver = FireworksChatDriver::new(api_key());
 
     let config = LlmCallConfig {
+        speed: None,
+        verbosity: None,
         model: LIVE_MODEL.to_string(),
         temperature: Some(0.0),
         // Generous budget: reasoning models can spend tokens on
@@ -68,7 +70,7 @@ async fn fireworks_chat_streams_response() {
                     meta.finish_reason, meta.prompt_tokens, meta.completion_tokens,
                 );
             }
-            LlmStreamEvent::Error(e) => error = Some(e),
+            LlmStreamEvent::Error(e) => error = Some(e.to_string()),
             _ => {}
         }
     }

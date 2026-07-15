@@ -217,8 +217,14 @@ impl From<&Agent> for AgentConfigOverlay {
 
 impl From<&Session> for AgentConfigOverlay {
     fn from(s: &Session) -> Self {
+        let goal_prompt = s
+            .goal
+            .as_ref()
+            .map(|goal| goal.trim())
+            .filter(|goal| !goal.is_empty())
+            .map(|goal| format!("<session-goal>\n{goal}\n</session-goal>"));
         AgentConfigOverlay {
-            system_prompt: s.system_prompt.clone(),
+            system_prompt: merge_system_prompts(s.system_prompt.clone(), goal_prompt),
             capabilities: s.capabilities.clone(),
             initial_files: s.initial_files.clone(),
             network_access: s.network_access.clone(),

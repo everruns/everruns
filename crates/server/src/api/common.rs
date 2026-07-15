@@ -35,6 +35,7 @@ pub type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
 
 /// Response body for resource stats.
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(as = ResourceStats)]
 pub struct ResourceStatsResponse {
     /// Total number of sessions ever created for this resource.
     #[schema(example = 1_842u64)]

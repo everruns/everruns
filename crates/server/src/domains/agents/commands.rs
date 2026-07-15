@@ -12,7 +12,7 @@ use super::types::{
 use super::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
 use crate::max_iterations;
-use everruns_core::typed_id::{AgentId, AgentVersionId};
+use everruns_core::typed_id::{AgentId, AgentVersionId, HarnessId};
 use everruns_core::{
     Agent, AgentCapabilityConfig, AgentStatus, AgentVersion, AgentVersionChangeKind, InitialFile,
     OrgRole, Policy, ScopedMcpServers, ToolDefinition,
@@ -131,6 +131,74 @@ async fn persist_capabilities(
     Ok(())
 }
 
+async fn resolve_create_harness_id(
+    ctx: &Ctx,
+    harness_id: Option<HarnessId>,
+    harness_name: Option<&str>,
+) -> Result<HarnessId, CommandError> {
+    resolve_harness_id(ctx, harness_id, harness_name, true)
+        .await?
+        .ok_or_else(|| CommandError::not_found("Harness"))
+}
+
+async fn resolve_update_harness_id(
+    ctx: &Ctx,
+    harness_id: Option<HarnessId>,
+    harness_name: Option<&str>,
+) -> Result<Option<HarnessId>, CommandError> {
+    resolve_harness_id(ctx, harness_id, harness_name, false).await
+}
+
+async fn resolve_harness_id(
+    ctx: &Ctx,
+    harness_id: Option<HarnessId>,
+    harness_name: Option<&str>,
+    default_when_omitted: bool,
+) -> Result<Option<HarnessId>, CommandError> {
+    if harness_id.is_some() && harness_name.is_some() {
+        return Err(CommandError::bad_request(
+            "harness_id and harness_name are mutually exclusive",
+        ));
+    }
+
+    let row = if let Some(id) = harness_id {
+        ctx.db
+            .get_harness(ctx.org_id(), id)
+            .await
+            .map_err(classify_anyhow)?
+    } else if let Some(name) = harness_name {
+        ctx.db
+            .get_harness_by_name(ctx.org_id(), name)
+            .await
+            .map_err(classify_anyhow)?
+    } else if default_when_omitted {
+        let id = crate::org_init::generic_harness_id(&ctx.db, ctx.org_id())
+            .await
+            .map_err(classify_anyhow)?;
+        ctx.db
+            .get_harness(ctx.org_id(), id)
+            .await
+            .map_err(classify_anyhow)?
+    } else {
+        None
+    };
+
+    let Some(row) = row else {
+        return if default_when_omitted || harness_id.is_some() || harness_name.is_some() {
+            Err(CommandError::not_found("Harness"))
+        } else {
+            Ok(None)
+        };
+    };
+
+    if row.status != "active" {
+        return Err(CommandError::bad_request(
+            "Archived or deleted harnesses cannot be assigned to agents",
+        ));
+    }
+    Ok(Some(row.id))
+}
+
 // ============================================================================
 // CreateAgent
 // ============================================================================
@@ -205,6 +273,8 @@ impl Command for CreateAgent {
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
             .map_err(classify_anyhow)?;
+        let harness_id =
+            resolve_create_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
 
         // Persist
         let client_id = req.id;
@@ -216,6 +286,7 @@ impl Command for CreateAgent {
                 description: req.description,
                 system_prompt: req.system_prompt,
                 default_model_id,
+                harness_id,
                 tags: req.tags,
                 initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
                 tools: serde_json::to_value(&req.tools).unwrap_or_default(),
@@ -245,6 +316,7 @@ impl Command for CreateAgent {
                 description: req.description,
                 system_prompt: req.system_prompt,
                 default_model_id,
+                harness_id,
                 tags: req.tags,
                 initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
                 tools: serde_json::to_value(&req.tools).unwrap_or_default(),
@@ -510,6 +582,8 @@ impl Command for UpdateAgentCmd {
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
             .map_err(classify_anyhow)?;
+        let harness_id =
+            resolve_update_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
 
         // Persist
         let input = UpdateAgent {
@@ -518,6 +592,7 @@ impl Command for UpdateAgentCmd {
             description: req.description,
             system_prompt: req.system_prompt,
             default_model_id,
+            harness_id,
             tags: req.tags,
             status: req.status.map(|s| s.to_string()),
             initial_files: req
@@ -705,6 +780,8 @@ impl Command for UpsertAgent {
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
             .map_err(classify_anyhow)?;
+        let harness_id =
+            resolve_create_harness_id(ctx, req.harness_id, req.harness_name.as_deref()).await?;
         let previous_config_hash = if ctx.feature_flags.agent_versions {
             if let Some(existing) = ctx
                 .db
@@ -731,6 +808,7 @@ impl Command for UpsertAgent {
             description: req.description,
             system_prompt: req.system_prompt,
             default_model_id,
+            harness_id,
             tags: req.tags,
             initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
             tools: serde_json::to_value(&req.tools).unwrap_or_default(),
@@ -826,6 +904,8 @@ impl Command for CopyAgent {
             description: source.description,
             system_prompt: source.system_prompt,
             default_model_id: source.default_model_id,
+            harness_id: Some(source.harness_id),
+            harness_name: None,
             tags: source.tags,
             capabilities: source.capabilities,
             initial_files: source.initial_files,
@@ -963,6 +1043,7 @@ async fn build_resolved_config(
         "capabilities": agent.capabilities,
         "mcp_servers": agent.mcp_servers,
         "default_model_id": agent.default_model_id.map(|id| id.to_string()),
+        "harness_id": agent.harness_id.to_string(),
         "max_iterations": agent.max_iterations,
         "parallel_tool_calls": agent.parallel_tool_calls,
     }))
@@ -1459,6 +1540,8 @@ impl Command for ForkAgentVersion {
             description: fork.description.clone(),
             system_prompt: fork.system_prompt.clone(),
             default_model_id: fork.default_model_id,
+            harness_id: Some(fork.harness_id),
+            harness_name: None,
             tags: fork.tags.clone(),
             capabilities: fork.capabilities.clone(),
             initial_files: fork.initial_files.clone(),
@@ -1780,6 +1863,7 @@ mod tests {
     use super::*;
     use crate::services::CapabilityService;
     use crate::storage::StorageBackend;
+    use crate::storage::models::CreateHarnessRow;
     use everruns_core::{
         Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, FeatureFlags,
         OrgRole,
@@ -1801,6 +1885,11 @@ mod tests {
         role: OrgRole,
         feature_flags: FeatureFlags,
     ) -> Ctx {
+        futures::executor::block_on(crate::org_init::initialize_org_harnesses(
+            &db,
+            DEFAULT_ORG_ID,
+        ))
+        .expect("initialize built-in harnesses for agent command tests");
         let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
         Ctx::new(
             Caller {
@@ -1838,6 +1927,8 @@ mod tests {
             description: None,
             system_prompt: "test".to_string(),
             default_model_id: None,
+            harness_id: None,
+            harness_name: None,
             tags: Vec::new(),
             capabilities: vec![AgentCapabilityConfig::new("bashkit_shell")],
             initial_files: Vec::new(),
@@ -1857,6 +1948,8 @@ mod tests {
             description: None,
             system_prompt: "initial prompt".to_string(),
             default_model_id: None,
+            harness_id: None,
+            harness_name: None,
             tags: Vec::new(),
             capabilities: Vec::new(),
             initial_files: Vec::new(),
@@ -1875,6 +1968,8 @@ mod tests {
             description: None,
             system_prompt: Some(system_prompt.to_string()),
             default_model_id: None,
+            harness_id: None,
+            harness_name: None,
             tags: None,
             capabilities: None,
             initial_files: None,
@@ -1885,6 +1980,131 @@ mod tests {
             max_iterations: None,
             parallel_tool_calls: None,
         }
+    }
+
+    async fn create_test_harness(db: &StorageBackend, name: &str) -> HarnessId {
+        db.create_harness(
+            DEFAULT_ORG_ID,
+            CreateHarnessRow {
+                name: name.to_string(),
+                display_name: Some(name.to_string()),
+                description: None,
+                system_prompt: Some("test harness".to_string()),
+                parent_harness_id: None,
+                default_model_id: None,
+                tags: Vec::new(),
+                initial_files: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                embedder_metadata: serde_json::json!({}),
+                is_built_in: false,
+            },
+        )
+        .await
+        .expect("create test harness")
+        .id
+    }
+
+    #[tokio::test]
+    async fn create_agent_defaults_to_generic_harness() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+        let generic_id = crate::org_init::generic_harness_id(&db, DEFAULT_ORG_ID)
+            .await
+            .expect("generic harness id");
+
+        let created = CreateAgent(basic_agent_request("default-harness-agent"))
+            .run(&ctx)
+            .await
+            .expect("agent is created");
+
+        assert_eq!(created.harness_id, generic_id);
+    }
+
+    #[tokio::test]
+    async fn create_and_update_agent_resolve_harness_name_and_id() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+        let first_harness_id = create_test_harness(&db, "agent-harness-one").await;
+        let second_harness_id = create_test_harness(&db, "agent-harness-two").await;
+
+        let mut req = basic_agent_request("named-harness-agent");
+        req.harness_name = Some("agent-harness-one".to_string());
+        let created = CreateAgent(req).run(&ctx).await.expect("agent is created");
+        assert_eq!(created.harness_id, first_harness_id);
+
+        let renamed = UpdateAgentCmd {
+            id: created.public_id.to_string(),
+            req: UpdateAgentRequest {
+                name: None,
+                display_name: Some("renamed".to_string()),
+                description: None,
+                system_prompt: None,
+                default_model_id: None,
+                harness_id: None,
+                harness_name: None,
+                tags: None,
+                capabilities: None,
+                initial_files: None,
+                status: None,
+                tools: None,
+                mcp_servers: None,
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect("agent is updated without harness change");
+        assert_eq!(renamed.harness_id, first_harness_id);
+
+        let changed = UpdateAgentCmd {
+            id: created.public_id.to_string(),
+            req: UpdateAgentRequest {
+                harness_id: Some(second_harness_id),
+                ..update_prompt_request("changed harness")
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect("agent harness changes by id");
+        assert_eq!(changed.harness_id, second_harness_id);
+    }
+
+    #[tokio::test]
+    async fn create_agent_rejects_unknown_archived_or_ambiguous_harness() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+
+        let mut unknown = basic_agent_request("unknown-harness-agent");
+        unknown.harness_id = Some(HarnessId::new());
+        let err = CreateAgent(unknown)
+            .run(&ctx)
+            .await
+            .expect_err("unknown harness is rejected");
+        assert_eq!(err.status(), axum::http::StatusCode::NOT_FOUND);
+
+        let archived_id = create_test_harness(&db, "archived-agent-harness").await;
+        db.delete_harness(DEFAULT_ORG_ID, archived_id)
+            .await
+            .expect("archive harness");
+        let mut archived = basic_agent_request("archived-harness-agent");
+        archived.harness_id = Some(archived_id);
+        let err = CreateAgent(archived)
+            .run(&ctx)
+            .await
+            .expect_err("archived harness is rejected");
+        assert_eq!(err.status(), axum::http::StatusCode::BAD_REQUEST);
+
+        let mut ambiguous = basic_agent_request("ambiguous-harness-agent");
+        ambiguous.harness_id = Some(archived_id);
+        ambiguous.harness_name = Some("generic".to_string());
+        let err = CreateAgent(ambiguous)
+            .run(&ctx)
+            .await
+            .expect_err("ambiguous harness selection is rejected");
+        assert_eq!(err.status(), axum::http::StatusCode::BAD_REQUEST);
     }
 
     async fn create_high_risk_agent_version(ctx: &Ctx, name: &str) -> (Agent, AgentVersion) {
@@ -2034,6 +2254,8 @@ mod tests {
                 description: None,
                 system_prompt: None,
                 default_model_id: None,
+                harness_id: None,
+                harness_name: None,
                 tags: None,
                 capabilities: None,
                 initial_files: None,

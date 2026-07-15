@@ -4,6 +4,19 @@ import type { SidebarConfig, NavigationSection } from "@/components/layout/sideb
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Settings, Zap } from "lucide-react";
 
+jest.mock("next/link", () => ({
+  __esModule: true,
+  default: ({
+    children,
+    prefetch,
+    ...props
+  }: React.AnchorHTMLAttributes<HTMLAnchorElement> & { prefetch?: boolean }) => (
+    <a {...props} data-prefetch={prefetch === undefined ? undefined : String(prefetch)}>
+      {children}
+    </a>
+  ),
+}));
+
 // Mock next/navigation
 const mockPathname = jest.fn();
 const mockPush = jest.fn();
@@ -208,7 +221,22 @@ describe("Sidebar", () => {
     expect(memoryLink).toHaveAttribute("href", "/memory");
     expect(modelsLink).toHaveAttribute("href", "/models");
     expect(capabilitiesLink).toHaveAttribute("href", "/capabilities");
-    expect(settingsLink).toHaveAttribute("href", "/settings");
+    expect(settingsLink).toHaveAttribute("href", "/settings/organization");
+  });
+
+  it("disables prefetch only for the top-level Settings link", () => {
+    render(<Sidebar />);
+
+    const navigation = screen.getByRole("navigation");
+    const links = within(navigation).getAllByRole("link");
+    const settingsLink = within(navigation).getByRole("link", { name: "Settings" });
+
+    expect(settingsLink).toHaveAttribute("data-prefetch", "false");
+    for (const link of links) {
+      if (link !== settingsLink) {
+        expect(link).not.toHaveAttribute("data-prefetch");
+      }
+    }
   });
 
   it("does not render legacy navigation items", () => {
@@ -233,6 +261,22 @@ describe("Sidebar", () => {
     const agentsLink = screen.getByRole("link", { name: /agents/i });
     expect(agentsLink).toHaveClass("border-l-primary");
     expect(agentsLink).toHaveClass("bg-card");
+  });
+
+  it.each([
+    "/settings/organization",
+    "/settings/providers",
+    "/settings/members",
+    "/settings/features",
+    "/settings/payments",
+    "/settings/profile",
+    "/settings/connections",
+    "/settings/personal-access-tokens",
+  ])("keeps Settings active on %s", (pathname) => {
+    mockPathname.mockReturnValue(pathname);
+    render(<Sidebar />);
+
+    expect(screen.getByRole("link", { name: "Settings" })).toHaveClass("border-l-primary");
   });
 
   it("renders version in footer", () => {

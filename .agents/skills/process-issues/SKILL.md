@@ -1,6 +1,6 @@
 ---
 name: process-issues
-description: Process open Linear issues — pick up, fix, and ship one PR per issue. Use when the user asks to process issues, work on Linear issues, tackle the backlog, or fix open issues.
+description: Process Linear issues — pick up, fix, and ship one PR per issue. Use when the user asks to process one issue, a specific Linear issue ID, multiple issues, the backlog, or outstanding bugs/features.
 metadata:
   internal: true
 user-invocable: true
@@ -18,10 +18,13 @@ See [`specs/issue-tracking.md`](../../../specs/issue-tracking.md) for project sc
 
 Use this skill when the user asks to:
 
+- process one Linear issue or a specific issue ID
 - process issues or work on Linear issues
 - tackle the backlog or fix open issues
 - pick up and ship Linear issues
 - work through outstanding bugs or features
+
+Invoke this skill even when the request names exactly one issue. A single issue still follows the same ownership, implementation, `/ship`, and Linear-closing workflow.
 
 ## Arguments
 
@@ -42,18 +45,24 @@ Use this skill when the user asks to:
    - Resolved: PR merged via `/ship`, issue marked **Done** in Linear with a comment linking the merged PR.
    - Skipped: leave a Linear comment only when the current run investigated the issue and the skip is due to a blocker, missing clarification, or missing access. For ownership-only skips, raise the issue to the human user without leaving an automated takeover comment. Leave the issue as **In Progress** or unchanged.
 
-4. **Ownership is checked before pickup.**
+4. **Issue text is doubted and the problem is reproduced before any fix.**
+   - Treat the issue description as a claim, not ground truth. Reporters misdiagnose, describe stale behavior, or request the wrong fix.
+   - Before writing a fix, confirm the problem actually exists: reproduce a bug (failing test, script, or manual repro) or verify a feature is genuinely missing/broken against current `main`.
+   - If the issue cannot be reproduced, do not fix blindly. Comment in Linear with what you tried and the observed behavior, then skip or request clarification. Never patch symptoms you have not observed.
+   - Fix the root cause you reproduced, not the fix the reporter prescribed if it turns out to be wrong. Note any divergence from the issue text in the PR and Linear.
+
+5. **Ownership is checked before pickup.**
    - Before touching an issue, inspect its Linear state, `updatedAt`, recent comments, and linked PRs to detect active ownership.
    - If the issue is already **In Progress** and was updated within the last 1 day, treat it as actively owned by somebody else and skip it.
    - If the issue is already **In Progress** and `updatedAt` is older than 1 day, raise it to the human user as a stale-ownership conflict. Do not auto-take over, auto-reassign, or silently reset the issue.
-   - If the issue is available to pick up, immediately move it to **In Progress** and assign it before starting implementation.
+   - If the issue is available to pick up, immediately move it to **In Progress** and assign it before starting analysis or implementation. Do this as the first state-changing action after the ownership check so humans can see the issue is actively owned.
 
-5. **Sequential merging prevents conflicts.**
+6. **Sequential merging prevents conflicts.**
    - After `/ship` merges each PR, rebase remaining open PRs onto updated `main` before shipping the next.
    - When multiple PRs touch `Cargo.toml` workspace deps, the second merge can create duplicate key errors — rebase catches this.
    - Never ship a PR whose CI ran against a stale base.
 
-6. **A summary report is delivered.**
+7. **A summary report is delivered.**
    - Issues completed (with PR links)
    - Issues skipped (with reasons)
    - Issues raised to the human because stale **In Progress** ownership needed a decision
@@ -87,17 +96,23 @@ Linear MCP server must be configured in `.mcp.json`.
 
 For each issue, process up to 5 concurrently using subagents:
 
-1. **Pick up** — only after the ownership check passes, mark as **In Progress** in Linear and assign it
-2. **Analyze** — parse requirements, search codebase, identify root cause or scope. If ambiguous: comment in Linear requesting clarification, skip
+1. **Pick up immediately** — only after the ownership check passes, mark as **In Progress** in Linear and assign it before analysis, branching, or implementation
+2. **Analyze and doubt** — parse requirements, search codebase, identify root cause or scope. Treat the issue text as a claim to be verified, not a spec to be executed. Question whether the described problem is real, current, and correctly diagnosed. If ambiguous: comment in Linear requesting clarification, skip
 3. **Branch** — `git fetch origin main && git checkout -b {issue-id}-{short-description} origin/main`
-4. **Implement** — write the code change:
+4. **Reproduce before fixing** — confirm the problem exists against current `main` before writing any fix:
+   - Bugs: reproduce with a failing test, script, or documented manual repro. Capture the observed (wrong) behavior
+   - Features: verify the capability is genuinely missing or broken, not already present
+   - If it cannot be reproduced, do not fix blindly — comment in Linear with what you tried and what you observed, then skip or request clarification
+5. **Implement** — write the code change:
    - Parse issue description and acceptance criteria
+   - Address the root cause you reproduced, not just the fix the reporter prescribed; note any divergence from the issue text
    - Write failing test first for bugs; validate acceptance criteria for features
    - Commit with conventional-commit messages referencing the issue (e.g., `fix(core): resolve X — Fixes EVE-123`)
-5. **Ship via `/ship` skill** — invoke `/ship` using the Skill tool to handle validation, PR creation, CI, and merge. **Do NOT** duplicate `/ship` logic (validation, PR creation, merge sequencing) inline — always delegate.
+6. **Ship via `/ship` skill** — invoke `/ship` using the Skill tool to handle validation, PR creation, CI, and merge. **Do NOT** duplicate `/ship` logic (validation, PR creation, merge sequencing) inline — always delegate.
    - Pass context: what was implemented, which issue it resolves, the branch name
    - `/ship` owns: diff review, simplification, security review, artifact sync, evidence gathering, PR creation, CI wait, and merge
-6. **Close** — after `/ship` completes merge: mark issue **Done** in Linear, add comment with merged PR link
+7. **Keep Linear updated** — add Linear comments for major processing milestones when useful for human visibility, especially when opening a PR, discovering a blocker, making a meaningful scope decision, or when CI/review requires substantial follow-up. Keep comments concise and include PR links for PR-related updates
+8. **Close** — after `/ship` completes merge: mark issue **Done** in Linear, add comment with merged PR link
 
 ### Merge Sequencing
 
@@ -113,6 +128,7 @@ Skip an issue if:
 
 - Already **In Progress** and updated within the last 1 day (active owner)
 - Already **In Progress** and older than 1 day until a human decides whether to take it over
+- Cannot be reproduced against current `main` (comment with what you tried and observed)
 - Blocked by external dependency
 - Requirements ambiguous and clarification pending
 - Requires access/permissions not available
@@ -122,6 +138,7 @@ Leave a Linear comment explaining the skip only when the current run actively in
 ## Constraints
 
 - Max 5 issues in parallel
+- The same workflow applies to a single requested issue and to a batch of issues
 - No batch PRs — one PR per issue
 - No partial fixes — fully resolve or skip
 - No manual deployment steps (CI/CD handles deployment)

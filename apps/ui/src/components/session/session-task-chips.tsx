@@ -47,33 +47,58 @@ function chipClasses(state: SessionTaskState): string {
   }
 }
 
-interface TaskChipProps {
+export interface TaskChipProps {
   task: SessionTask;
-  tasksHref: string;
+  /** Navigate to this href on click (link mode — session activity rail). */
+  href?: string;
+  /** Select handler; renders the chip as a button (Work view tree node). */
+  onClick?: () => void;
+  /** Highlight the chip as the current selection (button mode). */
+  selected?: boolean;
 }
 
-function TaskChip({ task, tasksHref }: TaskChipProps) {
+/** Presentational task chip: kind icon (or running spinner), truncated display
+ *  name, state color, and a live `state_detail` tooltip. Rendered as a link when
+ *  `href` is given, otherwise as a selectable button. Shared by the per-session
+ *  activity rail and the cross-session Work view (EVE-756) — do not fork it. */
+export function TaskChip({ task, href, onClick, selected }: TaskChipProps) {
   const label = task.display_name || task.id;
   // Truncate long names to keep the strip compact.
   const truncated = label.length > 30 ? `${label.slice(0, 28)}…` : label;
 
-  const chip = (
-    <Link
-      href={tasksHref}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium",
-        "transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        chipClasses(task.state),
-      )}
-      aria-label={`Task: ${label} — ${task.state}`}
-    >
+  const className = cn(
+    "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium",
+    "transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+    chipClasses(task.state),
+    selected && "ring-2 ring-ring",
+  );
+  const ariaLabel = `Task: ${label} — ${task.state}`;
+  const inner = (
+    <>
       {task.state === "running" && (
         <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden="true" />
       )}
       {task.state !== "running" && taskKindIcon(task.kind)}
       <span className="max-w-[14ch] truncate">{truncated}</span>
-    </Link>
+    </>
   );
+
+  const chip =
+    href !== undefined ? (
+      <Link href={href} className={className} aria-label={ariaLabel}>
+        {inner}
+      </Link>
+    ) : (
+      <button
+        type="button"
+        onClick={onClick}
+        className={className}
+        aria-label={ariaLabel}
+        aria-pressed={selected}
+      >
+        {inner}
+      </button>
+    );
 
   // Show state_detail as a tooltip when available.
   if (task.state_detail) {
@@ -127,7 +152,7 @@ function ActiveTaskChips({ sessionId, basePath }: { sessionId: string; basePath:
       aria-label="Active tasks"
     >
       {activeTasks.map((task) => (
-        <TaskChip key={task.id} task={task} tasksHref={tasksHref} />
+        <TaskChip key={task.id} task={task} href={tasksHref} />
       ))}
     </div>
   );

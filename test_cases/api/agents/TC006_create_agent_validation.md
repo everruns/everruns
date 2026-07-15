@@ -8,6 +8,14 @@ Verify that agent creation fails with appropriate errors for missing, invalid, o
 
 - API server running (`just start-dev`)
 
+## Test Data
+
+| Scenario | Value |
+|----------|-------|
+| Invalid name | My Agent! |
+| Consecutive hyphens | bad--name |
+| Duplicate name | unique-agent |
+
 ## Steps
 
 1. Create agent without name:
@@ -65,5 +73,5 @@ Verify that agent creation fails with appropriate errors for missing, invalid, o
 | Step 4: HTTP status | 400 (invalid name format) |
 | Step 5: HTTP status | 400 (consecutive hyphens) |
 | Step 6: First create | 201 |
-| Step 6: Second create | 500 (name already taken) |
+| Step 6: Second create | 409 Conflict (name already taken) |
 | Error response | Contains field name or reason causing the error |

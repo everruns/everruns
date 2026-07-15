@@ -225,37 +225,55 @@ impl GitHubOAuthService {
             .await
             .context("Failed to parse user info")?;
 
-        // GitHub may not return email in user info, need to fetch from emails endpoint
-        let email = if let Some(email) = user_info.email {
-            email
-        } else {
-            // Fetch primary email
-            let emails: Vec<GitHubEmail> = client
-                .get("https://api.github.com/user/emails")
-                .header("User-Agent", "Everruns")
-                .bearer_auth(access_token)
-                .send()
-                .await
-                .context("Failed to fetch user emails")?
-                .json()
-                .await
-                .context("Failed to parse user emails")?;
+        // GitHub's /user endpoint returns the public profile email but carries
+        // no verification bit, and the public email may be absent entirely.
+        // Always consult /user/emails (granted by the user:email scope) so the
+        // real `verified` flag drives the identity gate instead of assuming
+        // verification (EVE-702).
+        let emails: Vec<GitHubEmail> = client
+            .get("https://api.github.com/user/emails")
+            .header("User-Agent", "Everruns")
+            .bearer_auth(access_token)
+            .send()
+            .await
+            .context("Failed to fetch user emails")?
+            .json()
+            .await
+            .unwrap_or_default();
 
-            emails
-                .into_iter()
-                .find(|e| e.primary)
-                .map(|e| e.email)
-                .ok_or_else(|| anyhow::anyhow!("No primary email found"))?
-        };
+        let (email, email_verified) = select_github_email(user_info.email, &emails)
+            .ok_or_else(|| anyhow::anyhow!("No email available from GitHub"))?;
 
         Ok(OAuthUserInfo {
             provider_id: user_info.id.to_string(),
             email,
             name: user_info.name.unwrap_or_else(|| user_info.login.clone()),
             avatar_url: Some(user_info.avatar_url),
-            email_verified: true, // GitHub emails are verified
+            email_verified,
         })
     }
+}
+
+/// Choose which GitHub email to trust and its verification status.
+///
+/// GitHub's public `/user` email carries no verification flag, so we look it up
+/// in the `/user/emails` list to learn whether it is verified — a public email
+/// absent from that list is treated as unverified, failing closed. When no
+/// public email is exposed we fall back to the account's primary address. The
+/// caller gate rejects unverified addresses, so an honest `false` here blocks
+/// account pre-emption via an unverified GitHub identity. Returns `None` only
+/// when GitHub surfaces no usable email at all.
+fn select_github_email(public: Option<String>, emails: &[GitHubEmail]) -> Option<(String, bool)> {
+    if let Some(public) = public {
+        let verified = emails
+            .iter()
+            .any(|e| e.email.eq_ignore_ascii_case(&public) && e.verified);
+        return Some((public, verified));
+    }
+    emails
+        .iter()
+        .find(|e| e.primary)
+        .map(|e| (e.email.clone(), e.verified))
 }
 
 #[derive(Debug, Deserialize)]
@@ -280,7 +298,6 @@ struct GitHubUserInfo {
 struct GitHubEmail {
     email: String,
     primary: bool,
-    #[allow(dead_code)]
     verified: bool,
 }
 
@@ -503,5 +520,54 @@ mod tests {
             urlencoding::encode("test@example.com"),
             "test%40example.com"
         );
+    }
+
+    fn gh_email(email: &str, primary: bool, verified: bool) -> GitHubEmail {
+        GitHubEmail {
+            email: email.to_string(),
+            primary,
+            verified,
+        }
+    }
+
+    // EVE-702: a public profile email inherits the verified flag from the
+    // matching /user/emails entry.
+    #[test]
+    fn github_email_uses_verified_flag_of_public_email() {
+        let emails = vec![gh_email("Pub@x.com", true, true)];
+        assert_eq!(
+            select_github_email(Some("pub@x.com".to_string()), &emails),
+            Some(("pub@x.com".to_string(), true))
+        );
+    }
+
+    // EVE-702: a public email GitHub does not list as verified fails closed.
+    #[test]
+    fn github_email_public_absent_from_list_is_unverified() {
+        let emails = vec![gh_email("other@x.com", true, true)];
+        assert_eq!(
+            select_github_email(Some("pub@x.com".to_string()), &emails),
+            Some(("pub@x.com".to_string(), false))
+        );
+    }
+
+    // EVE-702: with no public email, fall back to the primary and carry its
+    // real verified flag (here: primary but unverified).
+    #[test]
+    fn github_email_falls_back_to_primary_with_real_flag() {
+        let emails = vec![
+            gh_email("sec@x.com", false, true),
+            gh_email("primary@x.com", true, false),
+        ];
+        assert_eq!(
+            select_github_email(None, &emails),
+            Some(("primary@x.com".to_string(), false))
+        );
+    }
+
+    // EVE-702: no usable email at all yields None (surfaced as an error).
+    #[test]
+    fn github_email_none_when_no_email_available() {
+        assert_eq!(select_github_email(None, &[]), None);
     }
 }
