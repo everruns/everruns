@@ -6,6 +6,7 @@
 // method recursively creates files and directories from mount point definitions.
 
 use crate::domains::session_files::limits::{QuotaLimits, check_write_quota as quota_check};
+use crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry;
 use crate::storage::{
     StorageBackend,
     models::{CreateSessionFileRow, SessionFileInfoRow, SessionFileRow, UpdateSessionFile},
@@ -13,9 +14,10 @@ use crate::storage::{
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, FileInfo, FileStat, GrepMatch, GrepResult, MountAccess, MountEntry, MountPoint,
-    MountSource, SessionFile, SessionFileSystem, SessionFileSystemFactory,
-    SessionFileSystemFactoryContext, SessionId,
+    AgentLoopError, FileInfo, FileStat, GrepMatch, GrepOptions, GrepResult, GrepSearchResult,
+    MountAccess, MountEntry, MountPoint, MountSource, SessionFile, SessionFileSystem,
+    SessionFileSystemFactory, SessionFileSystemFactoryContext, SessionId,
+    session_file::build_grep_search_result,
 };
 use regex::{Regex, RegexBuilder};
 use std::sync::Arc;
@@ -1295,6 +1297,23 @@ impl SessionFileSystem for WorkspaceFileService {
             .collect())
     }
 
+    async fn grep_files_with_options(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> everruns_core::Result<GrepSearchResult> {
+        grep_session_files_with_options(
+            &self.db,
+            self.virtual_registry.as_deref(),
+            session_id.uuid(),
+            pattern,
+            options,
+        )
+        .await
+        .map_err(file_system_error)
+    }
+
     async fn create_directory(
         &self,
         session_id: SessionId,
@@ -1423,6 +1442,86 @@ pub async fn grep_session_files(
     }
 
     Ok(results)
+}
+
+pub(crate) async fn grep_session_files_with_options(
+    db: &StorageBackend,
+    virtual_registry: Option<&VirtualMountRegistry>,
+    session_id: Uuid,
+    pattern: &str,
+    options: &GrepOptions,
+) -> Result<GrepSearchResult> {
+    anyhow::ensure!(
+        pattern.len() <= MAX_GREP_PATTERN_LEN,
+        "Regex pattern too long (max {} characters)",
+        MAX_GREP_PATTERN_LEN
+    );
+    if let Some(path_pattern) = options.path_pattern.as_deref() {
+        anyhow::ensure!(
+            path_pattern.len() <= MAX_GREP_PATTERN_LEN,
+            "Path pattern too long (max {} characters)",
+            MAX_GREP_PATTERN_LEN
+        );
+    }
+    anyhow::ensure!(
+        options.before_context <= everruns_core::GREP_MAX_CONTEXT_LINES,
+        "before_context exceeds maximum of {}",
+        everruns_core::GREP_MAX_CONTEXT_LINES
+    );
+    anyhow::ensure!(
+        options.after_context <= everruns_core::GREP_MAX_CONTEXT_LINES,
+        "after_context exceeds maximum of {}",
+        everruns_core::GREP_MAX_CONTEXT_LINES
+    );
+    let regex = build_grep_regex(pattern)?;
+    let path_matcher = options
+        .path_pattern
+        .as_deref()
+        .map(everruns_core::session_path::GrepPathPattern::new)
+        .transpose()?;
+    let rows = db
+        .grep_session_files(session_id, pattern, None, MAX_GREP_FILE_BYTES)
+        .await?;
+    let mut text_files = Vec::new();
+    let mut total_scanned = 0usize;
+    for row in rows {
+        if path_matcher
+            .as_ref()
+            .is_some_and(|matcher| !matcher.is_match(&row.path))
+            || row.size_bytes > MAX_GREP_FILE_BYTES
+        {
+            continue;
+        }
+        total_scanned = total_scanned.saturating_add(row.size_bytes.max(0) as usize);
+        anyhow::ensure!(
+            total_scanned <= MAX_GREP_TOTAL_SCAN_BYTES,
+            "Grep request exceeds maximum scan size ({} bytes); narrow the path filter or pattern",
+            MAX_GREP_TOTAL_SCAN_BYTES
+        );
+        if let Some(file) = db.get_session_file(session_id, &row.path).await?
+            && let Some(content) = file.content
+            && let Ok(text) = String::from_utf8(content)
+        {
+            text_files.push((row.path, text));
+        }
+    }
+    if let Some(registry) = virtual_registry {
+        for (path, text) in registry.grep_text_files(&session_id, MAX_GREP_FILE_BYTES as usize) {
+            if path_matcher
+                .as_ref()
+                .is_none_or(|matcher| matcher.is_match(&path))
+            {
+                total_scanned = total_scanned.saturating_add(text.len());
+                anyhow::ensure!(
+                    total_scanned <= MAX_GREP_TOTAL_SCAN_BYTES,
+                    "Grep request exceeds maximum scan size ({} bytes); narrow the path filter or pattern",
+                    MAX_GREP_TOTAL_SCAN_BYTES
+                );
+                text_files.push((path, text));
+            }
+        }
+    }
+    Ok(build_grep_search_result(text_files, &regex, options))
 }
 
 /// Result of applying capability mounts to a session.

@@ -8,7 +8,9 @@ use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
-use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
+use everruns_core::session_file::{
+    FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
+};
 use everruns_core::traits::{
     AgentStore, ImageArtifactStore, ProviderCredentialStore, ResolvedImage, ResolvedModel,
 };
@@ -325,6 +327,22 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             SessionId::from_uuid(session_id),
             pattern,
             path_pattern,
+        )
+        .await
+    }
+
+    async fn grep_files_with_options(
+        &self,
+        session_id: Uuid,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        let store = GrpcSessionFileStore::new(self.client.clone());
+        everruns_core::traits::SessionFileSystem::grep_files_with_options(
+            &store,
+            SessionId::from_uuid(session_id),
+            pattern,
+            options,
         )
         .await
     }

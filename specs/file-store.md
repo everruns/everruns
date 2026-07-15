@@ -301,7 +301,13 @@ The following behaviors hold across all implementations:
    such as `*.txt` matches at any depth. `/workspace` and supported host-absolute
    aliases are normalized before matching. Patterns without glob
    metacharacters retain the legacy substring behavior; `Some("")` matches
-   every path.
+   every path. `grep_files_with_options` adds match-based pagination and up to
+   20 numbered lines of context before and after each selected match. Adjacent
+   or overlapping windows are merged into blocks whose lines carry explicit
+   match markers; a line appears at most once per block. `offset` and `limit`
+   count matches, never context lines. Context is gathered during the backend
+   content scan, and returned text is capped at 64 KiB with byte and next-match
+   metadata. Zero context preserves the flat `GrepMatch` behavior.
 6. **`list_directory` ambiguity.** The trait currently returns an empty
    `Vec<FileInfo>` both when the path is missing and when it exists but is
    not a directory. Callers that need to distinguish "empty directory"

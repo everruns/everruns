@@ -8,7 +8,9 @@
 use crate::agent::Agent;
 use crate::harness::Harness;
 use crate::provider::DriverId;
-use crate::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
+use crate::session_file::{
+    FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
+};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::typed_id::{AgentId, HarnessId, ImageId, ModelId, SessionId, WorkspaceId};
 use async_trait::async_trait;
@@ -530,6 +532,28 @@ pub trait SessionFileSystem: Send + Sync {
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>>;
 
+    /// Search with match pagination and bounded before/after context.
+    ///
+    /// Backends should override this to collect context during their content
+    /// scan. The default preserves compatibility for third-party stores that
+    /// only implement the original zero-context method.
+    async fn grep_files_with_options(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        if options.before_context != 0 || options.after_context != 0 {
+            return Err(crate::error::AgentLoopError::tool(
+                "this file store does not support grep context",
+            ));
+        }
+        let all = self
+            .grep_files(session_id, pattern, options.path_pattern.as_deref())
+            .await?;
+        Ok(crate::session_file::bound_grep_matches(all, options))
+    }
+
     /// Create a directory
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo>;
 
@@ -630,6 +654,16 @@ impl SessionFileSystem for WorkspaceScopedFileSystem {
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
         self.inner.grep_files(self.key, pattern, path_pattern).await
+    }
+    async fn grep_files_with_options(
+        &self,
+        _session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        self.inner
+            .grep_files_with_options(self.key, pattern, options)
+            .await
     }
     async fn create_directory(&self, _session_id: SessionId, path: &str) -> Result<FileInfo> {
         self.inner.create_directory(self.key, path).await
@@ -734,6 +768,17 @@ impl<T: SessionFileSystem + ?Sized> SessionFileSystem for std::sync::Arc<T> {
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
         (**self).grep_files(session_id, pattern, path_pattern).await
+    }
+
+    async fn grep_files_with_options(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        (**self)
+            .grep_files_with_options(session_id, pattern, options)
+            .await
     }
 
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {

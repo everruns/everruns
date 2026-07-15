@@ -14,7 +14,10 @@ use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
-use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
+use everruns_core::session_file::{
+    FileInfo, FileStat, GrepContextBlock, GrepContextLine, GrepMatch, GrepOptions,
+    GrepSearchResult, SessionFile,
+};
 use everruns_core::traits::{
     AgentStore, CreateStoredImage, EventEmitter, HarnessStore, ImageArtifactStore,
     LeasedResourceStore, ProviderCredentialStore, ProviderCredentials, ProviderStore,
@@ -1726,6 +1729,11 @@ impl SessionFileSystem for GrpcAdapter {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             pattern: pattern.to_string(),
             path_pattern: path_pattern.map(|s| s.to_string()),
+            before_context: 0,
+            after_context: 0,
+            offset: 0,
+            limit: u64::MAX,
+            max_bytes: u64::MAX,
         };
 
         let response = client
@@ -1743,6 +1751,69 @@ impl SessionFileSystem for GrpcAdapter {
                 line: m.line,
             })
             .collect())
+    }
+
+    async fn grep_files_with_options(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .session_grep_files(proto::SessionGrepFilesRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                pattern: pattern.to_string(),
+                path_pattern: options.path_pattern.clone(),
+                before_context: options.before_context as u64,
+                after_context: options.after_context as u64,
+                offset: options.offset as u64,
+                limit: options.limit as u64,
+                max_bytes: options.max_bytes as u64,
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+        Ok(GrepSearchResult {
+            matches: response
+                .matches
+                .into_iter()
+                .map(|item| GrepMatch {
+                    path: item.path,
+                    line_number: item.line_number as usize,
+                    line: item.line,
+                })
+                .collect(),
+            blocks: response
+                .blocks
+                .into_iter()
+                .map(|block| GrepContextBlock {
+                    path: block.path,
+                    start_line: block.start_line as usize,
+                    end_line: block.end_line as usize,
+                    match_line_numbers: block
+                        .match_line_numbers
+                        .into_iter()
+                        .map(|line| line as usize)
+                        .collect(),
+                    lines: block
+                        .lines
+                        .into_iter()
+                        .map(|line| GrepContextLine {
+                            line_number: line.line_number as usize,
+                            line: line.line,
+                            is_match: line.is_match,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            total_matches: response.total_matches as usize,
+            returned_matches: response.returned_matches as usize,
+            bytes_returned: response.bytes_returned as usize,
+            bytes_total: response.bytes_total as usize,
+            next_offset: response.next_offset.map(|offset| offset as usize),
+            byte_truncated: response.byte_truncated,
+        })
     }
 
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {

@@ -107,11 +107,17 @@ See [`crates/core/src/truncation_info.rs`](../crates/core/src/truncation_info.rs
 |------|--------------|-------------------|
 | `read_file` (session VFS + sandbox) | `line_cap` (with resume), `size_cap` (without resume) | Line cap only — `next_offset` = line number |
 | `list_directory` (session VFS) | `item_cap` | Yes — `next_offset` = item offset |
-| `grep_files` (session VFS) | `line_cap` | Yes — `next_offset` = match offset |
+| `grep_files` (session VFS) | `line_cap`, `size_cap` | Match-cap cuts resume at the next match offset; an oversized individual context block may require narrower context |
 | `sql_query` | `row_cap` | No — narrow `WHERE`/`LIMIT` |
 | `browserless_content` / interaction DOM content | `size_cap` | No — narrow via `browserless_scrape` selectors or shrink the source page |
 
 `next_offset` units are tool-specific — `read_file` uses a line number, `list_directory` uses an item offset, and `grep_files` uses a match offset. Each tool documents its own unit via `resume_hint`.
+
+`grep_files` accepts `before_context` and `after_context` from 0 through 20.
+The default zero values retain flat matches. Non-zero values return numbered,
+merged context blocks with `is_match` markers. Match pagination is applied
+before context expansion, and the primary returned text remains under a 64 KiB
+budget.
 
 Platform-management `session_read_messages` is not a filesystem reader, but it follows the same token-economy principle: returned message count and per-message content are bounded by defaults, with explicit caps for larger reads.
 
