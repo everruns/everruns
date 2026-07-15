@@ -115,7 +115,11 @@ pub struct McpServerOAuthSettings {
 
 impl McpServerService {
     pub fn new(db: Arc<StorageBackend>, encryption: Option<Arc<EncryptionService>>) -> Self {
-        Self::with_egress_service(db, encryption, Arc::new(DirectEgressService::from_env()))
+        Self::with_egress_service(
+            db,
+            encryption,
+            Arc::new(DirectEgressService::for_runtime_traffic_from_env()),
+        )
     }
 
     pub fn with_egress_service(

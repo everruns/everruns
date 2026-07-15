@@ -273,6 +273,7 @@ impl Tool for SandboxExecTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Sandbox");
         Some(crate::tool_narration::narrate_shell_exec(

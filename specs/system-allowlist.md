@@ -3,8 +3,9 @@
 ## Intent
 
 An optional, host-owned global allowlist ("green list") of well-known public
-resources that the egress boundary permits. It is a deployment-wide safety net
-that constrains *all* outbound traffic to a curated set of trusted public
+resources that the egress boundary permits for tenant/agent-directed outbound
+traffic. It is a deployment-wide safety net that constrains capability, MCP,
+integration, and generic runtime HTTP traffic to a curated set of trusted public
 services, independently of per-agent/session `NetworkAccessList`.
 
 Unlike `NetworkAccessList`, this is **not** end-user or agent configuration. It
@@ -52,8 +53,10 @@ Disabled by default. Controlled by a single environment variable:
 EVERRUNS_SYSTEM_ALLOWLIST_ENABLED=true   # or 1
 ```
 
-`DirectEgressService::from_env()` resolves the allowlist at construction. When
-unset or falsy, egress behavior is unchanged.
+`DirectEgressService::for_runtime_traffic_from_env()` resolves the allowlist at
+construction. When unset or falsy, egress behavior is unchanged. Host-owned
+system transports do not construct or call `EgressService`, so they do not read
+this toggle.
 
 The env var is read by every process that builds an egress service, so it
 applies uniformly across the **control plane** and **workers**:
@@ -62,23 +65,29 @@ applies uniformly across the **control plane** and **workers**:
 - `crates/worker/src/platform.rs` — distributed worker platform.
 - `crates/server/src/domains/mcp_servers/service.rs` — MCP server egress.
 
-Each must construct egress via `DirectEgressService::from_env()` (not
-`::default()`) so the toggle is honored everywhere. The list contents are *not*
-env-configurable — they are the curated embedded TOML; only the on/off toggle is
-environmental.
+Each runtime/agent egress surface must construct egress via
+`DirectEgressService::for_runtime_traffic_from_env()` (not `::default()`) so the
+toggle is honored everywhere. The list contents are *not* env-configurable —
+they are the curated embedded TOML; only the on/off toggle is environmental.
 
 ## Enforcement
 
-The `EgressService` is the single host-owned outbound boundary (see
+The `EgressService` is the tenant/agent runtime outbound boundary (see
 `specs/egress.md`). When the system allowlist is active, `DirectEgressService`
-denies any request whose URL does not match the allowlist, with
-`EgressError::NetworkAccessDenied`.
+denies tenant/agent-directed request kinds whose URL does not match the
+allowlist, with `EgressError::NetworkAccessDenied`.
 
-This check is **global**: it applies to every `EgressRequestKind` — LLM provider
-calls, capabilities, integrations, system email, utility LLM, and MCP — and is
-independent of the per-request `network_access`. Both the system allowlist
-(if active) and the per-request `NetworkAccessList` (if present) must permit a
-URL for the request to proceed.
+This check applies to `capability`, `integration`, `mcp`, and generic `other`
+requests, independent of the per-request `network_access`. Both the system
+allowlist (if active) and the per-request `NetworkAccessList` (if present) must
+permit a URL for those requests to proceed.
+
+Host-owned system transports are intentionally outside the tenant/agent policy:
+system email, utility LLM, LLM provider/model-discovery transports, Daytona
+provider APIs, and similar fixed deployment-owned clients are configured by the
+deployment, keep their credentials in platform services, and do not route
+through `EgressService`. They must not require adding provider endpoints such as
+`api.resend.com` to the tenant/agent allowlist.
 
 ### Maximum priority (hard ceiling)
 
@@ -86,8 +95,9 @@ The system allowlist is a separate, AND-ed gate — it is **never merged into**
 the harness/agent/session `NetworkAccessList`. Those layers can only narrow
 within the system allowlist (intersection on `allowed`, union on `blocked`);
 they can **never widen past it or override it**. When the allowlist is enabled,
-a session that explicitly allows a host still cannot reach it unless the system
-allowlist also lists it. The system allowlist always wins.
+a session that explicitly allows a host still cannot reach it through
+tenant/agent egress unless the system allowlist also lists it. The system
+allowlist always wins for the request kinds it governs.
 
 ### fetchkit / web_fetch
 
@@ -105,18 +115,19 @@ e.g. embedded hosts) the pre-flight check is the only enforcement.
 
 ### Operator responsibility
 
-Because enforcement covers provider traffic too, an operator enabling the
-allowlist must ensure every endpoint their deployment depends on (LLM providers,
-email provider, model discovery, configured MCP servers) is covered by a group.
-Self-hosted or uncommon endpoints not present in the curated groups will be
-blocked while the allowlist is enabled. The curated list intentionally includes
-the major AI and cloud providers so the common case works out of the box.
+Because enforcement covers tenant/agent runtime traffic, an operator enabling
+the allowlist must ensure endpoints reachable through capabilities,
+integrations, MCP, plugin fetches, and similar runtime HTTP paths are covered by
+a group. Self-hosted or uncommon runtime endpoints not present in the curated
+groups will be blocked while the allowlist is enabled. Host-owned system
+transports such as email, utility LLM, LLM providers, and Daytona are configured
+separately by deployment environment and are not governed by this list.
 
 ## Relationship to other controls
 
 | Control | Scope | Configured by |
 |---------|-------|---------------|
-| System allowlist | Whole deployment, all egress kinds | Maintainers (curated), operator toggles via env |
+| System allowlist | Tenant/agent runtime egress | Maintainers (curated), operator toggles via env |
 | `NetworkAccessList` | Per harness/agent/session, agent-authored URLs | Users/agents |
 | Future Egress Gateway | Network component owning outbound policy | Deployment |
 

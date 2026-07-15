@@ -11,7 +11,7 @@ Budgets let you cap how much a session (or agent, user, or organization) can spe
 
 ## How It Works
 
-After every LLM generation, Everruns computes the cost and debits it from any active budgets for that session. If the balance reaches zero, the session stops.
+After every LLM generation, Everruns computes the cost and debits it from any active budgets for that session. In subagent trees, session-scoped budgets are shared at the root session, so child and grandchild turns spend from the same pool. If the balance reaches zero, the session stops.
 
 1. **LLM call completes** — Everruns extracts token counts (input + output).
 2. **Compute debit** — Converts tokens to the budget's currency:
@@ -56,9 +56,7 @@ Multiple budgets can apply to the same session. The **most restrictive** budget 
 - A **$10 USD session budget** caps dollar cost
 - A **2M token budget** caps total token usage regardless of model pricing
 
-Budget stacking is currently enforced for **session** and **agent** scopes — a session's effective budgets include its own plus its agent's, and the most restrictive wins.
-
-User- and organization-scoped budgets can be created via the API, but cascading enforcement for user/org scopes is not yet wired into the session budget check. This is planned for a future iteration.
+Budget stacking is enforced across the session hierarchy: root session, app channel, app, agent, user, and organization. The most restrictive matching budget wins.
 
 ## CLI Usage
 

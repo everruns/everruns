@@ -9,8 +9,11 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { AuthShell } from "@/components/auth/auth-shell";
 import { useVerifyEmail, useResendVerification } from "@/hooks/use-auth";
+import { consumeReturnTo, isBackendNavigationPath } from "@/lib/auth-redirect";
 import { usePageTitle } from "@/hooks";
 import { Check, Loader2, Mail } from "lucide-react";
 
@@ -44,6 +47,11 @@ export default function VerifyEmailPage() {
   );
   const [resent, setResent] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+  // When the link carried no email (dead-link landing), let the user supply one
+  // so they can self-serve a fresh link instead of being told to "sign in to
+  // request" a screen that does not exist (auth-flow dead-end audit).
+  const [manualEmail, setManualEmail] = useState("");
+  const effectiveEmail = email ?? (manualEmail.trim() || null);
 
   // Tick the resend cooldown down once armed.
   useEffect(() => {
@@ -70,10 +78,10 @@ export default function VerifyEmailPage() {
   }, [token]);
 
   const handleResend = async () => {
-    if (!email || cooldown > 0) return;
+    if (!effectiveEmail || cooldown > 0) return;
     // Enumeration-safe endpoint: always treat as sent regardless of outcome.
     try {
-      await resendVerificationMutation.mutateAsync({ email });
+      await resendVerificationMutation.mutateAsync({ email: effectiveEmail });
     } catch {
       // Intentionally ignored — never reveal whether the account exists.
     }
@@ -158,9 +166,19 @@ export default function VerifyEmailPage() {
         <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">
           Thanks for confirming your email address. You can pick up right where you left off.
         </p>
-        {/* In a browser without a session, /dashboard bounces to /login with
-            return_to — so this works in both the original and a fresh browser. */}
-        <Button className="mt-7" onClick={() => router.push("/dashboard")}>
+        {/* Resume a stored invite/deep-link target when present; otherwise fall
+            back to dashboard (which may continue onboarding for zero-org users). */}
+        <Button
+          className="mt-7"
+          onClick={() => {
+            const target = consumeReturnTo() || "/dashboard";
+            if (isBackendNavigationPath(target)) {
+              window.location.assign(target);
+              return;
+            }
+            router.push(target);
+          }}
+        >
           Continue
         </Button>
       </AuthShell>
@@ -183,8 +201,8 @@ export default function VerifyEmailPage() {
       <div className="mt-7 space-y-4">
         {resent ? (
           <div className="text-sm text-muted-foreground">
-            If an account exists for {email}, we&apos;ve sent a new verification link. Check your
-            inbox.
+            If an account exists for {effectiveEmail}, we&apos;ve sent a new verification link.
+            Check your inbox.
           </div>
         ) : email ? (
           <Button
@@ -202,9 +220,42 @@ export default function VerifyEmailPage() {
             )}
           </Button>
         ) : (
-          <div className="text-sm text-muted-foreground">
-            Sign in to request a new verification email.
-          </div>
+          // Dead-link landing (no email in the URL): let the user request a
+          // fresh link in place rather than dead-ending on "sign in to request".
+          <form
+            className="space-y-3"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleResend();
+            }}
+          >
+            <div className="space-y-2">
+              <Label htmlFor="resend-email">Enter your email to get a new link</Label>
+              <Input
+                id="resend-email"
+                type="email"
+                placeholder="you@company.com"
+                value={manualEmail}
+                onChange={(e) => setManualEmail(e.target.value)}
+                required
+                autoComplete="email"
+              />
+            </div>
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={!effectiveEmail || cooldown > 0 || resendVerificationMutation.isPending}
+            >
+              {resendVerificationMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                resendLabel
+              )}
+            </Button>
+          </form>
         )}
 
         <p className="text-sm text-muted-foreground">

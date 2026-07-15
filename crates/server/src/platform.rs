@@ -24,12 +24,12 @@ pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefi
     let capability_registry = CapabilityRegistry::with_builtins_for_grade(grade);
     let driver_registry = everruns_worker::create_driver_registry();
     let connectors = oss_connector_registry_for_grade(grade);
-    // Resolve the optional host-wide system allowlist from the environment
-    // (EVERRUNS_SYSTEM_ALLOWLIST_ENABLED). Disabled by default.
-    let egress_service = Arc::new(DirectEgressService::from_env());
+    // Runtime egress honors EVERRUNS_SYSTEM_ALLOWLIST_ENABLED for tenant/agent
+    // paths. System email uses its direct provider client outside egress.
+    let egress_service = Arc::new(DirectEgressService::for_runtime_traffic_from_env());
     let email_sender = SystemEmailConfig::from_env()
         .expect("Invalid system email configuration")
-        .into_sender_with_egress(egress_service.clone());
+        .into_sender();
     let utility_llm_service = SystemUtilityLlmConfig::from_env().into_service();
 
     let mut builder = PlatformDefinition::builder()

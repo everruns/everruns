@@ -12,6 +12,9 @@ impl Database {
 
     pub async fn create_user(&self, input: CreateUserRow) -> Result<UserRow> {
         let roles_json = serde_json::to_value(&input.roles)?;
+        // EVE-704: store the canonical (trim+lowercase) email so email identity
+        // is case-insensitive, matched by the unique index on lower(email).
+        let email = normalize_email(&input.email);
 
         let row = sqlx::query_as::<_, UserRow>(
             r#"
@@ -20,7 +23,7 @@ impl Database {
             RETURNING id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
             "#,
         )
-        .bind(&input.email)
+        .bind(&email)
         .bind(&input.name)
         .bind(&input.avatar_url)
         .bind(&roles_json)
@@ -43,6 +46,8 @@ impl Database {
         input: CreateUserRow,
     ) -> Result<Option<UserRow>> {
         let roles_json = serde_json::to_value(&input.roles)?;
+        // EVE-704: canonicalize email on the seeding path too.
+        let email = normalize_email(&input.email);
 
         let row = sqlx::query_as::<_, UserRow>(
             r#"
@@ -53,7 +58,7 @@ impl Database {
             "#,
         )
         .bind(id)
-        .bind(&input.email)
+        .bind(&email)
         .bind(&input.name)
         .bind(&input.avatar_url)
         .bind(&roles_json)
@@ -69,14 +74,17 @@ impl Database {
     }
 
     pub async fn get_user_by_email(&self, email: &str) -> Result<Option<UserRow>> {
+        // EVE-704: look up by canonical email against the lower(email) index so
+        // any casing of a mailbox resolves to its single account.
+        let email = normalize_email(email);
         let row = sqlx::query_as::<_, UserRow>(
             r#"
             SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
             FROM users
-            WHERE email = $1
+            WHERE lower(email) = $1
             "#,
         )
-        .bind(email)
+        .bind(&email)
         .fetch_optional(&self.pool)
         .await?;
 

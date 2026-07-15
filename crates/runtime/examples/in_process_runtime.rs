@@ -9,6 +9,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(TestMathCapability);
 
+    // Supplying a PlatformDefinition replaces the runtime default capability
+    // registry, so register every capability this embedded host will reference.
     let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
 
     // Per-type builders are useful when an embedder needs stable ids or

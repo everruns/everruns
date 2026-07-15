@@ -23,7 +23,7 @@ use crate::storage::models::{
 use axum::{
     Form, Json, Router,
     body::Body,
-    extract::{FromRef, Query, Request, State},
+    extract::{ConnectInfo, Extension, FromRef, Query, Request, State},
     http::{HeaderMap, StatusCode},
     middleware::{self, Next},
     response::{Html, IntoResponse, Redirect, Response},
@@ -34,6 +34,7 @@ use chrono::{Duration, Utc};
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
@@ -222,6 +223,8 @@ pub struct McpOAuthState {
     pub issuer_url: String,
     /// Frontend URL for login redirects (e.g. `http://localhost:9300`).
     pub frontend_url: String,
+    /// Optional trusted origin hosting the login page.
+    pub login_origin: Option<String>,
     /// Per-IP rate limiter shared with the other auth endpoints. Used to throttle
     /// the unauthenticated dynamic client registration endpoint (TM-DOS).
     pub rate_limiter: AuthRateLimiter,
@@ -446,6 +449,7 @@ async fn oauth_register(
 async fn oauth_authorize(
     State(state): State<McpOAuthState>,
     original_uri: axum::extract::OriginalUri,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     jar: CookieJar,
     Query(query): Query<OAuthAuthorizeQuery>,
@@ -462,7 +466,11 @@ async fn oauth_authorize(
                 .path_and_query()
                 .map(|pq| pq.as_str())
                 .unwrap_or("/oauth/authorize");
-            let frontend = state.frontend_url.trim_end_matches('/');
+            let frontend = state
+                .login_origin
+                .as_deref()
+                .unwrap_or(&state.frontend_url)
+                .trim_end_matches('/');
             let login_url = format!(
                 "{}/login?return_to={}",
                 frontend,
@@ -471,7 +479,7 @@ async fn oauth_authorize(
             return Ok(Redirect::temporary(&login_url).into_response());
         }
     };
-    let ip = audit::client_ip(&headers);
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
 
     // Validate response_type
     if query.response_type != "code" {
@@ -540,11 +548,12 @@ async fn oauth_authorize(
 
 async fn oauth_authorize_confirm(
     State(state): State<McpOAuthState>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     jar: CookieJar,
     Form(form): Form<OAuthAuthorizeConfirmForm>,
 ) -> Result<Response, AuthError> {
-    let ip = audit::client_ip(&headers);
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
     let user = try_resolve_user(&state, &jar)
         .await
         .ok_or_else(|| AuthError::unauthorized("Authentication required"))?;
@@ -984,6 +993,7 @@ fn escape_html(value: &str) -> String {
 /// `application/json` (sent by some MCP clients like Cursor).
 async fn oauth_token(
     State(state): State<McpOAuthState>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Result<Json<OAuthTokenResponse>, OAuthErrorResponse> {
@@ -1011,7 +1021,7 @@ async fn oauth_token(
             }
         })?
     };
-    let ip = audit::client_ip(&headers);
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
 
     tracing::debug!(grant_type = %req.grant_type, "MCP OAuth: processing token grant");
 

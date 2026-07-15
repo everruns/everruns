@@ -10,6 +10,10 @@ use everruns_core::typed_id::{EventId, SessionId};
 use tracing::warn;
 use uuid::Uuid;
 
+use crate::storage::message_history_timing::{
+    FILTERED_MESSAGE_HISTORY_EVENTS, MESSAGE_HISTORY_EVENTS, maybe_warn_slow_message_history,
+};
+
 /// Shared filter builder for `list_events_advanced` (and its `around_id` branch).
 /// Pushes type/time/context/tag/tool/search predicates onto the running query.
 fn push_common_filters(qb: &mut sqlx::QueryBuilder<sqlx::Postgres>, params: &ListEventsParams) {
@@ -487,6 +491,7 @@ impl Database {
         session_id: SessionId,
         limit: Option<i32>,
     ) -> Result<Vec<EventRow>> {
+        let started = std::time::Instant::now();
         let rows = if let Some(limit) = limit.filter(|limit| *limit > 0) {
             // Subquery: get most recent N by sequence DESC, then re-order ASC
             sqlx::query_as::<_, EventRow>(
@@ -509,15 +514,19 @@ impl Database {
         } else if limit.is_some() {
             Vec::new()
         } else {
-            // Safety cap when no explicit limit — prevents unbounded result sets.
+            // Safety cap when no explicit limit — prevents unbounded result sets
+            // and keeps the latest prompt-relevant rows.
             sqlx::query_as::<_, EventRow>(
                 r#"
-                SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
-                FROM events
-                WHERE session_id = $1
-                  AND event_type IN ('input.message', 'output.message.completed', 'tool.completed')
+                SELECT * FROM (
+                    SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at
+                    FROM events
+                    WHERE session_id = $1
+                      AND event_type IN ('input.message', 'output.message.completed', 'tool.completed')
+                    ORDER BY sequence DESC
+                    LIMIT $2
+                ) recent
                 ORDER BY sequence ASC
-                LIMIT $2
                 "#,
             )
             .bind(session_id.uuid())
@@ -525,6 +534,17 @@ impl Database {
             .fetch_all(&self.pool)
             .await?
         };
+
+        let effective_limit = limit
+            .filter(|limit| *limit > 0)
+            .map(i64::from)
+            .unwrap_or(MESSAGE_SAFETY_LIMIT as i64);
+        maybe_warn_slow_message_history(
+            MESSAGE_HISTORY_EVENTS,
+            started.elapsed(),
+            rows.len() as u64,
+            effective_limit,
+        );
 
         Ok(rows)
     }
@@ -558,6 +578,7 @@ impl Database {
         &self,
         query: &MessageQuery,
     ) -> Result<Vec<EventRow>> {
+        let started = std::time::Instant::now();
         // Build dynamic SQL query
         let mut sql = String::from(
             "SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at FROM events WHERE session_id = $1",
@@ -648,8 +669,10 @@ impl Database {
         // Whether the final SQL emits rows newest-first (needs reversing back to
         // chronological order after fetch).
         let mut needs_reverse = false;
+        let effective_limit: i64;
         match (query.offset, query.limit) {
             (Some(offset), Some(limit)) => {
+                effective_limit = limit.max(0);
                 sql = format!(
                     "SELECT * FROM ({sql} ORDER BY sequence ASC OFFSET {}) offset_events ORDER BY sequence DESC LIMIT {}",
                     offset.max(0),
@@ -658,9 +681,11 @@ impl Database {
                 needs_reverse = true;
             }
             (Some(offset), None) => {
+                effective_limit = -1;
                 sql.push_str(&format!(" ORDER BY sequence ASC OFFSET {}", offset.max(0)));
             }
             (None, Some(limit)) if keep_head > 0 => {
+                effective_limit = keep_head as i64 + limit.max(0);
                 // Head+tail load: keep the first `keep_head` (the task anchor) plus
                 // the latest `limit` tail, de-duplicated when the windows overlap.
                 //
@@ -688,10 +713,12 @@ impl Database {
                 );
             }
             (None, Some(limit)) => {
+                effective_limit = limit.max(0);
                 sql.push_str(&format!(" ORDER BY sequence DESC LIMIT {}", limit.max(0)));
                 needs_reverse = true;
             }
             (None, None) => {
+                effective_limit = MESSAGE_SAFETY_LIMIT as i64;
                 // Safety cap on the otherwise-unbounded full-history read. This
                 // branch is reached when MessageRetriever::load_filtered forces
                 // limit/offset = None to fetch the full candidate set for
@@ -741,6 +768,12 @@ impl Database {
         if needs_reverse {
             rows.reverse();
         }
+        maybe_warn_slow_message_history(
+            FILTERED_MESSAGE_HISTORY_EVENTS,
+            started.elapsed(),
+            rows.len() as u64,
+            effective_limit,
+        );
 
         Ok(rows)
     }

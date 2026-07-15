@@ -307,7 +307,7 @@ fn classify_tool(tool: &ToolDefinition) -> &'static str {
         .unwrap_or_default();
     if is_mcp_tool_source(name, category, capability_id) {
         "mcp"
-    } else if is_subagent_tool_name(name) {
+    } else if is_agent_delegation_tool_name(name) {
         "subagents"
     } else if is_skill_tool_source(name, category, capability_id) {
         "skills"
@@ -323,7 +323,7 @@ fn classify_tool_summary(tool: &ToolDefinitionSummary) -> &'static str {
     let capability_id = tool.capability_id.as_deref().unwrap_or_default();
     if is_mcp_tool_source(&tool.name, category, capability_id) {
         "mcp"
-    } else if is_subagent_tool_name(&tool.name) {
+    } else if is_agent_delegation_tool_name(&tool.name) {
         "subagents"
     } else if is_skill_tool_source(&tool.name, category, capability_id) {
         "skills"
@@ -348,8 +348,8 @@ fn is_skill_tool_source(name: &str, category: &str, capability_id: &str) -> bool
         || capability_id.starts_with("skill:")
 }
 
-fn is_subagent_tool_name(name: &str) -> bool {
-    matches!(name, "spawn_subagent")
+fn is_agent_delegation_tool_name(name: &str) -> bool {
+    matches!(name, "spawn_agent")
 }
 
 fn tool_definition_contribution_source(
@@ -469,7 +469,7 @@ fn message_contribution_source(
             format!("/{skill_name}"),
         ));
     }
-    if is_subagent_tool_name(tool_name) {
+    if is_agent_delegation_tool_name(tool_name) {
         let name = extract_json_string_field(message, "name").unwrap_or_else(|| "Subagent".into());
         return Some(("subagents", format!("subagent:{name}"), name));
     }
@@ -529,7 +529,7 @@ mod tests {
     }
 
     #[test]
-    fn classifies_mcp_and_subagent_tools() {
+    fn classifies_mcp_and_delegation_tools() {
         let mcp = ToolDefinition::Builtin(BuiltinTool {
             name: "mcp_docs__search".into(),
             display_name: None,
@@ -541,8 +541,8 @@ mod tests {
             hints: Default::default(),
             full_parameters: None,
         });
-        let subagent = ToolDefinition::Builtin(BuiltinTool {
-            name: "spawn_subagent".into(),
+        let delegation = ToolDefinition::Builtin(BuiltinTool {
+            name: "spawn_agent".into(),
             display_name: None,
             description: "Spawn".into(),
             parameters: json!({"type": "object"}),
@@ -554,7 +554,7 @@ mod tests {
         });
 
         assert_eq!(classify_tool(&mcp), "mcp");
-        assert_eq!(classify_tool(&subagent), "subagents");
+        assert_eq!(classify_tool(&delegation), "subagents");
     }
 
     #[test]
@@ -708,8 +708,12 @@ mod tests {
                     "",
                     vec![crate::ToolCall {
                         id: "call_subagent".into(),
-                        name: "spawn_subagent".into(),
-                        arguments: json!({"name": "Scout", "instructions": "look around"}),
+                        name: "spawn_agent".into(),
+                        arguments: json!({
+                            "name": "Scout",
+                            "instructions": "look around",
+                            "target": {"type": "subagent"}
+                        }),
                     }],
                 ),
                 crate::Message::tool_result(

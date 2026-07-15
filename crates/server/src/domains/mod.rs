@@ -6,6 +6,7 @@
 pub mod common;
 
 pub mod agent_identities;
+pub mod agent_triggers;
 pub mod agents;
 pub mod apps;
 pub mod audit_logs;

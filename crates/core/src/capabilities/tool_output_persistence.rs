@@ -16,9 +16,9 @@
 // - Runs as an always-on final hook before EVE-225 hard-limit truncation
 // - EVE-245: annotates truncated stdout with file reference so agent knows
 //   it can read_file the full output with offset/limit
-// - EVE-562: after persistence, compacts model-facing stdout/stderr so the
-//   LLM never receives unbounded inline output when full output is already
-//   in /outputs. Success → AUTO_SUCCESS_BUDGET; failure → NORMAL_BUDGET.
+// - EVE-562: after persistence, applies the requested output mode to
+//   model-facing stdout/stderr. Default auto mode uses a compact success
+//   window; explicit modes retain their fixed budgets.
 
 use std::sync::Arc;
 
@@ -27,7 +27,9 @@ use serde_json::json;
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::atoms::PostToolExecHook;
-use crate::tool_output_sanitizer::{AUTO_SUCCESS_BUDGET, NORMAL_BUDGET, priority_aware_truncate};
+use crate::tool_output_sanitizer::{
+    output_verbosity_budget, priority_aware_truncate, resolve_auto_mode, truncate_exec_stream,
+};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{SessionFileSystem, ToolContext};
 use crate::typed_id::SessionId;
@@ -147,16 +149,16 @@ fn truncate_for_persistence(text: &str, max_bytes: usize) -> String {
 pub fn annotate_truncated_output(truncated: &str, file_path: &str, full_size: usize) -> String {
     let size_kb = full_size / 1024;
     format!(
-        "{truncated}\n\n[full output saved to /workspace{file_path} ({size_kb} KiB) — use read_file with offset/limit]"
+        "{truncated}\n\n[full output saved to {file_path} ({size_kb} KiB) — use read_file with offset/limit]"
     )
 }
 
 /// After successful persistence, compact the inline model-facing output fields
 /// in the result JSON so the LLM never carries unbounded content forward.
 ///
-/// Budget policy (EVE-562):
-/// - Success (`exit_code == 0` or `success == true`): `AUTO_SUCCESS_BUDGET` (≈384 B)
-/// - Failure: `NORMAL_BUDGET` (≈8 KiB diagnostic window)
+/// Budget policy (EVE-562): resolve the requested mode against the process
+/// outcome. Default `auto` uses the compact success window or normal failure
+/// window; explicit modes retain their documented fixed budgets.
 ///
 /// The same budget applies to both `stdout`/`output` and `stderr`. Full content
 /// is always recoverable from the persisted `/outputs/` files.
@@ -164,17 +166,16 @@ pub fn compact_persisted_result_for_model(
     obj: &mut serde_json::Map<String, serde_json::Value>,
     stdout_path: &str,
     stdout_full_size: usize,
+    output_mode: &str,
 ) {
-    let budget = if is_success_result(obj) {
-        AUTO_SUCCESS_BUDGET
-    } else {
-        NORMAL_BUDGET
-    };
+    let exit_code = result_exit_code(obj);
+    let budget = output_verbosity_budget(resolve_auto_mode(output_mode, exit_code));
 
     // Compact stdout (or output fallback field) and append file pointer.
     for field in ["stdout", "output"] {
         if let Some(text) = obj.get(field).and_then(|v| v.as_str()) {
-            let compacted = compact_with_annotation(text, budget, stdout_path, stdout_full_size);
+            let compacted =
+                compact_with_annotation(text, budget, exit_code, stdout_path, stdout_full_size);
             obj.insert(field.to_string(), json!(compacted));
             break; // only one of stdout/output is expected
         }
@@ -184,13 +185,17 @@ pub fn compact_persisted_result_for_model(
     compact_stderr_inline(obj, budget);
 }
 
-/// Compact the inline `stderr` field to `budget` bytes using priority-aware truncation.
+/// Compact the inline `stderr` field to `budget` bytes using outcome-aware truncation.
 ///
 /// Called from `compact_persisted_result_for_model` and also directly when stderr was
 /// persisted but there is no stdout file (so `compact_persisted_result_for_model` was
 /// not invoked).
-fn compact_stderr_inline(obj: &mut serde_json::Map<String, serde_json::Value>, budget: usize) {
-    if let Some(stderr_text) = obj.get("stderr").and_then(|v| v.as_str())
+fn compact_stderr_inline(
+    obj: &mut serde_json::Map<String, serde_json::Value>,
+    budget: Option<usize>,
+) {
+    if let Some(budget) = budget
+        && let Some(stderr_text) = obj.get("stderr").and_then(|v| v.as_str())
         && stderr_text.len() > budget
     {
         let compacted = priority_aware_truncate(stderr_text, budget);
@@ -198,26 +203,31 @@ fn compact_stderr_inline(obj: &mut serde_json::Map<String, serde_json::Value>, b
     }
 }
 
-/// Determine whether a result JSON object represents success.
-fn is_success_result(obj: &serde_json::Map<String, serde_json::Value>) -> bool {
+/// Return a sentinel exit code suitable for outcome-aware truncation.
+fn result_exit_code(obj: &serde_json::Map<String, serde_json::Value>) -> i32 {
     if let Some(code) = obj.get("exit_code").and_then(|v| v.as_i64()) {
-        return code == 0;
+        return if code == 0 { 0 } else { 1 };
     }
     if let Some(ok) = obj.get("success").and_then(|v| v.as_bool()) {
-        return ok;
+        return if ok { 0 } else { 1 };
     }
     // Default to success when neither field is present (non-exec tools).
-    true
+    0
 }
 
 /// Compact `text` to `budget` bytes and append a file-reference annotation.
-fn compact_with_annotation(text: &str, budget: usize, file_path: &str, full_size: usize) -> String {
-    if text.len() <= budget {
-        annotate_truncated_output(text, file_path, full_size)
-    } else {
-        let compacted = priority_aware_truncate(text, budget);
-        annotate_truncated_output(&compacted, file_path, full_size)
-    }
+fn compact_with_annotation(
+    text: &str,
+    budget: Option<usize>,
+    exit_code: i32,
+    file_path: &str,
+    full_size: usize,
+) -> String {
+    let compacted = budget.filter(|budget| text.len() > *budget).map_or_else(
+        || text.to_string(),
+        |budget| truncate_exec_stream(text, budget, exit_code),
+    );
+    annotate_truncated_output(&compacted, file_path, full_size)
 }
 
 pub const TOOL_OUTPUT_PERSISTENCE_CAPABILITY_ID: &str = "tool_output_persistence";
@@ -316,6 +326,11 @@ impl PostToolExecHook for PersistOutputHook {
         )
         .await
         {
+            let output_mode = tool_call
+                .arguments
+                .get("output")
+                .and_then(|value| value.as_str())
+                .unwrap_or("auto");
             // Enrich result JSON with file references and compact inline output (EVE-562).
             if let Some(ref mut json_val) = result.result
                 && let Some(obj) = json_val.as_object_mut()
@@ -323,16 +338,18 @@ impl PostToolExecHook for PersistOutputHook {
                 let mut output_files = Vec::new();
 
                 if let Some(ref path) = persist_result.stdout_path {
-                    // Compact inline stdout/output to the success/failure budget and
-                    // append the file-reference pointer. Explicit modes (verbose, full,
-                    // normal) cannot produce unbounded model-facing output after
-                    // persistence succeeds — full content is in /outputs/.
-                    compact_persisted_result_for_model(obj, path, stdout.len());
+                    let display_path = file_store.display_path(path);
+                    compact_persisted_result_for_model(
+                        obj,
+                        &display_path,
+                        stdout.len(),
+                        output_mode,
+                    );
 
-                    output_files.push(format!("/workspace{path}"));
+                    output_files.push(display_path.clone());
                     // full_output points to the stdout file only; stderr (if persisted)
                     // is available via the output_files array
-                    obj.insert("full_output".to_string(), json!(path));
+                    obj.insert("full_output".to_string(), json!(display_path));
                     obj.insert(
                         "total_lines".to_string(),
                         json!(persist_result.stdout_total_lines),
@@ -340,15 +357,13 @@ impl PostToolExecHook for PersistOutputHook {
                 }
 
                 if let Some(ref path) = persist_result.stderr_path {
-                    output_files.push(format!("/workspace{path}"));
+                    output_files.push(file_store.display_path(path));
                     // Compact stderr inline when stdout was not persisted (if stdout was
                     // persisted, compact_persisted_result_for_model already handled this).
                     if persist_result.stdout_path.is_none() {
-                        let budget = if is_success_result(obj) {
-                            AUTO_SUCCESS_BUDGET
-                        } else {
-                            NORMAL_BUDGET
-                        };
+                        let exit_code = result_exit_code(obj);
+                        let budget =
+                            output_verbosity_budget(resolve_auto_mode(output_mode, exit_code));
                         compact_stderr_inline(obj, budget);
                     }
                 }
@@ -498,8 +513,11 @@ mod tests {
 
     #[test]
     fn test_annotate_truncated_output() {
-        let annotated =
-            annotate_truncated_output("truncated text...", "/outputs/abc.stdout", 50 * 1024);
+        let annotated = annotate_truncated_output(
+            "truncated text...",
+            "/workspace/outputs/abc.stdout",
+            50 * 1024,
+        );
         assert!(annotated.contains("truncated text..."));
         assert!(annotated.contains("/workspace/outputs/abc.stdout"));
         assert!(annotated.contains("50 KiB"));
@@ -508,7 +526,7 @@ mod tests {
 
     #[test]
     fn test_annotate_truncated_output_small() {
-        let annotated = annotate_truncated_output("short", "/outputs/x.stdout", 1024);
+        let annotated = annotate_truncated_output("short", "/workspace/outputs/x.stdout", 1024);
         assert!(annotated.contains("1 KiB"));
         assert!(annotated.contains("read_file with offset/limit"));
     }
@@ -551,6 +569,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for MockFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             _session_id: SessionId,
@@ -622,6 +644,66 @@ mod tests {
 
     fn test_session_id() -> SessionId {
         SessionId::from(Uuid::nil())
+    }
+
+    fn persistence_tool_def() -> ToolDefinition {
+        use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
+
+        ToolDefinition::Builtin(BuiltinTool {
+            name: "bash".to_string(),
+            display_name: None,
+            description: "execute a command".to_string(),
+            parameters: json!({}),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default().with_persist_output(true),
+            full_parameters: None,
+        })
+    }
+
+    #[tokio::test]
+    async fn test_hook_honors_explicit_normal_and_persists_losslessly() {
+        let mut lines = vec!["src/runtime.rs:10: first relevant match".to_string()];
+        lines.extend((0..1200).map(|i| format!("src/module_{i}.rs: ordinary source line")));
+        lines.extend((0..300).map(|i| format!("src/errors_{i}.rs: struct ErrorContext{i}")));
+        let full_output = lines.join("\n");
+        let visible_output =
+            crate::tool_output_sanitizer::truncate_exec_stream(&full_output, NORMAL_BUDGET, 0);
+        let store = Arc::new(MockFileStore::default());
+        let mut context = ToolContext::new(test_session_id());
+        context.file_store = Some(store.clone());
+        let tool_call = ToolCall {
+            id: "call-normal".to_string(),
+            name: "bash".to_string(),
+            arguments: json!({"command": "git grep Error", "output": "normal"}),
+        };
+        let mut result = ToolResult {
+            tool_call_id: tool_call.id.clone(),
+            result: Some(json!({
+                "stdout": visible_output,
+                "stderr": "",
+                "exit_code": 0,
+                "success": true,
+            })),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: Some(full_output.clone()),
+        };
+
+        PersistOutputHook
+            .after_exec(&tool_call, &persistence_tool_def(), &mut result, &context)
+            .await;
+
+        let inline = result.result.as_ref().unwrap()["stdout"].as_str().unwrap();
+        assert!(inline.len() > AUTO_SUCCESS_BUDGET + 200);
+        assert!(inline.len() <= NORMAL_BUDGET + 200);
+        assert!(inline.contains("first relevant match"));
+        assert_eq!(
+            store.content("/outputs/call-normal.stdout").as_deref(),
+            Some(full_output.as_str())
+        );
     }
 
     #[tokio::test]
@@ -743,7 +825,12 @@ mod tests {
         obj.insert("stdout".to_string(), json!(large_stdout));
         obj.insert("exit_code".to_string(), json!(0));
 
-        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_stdout_len);
+        compact_persisted_result_for_model(
+            &mut obj,
+            "/outputs/call.stdout",
+            large_stdout_len,
+            "auto",
+        );
 
         let inline = obj["stdout"].as_str().unwrap();
         // Inline stdout must be compact (budget + annotation pointer).
@@ -766,7 +853,12 @@ mod tests {
         obj.insert("stdout".to_string(), json!(large_stdout));
         obj.insert("exit_code".to_string(), json!(1));
 
-        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_stdout_len);
+        compact_persisted_result_for_model(
+            &mut obj,
+            "/outputs/call.stdout",
+            large_stdout_len,
+            "auto",
+        );
 
         let inline = obj["stdout"].as_str().unwrap();
         assert!(
@@ -787,7 +879,7 @@ mod tests {
         obj.insert("stdout".to_string(), json!(small));
         obj.insert("exit_code".to_string(), json!(0));
 
-        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", small.len());
+        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", small.len(), "auto");
 
         let inline = obj["stdout"].as_str().unwrap();
         assert!(
@@ -801,22 +893,46 @@ mod tests {
     }
 
     #[test]
-    fn test_compact_oversized_full_mode_is_capped() {
-        // Explicit "full" mode would have left large inline stdout; persistence
-        // must compact it regardless of the verbosity mode.
+    fn test_compact_oversized_full_mode_stays_full() {
         let large = "z".repeat(NORMAL_BUDGET * 3);
         let large_len = large.len();
         let mut obj = serde_json::Map::new();
-        obj.insert("stdout".to_string(), json!(large));
+        obj.insert("stdout".to_string(), json!(large.clone()));
         obj.insert("exit_code".to_string(), json!(0));
 
-        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_len);
+        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_len, "full");
 
         let inline = obj["stdout"].as_str().unwrap();
-        assert!(
-            inline.len() <= AUTO_SUCCESS_BUDGET + 200,
-            "full-mode output must still be compacted after persistence"
+        assert!(inline.starts_with(&large));
+        assert!(inline.contains("full output saved to"));
+    }
+
+    #[test]
+    fn test_compact_explicit_normal_preserves_leading_search_matches() {
+        let mut lines = vec![
+            "src/runtime.rs:10: query_history registration".to_string(),
+            "src/runtime.rs:11: history capability".to_string(),
+        ];
+        lines.extend((0..1200).map(|i| format!("src/module_{i}.rs: ordinary source line")));
+        lines.extend((0..300).map(|i| format!("src/errors_{i}.rs: struct ErrorContext{i}")));
+        let output = lines.join("\n");
+        let mut obj = serde_json::Map::new();
+        obj.insert("stdout".to_string(), json!(output.clone()));
+        obj.insert("exit_code".to_string(), json!(0));
+
+        compact_persisted_result_for_model(
+            &mut obj,
+            "/outputs/call.stdout",
+            output.len(),
+            "normal",
         );
+
+        let inline = obj["stdout"].as_str().unwrap();
+        assert!(inline.len() > AUTO_SUCCESS_BUDGET + 200);
+        assert!(inline.len() <= NORMAL_BUDGET + 200);
+        assert!(inline.contains("query_history registration"));
+        assert!(inline.contains("history capability"));
+        assert!(inline.contains("full output saved to"));
     }
 
     #[test]
@@ -829,7 +945,12 @@ mod tests {
         obj.insert("stderr".to_string(), json!(large_stderr));
         obj.insert("exit_code".to_string(), json!(1));
 
-        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_stdout_len);
+        compact_persisted_result_for_model(
+            &mut obj,
+            "/outputs/call.stdout",
+            large_stdout_len,
+            "auto",
+        );
 
         let inline_stderr = obj["stderr"].as_str().unwrap();
         assert!(
@@ -848,7 +969,12 @@ mod tests {
         obj.insert("output".to_string(), json!(large_output));
         obj.insert("exit_code".to_string(), json!(0));
 
-        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", large_output_len);
+        compact_persisted_result_for_model(
+            &mut obj,
+            "/outputs/call.stdout",
+            large_output_len,
+            "auto",
+        );
 
         let inline = obj["output"].as_str().unwrap();
         assert!(
@@ -865,7 +991,7 @@ mod tests {
         obj.insert("result".to_string(), json!("ok"));
         obj.insert("exit_code".to_string(), json!(0));
 
-        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", 0);
+        compact_persisted_result_for_model(&mut obj, "/outputs/call.stdout", 0, "auto");
 
         // Non-exec result shape untouched
         assert_eq!(obj.get("stdout"), None);
@@ -881,7 +1007,7 @@ mod tests {
         let mut obj = serde_json::Map::new();
         obj.insert("stderr".to_string(), json!(large));
 
-        compact_stderr_inline(&mut obj, NORMAL_BUDGET);
+        compact_stderr_inline(&mut obj, Some(NORMAL_BUDGET));
 
         let inline = obj["stderr"].as_str().unwrap();
         assert!(

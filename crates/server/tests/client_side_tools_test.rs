@@ -23,6 +23,7 @@ fn test_agent_with_client_side_tools_serialization() {
         "name": "browser-agent",
         "display_name": "Browser Agent",
         "system_prompt": "You control a browser.",
+        "harness_id": "harness_00000000000000000000000000000000",
         "status": "active",
         "tags": [],
         "tools": [
@@ -38,6 +39,10 @@ fn test_agent_with_client_side_tools_serialization() {
     });
 
     let agent: everruns_core::Agent = serde_json::from_value(agent_json).unwrap();
+    assert_eq!(
+        agent.harness_id.to_string(),
+        "harness_00000000000000000000000000000000"
+    );
     assert_eq!(agent.tools.len(), 1);
     assert_eq!(agent.tools[0].name(), "browser_click");
     assert!(matches!(
@@ -53,6 +58,7 @@ fn test_agent_with_mixed_tools_serialization() {
         "name": "mixed-agent",
         "display_name": "Mixed Agent",
         "system_prompt": "You have both tool types.",
+        "harness_id": "harness_00000000000000000000000000000000",
         "status": "active",
         "tags": [],
         "tools": [
@@ -74,6 +80,10 @@ fn test_agent_with_mixed_tools_serialization() {
     });
 
     let agent: everruns_core::Agent = serde_json::from_value(agent_json).unwrap();
+    assert_eq!(
+        agent.harness_id.to_string(),
+        "harness_00000000000000000000000000000000"
+    );
     assert_eq!(agent.tools.len(), 2);
 
     assert!(matches!(
@@ -99,6 +109,7 @@ fn test_agent_with_no_tools_omits_field() {
         "name": "no-tools-agent",
         "display_name": "No Tools Agent",
         "system_prompt": "No tools.",
+        "harness_id": "harness_00000000000000000000000000000000",
         "status": "active",
         "tags": [],
         "created_at": "2025-01-01T00:00:00Z",
@@ -106,6 +117,10 @@ fn test_agent_with_no_tools_omits_field() {
     });
 
     let agent: everruns_core::Agent = serde_json::from_value(agent_json).unwrap();
+    assert_eq!(
+        agent.harness_id.to_string(),
+        "harness_00000000000000000000000000000000"
+    );
     assert!(agent.tools.is_empty());
 
     // Serialized output should omit tools field when empty (skip_serializing_if)

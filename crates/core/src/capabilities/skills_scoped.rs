@@ -481,6 +481,7 @@ impl Tool for ListSkillsTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         crate::tool_narration::narrate_skill(&tool_call.name, &tool_call.arguments, phase, locale)
     }
@@ -583,6 +584,7 @@ impl Tool for ActivateSkillTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         crate::tool_narration::narrate_skill(&tool_call.name, &tool_call.arguments, phase, locale)
     }
@@ -624,7 +626,10 @@ impl Tool for ActivateSkillTool {
         ctx: &ToolContext,
     ) -> ToolExecutionResult {
         let Some(name) = arguments.get("name").and_then(|v| v.as_str()) else {
-            return ToolExecutionResult::tool_error("Missing required parameter: name");
+            return ToolExecutionResult::tool_error(
+                "Missing required parameter: name. Call as \
+                 activate_skill({\"name\":\"ship\"}). Use list_skills to see valid skill names.",
+            );
         };
         let skill_args = arguments
             .get("arguments")
@@ -743,6 +748,7 @@ impl Tool for ReadSkillTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         crate::tool_narration::narrate_skill(&tool_call.name, &tool_call.arguments, phase, locale)
     }

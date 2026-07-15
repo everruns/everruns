@@ -6,14 +6,16 @@ Verify that sending a user message to a session triggers a turn, the agent respo
 
 ## Preconditions
 
-- API server running (`just start-dev`)
+- API server running locally (`just start-dev`) or a deployed API is available
+- Set `BASE_URL` to the API origin (for example, `http://localhost:9300`)
+- For authenticated deployments, configure `curl` with the required authorization and organization headers
 - LLM API keys configured
 
 ## Test Data
 
 | Field | Value |
 |-------|-------|
-| Agent Name | Simple Chat Agent |
+| Agent Name | simple-chat-agent |
 | Agent Prompt | You are a helpful assistant. Answer concisely. |
 | User Message | What is 2 + 2? |
 
@@ -21,10 +23,10 @@ Verify that sending a user message to a session triggers a turn, the agent respo
 
 1. Create agent:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "${BASE_URL}/api/v1/agents" \
      -H "Content-Type: application/json" \
      -d '{
-       "name": "Simple Chat Agent",
+       "name": "simple-chat-agent",
        "system_prompt": "You are a helpful assistant. Answer concisely."
      }'
    ```
@@ -32,7 +34,7 @@ Verify that sending a user message to a session triggers a turn, the agent respo
 
 2. Create session:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions" \
+   curl -s -X POST "${BASE_URL}/api/v1/sessions" \
      -H "Content-Type: application/json" \
      -d '{"agent_id": "{agent_id}"}'
    ```
@@ -40,7 +42,7 @@ Verify that sending a user message to a session triggers a turn, the agent respo
 
 3. Send user message:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions/{session_id}/messages" \
+   curl -s -X POST "${BASE_URL}/api/v1/sessions/{session_id}/messages" \
      -H "Content-Type: application/json" \
      -d '{
        "message": {
@@ -54,17 +56,22 @@ Verify that sending a user message to a session triggers a turn, the agent respo
 
 5. Get session events:
    ```bash
-   curl -s "http://localhost:9300/api/v1/sessions/{session_id}/events"
+   curl -s "${BASE_URL}/api/v1/sessions/{session_id}/events"
    ```
 
 6. Get messages:
    ```bash
-   curl -s "http://localhost:9300/api/v1/sessions/{session_id}/messages"
+   curl -s "${BASE_URL}/api/v1/sessions/{session_id}/messages"
    ```
 
 7. Check session status:
    ```bash
-   curl -s "http://localhost:9300/api/v1/sessions/{session_id}"
+   curl -s "${BASE_URL}/api/v1/sessions/{session_id}"
+   ```
+
+8. List sessions and find `session_id` in the response:
+   ```bash
+   curl -s "${BASE_URL}/api/v1/sessions"
    ```
 
 ## Expected Result
@@ -95,8 +102,9 @@ Verify that sending a user message to a session triggers a turn, the agent respo
 | Check | Expected |
 |-------|----------|
 | `status` | `"idle"` |
-| `preview` | Contains `"What is 2 + 2?"` |
-| `output_preview` | Non-empty |
+| Detail `preview` and `output_preview` | May remain `null`; detail is not the preview-hydration contract |
+| List row `preview` | Contains `"What is 2 + 2?"` |
+| List row `output_preview` | Non-empty |
 | `usage.total_tokens` | > 0 |
 
 ## Validation Commands
@@ -110,4 +118,8 @@ curl -s ".../sessions/{session_id}/events" | jq '[.data[] | select(.type == "tur
 
 # Assert: session is idle
 curl -s ".../sessions/{session_id}" | jq '.status == "idle"'
+
+# Assert: list hydration includes previews for this session
+curl -s ".../sessions" \
+  | jq --arg id "{session_id}" '.data[] | select(.id == $id) | (.preview != null and .output_preview != null)'
 ```

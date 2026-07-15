@@ -1,8 +1,9 @@
 //! DuckDuckGo Instant Answer integration for Everruns.
 //!
 //! Instant answers via DuckDuckGo Instant Answer API.
-//! Provides `duckduckgo_search` tool for agents to get instant answers,
-//! abstracts, related topics, and definitions.
+//! Provides `duckduckgo_instant_answer` tool for agents to get instant answers,
+//! abstracts, related topics, and definitions. This is an instant-answer lookup,
+//! not a full web/SERP search.
 //!
 //! This crate is part of the [Everruns](https://everruns.com) ecosystem.
 //!
@@ -65,8 +66,10 @@ impl Capability for DuckDuckGoCapability {
     }
 
     fn description(&self) -> &str {
-        "Search for instant answers using DuckDuckGo Instant Answer API. \
+        "Look up instant answers using the DuckDuckGo Instant Answer API. \
          Agents can get abstracts, definitions, related topics, and direct answers. \
+         This is an instant-answer lookup, not a full web/SERP search — no result does \
+         not mean no web pages exist. \
          EXPERIMENTAL: This capability may change."
     }
 
@@ -83,11 +86,12 @@ impl Capability for DuckDuckGoCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
-        // Behavioral note only: tool description covers what `duckduckgo_search`
-        // does. The model needs to know it is an instant-answer API (curated
-        // facts/abstracts), not a general web search.
+        // Behavioral note only: the tool description covers what
+        // `duckduckgo_instant_answer` does. The model needs to know it is an
+        // instant-answer API (curated facts/abstracts), not a general web
+        // search — and that an empty result does not mean no web pages exist.
         Some(
-            "`duckduckgo_search` returns curated instant answers (facts, definitions, abstracts), not general web results.",
+            "`duckduckgo_instant_answer` returns curated instant answers (facts, definitions, abstracts), not general web results. An empty result does not mean no matching web pages exist; prefer a web-search or web-fetch tool for web discovery, but this tool can serve as a lightweight fallback when none is available.",
         )
     }
 
@@ -105,6 +109,8 @@ impl Capability for DuckDuckGoCapability {
             "[Експериментально] DuckDuckGo",
             "Шукайте миттєві відповіді через DuckDuckGo Instant Answer API. Агенти можуть \
              отримувати анотації, визначення, пов'язані теми та прямі відповіді. \
+             Це пошук миттєвих відповідей, а не повноцінний веб-пошук — відсутність \
+             результату не означає, що немає відповідних веб-сторінок. \
              ЕКСПЕРИМЕНТАЛЬНО: ця можливість може змінитися.",
         )]
     }
@@ -136,7 +142,7 @@ mod tests {
         assert_eq!(tools.len(), 1);
 
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
-        assert!(names.contains(&"duckduckgo_search"));
+        assert!(names.contains(&"duckduckgo_instant_answer"));
     }
 
     #[test]
@@ -146,7 +152,7 @@ mod tests {
         // Tool name and behavioral distinction (instant answers, not full
         // web search) are the only things the prompt needs to convey —
         // the rest lives in the tool description.
-        assert!(prompt.contains("duckduckgo_search"));
+        assert!(prompt.contains("duckduckgo_instant_answer"));
         assert!(prompt.contains("instant answers"));
     }
 

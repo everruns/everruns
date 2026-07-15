@@ -109,6 +109,12 @@ async fn create_test_principal(
 }
 
 async fn create_test_session(backend: &StorageBackend) -> everruns_core::SessionId {
+    everruns_server::org_init::initialize_org_harnesses(backend, TEST_ORG_ID)
+        .await
+        .expect("initialize built-in harnesses");
+    let harness_id = everruns_server::org_init::generic_harness_id(backend, TEST_ORG_ID)
+        .await
+        .expect("generic harness id");
     let agent = backend
         .create_agent(
             TEST_ORG_ID,
@@ -122,6 +128,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_core::Session
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+                harness_id,
                 tags: vec![],
                 initial_files: json!([]),
                 tools: json!([]),
@@ -161,6 +168,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_core::Session
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session")

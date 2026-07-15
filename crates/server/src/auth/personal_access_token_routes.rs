@@ -5,12 +5,13 @@
 
 use axum::{
     Json, Router,
-    extract::{FromRef, Path, State},
+    extract::{ConnectInfo, Extension, FromRef, Path, State},
     http::{HeaderMap, StatusCode},
     routing::{delete, get},
 };
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -75,6 +76,10 @@ pub struct PersonalAccessTokenListItem {
 pub struct CreatePersonalAccessTokenRequest {
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
+    /// Token scopes. Scopes are not yet enforced on the request path, so only a
+    /// full-access token is supported: omit this field or pass `["*"]`. Any other
+    /// value is rejected (`unsupported_pat_scopes`) rather than silently granting
+    /// full access under a narrower-looking label. See EVE-701.
     #[serde(default)]
     pub scopes: Vec<String>,
     /// Expiration in days (optional)
@@ -128,6 +133,30 @@ async fn list_personal_access_tokens(
     Ok(Json(ListResponse::new(items)))
 }
 
+/// EVE-701: validate and normalize requested PAT scopes.
+///
+/// PAT scopes are not yet enforced on the request path — a validated token
+/// authenticates with the owning user's full authority regardless of stored
+/// scopes. Accepting a narrower scope would advertise a security control we do
+/// not honor: a user pasting a "read-only" token into CI would believe they had
+/// limited blast radius, while a leak of that token is still equivalent to full
+/// account compromise. Until per-request enforcement exists, only the full-access
+/// wildcard is accepted (empty ⇒ `["*"]`); any other scope is rejected so the API
+/// never mints a token whose advertised scopes lie.
+fn normalize_pat_scopes(requested: &[String]) -> Result<Vec<String>, AuthError> {
+    if requested.is_empty() || requested.iter().all(|s| s == "*") {
+        Ok(vec!["*".to_string()])
+    } else {
+        Err(AuthError {
+            error: "Custom personal access token scopes are not yet supported. \
+                    Omit `scopes` or pass [\"*\"] to create a full-access token."
+                .to_string(),
+            status: StatusCode::BAD_REQUEST,
+            code: Some("unsupported_pat_scopes"),
+        })
+    }
+}
+
 /// POST /v1/auth/personal-access-tokens - Create a new personal access token
 ///
 /// Personal access tokens are user-scoped (not org-scoped). The token inherits
@@ -136,10 +165,13 @@ async fn list_personal_access_tokens(
 /// Cannot be called with personal access token authentication (must use session auth).
 async fn create_personal_access_token(
     State(state): State<PersonalAccessTokenState>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     user: AuthUser,
     Json(req): Json<CreatePersonalAccessTokenRequest>,
 ) -> Result<(StatusCode, Json<PersonalAccessTokenResponse>), AuthError> {
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
+
     // Cannot create a personal access token using personal access token auth
     if user.auth_method == AuthMethod::PersonalAccessToken {
         return Err(AuthError::forbidden(
@@ -172,11 +204,7 @@ async fn create_personal_access_token(
 
     let generated = generate_personal_access_token();
 
-    let scopes = if req.scopes.is_empty() {
-        vec!["*".to_string()]
-    } else {
-        req.scopes
-    };
+    let scopes = normalize_pat_scopes(&req.scopes)?;
 
     const PAT_EXPIRES_MIN_DAYS: i64 = 1;
     const PAT_EXPIRES_MAX_DAYS: i64 = 3650;
@@ -234,7 +262,7 @@ async fn create_personal_access_token(
         audit_org_id,
         Some(user.id),
         "auth.personal_access_token.created",
-        audit::client_ip(&headers),
+        ip,
         serde_json::json!({"token_id": token_row.id.to_string(), "name": req.name}),
     );
 
@@ -255,10 +283,13 @@ async fn create_personal_access_token(
 /// DELETE /v1/auth/personal-access-tokens/:token_id - Delete a personal access token
 async fn delete_personal_access_token(
     State(state): State<PersonalAccessTokenState>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     user: AuthUser,
     Path(token_id): Path<Uuid>,
 ) -> Result<StatusCode, AuthError> {
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
+
     let deleted = state
         .db
         .delete_personal_access_token(token_id, user.id)
@@ -282,11 +313,47 @@ async fn delete_personal_access_token(
             audit_org_id,
             Some(user.id),
             "auth.personal_access_token.deleted",
-            audit::client_ip(&headers),
+            ip,
             serde_json::json!({"token_id": token_id.to_string()}),
         );
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(AuthError::not_found("Personal access token not found"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_scopes_default_to_full_access() {
+        assert_eq!(normalize_pat_scopes(&[]).unwrap(), vec!["*".to_string()]);
+    }
+
+    #[test]
+    fn wildcard_scope_accepted() {
+        assert_eq!(
+            normalize_pat_scopes(&["*".to_string()]).unwrap(),
+            vec!["*".to_string()]
+        );
+        // Redundant wildcards normalize to a single full-access scope.
+        assert_eq!(
+            normalize_pat_scopes(&["*".to_string(), "*".to_string()]).unwrap(),
+            vec!["*".to_string()]
+        );
+    }
+
+    #[test]
+    fn narrow_scope_rejected_until_enforced() {
+        let err = normalize_pat_scopes(&["read".to_string()]).unwrap_err();
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+        assert_eq!(err.code, Some("unsupported_pat_scopes"));
+    }
+
+    #[test]
+    fn mixed_wildcard_and_narrow_scope_rejected() {
+        // A narrower scope alongside the wildcard must not be silently accepted.
+        assert!(normalize_pat_scopes(&["*".to_string(), "read".to_string()]).is_err());
     }
 }
