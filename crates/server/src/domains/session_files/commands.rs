@@ -514,14 +514,7 @@ impl Command for GrepWorkspaceFiles {
     async fn execute(self, ctx: &Ctx) -> Result<Vec<GrepResult>, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         let access = q::verify_session(ctx, session_id).await?;
-        if !access.user_memory_allowed {
-            // Grep scans all matching files; block cross-user scans rather than
-            // risk returning private /memory/user matches through a broad pattern.
-            return Err(CommandError::forbidden(
-                "User memory is private to the session owner",
-            ));
-        }
-        q::service(ctx)
+        let results = q::service(ctx)
             .grep(
                 access.workspace_key,
                 GrepInput {
@@ -537,7 +530,18 @@ impl Command for GrepWorkspaceFiles {
                 } else {
                     q::classify_storage(error)
                 }
-            })
+            })?;
+        // Non-owners must not see matches under the private `/memory/user`
+        // subtree. Redact those results (consistent with recursive `list`)
+        // instead of failing the whole scan, so workspace-wide grep stays
+        // available to callers that can't be resolved as the session owner
+        // (e.g. no-auth/dev deployments).
+        let results = if access.user_memory_allowed {
+            results
+        } else {
+            q::redact_user_memory_files(results, |result| &result.path)
+        };
+        Ok(results)
     }
 }
 
@@ -589,9 +593,10 @@ inventory::submit! { CommandDescriptor::of::<StatWorkspaceFile>() }
 
 #[cfg(test)]
 mod tests {
-    use super::{CreateWorkspaceFile, GetWorkspaceFile};
+    use super::{CreateWorkspaceFile, GetWorkspaceFile, GrepWorkspaceFiles};
     use crate::domains::common::{Command, CommandErrorKind, Ctx};
-    use crate::domains::session_files::types::CreateFileRequest;
+    use crate::domains::session_files::queries as q;
+    use crate::domains::session_files::types::{CreateFileRequest, GrepRequest};
     use crate::services::CapabilityService;
     use crate::storage::StorageBackend;
     use crate::storage::models::{CreateSessionRow, CreateWorkspaceRow};
@@ -700,6 +705,68 @@ mod tests {
         .await
         .expect_err("other users must not read private user memory");
         assert!(matches!(err.kind, CommandErrorKind::Forbidden(_)));
+    }
+
+    /// Grep must stay available to non-owners (and unresolved callers such as
+    /// no-auth/dev), returning workspace matches while redacting any hits under
+    /// the private `/memory/user` subtree rather than failing the whole scan.
+    #[tokio::test]
+    async fn grep_redacts_private_memory_for_non_owner() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let owner_user_id = Uuid::new_v4();
+        let mut row = session_row(None);
+        row.resolved_owner_user_id = Some(owner_user_id);
+        let session = db.create_session(row).await.expect("create session");
+        let file_service = crate::domains::session_files::WorkspaceFileService::new(db.clone());
+        file_service
+            .create_file(
+                session.workspace_id,
+                crate::domains::session_files::CreateFileInput {
+                    path: "/notes.txt".to_string(),
+                    content: Some("needle in workspace".to_string()),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .expect("seed workspace file");
+        file_service
+            .create_file(
+                session.workspace_id,
+                crate::domains::session_files::CreateFileInput {
+                    path: "/memory/user/secret.md".to_string(),
+                    content: Some("needle in private memory".to_string()),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .expect("seed private user memory file");
+
+        // Caller is not the resolved owner -> user memory must be redacted.
+        let mut caller = owner_caller();
+        caller.user_id = Some(Uuid::new_v4());
+        let ctx = Ctx::minimal_for_test(caller, db, None);
+
+        let results = GrepWorkspaceFiles {
+            session_id: session.id.to_string(),
+            req: GrepRequest {
+                pattern: "needle".to_string(),
+                path_pattern: None,
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect("grep must remain available to non-owners");
+
+        assert!(
+            results.iter().any(|r| r.path == "/notes.txt"),
+            "workspace match must be returned"
+        );
+        assert!(
+            !results.iter().any(|r| q::is_user_memory_path(&r.path)),
+            "private /memory/user matches must be redacted"
+        );
     }
 
     #[tokio::test]
