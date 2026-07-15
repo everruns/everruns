@@ -266,13 +266,13 @@ fn single_routing_header<'a>(
 }
 
 fn validate_routing_headers(headers: &HeaderMap, req: &JsonRpcRequest) -> Result<(), String> {
-    if let Some(header_method) = single_routing_header(headers, "Mcp-Method")? {
-        if header_method != req.method {
-            return Err(format!(
-                "Mcp-Method header ({header_method}) does not match request method ({})",
-                req.method
-            ));
-        }
+    if let Some(header_method) = single_routing_header(headers, "Mcp-Method")?
+        && header_method != req.method
+    {
+        return Err(format!(
+            "Mcp-Method header ({header_method}) does not match request method ({})",
+            req.method
+        ));
     }
     if let Some(header_name) = single_routing_header(headers, "Mcp-Name")? {
         // `Mcp-Name` identifies the specific tool/resource/prompt. We can only
