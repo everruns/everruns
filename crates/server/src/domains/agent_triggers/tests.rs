@@ -148,6 +148,53 @@ async fn create_enforces_per_org_enabled_cap() {
     unsafe { std::env::remove_var("AGENT_TRIGGER_MAX_PER_ORG") };
 }
 
+#[tokio::test]
+async fn responses_use_public_agent_id_not_internal_fk() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let store = Arc::new(InMemoryWorkflowEventStore::new());
+    let ctx = test_ctx(db.clone(), store);
+    let (agent_id, _) = seed_agent(&db).await;
+    let public_agent_id: AgentId = agent_id.parse().expect("public agent id parses");
+    let internal_agent_id = db
+        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_id)
+        .await
+        .unwrap()
+        .expect("agent row")
+        .id;
+    assert_ne!(
+        public_agent_id, internal_agent_id,
+        "test must exercise distinct public and internal agent IDs"
+    );
+
+    let created = CreateAgentTrigger {
+        agent_id: agent_id.clone(),
+        req: create_req("0 9 * * *", "hello", true),
+    }
+    .execute(&ctx)
+    .await
+    .expect("create trigger");
+    assert_eq!(created.agent_id, public_agent_id);
+
+    let listed = ListAgentTriggers {
+        agent_id: agent_id.clone(),
+        include_archived: false,
+    }
+    .execute(&ctx)
+    .await
+    .expect("list triggers");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].agent_id, public_agent_id);
+
+    let fetched = GetAgentTrigger {
+        agent_id,
+        trigger_id: created.id.to_string(),
+    }
+    .execute(&ctx)
+    .await
+    .expect("get trigger");
+    assert_eq!(fetched.agent_id, public_agent_id);
+}
+
 // ---- durable binding create / teardown ----------------------------------
 
 #[tokio::test]

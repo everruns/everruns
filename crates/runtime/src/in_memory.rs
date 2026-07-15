@@ -12,6 +12,7 @@ use everruns_core::traits::{
     SessionFileSystemFactoryContext, SessionMutator, SessionStorageStore, SessionStore,
 };
 use everruns_core::typed_id::SessionId;
+use regex::Regex;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -364,6 +365,8 @@ impl SessionFileSystem for InMemorySessionFileStore {
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
+        let regex = Regex::new(pattern)
+            .map_err(|error| AgentLoopError::tool(format!("Invalid regex pattern: {error}")))?;
         let path_pattern = path_pattern
             .map(everruns_core::session_path::GrepPathPattern::new)
             .transpose()?;
@@ -385,7 +388,7 @@ impl SessionFileSystem for InMemorySessionFileStore {
             };
 
             for (idx, line) in content.lines().enumerate() {
-                if line.contains(pattern) {
+                if regex.is_match(line) {
                     matches.push(GrepMatch {
                         path: path.clone(),
                         line_number: idx + 1,
