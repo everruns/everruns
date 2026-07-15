@@ -21,6 +21,8 @@ import type {
   ScheduleStats,
   TriggerResponse,
   MetricsTimeSeriesResponse,
+  EnqueueTaskRequest,
+  EnqueueTaskResponse,
 } from "./types";
 
 // ============================================
@@ -144,18 +146,6 @@ export async function listTasks(params?: ListTasksParams): Promise<TasksResponse
   const url = `/v1/durable/tasks${query ? `?${query}` : ""}`;
   const response = await api.get<TasksResponse>(url);
   return response.data;
-}
-
-export interface EnqueueTaskRequest {
-  activity_type: string;
-  input: Record<string, unknown>;
-  max_attempts?: number;
-  priority?: number;
-  timeout_seconds?: number;
-}
-
-export interface EnqueueTaskResponse {
-  task_id: string;
 }
 
 export async function enqueueTask(request: EnqueueTaskRequest): Promise<EnqueueTaskResponse> {

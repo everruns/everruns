@@ -3,7 +3,18 @@
 use super::super::models::*;
 use super::InMemoryDatabase;
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use uuid::Uuid;
+
+/// In-memory representation of a hashed, single-use account-recovery token
+/// (password reset / email verification). Mirrors the Postgres table columns.
+#[derive(Debug, Clone)]
+pub(crate) struct AccountRecoveryToken {
+    pub user_id: Uuid,
+    pub token_hash: String,
+    pub expires_at: DateTime<Utc>,
+    pub used_at: Option<DateTime<Utc>>,
+}
 
 impl InMemoryDatabase {
     // ============================================
@@ -229,6 +240,73 @@ impl InMemoryDatabase {
             tokens.remove(&id);
         }
         Ok(count)
+    }
+
+    // ============================================
+    // Password Reset / Email Verification Tokens
+    // ============================================
+
+    pub async fn create_password_reset_token(
+        &self,
+        user_id: Uuid,
+        token_hash: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<()> {
+        self.password_reset_tokens
+            .write()
+            .push(AccountRecoveryToken {
+                user_id,
+                token_hash: token_hash.to_string(),
+                expires_at,
+                used_at: None,
+            });
+        Ok(())
+    }
+
+    /// Atomic single-use claim mirroring the Postgres `UPDATE ... WHERE
+    /// used_at IS NULL`: the lookup, validity check, and mark-used all happen
+    /// under one write lock so concurrent claims cannot both win.
+    pub async fn consume_password_reset_token(&self, token_hash: &str) -> Result<Option<Uuid>> {
+        let now = Self::now();
+        let mut tokens = self.password_reset_tokens.write();
+        if let Some(token) = tokens
+            .iter_mut()
+            .find(|t| t.token_hash == token_hash && t.used_at.is_none() && t.expires_at > now)
+        {
+            token.used_at = Some(now);
+            return Ok(Some(token.user_id));
+        }
+        Ok(None)
+    }
+
+    pub async fn create_email_verification_token(
+        &self,
+        user_id: Uuid,
+        token_hash: &str,
+        expires_at: DateTime<Utc>,
+    ) -> Result<()> {
+        self.email_verification_tokens
+            .write()
+            .push(AccountRecoveryToken {
+                user_id,
+                token_hash: token_hash.to_string(),
+                expires_at,
+                used_at: None,
+            });
+        Ok(())
+    }
+
+    pub async fn consume_email_verification_token(&self, token_hash: &str) -> Result<Option<Uuid>> {
+        let now = Self::now();
+        let mut tokens = self.email_verification_tokens.write();
+        if let Some(token) = tokens
+            .iter_mut()
+            .find(|t| t.token_hash == token_hash && t.used_at.is_none() && t.expires_at > now)
+        {
+            token.used_at = Some(now);
+            return Ok(Some(token.user_id));
+        }
+        Ok(None)
     }
 
     // ============================================

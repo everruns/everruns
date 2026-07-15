@@ -24,10 +24,11 @@ use everruns_core::connector::{
     ConnectorFormSchema as CoreFormSchema, ConnectorRegistry, ConnectorType,
 };
 use everruns_core::{
-    Caller, McpServerAuthMode, SessionId, mcp_oauth_provider_id_for_uuid,
-    mcp_oauth_session_secret_name, validate_safe_url,
+    Caller, EgressRequest, EgressRequestKind, EgressService, McpServerAuthMode, SessionId,
+    mcp_oauth_provider_id_for_uuid, mcp_oauth_session_secret_name, validate_safe_url,
+    validate_url_dns_pinned,
 };
-use rand::Rng;
+use rand::RngExt;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -76,6 +77,7 @@ impl_auth_state!(AppState);
 
 /// Connection info returned in API responses (never includes token)
 #[derive(Debug, Serialize, ToSchema)]
+#[schema(as = Connection)]
 pub struct ConnectionResponse {
     pub provider: String,
     pub connection_type: String,
@@ -720,6 +722,7 @@ pub async fn connection_oauth_callback(
     let redirect_uri = mcp_oauth_redirect_uri(&state.auth_config, &provider);
 
     let token = exchange_oauth_code(
+        state.mcp_service.egress_service().as_ref(),
         &token_endpoint,
         &client_id,
         client_secret.as_deref(),
@@ -1220,7 +1223,9 @@ async fn ensure_mcp_oauth_registration(
             scopes_supported: oauth.scopes_supported.clone(),
         }
     } else {
-        let resource_metadata = discover_resource_metadata(&row.url).await?;
+        let resource_metadata =
+            discover_resource_metadata(state.mcp_service.egress_service().as_ref(), &row.url)
+                .await?;
         let issuer = match resource_metadata.authorization_servers.first().cloned() {
             Some(issuer) => issuer,
             None => resource_origin(&parse_and_validate_url(&row.url)?)?,
@@ -1231,7 +1236,9 @@ async fn ensure_mcp_oauth_registration(
                 format!("OAuth issuer blocked: {e}"),
             )
         })?;
-        let metadata = discover_oauth_server_metadata(&issuer).await?;
+        let metadata =
+            discover_oauth_server_metadata(state.mcp_service.egress_service().as_ref(), &issuer)
+                .await?;
         oauth.issuer = metadata.issuer.clone().or(Some(issuer));
         oauth.authorization_endpoint = Some(metadata.authorization_endpoint.clone());
         oauth.token_endpoint = Some(metadata.token_endpoint.clone());
@@ -1261,6 +1268,7 @@ async fn ensure_mcp_oauth_registration(
                 .to_string(),
         ))?;
         let registration = register_oauth_client(
+            state.mcp_service.egress_service().as_ref(),
             registration_endpoint,
             &mcp_oauth_redirect_uri(&state.auth_config, provider),
         )
@@ -1279,31 +1287,37 @@ async fn ensure_mcp_oauth_registration(
 }
 
 async fn discover_resource_metadata(
+    egress: &dyn EgressService,
     server_url: &str,
 ) -> Result<OAuthProtectedResourceMetadata, (StatusCode, String)> {
     let resource_url = parse_and_validate_url(server_url)?;
     let origin = resource_origin(&resource_url)?;
-    let response = reqwest::Client::new()
-        .get(format!("{origin}/.well-known/oauth-protected-resource"))
-        .send()
-        .await
-        .map_err(|e| sanitized_bad_gateway("OAuth external service", &e))?;
-    json_response_or_error(response).await
+    egress_oauth_json(
+        egress,
+        "GET",
+        &format!("{origin}/.well-known/oauth-protected-resource"),
+        &[],
+        Vec::new(),
+    )
+    .await
 }
 
 async fn discover_oauth_server_metadata(
+    egress: &dyn EgressService,
     issuer: &str,
 ) -> Result<OAuthServerMetadata, (StatusCode, String)> {
     let issuer = parse_and_validate_url(issuer)?;
-    let response = reqwest::Client::new()
-        .get(format!(
+    let metadata: OAuthServerMetadata = egress_oauth_json(
+        egress,
+        "GET",
+        &format!(
             "{}/.well-known/oauth-authorization-server",
             issuer.as_str().trim_end_matches('/')
-        ))
-        .send()
-        .await
-        .map_err(|e| sanitized_bad_gateway("OAuth external service", &e))?;
-    let metadata: OAuthServerMetadata = json_response_or_error(response).await?;
+        ),
+        &[],
+        Vec::new(),
+    )
+    .await?;
     validate_safe_url(&metadata.authorization_endpoint).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -1328,6 +1342,7 @@ async fn discover_oauth_server_metadata(
 }
 
 async fn register_oauth_client(
+    egress: &dyn EgressService,
     registration_endpoint: &str,
     redirect_uri: &str,
 ) -> Result<OAuthClientRegistration, (StatusCode, String)> {
@@ -1337,22 +1352,26 @@ async fn register_oauth_client(
             format!("Registration endpoint blocked: {e}"),
         )
     })?;
-    let response = reqwest::Client::new()
-        .post(registration_endpoint)
-        .json(&serde_json::json!({
-            "client_name": "Everruns MCP",
-            "redirect_uris": [redirect_uri],
-            "grant_types": ["authorization_code", "refresh_token"],
-            "response_types": ["code"],
-            "token_endpoint_auth_method": "client_secret_post"
-        }))
-        .send()
-        .await
-        .map_err(|e| sanitized_bad_gateway("OAuth external service", &e))?;
-    json_response_or_error(response).await
+    let body = serde_json::to_vec(&serde_json::json!({
+        "client_name": "Everruns MCP",
+        "redirect_uris": [redirect_uri],
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "token_endpoint_auth_method": "client_secret_post"
+    }))
+    .map_err(|e| sanitized_bad_gateway("OAuth registration body", &e))?;
+    egress_oauth_json(
+        egress,
+        "POST",
+        registration_endpoint,
+        &[("Content-Type", "application/json".to_string())],
+        body,
+    )
+    .await
 }
 
 async fn exchange_oauth_code(
+    egress: &dyn EgressService,
     token_endpoint: &str,
     client_id: &str,
     client_secret: Option<&str>,
@@ -1376,13 +1395,20 @@ async fn exchange_oauth_code(
     if let Some(secret) = client_secret {
         params.push(("client_secret", secret.to_string()));
     }
-    let response = reqwest::Client::new()
-        .post(token_endpoint)
-        .form(&params)
-        .send()
-        .await
-        .map_err(|e| sanitized_bad_gateway("OAuth external service", &e))?;
-    json_response_or_error(response).await
+    let body = serde_urlencoded::to_string(&params)
+        .map_err(|e| sanitized_bad_gateway("OAuth token body", &e))?
+        .into_bytes();
+    egress_oauth_json(
+        egress,
+        "POST",
+        token_endpoint,
+        &[(
+            "Content-Type",
+            "application/x-www-form-urlencoded".to_string(),
+        )],
+        body,
+    )
+    .await
 }
 
 fn finalize_oauth_redirect(
@@ -1441,23 +1467,63 @@ fn parse_and_validate_url(url: &str) -> Result<Url, (StatusCode, String)> {
     Url::parse(url).map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid URL: {e}")))
 }
 
-async fn json_response_or_error<T: serde::de::DeserializeOwned>(
-    response: reqwest::Response,
+/// Send an OAuth discovery/registration/token request through the host egress
+/// boundary with DNS pinning (TM-API-013, TM-MCP), parsing the JSON body.
+///
+/// These endpoints come from the attacker-controlled OAuth discovery response
+/// and were previously fetched with a bare `reqwest::Client::new()`, which
+/// follows redirects and does no DNS pinning — letting a URL that passed
+/// create-time `validate_safe_url` DNS-rebind or 302-redirect to a private/
+/// metadata address at request time (EVE-623). Routing through [`EgressService`]
+/// after `validate_url_dns_pinned` (pinning the connection to the validated IPs)
+/// reuses the egress hardening (redirects disabled, DNS-pinned connect) used by
+/// the MCP runtime and capabilities.
+async fn egress_oauth_json<T: serde::de::DeserializeOwned>(
+    egress: &dyn EgressService,
+    method: &str,
+    url: &str,
+    headers: &[(&str, String)],
+    body: Vec<u8>,
 ) -> Result<T, (StatusCode, String)> {
-    let status = response.status();
-    if !status.is_success() {
-        let body = response.text().await.unwrap_or_default();
-        let truncated = truncate_utf8_for_log(&body, 512);
+    // Resolve-and-pin before sending so the request connects to the exact IPs we
+    // validated, closing the DNS-rebind TOCTOU window.
+    let (parsed, pinned_addrs) = validate_url_dns_pinned(url)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Blocked URL: {e}")))?;
+    let host = parsed.host_str().unwrap_or("").to_string();
+
+    let mut request = EgressRequest::new(method, url, EgressRequestKind::Mcp);
+    for (name, value) in headers {
+        request = request.header(*name, value.clone());
+    }
+    if !body.is_empty() {
+        request = request.body(body);
+    }
+    if pinned_addrs.is_empty() {
+        // IP-literal URL: nothing to pin, but still demand boundary-side
+        // validation before connect.
+        request = request.require_dns_pinning();
+    } else {
+        request = request.pinned_addrs(host, pinned_addrs);
+    }
+
+    let response = egress
+        .send(request)
+        .await
+        .map_err(|e| sanitized_bad_gateway("OAuth external service", &e))?;
+
+    if !(200..300).contains(&response.status) {
+        let body_text = String::from_utf8_lossy(&response.body);
+        let truncated = truncate_utf8_for_log(&body_text, 512);
         tracing::error!(
-            status = %status,
-            body_len = body.len(),
+            status = response.status,
+            body_len = response.body.len(),
             "External service error: {truncated}"
         );
         return Err((StatusCode::BAD_GATEWAY, "Bad gateway".to_string()));
     }
-    response
-        .json()
-        .await
+
+    serde_json::from_slice(&response.body)
         .map_err(|e| sanitized_bad_gateway("External service response parse", &e))
 }
 
@@ -1669,5 +1735,66 @@ mod tests {
     fn resource_origin_brackets_ipv6_hosts() {
         let url = reqwest::Url::parse("https://[::1]:8443/v1/mcp").unwrap();
         assert_eq!(resource_origin(&url).unwrap(), "https://[::1]:8443");
+    }
+
+    /// Egress that fails the test if it is ever asked to send — used to prove
+    /// that a blocked URL is rejected by `egress_oauth_json` before any request
+    /// leaves the boundary (EVE-623).
+    struct NeverSendEgress;
+
+    #[async_trait::async_trait]
+    impl EgressService for NeverSendEgress {
+        async fn send(
+            &self,
+            request: EgressRequest,
+        ) -> everruns_core::EgressResult<everruns_core::EgressResponse> {
+            panic!(
+                "egress_oauth_json must not send blocked URL: {}",
+                request.url
+            );
+        }
+
+        async fn send_stream(
+            &self,
+            _request: EgressRequest,
+        ) -> everruns_core::EgressResult<everruns_core::EgressStreamResponse> {
+            panic!("send_stream should not be called");
+        }
+    }
+
+    #[tokio::test]
+    async fn oauth_egress_blocks_private_ip_literal_before_send() {
+        // A token/registration/discovery endpoint that resolves to a private or
+        // metadata address must be refused at the egress boundary, not fetched.
+        let egress = NeverSendEgress;
+        for url in [
+            "http://127.0.0.1/token",
+            "http://169.254.169.254/latest/meta-data/",
+            "http://10.0.0.1/oauth/register",
+        ] {
+            let result: Result<serde_json::Value, _> =
+                egress_oauth_json(&egress, "GET", url, &[], Vec::new()).await;
+            let (status, _msg) = result.expect_err("blocked URL must error");
+            assert_eq!(
+                status,
+                StatusCode::BAD_REQUEST,
+                "url {url} should be blocked"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn oauth_egress_blocks_localhost_hostname_before_send() {
+        let egress = NeverSendEgress;
+        let result: Result<serde_json::Value, _> = egress_oauth_json(
+            &egress,
+            "POST",
+            "http://localhost:9000/token",
+            &[],
+            Vec::new(),
+        )
+        .await;
+        let (status, _) = result.expect_err("localhost must be blocked");
+        assert_eq!(status, StatusCode::BAD_REQUEST);
     }
 }

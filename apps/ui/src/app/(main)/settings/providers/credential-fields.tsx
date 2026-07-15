@@ -21,11 +21,13 @@ function CredentialField({
   value,
   onChange,
   idPrefix,
+  nativeRequired,
 }: {
   field: CredentialFormField;
   value: string;
   onChange: (name: string, value: string) => void;
   idPrefix: string;
+  nativeRequired: boolean;
 }) {
   const id = `${idPrefix}-${field.name}`;
   return (
@@ -44,9 +46,7 @@ function CredentialField({
         value={value}
         onChange={(e: React.ChangeEvent<HTMLInputElement>) => onChange(field.name, e.target.value)}
         placeholder={field.placeholder}
-        // Grouped fields belong to mutually-exclusive methods, so they cannot be
-        // natively required; the backend enforces "one complete method".
-        required={field.required && !field.group}
+        required={nativeRequired}
       />
       {field.help_text ? <p className="text-xs text-muted-foreground">{field.help_text}</p> : null}
     </div>
@@ -58,11 +58,17 @@ export function CredentialFields({
   values,
   onChange,
   idPrefix,
+  allowEmptySubmit = false,
 }: {
   schema: CredentialFormSchema;
   values: Record<string, string>;
   onChange: (name: string, value: string) => void;
   idPrefix: string;
+  /**
+   * OAuth-capable add flows can intentionally create a provider before any
+   * credential exists, then connect the credential in a follow-up browser flow.
+   */
+  allowEmptySubmit?: boolean;
 }) {
   const ungrouped = schema.fields.filter((f) => !f.group);
   // Preserve declaration order of group labels.
@@ -84,6 +90,7 @@ export function CredentialFields({
           value={values[field.name] ?? ""}
           onChange={onChange}
           idPrefix={idPrefix}
+          nativeRequired={field.required && !field.group && !allowEmptySubmit}
         />
       ))}
       {groupLabels.map((label, index) => (
@@ -106,6 +113,7 @@ export function CredentialFields({
                 value={values[field.name] ?? ""}
                 onChange={onChange}
                 idPrefix={idPrefix}
+                nativeRequired={field.required && !field.group && !allowEmptySubmit}
               />
             ))}
         </div>

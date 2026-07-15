@@ -10,7 +10,9 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
-use crate::domains::messages::{CreateMessage, ExportSessionMessages, ListMessages};
+use crate::domains::messages::{
+    CreateMessage, ExportSessionMessages, ListMessages, SessionExportFormat,
+};
 use crate::middleware::RequestId;
 use crate::storage::StorageBackend;
 use axum::{
@@ -21,7 +23,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::{DateTime, Utc};
-use everruns_core::typed_id::{MessageId, SessionId};
+use everruns_core::typed_id::{MessageId, SessionId, SessionParticipantId};
 
 use super::common::{ApiResult, ErrorResponse, ListResponse, impl_auth_state};
 use everruns_worker::AgentRunner;
@@ -127,6 +129,14 @@ fn default_user_role() -> MessageRole {
 pub struct CreateMessageRequest {
     /// The message to create. Example shape is defined on `InputMessage`.
     pub message: InputMessage,
+    /// Optional active agent participant to address for this turn. When omitted,
+    /// the session host remains the responder.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(
+        value_type = Option<String>,
+        example = "part_01933b5a00007000800000000000001"
+    )]
+    pub addressed_participant_id: Option<SessionParticipantId>,
     /// Runtime controls (model, reasoning, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub controls: Option<Controls>,
@@ -153,6 +163,7 @@ impl CreateMessageRequest {
                 role: MessageRole::User,
                 content: vec![InputContentPart::text(text)],
             },
+            addressed_participant_id: None,
             controls: None,
             metadata: None,
             tags: None,
@@ -172,6 +183,10 @@ pub struct AppState {
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
     pub auth: AuthState,
+    /// Response-size cap for the ATIF session export, in bytes. Production
+    /// always uses `crate::atif::ATIF_EXPORT_MAX_BYTES`; tests shrink it via
+    /// `with_atif_export_max_bytes` to exercise the 413 path cheaply.
+    pub atif_export_max_bytes: usize,
 }
 
 impl AppState {
@@ -192,7 +207,15 @@ impl AppState {
                 event_delivery,
             )),
             auth,
+            atif_export_max_bytes: crate::atif::ATIF_EXPORT_MAX_BYTES,
         }
+    }
+
+    /// Test-only override of the ATIF export size cap (kept small so 413
+    /// coverage does not need to allocate a 50 MiB document).
+    pub fn with_atif_export_max_bytes(mut self, max_bytes: usize) -> Self {
+        self.atif_export_max_bytes = max_bytes;
+        self
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
@@ -231,9 +254,6 @@ pub fn routes(state: AppState) -> Router {
 #[utoipa::path(
     post,
     path = "/v1/sessions/{session_id}/messages",
-    extensions(
-        ("x-cost-tier" = json!("paid")),
-    ),
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
@@ -257,6 +277,7 @@ pub async fn create_message(
     let message = CreateMessage {
         session_id,
         message: req.message,
+        addressed_participant_id: req.addressed_participant_id,
         controls: req.controls,
         metadata: req.metadata,
         tags: req.tags,
@@ -299,22 +320,54 @@ pub async fn list_messages(
     Ok(Json(ListResponse::new(messages)))
 }
 
-/// Export session messages as a JSONL file
+/// Query parameters for session export.
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
+pub struct ExportSessionQuery {
+    /// Output format: `jsonl` (default) or `atif`.
+    #[serde(default)]
+    pub format: SessionExportFormat,
+    /// ATIF only. When `true`, return the session as a chain of byte-bounded
+    /// segments (each a standalone ATIF-v1.7 document under the size cap)
+    /// instead of one document. A segment with more steps remaining carries a
+    /// root `continued_trajectory_ref` URL embedding the next `cursor`; the
+    /// final/only segment omits it. Ignored for `jsonl`.
+    #[serde(default)]
+    pub segmented: bool,
+    /// ATIF segmented export only: opaque continuation cursor from the previous
+    /// segment's `continued_trajectory_ref`. Omit for the first segment. A
+    /// malformed or foreign cursor is rejected with 400.
+    #[serde(default)]
+    pub cursor: Option<String>,
+}
+
+/// Export session messages as a JSONL file (default) or as an ATIF trajectory
 ///
-/// Returns all materialized messages (user, agent) as newline-delimited JSON.
-/// Delta events are excluded. Each line is a complete JSON object representing one message.
-/// The response includes `Content-Disposition: attachment` for browser download.
+/// Default (`format=jsonl`): all materialized messages (user, agent) as
+/// newline-delimited JSON, one complete JSON object per line; delta events are
+/// excluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document
+/// folded from the session's event log (see `specs/atif-adoption.md`); image
+/// content parts are exported as ATIF multimodal ContentParts. When an image
+/// cannot be materialized (an inline image with neither a URL nor bytes) it is
+/// flattened to an `"[image]"` marker and the response carries an
+/// `X-Atif-Images-Omitted` header with that count (usually 0 and absent).
+/// Documents over the 50 MiB `ATIF_EXPORT_MAX_BYTES` cap are rejected with 413.
+/// The response includes `Content-Disposition: attachment` for browser
+/// download.
 #[utoipa::path(
     get,
     path = "/v1/sessions/{session_id}/export",
     params(
-        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)"),
+        ("format" = Option<String>, Query, description = "Output format: jsonl (default) or atif"),
+        ("segmented" = Option<bool>, Query, description = "ATIF only: return byte-bounded segments linked by continued_trajectory_ref instead of one document"),
+        ("cursor" = Option<String>, Query, description = "ATIF segmented export: opaque continuation cursor from the previous segment")
     ),
     responses(
-        (status = 200, description = "JSONL file with one message per line", content_type = "application/x-ndjson"),
-        (status = 400, description = "Invalid ID format"),
+        (status = 200, description = "JSONL file with one message per line, or one ATIF trajectory JSON document (images export as multimodal ContentParts; X-Atif-Images-Omitted header only when an image could not be materialized). With segmented=true, one ATIF segment linked forward by continued_trajectory_ref.", content_type = "application/x-ndjson"),
+        (status = 400, description = "Invalid ID format, or malformed/foreign segmented-export cursor"),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Session not found"),
+        (status = 413, description = "ATIF document exceeds the 50 MiB export cap; retry with segmented=true for a recoverable chunked export", body = ErrorResponse),
         (status = 500, description = "Internal server error")
     ),
     tag = "sessions"
@@ -323,27 +376,124 @@ pub async fn export_session_jsonl(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(session_id): Path<String>,
-) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
+    axum::extract::Query(query): axum::extract::Query<ExportSessionQuery>,
+) -> Result<axum::response::Response, (StatusCode, Json<ErrorResponse>)> {
+    // Opt-in segmented ATIF export: a recoverable, byte-bounded chain of
+    // standalone ATIF documents for sessions that would 413 as one document.
+    // Each segment is bounded to `atif_export_max_bytes` by the builder, so this
+    // path never 413s (a single giant step is returned alone; see atif.rs).
+    if query.format == SessionExportFormat::Atif && query.segmented {
+        return segmented_atif_response(&state, &org, session_id, query.cursor).await;
+    }
+
     let export = ExportSessionMessages {
         session_id: session_id.clone(),
+        format: query.format,
     }
     .run(&state.ctx(&org))
     .await?;
-    let filename = format!("{}.jsonl", session_id);
+    // THREAT[TM-DOS-026]: the ATIF export is a single synchronous JSON
+    // document; cap the response body so a huge event log cannot produce an
+    // unbounded response. See `crate::atif::ATIF_EXPORT_MAX_BYTES`.
+    if query.format == SessionExportFormat::Atif && export.body.len() > state.atif_export_max_bytes
+    {
+        return Err(ErrorResponse::new(format!(
+            "ATIF export for session {} is {} bytes, over the {}-byte limit; retry with &segmented=true to export it as a chain of bounded segments linked by continued_trajectory_ref",
+            session_id,
+            export.body.len(),
+            state.atif_export_max_bytes,
+        ))
+        .with_code("atif_export_too_large")
+        .into_response(StatusCode::PAYLOAD_TOO_LARGE));
+    }
+    let (content_type, filename) = match query.format {
+        SessionExportFormat::Jsonl => ("application/x-ndjson", format!("{}.jsonl", session_id)),
+        SessionExportFormat::Atif => ("application/json", format!("{}.atif.json", session_id)),
+    };
+    // Lossiness signal: set only when image parts were flattened to markers,
+    // so clients can tell a lossy ATIF export from a complete one without
+    // parsing the body.
+    let mut lossiness_header = Vec::new();
+    if export.atif_images_omitted > 0 {
+        lossiness_header.push((
+            axum::http::HeaderName::from_static("x-atif-images-omitted"),
+            export.atif_images_omitted.to_string(),
+        ));
+    }
+    Ok((
+        StatusCode::OK,
+        [
+            (axum::http::header::CONTENT_TYPE, content_type.to_string()),
+            (
+                axum::http::header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{}\"", filename),
+            ),
+        ],
+        axum::response::AppendHeaders(lossiness_header),
+        export.body,
+    )
+        .into_response())
+}
+
+/// Serve one segment of a segmented ATIF export. The session is resolved
+/// org-scoped from the path; the opaque `cursor` only selects a step offset
+/// within that session (a malformed or foreign cursor → 400). Each segment is
+/// bounded to the export size cap by the builder, so no 413 guard is needed.
+async fn segmented_atif_response(
+    state: &AppState,
+    org: &ResolvedOrg,
+    session_id: String,
+    cursor: Option<String>,
+) -> Result<axum::response::Response, (StatusCode, Json<ErrorResponse>)> {
+    let ctx = state.ctx(org);
+    let link_base = format!("/v1/sessions/{session_id}/export");
+    let segment = crate::domains::messages::export_session_segment(
+        &ctx,
+        &session_id,
+        cursor.as_deref(),
+        state.atif_export_max_bytes,
+        &link_base,
+    )
+    .await?;
+
+    // Per-segment out-of-band signals so a client can walk the chain and detect
+    // lossiness without parsing each body: the images-omitted count for THIS
+    // segment, whether more segments follow, and the next opaque cursor. The
+    // authoritative continuation link is `continued_trajectory_ref` in the body.
+    let mut extra_headers: Vec<(axum::http::HeaderName, String)> = vec![(
+        axum::http::HeaderName::from_static("x-atif-segment-index"),
+        segment.segment_index.to_string(),
+    )];
+    if segment.images_omitted > 0 {
+        extra_headers.push((
+            axum::http::HeaderName::from_static("x-atif-images-omitted"),
+            segment.images_omitted.to_string(),
+        ));
+    }
+    if let Some(next) = &segment.next_cursor {
+        extra_headers.push((
+            axum::http::HeaderName::from_static("x-atif-next-cursor"),
+            next.clone(),
+        ));
+    }
+    let filename = format!("{}.atif.seg{}.json", session_id, segment.segment_index);
+
     Ok((
         StatusCode::OK,
         [
             (
                 axum::http::header::CONTENT_TYPE,
-                "application/x-ndjson".to_string(),
+                "application/json".to_string(),
             ),
             (
                 axum::http::header::CONTENT_DISPOSITION,
                 format!("attachment; filename=\"{}\"", filename),
             ),
         ],
-        export.body,
-    ))
+        axum::response::AppendHeaders(extra_headers),
+        segment.body,
+    )
+        .into_response())
 }
 
 // ============================================
@@ -354,20 +504,7 @@ pub async fn export_session_jsonl(
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_content_part_text_serialization() {
-        let part = ContentPart::text("Hello, world!");
-        let json = serde_json::to_string(&part).unwrap();
-        assert!(json.contains(r#""type":"text""#));
-        assert!(json.contains(r#""text":"Hello, world!""#));
-    }
-
-    #[test]
-    fn test_content_part_deserialization() {
-        let json = r#"{"type":"text","text":"Hello!"}"#;
-        let part: ContentPart = serde_json::from_str(json).unwrap();
-        assert_eq!(part.as_text(), Some("Hello!"));
-    }
+    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
     fn test_create_message_request_user() {

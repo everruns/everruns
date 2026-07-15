@@ -137,6 +137,19 @@ Capabilities are defined in **everruns-core** and resolved at the **API layer**:
 - The Agent Loop remains focused on execution
 - RuntimeAgent is built with merged system prompt and tools from capabilities
 
+#### Deployment Availability (session creation)
+
+Some built-in capabilities are feature-gated (e.g. `container_sandbox` behind
+`FEATURE_CONTAINER_SANDBOX`). When a gate is off the capability is absent from
+the registry and its tools never register. Session creation therefore rejects
+requests whose effective capability set (harness chain + agent + session) names
+a **built-in** capability that is not available in this deployment, rather than
+silently dropping its tools and degrading into a different execution environment
+(e.g. a `coding-container` session quietly running in the bash workspace). The
+check runs in `SessionService::create` and only applies to plain built-in
+references; namespaced refs (`declarative:`, `plugin:`, `skill:`, `mcp:`) resolve
+from org data and are validated separately.
+
 ### Data Model
 
 #### Capability (Public DTO)
@@ -228,13 +241,49 @@ Associates a capability with an agent via `ref` (CapabilityId) + optional `confi
 
 #### Capability Trait (everruns-core)
 
-See `crates/core/src/capabilities/mod.rs` for the `Capability` trait and `CapabilityRegistry`. Key trait methods: `id()`, `name()`, `description()`, `status()`, `system_prompt_contribution()`, `tools()`, `mounts()`, `dependencies()`, `features()`, `message_filter_provider()`.
+See `crates/core/src/capabilities/mod.rs` for the `Capability` trait and `CapabilityRegistry`. Key trait methods: `id()`, `name()`, `description()`, `status()`, `system_prompt_contribution()`, `facts()`, `tools()`, `mounts()`, `dependencies()`, `features()`, `message_filter_provider()`, `llm_error_hook()`.
+
+##### LLM Error Hook Seam
+
+`llm_error_hook() -> Option<Arc<dyn LlmErrorHook>>` (default `None`) is the
+platform seam for **capability-owned error recovery**. It is an *in-process
+capability hook* — the same family as `tool_call_hooks()`,
+`message_filter_provider()`, and `output_guardrails()` (typed traits invoked
+in-process with host services) — as distinct from the user-hook system
+(`specs/user-hooks.md`), which runs user-authored shell commands at lifecycle
+events. When a turn fails with a *terminal* LLM error (one that will not be
+retried), the reason atom collects the hooks contributed by the active
+capabilities and invokes each generically — before the user-facing error message
+is built — passing an `LlmErrorContext` (session id, classified `error_code`,
+structured `error_fields`, the capability's per-agent config, and host
+`LlmErrorHookServices`). A hook may perform a side effect and/or return extra
+fields to merge into the `UserFacingError` (for example to unlock
+capability-specific message copy). The atom stays behavior-agnostic: it knows
+nothing about any specific capability's logic, so new error-recovery extensions
+are built purely as capabilities. The first consumer is
+`usage_limit_auto_continue` (schedules a continuation after a provider usage limit
+resets); see `crates/core/src/llm_error_hook.rs`.
 
 ##### System Prompt Methods
 
 - **`system_prompt_addition()`** — Sync, returns static `&str`. Used by sync collection path.
 - **`system_prompt_contribution(ctx)`** — Async, receives `SystemPromptContext` with session filesystem access. Default wraps `system_prompt_addition()` in XML tags. Capabilities needing dynamic content (e.g., `agent_instructions`, `skills`) override to read from session filesystem.
 - **`system_prompt_contribution_with_config(ctx, config)`** — Async, receives per-capability config JSON. Default delegates to `system_prompt_contribution(ctx)`. Used by `collect_capabilities_with_configs()`.
+
+##### Facts (Cache-Friendly Dynamic Context)
+
+`facts(config, ctx) -> Vec<Fact>` lets a capability contribute key/value context to the model without deciding *where* it goes. The runtime routes each `Fact` by its `Volatility` so provider prompt caching is never needlessly invalidated:
+
+| Volatility | Rendered | Cache effect |
+|---|---|---|
+| `Static` | Folded into a `<facts>` block in the cached system-prompt prefix at build time. | In the cached prefix; assumed stable for the session, so free to cache. |
+| `Dynamic` | Appended as a live `<facts>` block at the **conversation tail** on every request (`ReasonAtom`), delivered as a trailing user-role message. | Outside the cached prefix. The system prompt, tools, and conversation history stay byte-identical turn to turn; only the small trailing block is re-processed. |
+
+This is the generic mechanism behind "the current time is X": baking a changing timestamp into the system prompt would bust the system-prompt cache every turn, and a tool round-trip is slower and only informs the model when it asks. `current_time` contributes its value as a `Dynamic` fact (and keeps `get_current_time` for explicit timezone/format queries). Static facts share the same `<facts>` wire format; a single explanatory note (`FACTS_DYNAMIC_NOTE`) is added to the cached prompt once whenever any active capability declares a dynamic fact.
+
+`facts()` is called both at prompt-assembly time (to fold static facts and detect whether any dynamic facts exist) and once per request (to render the live tail block via `collect_dynamic_facts`), so implementations must be cheap and side-effect free. See `crates/core/src/capabilities/facts.rs`.
+
+**Cache-anchor interaction.** Appending a volatile tail would, by default, pull a driver's message-level cache breakpoint onto content that changes every turn — evicting the conversation-history cache. `ReasonAtom` therefore sets `LlmCallConfig.volatile_suffix_len` to the number of trailing volatile messages; the Anthropic driver anchors its breakpoint on the last *stable* block, letting the volatile tail ride as an uncached suffix. Drivers that do not implement message-level anchoring ignore the field and behave exactly as before (`0` is the default).
 
 ##### System Prompt Content Contract
 
@@ -896,10 +945,23 @@ See `crates/server/migrations/001_base_schema.sql` for the `agent_capabilities` 
 1. Implement the `Capability` trait (see `crates/core/src/capabilities/mod.rs` for trait definition)
 2. Declare `pub const <SCREAMING_SNAKE>_CAPABILITY_ID: &str = "<id>";` in the module and return it from `fn id()` (see **Built-in Capability ID Constants** above)
 3. Re-export the constant and the struct from `crates/core/src/capabilities/mod.rs`
-4. Register in `CapabilityRegistry::with_builtins()` (same file)
+4. Choose the registry preset deliberately:
+   - Register in `CapabilityRegistry::runtime_builtins()` only when the capability is usable with `everruns-runtime`'s default in-process host services.
+   - Register in `CapabilityRegistry::with_builtins_for_grade()` when the capability is part of the hosted Everruns platform catalog, a product/demo capability, or requires optional host services not present in the runtime default.
+   - Register in both only when both statements are true.
+   - Use integration inventory registration for external integration crates that should appear only when their crate is linked.
 5. Add tool implementations if needed (implement `Tool` trait from `crates/core/src/tools.rs`)
 6. No database migration required — capability ID validated at runtime
-7. Update documentation at `docs/capabilities/` — add a page for the new capability and update the overview table in `docs/capabilities/index.md`
+7. Add or update registry tests that prove the capability appears in the intended preset(s) and is absent from inappropriate preset(s)
+8. Update documentation at `docs/capabilities/` — add a page for the new capability and update the overview table in `docs/capabilities/index.md`
+
+Runtime-default eligibility is based on host services, not risk level. A high-risk
+capability may be runtime-usable when it runs entirely through runtime-provided
+services such as the session filesystem or egress service. A low-risk capability
+must still stay out of `runtime_builtins()` if its tools need optional services
+such as `platform_store`, `session_task_registry`, `schedule_store`, session SQL
+databases, provider credentials, or knowledge stores. See `specs/runtime.md` for
+the embedded runtime contract.
 
 ### Capability Mount Points
 
@@ -924,7 +986,7 @@ Virtual mounts (`MountSource::Virtual`) serve content from an in-memory `Virtual
 - **Write protection**: Writes/deletes to virtual paths return a readonly error.
 - **Eviction**: Virtual mount entries for a session are evicted from the registry on session delete.
 - **Lazy reconstruction**: Content is deterministic (compiled in), so the registry can be reconstructed from session capabilities on server restart.
-- **Implementation**: See `crates/server/src/services/virtual_mount_registry.rs` for `VirtualMountRegistry` and `crates/core/src/capability_types.rs` for `VirtualFileTree`.
+- **Implementation**: See `crates/server/src/domains/session_files/virtual_mount_registry.rs` for `VirtualMountRegistry` and `crates/core/src/capability_types.rs` for `VirtualFileTree`.
 
 #### Mount Application Flow
 

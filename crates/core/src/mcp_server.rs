@@ -81,6 +81,120 @@ impl McpServerAuthMode {
     }
 }
 
+// ============================================================================
+// MCP protocol versions and per-server adoption policy
+// ============================================================================
+//
+// Everruns' MCP *client* speaks three protocol eras. They differ in how the
+// connection is established and what metadata travels with each request:
+//
+// - Legacy `2025-03-26` / current `2025-06-18`: *stateful*. The client must run
+//   the `initialize` handshake, may receive an `Mcp-Session-Id` it has to echo
+//   on every subsequent request, and sends `notifications/initialized`.
+// - RC `2026-07-28`: *stateless*. No handshake and no session id; protocol
+//   version + client info ride in `_meta` on every request, and routable
+//   headers (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`) let edge
+//   infrastructure route without parsing the body.
+//
+// See specs/mcp-servers.md (Multi-era protocol support) and the negotiation
+// engine in `everruns-mcp` (`protocol.rs`).
+
+/// Legacy MCP protocol version (stateful handshake).
+pub const MCP_PROTOCOL_VERSION_LEGACY: &str = "2025-03-26";
+/// Current stable MCP protocol version (stateful handshake).
+pub const MCP_PROTOCOL_VERSION_STABLE: &str = "2025-06-18";
+/// 2026 stateless release-candidate MCP protocol version.
+pub const MCP_PROTOCOL_VERSION_RC: &str = "2026-07-28";
+
+/// Per-server policy for which MCP protocol era the client uses.
+///
+/// `Auto` (the default) probes the server and adapts — it tries the stateless
+/// RC path first and transparently falls back to the stateful handshake when a
+/// server demands it, so a single configuration speaks to legacy, current, and
+/// RC servers without operator action. The pinned variants skip negotiation
+/// when an operator knows a server's era (or to work around a server that
+/// mis-signals it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "auto"))]
+#[serde(rename_all = "snake_case")]
+pub enum McpProtocolMode {
+    /// Probe once, detect the server's era, adapt, and cache the verdict.
+    #[default]
+    Auto,
+    /// Pin to legacy `2025-03-26` stateful behavior (handshake + session id).
+    Legacy,
+    /// Pin to current `2025-06-18` stateful behavior (handshake + session id).
+    Stable,
+    /// Pin to the `2026-07-28` stateless release candidate (`_meta` per
+    /// request, routable headers, no handshake).
+    Rc,
+}
+
+impl McpProtocolMode {
+    /// Whether this is the default `Auto` policy. Used to keep the field out of
+    /// serialized config when it carries no information.
+    pub fn is_auto(&self) -> bool {
+        matches!(self, McpProtocolMode::Auto)
+    }
+
+    /// The protocol version string a *pinned* mode advertises. `Auto` returns
+    /// `None` because its version is decided by negotiation at runtime.
+    pub fn pinned_version(&self) -> Option<&'static str> {
+        match self {
+            McpProtocolMode::Auto => None,
+            McpProtocolMode::Legacy => Some(MCP_PROTOCOL_VERSION_LEGACY),
+            McpProtocolMode::Stable => Some(MCP_PROTOCOL_VERSION_STABLE),
+            McpProtocolMode::Rc => Some(MCP_PROTOCOL_VERSION_RC),
+        }
+    }
+
+    /// Whether a pinned mode requires the stateful `initialize` handshake.
+    /// `Auto` returns `None` (decided by negotiation).
+    pub fn pinned_stateful(&self) -> Option<bool> {
+        match self {
+            McpProtocolMode::Auto => None,
+            McpProtocolMode::Legacy | McpProtocolMode::Stable => Some(true),
+            McpProtocolMode::Rc => Some(false),
+        }
+    }
+}
+
+impl std::fmt::Display for McpProtocolMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            McpProtocolMode::Auto => write!(f, "auto"),
+            McpProtocolMode::Legacy => write!(f, "legacy"),
+            McpProtocolMode::Stable => write!(f, "stable"),
+            McpProtocolMode::Rc => write!(f, "rc"),
+        }
+    }
+}
+
+impl From<&str> for McpProtocolMode {
+    fn from(s: &str) -> Self {
+        match s {
+            "legacy" => McpProtocolMode::Legacy,
+            "stable" => McpProtocolMode::Stable,
+            "rc" => McpProtocolMode::Rc,
+            _ => McpProtocolMode::Auto,
+        }
+    }
+}
+
+/// Normalize a JSON-RPC error code across MCP eras.
+///
+/// The RC renumbered the legacy MCP-specific `-32002` ("invalid params"-class
+/// failure) onto the standard JSON-RPC `-32602` ("Invalid params"). Callers
+/// that branch on the code should normalize first so legacy and RC servers are
+/// handled identically.
+pub fn normalize_mcp_error_code(code: i64) -> i64 {
+    match code {
+        -32002 => -32602,
+        other => other,
+    }
+}
+
 impl std::fmt::Display for McpServerTransportType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -173,6 +287,9 @@ pub struct McpServer {
     /// Authentication mode for this MCP server.
     #[serde(default)]
     pub auth_mode: McpServerAuthMode,
+    /// Protocol-era adoption policy for the MCP client (`auto` negotiates).
+    #[serde(default, skip_serializing_if = "McpProtocolMode::is_auto")]
+    pub protocol_mode: McpProtocolMode,
     /// Stable provider id used for user-scoped OAuth connections.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth_provider_id: Option<String>,
@@ -228,6 +345,9 @@ pub struct ScopedMcpServer {
     /// Authentication mode used when executing tools from this scoped server.
     #[serde(default, skip_serializing_if = "McpServerAuthMode::is_none")]
     pub auth_mode: McpServerAuthMode,
+    /// Protocol-era adoption policy for the MCP client (`auto` negotiates).
+    #[serde(default, skip_serializing_if = "McpProtocolMode::is_auto")]
+    pub protocol_mode: McpProtocolMode,
     /// Provider id used to resolve a user-scoped bearer token.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oauth_provider_id: Option<String>,
@@ -246,6 +366,7 @@ impl Default for ScopedMcpServer {
             url: String::new(),
             headers: HashMap::new(),
             auth_mode: McpServerAuthMode::None,
+            protocol_mode: McpProtocolMode::Auto,
             oauth_provider_id: None,
             tool_discovery: true,
             command: None,
@@ -749,6 +870,129 @@ pub fn classify_mcp_execute_error(message: &str) -> McpExecuteError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn protocol_mode_defaults_to_auto() {
+        assert_eq!(McpProtocolMode::default(), McpProtocolMode::Auto);
+        assert!(McpProtocolMode::default().is_auto());
+    }
+
+    #[test]
+    fn protocol_mode_serde_round_trips_snake_case() {
+        for (mode, json) in [
+            (McpProtocolMode::Auto, "\"auto\""),
+            (McpProtocolMode::Legacy, "\"legacy\""),
+            (McpProtocolMode::Stable, "\"stable\""),
+            (McpProtocolMode::Rc, "\"rc\""),
+        ] {
+            assert_eq!(serde_json::to_string(&mode).unwrap(), json);
+            let back: McpProtocolMode = serde_json::from_str(json).unwrap();
+            assert_eq!(back, mode);
+        }
+    }
+
+    #[test]
+    fn protocol_mode_pinned_version_and_statefulness() {
+        assert_eq!(McpProtocolMode::Auto.pinned_version(), None);
+        assert_eq!(McpProtocolMode::Auto.pinned_stateful(), None);
+        assert_eq!(
+            McpProtocolMode::Legacy.pinned_version(),
+            Some(MCP_PROTOCOL_VERSION_LEGACY)
+        );
+        assert_eq!(McpProtocolMode::Legacy.pinned_stateful(), Some(true));
+        assert_eq!(
+            McpProtocolMode::Stable.pinned_version(),
+            Some(MCP_PROTOCOL_VERSION_STABLE)
+        );
+        assert_eq!(McpProtocolMode::Stable.pinned_stateful(), Some(true));
+        assert_eq!(
+            McpProtocolMode::Rc.pinned_version(),
+            Some(MCP_PROTOCOL_VERSION_RC)
+        );
+        assert_eq!(McpProtocolMode::Rc.pinned_stateful(), Some(false));
+    }
+
+    #[test]
+    fn scoped_mcp_server_omits_auto_protocol_mode_but_keeps_pinned() {
+        // Default (auto) is skipped on the wire so existing config is byte-identical.
+        let auto = ScopedMcpServer {
+            url: "https://example.com/mcp".to_string(),
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&auto).unwrap();
+        assert!(
+            json.get("protocol_mode").is_none(),
+            "auto protocol_mode must not serialize: {json}"
+        );
+
+        // A pinned mode is preserved.
+        let pinned = ScopedMcpServer {
+            url: "https://example.com/mcp".to_string(),
+            protocol_mode: McpProtocolMode::Legacy,
+            ..Default::default()
+        };
+        let json = serde_json::to_value(&pinned).unwrap();
+        assert_eq!(
+            json.get("protocol_mode").and_then(|v| v.as_str()),
+            Some("legacy")
+        );
+    }
+
+    #[test]
+    fn scoped_mcp_server_parses_protocol_mode_from_mcp_json_shape() {
+        // `.mcp.json`-style config can pin an era; absence means auto.
+        let with_mode: ScopedMcpServer = serde_json::from_value(serde_json::json!({
+            "type": "http",
+            "url": "https://example.com/mcp",
+            "protocol_mode": "rc"
+        }))
+        .unwrap();
+        assert_eq!(with_mode.protocol_mode, McpProtocolMode::Rc);
+
+        let without_mode: ScopedMcpServer = serde_json::from_value(serde_json::json!({
+            "type": "http",
+            "url": "https://example.com/mcp"
+        }))
+        .unwrap();
+        assert_eq!(without_mode.protocol_mode, McpProtocolMode::Auto);
+    }
+
+    #[test]
+    fn merge_scoped_mcp_servers_lets_later_layer_override_protocol_mode() {
+        // Session can pin an era over a harness/agent default — last-wins layering.
+        let mut base = ScopedMcpServers::default();
+        base.insert(
+            "docs".to_string(),
+            ScopedMcpServer {
+                url: "https://example.com/mcp".to_string(),
+                protocol_mode: McpProtocolMode::Auto,
+                ..Default::default()
+            },
+        );
+        let mut overlay = ScopedMcpServers::default();
+        overlay.insert(
+            "docs".to_string(),
+            ScopedMcpServer {
+                url: "https://example.com/mcp".to_string(),
+                protocol_mode: McpProtocolMode::Legacy,
+                ..Default::default()
+            },
+        );
+        let merged = merge_scoped_mcp_servers(&base, &overlay);
+        assert_eq!(
+            merged.get("docs").unwrap().protocol_mode,
+            McpProtocolMode::Legacy
+        );
+    }
+
+    #[test]
+    fn normalize_mcp_error_code_maps_legacy_to_rc() {
+        // RC renumbered -32002 onto the standard -32602; everything else passes through.
+        assert_eq!(normalize_mcp_error_code(-32002), -32602);
+        assert_eq!(normalize_mcp_error_code(-32602), -32602);
+        assert_eq!(normalize_mcp_error_code(-32601), -32601);
+        assert_eq!(normalize_mcp_error_code(0), 0);
+    }
 
     #[test]
     fn test_mcp_tool_name_simple() {

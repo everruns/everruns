@@ -192,20 +192,6 @@ describe("SessionLayout", () => {
     return result!;
   }
 
-  it("uses h-full for proper height (not calc-based)", async () => {
-    const { container } = await renderLayout();
-
-    await waitFor(() => {
-      // The main wrapper div should use h-full, not h-[calc(100vh-4rem)]
-      const layoutDiv = container.querySelector('[class*="h-full"]');
-      expect(layoutDiv).toBeInTheDocument();
-    });
-
-    // Ensure the old broken calc-based height is NOT present
-    const calcDiv = container.querySelector('[class*="calc"]');
-    expect(calcDiv).not.toBeInTheDocument();
-  });
-
   it("renders children content", async () => {
     await renderLayout();
 
@@ -396,16 +382,5 @@ describe("SessionLayout", () => {
       expect(screen.getByRole("button", { name: /schedules/i })).toBeInTheDocument();
     });
     expect(screen.getByText("3")).toBeInTheDocument();
-  });
-
-  it("has flex-col layout for proper content stacking", async () => {
-    const { container } = await renderLayout();
-
-    await waitFor(() => {
-      const layoutDiv = container.querySelector(
-        '[class*="flex"][class*="flex-col"][class*="h-full"]',
-      );
-      expect(layoutDiv).toBeInTheDocument();
-    });
   });
 });

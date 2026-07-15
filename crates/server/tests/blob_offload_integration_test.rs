@@ -109,6 +109,12 @@ async fn create_test_principal(
 }
 
 async fn create_test_session(backend: &StorageBackend) -> everruns_core::SessionId {
+    everruns_server::org_init::initialize_org_harnesses(backend, TEST_ORG_ID)
+        .await
+        .expect("initialize built-in harnesses");
+    let harness_id = everruns_server::org_init::generic_harness_id(backend, TEST_ORG_ID)
+        .await
+        .expect("generic harness id");
     let agent = backend
         .create_agent(
             TEST_ORG_ID,
@@ -122,6 +128,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_core::Session
                 description: None,
                 system_prompt: "Test".to_string(),
                 default_model_id: None,
+                harness_id,
                 tags: vec![],
                 initial_files: json!([]),
                 tools: json!([]),
@@ -161,6 +168,7 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_core::Session
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session")
@@ -353,8 +361,8 @@ async fn offloaded_file_update_writes_immutable_blob_revision_and_hash() {
     let blob = blob_store_under_test();
     assert_eq!(
         blob.get(&old_key).await.expect("old blob get").as_deref(),
-        Some(original_body.as_slice()),
-        "the previous revision must not be overwritten in place"
+        None,
+        "the previous revision should be deleted after the sidecar moves"
     );
     assert_eq!(
         blob.get(&new_key).await.expect("new blob get").as_deref(),
@@ -412,6 +420,10 @@ async fn offloaded_file_cas_matches_and_rejects() {
         .expect("present");
     assert_eq!(fetched.content.as_deref(), Some(original.as_slice()));
 
+    let (old_cas_key, _) = file_sidecar(&pool, workspace_id, "/cas.txt")
+        .await
+        .expect("sidecar exists before CAS");
+
     // Correct expected content applies the write.
     let new_body = b"second revision".to_vec();
     let applied = backend
@@ -432,10 +444,20 @@ async fn offloaded_file_cas_matches_and_rejects() {
         raw_file_content(&pool, workspace_id, "/cas.txt").await,
         None
     );
-    let (_, sha) = file_sidecar(&pool, workspace_id, "/cas.txt")
+    let (new_cas_key, sha) = file_sidecar(&pool, workspace_id, "/cas.txt")
         .await
         .expect("sidecar exists");
     assert_eq!(sha, content_sha256(&new_body));
+    assert_ne!(new_cas_key, old_cas_key);
+    let blob = blob_store_under_test();
+    assert_eq!(
+        blob.get(&old_cas_key)
+            .await
+            .expect("old CAS blob get")
+            .as_deref(),
+        None,
+        "CAS should delete the previous revision after the sidecar moves"
+    );
 
     backend.delete_session(TEST_ORG_ID, session_id).await.ok();
 }

@@ -5,7 +5,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use chrono::Utc;
-use everruns_config::env_string_any;
+use everruns_core::config::env_string_any;
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEvent, WorkflowEventStore,

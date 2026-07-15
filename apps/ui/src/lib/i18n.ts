@@ -12,6 +12,8 @@ const messages = {
     thinking: "thinking",
     iteration: "Iteration {value}",
     new_messages: "New messages",
+    conversation_turns: "Conversation turns",
+    jump_to_turn: "Jump to turn",
     no_messages_yet: "No messages yet",
     start_with_prompt: "Start with a prompt, screenshot, or slash command.",
     loading_older_messages: "Loading older messages...",
@@ -22,9 +24,12 @@ const messages = {
     type_message: "Type a message... (Enter to send)",
     attach_images: "Attach images (PNG, JPEG, GIF, WebP)",
     model: "Model",
+    recent: "Recent",
     reasoning: "Reasoning",
+    verbosity: "Verbosity",
     default: "Default",
     default_with_value: "Default ({value})",
+    reset_to_default: "Reset to default",
     cancel_current_turn: "Cancel current turn",
     uploading_images: "Uploading images...",
     running: "running",
@@ -190,11 +195,33 @@ const messages = {
     mount_path_trailing_slash: "Path must not end with a trailing slash",
     mount_path_duplicate: "Duplicate mount path '{value}'",
     mount_path_overlap: "Path '{value}' overlaps with '{other}'",
+    export_session: "Export session",
+    export_jsonl: "Export JSONL",
+    export_atif: "Export ATIF",
+    atif_export_title: "ATIF export",
+    atif_export_failed_title: "ATIF export failed",
+    atif_export_too_large: "This session is too large for ATIF export.",
+    atif_export_segmented_prompt:
+      "This session is too large for a single ATIF file. Download it in parts instead?",
+    atif_export_download_parts: "Download in parts",
+    atif_export_segmented_limit:
+      "ATIF export stopped at the {count}-part safety limit; the session is unexpectedly large.",
+    atif_parts_exported_one: "Exported {count} ATIF part",
+    atif_parts_exported_few: "Exported {count} ATIF parts",
+    atif_parts_exported_many: "Exported {count} ATIF parts",
+    atif_export_stopped_one: "ATIF export stopped after {count} part",
+    atif_export_stopped_few: "ATIF export stopped after {count} parts",
+    atif_export_stopped_many: "ATIF export stopped after {count} parts",
+    atif_images_omitted_one: "{count} image was omitted from the ATIF export",
+    atif_images_omitted_few: "{count} images were omitted from the ATIF export",
+    atif_images_omitted_many: "{count} images were omitted from the ATIF export",
   },
   uk: {
     thinking: "думаю",
     iteration: "Ітерація {value}",
     new_messages: "Нові повідомлення",
+    conversation_turns: "Ходи розмови",
+    jump_to_turn: "Перейти до ходу",
     no_messages_yet: "Повідомлень ще немає",
     start_with_prompt: "Почніть із запиту, скриншота або slash-команди.",
     loading_older_messages: "Завантажую старіші повідомлення...",
@@ -205,9 +232,12 @@ const messages = {
     type_message: "Введіть повідомлення... (Enter, щоб надіслати)",
     attach_images: "Додати зображення (PNG, JPEG, GIF, WebP)",
     model: "Модель",
+    recent: "Нещодавні",
     reasoning: "Міркування",
+    verbosity: "Деталізація",
     default: "За замовчуванням",
     default_with_value: "За замовчуванням ({value})",
+    reset_to_default: "Скинути до типового",
     cancel_current_turn: "Скасувати поточний хід",
     uploading_images: "Завантажую зображення...",
     running: "виконується",
@@ -375,6 +405,26 @@ const messages = {
     mount_path_trailing_slash: "Шлях не може закінчуватися символом '/'",
     mount_path_duplicate: "Повторюваний шлях монтування '{value}'",
     mount_path_overlap: "Шлях '{value}' перетинається з '{other}'",
+    export_session: "Експортувати сесію",
+    export_jsonl: "Експортувати JSONL",
+    export_atif: "Експортувати ATIF",
+    atif_export_title: "Експорт ATIF",
+    atif_export_failed_title: "Не вдалося експортувати ATIF",
+    atif_export_too_large: "Ця сесія завелика для експорту ATIF.",
+    atif_export_segmented_prompt:
+      "Ця сесія завелика для одного файлу ATIF. Завантажити її частинами?",
+    atif_export_download_parts: "Завантажити частинами",
+    atif_export_segmented_limit:
+      "Експорт ATIF зупинено на межі безпеки в {count} частин; сесія неочікувано велика.",
+    atif_parts_exported_one: "Експортовано {count} частину ATIF",
+    atif_parts_exported_few: "Експортовано {count} частини ATIF",
+    atif_parts_exported_many: "Експортовано {count} частин ATIF",
+    atif_export_stopped_one: "Експорт ATIF зупинено після {count} частини",
+    atif_export_stopped_few: "Експорт ATIF зупинено після {count} частин",
+    atif_export_stopped_many: "Експорт ATIF зупинено після {count} частин",
+    atif_images_omitted_one: "{count} зображення пропущено під час експорту ATIF",
+    atif_images_omitted_few: "{count} зображення пропущено під час експорту ATIF",
+    atif_images_omitted_many: "{count} зображень пропущено під час експорту ATIF",
   },
 } as const;
 
@@ -441,6 +491,65 @@ export function formatImageCount(locale: SupportedLocale, count: number): string
   }
 
   return formatMessage(locale, count === 1 ? "image_count_one" : "image_count_many", { count });
+}
+
+export function formatAtifImagesOmitted(locale: SupportedLocale, count: number): string {
+  if (locale === "uk") {
+    const form = getUkrainianPluralForm(count);
+    if (form === "one") {
+      return formatMessage(locale, "atif_images_omitted_one", { count });
+    }
+    if (form === "few") {
+      return formatMessage(locale, "atif_images_omitted_few", { count });
+    }
+    return formatMessage(locale, "atif_images_omitted_many", { count });
+  }
+
+  return formatMessage(
+    locale,
+    count === 1 ? "atif_images_omitted_one" : "atif_images_omitted_many",
+    {
+      count,
+    },
+  );
+}
+
+export function formatAtifPartsExported(locale: SupportedLocale, count: number): string {
+  if (locale === "uk") {
+    const form = getUkrainianPluralForm(count);
+    if (form === "one") {
+      return formatMessage(locale, "atif_parts_exported_one", { count });
+    }
+    if (form === "few") {
+      return formatMessage(locale, "atif_parts_exported_few", { count });
+    }
+    return formatMessage(locale, "atif_parts_exported_many", { count });
+  }
+
+  return formatMessage(
+    locale,
+    count === 1 ? "atif_parts_exported_one" : "atif_parts_exported_many",
+    { count },
+  );
+}
+
+export function formatAtifExportStopped(locale: SupportedLocale, count: number): string {
+  if (locale === "uk") {
+    const form = getUkrainianPluralForm(count);
+    if (form === "one") {
+      return formatMessage(locale, "atif_export_stopped_one", { count });
+    }
+    if (form === "few") {
+      return formatMessage(locale, "atif_export_stopped_few", { count });
+    }
+    return formatMessage(locale, "atif_export_stopped_many", { count });
+  }
+
+  return formatMessage(
+    locale,
+    count === 1 ? "atif_export_stopped_one" : "atif_export_stopped_many",
+    { count },
+  );
 }
 
 export function formatEditCount(locale: SupportedLocale, count: number): string {

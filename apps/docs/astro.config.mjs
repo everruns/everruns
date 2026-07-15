@@ -181,6 +181,10 @@ export default defineConfig({
                         { label: "Message Metadata", slug: "capabilities/message-metadata" },
                         { label: "Task Management", slug: "capabilities/task-management" },
                         { label: "Schedules", slug: "capabilities/session-schedules" },
+                        {
+                          label: "Auto-Continue After Usage Limit",
+                          slug: "capabilities/usage-limit-auto-continue",
+                        },
                         { label: "Sub Agents", slug: "capabilities/sub-agents" },
                         { label: "AGENTS.md", slug: "capabilities/agent-instructions" },
                         { label: "Agent Skills", slug: "capabilities/agent-skills" },

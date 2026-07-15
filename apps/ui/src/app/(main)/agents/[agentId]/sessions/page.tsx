@@ -1,14 +1,7 @@
 "use client";
 
 import { use, useState, useMemo } from "react";
-import {
-  useAgent,
-  useHarnesses,
-  useSessions,
-  useCreateSession,
-  useModels,
-  usePageTitle,
-} from "@/hooks";
+import { useAgent, useSessions, useCreateSession, useModels, usePageTitle } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ResourceNotFound } from "@/components/resource-not-found";
@@ -19,7 +12,6 @@ import { SessionCard } from "@/components/session/session-card";
 import { ArrowLeft, Plus, ChevronLeft, ChevronRight } from "lucide-react";
 import type { ModelWithProvider } from "@/lib/api/types";
 import { getDisplayName } from "@/lib/entity-lifecycle";
-import { useOrganization } from "@/hooks/use-organizations";
 
 const PAGE_SIZE = 20;
 
@@ -37,9 +29,6 @@ export default function SessionsListPage({ params }: { params: Promise<{ agentId
   });
   const { data: models } = useModels();
   const createSession = useCreateSession();
-  const { data: organization } = useOrganization();
-  const { data: harnesses } = useHarnesses();
-
   const sessions = sessionsResponse?.data ?? [];
   const totalSessions = sessionsResponse?.total ?? 0;
   const totalPages = Math.ceil(totalSessions / PAGE_SIZE);
@@ -51,11 +40,10 @@ export default function SessionsListPage({ params }: { params: Promise<{ agentId
   }, [models]);
 
   const handleNewSession = async () => {
-    const harnessId = organization?.default_harness_id || harnesses?.[0]?.id;
-    if (!harnessId) return;
     try {
+      // Agent-first: the server derives the harness from the agent.
       const session = await createSession.mutateAsync({
-        request: { harness_id: harnessId, agent_id: agentId },
+        request: { agent_id: agentId },
       });
       router.push(`/sessions/${session.id}`);
     } catch (error) {

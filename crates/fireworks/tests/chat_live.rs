@@ -3,7 +3,7 @@
 //! Exercises a real streamed chat completion through `FireworksChatDriver` plus
 //! live `/models` discovery and profile mapping. These are the live counterparts
 //! to the wiremock unit tests. (Live tool-calling is covered by the shared
-//! `everruns-llm-tests` matrix via the `FIREWORKS_KIMI` case.)
+//! `everruns-llm-tests` matrix via the `FIREWORKS_KIMI_K2` case.)
 //!
 //! Ignored by default (requires network + `FIREWORKS_API_KEY`); run manually:
 //!   `doppler run -- cargo test -p everruns-fireworks --test chat_live -- --ignored --nocapture`
@@ -14,7 +14,7 @@ use everruns_core::driver_registry::{
 use everruns_fireworks::FireworksChatDriver;
 use futures::StreamExt;
 
-const LIVE_MODEL: &str = "accounts/fireworks/models/kimi-k2p5";
+const LIVE_MODEL: &str = "accounts/fireworks/models/gpt-oss-120b";
 
 fn api_key() -> String {
     std::env::var("FIREWORKS_API_KEY")
@@ -27,9 +27,11 @@ async fn fireworks_chat_streams_response() {
     let driver = FireworksChatDriver::new(api_key());
 
     let config = LlmCallConfig {
+        speed: None,
+        verbosity: None,
         model: LIVE_MODEL.to_string(),
         temperature: Some(0.0),
-        // Generous budget: kimi-k2 is a reasoning model and spends tokens on
+        // Generous budget: reasoning models can spend tokens on
         // hidden reasoning before emitting the visible answer.
         max_tokens: Some(512),
         tools: vec![],
@@ -40,6 +42,7 @@ async fn fireworks_chat_streams_response() {
         prompt_cache: None,
         openrouter_routing: None,
         parallel_tool_calls: None,
+        volatile_suffix_len: 0,
     };
 
     let messages = vec![LlmMessage::text(
@@ -67,7 +70,7 @@ async fn fireworks_chat_streams_response() {
                     meta.finish_reason, meta.prompt_tokens, meta.completion_tokens,
                 );
             }
-            LlmStreamEvent::Error(e) => error = Some(e),
+            LlmStreamEvent::Error(e) => error = Some(e.to_string()),
             _ => {}
         }
     }

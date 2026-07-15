@@ -15,7 +15,9 @@ impl InMemoryDatabase {
         let id = Uuid::now_v7();
         let row = UserRow {
             id,
-            email: input.email,
+            // EVE-704: canonicalize email so identity is case-insensitive, matching
+            // the Postgres backend and the lower(email) unique index.
+            email: normalize_email(&input.email),
             name: input.name,
             avatar_url: input.avatar_url,
             roles: serde_json::to_value(&input.roles)?,
@@ -45,7 +47,8 @@ impl InMemoryDatabase {
         }
         let row = UserRow {
             id,
-            email: input.email,
+            // EVE-704: canonicalize email on the seeding path too.
+            email: normalize_email(&input.email),
             name: input.name,
             avatar_url: input.avatar_url,
             roles: serde_json::to_value(&input.roles)?,
@@ -62,6 +65,9 @@ impl InMemoryDatabase {
     }
 
     pub async fn get_user_by_email(&self, email: &str) -> Result<Option<UserRow>> {
+        // EVE-704: match on canonical email. Stored emails are already
+        // normalized on create, so compare against the normalized lookup key.
+        let email = normalize_email(email);
         Ok(self
             .users
             .read()
@@ -88,6 +94,22 @@ impl InMemoryDatabase {
                     && u.auth_provider_id.as_deref() == Some(provider_id)
             })
             .cloned())
+    }
+
+    pub async fn link_oauth_identity(
+        &self,
+        id: Uuid,
+        provider: &str,
+        provider_id: &str,
+    ) -> Result<Option<UserRow>> {
+        let mut users = self.users.write();
+        if let Some(user) = users.get_mut(&id) {
+            user.auth_provider = Some(provider.to_string());
+            user.auth_provider_id = Some(provider_id.to_string());
+            user.updated_at = Self::now();
+            return Ok(Some(user.clone()));
+        }
+        Ok(None)
     }
 
     pub async fn update_user(&self, id: Uuid, input: UpdateUser) -> Result<Option<UserRow>> {

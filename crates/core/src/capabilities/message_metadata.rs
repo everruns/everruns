@@ -205,6 +205,40 @@ impl ModelViewProvider for MessageMetadataModelViewProvider {
     }
 }
 
+/// Strip synthetic leading `[time <RFC3339 UTC>]` annotations from generated
+/// assistant text before it is persisted.
+///
+/// The model view prepends `[time …]` to messages so the model can reason about
+/// timing, with a system-prompt instruction never to emit it. Models
+/// nevertheless echo the annotation into their replies (EVE-710); the echoed
+/// text is then stored and shown to the user, breaking exact-output prompts.
+/// This removes only the exact synthetic pattern — one or more leading
+/// `[time <timestamp>]` segments, each followed by an optional single space —
+/// validating the bracket contents as a real RFC3339 timestamp so legitimate
+/// user-authored text like `[time to go]` is left untouched. Only leading
+/// occurrences are removed; a bracketed timestamp later in the text is treated
+/// as authored content and preserved.
+pub fn strip_leading_timestamp_annotations(text: &str) -> String {
+    let mut rest = text;
+    while let Some(after) = strip_one_timestamp_annotation(rest) {
+        rest = after;
+    }
+    rest.to_string()
+}
+
+/// Strip a single leading `[time <rfc3339>]` (plus one optional following space)
+/// from `text`, returning the remainder when it matches the synthetic format.
+fn strip_one_timestamp_annotation(text: &str) -> Option<&str> {
+    const PREFIX: &str = "[time ";
+    let rest = text.strip_prefix(PREFIX)?;
+    let close = rest.find(']')?;
+    // Only strip when the bracket holds a real RFC3339 timestamp — the exact
+    // synthetic format produced by `MessageMetadataField::Timestamp::render`.
+    chrono::DateTime::parse_from_rfc3339(&rest[..close]).ok()?;
+    let after = &rest[close + 1..];
+    Some(after.strip_prefix(' ').unwrap_or(after))
+}
+
 /// Render the combined metadata annotation for a message, e.g.
 /// `[time 2026-06-11T09:15:42Z]`. Returns `None` when no field yields a value.
 pub fn render_annotation(msg: &Message, fields: &[MessageMetadataField]) -> Option<String> {
@@ -259,15 +293,7 @@ mod tests {
         render_annotation(msg, &[MessageMetadataField::Timestamp]).unwrap()
     }
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = MessageMetadataCapability;
-        assert_eq!(cap.id(), "message_metadata");
-        assert_eq!(cap.name(), "Message Metadata");
-        assert_eq!(cap.category(), Some("Core"));
-        assert!(cap.system_prompt_addition().is_some());
-        assert!(cap.tools().is_empty());
-    }
+    // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_capability_in_registry() {
@@ -354,6 +380,73 @@ mod tests {
         let text = out[0].text().unwrap();
         assert!(text.starts_with("[time 2"), "got: {text}");
         assert!(text.contains("Z] hello"), "got: {text}");
+    }
+
+    // EVE-710: models echo the synthetic `[time …]` prefix into their replies;
+    // it must be stripped before the assistant text is persisted.
+    #[test]
+    fn strip_removes_single_leading_annotation() {
+        assert_eq!(
+            strip_leading_timestamp_annotations("[time 2026-07-10T05:38:28Z] cobalt"),
+            "cobalt"
+        );
+    }
+
+    // EVE-710: duplicated prefixes (observed in the wild) are all removed.
+    #[test]
+    fn strip_removes_repeated_leading_annotations() {
+        assert_eq!(
+            strip_leading_timestamp_annotations(
+                "[time 2026-07-10T05:38:21Z] [time 2026-07-10T05:38:21Z] Understood"
+            ),
+            "Understood"
+        );
+    }
+
+    // EVE-710: an annotation with no following space still strips cleanly.
+    #[test]
+    fn strip_handles_annotation_without_trailing_space() {
+        assert_eq!(
+            strip_leading_timestamp_annotations("[time 2026-07-10T05:38:28Z]hi"),
+            "hi"
+        );
+    }
+
+    // EVE-710: legitimate user-authored bracket text that is not a timestamp is
+    // preserved.
+    #[test]
+    fn strip_preserves_non_timestamp_bracket_text() {
+        assert_eq!(
+            strip_leading_timestamp_annotations("[time to go] home"),
+            "[time to go] home"
+        );
+        assert_eq!(
+            strip_leading_timestamp_annotations("hello world"),
+            "hello world"
+        );
+    }
+
+    // EVE-710: a real timestamp appearing later in the text is authored content,
+    // not the synthetic leading prefix, and is kept.
+    #[test]
+    fn strip_only_touches_leading_annotation() {
+        assert_eq!(
+            strip_leading_timestamp_annotations("see [time 2026-07-10T05:38:28Z]"),
+            "see [time 2026-07-10T05:38:28Z]"
+        );
+    }
+
+    // EVE-710: stripping is the inverse of the model-view annotation, so an
+    // agent reply that merely echoed the injected prefix round-trips to the
+    // author's original text.
+    #[test]
+    fn strip_inverts_render_annotation() {
+        let agent = Message::assistant("the answer");
+        let annotated = format!("{} the answer", time_annotation(&agent));
+        assert_eq!(
+            strip_leading_timestamp_annotations(&annotated),
+            "the answer"
+        );
     }
 
     #[test]

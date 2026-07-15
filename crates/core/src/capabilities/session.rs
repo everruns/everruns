@@ -282,6 +282,7 @@ mod tests {
             owner: None,
             effective_owner: None,
             title: Some("Old title".to_string()),
+            goal: None,
             locale: None,
             preview: None,
             output_preview: None,
@@ -350,6 +351,8 @@ mod tests {
             description: Some("desc".to_string()),
             system_prompt: "prompt".to_string(),
             default_model_id: None,
+
+            harness_id: crate::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,

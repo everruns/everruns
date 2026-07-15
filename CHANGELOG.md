@@ -9,6 +9,329 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.17.9] - 2026-07-14
+
+### Highlights
+
+- **Participant rail & session addressing** — Sessions now show a live participant rail with join/leave lines and explicit addressing, making multi-agent conversations easier to follow ([#2718](https://github.com/everruns/everruns/pull/2718)).
+- **Cross-session Work view** — A new Work view groups tasks across sessions by their delegation tree, so you can see delegated work in one place ([#2715](https://github.com/everruns/everruns/pull/2715)).
+- **Expanded model catalog** — Surfaced Sonnet 5 and recent Gemini models, defaulted to GPT-5.6 Sol, and seeded Claude Opus 4.8 ([#2712](https://github.com/everruns/everruns/pull/2712), [#2713](https://github.com/everruns/everruns/pull/2713)).
+- **Per-message verbosity control** — GPT-5.x sessions can now set output verbosity per message ([#2717](https://github.com/everruns/everruns/pull/2717)).
+- **Resilient usage limits** — Sessions auto-continue after LLM usage-limit errors instead of stalling ([#2714](https://github.com/everruns/everruns/pull/2714)).
+
+### What's Changed
+
+- feat(agents): unify structured delegation results ([#2722](https://github.com/everruns/everruns/pull/2722)) by [@chaliy](https://github.com/chaliy)
+- feat(agents): agent_triggers data model + storage (EVE-757 A) ([#2721](https://github.com/everruns/everruns/pull/2721)) by [@chaliy](https://github.com/chaliy)
+- fix(local): scope schedule claims to routable sessions ([#2720](https://github.com/everruns/everruns/pull/2720)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): participant rail, join/leave lines, and addressing (EVE-759) ([#2718](https://github.com/everruns/everruns/pull/2718)) by [@chaliy](https://github.com/chaliy)
+- feat(models): add per-message verbosity control for GPT-5.x ([#2717](https://github.com/everruns/everruns/pull/2717)) by [@chaliy](https://github.com/chaliy)
+- fix(examples): add harness_id to weekend-concierge Agent initializer ([#2716](https://github.com/everruns/everruns/pull/2716)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): cross-session Work view grouping tasks by delegation tree ([#2715](https://github.com/everruns/everruns/pull/2715)) by [@chaliy](https://github.com/chaliy)
+- feat(core): auto-continue after LLM usage-limit errors ([#2714](https://github.com/everruns/everruns/pull/2714)) by [@chaliy](https://github.com/chaliy)
+- chore(models): default to GPT-5.6 Sol and seed Claude Opus 4.8 ([#2713](https://github.com/everruns/everruns/pull/2713)) by [@chaliy](https://github.com/chaliy)
+- feat(models): surface Sonnet 5 and recent Gemini models in catalog ([#2712](https://github.com/everruns/everruns/pull/2712)) by [@chaliy](https://github.com/chaliy)
+- fix(files): support glob path filters in grep ([#2707](https://github.com/everruns/everruns/pull/2707)) by [@chaliy](https://github.com/chaliy)
+- fix(tools): preserve requested output verbosity ([#2705](https://github.com/everruns/everruns/pull/2705)) by [@chaliy](https://github.com/chaliy)
+
+## [0.17.8] - 2026-07-11
+
+### Highlights
+
+- **Embedded schedule execution** — `everruns-local` now runs due one-shot and recurring session schedules through the host's live `LocalSessionRunner`, with atomic claims, stale recovery, retryable delivery, timezone-aware advancement, and graceful lifecycle. Embedded hosts that enable scheduled monitors must start and retain `LocalScheduleRunner` ([#2706](https://github.com/everruns/everruns/pull/2706)).
+
+### What's Changed
+
+- feat(local): execute due session schedules ([#2706](https://github.com/everruns/everruns/pull/2706)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): harden audit client IP extraction ([#2704](https://github.com/everruns/everruns/pull/2704)) by [@chaliy](https://github.com/chaliy)
+- fix(llm): retry structured in-band provider errors ([#2702](https://github.com/everruns/everruns/pull/2702)) by [@chaliy](https://github.com/chaliy)
+- test(local): stabilize spawn_agent runtime proof ([#2703](https://github.com/everruns/everruns/pull/2703)) by [@chaliy](https://github.com/chaliy)
+
+## [0.17.7] - 2026-07-11
+
+### Highlights
+
+- **Real-time session tasks** — Task state transitions now wake a running session mid-turn on the durable path, deliver every transition, and support per-task webhook configs and structured task results over A2A + MCP (EVE-681) ([#2699](https://github.com/everruns/everruns/pull/2699), [#2691](https://github.com/everruns/everruns/pull/2691), [#2690](https://github.com/everruns/everruns/pull/2690), [#2681](https://github.com/everruns/everruns/pull/2681), [#2674](https://github.com/everruns/everruns/pull/2674)).
+- **Scoped agent & user memory** — Added scoped memory for agents and users.
+- **Composer model/effort menu** — Combined model and effort selection into one composer menu with recent models ([#2663](https://github.com/everruns/everruns/pull/2663)).
+- **Speed selector** — New LLM speed selector mapped to OpenAI's `service_tier` ([#2669](https://github.com/everruns/everruns/pull/2669)).
+- **Detached & handoff sessions** — Spawn detached peer sessions and invite handoff agents ([#2684](https://github.com/everruns/everruns/pull/2684), [#2655](https://github.com/everruns/everruns/pull/2655)).
+
+### What's Changed
+
+- feat(session-tasks): deliver task wakes mid-turn on the durable path (EVE-681) ([#2699](https://github.com/everruns/everruns/pull/2699)) by [@chaliy](https://github.com/chaliy)
+- fix(test): stop spawn_agent llmsim proof double-spawning a subagent ([#2700](https://github.com/everruns/everruns/pull/2700)) by [@chaliy](https://github.com/chaliy)
+- feat(session-tasks): surface root_session_id on task reads (EVE-681) ([#2690](https://github.com/everruns/everruns/pull/2690)) by [@chaliy](https://github.com/chaliy)
+- docs(api): use scanner-safe example for push-config secret ([#2696](https://github.com/everruns/everruns/pull/2696)) by [@chaliy](https://github.com/chaliy)
+- docs(mcp): reconcile tasks field names by [@chaliy](https://github.com/chaliy)
+- fix(duckduckgo): clarify instant-answer scope, add empty-result caveat ([#2689](https://github.com/everruns/everruns/pull/2689)) by [@chaliy](https://github.com/chaliy)
+- fix(core): make activate_skill missing-name error self-repairing ([#2694](https://github.com/everruns/everruns/pull/2694)) by [@chaliy](https://github.com/chaliy)
+- chore(process-issues): doubt issue text and reproduce before fixing ([#2695](https://github.com/everruns/everruns/pull/2695)) by [@chaliy](https://github.com/chaliy)
+- feat(export): export image content and link subagent trajectories in ATIF ([#2692](https://github.com/everruns/everruns/pull/2692)) by [@chaliy](https://github.com/chaliy)
+- test(delegation): in-process spawn_agent runtime proof via llmsim ([#2687](https://github.com/everruns/everruns/pull/2687)) by [@chaliy](https://github.com/chaliy)
+- feat(sessions): add detached peer session spawning ([#2684](https://github.com/everruns/everruns/pull/2684)) by [@chaliy](https://github.com/chaliy)
+- feat(runtime): mid-turn task wake delivery — EVE-681 (part A) ([#2691](https://github.com/everruns/everruns/pull/2691)) by [@chaliy](https://github.com/chaliy)
+- fix(durable): make workflow start idempotent ([#2688](https://github.com/everruns/everruns/pull/2688)) by [@chaliy](https://github.com/chaliy)
+- feat(core): embeddable in-process task transition observer (EVE-729) ([#2686](https://github.com/everruns/everruns/pull/2686)) by [@chaliy](https://github.com/chaliy)
+- test(cli): wait for harness seed before agent e2e ([#2685](https://github.com/everruns/everruns/pull/2685)) by [@chaliy](https://github.com/chaliy)
+- fix(storage): bound message history reads ([#2682](https://github.com/everruns/everruns/pull/2682)) by [@chaliy](https://github.com/chaliy)
+- feat(api): surface structured task result via A2A + MCP ([#2681](https://github.com/everruns/everruns/pull/2681)) by [@chaliy](https://github.com/chaliy)
+- fix(reporting): optimize fact_session projection for large histories ([#2680](https://github.com/everruns/everruns/pull/2680)) by [@chaliy](https://github.com/chaliy)
+- test(memory): expect scoped memory in workflow fs test ([#2679](https://github.com/everruns/everruns/pull/2679)) by [@chaliy](https://github.com/chaliy)
+- feat(cli): typed --harness flag on agents create/update (EVE-693) by [@chaliy](https://github.com/chaliy)
+- feat(memory): add scoped agent and user memory by [@chaliy](https://github.com/chaliy)
+- feat(session-tasks): per-task webhook configs + all-transition delivery ([#2674](https://github.com/everruns/everruns/pull/2674)) by [@chaliy](https://github.com/chaliy)
+- test(catalog): refresh agent MCP and app cases ([#2677](https://github.com/everruns/everruns/pull/2677)) by [@chaliy](https://github.com/chaliy)
+- test(sessions): refresh API contract cases ([#2676](https://github.com/everruns/everruns/pull/2676)) by [@chaliy](https://github.com/chaliy)
+- fix(fs): present persisted output paths via file store ([#2673](https://github.com/everruns/everruns/pull/2673)) by [@chaliy](https://github.com/chaliy)
+- fix(signup): show inline password-policy error instead of native block ([#2672](https://github.com/everruns/everruns/pull/2672)) by [@chaliy](https://github.com/chaliy)
+- fix(subagents): rename interim tool to report_task_progress ([#2671](https://github.com/everruns/everruns/pull/2671)) by [@chaliy](https://github.com/chaliy)
+- feat(llm): add speed selector mapped to OpenAI service_tier ([#2669](https://github.com/everruns/everruns/pull/2669)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): return fresh user name after profile updates ([#2668](https://github.com/everruns/everruns/pull/2668)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): combined model/effort composer menu with recent models ([#2663](https://github.com/everruns/everruns/pull/2663)) by [@chaliy](https://github.com/chaliy)
+- fix(fs): preserve primary mount path identity ([#2666](https://github.com/everruns/everruns/pull/2666)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp-ui): edit MCP server name, description, and URL ([#2670](https://github.com/everruns/everruns/pull/2670)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): honor GitHub-reported email_verified in OAuth ([#2656](https://github.com/everruns/everruns/pull/2656)) by [@chaliy](https://github.com/chaliy)
+- fix(core): strip echoed [time] annotations from assistant replies ([#2657](https://github.com/everruns/everruns/pull/2657)) by [@chaliy](https://github.com/chaliy)
+- fix(members-ui): hide owner-only controls from org admins, show errors ([#2667](https://github.com/everruns/everruns/pull/2667)) by [@chaliy](https://github.com/chaliy)
+- docs(skills): require PR template structure by [@chaliy](https://github.com/chaliy)
+- fix(test-cases): align TC010 disabled-chat copy with Platform Chat rebrand ([#2658](https://github.com/everruns/everruns/pull/2658)) by [@chaliy](https://github.com/chaliy)
+- chore(policy): allow yolop attribution by [@chaliy](https://github.com/chaliy)
+- fix(auth): normalize user email to case-insensitive identity ([#2661](https://github.com/everruns/everruns/pull/2661)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): derive JWT platform roles from database ([#2659](https://github.com/everruns/everruns/pull/2659)) by [@chaliy](https://github.com/chaliy)
+- docs(skills): clarify issue processing workflow by [@chaliy](https://github.com/chaliy)
+- feat(sessions): invite handoff agents ([#2655](https://github.com/everruns/everruns/pull/2655)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): preserve invite return_to through signup ([#2654](https://github.com/everruns/everruns/pull/2654)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): derive rate-limit client IP from trusted proxy hops, not leftmost XFF ([#2652](https://github.com/everruns/everruns/pull/2652)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): reject unsupported personal access token scopes at creation ([#2651](https://github.com/everruns/everruns/pull/2651)) by [@chaliy](https://github.com/chaliy)
+- fix(auth-ui): refetch current user after email verification ([#2653](https://github.com/everruns/everruns/pull/2653)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): settle session to idle when a turn is cancelled ([#2650](https://github.com/everruns/everruns/pull/2650)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): reject harnesses requiring unavailable capabilities ([#2649](https://github.com/everruns/everruns/pull/2649)) by [@chaliy](https://github.com/chaliy)
+- chore(skills): remove agent-browser skill ([#2648](https://github.com/everruns/everruns/pull/2648)) by [@chaliy](https://github.com/chaliy)
+- chore(cursor): remove cloud agent environment config ([#2642](https://github.com/everruns/everruns/pull/2642)) by [@chaliy](https://github.com/chaliy)
+
+## [0.17.6] - 2026-07-10
+
+### Highlights
+
+- **ATIF session/eval export** — Export sessions and eval datasets to ATIF, segmented for large sessions with image refs, size guards, and CLI (`--format atif`) support ([#2591](https://github.com/everruns/everruns/pull/2591), [#2609](https://github.com/everruns/everruns/pull/2609), [#2610](https://github.com/everruns/everruns/pull/2610), [#2619](https://github.com/everruns/everruns/pull/2619), [#2626](https://github.com/everruns/everruns/pull/2626), [#2627](https://github.com/everruns/everruns/pull/2627), [#2596](https://github.com/everruns/everruns/pull/2596)).
+- **New model profiles** — Added GPT-5.6 Sol, Terra, and Luna ([#2631](https://github.com/everruns/everruns/pull/2631)).
+- **Streaming reliability** — LLM streaming responses now reconnect automatically on transport failure ([#2594](https://github.com/everruns/everruns/pull/2594)).
+- **Auth fixes** — Closed reachability dead-ends across the auth flow, added OAuth password-reset links, and improved the signup path ([#2606](https://github.com/everruns/everruns/pull/2606), [#2603](https://github.com/everruns/everruns/pull/2603), [#2592](https://github.com/everruns/everruns/pull/2592)).
+
+### What's Changed
+
+- feat(email): add logo to branded template by [@chaliy](https://github.com/chaliy)
+- feat(sessions): record user participant provenance ([#2639](https://github.com/everruns/everruns/pull/2639)) by [@chaliy](https://github.com/chaliy)
+- perf(sessions): add org created-at index (EVE-697) by [@chaliy](https://github.com/chaliy)
+- perf(sessions): eliminate list N+1 queries (EVE-695) ([#2637](https://github.com/everruns/everruns/pull/2637)) by [@chaliy](https://github.com/chaliy)
+- fix(reporting): bound event projection repair (EVE-696) by [@chaliy](https://github.com/chaliy)
+- chore: deep maintenance — refresh UI deps, fix specs drift ([#2617](https://github.com/everruns/everruns/pull/2617)) by [@chaliy](https://github.com/chaliy)
+- feat(models): add GPT-5.6 Sol, Terra, and Luna profiles ([#2631](https://github.com/everruns/everruns/pull/2631)) by [@chaliy](https://github.com/chaliy)
+- feat(sessions): route addressed participant turns ([#2634](https://github.com/everruns/everruns/pull/2634)) by [@chaliy](https://github.com/chaliy)
+- perf(ui): reduce Settings prefetches (EVE-694) ([#2635](https://github.com/everruns/everruns/pull/2635)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): gate default-org auto-join behind opt-in flag ([#2632](https://github.com/everruns/everruns/pull/2632)) by [@chaliy](https://github.com/chaliy)
+- fix(openapi): add sdk model metadata ([#2633](https://github.com/everruns/everruns/pull/2633)) by [@chaliy](https://github.com/chaliy)
+- feat(sessions): add participant API by [@chaliy](https://github.com/chaliy)
+- feat(sessions): agent-first session creation (EVE-686 B–F) by [@chaliy](https://github.com/chaliy)
+- feat(ui): segmented ATIF export for large sessions ([#2627](https://github.com/everruns/everruns/pull/2627)) by [@chaliy](https://github.com/chaliy)
+- feat(sessions): add participant model ([#2629](https://github.com/everruns/everruns/pull/2629)) by [@chaliy](https://github.com/chaliy)
+- feat(export): segmented ATIF export for large sessions ([#2626](https://github.com/everruns/everruns/pull/2626)) by [@chaliy](https://github.com/chaliy)
+- test(subagents): cover nested reaper orphan handling ([#2625](https://github.com/everruns/everruns/pull/2625)) by [@chaliy](https://github.com/chaliy)
+- feat(subagents): cap root task fanout ([#2624](https://github.com/everruns/everruns/pull/2624)) by [@chaliy](https://github.com/chaliy)
+- feat(budgets): share root session budgets with subagents ([#2623](https://github.com/everruns/everruns/pull/2623)) by [@chaliy](https://github.com/chaliy)
+- test(auth): manual reachability cases for the auth state machine ([#2622](https://github.com/everruns/everruns/pull/2622)) by [@chaliy](https://github.com/chaliy)
+- feat(subagents): enforce governed nesting depth ([#2621](https://github.com/everruns/everruns/pull/2621)) by [@chaliy](https://github.com/chaliy)
+- feat(sessions): denormalize root_session_id for delegation trees ([#2620](https://github.com/everruns/everruns/pull/2620)) by [@chaliy](https://github.com/chaliy)
+- feat(agents): persist agent harness ownership ([#2618](https://github.com/everruns/everruns/pull/2618)) by [@chaliy](https://github.com/chaliy)
+- feat(cli): add --format atif to sessions export ([#2619](https://github.com/everruns/everruns/pull/2619)) by [@chaliy](https://github.com/chaliy)
+- chore(specs): add auth flow-reachability state diagram ([#2616](https://github.com/everruns/everruns/pull/2616)) by [@chaliy](https://github.com/chaliy)
+- feat(core): add subagent progress schema by [@chaliy](https://github.com/chaliy)
+- chore(ui): typecheck on the native TypeScript 7 compiler ([#2612](https://github.com/everruns/everruns/pull/2612)) by [@chaliy](https://github.com/chaliy)
+- feat(subagents): report schema-bound task results by [@chaliy](https://github.com/chaliy)
+- fix(runtime): default to runtime-safe capabilities by [@chaliy](https://github.com/chaliy)
+- feat(export): ATIF export image refs and size guard ([#2610](https://github.com/everruns/everruns/pull/2610)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): retire legacy delegation tools by [@chaliy](https://github.com/chaliy)
+- feat(ui): ATIF session export with limit alerts ([#2609](https://github.com/everruns/everruns/pull/2609)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): dispatch spawn_agent targets by [@chaliy](https://github.com/chaliy)
+- fix(auth): close reachability dead-ends across the auth flow ([#2606](https://github.com/everruns/everruns/pull/2606)) by [@chaliy](https://github.com/chaliy)
+- feat(agent-handoff): expose spawn_agent target by [@chaliy](https://github.com/chaliy)
+- chore: standardize PR descriptions on functional change + before/after ([#2605](https://github.com/everruns/everruns/pull/2605)) by [@chaliy](https://github.com/chaliy)
+- feat(subagents): expose spawn_agent subagent target by [@chaliy](https://github.com/chaliy)
+- fix(auth): send reset links for oauth accounts ([#2603](https://github.com/everruns/everruns/pull/2603)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): extend live-turn resilience to the thinking matrix ([#2602](https://github.com/everruns/everruns/pull/2602)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): make live agent-run matrix resilient to transient flakes ([#2601](https://github.com/everruns/everruns/pull/2601)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): retry live tool-call case to absorb model non-determinism ([#2600](https://github.com/everruns/everruns/pull/2600)) by [@chaliy](https://github.com/chaliy)
+- feat(handoff): give agent handoffs a dedicated task kind ([#2599](https://github.com/everruns/everruns/pull/2599)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): repin Fireworks live case to served Kimi K2 model ([#2598](https://github.com/everruns/everruns/pull/2598)) by [@chaliy](https://github.com/chaliy)
+- feat(evals): add ATIF dataset export and case import ([#2596](https://github.com/everruns/everruns/pull/2596)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): repin Fireworks live case to llama-v3p3-70b ([#2597](https://github.com/everruns/everruns/pull/2597)) by [@chaliy](https://github.com/chaliy)
+- fix(egress): keep host transports outside runtime policy ([#2595](https://github.com/everruns/everruns/pull/2595)) by [@chaliy](https://github.com/chaliy)
+- feat(drivers): reconnect streaming LLM responses on transport failure ([#2594](https://github.com/everruns/everruns/pull/2594)) by [@chaliy](https://github.com/chaliy)
+- feat(export): add ATIF session export ([#2591](https://github.com/everruns/everruns/pull/2591)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): signup path from password screen + prefill + copy space ([#2592](https://github.com/everruns/everruns/pull/2592)) by [@chaliy](https://github.com/chaliy)
+- test(llm-tests): revert "skip live matrix on transient transport errors" ([#2556](https://github.com/everruns/everruns/pull/2556)) by [@chaliy](https://github.com/chaliy)
+
+## [0.17.5] - 2026-07-08
+
+### Highlights
+
+- **Public Chat** — Turn an App into a standalone, branded public-facing chat site behind a feature flag, with anonymous or Google sign-in and Turnstile bot protection ([#2400](https://github.com/everruns/everruns/pull/2400)).
+- **Redesigned sign-up & login** — Explicit signup path with an email-confirmation gate, unified auth entry, and clearer credential-failure recovery ([#2574](https://github.com/everruns/everruns/pull/2574), [#2572](https://github.com/everruns/everruns/pull/2572), [#2571](https://github.com/everruns/everruns/pull/2571), [#2573](https://github.com/everruns/everruns/pull/2573), [#2570](https://github.com/everruns/everruns/pull/2570)).
+- **Eval run share links** — Publish read-only, revocable share links for eval runs ([#2565](https://github.com/everruns/everruns/pull/2565)).
+- **Background subagents** — `spawn_subagent` now runs in the background by default, waking the parent on completion ([#2576](https://github.com/everruns/everruns/pull/2576)).
+- **Claude Sonnet 5 model support** ([#2583](https://github.com/everruns/everruns/pull/2583)).
+
+### What's Changed
+
+- feat(runtime): add multi-root host workspace mounts by [@chaliy](https://github.com/chaliy)
+- feat(auth): link OAuth identity to existing account by verified email ([#2570](https://github.com/everruns/everruns/pull/2570)) by [@chaliy](https://github.com/chaliy)
+- feat(evals): read-only share links for eval runs ([#2565](https://github.com/everruns/everruns/pull/2565)) by [@chaliy](https://github.com/chaliy)
+- fix(server): map MCP/plugin validation errors to 400 ([#2534](https://github.com/everruns/everruns/pull/2534)) by [@chaliy](https://github.com/chaliy)
+- feat(public-chat): isolated public chat app behind feature flag ([#2400](https://github.com/everruns/everruns/pull/2400)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): unified auth entry and onboarding arc continuity ([#2571](https://github.com/everruns/everruns/pull/2571)) by [@chaliy](https://github.com/chaliy)
+- feat(auth): abuse limits, password cap, logout revoke, oauth UX ([#2572](https://github.com/everruns/everruns/pull/2572)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): offer password reset from login credential-failure alert ([#2573](https://github.com/everruns/everruns/pull/2573)) by [@chaliy](https://github.com/chaliy)
+- feat(auth): explicit signup path with email-confirm gate ([#2574](https://github.com/everruns/everruns/pull/2574)) by [@chaliy](https://github.com/chaliy)
+- feat(subagents): background spawn_subagent with foreground opt-in ([#2576](https://github.com/everruns/everruns/pull/2576)) by [@chaliy](https://github.com/chaliy)
+- feat(models): add Claude Sonnet 5 model profile ([#2583](https://github.com/everruns/everruns/pull/2583)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): require verified email before auto-linking OAuth identity ([#2575](https://github.com/everruns/everruns/pull/2575)) by [@chaliy](https://github.com/chaliy)
+- fix(budgets): meter cached prompt tokens ([#2579](https://github.com/everruns/everruns/pull/2579)) by [@chaliy](https://github.com/chaliy)
+- fix(evals): bound oversized run case loading ([#2581](https://github.com/everruns/everruns/pull/2581)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): rate limit session forks ([#2580](https://github.com/everruns/everruns/pull/2580)) by [@chaliy](https://github.com/chaliy)
+- fix(guardrails): buffer post-output guarded deltas ([#2578](https://github.com/everruns/everruns/pull/2578)) by [@chaliy](https://github.com/chaliy)
+- fix(apps): harden schedule channel limits ([#2582](https://github.com/everruns/everruns/pull/2582)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): reject forged parent links ([#2577](https://github.com/everruns/everruns/pull/2577)) by [@chaliy](https://github.com/chaliy)
+- feat(bashkit): egress-routed outbound HTTP behind enable_http config ([#2588](https://github.com/everruns/everruns/pull/2588)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump rust 1.96.0 to 1.96.1-slim-bookworm in /docker ([#2586](https://github.com/everruns/everruns/pull/2586)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump rust 1.96.0-slim to 1.96.1-slim in /crates/worker ([#2585](https://github.com/everruns/everruns/pull/2585)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump rust 1.96.0-slim to 1.96.1-slim in /crates/server ([#2584](https://github.com/everruns/everruns/pull/2584)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump cargo group (ed25519-dalek 3, mlua 0.12, aws-smithy-types 1.6) ([#2589](https://github.com/everruns/everruns/pull/2589)) by [@dependabot](https://github.com/apps/dependabot)
+
+## [0.17.4] - 2026-07-05
+
+### Highlights
+
+- **Streamlined Onboarding** — Durable onboarding-complete + resume state, sidebar-less setup flow ([#2560](https://github.com/everruns/everruns/pull/2560)).
+- **Eval Run Comparison** — Compare eval runs side-by-side with regression highlighting ([#2531](https://github.com/everruns/everruns/pull/2531)).
+
+### What's Changed
+
+- test(llm): update Fireworks live model by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump fetchkit to 0.4.1 by [@chaliy](https://github.com/chaliy)
+- feat(evals): add platform-capability Mira eval study ([#2564](https://github.com/everruns/everruns/pull/2564)) by [@chaliy](https://github.com/chaliy)
+- test(ui): drop CSS-class change-detector tests ([#2563](https://github.com/everruns/everruns/pull/2563)) by [@chaliy](https://github.com/chaliy)
+- test(server): drop trivial DTO serde round-trips in api ([#2562](https://github.com/everruns/everruns/pull/2562)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): cache-friendly Facts for dynamic context ([#2557](https://github.com/everruns/everruns/pull/2557)) by [@chaliy](https://github.com/chaliy)
+- feat(onboarding): durable onboarding-complete + resume, sidebar-less setup ([#2560](https://github.com/everruns/everruns/pull/2560)) by [@chaliy](https://github.com/chaliy)
+- chore(specs): index signup-experience-redesign-brief in README ([#2561](https://github.com/everruns/everruns/pull/2561)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): cross-run eval comparison with regression highlighting ([#2531](https://github.com/everruns/everruns/pull/2531)) by [@chaliy](https://github.com/chaliy)
+- test(core): replace per-model profile mirrors with invariant ([#2558](https://github.com/everruns/everruns/pull/2558)) by [@chaliy](https://github.com/chaliy)
+- test(core): prune capability metadata mirrors across modules ([#2551](https://github.com/everruns/everruns/pull/2551)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump the cargo group across 1 directory with 10 updates ([#2554](https://github.com/everruns/everruns/pull/2554)) by [@dependabot](https://github.com/apps/dependabot)
+- test(llm-tests): skip live matrix on transient transport errors ([#2550](https://github.com/everruns/everruns/pull/2550)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump react and @types/react in /apps/ui ([#2538](https://github.com/everruns/everruns/pull/2538)) by [@dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump cmov from 0.5.3 to 0.5.4 in /examples/weekend-concierge-host in the cargo group across 1 directory ([#2553](https://github.com/everruns/everruns/pull/2553)) by [@dependabot](https://github.com/apps/dependabot)
+
+## [0.17.3] - 2026-07-02
+
+### What's Changed
+
+- fix(ui): restore `pnpm.overrides`/`onlyBuiltDependencies` in `apps/ui/package.json`, accidentally dropped in v0.17.2, which broke the release Docker image build (`pnpm install --frozen-lockfile` lockfile-config mismatch) by [@chaliy](https://github.com/chaliy)
+
+## [0.17.2] - 2026-07-02
+
+### Highlights
+
+- **Native Account Recovery** — Self-service account recovery flow with a branded onboarding shell ([#2541](https://github.com/everruns/everruns/pull/2541)).
+- **Observers** — New Observers UI to create/edit observers with a scorer catalog and a per-observer Quality tab; `llm_judge` scorers referencing a model the org cannot use are now rejected ([#2524](https://github.com/everruns/everruns/pull/2524)).
+- **Imported Eval Runs** — Ingest externally-executed eval runs and view them with attribution, transcript, and matrix ([#2516](https://github.com/everruns/everruns/pull/2516), [#2517](https://github.com/everruns/everruns/pull/2517)).
+- **Chat Transcript Turn Navigation** — Step through turns with the keyboard and a new turn navigation rail ([#2542](https://github.com/everruns/everruns/pull/2542), [#2548](https://github.com/everruns/everruns/pull/2548)).
+- **OpenRouter OAuth** — Connect OpenRouter directly from the Add Provider dialog ([#2519](https://github.com/everruns/everruns/pull/2519)).
+
+### What's Changed
+
+- feat(auth): native account recovery + branded onboarding shell ([#2541](https://github.com/everruns/everruns/pull/2541)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): keyboard turn stepping for chat transcript ([#2548](https://github.com/everruns/everruns/pull/2548)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): add turn navigation rail to chat transcript ([#2542](https://github.com/everruns/everruns/pull/2542)) by [@chaliy](https://github.com/chaliy)
+- feat(evals): async dataset export handle + e2e/tenant tests ([#2545](https://github.com/everruns/everruns/pull/2545)) by [@chaliy](https://github.com/chaliy)
+- feat(evals): view imported eval runs — attribution, transcript, matrix ([#2517](https://github.com/everruns/everruns/pull/2517)) by [@chaliy](https://github.com/chaliy)
+- feat(evals): ingest externally-executed eval runs ([#2516](https://github.com/everruns/everruns/pull/2516)) by [@chaliy](https://github.com/chaliy)
+- feat(observers): Observers UI + llm_judge model-access validation ([#2524](https://github.com/everruns/everruns/pull/2524)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): align async tools with 2026 Tasks extension vocab ([#2544](https://github.com/everruns/everruns/pull/2544)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): auto-negotiate legacy, current, and 2026 RC protocols ([#2502](https://github.com/everruns/everruns/pull/2502)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): surface OpenRouter OAuth in Add Provider dialog ([#2519](https://github.com/everruns/everruns/pull/2519)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): reimplement create app page and detail identity editor ([#2521](https://github.com/everruns/everruns/pull/2521)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): unify list empty states with shared EmptyState ([#2525](https://github.com/everruns/everruns/pull/2525)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): add early-access banner with user-preferences store ([#2510](https://github.com/everruns/everruns/pull/2510)) by [@chaliy](https://github.com/chaliy)
+- fix(security): collapse public-app & OAuth-signup enumeration leaks ([#2533](https://github.com/everruns/everruns/pull/2533)) by [@chaliy](https://github.com/chaliy)
+- fix(security): route provider/LLM and MCP-OAuth HTTP through egress boundary ([#2530](https://github.com/everruns/everruns/pull/2530)) by [@chaliy](https://github.com/chaliy)
+- fix(security): gate user hooks before validation ([#2496](https://github.com/everruns/everruns/pull/2496)) by [@chaliy](https://github.com/chaliy)
+- fix(files): block network in HTML previews ([#2490](https://github.com/everruns/everruns/pull/2490)) by [@chaliy](https://github.com/chaliy)
+- fix(local): secure local profile storage ([#2494](https://github.com/everruns/everruns/pull/2494)) by [@chaliy](https://github.com/chaliy)
+- fix(api): register 13 plugin/marketplace handlers in OpenAPI ApiDoc ([#2523](https://github.com/everruns/everruns/pull/2523)) by [@chaliy](https://github.com/chaliy)
+- fix(providers): allow OAuth provider creation without key ([#2500](https://github.com/everruns/everruns/pull/2500)) by [@chaliy](https://github.com/chaliy)
+- fix(schedules): make schedule cap creation atomic ([#2492](https://github.com/everruns/everruns/pull/2492)) by [@chaliy](https://github.com/chaliy)
+- fix(storage): delete replaced workspace file blobs ([#2491](https://github.com/everruns/everruns/pull/2491)) by [@chaliy](https://github.com/chaliy)
+- fix(core): clear reasoning effort override per turn ([#2501](https://github.com/everruns/everruns/pull/2501)) by [@chaliy](https://github.com/chaliy)
+- fix(rate-limit): gate grpc worker tool calls ([#2495](https://github.com/everruns/everruns/pull/2495)) by [@chaliy](https://github.com/chaliy)
+- fix(server): idle sealed turns without input turn id ([#2497](https://github.com/everruns/everruns/pull/2497)) by [@chaliy](https://github.com/chaliy)
+- fix(server): unify control-plane FS path normalization (EVE-670) ([#2505](https://github.com/everruns/everruns/pull/2505)) by [@chaliy](https://github.com/chaliy)
+- fix(guardrails): fail open on malformed judge output ([#2493](https://github.com/everruns/everruns/pull/2493)) by [@chaliy](https://github.com/chaliy)
+- fix(evals): avoid mutable scorer labels in exports ([#2499](https://github.com/everruns/everruns/pull/2499)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): lazy-load command palette data, gate evals on feature flag ([#2518](https://github.com/everruns/everruns/pull/2518)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): reword empty feature-flags state for SaaS users ([#2520](https://github.com/everruns/everruns/pull/2520)) by [@chaliy](https://github.com/chaliy)
+- perf(worker): use native protobuf for session-task RPC payloads ([#2543](https://github.com/everruns/everruns/pull/2543)) by [@chaliy](https://github.com/chaliy)
+- perf(durable): cut redundant event-log loads/replays and N+1 writes on hot path ([#2532](https://github.com/everruns/everruns/pull/2532)) by [@chaliy](https://github.com/chaliy)
+- perf(ui): lazy-load trajectory/metrics deps, gate live-activity poll ([#2522](https://github.com/everruns/everruns/pull/2522)) by [@chaliy](https://github.com/chaliy)
+- refactor: fold everruns-config into everruns-core ([#2547](https://github.com/everruns/everruns/pull/2547)) by [@chaliy](https://github.com/chaliy)
+- refactor(drivers): golden streaming harness + shared accumulator ([#2546](https://github.com/everruns/everruns/pull/2546)) by [@chaliy](https://github.com/chaliy)
+- refactor(drivers): extract shared provider-driver helpers (EVE-647) ([#2504](https://github.com/everruns/everruns/pull/2504)) by [@chaliy](https://github.com/chaliy)
+- refactor(capabilities): shared tool scaffolding, less boilerplate (EVE-646) ([#2507](https://github.com/everruns/everruns/pull/2507)) by [@chaliy](https://github.com/chaliy)
+- refactor(core): adopt shared tool scaffolding in session_tasks/subagents ([#2528](https://github.com/everruns/everruns/pull/2528)) by [@chaliy](https://github.com/chaliy)
+- refactor(core): collapse EventData identity into one tagged table ([#2487](https://github.com/everruns/everruns/pull/2487)) by [@chaliy](https://github.com/chaliy)
+- refactor(observability): extract exporters from core (EVE-651) by [@chaliy](https://github.com/chaliy)
+- refactor(errors): typed HTTP/fs/a2a error classification (EVE-645) by [@chaliy](https://github.com/chaliy)
+- refactor(server): supervise startup background tasks by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump cargo group (19 updates) + migrate breaking APIs ([#2515](https://github.com/everruns/everruns/pull/2515)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump next from 16.2.6 to 16.2.9 in /apps/ui ([#2540](https://github.com/everruns/everruns/pull/2540)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump @base-ui/react from 1.5.0 to 1.6.0 in /apps/ui ([#2539](https://github.com/everruns/everruns/pull/2539)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump @rjsf/validator-ajv8 from 6.5.3 to 6.6.2 in /apps/ui ([#2537](https://github.com/everruns/everruns/pull/2537)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump sharp from 0.34.5 to 0.35.2 in /apps/docs ([#2536](https://github.com/everruns/everruns/pull/2536)) by [@dependabot](https://github.com/dependabot)
+
+## [0.17.1] - 2026-06-27
+
+### Highlights
+
+- **Session Forking** — Sessions can now be forked into independent copies, enabling branched experimentation from any point in a conversation ([#2471](https://github.com/everruns/everruns/pull/2471)).
+- **MCP Stateless Spec** — MCP endpoint now conforms to the 2026-07-28 stateless spec for improved interoperability ([#2484](https://github.com/everruns/everruns/pull/2484)).
+- **Unified UI Layout** — Agents, Harnesses, Sessions, Dashboard, and Settings pages are now unified on a consistent five-zone layout ([#2476](https://github.com/everruns/everruns/pull/2476), [#2477](https://github.com/everruns/everruns/pull/2477), [#2478](https://github.com/everruns/everruns/pull/2478)).
+
+### What's Changed
+
+- test(ci): wire unrun server integration tests + enumeration guard ([#2482](https://github.com/everruns/everruns/pull/2482)) by [@chaliy](https://github.com/chaliy)
+- fix(worker): finish TaskWorker migration by [@chaliy](https://github.com/chaliy)
+- fix(storage): add repository conformance suite by [@chaliy](https://github.com/chaliy)
+- feat(mcp): conform MCP endpoint to 2026-07-28 stateless spec ([#2484](https://github.com/everruns/everruns/pull/2484)) by [@chaliy](https://github.com/chaliy)
+- docs(ui): adopt DESIGN.md for the Slate design system ([#2488](https://github.com/everruns/everruns/pull/2488)) by [@chaliy](https://github.com/chaliy)
+- refactor(core): make MountFs the single workspace path resolver ([#2483](https://github.com/everruns/everruns/pull/2483)) by [@chaliy](https://github.com/chaliy)
+- fix(examples): repair weekend-concierge-host compile against core API drift ([#2481](https://github.com/everruns/everruns/pull/2481)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): drop org from MCP OAuth consent page ([#2480](https://github.com/everruns/everruns/pull/2480)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): bind MCP OAuth consent to session, not a second cookie ([#2479](https://github.com/everruns/everruns/pull/2479)) by [@chaliy](https://github.com/chaliy)
+- feat(core): mount-based workspace path resolver ([#2469](https://github.com/everruns/everruns/pull/2469)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): align Sessions, Dashboard, and Settings with the page language ([#2478](https://github.com/everruns/everruns/pull/2478)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): unify building-block entity pages on the five-zone layout ([#2477](https://github.com/everruns/everruns/pull/2477)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): unify Agents and Harnesses pages on a five-zone layout ([#2476](https://github.com/everruns/everruns/pull/2476)) by [@chaliy](https://github.com/chaliy)
+- ci(security): gate Rust deps on RustSec advisories + fix git2 by [@chaliy](https://github.com/chaliy)
+- refactor(internal-protocol): prefixed_id helper + role logs by [@chaliy](https://github.com/chaliy)
+- fix(internal-protocol): surface conversion data loss instead of dropping silently ([#2470](https://github.com/everruns/everruns/pull/2470)) by [@chaliy](https://github.com/chaliy)
+- perf(server): read-through cache for org feature-flag lookups ([#2468](https://github.com/everruns/everruns/pull/2468)) by [@chaliy](https://github.com/chaliy)
+- feat(sessions): fork a session into an independent copy ([#2471](https://github.com/everruns/everruns/pull/2471)) by [@chaliy](https://github.com/chaliy)
+- feat(core): normalize token usage to disjoint cache buckets ([#2467](https://github.com/everruns/everruns/pull/2467)) by [@chaliy](https://github.com/chaliy)
+- fix(llm): retry transient connection send errors across providers ([#2466](https://github.com/everruns/everruns/pull/2466)) by [@chaliy](https://github.com/chaliy)
+- feat(guardrails): end-of-message output seam + moderation check ([#2465](https://github.com/everruns/everruns/pull/2465)) by [@chaliy](https://github.com/chaliy)
+- feat(voice): per-connection realtime provider binding ([#2460](https://github.com/everruns/everruns/pull/2460)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.0] - 2026-06-25
 
 ### Highlights

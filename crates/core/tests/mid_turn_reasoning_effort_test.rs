@@ -213,3 +213,81 @@ async fn without_handle_mutation_effort_is_stable_across_steps() {
         "effort must stay stable when no tool changes it"
     );
 }
+
+#[tokio::test]
+async fn mid_turn_effort_override_is_cleared_before_next_turn() {
+    let effort_capture: Arc<Mutex<Vec<Option<String>>>> = Arc::new(Mutex::new(Vec::new()));
+    let handle = ReasoningEffortHandle::new();
+
+    let sim = LlmSimConfig::scripted(vec![
+        SimTurn::ToolCalls(vec![SimToolCall {
+            name: "set_effort".to_string(),
+            arguments: json!({}),
+            id: Some("call_set_effort".to_string()),
+        }]),
+        SimTurn::Assistant("First turn done.".to_string()),
+        SimTurn::Assistant("Second turn done.".to_string()),
+    ])
+    .with_effort_capture(effort_capture.clone());
+
+    let runner = InMemoryAgenticLoop::builder()
+        .with_llm_sim(sim)
+        .tool(SetEffortTool {
+            new_effort: "high".to_string(),
+        })
+        .reasoning_effort_handle(handle.clone())
+        .max_iterations(5)
+        .build()
+        .await
+        .expect("build in-memory loop");
+
+    let first_input = InputMessage {
+        role: MessageRole::User,
+        content: vec![ContentPart::text("First turn.")],
+        controls: Some(Controls {
+            reasoning: Some(ReasoningConfig {
+                effort: Some("low".to_string()),
+            }),
+            ..Default::default()
+        }),
+        metadata: None,
+        tags: vec![],
+    };
+    let first_result = runner.run_turn(first_input).await.expect("first run_turn");
+    assert!(
+        first_result.success,
+        "first turn should succeed: {first_result:?}"
+    );
+    assert_eq!(handle.get().as_deref(), Some("high"));
+
+    let second_input = InputMessage {
+        role: MessageRole::User,
+        content: vec![ContentPart::text("Second turn.")],
+        controls: Some(Controls {
+            reasoning: Some(ReasoningConfig {
+                effort: Some("low".to_string()),
+            }),
+            ..Default::default()
+        }),
+        metadata: None,
+        tags: vec![],
+    };
+    let second_result = runner
+        .run_turn(second_input)
+        .await
+        .expect("second run_turn");
+    assert!(
+        second_result.success,
+        "second turn should succeed: {second_result:?}"
+    );
+
+    let efforts = effort_capture.lock().unwrap().clone();
+    assert_eq!(
+        efforts
+            .iter()
+            .map(|effort| effort.as_deref())
+            .collect::<Vec<_>>(),
+        vec![Some("low"), Some("high"), Some("low")],
+        "second turn should use its message-derived effort, not the stale override"
+    );
+}

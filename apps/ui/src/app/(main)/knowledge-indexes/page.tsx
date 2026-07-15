@@ -34,6 +34,7 @@ import {
   PageMasthead,
   PageControlStrip,
   SectionTabs,
+  EmptyState,
   PageColumns,
   PageMain,
   PageRail,
@@ -172,20 +173,23 @@ export default function KnowledgeIndexesPage() {
             errorMessagePrefix="Failed to load knowledge indexes"
             skeletonCount={6}
             emptyState={
-              <div className="border border-dashed py-12 text-center">
-                <Library className="mx-auto mb-4 size-10 text-muted-foreground" />
-                <p className="mb-4 text-muted-foreground">
-                  {search.trim() || statusTab !== "active"
+              <EmptyState
+                icon={<Library />}
+                title={
+                  search.trim() || statusTab !== "active"
                     ? "No knowledge indexes match your filters."
-                    : "No knowledge indexes yet"}
-                </p>
-                {!search.trim() && statusTab === "active" && (
-                  <Button variant="accent" onClick={() => setCreateOpen(true)}>
-                    <Plus className="size-4" />
-                    New index
-                  </Button>
-                )}
-              </div>
+                    : "No knowledge indexes yet"
+                }
+                action={
+                  !search.trim() &&
+                  statusTab === "active" && (
+                    <Button variant="accent" onClick={() => setCreateOpen(true)}>
+                      <Plus className="size-4" />
+                      New index
+                    </Button>
+                  )
+                }
+              />
             }
           >
             {(items) => (

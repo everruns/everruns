@@ -19,7 +19,7 @@ use everruns_core::tools::ToolExecutionResult;
 use everruns_core::traits::{KeyInfo, SecretInfo, SessionStorageStore, ToolContext};
 use everruns_core::typed_id::SessionId;
 use everruns_server::storage::models::{AuditLogQuery, AuditLogRow};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{Value, json};
 use sha2::Sha256;
 use test_harness::TestServer;
@@ -339,7 +339,7 @@ async fn spawn_background_against_local_a2a(config: Value) -> (Arc<TestStorageSt
         .execute_with_context(
             json!({
                 "instructions": "hello from outbound delegation",
-                "target": {"type": "external_a2a", "external_agent_id": "local_app"},
+                "target": {"type": "external_a2a", "id": "local_app"},
                 "mode": "background",
                 "wait_timeout_secs": 5,
                 "wake_on_completion": false
@@ -585,7 +585,8 @@ async fn a2a_rejects_unpublished_or_disabled() {
     }))
     .unwrap();
 
-    // Unpublished: 403.
+    // Unpublished: generic 404 (EVE-632 / TM-TENANT-002). An unauthenticated
+    // caller must not be able to distinguish "unpublished" from "unknown app".
     server
         .request_raw(
             Method::POST,
@@ -597,7 +598,7 @@ async fn a2a_rejects_unpublished_or_disabled() {
             body.clone(),
         )
         .await
-        .assert_status(StatusCode::FORBIDDEN);
+        .assert_status(StatusCode::NOT_FOUND);
 
     publish_app(&server, app_id).await;
 
@@ -609,6 +610,8 @@ async fn a2a_rejects_unpublished_or_disabled() {
         .await
         .assert_status(StatusCode::OK);
 
+    // Disabled channel: also a generic 404, not a 403 that confirms the app
+    // exists and is published (EVE-632 / TM-AUTHZ-006).
     server
         .request_raw(
             Method::POST,
@@ -620,7 +623,7 @@ async fn a2a_rejects_unpublished_or_disabled() {
             body,
         )
         .await
-        .assert_status(StatusCode::FORBIDDEN);
+        .assert_status(StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -926,6 +929,320 @@ async fn a2a_tasks_get_returns_non_terminal_for_freshly_dispatched_task() {
         .assert_status(StatusCode::OK)
         .json();
     assert_eq!(malformed_response["error"]["code"], -32602);
+}
+
+/// Send a JSON-RPC request to an A2A channel and return the parsed envelope.
+async fn a2a_rpc(
+    server: &TestServer,
+    app_id: &str,
+    channel_id: &str,
+    api_key: &str,
+    method: &str,
+    params: Value,
+) -> Value {
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "rpc-1",
+        "method": method,
+        "params": params,
+    }))
+    .unwrap();
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json()
+}
+
+/// Seed a deterministic structured result (EVE-678) on `session_id`: create a
+/// `result_schema`-bound task owned by the session, point it at a result file,
+/// and write that file into the session's workspace VFS. Returns the JSON we
+/// stored so callers can assert round-trip fidelity.
+async fn seed_structured_result(server: &TestServer, session_id: &str, result: Value) {
+    use everruns_core::session_task::{
+        CreateSessionTask, SessionTaskState, SessionTaskUpdate, new_session_task, task_result_path,
+    };
+    use everruns_server::storage::models::CreateSessionFileRow;
+
+    let sid = session_id.parse::<SessionId>().expect("valid session id");
+    let session = server
+        .db
+        .get_session(DEFAULT_ORG_ID, sid)
+        .await
+        .expect("get_session")
+        .expect("session exists");
+
+    // Create the owning task in a non-terminal state, then set `result_path`
+    // via an update — mirroring how `report_result` records the pointer.
+    let task = new_session_task(
+        CreateSessionTask {
+            session_id: sid,
+            id: None,
+            kind: "subagent".to_string(),
+            display_name: "structured result".to_string(),
+            spec: json!({ "result_schema": { "type": "object" } }),
+            state: SessionTaskState::Running,
+            links: Default::default(),
+            wake_policy: Default::default(),
+        },
+        chrono::Utc::now(),
+    );
+    server
+        .db
+        .create_session_task(&task)
+        .await
+        .expect("create task");
+
+    let path = task_result_path(&task.id);
+    server
+        .db
+        .update_session_task(
+            sid,
+            &task.id,
+            SessionTaskUpdate {
+                state: Some(SessionTaskState::Succeeded),
+                result_path: Some(path.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("set result_path");
+
+    // The VFS is keyed by the owning session's workspace id (that's the key
+    // `report_result` writes with, and the key the reader reads back with).
+    server
+        .db
+        .create_session_file(CreateSessionFileRow {
+            session_id: SessionId::from_uuid(session.workspace_id),
+            path,
+            content: Some(serde_json::to_vec(&result).unwrap()),
+            is_directory: false,
+            is_readonly: false,
+        })
+        .await
+        .expect("write result file");
+}
+
+async fn seed_non_schema_result_path(server: &TestServer, session_id: &str, result: Value) {
+    use everruns_core::session_task::{
+        CreateSessionTask, SessionTaskState, SessionTaskUpdate, new_session_task,
+    };
+    use everruns_server::storage::models::CreateSessionFileRow;
+
+    let sid = session_id.parse::<SessionId>().expect("valid session id");
+    let session = server
+        .db
+        .get_session(DEFAULT_ORG_ID, sid)
+        .await
+        .expect("get_session")
+        .expect("session exists");
+
+    let task = new_session_task(
+        CreateSessionTask {
+            session_id: sid,
+            id: None,
+            kind: "background_tool".to_string(),
+            display_name: "background result".to_string(),
+            spec: json!({ "tool": "internal_scan" }),
+            state: SessionTaskState::Running,
+            links: Default::default(),
+            wake_policy: Default::default(),
+        },
+        chrono::Utc::now(),
+    );
+    server
+        .db
+        .create_session_task(&task)
+        .await
+        .expect("create non-schema task");
+
+    let path = format!("/.background/{}/result.json", task.id);
+    server
+        .db
+        .update_session_task(
+            sid,
+            &task.id,
+            SessionTaskUpdate {
+                state: Some(SessionTaskState::Succeeded),
+                result_path: Some(path.clone()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("set non-schema result_path");
+
+    server
+        .db
+        .create_session_file(CreateSessionFileRow {
+            session_id: SessionId::from_uuid(session.workspace_id),
+            path,
+            content: Some(serde_json::to_vec(&result).unwrap()),
+            is_directory: false,
+            is_readonly: false,
+        })
+        .await
+        .expect("write non-schema result file");
+}
+
+/// A task that reported a schema-bound `result.json` (EVE-678) exposes it as an
+/// A2A `tasks/get` artifact `DataPart`, not just last-message / status text.
+#[tokio::test]
+async fn a2a_tasks_get_surfaces_structured_result_artifact() {
+    let server = TestServer::in_memory().await;
+    let (app, api_key) = create_app_with_a2a(&server, "a2a-result-artifact", "{{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+
+    let send = a2a_rpc(
+        &server,
+        app_id,
+        channel_id,
+        &api_key,
+        "message/send",
+        json!({ "message": { "role": "user", "parts": [{ "kind": "text", "text": "triage" }] } }),
+    )
+    .await;
+    let task_id = send["result"]["id"].as_str().unwrap().to_string();
+
+    // No structured result yet → no artifacts on the task.
+    let before = a2a_rpc(
+        &server,
+        app_id,
+        channel_id,
+        &api_key,
+        "tasks/get",
+        json!({ "id": task_id }),
+    )
+    .await;
+    assert!(
+        before["result"].get("artifacts").is_none(),
+        "no artifacts before a result is reported, got {before}"
+    );
+
+    let expected = json!({ "verdict": "spam", "confidence": 0.97 });
+    seed_structured_result(&server, &task_id, expected.clone()).await;
+
+    let after = a2a_rpc(
+        &server,
+        app_id,
+        channel_id,
+        &api_key,
+        "tasks/get",
+        json!({ "id": task_id }),
+    )
+    .await;
+    let artifacts = after["result"]["artifacts"]
+        .as_array()
+        .expect("artifacts present after reporting a result");
+    assert_eq!(artifacts.len(), 1);
+    assert_eq!(artifacts[0]["name"], "result");
+    let parts = artifacts[0]["parts"].as_array().expect("artifact parts");
+    assert_eq!(parts[0]["kind"], "data");
+    assert_eq!(parts[0]["data"], expected);
+}
+
+#[tokio::test]
+async fn a2a_tasks_get_ignores_non_schema_result_path_artifact() {
+    let server = TestServer::in_memory().await;
+    let (app, api_key) =
+        create_app_with_a2a(&server, "a2a-non-schema-result", "{{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+
+    let send = a2a_rpc(
+        &server,
+        app_id,
+        channel_id,
+        &api_key,
+        "message/send",
+        json!({ "message": { "role": "user", "parts": [{ "kind": "text", "text": "triage" }] } }),
+    )
+    .await;
+    let task_id = send["result"]["id"].as_str().unwrap().to_string();
+
+    seed_non_schema_result_path(&server, &task_id, json!({ "internal": "tool-output" })).await;
+
+    let resp = a2a_rpc(
+        &server,
+        app_id,
+        channel_id,
+        &api_key,
+        "tasks/get",
+        json!({ "id": task_id }),
+    )
+    .await;
+    assert!(
+        resp["result"].get("artifacts").is_none(),
+        "non-schema result_path leaked as artifact: {resp}"
+    );
+}
+
+/// Tenant isolation: a second channel's API key must not receive another
+/// channel's structured-result artifact — the cross-channel lookup collapses to
+/// `-32001 Task not found` with no artifact leak.
+#[tokio::test]
+async fn a2a_tasks_get_structured_result_not_leaked_cross_channel() {
+    let server = TestServer::in_memory().await;
+    let (app_a, key_a) = create_app_with_a2a(&server, "a2a-result-owner", "{{a2a.text}}").await;
+    let app_a_id = app_a["id"].as_str().unwrap();
+    let chan_a = app_a["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_a_id).await;
+
+    let (app_b, key_b) = create_app_with_a2a(&server, "a2a-result-snoop", "{{a2a.text}}").await;
+    let app_b_id = app_b["id"].as_str().unwrap();
+    let chan_b = app_b["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_b_id).await;
+
+    let send = a2a_rpc(
+        &server,
+        app_a_id,
+        chan_a,
+        &key_a,
+        "message/send",
+        json!({ "message": { "role": "user", "parts": [{ "kind": "text", "text": "secret" }] } }),
+    )
+    .await;
+    let task_id = send["result"]["id"].as_str().unwrap().to_string();
+    seed_structured_result(&server, &task_id, json!({ "secret": "value" })).await;
+
+    // Channel B (a different app/channel in the same org) cannot read the task
+    // or its artifact.
+    let snoop = a2a_rpc(
+        &server,
+        app_b_id,
+        chan_b,
+        &key_b,
+        "tasks/get",
+        json!({ "id": task_id }),
+    )
+    .await;
+    assert_eq!(snoop["error"]["code"], -32001);
+    assert!(snoop.get("result").is_none() || snoop["result"].is_null());
+
+    // The owning channel still sees the artifact.
+    let owner = a2a_rpc(
+        &server,
+        app_a_id,
+        chan_a,
+        &key_a,
+        "tasks/get",
+        json!({ "id": task_id }),
+    )
+    .await;
+    assert_eq!(
+        owner["result"]["artifacts"][0]["parts"][0]["data"]["secret"],
+        "value"
+    );
 }
 
 /// `tasks/cancel` returns the task with state=canceled and is idempotent — a

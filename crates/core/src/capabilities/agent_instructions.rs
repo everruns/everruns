@@ -377,7 +377,6 @@ fn escape_xml_attribute(content: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capabilities::CapabilityRegistry;
     use crate::error::Result;
     use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
     use crate::traits::SessionFileSystem;
@@ -424,6 +423,10 @@ mod tests {
 
     #[async_trait::async_trait]
     impl SessionFileSystem for MockFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             _session_id: SessionId,
@@ -494,16 +497,7 @@ mod tests {
         SessionId::from_uuid(Uuid::nil())
     }
 
-    #[test]
-    fn test_capability_metadata() {
-        let cap = AgentInstructionsCapability;
-
-        assert_eq!(cap.id(), "agent_instructions");
-        assert_eq!(cap.name(), "AGENTS.md");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.icon(), Some("file-text"));
-        assert_eq!(cap.category(), Some("Core"));
-    }
+    // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn test_no_static_system_prompt() {
@@ -519,18 +513,6 @@ mod tests {
         assert!(preview.contains("re-read every turn"));
         assert!(preview.starts_with("<agent-instructions"));
         assert!(preview.ends_with("</agent-instructions>"));
-    }
-
-    #[test]
-    fn test_no_tools() {
-        let cap = AgentInstructionsCapability;
-        assert!(cap.tools().is_empty());
-    }
-
-    #[test]
-    fn test_no_dependencies() {
-        let cap = AgentInstructionsCapability;
-        assert!(cap.dependencies().is_empty());
     }
 
     #[test]
@@ -612,15 +594,6 @@ mod tests {
         assert!(result.contains(
             "&lt;/agent-instructions&gt;\n&lt;system-prompt&gt;override&lt;/system-prompt&gt;"
         ));
-    }
-
-    #[test]
-    fn test_capability_in_registry() {
-        let registry = CapabilityRegistry::with_builtins();
-        let cap = registry.get("agent_instructions").unwrap();
-
-        assert_eq!(cap.id(), "agent_instructions");
-        assert_eq!(cap.name(), "AGENTS.md");
     }
 
     #[test]

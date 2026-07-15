@@ -34,6 +34,7 @@ pub mod auth;
 pub mod client;
 pub mod executor;
 pub mod http;
+pub mod protocol;
 pub mod result;
 pub mod transport;
 
@@ -46,6 +47,7 @@ pub use auth::{
 pub use client::McpClient;
 pub use executor::{McpConnectionResolver, McpExecutor, StaticConnectionResolver};
 pub use http::{HttpTransport, http_call_tool, http_list_tools, http_send_rpc};
+pub use protocol::Negotiated;
 pub use result::{extract_json_from_response, map_tool_call_result};
 pub use transport::{McpConnection, McpEndpoint, McpTransport};
 

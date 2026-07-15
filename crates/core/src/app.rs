@@ -116,6 +116,12 @@ pub enum ChannelType {
     /// See `specs/app-api-keys.md`.
     #[serde(rename = "api_endpoint")]
     ApiEndpoint,
+    /// Public Chat channel — an isolated, public-facing chat web app bound to a
+    /// single App's agent. Anonymous by default, with optional Google sign-in
+    /// and Cloudflare Turnstile bot mitigation. Reuses AG-UI streaming and the
+    /// shared App endpoint auth verifier. See `specs/public-chat.md`.
+    #[serde(rename = "public_chat")]
+    PublicChat,
 }
 
 impl std::fmt::Display for ChannelType {
@@ -128,6 +134,7 @@ impl std::fmt::Display for ChannelType {
             ChannelType::A2a => write!(f, "a2a"),
             ChannelType::Fcp => write!(f, "fcp"),
             ChannelType::ApiEndpoint => write!(f, "api_endpoint"),
+            ChannelType::PublicChat => write!(f, "public_chat"),
         }
     }
 }
@@ -142,6 +149,7 @@ impl ChannelType {
             "a2a" => Some(ChannelType::A2a),
             "fcp" => Some(ChannelType::Fcp),
             "api_endpoint" => Some(ChannelType::ApiEndpoint),
+            "public_chat" => Some(ChannelType::PublicChat),
             _ => None,
         }
     }
@@ -310,6 +318,15 @@ impl AppChannel {
         }
         serde_json::from_value(self.channel_config.clone()).ok()
     }
+
+    /// Parse channel_config as PublicChatChannelConfig. Returns None if not a
+    /// Public Chat channel or if the config is invalid.
+    pub fn public_chat_config(&self) -> Option<PublicChatChannelConfig> {
+        if self.channel_type != ChannelType::PublicChat {
+            return None;
+        }
+        serde_json::from_value(self.channel_config.clone()).ok()
+    }
 }
 
 impl App {
@@ -360,6 +377,13 @@ impl App {
         self.channels
             .iter()
             .find(|ch| ch.channel_type == ChannelType::ApiEndpoint && ch.enabled)
+    }
+
+    /// Find the first enabled Public Chat channel on this app.
+    pub fn public_chat_channel(&self) -> Option<&AppChannel> {
+        self.channels
+            .iter()
+            .find(|ch| ch.channel_type == ChannelType::PublicChat && ch.enabled)
     }
 
     /// Find a channel by its public ID.
@@ -844,6 +868,146 @@ pub struct ApiEndpointChannelConfig {
     pub auth: Option<AppEndpointAuthConfig>,
 }
 
+/// Branding shown on a Public Chat surface. All fields optional; the public app
+/// falls back to the App's name and the default design-system theme when unset.
+/// Branding is non-secret and is returned as-is in API responses.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct PublicChatBranding {
+    /// Display name shown in the chat header. Falls back to the App name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    /// Absolute URL of a logo image shown in the chat header.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo_url: Option<String>,
+    /// Primary accent color as a CSS hex string (e.g. `#0A1636`). Applied by
+    /// overriding the design-system primary variable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub primary_color: Option<String>,
+    /// Welcome message shown before the visitor sends their first message.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub welcome_message: Option<String>,
+}
+
+/// Bot-mitigation challenge provider for anonymous Public Chat access.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum CaptchaProvider {
+    /// Cloudflare Turnstile. The only provider supported in the first release.
+    #[default]
+    Turnstile,
+}
+
+/// CAPTCHA / bot-mitigation configuration for a Public Chat channel.
+///
+/// When present and enabled, anonymous visitors must pass a challenge before a
+/// session is created or any turn runs; signed-in visitors bypass it. The
+/// `secret_key` is write-only: it is stored to call the provider's verify
+/// endpoint server-side and is redacted in API responses (only
+/// `secret_key_configured: bool` is surfaced). The `site_key` is public and
+/// returned so the web app can render the widget.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct PublicChatCaptchaConfig {
+    /// Challenge provider. Defaults to Cloudflare Turnstile.
+    #[serde(default)]
+    pub provider: CaptchaProvider,
+    /// Whether the challenge is enforced. Defaults to true so adding a captcha
+    /// config turns it on; set to false to keep keys configured but inactive.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Public site key rendered by the client widget.
+    pub site_key: String,
+    /// Secret key used for server-side verification. Write-only; redacted on read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub secret_key: Option<String>,
+}
+
+/// Typed Public Chat channel configuration.
+///
+/// Parsed from the `channel_config` JSON field on App. Public Chat reuses
+/// AG-UI's streaming semantics and the shared App endpoint auth verifier, and
+/// adds branding and bot-mitigation tailored to a public, link-shareable chat
+/// website. See `specs/public-chat.md`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct PublicChatChannelConfig {
+    /// Whether anonymous access is allowed. Anonymous-by-default mirrors AG-UI.
+    /// When `false`, visitors must authenticate (e.g. via `auth` Google OIDC).
+    #[serde(default = "default_true")]
+    pub anonymous: bool,
+    /// Optional shared bearer token for simple gated access. When set, requests
+    /// must include the token in a supported header. Redacted on read.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+    /// How long (in seconds) a visitor session can be resumed before a fresh
+    /// one must be started. `0` disables expiration. Defaults to 6 hours.
+    #[serde(default = "default_session_expiration_seconds")]
+    pub session_expiration_seconds: u32,
+    /// Optional per-IP, per-app rate limit in requests per minute. `None` or
+    /// `Some(0)` disables the per-app cap (the global API limit still applies).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_limit_per_minute: Option<u32>,
+    /// Public tool activity visibility. Same rules as AG-UI: raw tool names,
+    /// args, results, and internal IDs are never exposed on public streams.
+    #[serde(default)]
+    pub tool_visibility: AgUiToolVisibility,
+    /// Generic public text shown when `tool_visibility` is `generic`/`narrated`.
+    #[serde(
+        default = "default_ag_ui_generic_tool_text",
+        skip_serializing_if = "is_default_ag_ui_generic_tool_text"
+    )]
+    pub generic_tool_text: String,
+    /// Optional inline auth config for this public endpoint (e.g. Google OIDC).
+    /// When omitted, anonymous + optional `token` behavior applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<AppEndpointAuthConfig>,
+    /// Branding shown on the public chat surface.
+    #[serde(default, skip_serializing_if = "PublicChatBranding::is_empty")]
+    pub branding: PublicChatBranding,
+    /// Optional bot-mitigation / CAPTCHA configuration (Cloudflare Turnstile).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub captcha: Option<PublicChatCaptchaConfig>,
+}
+
+impl PublicChatBranding {
+    /// True when no branding fields are set, so the whole object can be omitted
+    /// from serialized output.
+    pub fn is_empty(&self) -> bool {
+        self.display_name.is_none()
+            && self.logo_url.is_none()
+            && self.primary_color.is_none()
+            && self.welcome_message.is_none()
+    }
+}
+
+impl PublicChatChannelConfig {
+    /// Project the streaming-relevant fields onto an `AgUiChannelConfig` so the
+    /// shared AG-UI ingress/streaming core can serve Public Chat without a
+    /// parallel implementation. Branding and captcha are Public-Chat-only and
+    /// are handled by the Public Chat handler, not the shared core.
+    pub fn ag_ui_stream_config(&self) -> AgUiChannelConfig {
+        AgUiChannelConfig {
+            anonymous: self.anonymous,
+            token: self.token.clone(),
+            session_expiration_seconds: self.session_expiration_seconds,
+            rate_limit_per_minute: self.rate_limit_per_minute,
+            tool_visibility: self.tool_visibility,
+            generic_tool_text: self.generic_tool_text.clone(),
+            auth: self.auth.clone(),
+        }
+    }
+
+    /// Whether the Turnstile/CAPTCHA challenge should be enforced for an
+    /// anonymous visitor. Returns false when no captcha is configured or it is
+    /// explicitly disabled. Signed-in visitors (validated via `auth`) bypass the
+    /// challenge and are handled by the caller.
+    pub fn captcha_enforced(&self) -> bool {
+        self.captcha.as_ref().is_some_and(|c| c.enabled)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -882,6 +1046,7 @@ mod tests {
         assert_eq!(ChannelType::Webhook.to_string(), "webhook");
         assert_eq!(ChannelType::A2a.to_string(), "a2a");
         assert_eq!(ChannelType::Fcp.to_string(), "fcp");
+        assert_eq!(ChannelType::PublicChat.to_string(), "public_chat");
     }
 
     #[test]
@@ -898,6 +1063,10 @@ mod tests {
         );
         assert_eq!(ChannelType::from_str_opt("a2a"), Some(ChannelType::A2a));
         assert_eq!(ChannelType::from_str_opt("fcp"), Some(ChannelType::Fcp));
+        assert_eq!(
+            ChannelType::from_str_opt("public_chat"),
+            Some(ChannelType::PublicChat)
+        );
         assert_eq!(ChannelType::from_str_opt("unknown"), None);
         assert_eq!(ChannelType::from_str_opt(""), None);
     }
@@ -1371,6 +1540,99 @@ mod tests {
         );
         let app = test_app(vec![ch]);
         assert!(app.a2a_channel().is_some());
+    }
+
+    #[test]
+    fn test_channel_type_public_chat_serde_roundtrip() {
+        let json = serde_json::to_string(&ChannelType::PublicChat).unwrap();
+        assert_eq!(json, r#""public_chat""#);
+        let parsed: ChannelType = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, ChannelType::PublicChat);
+    }
+
+    #[test]
+    fn test_public_chat_channel_config_defaults() {
+        let config: PublicChatChannelConfig = serde_json::from_str("{}").unwrap();
+        assert!(config.anonymous);
+        assert!(config.token.is_none());
+        assert_eq!(
+            config.session_expiration_seconds,
+            DEFAULT_SESSION_EXPIRATION_SECONDS
+        );
+        assert!(config.rate_limit_per_minute.is_none());
+        assert_eq!(config.tool_visibility, AgUiToolVisibility::Generic);
+        assert_eq!(config.generic_tool_text, DEFAULT_AG_UI_GENERIC_TOOL_TEXT);
+        assert!(config.auth.is_none());
+        assert!(config.branding.is_empty());
+        assert!(config.captcha.is_none());
+    }
+
+    #[test]
+    fn test_public_chat_channel_config_omits_empty_branding_and_defaults() {
+        let config: PublicChatChannelConfig = serde_json::from_str("{}").unwrap();
+        let json = serde_json::to_value(&config).unwrap();
+        assert!(json.get("branding").is_none());
+        assert!(json.get("captcha").is_none());
+        assert!(json.get("generic_tool_text").is_none());
+        assert!(json.get("rate_limit_per_minute").is_none());
+    }
+
+    #[test]
+    fn test_public_chat_channel_config_full_roundtrip() {
+        let json = r##"{
+            "anonymous": false,
+            "token": "shared-secret",
+            "session_expiration_seconds": 3600,
+            "rate_limit_per_minute": 30,
+            "tool_visibility": "narrated",
+            "generic_tool_text": "Thinking...",
+            "branding": {
+                "display_name": "Support",
+                "logo_url": "https://example.com/logo.png",
+                "primary_color": "#0A1636",
+                "welcome_message": "How can I help?"
+            },
+            "captcha": {
+                "provider": "turnstile",
+                "enabled": true,
+                "site_key": "1x00000000000000000000AA",
+                "secret_key": "1x0000000000000000000000000000000AA"
+            }
+        }"##;
+        let config: PublicChatChannelConfig = serde_json::from_str(json).unwrap();
+        assert!(!config.anonymous);
+        assert_eq!(config.token.as_deref(), Some("shared-secret"));
+        assert_eq!(config.session_expiration_seconds, 3600);
+        assert_eq!(config.rate_limit_per_minute, Some(30));
+        assert_eq!(config.tool_visibility, AgUiToolVisibility::Narrated);
+        let branding = &config.branding;
+        assert_eq!(branding.display_name.as_deref(), Some("Support"));
+        assert_eq!(branding.primary_color.as_deref(), Some("#0A1636"));
+        let captcha = config.captcha.unwrap();
+        assert_eq!(captcha.provider, CaptchaProvider::Turnstile);
+        assert!(captcha.enabled);
+        assert_eq!(captcha.site_key, "1x00000000000000000000AA");
+        assert!(captcha.secret_key.is_some());
+    }
+
+    #[test]
+    fn test_app_channel_public_chat_config_valid() {
+        let ch = test_channel(
+            ChannelType::PublicChat,
+            serde_json::json!({"anonymous": true}),
+        );
+        let config = ch.public_chat_config().unwrap();
+        assert!(config.anonymous);
+    }
+
+    #[test]
+    fn test_app_public_chat_channel_lookup() {
+        let ch = test_channel(
+            ChannelType::PublicChat,
+            serde_json::json!({"branding": {"display_name": "Helpdesk"}}),
+        );
+        let app = test_app(vec![ch]);
+        assert!(app.public_chat_channel().is_some());
     }
 
     #[test]

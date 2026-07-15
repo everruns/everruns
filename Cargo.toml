@@ -20,11 +20,11 @@ members = [
     "crates/local",
     "crates/cli",
     "crates/durable",
-    "crates/config",
     "crates/openui",
     "crates/a2ui",
     "crates/session-sqldb",
     "crates/container-sandbox",
+    "crates/observability",
     "integrations/docker",
     "integrations/daytona",
     "integrations/deno",
@@ -44,10 +44,11 @@ exclude = [
     "research/infinity_context",
     "research/lua-vs-bash",
     "examples/weekend-concierge-host",
+    "evals/platform-capability",
 ]
 
 [workspace.package]
-version = "0.17.0"
+version = "0.17.9"
 edition = "2024"
 # Published crate MSRV: Rust 2024 plus current published dependency floors.
 rust-version = "1.94.0"
@@ -71,7 +72,7 @@ axum-extra = { version = "0.12", features = ["cookie", "multipart", "query"] }
 hyper = { version = "1", features = ["server", "http1", "http2"] }
 hyper-util = { version = "0.1", features = ["tokio", "server-auto", "http1", "http2"] }
 tower = "0.5"
-tower-http = { version = "0.6", features = ["cors", "trace", "set-header"] }
+tower-http = { version = "0.7", features = ["cors", "trace", "set-header"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -108,12 +109,12 @@ tracing-opentelemetry = "0.33"
 utoipa = { version = "5.4", features = ["axum_extras", "chrono", "uuid"] }
 
 # Encryption
-aes-gcm = "0.10"
-rand = "0.9"
+aes-gcm = "0.11"
+rand = "0.10"
 base64 = "0.22"
 
 # Object storage (optional S3-compatible blob backend, specs/object-storage.md)
-object_store = { version = "0.12", features = ["aws"] }
+object_store = { version = "0.14", features = ["aws"] }
 
 # Rate limiting
 governor = "0.10"
@@ -127,8 +128,8 @@ async-nats = "0.49"
 # Authentication
 argon2 = "0.5"
 jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
-sha2 = "0.10"
-hmac = "0.12"
+sha2 = "0.11"
+hmac = "0.13"
 hex = "0.4"
 git2 = "0.21"
 reqwest = { version = "0.13.2", default-features = false, features = ["json", "stream", "rustls", "blocking", "form"] }
@@ -136,6 +137,7 @@ clap = { version = "4", features = ["derive", "env"] }
 serde_yaml = "0.9"
 eventsource-stream = "0.2"
 regex = "1.11"
+globset = "0.4"
 time = "0.3"
 parking_lot = "0.12"
 dialoguer = "0.12"
@@ -143,15 +145,16 @@ webbrowser = "1"
 dirs = "6"
 
 # WebSocket (CDP sessions)
-tokio-tungstenite = { version = "0.29", features = ["rustls-tls-native-roots"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3"
 
 # Everruns SDK
-everruns-sdk = "0.1.10"
-everruns-core = { path = "crates/core", version = "0.17.0" }
-everruns-mcp = { path = "crates/mcp", version = "0.17.0" }
+everruns-sdk = "0.2.0"
+everruns-core = { path = "crates/core", version = "0.17.9" }
+everruns-observability = { path = "crates/observability", version = "0.17.1" }
+everruns-mcp = { path = "crates/mcp", version = "0.17.9" }
 everruns-openai = { path = "crates/openai", version = "0.17.0" }
-everruns-runtime = { path = "crates/runtime", version = "0.17.0" }
+everruns-runtime = { path = "crates/runtime", version = "0.17.9" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }
@@ -179,7 +182,7 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 
 # Prometheus metrics
 metrics = "0.24"
-metrics-exporter-prometheus = { version = "0.16", default-features = false }
+metrics-exporter-prometheus = { version = "0.18", default-features = false }
 
 # In-process caching
 moka = { version = "0.12", features = ["future", "sync"] }

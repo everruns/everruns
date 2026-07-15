@@ -143,6 +143,7 @@ pub struct DeleteQuery {
 
 /// Response for delete operation
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(as = DeleteFileResponse)]
 pub struct DeleteResponse {
     pub deleted: bool,
 }
@@ -332,18 +333,21 @@ pub(crate) fn raw_file_response(
 /// the user's auth cookies — cannot read everruns cookies, storage, or the
 /// parent DOM. Omitting `allow-top-navigation`/`allow-forms`/`allow-popups`
 /// blocks redirects, form posts, and popups; `allow-scripts` lets the page run
-/// JavaScript. The asset directives permit inline scripts/styles and
-/// https/data/blob resources so real pages render, while `object-src 'none'`
-/// blocks plugins and `base-uri 'none'` blocks `<base>` hijacking.
+/// JavaScript. Network fetches are denied by omitting remote URL schemes from
+/// every fetch directive: untrusted preview content may execute, but it cannot
+/// exfiltrate the rendered document to attacker-controlled endpoints. Inline
+/// scripts/styles and local `data:`/`blob:` resources remain available for
+/// self-contained reports; `object-src 'none'` blocks plugins and `base-uri
+/// 'none'` blocks `<base>` hijacking.
 ///
 /// Crucially this is delivered as a real network response: unlike a `srcdoc`/
 /// `data:` iframe — which inherits the app's strict `script-src 'self'` and thus
 /// cannot run inline scripts — a network response carries its own CSP, which is
 /// what lets the preview execute JavaScript at all.
 const SANDBOXED_HTML_PREVIEW_CSP: &str = "sandbox allow-scripts; default-src 'none'; \
-script-src 'unsafe-inline' 'unsafe-eval' https: data: blob:; \
-style-src 'unsafe-inline' https: data: blob:; img-src https: data: blob:; \
-font-src https: data: blob:; media-src https: data: blob:; connect-src https:; \
+script-src 'unsafe-inline' 'unsafe-eval' data: blob:; \
+style-src 'unsafe-inline' data: blob:; img-src data: blob:; \
+font-src data: blob:; media-src data: blob:; connect-src 'none'; \
 object-src 'none'; base-uri 'none'";
 
 /// True when `path` names an HTML document eligible for sandboxed preview.
@@ -891,6 +895,11 @@ mod tests {
         assert!(!csp.contains("allow-popups"));
         assert!(csp.contains("object-src 'none'"));
         assert!(csp.contains("base-uri 'none'"));
+        assert!(csp.contains("connect-src 'none'"));
+        assert!(csp.contains("script-src 'unsafe-inline' 'unsafe-eval' data: blob:"));
+        assert!(csp.contains("img-src data: blob:"));
+        assert!(!csp.contains("https:"));
+        assert!(!csp.contains("http:"));
     }
 
     #[test]

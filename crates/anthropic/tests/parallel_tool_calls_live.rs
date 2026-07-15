@@ -42,6 +42,8 @@ fn tool(name: &str, description: &str) -> ToolDefinition {
 
 fn config_with(parallel: Option<bool>) -> LlmCallConfig {
     LlmCallConfig {
+        speed: None,
+        verbosity: None,
         model: LIVE_MODEL.to_string(),
         temperature: Some(0.0),
         max_tokens: Some(1024),
@@ -56,6 +58,7 @@ fn config_with(parallel: Option<bool>) -> LlmCallConfig {
         prompt_cache: None,
         openrouter_routing: None,
         parallel_tool_calls: parallel,
+        volatile_suffix_len: 0,
     }
 }
 

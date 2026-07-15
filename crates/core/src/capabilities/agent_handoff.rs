@@ -6,12 +6,21 @@
 // Credentials are never accepted as tool arguments or config. Required
 // provider connections are resolved server-side before the child session starts.
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SystemPromptContext};
-use crate::platform_store::PlatformStore;
-use crate::session::SubagentStatus;
+use super::delegation_result::{
+    MESSAGE_SCHEMA_SPEC_KEY, RESULT_SCHEMA_SPEC_KEY, normalize_message_schema,
+    normalize_result_schema, required_result_is_missing, result_value_for_task,
+};
+use super::util::{get_platform_store, require_str_nonblank as require_str};
+use super::{
+    Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SpawnMode, SystemPromptContext,
+};
+use crate::config_layer::{AgentConfigOverlay, normalize_initial_file_path};
+use crate::platform_store::PlatformCreateSessionRequest;
+use crate::session::{SessionSeedMode, SubagentStatus};
 use crate::session_task::{
-    CreateSessionTask, SessionTaskFilter, SessionTaskState, SessionTaskUpdate, TASK_KIND_SUBAGENT,
-    TaskError, TaskLinks, TaskWakePolicy,
+    CreateSessionTask, SessionTask, SessionTaskState, SessionTaskUpdate, TASK_KIND_AGENT_HANDOFF,
+    TASK_KIND_SESSION, TaskError, TaskExecutor, TaskExecutorPlugin, TaskLinks, TaskMessage,
+    TaskWakePolicy, task_message_text,
 };
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
@@ -20,9 +29,50 @@ use crate::typed_id::{AgentId, HarnessId};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::sync::Arc;
 
 pub const AGENT_HANDOFF_CAPABILITY_ID: &str = "agent_handoff";
 const DEFAULT_WAIT_TIMEOUT_SECS: u64 = 300;
+const BACKGROUND_WAIT_SLICE_SECS: u64 = 300;
+const BACKGROUND_MAX_WAIT_SECS: u64 = 6 * 60 * 60;
+const BACKGROUND_HEARTBEAT_INTERVAL_SECS: u64 = 15;
+const BACKGROUND_POLL_BACKOFF_SECS: u64 = 5;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum HandoffLifetime {
+    Linked,
+    Detached,
+}
+
+impl HandoffLifetime {
+    fn parse(arguments: &Value) -> Result<Self, String> {
+        match arguments.get("lifetime").and_then(Value::as_str) {
+            None | Some("linked") => Ok(Self::Linked),
+            Some("detached") => Ok(Self::Detached),
+            Some(other) => Err(format!(
+                "Invalid lifetime: {other}. Expected 'linked' or 'detached'."
+            )),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Linked => "linked",
+            Self::Detached => "detached",
+        }
+    }
+}
+
+fn parse_seed(arguments: &Value) -> Result<SessionSeedMode, String> {
+    match arguments.get("seed").and_then(Value::as_str) {
+        None | Some("fresh") => Ok(SessionSeedMode::Fresh),
+        Some("fork") => Ok(SessionSeedMode::Fork),
+        Some("workspace") => Ok(SessionSeedMode::Workspace),
+        Some(other) => Err(format!(
+            "Invalid seed: {other}. Expected 'fresh', 'fork', or 'workspace'."
+        )),
+    }
+}
 
 fn terminal_handoff_status(wait_status: &str) -> Option<SubagentStatus> {
     match wait_status {
@@ -85,7 +135,7 @@ impl Capability for AgentHandoffCapability {
                             "id": {
                                 "type": "string",
                                 "title": "Target ID",
-                                "description": "Stable target key used in start_agent_handoff."
+                                "description": "Stable target key used as spawn_agent target.id."
                             },
                             "name": {
                                 "type": "string",
@@ -167,7 +217,7 @@ impl Capability for AgentHandoffCapability {
                                 "properties": {
                                     "id": {
                                         "title": "Ідентифікатор цілі",
-                                        "description": "Стабільний ключ цілі, що використовується у start_agent_handoff."
+                                        "description": "Стабільний ключ цілі, що використовується як spawn_agent target.id."
                                     },
                                     "name": {
                                         "title": "Назва",
@@ -203,12 +253,8 @@ impl Capability for AgentHandoffCapability {
     }
 
     fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
-        let config = AgentHandoffConfig::from_value(config).unwrap_or_default();
-        vec![
-            Box::new(StartAgentHandoffTool::new(config.clone())),
-            Box::new(GetAgentHandoffsTool),
-            Box::new(MessageAgentHandoffTool),
-        ]
+        let _ = AgentHandoffConfig::from_value(config).unwrap_or_default();
+        vec![]
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -239,9 +285,9 @@ impl Capability for AgentHandoffCapability {
 
         Some(format!(
             "<capability id=\"{}\">\n\
-Use start_agent_handoff to delegate work to configured first-party agents.\n\
+Use spawn_agent with target.type=\"agent\" to delegate work to configured first-party agents.\n\
 Never ask the user to paste provider tokens into chat or pass credentials in tool arguments.\n\
-If a required provider connection is missing, the handoff tool will return a connection_required result and the client should collect credentials through the Connections flow.\n\
+If a required provider connection is missing, spawn_agent will return a connection_required result and the client should collect credentials through the Connections flow.\n\
 Available handoff targets:\n{}\n\
 </capability>",
             self.id(),
@@ -330,44 +376,152 @@ impl AgentHandoffTargetConfig {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-enum AgentHandoffMode {
-    Wait,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SpawnAgentHandoffMode {
+    Spawn(SpawnMode),
+    Invite,
 }
 
-impl AgentHandoffMode {
-    fn parse(value: Option<&str>) -> std::result::Result<Self, String> {
-        match value.unwrap_or("wait") {
-            "wait" => Ok(Self::Wait),
-            other => Err(format!("Invalid mode: {other}. Only wait is supported")),
+impl SpawnAgentHandoffMode {
+    fn parse(value: Option<&str>, context: &ToolContext) -> std::result::Result<Self, String> {
+        let explicit = match value.map(str::trim).filter(|s| !s.is_empty()) {
+            None => None,
+            Some(value) if let Some(mode) = SpawnMode::parse(value) => Some(Self::Spawn(mode)),
+            Some("invite") => Some(Self::Invite),
+            Some(other) => {
+                return Err(format!(
+                    "Invalid mode: \"{other}\". Valid modes: background, foreground, invite."
+                ));
+            }
+        };
+        let has_registry = context.session_task_registry.is_some();
+        match explicit {
+            Some(Self::Spawn(SpawnMode::Background)) if !has_registry => Err(
+                "Background mode requires a session task registry, which is not available in this environment. Use mode: \"foreground\" instead."
+                    .to_string(),
+            ),
+            Some(mode) => Ok(mode),
+            None if has_registry => Ok(Self::Spawn(SpawnMode::Background)),
+            None => Ok(Self::Spawn(SpawnMode::Foreground)),
         }
     }
 
     fn as_str(self) -> &'static str {
         match self {
-            Self::Wait => "wait",
+            Self::Spawn(mode) => mode.as_str(),
+            Self::Invite => "invite",
         }
+    }
+
+    fn is_invite(self) -> bool {
+        self == Self::Invite
     }
 }
 
-fn get_platform_store(context: &ToolContext) -> Result<&dyn PlatformStore, ToolExecutionResult> {
-    context
-        .platform_store
-        .as_ref()
-        .map(|store| store.as_ref())
-        .ok_or_else(|| {
-            ToolExecutionResult::tool_error("Agent handoff tools require platform_store context.")
-        })
+fn capability_conflict_message(
+    host: &AgentConfigOverlay,
+    guest: &AgentConfigOverlay,
+) -> Option<String> {
+    guest.capabilities.iter().find_map(|guest_cap| {
+        host.capabilities
+            .iter()
+            .find(|host_cap| host_cap.capability_id() == guest_cap.capability_id())
+            .and_then(|host_cap| {
+                (host_cap.config != guest_cap.config).then(|| {
+                    format!(
+                        "capability `{}` has different host and guest configuration",
+                        guest_cap.capability_id()
+                    )
+                })
+            })
+    })
 }
 
-fn require_str<'a>(args: &'a Value, field: &str) -> Result<&'a str, ToolExecutionResult> {
-    args.get(field)
-        .and_then(Value::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .ok_or_else(|| {
-            ToolExecutionResult::tool_error(format!("Missing required parameter: {field}"))
+fn initial_file_conflict_message(
+    host: &AgentConfigOverlay,
+    guest: &AgentConfigOverlay,
+) -> Option<String> {
+    guest.initial_files.iter().find_map(|guest_file| {
+        let guest_path = normalize_initial_file_path(&guest_file.path);
+        host.initial_files
+            .iter()
+            .find(|host_file| normalize_initial_file_path(&host_file.path) == guest_path)
+            .and_then(|host_file| {
+                (host_file != guest_file)
+                    .then(|| format!("mount `{guest_path}` has different host and guest contents"))
+            })
+    })
+}
+
+fn mcp_conflict_message(host: &AgentConfigOverlay, guest: &AgentConfigOverlay) -> Option<String> {
+    guest.mcp_servers.iter().find_map(|(name, guest_server)| {
+        host.mcp_servers.get(name).and_then(|host_server| {
+            (host_server != guest_server)
+                .then(|| format!("MCP server `{name}` has different host and guest configuration"))
         })
+    })
+}
+
+fn invite_conflict_message(
+    host: &AgentConfigOverlay,
+    guest: &AgentConfigOverlay,
+) -> Option<String> {
+    capability_conflict_message(host, guest)
+        .or_else(|| initial_file_conflict_message(host, guest))
+        .or_else(|| mcp_conflict_message(host, guest))
+}
+
+async fn harness_chain_overlay(
+    store: &dyn crate::platform_store::PlatformStore,
+    harness_id: HarnessId,
+) -> Result<AgentConfigOverlay, ToolExecutionResult> {
+    let chain = store
+        .get_harness_chain(harness_id)
+        .await
+        .map_err(ToolExecutionResult::internal_error)?;
+    if chain.is_empty() {
+        return Err(ToolExecutionResult::tool_error(format!(
+            "Harness not found: {harness_id}"
+        )));
+    }
+    Ok(AgentConfigOverlay::fold(
+        chain.iter().map(AgentConfigOverlay::from),
+    ))
+}
+
+async fn invite_mode_overlays(
+    store: &dyn crate::platform_store::PlatformStore,
+    parent_session: &crate::session::Session,
+    target: &AgentHandoffTargetConfig,
+) -> Result<(AgentConfigOverlay, AgentConfigOverlay), ToolExecutionResult> {
+    let mut host_layers = vec![harness_chain_overlay(store, parent_session.harness_id).await?];
+    if let Some(agent_id) = parent_session.agent_id {
+        let host_agent = store
+            .get_agent_by_id(agent_id)
+            .await
+            .map_err(ToolExecutionResult::internal_error)?
+            .ok_or_else(|| {
+                ToolExecutionResult::tool_error(format!("Host agent not found: {agent_id}"))
+            })?;
+        host_layers.push(AgentConfigOverlay::from(&host_agent));
+    }
+    host_layers.push(AgentConfigOverlay::from(parent_session));
+
+    let target_agent = store
+        .get_agent_by_id(target.agent_id)
+        .await
+        .map_err(ToolExecutionResult::internal_error)?
+        .ok_or_else(|| {
+            ToolExecutionResult::tool_error(format!("Target agent not found: {}", target.agent_id))
+        })?;
+
+    Ok((
+        AgentConfigOverlay::fold(host_layers),
+        AgentConfigOverlay::fold([
+            harness_chain_overlay(store, target.harness_id).await?,
+            AgentConfigOverlay::from(&target_agent),
+        ]),
+    ))
 }
 
 fn child_task(task: &str, public_context: Option<&Value>) -> String {
@@ -385,6 +539,230 @@ fn last_agent_message(messages: &[crate::platform_store::PlatformMessage]) -> Op
         .iter()
         .rfind(|message| message.role == "agent" || message.role == "assistant")
         .map(|message| message.content.clone())
+}
+
+async fn finish_handoff_task(
+    context: &ToolContext,
+    task_id: Option<&str>,
+    state: SessionTaskState,
+    summary: Option<String>,
+    error: Option<TaskError>,
+    expected_attempt: Option<i32>,
+) {
+    let (Some(registry), Some(task_id)) = (context.session_task_registry.as_ref(), task_id) else {
+        return;
+    };
+    let _ = registry
+        .update(
+            context.session_id,
+            task_id,
+            SessionTaskUpdate {
+                state: Some(state),
+                summary,
+                error,
+                expected_attempt,
+                ..Default::default()
+            },
+        )
+        .await;
+}
+
+async fn finalize_handoff_task(
+    context: &ToolContext,
+    task_id: Option<&str>,
+    mut state: SessionTaskState,
+    mut summary: Option<String>,
+    mut error: Option<TaskError>,
+    expected_attempt: Option<i32>,
+) {
+    if state == SessionTaskState::Succeeded && required_result_is_missing(context, task_id).await {
+        state = SessionTaskState::Failed;
+        summary =
+            Some("Agent handoff completed without reporting a structured result.".to_string());
+        error = Some(TaskError {
+            kind: "no_result".to_string(),
+            message:
+                "Agent handoff completed without calling report_result for its result_schema task."
+                    .to_string(),
+        });
+    }
+    finish_handoff_task(context, task_id, state, summary, error, expected_attempt).await;
+}
+
+fn handoff_task_state(status: &SubagentStatus) -> SessionTaskState {
+    match status {
+        SubagentStatus::Completed => SessionTaskState::Succeeded,
+        SubagentStatus::Cancelled => SessionTaskState::Canceled,
+        SubagentStatus::Failed | SubagentStatus::MaxIterationsReached | SubagentStatus::Sealed => {
+            SessionTaskState::Failed
+        }
+        SubagentStatus::Running | SubagentStatus::Spawning => SessionTaskState::Running,
+    }
+}
+
+fn handoff_error(status: &str, state: SessionTaskState) -> Option<TaskError> {
+    (state == SessionTaskState::Failed).then(|| TaskError {
+        kind: "handoff_failed".to_string(),
+        message: format!("Handoff ended with status: {status}"),
+    })
+}
+
+async fn handoff_result(
+    store: &dyn crate::platform_store::PlatformStore,
+    child_session_id: crate::typed_id::SessionId,
+    status: &str,
+) -> Result<String, ToolExecutionResult> {
+    let messages = store
+        .get_messages(child_session_id, Some(5))
+        .await
+        .map_err(ToolExecutionResult::internal_error)?;
+    Ok(last_agent_message(&messages)
+        .unwrap_or_else(|| format!("Handoff completed with status: {status}")))
+}
+
+fn spawn_handoff_background_watcher(
+    context: &ToolContext,
+    child_session_id: crate::typed_id::SessionId,
+    first_message: String,
+    task_id: String,
+    task_attempt: i32,
+) {
+    let context = context.clone();
+    tokio::spawn(async move {
+        let Some(store) = context.platform_store.clone() else {
+            return;
+        };
+
+        if let Err(error) = store.send_message(child_session_id, &first_message).await {
+            finish_handoff_task(
+                &context,
+                Some(&task_id),
+                SessionTaskState::Failed,
+                None,
+                Some(TaskError {
+                    kind: "handoff_failed".to_string(),
+                    message: error.to_string(),
+                }),
+                Some(task_attempt),
+            )
+            .await;
+            return;
+        }
+
+        let heartbeat = async {
+            let Some(registry) = context.session_task_registry.clone() else {
+                return std::future::pending::<()>().await;
+            };
+            loop {
+                tokio::time::sleep(std::time::Duration::from_secs(
+                    BACKGROUND_HEARTBEAT_INTERVAL_SECS,
+                ))
+                .await;
+                let _ = registry
+                    .update(
+                        context.session_id,
+                        &task_id,
+                        SessionTaskUpdate {
+                            heartbeat_at: Some(chrono::Utc::now()),
+                            expected_attempt: Some(task_attempt),
+                            ..Default::default()
+                        },
+                    )
+                    .await;
+            }
+        };
+
+        let wait_and_settle = async {
+            let started = tokio::time::Instant::now();
+            loop {
+                let status = match store
+                    .wait_for_idle(child_session_id, Some(BACKGROUND_WAIT_SLICE_SECS))
+                    .await
+                {
+                    Ok(status) => status,
+                    Err(error) => {
+                        finish_handoff_task(
+                            &context,
+                            Some(&task_id),
+                            SessionTaskState::Failed,
+                            None,
+                            Some(TaskError {
+                                kind: "handoff_failed".to_string(),
+                                message: error.to_string(),
+                            }),
+                            Some(task_attempt),
+                        )
+                        .await;
+                        return;
+                    }
+                };
+
+                if let Some(terminal) = terminal_handoff_status(&status) {
+                    let state = handoff_task_state(&terminal);
+                    let result = handoff_result(store.as_ref(), child_session_id, &status)
+                        .await
+                        .ok();
+                    let error = handoff_error(&status, state);
+                    finalize_handoff_task(
+                        &context,
+                        Some(&task_id),
+                        state,
+                        result,
+                        error,
+                        Some(task_attempt),
+                    )
+                    .await;
+                    return;
+                }
+
+                if started.elapsed().as_secs() >= BACKGROUND_MAX_WAIT_SECS {
+                    finish_handoff_task(
+                        &context,
+                        Some(&task_id),
+                        SessionTaskState::Failed,
+                        None,
+                        Some(TaskError {
+                            kind: "timeout".to_string(),
+                            message: format!(
+                                "Background agent handoff did not finish within {BACKGROUND_MAX_WAIT_SECS}s (last status: {status})"
+                            ),
+                        }),
+                        Some(task_attempt),
+                    )
+                    .await;
+                    return;
+                }
+
+                if let Some(registry) = context.session_task_registry.as_ref() {
+                    let _ = registry
+                        .update(
+                            context.session_id,
+                            &task_id,
+                            SessionTaskUpdate {
+                                state_detail: Some(format!(
+                                    "waiting for agent handoff ({}s elapsed, last status: {status})",
+                                    started.elapsed().as_secs()
+                                )),
+                                expected_attempt: Some(task_attempt),
+                                ..Default::default()
+                            },
+                        )
+                        .await;
+                }
+                if !status.starts_with("timeout") {
+                    tokio::time::sleep(std::time::Duration::from_secs(
+                        BACKGROUND_POLL_BACKOFF_SECS,
+                    ))
+                    .await;
+                }
+            }
+        };
+
+        tokio::select! {
+            () = wait_and_settle => {}
+            () = heartbeat => {}
+        }
+    });
 }
 
 async fn require_connections(
@@ -414,48 +792,79 @@ async fn require_connections(
     Ok(())
 }
 
-pub struct StartAgentHandoffTool {
+pub struct SpawnAgentHandoffTool {
     config: AgentHandoffConfig,
 }
 
-impl StartAgentHandoffTool {
-    fn new(config: AgentHandoffConfig) -> Self {
-        Self { config }
+impl SpawnAgentHandoffTool {
+    pub fn new(config: &Value) -> Self {
+        Self {
+            config: AgentHandoffConfig::from_value(config).unwrap_or_default(),
+        }
     }
 }
 
 #[async_trait]
-impl Tool for StartAgentHandoffTool {
+impl Tool for SpawnAgentHandoffTool {
     fn name(&self) -> &str {
-        "start_agent_handoff"
+        "spawn_agent"
     }
 
     fn display_name(&self) -> Option<&str> {
-        Some("Start Agent Handoff")
+        Some("Spawn Agent")
     }
 
     fn description(&self) -> &str {
-        "Start an authenticated handoff to a configured first-party target agent. Credentials are resolved through Connections, never passed as arguments."
+        "Delegate work to a configured first-party target agent. Set target.type to \"agent\" and target.id to a configured handoff target id. Runs in the background by default when task tracking is available; set mode to \"foreground\" to block for the result or \"invite\" to add the target as a member of the current session."
     }
 
     fn parameters_schema(&self) -> Value {
         json!({
             "type": "object",
             "properties": {
-                "target": {
+                "name": {
                     "type": "string",
-                    "description": "Configured handoff target id."
+                    "description": "Human-readable name for this delegated run."
                 },
                 "instructions": {
                     "type": "string",
                     "description": "Instructions for the target agent. Do not include credentials or bearer tokens."
                 },
+                "target": {
+                    "type": "object",
+                    "properties": {
+                        "type": {
+                            "type": "string",
+                            "enum": ["agent"],
+                            "description": "Delegation target type. Use \"agent\" for a configured first-party Agent handoff."
+                        },
+                        "id": {
+                            "type": "string",
+                            "description": "Configured handoff target id."
+                        }
+                    },
+                    "required": ["type", "id"],
+                    "additionalProperties": false
+                },
+                "mode": {
+                    "type": "string",
+                    "enum": ["background", "foreground", "invite"],
+                    "description": "Execution mode. \"background\" (default when task tracking is available) returns immediately with a task_id; \"foreground\" blocks until the handoff completes; \"invite\" adds the target agent as a member participant in this session."
+                },
                 "public_context": {
                     "type": "object",
                     "description": "Non-secret structured context to include with the instructions."
+                },
+                "result_schema": {
+                    "type": "object",
+                    "description": "JSON Schema for the child agent's final structured result. The child must call report_result before the task can succeed."
+                },
+                "message_schema": {
+                    "type": "object",
+                    "description": "JSON Schema for structured progress messages. The child receives report_task_progress."
                 }
             },
-            "required": ["target", "instructions"],
+            "required": ["name", "instructions", "target"],
             "additionalProperties": false
         })
     }
@@ -466,7 +875,7 @@ impl Tool for StartAgentHandoffTool {
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
-            "start_agent_handoff requires context. This tool must be executed with session context.",
+            "spawn_agent requires context. This tool must be executed with session context.",
         )
     }
 
@@ -480,18 +889,77 @@ impl Tool for StartAgentHandoffTool {
             Err(error) => return error,
         };
 
-        let target_id = match require_str(&arguments, "target") {
-            Ok(value) => value,
+        let target = arguments.get("target").unwrap_or(&Value::Null);
+        if target.get("type").and_then(Value::as_str) != Some("agent") {
+            return ToolExecutionResult::tool_error(
+                "spawn_agent target.type must be \"agent\" for the agent_handoff capability",
+            );
+        }
+        let target_id = match target
+            .get("id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            Some(id) => id,
+            None => {
+                return ToolExecutionResult::tool_error("Missing required parameter: target.id");
+            }
+        };
+        let name = match require_str(&arguments, "name") {
+            Ok(value) => value.trim().to_string(),
             Err(error) => return error,
         };
         let instructions = match require_str(&arguments, "instructions") {
             Ok(value) => value,
             Err(error) => return error,
         };
-        let mode = match AgentHandoffMode::parse(arguments.get("mode").and_then(Value::as_str)) {
+        let goal = arguments
+            .get("goal")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        let lifetime = match HandoffLifetime::parse(&arguments) {
+            Ok(value) => value,
+            Err(error) => return ToolExecutionResult::tool_error(error),
+        };
+        let seed = match parse_seed(&arguments) {
+            Ok(value) => value,
+            Err(error) => return ToolExecutionResult::tool_error(error),
+        };
+        let mode = match SpawnAgentHandoffMode::parse(
+            arguments.get("mode").and_then(Value::as_str),
+            context,
+        ) {
             Ok(mode) => mode,
             Err(error) => return ToolExecutionResult::tool_error(error),
         };
+        let result_schema = match normalize_result_schema(&arguments) {
+            Ok(schema) => schema,
+            Err(error) => return error,
+        };
+        let message_schema = match normalize_message_schema(&arguments) {
+            Ok(schema) => schema,
+            Err(error) => return error,
+        };
+        if mode.is_invite() && (result_schema.is_some() || message_schema.is_some()) {
+            return ToolExecutionResult::tool_error(
+                "result_schema and message_schema require a child task and are not valid for invite-mode agent handoffs.",
+            );
+        }
+        if (result_schema.is_some() || message_schema.is_some())
+            && context.session_task_registry.is_none()
+        {
+            return ToolExecutionResult::tool_error(
+                "result_schema and message_schema require session_task_registry context for agent handoffs.",
+            );
+        }
+        if lifetime == HandoffLifetime::Detached && mode.is_invite() {
+            return ToolExecutionResult::tool_error(
+                "lifetime=\"detached\" is only valid for agent handoffs that create a new session; invite mode joins the current session.",
+            );
+        }
 
         let Some(target) = self.config.target(target_id) else {
             return ToolExecutionResult::tool_error(format!(
@@ -509,22 +977,84 @@ impl Tool for StartAgentHandoffTool {
             Err(error) => return ToolExecutionResult::internal_error(error),
         };
 
-        if parent_session.parent_session_id.is_some() {
+        if lifetime == HandoffLifetime::Linked && parent_session.parent_session_id.is_some() {
             return ToolExecutionResult::tool_error(
                 "Agent handoffs cannot be started from child sessions.",
             );
         }
 
+        if mode.is_invite() {
+            let (host_overlay, guest_overlay) =
+                match invite_mode_overlays(store, &parent_session, target).await {
+                    Ok(overlays) => overlays,
+                    Err(error) => return error,
+                };
+            if let Some(conflict) = invite_conflict_message(&host_overlay, &guest_overlay) {
+                return ToolExecutionResult::tool_error(format!(
+                    "Invite-mode handoff cannot join target \"{}\": {conflict}. Use background or foreground mode for targets that need their own environment.",
+                    target.id
+                ));
+            }
+
+            let participant = match store
+                .add_agent_session_participant(context.session_id, target.agent_id)
+                .await
+            {
+                Ok(participant) => participant,
+                Err(error) => return ToolExecutionResult::internal_error(error),
+            };
+
+            return ToolExecutionResult::success(json!({
+                "participant_id": participant.id,
+                "target": target.id,
+                "target_agent_id": target.agent_id,
+                "name": name,
+                "status": "joined",
+                "mode": "invite",
+                "message": "Target agent joined this session and can respond when addressed.",
+            }));
+        }
+
+        // Detached handoffs create the same lifecycle-independent peer shape
+        // as detached subagents, so they share the host authorization and
+        // origin-root budget linkage invariant.
+        let budget_root_session_id = if lifetime == HandoffLifetime::Detached {
+            let Some(authority) = context.session_creation_authority.as_ref() else {
+                return ToolExecutionResult::tool_error(
+                    "Detached handoff requires session-creation authority.",
+                );
+            };
+            match authority
+                .authorize_session_creation(context.session_id)
+                .await
+            {
+                Ok(root_session_id) => Some(root_session_id),
+                Err(error) => {
+                    return ToolExecutionResult::tool_error(format!(
+                        "Detached handoff is not authorized to create a session: {error}"
+                    ));
+                }
+            }
+        } else {
+            None
+        };
+
         let child_session = match store
-            .create_session(
-                target.harness_id,
-                Some(target.agent_id),
-                Some(&target.name),
-                parent_session.locale.as_deref(),
-                None,
-                None,
-                Some(context.session_id),
-            )
+            .create_session_with_options(PlatformCreateSessionRequest {
+                harness_id: target.harness_id,
+                agent_id: Some(target.agent_id),
+                title: Some(name.clone()),
+                goal,
+                locale: parent_session.locale.clone(),
+                blueprint_id: None,
+                blueprint_config: None,
+                parent_session_id: (lifetime == HandoffLifetime::Linked)
+                    .then_some(context.session_id),
+                forked_from_session_id: (lifetime == HandoffLifetime::Detached)
+                    .then_some(context.session_id),
+                budget_root_session_id,
+                seed,
+            })
             .await
         {
             Ok(session) => session,
@@ -532,131 +1062,191 @@ impl Tool for StartAgentHandoffTool {
         };
 
         let handoff_task = child_task(instructions, arguments.get("public_context"));
-
-        // Register a subagent-kind session task so the handoff appears in the
-        // task registry alongside other work-shaped tasks (specs/session-tasks.md).
-        let handoff_task_id: Option<String> =
-            if let Some(task_registry) = &context.session_task_registry {
-                task_registry
-                    .create(CreateSessionTask {
-                        session_id: context.session_id,
-                        id: None,
-                        kind: TASK_KIND_SUBAGENT.to_string(),
-                        display_name: target.name.clone(),
-                        spec: json!({
-                            "target_id": &target.id,
-                            "external_agent_id": target.agent_id,
-                            "mode": mode.as_str(),
-                        }),
-                        state: SessionTaskState::Running,
-                        links: TaskLinks {
-                            child_session_id: Some(child_session.id),
-                            ..Default::default()
-                        },
-                        wake_policy: TaskWakePolicy::Silent,
-                    })
-                    .await
-                    .ok()
-                    .map(|t| t.id)
-            } else {
-                None
-            };
-
-        if let Err(error) = store.send_message(child_session.id, &handoff_task).await {
-            return ToolExecutionResult::internal_error(error);
+        let mut task_id = None;
+        let mut task_attempt = 1;
+        if let Some(task_registry) = &context.session_task_registry {
+            let mut task_spec = json!({
+                "target_id": &target.id,
+                "external_agent_id": target.agent_id,
+                "instructions": instructions,
+                "mode": mode.as_str(),
+                "lifetime": lifetime.as_str(),
+                "seed": seed.as_str(),
+            });
+            if let Some(spec) = task_spec.as_object_mut() {
+                if let Some(schema) = &result_schema {
+                    spec.insert(RESULT_SCHEMA_SPEC_KEY.to_string(), schema.clone());
+                }
+                if let Some(schema) = &message_schema {
+                    spec.insert(MESSAGE_SCHEMA_SPEC_KEY.to_string(), schema.clone());
+                }
+            }
+            match task_registry
+                .create(CreateSessionTask {
+                    session_id: context.session_id,
+                    id: None,
+                    kind: match lifetime {
+                        HandoffLifetime::Linked => TASK_KIND_AGENT_HANDOFF,
+                        HandoffLifetime::Detached => TASK_KIND_SESSION,
+                    }
+                    .to_string(),
+                    display_name: name.clone(),
+                    spec: task_spec,
+                    state: SessionTaskState::Running,
+                    links: TaskLinks {
+                        child_session_id: Some(child_session.id),
+                        ..Default::default()
+                    },
+                    wake_policy: match (lifetime, mode, message_schema.is_some()) {
+                        (HandoffLifetime::Detached, _, _) => TaskWakePolicy::Silent,
+                        (
+                            HandoffLifetime::Linked,
+                            SpawnAgentHandoffMode::Spawn(SpawnMode::Background),
+                            true,
+                        ) => TaskWakePolicy::OnActivity,
+                        (
+                            HandoffLifetime::Linked,
+                            SpawnAgentHandoffMode::Spawn(SpawnMode::Background),
+                            false,
+                        ) => TaskWakePolicy::OnTerminal,
+                        (
+                            HandoffLifetime::Linked,
+                            SpawnAgentHandoffMode::Spawn(SpawnMode::Foreground),
+                            _,
+                        ) => TaskWakePolicy::Silent,
+                        (HandoffLifetime::Linked, SpawnAgentHandoffMode::Invite, _) => {
+                            unreachable!("invite mode returns before child-session task creation")
+                        }
+                    },
+                })
+                .await
+            {
+                Ok(task) => {
+                    task_attempt = task.attempt;
+                    task_id = Some(task.id);
+                }
+                Err(error)
+                    if mode == SpawnAgentHandoffMode::Spawn(SpawnMode::Background)
+                        || result_schema.is_some()
+                        || message_schema.is_some() =>
+                {
+                    return ToolExecutionResult::tool_error(format!(
+                        "Background spawn_agent could not create its session task, so the handoff was not started: {error}"
+                    ));
+                }
+                Err(_) => {}
+            }
         }
 
-        let status = match store
-            .wait_for_idle(child_session.id, Some(DEFAULT_WAIT_TIMEOUT_SECS))
-            .await
-        {
-            Ok(status) => status,
-            Err(error) => {
-                // Mirror the failure into the session task (best-effort) so it
-                // is not left running indefinitely — handoff tasks do not
-                // heartbeat, so the orphan reaper would never reclaim them.
-                if let (Some(registry), Some(task_id)) =
-                    (&context.session_task_registry, &handoff_task_id)
-                {
-                    let _ = registry
-                        .update(
-                            context.session_id,
-                            task_id,
-                            SessionTaskUpdate {
-                                state: Some(SessionTaskState::Failed),
-                                error: Some(TaskError {
-                                    kind: "handoff_failed".to_string(),
-                                    message: error.to_string(),
-                                }),
-                                ..Default::default()
-                            },
-                        )
-                        .await;
-                }
-                return ToolExecutionResult::success(json!({
+        match mode {
+            SpawnAgentHandoffMode::Spawn(SpawnMode::Background) => {
+                let Some(task_id) = task_id else {
+                    return ToolExecutionResult::tool_error(
+                        "Background spawn_agent requires session_task_registry context so the handoff can be controlled with wait_task/message_task/cancel_task",
+                    );
+                };
+                spawn_handoff_background_watcher(
+                    context,
+                    child_session.id,
+                    handoff_task,
+                    task_id.clone(),
+                    task_attempt,
+                );
+                ToolExecutionResult::success(json!({
+                    "task_id": task_id,
                     "handoff_id": child_session.id.to_string(),
                     "target": target.id,
                     "target_agent_id": target.agent_id,
-                    "name": target.name,
-                    "status": "failed",
-                    "error": error.to_string(),
-                    "mode": "wait",
-                }));
+                    "name": name,
+                    "status": "running",
+                    "mode": "background",
+                }))
             }
-        };
+            SpawnAgentHandoffMode::Spawn(SpawnMode::Foreground) => {
+                if let Err(error) = store.send_message(child_session.id, &handoff_task).await {
+                    finish_handoff_task(
+                        context,
+                        task_id.as_deref(),
+                        SessionTaskState::Failed,
+                        None,
+                        Some(TaskError {
+                            kind: "handoff_failed".to_string(),
+                            message: error.to_string(),
+                        }),
+                        None,
+                    )
+                    .await;
+                    return ToolExecutionResult::internal_error(error);
+                }
 
-        let messages = match store.get_messages(child_session.id, Some(5)).await {
-            Ok(messages) => messages,
-            Err(error) => return ToolExecutionResult::internal_error(error),
-        };
-        let result = last_agent_message(&messages)
-            .unwrap_or_else(|| format!("Handoff completed with status: {status}"));
+                let status = match store
+                    .wait_for_idle(child_session.id, Some(DEFAULT_WAIT_TIMEOUT_SECS))
+                    .await
+                {
+                    Ok(status) => status,
+                    Err(error) => {
+                        finish_handoff_task(
+                            context,
+                            task_id.as_deref(),
+                            SessionTaskState::Failed,
+                            None,
+                            Some(TaskError {
+                                kind: "handoff_failed".to_string(),
+                                message: error.to_string(),
+                            }),
+                            None,
+                        )
+                        .await;
+                        return ToolExecutionResult::success(json!({
+                            "task_id": task_id,
+                            "handoff_id": child_session.id.to_string(),
+                            "target": target.id,
+                            "target_agent_id": target.agent_id,
+                            "name": name,
+                            "status": "failed",
+                            "error": error.to_string(),
+                            "mode": "foreground",
+                        }));
+                    }
+                };
 
-        // Mirror terminal state into the session task (best-effort).
-        if let (Some(subagent_status), Some(registry), Some(task_id)) = (
-            terminal_handoff_status(&status),
-            context.session_task_registry.as_ref(),
-            handoff_task_id.as_ref(),
-        ) {
-            let task_state = match subagent_status {
-                SubagentStatus::Completed => SessionTaskState::Succeeded,
-                SubagentStatus::Failed
-                | SubagentStatus::MaxIterationsReached
-                | SubagentStatus::Sealed => SessionTaskState::Failed,
-                SubagentStatus::Cancelled => SessionTaskState::Canceled,
-                SubagentStatus::Running | SubagentStatus::Spawning => SessionTaskState::Running,
-            };
-            let error = if task_state == SessionTaskState::Failed {
-                Some(TaskError {
-                    kind: "handoff_failed".to_string(),
-                    message: format!("Handoff ended with status: {status}"),
-                })
-            } else {
-                None
-            };
-            let _ = registry
-                .update(
-                    context.session_id,
-                    task_id,
-                    SessionTaskUpdate {
-                        state: Some(task_state),
-                        summary: Some(result.clone()),
+                let result = match handoff_result(store, child_session.id, &status).await {
+                    Ok(result) => result,
+                    Err(error) => return error,
+                };
+                if let Some(terminal) = terminal_handoff_status(&status) {
+                    let state = handoff_task_state(&terminal);
+                    let error = handoff_error(&status, state);
+                    finalize_handoff_task(
+                        context,
+                        task_id.as_deref(),
+                        state,
+                        Some(result.clone()),
                         error,
-                        ..Default::default()
-                    },
-                )
-                .await;
-        }
+                        None,
+                    )
+                    .await;
+                }
 
-        ToolExecutionResult::success(json!({
-            "handoff_id": child_session.id.to_string(),
-            "target": target.id,
-            "target_agent_id": target.agent_id,
-            "name": target.name,
-            "status": status,
-            "result": result,
-            "mode": "wait",
-        }))
+                let result_value = result_value_for_task(context, task_id.as_deref())
+                    .await
+                    .unwrap_or_else(|| json!(result));
+
+                ToolExecutionResult::success(json!({
+                    "task_id": task_id,
+                    "handoff_id": child_session.id.to_string(),
+                    "target": target.id,
+                    "target_agent_id": target.agent_id,
+                    "name": name,
+                    "status": status,
+                    "result": result_value,
+                    "mode": "foreground",
+                }))
+            }
+            SpawnAgentHandoffMode::Invite => {
+                unreachable!("invite mode returns before child-session execution")
+            }
+        }
     }
 
     fn requires_context(&self) -> bool {
@@ -664,209 +1254,83 @@ impl Tool for StartAgentHandoffTool {
     }
 }
 
-pub struct GetAgentHandoffsTool;
+pub struct AgentHandoffTaskExecutor;
 
 #[async_trait]
-impl Tool for GetAgentHandoffsTool {
-    fn name(&self) -> &str {
-        "get_agent_handoffs"
+impl TaskExecutor for AgentHandoffTaskExecutor {
+    fn kind(&self) -> &str {
+        TASK_KIND_AGENT_HANDOFF
     }
 
-    fn display_name(&self) -> Option<&str> {
-        Some("Get Agent Handoffs")
-    }
-
-    fn description(&self) -> &str {
-        "List agent handoffs started by the current session."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "handoff_id": {
-                    "type": "string",
-                    "description": "Optional child session id to retrieve."
-                }
-            },
-            "additionalProperties": false
-        })
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error(
-            "get_agent_handoffs requires context. This tool must be executed with session context.",
-        )
-    }
-
-    async fn execute_with_context(
+    async fn deliver(
         &self,
-        arguments: Value,
+        task: &SessionTask,
+        message: &TaskMessage,
         context: &ToolContext,
-    ) -> ToolExecutionResult {
-        // Derive handoff name/status from session task records (task.display_name /
-        // task.state) rather than the now-retired sessions.subagent_name/status columns.
-        // Each subagent-kind task has links.child_session_id pointing at the child session.
-        let Some(task_registry) = &context.session_task_registry else {
-            return ToolExecutionResult::success(json!({ "handoffs": [] }));
+    ) -> crate::error::Result<()> {
+        let Some(store) = context.platform_store.as_ref() else {
+            return Err(crate::error::AgentLoopError::tool(
+                "agent handoff task delivery requires platform_store context",
+            ));
         };
+        let Some(child_id) = task.links.child_session_id else {
+            return Err(crate::error::AgentLoopError::tool(format!(
+                "agent handoff task {} has no child session link",
+                task.id
+            )));
+        };
+        let text = task_message_text(&message.content);
+        store.send_message(child_id, &text).await
+    }
 
-        let handoff_id_filter = arguments.get("handoff_id").and_then(Value::as_str);
-
-        let tasks = match task_registry
-            .list(
-                context.session_id,
-                Some(&SessionTaskFilter {
-                    kind: Some(TASK_KIND_SUBAGENT.to_string()),
-                    state: None,
-                }),
+    async fn cancel(&self, task: &SessionTask, context: &ToolContext) -> crate::error::Result<()> {
+        let Some(store) = context.platform_store.as_ref() else {
+            return Err(crate::error::AgentLoopError::tool(
+                "agent handoff task cancellation requires platform_store context",
+            ));
+        };
+        let Some(child_id) = task.links.child_session_id else {
+            return Err(crate::error::AgentLoopError::tool(format!(
+                "agent handoff task {} has no child session link",
+                task.id
+            )));
+        };
+        store
+            .send_message(
+                child_id,
+                "Cancellation requested by the parent session. Stop work, wind down, and reply with a brief summary of progress so far.",
             )
             .await
-        {
-            Ok(tasks) => tasks,
-            Err(error) => return ToolExecutionResult::internal_error(error),
-        };
-
-        let handoffs = tasks
-            .into_iter()
-            .filter_map(|task| {
-                // Subagent-kind tasks cover both spawn_subagent and handoffs;
-                // only handoff tasks carry `target_id`/`external_agent_id` in
-                // their spec (set by start_agent_handoff), so use that to
-                // exclude plain subagents.
-                let target_id = task.spec.get("target_id").and_then(Value::as_str)?;
-                let child_session_id = task.links.child_session_id?;
-                let handoff_id_str = child_session_id.to_string();
-                if handoff_id_filter.is_some_and(|id| id != handoff_id_str) {
-                    return None;
-                }
-                Some(json!({
-                    "handoff_id": handoff_id_str,
-                    "target_id": target_id,
-                    "target_agent_id": task.spec.get("external_agent_id"),
-                    "name": task.display_name,
-                    "status": task.state,
-                    "created_at": task.created_at,
-                    "updated_at": task.updated_at,
-                }))
-            })
-            .collect::<Vec<_>>();
-
-        ToolExecutionResult::success(json!({ "handoffs": handoffs }))
     }
 
-    fn requires_context(&self) -> bool {
-        true
+    async fn reconcile(
+        &self,
+        task: &SessionTask,
+        context: &ToolContext,
+    ) -> crate::error::Result<()> {
+        if task.state.is_terminal() {
+            return Ok(());
+        }
+        let (Some(store), Some(child_id)) =
+            (context.platform_store.as_ref(), task.links.child_session_id)
+        else {
+            return Ok(());
+        };
+        let status = store.wait_for_idle(child_id, Some(0)).await?;
+        let Some(terminal) = terminal_handoff_status(&status) else {
+            return Ok(());
+        };
+        let state = handoff_task_state(&terminal);
+        let result = handoff_result(store.as_ref(), child_id, &status).await.ok();
+        let error = handoff_error(&status, state);
+        finalize_handoff_task(context, Some(&task.id), state, result, error, None).await;
+        Ok(())
     }
 }
 
-pub struct MessageAgentHandoffTool;
-
-#[async_trait]
-impl Tool for MessageAgentHandoffTool {
-    fn name(&self) -> &str {
-        "message_agent_handoff"
-    }
-
-    fn display_name(&self) -> Option<&str> {
-        Some("Message Agent Handoff")
-    }
-
-    fn description(&self) -> &str {
-        "Send follow-up input to an existing agent handoff child session."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "handoff_id": {
-                    "type": "string",
-                    "description": "Child session id returned by start_agent_handoff."
-                },
-                "message": {
-                    "type": "string",
-                    "description": "Follow-up message. Do not include credentials or bearer tokens."
-                }
-            },
-            "required": ["handoff_id", "message"],
-            "additionalProperties": false
-        })
-    }
-
-    fn hints(&self) -> ToolHints {
-        ToolHints::default().with_long_running(true)
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error(
-            "message_agent_handoff requires context. This tool must be executed with session context.",
-        )
-    }
-
-    async fn execute_with_context(
-        &self,
-        arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        let store = match get_platform_store(context) {
-            Ok(store) => store,
-            Err(error) => return error,
-        };
-        let handoff_id = match require_str(&arguments, "handoff_id") {
-            Ok(value) => value,
-            Err(error) => return error,
-        };
-        let message = match require_str(&arguments, "message") {
-            Ok(value) => value,
-            Err(error) => return error,
-        };
-        let child_id = match handoff_id.parse::<crate::typed_id::SessionId>() {
-            Ok(id) => id,
-            Err(_) => {
-                return ToolExecutionResult::tool_error(format!(
-                    "Invalid handoff_id: {handoff_id}"
-                ));
-            }
-        };
-
-        let child = match store.get_session_by_id(child_id).await {
-            Ok(Some(session)) => session,
-            Ok(None) => return ToolExecutionResult::tool_error("Agent handoff not found"),
-            Err(error) => return ToolExecutionResult::internal_error(error),
-        };
-        if child.parent_session_id != Some(context.session_id) {
-            return ToolExecutionResult::tool_error(
-                "Agent handoff does not belong to the current session.",
-            );
-        }
-
-        if let Err(error) = store.send_message(child_id, message).await {
-            return ToolExecutionResult::internal_error(error);
-        }
-        let status = match store
-            .wait_for_idle(child_id, Some(DEFAULT_WAIT_TIMEOUT_SECS))
-            .await
-        {
-            Ok(status) => status,
-            Err(error) => return ToolExecutionResult::internal_error(error),
-        };
-        let messages = match store.get_messages(child_id, Some(5)).await {
-            Ok(messages) => messages,
-            Err(error) => return ToolExecutionResult::internal_error(error),
-        };
-        let result = last_agent_message(&messages)
-            .unwrap_or_else(|| format!("Handoff processed message with status: {status}"));
-
-        ToolExecutionResult::success(json!({
-            "handoff_id": child_id.to_string(),
-            "status": status,
-            "result": result,
-        }))
-    }
-
-    fn requires_context(&self) -> bool {
-        true
+inventory::submit! {
+    TaskExecutorPlugin {
+        executor: || Arc::new(AgentHandoffTaskExecutor),
     }
 }
 
@@ -876,7 +1340,7 @@ mod tests {
     use crate::Result;
     use crate::capabilities::session_tasks::tests::InMemorySessionTaskRegistry;
     use crate::platform_store::tests::MockPlatformStore;
-    use crate::session_task::{CreateSessionTask, SessionTaskRegistry, TaskLinks};
+    use crate::session_task::{CreateSessionTask, SessionTaskRegistry, TaskLinks, TaskMessagePart};
     use crate::tools::{Tool, ToolExecutionResult};
     use crate::traits::UserConnectionResolver;
     use crate::typed_id::SessionId;
@@ -904,28 +1368,8 @@ mod tests {
         })
     }
 
-    fn start_tool(config: Value) -> Box<dyn Tool> {
-        AgentHandoffCapability
-            .tools_with_config(&config)
-            .into_iter()
-            .find(|tool| tool.name() == "start_agent_handoff")
-            .expect("start_agent_handoff tool")
-    }
-
-    fn get_tool(config: Value) -> Box<dyn Tool> {
-        AgentHandoffCapability
-            .tools_with_config(&config)
-            .into_iter()
-            .find(|tool| tool.name() == "get_agent_handoffs")
-            .expect("get_agent_handoffs tool")
-    }
-
-    fn message_tool(config: Value) -> Box<dyn Tool> {
-        AgentHandoffCapability
-            .tools_with_config(&config)
-            .into_iter()
-            .find(|tool| tool.name() == "message_agent_handoff")
-            .expect("message_agent_handoff tool")
+    fn spawn_agent_tool(config: &Value) -> Box<dyn Tool> {
+        Box::new(SpawnAgentHandoffTool::new(config))
     }
 
     struct TestConnectionResolver {
@@ -972,16 +1416,19 @@ mod tests {
         context
     }
 
-    #[test]
-    fn capability_metadata_and_schema() {
-        let cap = AgentHandoffCapability;
-        assert_eq!(cap.id(), AGENT_HANDOFF_CAPABILITY_ID);
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.risk_level(), RiskLevel::High);
-        assert_eq!(cap.features(), vec!["agent_handoffs"]);
+    // Metadata constants covered by builtin_capabilities_satisfy_registry_invariants.
 
+    #[test]
+    fn config_schema_exposes_targets_array() {
+        let cap = AgentHandoffCapability;
         let schema = cap.config_schema().expect("config schema");
         assert_eq!(schema["properties"]["targets"]["type"], "array");
+    }
+
+    #[test]
+    fn capability_no_longer_contributes_legacy_handoff_tools() {
+        let cap = AgentHandoffCapability;
+        assert!(cap.tools_with_config(&json!({})).is_empty());
     }
 
     #[test]
@@ -1034,15 +1481,37 @@ mod tests {
         assert!(error.contains("Duplicate handoff target id"));
     }
 
+    #[test]
+    fn spawn_agent_schema_advertises_only_agent_target() {
+        let tool = SpawnAgentHandoffTool::new(&json!({}));
+        let schema = tool.parameters_schema();
+        assert_eq!(
+            schema["properties"]["target"]["properties"]["type"]["enum"],
+            json!(["agent"])
+        );
+        assert_eq!(
+            schema["properties"]["target"]["required"],
+            json!(["type", "id"])
+        );
+        assert_eq!(
+            schema["properties"]["mode"]["enum"],
+            json!(["background", "foreground", "invite"])
+        );
+        assert_eq!(
+            schema["required"],
+            json!(["name", "instructions", "target"])
+        );
+    }
+
     #[tokio::test]
-    async fn start_handoff_requires_configured_connection() {
+    async fn spawn_agent_handoff_requires_configured_connection() {
         let store = Arc::new(MockPlatformStore::new());
         let config = target_config(
             store.agent.public_id,
             store.session.harness_id,
             vec!["fake_aws"],
         );
-        let tool = start_tool(config);
+        let tool = spawn_agent_tool(&config);
         let resolver = Arc::new(TestConnectionResolver {
             providers: HashSet::new(),
         });
@@ -1051,8 +1520,10 @@ mod tests {
         let result = tool
             .execute_with_context(
                 json!({
-                    "target": "aws_operator",
-                    "instructions": "Create an RDS database named app-db"
+                    "name": "AWS Operator",
+                    "instructions": "Create an RDS database named app-db",
+                    "target": { "type": "agent", "id": "aws_operator" },
+                    "mode": "foreground"
                 }),
                 &context,
             )
@@ -1065,31 +1536,30 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn start_handoff_without_connection_resolver_is_internal_error() {
+    async fn spawn_agent_handoff_rejects_other_target_types() {
         let store = Arc::new(MockPlatformStore::new());
-        let config = target_config(
-            store.agent.public_id,
-            store.session.harness_id,
-            vec!["fake_aws"],
-        );
-        let tool = start_tool(config);
+        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let tool = spawn_agent_tool(&config);
         let context = context(store, None);
 
         let result = tool
             .execute_with_context(
                 json!({
-                    "target": "aws_operator",
-                    "instructions": "Create an RDS database named app-db"
+                    "name": "Wrong Target",
+                    "instructions": "Do work",
+                    "target": { "type": "subagent" }
                 }),
                 &context,
             )
             .await;
 
-        assert!(matches!(result, ToolExecutionResult::InternalError(_)));
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(message) if message.contains("target.type must be \"agent\""))
+        );
     }
 
     #[tokio::test]
-    async fn start_handoff_creates_child_session_for_target_agent() {
+    async fn spawn_agent_handoff_creates_agent_handoff_task() {
         let store = Arc::new(MockPlatformStore::new());
         let resolver = Arc::new(TestConnectionResolver {
             providers: HashSet::from(["fake_aws".to_string()]),
@@ -1099,14 +1569,18 @@ mod tests {
             store.session.harness_id,
             vec!["fake_aws"],
         );
-        let tool = start_tool(config);
-        let context = context(store.clone(), Some(resolver));
+        let tool = spawn_agent_tool(&config);
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let mut context = context(store.clone(), Some(resolver));
+        context.session_task_registry = Some(registry.clone());
 
         let result = tool
             .execute_with_context(
                 json!({
-                    "target": "aws_operator",
+                    "name": "AWS Operator Run",
                     "instructions": "Create an RDS database named app-db",
+                    "target": { "type": "agent", "id": "aws_operator" },
+                    "mode": "foreground",
                     "public_context": { "region": "us-east-1" }
                 }),
                 &context,
@@ -1116,9 +1590,307 @@ mod tests {
         let ToolExecutionResult::Success(value) = result else {
             panic!("expected success, got {result:?}");
         };
+        let task_id = value["task_id"].as_str().expect("task_id");
+        let task = registry
+            .get(store.session.id, task_id)
+            .await
+            .expect("task lookup")
+            .expect("task");
+        assert_eq!(value["mode"], "foreground");
         assert_eq!(value["target"], "aws_operator");
-        assert_eq!(value["target_agent_id"], json!(store.agent.public_id));
-        assert_eq!(value["result"], "Hi!");
+        assert_eq!(task.kind, TASK_KIND_AGENT_HANDOFF);
+        assert_eq!(task.display_name, "AWS Operator Run");
+        assert_eq!(task.state, SessionTaskState::Succeeded);
+        assert_eq!(task.spec["target_id"], "aws_operator");
+        assert_eq!(task.spec["mode"], "foreground");
+        assert!(task.links.child_session_id.is_some());
+    }
+
+    #[tokio::test]
+    async fn schema_bound_handoff_requires_report_result() {
+        let store = Arc::new(MockPlatformStore::new());
+        *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
+        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let mut context = context(store.clone(), None);
+        context.session_task_registry = Some(registry.clone());
+
+        let result = spawn_agent_tool(&config)
+            .execute_with_context(
+                json!({
+                    "name": "Structured handoff",
+                    "instructions": "Return structured data",
+                    "target": {"type": "agent", "id": "aws_operator"},
+                    "mode": "foreground",
+                    "result_schema": {
+                        "type": "object",
+                        "properties": {"answer": {"type": "string"}},
+                        "required": ["answer"]
+                    }
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected terminal handoff result, got {result:?}");
+        };
+        let task_id = value["task_id"].as_str().expect("task_id");
+        let task = registry
+            .get(store.session.id, task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            task.spec[RESULT_SCHEMA_SPEC_KEY]["required"],
+            json!(["answer"])
+        );
+        assert_eq!(task.state, SessionTaskState::Failed);
+        assert_eq!(
+            task.error.as_ref().map(|error| error.kind.as_str()),
+            Some("no_result")
+        );
+    }
+
+    #[tokio::test]
+    async fn handoff_message_schema_is_task_backed_and_wakes_on_activity() {
+        let store = Arc::new(MockPlatformStore::new());
+        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let mut context = context(store.clone(), None);
+        context.session_task_registry = Some(registry.clone());
+
+        let result = spawn_agent_tool(&config)
+            .execute_with_context(
+                json!({
+                    "name": "Progress handoff",
+                    "instructions": "Report progress",
+                    "target": {"type": "agent", "id": "aws_operator"},
+                    "mode": "background",
+                    "message_schema": {
+                        "type": "object",
+                        "properties": {"step": {"type": "string"}},
+                        "required": ["step"]
+                    }
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected background handoff, got {result:?}");
+        };
+        let task_id = value["task_id"].as_str().expect("task_id");
+        let task = registry
+            .get(store.session.id, task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            task.spec[MESSAGE_SCHEMA_SPEC_KEY]["required"],
+            json!(["step"])
+        );
+        assert_eq!(task.wake_policy, TaskWakePolicy::OnActivity);
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_handoff_background_returns_task_handle() {
+        let store = Arc::new(MockPlatformStore::new());
+        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let tool = spawn_agent_tool(&config);
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let mut context = context(store.clone(), None);
+        context.session_task_registry = Some(registry.clone());
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "name": "AWS Operator Background",
+                    "instructions": "List RDS databases",
+                    "target": { "type": "agent", "id": "aws_operator" },
+                    "mode": "background"
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success, got {result:?}");
+        };
+        let task_id = value["task_id"].as_str().expect("task_id");
+        assert_eq!(value["status"], "running");
+        assert_eq!(value["mode"], "background");
+
+        let mut task = registry
+            .get(store.session.id, task_id)
+            .await
+            .expect("task lookup")
+            .expect("task");
+        assert_eq!(task.kind, TASK_KIND_AGENT_HANDOFF);
+        assert_eq!(task.wake_policy, TaskWakePolicy::OnTerminal);
+        assert_eq!(task.spec["mode"], "background");
+
+        for _ in 0..20 {
+            if task.state.is_terminal() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            task = registry
+                .get(store.session.id, task_id)
+                .await
+                .expect("task lookup")
+                .expect("task");
+        }
+
+        assert_eq!(task.state, SessionTaskState::Succeeded);
+        assert_eq!(task.summary.as_deref(), Some("Hi!"));
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_handoff_invite_adds_member_participant() {
+        let store = Arc::new(MockPlatformStore::new());
+        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let tool = spawn_agent_tool(&config);
+        let context = context(store.clone(), None);
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "name": "AWS Operator Invite",
+                    "instructions": "Join this incident session",
+                    "target": { "type": "agent", "id": "aws_operator" },
+                    "mode": "invite"
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success, got {result:?}");
+        };
+        assert_eq!(value["mode"], "invite");
+        assert_eq!(value["status"], "joined");
+        assert_eq!(value["target"], "aws_operator");
+        assert!(value["participant_id"].as_str().is_some());
+
+        assert!(
+            store
+                .created_session_harness_ids
+                .lock()
+                .expect("recorder lock")
+                .is_empty(),
+            "invite mode must not create a child session"
+        );
+        let participants = store
+            .joined_participants
+            .lock()
+            .expect("participants lock")
+            .clone();
+        assert_eq!(participants.len(), 1);
+        assert_eq!(participants[0].agent_id, Some(store.agent.public_id));
+        assert_eq!(
+            participants[0].role,
+            crate::session::SessionParticipantRole::Member
+        );
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_handoff_invite_rejects_inherited_harness_capability_conflict() {
+        let mut store_value = MockPlatformStore::new();
+        let parent_harness_id = HarnessId::new();
+        let child_harness_id = HarnessId::new();
+        let mut parent_harness = store_value.harness.clone();
+        parent_harness.id = parent_harness_id;
+        parent_harness.parent_harness_id = None;
+        parent_harness.capabilities = vec![crate::AgentCapabilityConfig::with_config(
+            "web_fetch",
+            json!({"max_bytes": 1024}),
+        )];
+        let mut child_harness = store_value.harness.clone();
+        child_harness.id = child_harness_id;
+        child_harness.parent_harness_id = Some(parent_harness_id);
+        child_harness.capabilities = vec![];
+        store_value.session.harness_id = child_harness_id;
+        store_value.agent.capabilities = vec![crate::AgentCapabilityConfig::with_config(
+            "web_fetch",
+            json!({"max_bytes": 2048}),
+        )];
+        {
+            let mut harnesses = store_value.extra_harnesses.lock().unwrap();
+            harnesses.insert(parent_harness_id, parent_harness);
+            harnesses.insert(child_harness_id, child_harness);
+        }
+        let store = Arc::new(store_value);
+        let config = target_config(store.agent.public_id, child_harness_id, vec![]);
+        let tool = spawn_agent_tool(&config);
+        let context = context(store.clone(), None);
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "name": "AWS Operator Invite",
+                    "instructions": "Join this incident session",
+                    "target": { "type": "agent", "id": "aws_operator" },
+                    "mode": "invite"
+                }),
+                &context,
+            )
+            .await;
+
+        assert!(matches!(result, ToolExecutionResult::ToolError(message)
+                if message.contains("Invite-mode handoff cannot join target")
+                    && message.contains("capability `web_fetch`")
+                    && message.contains("Use background or foreground mode")));
+        assert!(
+            store
+                .joined_participants
+                .lock()
+                .expect("participants lock")
+                .is_empty(),
+            "conflicting inherited harness invite must not join the participant"
+        );
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_handoff_invite_rejects_capability_conflict() {
+        let mut store_value = MockPlatformStore::new();
+        store_value.session.capabilities = vec![crate::AgentCapabilityConfig::with_config(
+            "web_fetch",
+            json!({"max_bytes": 1024}),
+        )];
+        store_value.agent.capabilities = vec![crate::AgentCapabilityConfig::with_config(
+            "web_fetch",
+            json!({"max_bytes": 2048}),
+        )];
+        let store = Arc::new(store_value);
+        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
+        let tool = spawn_agent_tool(&config);
+        let context = context(store.clone(), None);
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "name": "AWS Operator Invite",
+                    "instructions": "Join this incident session",
+                    "target": { "type": "agent", "id": "aws_operator" },
+                    "mode": "invite"
+                }),
+                &context,
+            )
+            .await;
+
+        assert!(matches!(result, ToolExecutionResult::ToolError(message)
+                if message.contains("Invite-mode handoff cannot join target")
+                    && message.contains("capability `web_fetch`")
+                    && message.contains("Use background or foreground mode")));
+        assert!(
+            store
+                .joined_participants
+                .lock()
+                .expect("participants lock")
+                .is_empty(),
+            "conflicting invite must not join the participant"
+        );
     }
 
     /// Regression for the confused-deputy issue this PR fixes: the child
@@ -1127,7 +1899,7 @@ mod tests {
     /// `parent_session.harness_id` here, the child would inherit the
     /// parent's mounts/capabilities while gaining the target's tools.
     #[tokio::test]
-    async fn start_handoff_uses_target_harness_not_parent() {
+    async fn spawn_agent_handoff_uses_target_harness_not_parent() {
         let store = Arc::new(MockPlatformStore::new());
         let resolver = Arc::new(TestConnectionResolver {
             providers: HashSet::from(["fake_aws".to_string()]),
@@ -1138,14 +1910,16 @@ mod tests {
         assert_ne!(store.session.harness_id, target_harness_id);
 
         let config = target_config(store.agent.public_id, target_harness_id, vec!["fake_aws"]);
-        let tool = start_tool(config);
+        let tool = spawn_agent_tool(&config);
         let context = context(store.clone(), Some(resolver));
 
         let result = tool
             .execute_with_context(
                 json!({
-                    "target": "aws_operator",
-                    "instructions": "Create an RDS database named app-db"
+                    "name": "AWS Operator Run",
+                    "instructions": "Create an RDS database named app-db",
+                    "target": { "type": "agent", "id": "aws_operator" },
+                    "mode": "foreground"
                 }),
                 &context,
             )
@@ -1173,27 +1947,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_handoffs_lists_child_sessions_as_handoffs() {
-        // get_agent_handoffs now derives name/status from the session task registry
-        // (task.display_name / task.state) rather than retired session columns.
+    async fn agent_handoff_task_executor_delivers_followup() {
         let parent_id = SessionId::new();
         let child_id = SessionId::new();
-        let store = Arc::new(MockPlatformStore::new());
-        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
-        let get = get_tool(config);
+        let mut store_value = MockPlatformStore::new();
+        store_value.session.id = child_id;
+        store_value.session.parent_session_id = Some(parent_id);
+        let store = Arc::new(store_value);
 
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
-        registry
+        let task = registry
             .create(CreateSessionTask {
                 session_id: parent_id,
                 id: None,
-                kind: TASK_KIND_SUBAGENT.to_string(),
+                kind: TASK_KIND_AGENT_HANDOFF.to_string(),
                 display_name: "AWS Operator".to_string(),
-                // Handoff tasks carry target_id/external_agent_id in spec;
-                // get_agent_handoffs filters on target_id to exclude plain
-                // spawn_subagent tasks.
+                // Handoff tasks use the dedicated `agent_handoff` kind and carry
+                // target_id/external_agent_id in spec.
                 spec: json!({ "target_id": "aws", "external_agent_id": "agent_aws" }),
-                state: SessionTaskState::Succeeded,
+                state: SessionTaskState::Running,
                 links: TaskLinks {
                     child_session_id: Some(child_id),
                     ..Default::default()
@@ -1202,42 +1974,40 @@ mod tests {
             })
             .await
             .expect("create task");
+        let message = TaskMessage {
+            id: "msg_1".to_string(),
+            task_id: task.id.clone(),
+            direction: crate::session_task::TaskMessageDirection::Inbound,
+            content: vec![TaskMessagePart::text("List RDS databases")],
+            in_reply_to: None,
+            created_at: chrono::Utc::now(),
+        };
 
         let mut ctx = ToolContext::new(parent_id);
         ctx.platform_store = Some(store);
         ctx.session_task_registry = Some(registry);
 
-        let result = get.execute_with_context(json!({}), &ctx).await;
-        let ToolExecutionResult::Success(value) = result else {
-            panic!("expected success, got {result:?}");
-        };
-        let handoffs = value["handoffs"].as_array().expect("handoffs");
-        assert_eq!(handoffs.len(), 1);
-        assert_eq!(handoffs[0]["handoff_id"], child_id.to_string());
-        assert_eq!(handoffs[0]["name"], "AWS Operator");
-        assert_eq!(handoffs[0]["status"], "succeeded");
-        assert_eq!(handoffs[0]["target_id"], "aws");
-        assert_eq!(handoffs[0]["target_agent_id"], "agent_aws");
+        AgentHandoffTaskExecutor
+            .deliver(&task, &message, &ctx)
+            .await
+            .expect("follow-up delivered");
     }
 
     #[tokio::test]
-    async fn get_handoffs_excludes_plain_subagent_tasks() {
-        // A subagent-kind task without target_id in spec is a plain
-        // spawn_subagent, not a handoff — it must not be listed.
+    async fn agent_handoff_task_executor_reconciles_terminal_child() {
         let parent_id = SessionId::new();
         let child_id = SessionId::new();
         let store = Arc::new(MockPlatformStore::new());
-        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
-        let get = get_tool(config);
+        *store.wait_for_idle_status.lock().unwrap() = "completed".to_string();
 
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
-        registry
+        let task = registry
             .create(CreateSessionTask {
                 session_id: parent_id,
                 id: None,
-                kind: TASK_KIND_SUBAGENT.to_string(),
-                display_name: "Plain Subagent".to_string(),
-                spec: json!({ "instructions": "do a thing" }),
+                kind: TASK_KIND_AGENT_HANDOFF.to_string(),
+                display_name: "AWS Operator".to_string(),
+                spec: json!({ "target_id": "aws", "external_agent_id": "agent_aws" }),
                 state: SessionTaskState::Running,
                 links: TaskLinks {
                     child_session_id: Some(child_id),
@@ -1250,94 +2020,18 @@ mod tests {
 
         let mut ctx = ToolContext::new(parent_id);
         ctx.platform_store = Some(store);
-        ctx.session_task_registry = Some(registry);
+        ctx.session_task_registry = Some(registry.clone());
 
-        let result = get.execute_with_context(json!({}), &ctx).await;
-        let ToolExecutionResult::Success(value) = result else {
-            panic!("expected success, got {result:?}");
-        };
-        assert_eq!(
-            value["handoffs"].as_array().expect("handoffs").len(),
-            0,
-            "plain subagent must not be reported as a handoff"
-        );
-    }
-
-    #[tokio::test]
-    async fn message_handoff_rejects_invalid_handoff_id() {
-        let store = Arc::new(MockPlatformStore::new());
-        let tool = message_tool(json!({}));
-        let context = context(store, None);
-
-        let result = tool
-            .execute_with_context(
-                json!({
-                    "handoff_id": "not-a-session-id",
-                    "message": "List RDS databases"
-                }),
-                &context,
-            )
-            .await;
-
-        assert!(
-            matches!(result, ToolExecutionResult::ToolError(message) if message.contains("Invalid handoff_id"))
-        );
-    }
-
-    #[tokio::test]
-    async fn message_handoff_rejects_non_child_session() {
-        let parent_id = SessionId::new();
-        let child_id = SessionId::new();
-        let mut store_value = MockPlatformStore::new();
-        store_value.session.id = child_id;
-        store_value.session.parent_session_id = None;
-        let store = Arc::new(store_value);
-        let tool = message_tool(json!({}));
-        let mut context = ToolContext::new(parent_id);
-        context.platform_store = Some(store);
-
-        let result = tool
-            .execute_with_context(
-                json!({
-                    "handoff_id": child_id.to_string(),
-                    "message": "List RDS databases"
-                }),
-                &context,
-            )
-            .await;
-
-        assert!(
-            matches!(result, ToolExecutionResult::ToolError(message) if message.contains("does not belong"))
-        );
-    }
-
-    #[tokio::test]
-    async fn message_handoff_sends_followup_to_owned_child_session() {
-        let parent_id = SessionId::new();
-        let child_id = SessionId::new();
-        let mut store_value = MockPlatformStore::new();
-        store_value.session.id = child_id;
-        store_value.session.parent_session_id = Some(parent_id);
-        let store = Arc::new(store_value);
-        let tool = message_tool(json!({}));
-        let mut context = ToolContext::new(parent_id);
-        context.platform_store = Some(store);
-
-        let result = tool
-            .execute_with_context(
-                json!({
-                    "handoff_id": child_id.to_string(),
-                    "message": "List RDS databases"
-                }),
-                &context,
-            )
-            .await;
-
-        let ToolExecutionResult::Success(value) = result else {
-            panic!("expected success, got {result:?}");
-        };
-        assert_eq!(value["handoff_id"], child_id.to_string());
-        assert_eq!(value["status"], "idle");
-        assert_eq!(value["result"], "Hi!");
+        AgentHandoffTaskExecutor
+            .reconcile(&task, &ctx)
+            .await
+            .expect("reconcile succeeds");
+        let task = registry
+            .get(parent_id, &task.id)
+            .await
+            .expect("task lookup")
+            .expect("task");
+        assert_eq!(task.state, SessionTaskState::Succeeded);
+        assert_eq!(task.summary.as_deref(), Some("Hi!"));
     }
 }

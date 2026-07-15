@@ -26,6 +26,7 @@
 // - Multi-org: org-scoped tools accept optional `organization_id` to override the default org
 
 mod cards;
+mod tasks;
 mod tool_registry;
 
 use crate::auth::AuthMethod;
@@ -612,6 +613,24 @@ async fn handle_mcp(
         }
         "resources/list" => handle_resources_list(req.id),
         "resources/read" => handle_resources_read(req.id, req.params, &org, &state).await,
+        // MCP 2026-07-28 Tasks extension (SEP-2663). Task handles map to
+        // sessions; these methods delegate to the same session logic the
+        // agent_run/session_get_status/session_send_message tools use. Gated to
+        // the negotiated 2026-07-28 protocol; 2025-* clients that somehow send
+        // these get method_not_found, matching "the method does not exist here".
+        "tasks/get" | "tasks/cancel" | "tasks/update"
+            if protocol_version == Some(MCP_PROTOCOL_VERSION_LATEST) =>
+        {
+            handle_tasks_method(
+                req.method.as_str(),
+                req.id,
+                req.params,
+                &auth_user,
+                &org,
+                &state,
+            )
+            .await
+        }
         "ping" => JsonRpcResponse::success(req.id, json!({})),
         _ => JsonRpcResponse::method_not_found(req.id),
     };
@@ -626,16 +645,22 @@ async fn handle_mcp(
 fn handle_initialize(id: Option<Value>, params: Value) -> JsonRpcResponse {
     let params: InitializeParams = serde_json::from_value(params).unwrap_or_default();
     let protocol_version = negotiate_protocol_version(params.protocol_version.as_deref());
+    let mut capabilities = json!({
+        "tools": {
+            "listChanged": false
+        },
+        "resources": {}
+    });
+    // Advertise the Tasks extension (SEP-2663) only under the negotiated
+    // 2026-07-28 protocol. 2025-* clients see the capabilities shape unchanged.
+    if let Some(extensions) = tasks::initialize_extensions(protocol_version) {
+        capabilities["extensions"] = extensions;
+    }
     JsonRpcResponse::success(
         id,
         json!({
             "protocolVersion": protocol_version,
-            "capabilities": {
-                "tools": {
-                    "listChanged": false
-                },
-                "resources": {}
-            },
+            "capabilities": capabilities,
             "serverInfo": {
                 "name": MCP_SERVER_NAME,
                 "version": MCP_SERVER_VERSION
@@ -809,7 +834,7 @@ async fn read_harnesses(org: &ResolvedOrg, state: &AppState) -> Result<String, S
 
 async fn read_models(org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
     let ctx = mcp_ctx(org, state);
-    let providers = crate::domains::providers::ListProviders
+    let providers = crate::domains::providers::ListProviders {}
         .run(&ctx)
         .await
         .map_err(|e| resource_error("providers", e))?;
@@ -865,8 +890,15 @@ async fn handle_tools_call(
     auth_user: &AuthUser,
     org: &ResolvedOrg,
     state: &AppState,
-    _protocol_version: &str,
+    protocol_version: &str,
 ) -> JsonRpcResponse {
+    // MCP 2026-07-28 Tasks extension: when the client advertised the extension
+    // and the negotiated protocol is 2026-07-28, agent_run / session_send_message
+    // long-running calls answer with a CreateTaskResult (`resultType: "task"`)
+    // task handle alongside their existing fields. `params` (not `arguments`)
+    // carries the per-request `_meta` opt-in, so we evaluate it here.
+    let tasks_enabled = tasks::tasks_enabled(protocol_version, &params);
+
     let tool_name = match params.get("name").and_then(|v| v.as_str()) {
         Some(name) => name,
         None => return JsonRpcResponse::invalid_params(id, "Missing 'name' in params"),
@@ -877,7 +909,7 @@ async fn handle_tools_call(
         .cloned()
         .unwrap_or(Value::Object(Default::default()));
 
-    let Some(tool_def) = find_tool_definition(tool_name, _protocol_version) else {
+    let Some(tool_def) = find_tool_definition(tool_name, protocol_version) else {
         let msg = format!("Unknown tool: {tool_name}");
         let envelope = McpExecuteError::new(McpErrorCode::ToolNotFound, &msg).with_hint(
             "Call tools/list to discover the current tool catalog for this protocol version.",
@@ -959,7 +991,7 @@ async fn handle_tools_call(
     match result {
         Ok(content) => {
             let structured_content =
-                if supports_rich_tool_shape(_protocol_version) && tool_def.has_output_schema() {
+                if supports_rich_tool_shape(protocol_version) && tool_def.has_output_schema() {
                     serde_json::from_str::<Value>(&content).ok()
                 } else {
                     None
@@ -972,7 +1004,223 @@ async fn handle_tools_call(
                 result["structuredContent"] = structured_content;
             }
 
+            // Tasks extension: for the long-running conversation tools, add the
+            // CreateTaskResult task-handle fields (taskId = session_id) so a 2026
+            // client that opted in can treat the call as a standard Task. The
+            // legacy `content`/`structuredContent` fields stay untouched, so this
+            // is strictly additive.
+            if tasks_enabled && matches!(tool_name, "agent_run" | "session_send_message") {
+                augment_with_task_handle(&mut result, &content);
+            }
+
             JsonRpcResponse::success(id, result)
+        }
+        Err(msg) => {
+            let envelope = classify_mcp_execute_error(&msg);
+            JsonRpcResponse::success(id, error_result_payload(&msg, Some(&envelope)))
+        }
+    }
+}
+
+/// Merge Tasks-extension `CreateTaskResult` fields (`resultType`, `taskId`,
+/// `status`, `ttlMs`, `pollIntervalMs`) into a successful tools/call result,
+/// deriving them from the tool's JSON `content`. `agent_run` exposes the session
+/// as `session_id`/`status`; `session_send_message` as `session_id`/
+/// `session_status`. The task handle is `session_id`. If the content isn't
+/// parseable JSON with a session id (it always is for these tools), we leave the
+/// result unchanged rather than fabricate a handle.
+fn augment_with_task_handle(result: &mut Value, content: &str) {
+    let Ok(parsed) = serde_json::from_str::<Value>(content) else {
+        return;
+    };
+    let Some(session_id) = parsed.get("session_id").and_then(Value::as_str) else {
+        return;
+    };
+    let session_status = parsed
+        .get("status")
+        .or_else(|| parsed.get("session_status"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+
+    let task = tasks::create_task_result(session_id, session_status);
+    if let (Some(result_obj), Some(task_obj)) = (result.as_object_mut(), task.as_object()) {
+        for (key, value) in task_obj {
+            result_obj.insert(key.clone(), value.clone());
+        }
+    }
+}
+
+// ============================================================================
+// MCP 2026-07-28 Tasks extension methods (SEP-2663)
+// ============================================================================
+//
+// A task handle is a `session_id`; each method delegates to the session logic
+// the equivalent tool already uses. See `tasks.rs` for the mapping rationale.
+
+async fn handle_tasks_method(
+    method: &str,
+    id: Option<Value>,
+    params: Value,
+    auth_user: &AuthUser,
+    org: &ResolvedOrg,
+    state: &AppState,
+) -> JsonRpcResponse {
+    let Some(task_id) = params.get("taskId").and_then(Value::as_str) else {
+        return JsonRpcResponse::invalid_params(id, "Missing 'taskId' in params");
+    };
+
+    // A taskId is a session_id; org override rides the same `_meta`-free path as
+    // the tools by reading `organization_id` from params when present.
+    let org = match resolve_org_override(&params, auth_user, org, state).await {
+        Ok(org) => org,
+        Err(e) => return JsonRpcResponse::invalid_params(id, e),
+    };
+
+    match method {
+        "tasks/get" => handle_tasks_get(id, task_id, &params, &org, state).await,
+        "tasks/cancel" => handle_tasks_cancel(id, task_id, &org, state).await,
+        "tasks/update" => handle_tasks_update(id, task_id, &params, &org, state).await,
+        _ => JsonRpcResponse::method_not_found(id),
+    }
+}
+
+/// `tasks/get` → session status + events. Reuses `tool_session_get_status` and
+/// wraps its JSON into the Tasks `Task` object. On `completed`, the underlying
+/// tool's structured JSON is surfaced as `result`.
+async fn handle_tasks_get(
+    id: Option<Value>,
+    task_id: &str,
+    params: &Value,
+    org: &ResolvedOrg,
+    state: &AppState,
+) -> JsonRpcResponse {
+    // Reshape into the args `tool_session_get_status` expects (session_id +
+    // optional since_event_id/event_types passthrough).
+    let mut args = json!({ "session_id": task_id });
+    if let Some(since) = params.get("since_event_id") {
+        args["since_event_id"] = since.clone();
+    }
+    if let Some(types) = params.get("event_types") {
+        args["event_types"] = types.clone();
+    }
+
+    match tool_session_get_status(&args, org, state).await {
+        Ok(status_json) => {
+            let mut status_value: Value = serde_json::from_str(&status_json).unwrap_or(Value::Null);
+            let session_status = status_value
+                .get("status")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let task_status = tasks::task_status_from_session_status(session_status);
+
+            // EVE-728: when the task reported a deterministic structured result
+            // (result.json via a `result_schema`, EVE-678), surface it under
+            // `result.structured_result` so Tasks clients get the machine result
+            // instead of only last-message / status text. The read is org-scoped
+            // (same org `tool_session_get_status` already validated), preserving
+            // tenant isolation. Parse failures / absent results are silently
+            // skipped — the status payload is still returned.
+            if let Ok(session_id) = task_id.parse::<everruns_core::typed_id::SessionId>()
+                && let Ok(Some(structured)) =
+                    crate::domains::session_tasks::read_structured_task_result(
+                        &state.db, org.org_id, session_id,
+                    )
+                    .await
+                && let Some(obj) = status_value.as_object_mut()
+            {
+                obj.insert("structured_result".to_string(), structured);
+            }
+
+            let mut task = tasks::task_handle(task_id, task_status);
+            // The full session_get_status payload is the task's result view. For
+            // terminal `completed`, this is what the original tools/call would
+            // have returned; for `working`/`input_required` it's a progress
+            // snapshot the client can inspect.
+            task["result"] = status_value;
+            JsonRpcResponse::success(id, task)
+        }
+        Err(msg) => {
+            let envelope = classify_mcp_execute_error(&msg);
+            JsonRpcResponse::success(id, error_result_payload(&msg, Some(&envelope)))
+        }
+    }
+}
+
+/// `tasks/cancel` → cancel the running turn. Cooperative per SEP-2663: we
+/// acknowledge intent; the session may still reach a non-`cancelled` terminal.
+async fn handle_tasks_cancel(
+    id: Option<Value>,
+    task_id: &str,
+    org: &ResolvedOrg,
+    state: &AppState,
+) -> JsonRpcResponse {
+    match dispatch_command(
+        "cancel_session",
+        json!({ "session_id": task_id }),
+        org,
+        state,
+    )
+    .await
+    {
+        Ok(_) => {
+            // Report the post-cancel session status as the task status rather
+            // than asserting `cancelled`: cancellation returns the session to
+            // idle, and SEP-2663 explicitly allows a non-`cancelled` terminal.
+            let task_status =
+                match dispatch_command("get_session", json!({ "session_id": task_id }), org, state)
+                    .await
+                {
+                    Ok(session) => tasks::task_status_from_session_status(
+                        session.get("status").and_then(Value::as_str).unwrap_or(""),
+                    ),
+                    Err(_) => tasks::TaskStatus::Cancelled,
+                };
+            JsonRpcResponse::success(id, tasks::task_handle(task_id, task_status))
+        }
+        Err(msg) => {
+            let envelope = classify_mcp_execute_error(&msg);
+            JsonRpcResponse::success(id, error_result_payload(&msg, Some(&envelope)))
+        }
+    }
+}
+
+/// `tasks/update` → provide input to a task in `input_required`. Maps to sending
+/// a user message (`session_send_message`). SEP-2663 keys input under
+/// `inputResponses`; we accept either a single `message` string or the first
+/// string value found in the `inputResponses` map.
+async fn handle_tasks_update(
+    id: Option<Value>,
+    task_id: &str,
+    params: &Value,
+    org: &ResolvedOrg,
+    state: &AppState,
+) -> JsonRpcResponse {
+    let message = params.get("message").and_then(Value::as_str).or_else(|| {
+        params
+            .get("inputResponses")
+            .and_then(Value::as_object)
+            .and_then(|m| m.values().find_map(Value::as_str))
+    });
+
+    let Some(message) = message else {
+        return JsonRpcResponse::invalid_params(
+            id,
+            "tasks/update requires a 'message' string or an 'inputResponses' map with a string value",
+        );
+    };
+
+    let args = json!({ "session_id": task_id, "message": message });
+    match tool_session_send_message(&args, org, state).await {
+        Ok(send_json) => {
+            let parsed: Value = serde_json::from_str(&send_json).unwrap_or(Value::Null);
+            let session_status = parsed
+                .get("session_status")
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let task_status = tasks::task_status_from_session_status(session_status);
+            let mut task = tasks::task_handle(task_id, task_status);
+            task["result"] = parsed;
+            JsonRpcResponse::success(id, task)
         }
         Err(msg) => {
             let envelope = classify_mcp_execute_error(&msg);
@@ -1977,7 +2225,7 @@ mod resources_read_policy_tests {
     #[tokio::test]
     async fn list_providers_blocked_when_resolver_denies() {
         let ctx = deny_all_ctx();
-        let result = crate::domains::providers::ListProviders.run(&ctx).await;
+        let result = crate::domains::providers::ListProviders {}.run(&ctx).await;
 
         let err = result.expect_err("denying resolver must block list_providers");
         assert!(

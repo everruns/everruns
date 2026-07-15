@@ -7,7 +7,7 @@
 
 use std::sync::LazyLock;
 
-use everruns_core::eval::{CaseResultStatus, EvalCaseResult, EvalRun, Scorer};
+use everruns_core::eval::{CaseResultStatus, EvalCaseResult, EvalRun};
 use everruns_core::message::{ContentPart, Message, MessageRole};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -25,12 +25,16 @@ pub enum DatasetFormat {
     /// Chat-message shape loadable by common SFT pipelines, with reward carried
     /// in a sidecar field for verifiable-reward filtering before training.
     Sft,
+    /// One complete ATIF (Agent Trajectory Interchange Format) trajectory per
+    /// line, folded from the case session's event log, with reward and case
+    /// identity in root `extra`. See `specs/atif-adoption.md`.
+    Atif,
 }
 
 /// Selection filters applied per case. `org_id` is never part of this — it is
 /// injected by the command from the authenticated caller, so a filter can never
 /// widen the org scope.
-#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, ToSchema)]
 pub struct DatasetFilters {
     /// Keep only cases whose pass/fail equals this.
     #[serde(default)]
@@ -41,7 +45,7 @@ pub struct DatasetFilters {
 }
 
 /// Redaction controls. Secret scrubbing is always applied regardless of these.
-#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, ToSchema)]
 pub struct RedactionOptions {
     /// When true, replace message text/tool content with a placeholder, keeping
     /// only structure (roles, tool names, ids). Secret scrubbing still runs.
@@ -50,7 +54,7 @@ pub struct RedactionOptions {
 }
 
 /// Request body for `POST /v1/evals/{eval_id}/runs/{run_id}/dataset`.
-#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Default, Deserialize, Serialize, ToSchema)]
 pub struct ExportEvalRunDatasetRequest {
     /// Output schema (defaults to `trajectory`).
     #[serde(default)]
@@ -97,7 +101,7 @@ static SECRET_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
     .collect()
 });
 
-const REDACTED: &str = "[REDACTED]";
+pub(crate) const REDACTED: &str = "[REDACTED]";
 
 /// Scrub credential-looking substrings from a single string.
 pub fn scrub_secrets(input: &str) -> String {
@@ -110,8 +114,9 @@ pub fn scrub_secrets(input: &str) -> String {
 
 /// Recursively scrub secrets in every string leaf of `value`. When
 /// `redact_content` is set, content-bearing fields are first replaced wholesale
-/// with a placeholder (structure is preserved).
-fn sanitize_value(value: &mut Value, redact_content: bool) {
+/// with a placeholder (structure is preserved). Shared with the ATIF exporter
+/// (`crate::atif`) so every export path applies the same scrubbing policy.
+pub(crate) fn sanitize_value(value: &mut Value, redact_content: bool) {
     match value {
         Value::String(s) => *s = scrub_secrets(s),
         Value::Array(items) => {
@@ -171,31 +176,20 @@ pub fn source_key(run: &EvalRun, result: &EvalCaseResult) -> String {
     format!("{}/{}", run.public_id, result.public_id)
 }
 
-/// The case's scorer kinds in definition order, used to name reward scorers.
-pub fn scorer_names(scorers: &[Scorer]) -> Vec<String> {
-    scorers.iter().map(|s| s.kind().to_string()).collect()
-}
-
 /// The reward block shared by both formats.
 ///
-/// `scorer_names` are the case's scorer kinds in definition order (see
-/// [`scorer_names`]). Scores are persisted as an ordered `Vec<Score>` with no
-/// scorer identity, and the runner emits exactly one score per scorer in order,
-/// so the names join positionally. The join is only applied when the lengths
-/// match; otherwise each scorer falls back to its positional `scorer_{i}` label.
-fn reward(result: &EvalCaseResult, scorer_names: &[String]) -> Value {
+/// Scores are persisted as an ordered `Vec<Score>` without immutable scorer
+/// identity. Current eval-case scorer definitions are mutable, so historical
+/// results must keep stable positional labels instead of joining against current
+/// scorer kinds at export time.
+pub(crate) fn reward(result: &EvalCaseResult) -> Value {
     let scores = result.scores.as_ref().and_then(Value::as_array);
-    let aligned = scores.is_some_and(|arr| arr.len() == scorer_names.len());
     let scorers: Vec<Value> = scores
         .map(|arr| {
             arr.iter()
                 .enumerate()
                 .map(|(i, s)| {
-                    let name = if aligned {
-                        json!(scorer_names[i])
-                    } else {
-                        json!(format!("scorer_{i}"))
-                    };
+                    let name = json!(format!("scorer_{i}"));
                     json!({
                         "name": name,
                         "value": s.get("value"),
@@ -285,16 +279,18 @@ pub fn build_record(
     result: &EvalCaseResult,
     messages: &[Message],
     redaction: &RedactionOptions,
-    scorer_names: &[String],
 ) -> Value {
     let mut record = match format {
-        DatasetFormat::Trajectory => json!({
+        // ATIF is event-based and built by `crate::atif::build_case_record`;
+        // the export job never routes it here. Fall back to the canonical
+        // trajectory shape defensively rather than panicking.
+        DatasetFormat::Trajectory | DatasetFormat::Atif => json!({
             "source_key": source_key(run, result),
             "eval_run_id": run.public_id.to_string(),
             "case_id": result.eval_case_id.to_string(),
             "case_name": result.case_name,
             "session_id": result.session_id.map(|s| s.to_string()),
-            "reward": reward(result, scorer_names),
+            "reward": reward(result),
             "messages": serde_json::to_value(messages).unwrap_or_else(|_| json!([])),
             "metadata": metadata(run, result),
         }),
@@ -316,7 +312,7 @@ pub fn build_record(
             json!({
                 "source_key": source_key(run, result),
                 "messages": chat,
-                "reward": reward(result, scorer_names),
+                "reward": reward(result),
             })
         }
     };
@@ -382,6 +378,8 @@ mod tests {
             model_override: Some("gpt-test".into()),
             filter_tags: None,
             status: everruns_core::eval::EvalRunStatus::Completed,
+            source: everruns_core::eval::EvalRunSource::Internal,
+            attribution: None,
             triggered_by: "test".into(),
             started_at: None,
             completed_at: None,
@@ -461,7 +459,6 @@ mod tests {
             &r,
             &msgs,
             &RedactionOptions::default(),
-            &[],
         );
         assert_eq!(rec["reward"]["pass"], json!(true));
         assert_eq!(rec["reward"]["score"], json!(1.0));
@@ -483,7 +480,6 @@ mod tests {
             &r,
             &msgs,
             &RedactionOptions::default(),
-            &[],
         );
         let chat = rec["messages"].as_array().unwrap();
         assert_eq!(chat[0]["role"], json!("user"));
@@ -504,7 +500,6 @@ mod tests {
             &RedactionOptions {
                 redact_content: true,
             },
-            &[],
         );
         let serialized = serde_json::to_string(&rec).unwrap();
         assert!(!serialized.contains("secret business content"));
@@ -525,7 +520,6 @@ mod tests {
             &RedactionOptions {
                 redact_content: true,
             },
-            &[],
         );
         assert_eq!(rec["messages"][0]["content"], json!(REDACTED));
     }
@@ -543,7 +537,6 @@ mod tests {
             &r,
             &[],
             &RedactionOptions::default(),
-            &[],
         );
         let serialized = serde_json::to_string(&rec).unwrap();
         // Secrets outside `messages` (case_name, scorer reason) are scrubbed too.
@@ -553,8 +546,7 @@ mod tests {
     }
 
     #[test]
-    fn reward_joins_scorer_names_positionally() {
-        use everruns_core::eval::Scorer;
+    fn reward_uses_stable_positional_scorer_labels() {
         let r = result_with(
             CaseResultStatus::Passed,
             json!([
@@ -562,47 +554,16 @@ mod tests {
                 {"pass": false, "value": 0.0, "reason": "too many turns"},
             ]),
         );
-        let names = scorer_names(&[
-            Scorer::Contains {
-                text: "ok".into(),
-                weight: 1.0,
-            },
-            Scorer::TurnsWithin {
-                max: 3,
-                weight: 1.0,
-            },
-        ]);
         let rec = build_record(
             DatasetFormat::Trajectory,
             &run(),
             &r,
             &[],
             &RedactionOptions::default(),
-            &names,
-        );
-        let scorers = rec["reward"]["scorers"].as_array().unwrap();
-        assert_eq!(scorers[0]["name"], json!("contains"));
-        assert_eq!(scorers[1]["name"], json!("turns_within"));
-    }
-
-    #[test]
-    fn reward_falls_back_to_positional_label_on_length_mismatch() {
-        // One score but two scorer names -> misaligned, so fall back to scorer_{i}
-        // rather than risk attaching the wrong name.
-        let r = result_with(
-            CaseResultStatus::Passed,
-            json!([{"pass": true, "value": 1.0, "reason": "ok"}]),
-        );
-        let rec = build_record(
-            DatasetFormat::Trajectory,
-            &run(),
-            &r,
-            &[],
-            &RedactionOptions::default(),
-            &["contains".to_string(), "regex".to_string()],
         );
         let scorers = rec["reward"]["scorers"].as_array().unwrap();
         assert_eq!(scorers[0]["name"], json!("scorer_0"));
+        assert_eq!(scorers[1]["name"], json!("scorer_1"));
     }
 
     #[test]
@@ -621,7 +582,6 @@ mod tests {
             &RedactionOptions {
                 redact_content: true,
             },
-            &[],
         );
         let serialized = serde_json::to_string(&rec).unwrap();
         assert!(!serialized.contains("SECRETIMAGEDATA"));

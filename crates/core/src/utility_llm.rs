@@ -87,6 +87,8 @@ impl UtilityLlmRequest {
         }
 
         let config = LlmCallConfig {
+            speed: None,
+            verbosity: None,
             model: UTILITY_LLM_MODEL.to_string(),
             temperature: self.temperature,
             max_tokens: self.max_tokens,
@@ -100,6 +102,7 @@ impl UtilityLlmRequest {
             prompt_cache: None,
             openrouter_routing: None,
             parallel_tool_calls: None,
+            volatile_suffix_len: 0,
         };
         Ok((self.messages, config))
     }

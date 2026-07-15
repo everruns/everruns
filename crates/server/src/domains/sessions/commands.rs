@@ -1,17 +1,21 @@
 use super::queries as q;
 use super::types::{
-    CancelStatus, CancelTurnResponse, CreateSessionRequest, ForkSessionRequest,
-    GetOrCreateChatSessionRequest, SessionStatsResponse, UpdateSessionRequest,
+    AddSessionParticipantRequest, CancelStatus, CancelTurnResponse, CreateSessionRequest,
+    ForkSessionRequest, GetOrCreateChatSessionRequest, SessionStatsResponse, UpdateSessionRequest,
 };
 use crate::domains::common::*;
+use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
 use everruns_core::events::{
-    EventContext, EventData, EventRequest, InputMessageData, LLM_GENERATION, TurnCancelledData,
-    deserialize_event_data,
+    EventContext, EventData, EventRequest, InputMessageData, LLM_GENERATION, SessionIdledData,
+    TurnCancelledData, deserialize_event_data,
 };
 use everruns_core::model_profiles::get_model_profile;
 use everruns_core::provider::DriverId;
-use everruns_core::typed_id::{AgentId, MessageId, TurnId};
-use everruns_core::{ANONYMOUS_USER_ID, Message, Session, SessionContextReport};
+use everruns_core::typed_id::{AgentId, MessageId, SessionParticipantId, TurnId};
+use everruns_core::{
+    ANONYMOUS_USER_ID, Message, Session, SessionContextReport, SessionParticipant,
+    SessionParticipantKind, SessionParticipantRole,
+};
 use serde::Deserialize;
 use std::str::FromStr;
 use utoipa::ToSchema;
@@ -78,6 +82,17 @@ impl Command for CreateSession {
                 "Cannot specify both harness_id and harness_name",
             ));
         }
+        if req.agent_id.is_some() && req.agent_name.is_some() {
+            return Err(CommandError::bad_request(
+                "Cannot specify both agent_id and agent_name",
+            ));
+        }
+        if req.seed != everruns_core::SessionSeedMode::Fresh && req.forked_from_session_id.is_none()
+        {
+            return Err(CommandError::bad_request(
+                "seed requires forked_from_session_id",
+            ));
+        }
 
         // Enforce per-org session cap before the heavier creation work. Sessions
         // are hard-deleted, so the count reflects only live rows.
@@ -92,6 +107,39 @@ impl Command for CreateSession {
                 "Session limit reached (max {max})"
             )));
         }
+
+        // Resolve the agent first (by id or name) so its harness can seed the
+        // session harness when no explicit harness is supplied (agent-first
+        // creation). The agent's harness is a default, not an override: an
+        // explicit request harness still wins (D4).
+        let (agent_internal_id, agent_public_id, agent_harness_id) =
+            if let Some(agent_id) = req.agent_id {
+                let row = ctx
+                    .db
+                    .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
+                    .await
+                    .map_err(classify_anyhow)?
+                    .ok_or_else(|| CommandError::not_found("Agent"))?;
+                let public_id: AgentId = row
+                    .public_id
+                    .parse()
+                    .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
+                (Some(row.id.uuid()), Some(public_id), Some(row.harness_id))
+            } else if let Some(name) = req.agent_name.as_deref() {
+                let row = ctx
+                    .db
+                    .get_agent_by_name(ctx.org_id(), name)
+                    .await
+                    .map_err(classify_anyhow)?
+                    .ok_or_else(|| CommandError::not_found("Agent"))?;
+                let public_id: AgentId = row
+                    .public_id
+                    .parse()
+                    .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
+                (Some(row.id.uuid()), Some(public_id), Some(row.harness_id))
+            } else {
+                (None, None, None)
+            };
 
         if let Some(name) = req.harness_name.clone() {
             crate::api::validation::validate_harness_name(&name).map_err(validation_error)?;
@@ -123,6 +171,7 @@ impl Command for CreateSession {
             &ctx.db,
             ctx.org_id(),
             req.harness_id,
+            agent_harness_id,
             ctx.fallback_harness_name.as_deref(),
         )
         .await
@@ -142,22 +191,6 @@ impl Command for CreateSession {
                 .map_err(classify_anyhow)?
                 .ok_or_else(|| CommandError::not_found("Model"))?;
         }
-
-        let (agent_internal_id, agent_public_id) = if let Some(agent_id) = req.agent_id {
-            let row = ctx
-                .db
-                .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
-                .await
-                .map_err(classify_anyhow)?
-                .ok_or_else(|| CommandError::not_found("Agent"))?;
-            let public_id: AgentId = row
-                .public_id
-                .parse()
-                .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
-            (Some(row.id.uuid()), Some(public_id))
-        } else {
-            (None, None)
-        };
 
         if let Some(prompt) = req.system_prompt.as_ref() {
             crate::api::validation::validate_agent_system_prompt(prompt)
@@ -193,6 +226,234 @@ impl Command for CreateSession {
 }
 
 inventory::submit! { CommandDescriptor::of::<CreateSession>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ListSessionParticipants {
+    /// Session whose participant history should be returned.
+    pub session_id: String,
+}
+
+impl Command for ListSessionParticipants {
+    type Output = Vec<SessionParticipant>;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "list_session_participants",
+            category: "sessions",
+            description: "List the participant history for a session.",
+            method: "GET",
+            path: "/v1/sessions/{session_id}/participants",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_VIEW)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
+        let session_id = q::parse_session_id(&self.session_id)?;
+        ensure_session_exists(ctx, session_id).await?;
+
+        let rows = ctx
+            .db
+            .list_session_participants(ctx.org_id(), session_id)
+            .await
+            .map_err(classify_anyhow)?;
+        if rows.len() > MAX_SESSION_PARTICIPANT_HISTORY {
+            return Err(CommandError::conflict(format!(
+                "Session participant history exceeds the {MAX_SESSION_PARTICIPANT_HISTORY} row limit"
+            )));
+        }
+        Ok(rows.into_iter().map(|row| row.to_core()).collect())
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ListSessionParticipants>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AddSessionParticipant {
+    /// Session that receives the participant.
+    pub session_id: String,
+    /// Participant to add.
+    #[serde(flatten)]
+    pub req: AddSessionParticipantRequest,
+}
+
+impl Command for AddSessionParticipant {
+    type Output = SessionParticipant;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "add_session_participant",
+            category: "sessions",
+            description: "Add a member participant to a session.",
+            method: "POST",
+            path: "/v1/sessions/{session_id}/participants",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
+        let session_id = q::parse_session_id(&self.session_id)?;
+        let session = ensure_session_exists(ctx, session_id).await?;
+        let role = self.req.role.unwrap_or(SessionParticipantRole::Member);
+        if role == SessionParticipantRole::Host {
+            return Err(CommandError::bad_request(
+                "Host participant is managed by session creation",
+            ));
+        }
+
+        let (agent_id, agent_version_id) = match self.req.kind {
+            SessionParticipantKind::Agent => {
+                let agent_id = self
+                    .req
+                    .agent_id
+                    .ok_or_else(|| CommandError::bad_request("agent_id is required"))?;
+                let agent = ctx
+                    .db
+                    .get_agent_by_public_id(ctx.org_id(), &agent_id.to_string())
+                    .await
+                    .map_err(classify_anyhow)?
+                    .ok_or_else(|| CommandError::not_found("Agent"))?;
+                (Some(agent.id), agent.default_version_id)
+            }
+            SessionParticipantKind::User => {
+                if self.req.agent_id.is_some() {
+                    return Err(CommandError::bad_request(
+                        "User participants cannot include agent_id",
+                    ));
+                }
+                (None, None)
+            }
+        };
+
+        let is_user_participant = self.req.kind == SessionParticipantKind::User;
+        if !is_user_participant {
+            let rows = ctx
+                .db
+                .list_session_participants(ctx.org_id(), session_id)
+                .await
+                .map_err(classify_anyhow)?;
+            if rows.len() > MAX_SESSION_PARTICIPANT_HISTORY {
+                return Err(CommandError::conflict(format!(
+                    "Session participant history exceeds the {MAX_SESSION_PARTICIPANT_HISTORY} row limit"
+                )));
+            }
+            if rows.iter().any(|row| {
+                row.kind == SessionParticipantKind::Agent.to_string()
+                    && row.role == SessionParticipantRole::Member.to_string()
+                    && row.agent_id == agent_id
+                    && row.left_at.is_none()
+            }) {
+                return Err(CommandError::conflict(
+                    "Session already has an active agent participant for this agent",
+                ));
+            }
+        }
+
+        let input = crate::storage::models::CreateSessionParticipantRow {
+            org_id: ctx.org_id(),
+            session_id,
+            kind: self.req.kind,
+            agent_id,
+            agent_version_id,
+            principal_id: session.owner_principal_id,
+            role,
+            joined_at: None,
+        };
+
+        let row = if is_user_participant {
+            ctx.db
+                .ensure_active_user_session_participant(input)
+                .await
+                .map_err(classify_anyhow)?
+        } else {
+            ctx.db
+                .create_session_participant(input)
+                .await
+                .map_err(classify_anyhow)?
+        };
+
+        Ok(row.to_core())
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<AddSessionParticipant>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct LeaveSessionParticipant {
+    /// Session that owns the participant.
+    pub session_id: String,
+    /// Participant row to mark as left.
+    pub participant_id: String,
+}
+
+impl Command for LeaveSessionParticipant {
+    type Output = SessionParticipant;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "leave_session_participant",
+            category: "sessions",
+            description: "Mark a session member participant as having left.",
+            method: "DELETE",
+            path: "/v1/sessions/{session_id}/participants/{participant_id}",
+        }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError> {
+        let session_id = q::parse_session_id(&self.session_id)?;
+        ensure_session_exists(ctx, session_id).await?;
+        let participant_id: SessionParticipantId = self
+            .participant_id
+            .parse()
+            .map_err(|e| CommandError::bad_request(format!("Invalid participant ID: {e}")))?;
+
+        let participants = ctx
+            .db
+            .list_session_participants(ctx.org_id(), session_id)
+            .await
+            .map_err(classify_anyhow)?;
+        let participant = participants
+            .iter()
+            .find(|row| row.id == participant_id)
+            .ok_or_else(|| CommandError::not_found("Participant"))?;
+        if participant.role == SessionParticipantRole::Host.to_string()
+            && participant.left_at.is_none()
+        {
+            return Err(CommandError::conflict(
+                "Host participant cannot leave through this endpoint",
+            ));
+        }
+
+        ctx.db
+            .leave_session_participant(ctx.org_id(), session_id, participant_id)
+            .await
+            .map_err(classify_anyhow)?
+            .map(|row| row.to_core())
+            .ok_or_else(|| CommandError::not_found("Participant"))
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<LeaveSessionParticipant>() }
+
+async fn ensure_session_exists(
+    ctx: &Ctx,
+    session_id: everruns_core::typed_id::SessionId,
+) -> Result<crate::storage::models::SessionRow, CommandError> {
+    ctx.db
+        .get_session(ctx.org_id(), session_id)
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Session"))
+}
 
 /// Fork a session into a new, independent session (specs/forking-sessions.md).
 #[derive(Debug, Deserialize, ToSchema)]
@@ -253,6 +514,7 @@ impl Command for ForkSession {
                 parent_id,
                 super::ForkOverrides {
                     title: overrides.title,
+                    goal: overrides.goal,
                     tags: overrides.tags,
                     model_id: overrides.model_id,
                     agent_id: overrides.agent_id,
@@ -466,8 +728,11 @@ mod tests {
     use crate::domains::harnesses::CreateHarness;
     use crate::domains::harnesses::types::CreateHarnessRequest;
     use crate::storage::StorageBackend;
-    use everruns_core::{Caller, DEFAULT_ORG_ID, DefaultPermissionResolver, HarnessId};
+    use everruns_core::{
+        Caller, DEFAULT_ORG_ID, DefaultPermissionResolver, HarnessId, OrgRole, SessionId,
+    };
     use std::sync::Arc;
+    use uuid::Uuid;
 
     #[test]
     fn parse_provider_type_accepts_mixed_case_known_values() {
@@ -496,14 +761,39 @@ mod tests {
         ctx
     }
 
+    fn external_test_ctx(db: Arc<StorageBackend>, user_id: Uuid) -> Ctx {
+        let session_service = Arc::new(crate::domains::sessions::SessionService::new(db.clone()));
+        let capability_service =
+            Arc::new(crate::services::CapabilityService::new(db.clone(), None));
+        Ctx::new(
+            Caller {
+                org_id: DEFAULT_ORG_ID,
+                org_public_id: everruns_core::organization::org_public_id_from_internal(
+                    DEFAULT_ORG_ID,
+                ),
+                user_id: Some(user_id),
+                role: OrgRole::Owner,
+                is_platform_user: false,
+                is_internal: false,
+            },
+            db,
+            capability_service,
+            None,
+            Arc::new(DefaultPermissionResolver),
+        )
+        .with_session_service(session_service)
+    }
+
     fn create_request(harness_id: HarnessId) -> CreateSessionRequest {
         CreateSessionRequest {
             workspace_id: None,
             harness_id: Some(harness_id),
             harness_name: None,
             agent_id: None,
+            agent_name: None,
             agent_identity_id: None,
             title: Some("Test Session".to_string()),
+            goal: None,
             locale: None,
             tags: vec![],
             model_id: None,
@@ -517,6 +807,9 @@ mod tests {
             max_iterations: None,
             parallel_tool_calls: None,
             parent_session_id: None,
+            forked_from_session_id: None,
+            budget_root_session_id: None,
+            seed: everruns_core::SessionSeedMode::Fresh,
         }
     }
 
@@ -541,6 +834,85 @@ mod tests {
         .id
     }
 
+    // Minimal runner whose `cancel_run` succeeds without a real durable backend,
+    // so `CancelSession` can be exercised against the in-memory store.
+    struct CancelTestRunner;
+
+    #[async_trait::async_trait]
+    impl everruns_worker::AgentRunner for CancelTestRunner {
+        async fn start_run(
+            &self,
+            _org_id: i64,
+            _session_id: SessionId,
+            _harness_id: HarnessId,
+            _agent_id: Option<AgentId>,
+            _input_message_id: MessageId,
+            _request_id: Option<String>,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn resume_after_tool_results(&self, _session_id: SessionId) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn cancel_run(&self, _session_id: SessionId) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn is_running(&self, _session_id: SessionId) -> bool {
+            false
+        }
+
+        async fn active_count(&self) -> usize {
+            0
+        }
+    }
+
+    // EVE-708: cancelling an active turn must settle the session back to `idle`.
+    // The durable workflow is marked cancelled and the worker short-circuits before
+    // the runtime's idle transition, so `CancelSession` itself must idle the session
+    // or it stays `active` forever, blocking clean follow-up turns.
+    #[tokio::test]
+    async fn cancel_active_session_transitions_to_idle() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = test_ctx(db.clone(), 100).with_runner(Arc::new(CancelTestRunner));
+        let harness_id = seed_harness(&ctx).await;
+
+        let session = CreateSession(create_request(harness_id))
+            .execute(&ctx)
+            .await
+            .expect("create session");
+
+        // Simulate an in-flight turn.
+        q::session_service(&ctx)
+            .unwrap()
+            .update_status(&ctx.caller, session.id.uuid(), "active".to_string())
+            .await
+            .expect("mark active");
+
+        let response = CancelSession {
+            session_id: session.id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .expect("cancel");
+        assert!(
+            matches!(response.status, CancelStatus::Cancelled),
+            "expected an active cancel, got {:?}",
+            response.status
+        );
+
+        let after = q::get_session(&ctx, session.id, None)
+            .await
+            .expect("reload session");
+        assert_eq!(
+            after.status,
+            everruns_core::SessionStatus::Idle,
+            "cancelled session must settle to idle"
+        );
+    }
+
     #[tokio::test]
     async fn session_creation_rejected_at_limit_and_allowed_below() {
         let db = Arc::new(StorageBackend::in_memory());
@@ -558,6 +930,290 @@ mod tests {
             .expect_err("second session exceeds the cap");
         assert_eq!(err.status().as_u16(), 409);
         assert!(err.message().contains("Session limit reached"));
+    }
+
+    #[tokio::test]
+    async fn create_session_with_non_internal_owner_sets_parent_session_id() {
+        // Trusted subagent/handoff spawns dispatch CreateSession through
+        // DirectPlatformStore, whose caller runs as the session owner
+        // (`is_internal == false`, see caller_resolution.rs). The internal
+        // parent link must survive that path. Forgery by untrusted clients is
+        // prevented at the HTTP boundary, which strips `parent_session_id`
+        // before dispatch (see `strip_internal_only_fields` in api/sessions.rs),
+        // so the command layer must not reject a caller-set parent link.
+        let db = Arc::new(StorageBackend::in_memory());
+        let internal_ctx = test_ctx(db.clone(), 10);
+        let harness_id = seed_harness(&internal_ctx).await;
+        let owner = db
+            .create_user(crate::storage::models::CreateUserRow {
+                email: format!("owner-{}@example.com", Uuid::now_v7()),
+                name: "Owner".to_string(),
+                avatar_url: None,
+                roles: vec!["user".to_string()],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: None,
+                auth_provider_id: None,
+                external_id: None,
+            })
+            .await
+            .expect("create owner user");
+        let ctx = external_test_ctx(db, owner.id);
+        let parent = SessionId::new();
+        let mut req = create_request(harness_id);
+        req.parent_session_id = Some(parent);
+
+        let session = CreateSession(req)
+            .execute(&ctx)
+            .await
+            .expect("owner-caller spawn with a parent link should succeed");
+
+        assert_eq!(session.parent_session_id, Some(parent));
+    }
+
+    async fn seed_agent(ctx: &Ctx, harness_id: HarnessId, name: &str) -> AgentId {
+        let public_id = format!("agent_{}", Uuid::now_v7().simple());
+        let row = ctx
+            .db
+            .create_agent(
+                ctx.org_id(),
+                crate::storage::models::CreateAgentRow {
+                    public_id: public_id.clone(),
+                    name: name.to_string(),
+                    display_name: None,
+                    description: None,
+                    system_prompt: "You are helpful.".to_string(),
+                    default_model_id: None,
+                    harness_id,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    tools: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    max_iterations: None,
+                    parallel_tool_calls: None,
+                },
+            )
+            .await
+            .expect("seed agent");
+        row.public_id.parse().expect("agent public id")
+    }
+
+    #[tokio::test]
+    async fn create_session_from_agent_inherits_agent_harness() {
+        // Agent-first: a session created with only an agent runs on the agent's
+        // own harness (D4), and an explicit request harness still overrides it.
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = test_ctx(db.clone(), 10);
+        let agent_harness = seed_harness(&ctx).await;
+        let override_harness = CreateHarness(CreateHarnessRequest {
+            name: "override-harness".to_string(),
+            display_name: None,
+            description: None,
+            system_prompt: Some("prompt".to_string()),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&ctx)
+        .await
+        .expect("seed override harness")
+        .id;
+        let agent_id = seed_agent(&ctx, agent_harness, "support").await;
+
+        // 1. agent only, no harness → inherits the agent's harness.
+        let mut req = create_request(agent_harness);
+        req.harness_id = None;
+        req.agent_id = Some(agent_id);
+        let session = CreateSession(req)
+            .execute(&ctx)
+            .await
+            .expect("create session from agent");
+        assert_eq!(session.harness_id, agent_harness);
+
+        // 2. explicit request harness overrides the agent's harness.
+        let mut req = create_request(override_harness);
+        req.agent_id = Some(agent_id);
+        let session = CreateSession(req)
+            .execute(&ctx)
+            .await
+            .expect("create session with explicit harness override");
+        assert_eq!(session.harness_id, override_harness);
+    }
+
+    #[tokio::test]
+    async fn create_session_rejects_both_agent_id_and_agent_name() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = test_ctx(db, 10);
+        let harness_id = seed_harness(&ctx).await;
+        let mut req = create_request(harness_id);
+        req.agent_id = Some(AgentId::new());
+        req.agent_name = Some("support".to_string());
+
+        let err = CreateSession(req)
+            .execute(&ctx)
+            .await
+            .expect_err("agent_id + agent_name is rejected");
+        assert_eq!(err.status().as_u16(), 400);
+    }
+
+    #[tokio::test]
+    async fn participant_commands_list_add_and_leave_history() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = test_ctx(db.clone(), 10);
+        let harness_id = seed_harness(&ctx).await;
+        let host_public_id = AgentId::new();
+        let host_agent = db
+            .create_agent(
+                DEFAULT_ORG_ID,
+                crate::storage::models::CreateAgentRow {
+                    public_id: host_public_id.to_string(),
+                    name: "participant-host".to_string(),
+                    display_name: None,
+                    description: None,
+                    system_prompt: "You are helpful.".to_string(),
+                    default_model_id: None,
+                    harness_id,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    tools: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    max_iterations: None,
+                    parallel_tool_calls: None,
+                },
+            )
+            .await
+            .expect("create host agent");
+        let member_public_id = AgentId::new();
+        let member_agent = db
+            .create_agent(
+                DEFAULT_ORG_ID,
+                crate::storage::models::CreateAgentRow {
+                    public_id: member_public_id.to_string(),
+                    name: "participant-member".to_string(),
+                    display_name: None,
+                    description: None,
+                    system_prompt: "You are helpful.".to_string(),
+                    default_model_id: None,
+                    harness_id,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    tools: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    max_iterations: None,
+                    parallel_tool_calls: None,
+                },
+            )
+            .await
+            .expect("create member agent");
+
+        let mut req = create_request(harness_id);
+        req.agent_id = Some(host_public_id);
+        let session = CreateSession(req)
+            .execute(&ctx)
+            .await
+            .expect("create session with host agent");
+
+        let initial = ListSessionParticipants {
+            session_id: session.id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .expect("list initial participants");
+        assert_eq!(initial.len(), 2);
+        let host = initial
+            .iter()
+            .find(|participant| participant.role == SessionParticipantRole::Host)
+            .expect("host participant");
+        assert_eq!(host.kind, SessionParticipantKind::Agent);
+        assert_eq!(host.agent_id, Some(host_agent.id));
+
+        let user_again = AddSessionParticipant {
+            session_id: session.id.to_string(),
+            req: AddSessionParticipantRequest {
+                kind: SessionParticipantKind::User,
+                agent_id: None,
+                role: None,
+            },
+        }
+        .execute(&ctx)
+        .await
+        .expect("user participant add is idempotent");
+        assert_eq!(user_again.kind, SessionParticipantKind::User);
+        assert_eq!(
+            initial
+                .iter()
+                .filter(|p| p.kind == SessionParticipantKind::User)
+                .count(),
+            1
+        );
+
+        let added = AddSessionParticipant {
+            session_id: session.id.to_string(),
+            req: AddSessionParticipantRequest {
+                kind: SessionParticipantKind::Agent,
+                agent_id: Some(member_public_id),
+                role: None,
+            },
+        }
+        .execute(&ctx)
+        .await
+        .expect("add member participant");
+        assert_eq!(added.role, SessionParticipantRole::Member);
+        assert_eq!(added.agent_id, Some(member_agent.id));
+
+        let duplicate_agent = AddSessionParticipant {
+            session_id: session.id.to_string(),
+            req: AddSessionParticipantRequest {
+                kind: SessionParticipantKind::Agent,
+                agent_id: Some(member_public_id),
+                role: None,
+            },
+        }
+        .execute(&ctx)
+        .await
+        .expect_err("duplicate active agent participant is rejected");
+        assert_eq!(duplicate_agent.status().as_u16(), 409);
+
+        let left = LeaveSessionParticipant {
+            session_id: session.id.to_string(),
+            participant_id: added.id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .expect("leave member participant");
+        assert!(left.left_at.is_some());
+
+        let history = ListSessionParticipants {
+            session_id: session.id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .expect("list participant history");
+        assert_eq!(history.len(), 3);
+        assert!(
+            history
+                .iter()
+                .find(|participant| participant.id == added.id)
+                .and_then(|participant| participant.left_at)
+                .is_some()
+        );
+
+        let err = LeaveSessionParticipant {
+            session_id: session.id.to_string(),
+            participant_id: host.id.to_string(),
+        }
+        .execute(&ctx)
+        .await
+        .expect_err("host cannot leave through member endpoint");
+        assert_eq!(err.status().as_u16(), 409);
     }
 }
 
@@ -868,6 +1524,36 @@ impl Command for CancelSession {
             if let Err(error) = event_service.emit(user_message_event).await {
                 tracing::warn!(session_id = %session_id, error = %error, "Failed to emit user cancellation message");
             }
+
+            // EVE-708: emit the `session.idled` lifecycle event for parity with the
+            // normal turn-completion path. The cancelled workflow short-circuits in
+            // the worker before the runtime reaches its `session.idled` emission, so
+            // without this the lifecycle would silently stop at `turn.cancelled`.
+            let idled_event = EventRequest::new(
+                session_id,
+                EventContext::turn(turn_id, input_message_id),
+                SessionIdledData {
+                    turn_id,
+                    iterations: None,
+                    usage: None,
+                },
+            );
+            if let Err(error) = event_service.emit(idled_event).await {
+                tracing::warn!(session_id = %session_id, error = %error, "Failed to emit session.idled event");
+            }
+        }
+
+        // EVE-708: settle the session status. Cancelling marks the durable workflow
+        // `Cancelled`, which makes the worker fail the task and return early — so the
+        // runtime turn loop never reaches `TurnAction::Complete` and never transitions
+        // the session back to `idle`. Session status is a stored column that is not
+        // derived from events, so we must set it here or the session stays `active`
+        // indefinitely, blocking clean follow-up turns.
+        if let Err(error) = q::session_service(ctx)?
+            .update_status(&ctx.caller, session_id.uuid(), "idle".to_string())
+            .await
+        {
+            tracing::warn!(session_id = %session_id, error = %error, "Failed to set session idle after cancel");
         }
 
         Ok(CancelTurnResponse {

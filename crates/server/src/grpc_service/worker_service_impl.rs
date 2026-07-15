@@ -7,7 +7,7 @@ use crate::domains::common::CommandErrorKind;
 const COMMAND_API_VERSION_V1: &str = "v1";
 const MAX_EXECUTE_COMMAND_PARAMS_BYTES: usize = 1024 * 1024;
 const DEFAULT_TURN_CONTEXT_MESSAGE_LIMIT: i32 = 200;
-const MAX_TURN_CONTEXT_MESSAGE_LIMIT: i32 = 5_000;
+const MAX_TURN_CONTEXT_MESSAGE_LIMIT: i32 = crate::storage::repository::MESSAGE_SAFETY_LIMIT as i32;
 
 fn normalize_turn_context_message_limit(requested_limit: Option<i32>, default_limit: i32) -> i32 {
     let normalized_default = default_limit.clamp(1, MAX_TURN_CONTEXT_MESSAGE_LIMIT);
@@ -74,7 +74,7 @@ fn command_schema_hash(
     if let Some(positional_arg) = positional_arg {
         hasher.update(positional_arg.as_bytes());
     }
-    format!("{:x}", hasher.finalize())
+    hex::encode(hasher.finalize())
 }
 
 #[tonic::async_trait]
@@ -469,6 +469,7 @@ impl WorkerService for WorkerServiceImpl {
                 session_id,
                 crate::api::sessions::UpdateSessionRequest {
                     title: Some(req.title),
+                    goal: None,
                     agent_identity_id: everruns_durable::UpdateField::Unchanged,
                     locale: None,
                     tags: None,
@@ -1292,12 +1293,25 @@ impl WorkerService for WorkerServiceImpl {
         // TODO: Map proto options to ActivityOptions when needed
         let options = ActivityOptions::default();
 
-        let task = TaskDefinition {
-            workflow_id: Some(workflow_id),
+        let event = WorkflowEvent::ActivityScheduled {
             activity_id: task_def.activity_id.clone(),
             activity_type: task_def.activity_type.clone(),
             input: input.clone(),
             options: options.clone(),
+        };
+        append_event(store.as_ref(), workflow_id, event)
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to append ActivityScheduled event: {}", e);
+                Status::internal("Failed to append ActivityScheduled event")
+            })?;
+
+        let task = TaskDefinition {
+            workflow_id: Some(workflow_id),
+            activity_id: task_def.activity_id.clone(),
+            activity_type: task_def.activity_type.clone(),
+            input,
+            options,
         };
 
         let task_id = store.enqueue_task(task).await.map_err(|e| {
@@ -1319,15 +1333,6 @@ impl WorkerService for WorkerServiceImpl {
                 .notify_task_available(&task_def.activity_type)
                 .await;
         }
-
-        // Record ActivityScheduled event
-        let event = WorkflowEvent::ActivityScheduled {
-            activity_id: task_def.activity_id,
-            activity_type: task_def.activity_type,
-            input,
-            options,
-        };
-        let _ = append_event(store.as_ref(), workflow_id, event).await;
 
         use everruns_internal_protocol::uuid_to_proto_uuid;
         Ok(Response::new(EnqueueDurableTaskResponse {
@@ -1361,6 +1366,7 @@ impl WorkerService for WorkerServiceImpl {
                 activity_type: t.activity_type,
                 input: Some(everruns_internal_protocol::json_to_proto_struct(&t.input)),
                 attempt: t.attempt as i32,
+                max_attempts: t.max_attempts as i32,
             })
             .collect();
 
@@ -1445,10 +1451,27 @@ impl WorkerService for WorkerServiceImpl {
             }
         };
 
-        let outcome = store.fail_task(task_id, &req.error).await.map_err(|e| {
-            tracing::error!("Failed to fail task: {}", e);
-            Status::internal("Failed to fail task")
-        })?;
+        let outcome = match store.fail_task(task_id, &req.error).await {
+            Ok(outcome) => outcome,
+            Err(StoreError::TaskNotOwned(_)) => {
+                // EVE-639: fail_task now no-ops if the task is no longer 'claimed'
+                // (a concurrent stale-reclaim already requeued or sealed it). The
+                // failure is absorbed by the reclaimer; report it as a retry
+                // (the task is back in the queue) rather than an internal error.
+                tracing::info!(
+                    %task_id,
+                    "Task failure absorbed: task was already reclaimed"
+                );
+                return Ok(Response::new(FailDurableTaskResponse {
+                    failed: true,
+                    will_retry: true,
+                }));
+            }
+            Err(e) => {
+                tracing::error!("Failed to fail task: {}", e);
+                return Err(Status::internal("Failed to fail task"));
+            }
+        };
 
         // Check if task will be retried
         let will_retry = matches!(outcome, TaskFailureOutcome::WillRetry { .. });
@@ -2222,6 +2245,7 @@ impl WorkerService for WorkerServiceImpl {
                             api_key: r.api_key,
                             headers: r.headers,
                             auth_mode: r.auth_mode.to_string(),
+                            protocol_mode: r.protocol_mode.to_string(),
                             oauth_provider_id: r.oauth_provider_id,
                         }),
                     }));
@@ -2248,6 +2272,7 @@ impl WorkerService for WorkerServiceImpl {
             api_key: r.api_key,
             headers: r.headers,
             auth_mode: r.auth_mode.to_string(),
+            protocol_mode: r.protocol_mode.to_string(),
             oauth_provider_id: r.oauth_provider_id,
         });
 
@@ -2800,8 +2825,11 @@ impl WorkerService for WorkerServiceImpl {
         request: Request<CreateSessionTaskRequest>,
     ) -> Result<Response<SessionTaskResponse>, Status> {
         let req = request.into_inner();
-        let input: everruns_core::CreateSessionTask = serde_json::from_slice(&req.create_json)
-            .map_err(|e| Status::invalid_argument(format!("Invalid task create JSON: {e}")))?;
+        let create = req
+            .create
+            .ok_or_else(|| Status::invalid_argument("Missing create payload"))?;
+        let input = everruns_internal_protocol::proto_to_create_session_task(create)
+            .map_err(|e| Status::invalid_argument(format!("Invalid task create payload: {e}")))?;
 
         let task = self
             .session_task_registry()
@@ -2813,8 +2841,7 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(SessionTaskResponse {
-            task_json: serde_json::to_vec(&task)
-                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+            task: Some(everruns_internal_protocol::session_task_to_proto(&task)),
         }))
     }
 
@@ -2824,8 +2851,10 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<OptionalSessionTaskResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let update: everruns_core::SessionTaskUpdate = serde_json::from_slice(&req.update_json)
-            .map_err(|e| Status::invalid_argument(format!("Invalid task update JSON: {e}")))?;
+        let update_proto = req
+            .update
+            .ok_or_else(|| Status::invalid_argument("Missing update payload"))?;
+        let update = everruns_internal_protocol::proto_to_session_task_update(update_proto);
 
         let task = self
             .session_task_registry()
@@ -2837,10 +2866,9 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(OptionalSessionTaskResponse {
-            task_json: task
-                .map(|t| serde_json::to_vec(&t))
-                .transpose()
-                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+            task: task
+                .as_ref()
+                .map(everruns_internal_protocol::session_task_to_proto),
         }))
     }
 
@@ -2861,10 +2889,9 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(OptionalSessionTaskResponse {
-            task_json: task
-                .map(|t| serde_json::to_vec(&t))
-                .transpose()
-                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+            task: task
+                .as_ref()
+                .map(everruns_internal_protocol::session_task_to_proto),
         }))
     }
 
@@ -2897,11 +2924,10 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(ListSessionTasksResponse {
-            task_json: tasks
+            tasks: tasks
                 .iter()
-                .map(serde_json::to_vec)
-                .collect::<Result<_, _>>()
-                .map_err(|e| Status::internal(format!("Failed to encode tasks: {e}")))?,
+                .map(everruns_internal_protocol::session_task_to_proto)
+                .collect(),
         }))
     }
 
@@ -2922,10 +2948,9 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(OptionalSessionTaskResponse {
-            task_json: task
-                .map(|t| serde_json::to_vec(&t))
-                .transpose()
-                .map_err(|e| Status::internal(format!("Failed to encode task: {e}")))?,
+            task: task
+                .as_ref()
+                .map(everruns_internal_protocol::session_task_to_proto),
         }))
     }
 
@@ -2935,8 +2960,10 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<SessionTaskMessageResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
-        let message: everruns_core::NewTaskMessage = serde_json::from_slice(&req.message_json)
-            .map_err(|e| Status::invalid_argument(format!("Invalid task message JSON: {e}")))?;
+        let message_proto = req
+            .message
+            .ok_or_else(|| Status::invalid_argument("Missing message payload"))?;
+        let message = everruns_internal_protocol::proto_to_new_task_message(message_proto);
 
         let stored = self
             .session_task_registry()
@@ -2948,8 +2975,7 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(SessionTaskMessageResponse {
-            message_json: serde_json::to_vec(&stored)
-                .map_err(|e| Status::internal(format!("Failed to encode task message: {e}")))?,
+            message: Some(everruns_internal_protocol::task_message_to_proto(&stored)),
         }))
     }
 
@@ -2970,11 +2996,10 @@ impl WorkerService for WorkerServiceImpl {
             })?;
 
         Ok(Response::new(ListSessionTaskMessagesResponse {
-            message_json: messages
+            messages: messages
                 .iter()
-                .map(serde_json::to_vec)
-                .collect::<Result<_, _>>()
-                .map_err(|e| Status::internal(format!("Failed to encode task messages: {e}")))?,
+                .map(everruns_internal_protocol::task_message_to_proto)
+                .collect(),
         }))
     }
 
@@ -3062,7 +3087,7 @@ impl WorkerService for WorkerServiceImpl {
             .map(everruns_internal_protocol::proto_timestamp_to_datetime);
 
         let schedule = store
-            .create_schedule(
+            .create_schedule_enforcing_limits(
                 session_id.into(),
                 req.description,
                 req.cron_expression,
@@ -3070,9 +3095,14 @@ impl WorkerService for WorkerServiceImpl {
                 req.timezone,
             )
             .await
-            .map_err(|e| {
-                tracing::error!("Failed to create schedule: {}", e);
-                Status::internal(format!("Failed to create schedule: {}", e))
+            .map_err(|e| match e {
+                everruns_core::session_schedule::ScheduleLimitError::Rejected(msg) => {
+                    Status::resource_exhausted(msg)
+                }
+                everruns_core::session_schedule::ScheduleLimitError::Store(err) => {
+                    tracing::error!("Failed to create schedule: {}", err);
+                    Status::internal(format!("Failed to create schedule: {}", err))
+                }
             })?;
 
         Ok(Response::new(CreateSessionScheduleResponse {
@@ -3639,6 +3669,8 @@ impl WorkerService for WorkerServiceImpl {
             description: req.description,
             system_prompt: req.system_prompt,
             default_model_id: None,
+            harness_id: None,
+            harness_name: None,
             tags: vec![],
             capabilities,
             initial_files: vec![],
@@ -3676,6 +3708,8 @@ impl WorkerService for WorkerServiceImpl {
             description: req.description,
             system_prompt: req.system_prompt,
             default_model_id: None,
+            harness_id: None,
+            harness_name: None,
             tags: None,
             capabilities: None,
             initial_files: None,
@@ -3784,8 +3818,10 @@ impl WorkerService for WorkerServiceImpl {
             harness_id: Some(everruns_core::HarnessId::from_uuid(harness_id)),
             harness_name: None,
             agent_id: agent_public_id,
+            agent_name: None,
             agent_identity_id: None,
             title: req.title,
+            goal: None,
             locale: req.locale,
             tags: vec![],
             model_id: None,
@@ -3799,6 +3835,9 @@ impl WorkerService for WorkerServiceImpl {
             max_iterations: None,
             parallel_tool_calls: None,
             parent_session_id: None,
+            forked_from_session_id: None,
+            budget_root_session_id: None,
+            seed: everruns_core::SessionSeedMode::Fresh,
         };
 
         let session = if let Some(blueprint_id) = req.blueprint_id {
@@ -3950,6 +3989,39 @@ impl WorkerService for WorkerServiceImpl {
         .map_err(command_error_to_status)?;
 
         Ok(Response::new(InvokeScheduledAppChannelResponse {
+            session_id: result.session_id.to_string(),
+            created_session: result.created_session,
+        }))
+    }
+
+    async fn invoke_agent_trigger(
+        &self,
+        request: Request<InvokeAgentTriggerRequest>,
+    ) -> Result<Response<InvokeAgentTriggerResponse>, Status> {
+        let req = request.into_inner();
+        let runner = self
+            .runner
+            .clone()
+            .ok_or_else(|| Status::unavailable("Agent runner not available"))?;
+        let message_service = crate::domains::messages::MessageService::new(
+            self.db.clone(),
+            runner,
+            false,
+            self.event_service.event_delivery().clone(),
+        );
+
+        let result = crate::domains::agent_triggers::invoke_agent_trigger(
+            &self.db,
+            &self.session_service,
+            &message_service,
+            req.org_id,
+            &req.agent_id,
+            &req.trigger_id,
+        )
+        .await
+        .map_err(command_error_to_status)?;
+
+        Ok(Response::new(InvokeAgentTriggerResponse {
             session_id: result.session_id.to_string(),
             created_session: result.created_session,
         }))
@@ -4110,7 +4182,7 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         _request: Request<PlatformGetBaseUrlRequest>,
     ) -> Result<Response<PlatformGetBaseUrlResponse>, Status> {
-        let base_url = everruns_config::env_string_any(
+        let base_url = everruns_core::config::env_string_any(
             &["PUBLIC_APP_URL", "FRONTEND_URL", "APP_URL"],
             "http://localhost:9300",
         );
@@ -4203,6 +4275,27 @@ impl WorkerService for WorkerServiceImpl {
         }))
     }
 
+    async fn check_outbound_tool_rate_limit(
+        &self,
+        request: Request<CheckOutboundToolRateLimitRequest>,
+    ) -> Result<Response<CheckOutboundToolRateLimitResponse>, Status> {
+        let req = request.into_inner();
+        let allowed = match &self.org_rate_limiter {
+            Some(limiter) => limiter.check_outbound_tool_call(&req.org_key).await.is_ok(),
+            None => {
+                tracing::error!(
+                    org_key = %req.org_key,
+                    "gRPC outbound tool rate limiter is not configured; denying tool call"
+                );
+                false
+            }
+        };
+
+        Ok(Response::new(CheckOutboundToolRateLimitResponse {
+            allowed,
+        }))
+    }
+
     async fn execute_machine_payment(
         &self,
         request: Request<ExecuteMachinePaymentRequest>,
@@ -4276,6 +4369,43 @@ impl WorkerService for WorkerServiceImpl {
             receipt: Some(everruns_internal_protocol::json_to_proto_value(
                 &response.receipt,
             )),
+        }))
+    }
+
+    async fn authorize_session_creation(
+        &self,
+        request: Request<AuthorizeSessionCreationRequest>,
+    ) -> Result<Response<AuthorizeSessionCreationResponse>, Status> {
+        // THREAT[TM-AUTHZ-014]: Resolve the current session owner server-side;
+        // the worker cannot supply a user identity for this decision.
+        let req = request.into_inner();
+        let session_id = everruns_core::SessionId::parse(&req.session_id)
+            .or_else(|_| {
+                uuid::Uuid::parse_str(&req.session_id).map(everruns_core::SessionId::from_uuid)
+            })
+            .map_err(|error| Status::invalid_argument(format!("Invalid session_id: {error}")))?;
+        let session = self
+            .db
+            .get_session(req.org_id, session_id)
+            .await
+            .map_err(|error| Status::internal(format!("Failed to load session: {error}")))?
+            .ok_or_else(|| Status::not_found("Session not found"))?;
+        let user_id = session.resolved_owner_user_id.ok_or_else(|| {
+            Status::permission_denied(
+                "Detached session creation requires a user-owned session with a resolved owner",
+            )
+        })?;
+        let caller = crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user_id)
+            .await
+            .map_err(|error| {
+                Status::permission_denied(format!("Failed to resolve session owner: {error}"))
+            })?;
+        crate::domains::sessions::SESSION_MANAGE
+            .evaluate_with(self.permission_resolver.as_ref(), &caller)
+            .map_err(|error| Status::permission_denied(error.message))?;
+        let root_session_id = session.root_session_id.unwrap_or(session.id);
+        Ok(Response::new(AuthorizeSessionCreationResponse {
+            budget_root_session_id: root_session_id.to_string(),
         }))
     }
 }

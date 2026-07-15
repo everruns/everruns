@@ -39,7 +39,7 @@ use everruns_core::{
     BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole,
 };
 use everruns_server::{ServerAppBuilder, ServerConfig, oss_platform_definition};
-use everruns_worker::{WorkerAppBuilder, DurableWorkerConfig};
+use everruns_worker::{TaskWorkerConfig, WorkerAppBuilder};
 
 fn custom_routes() -> Router {
     Router::new().route("/v1/ping", get(|| async { "pong" }))
@@ -80,7 +80,7 @@ async fn main() -> anyhow::Result<()> {
     let worker_platform = platform.clone();
 
     tokio::spawn(async move {
-        WorkerAppBuilder::new(DurableWorkerConfig::from_env())
+        WorkerAppBuilder::new(TaskWorkerConfig::from_env())
             .platform_definition(worker_platform)
             .run()
             .await
@@ -130,6 +130,12 @@ fn platform() -> PlatformDefinition {
 ```
 
 When you build from scratch, only the components you register exist. Seeded providers, models, harnesses, and agents are filtered against that definition.
+
+For in-process hosts, `InProcessRuntimeBuilder::new()` already starts with
+`CapabilityRegistry::runtime_builtins()`. Supplying a custom
+`PlatformDefinition` replaces that default. Use `runtime_builtins()` as your
+base registry when you want the standard embedded-runtime capability surface and
+then add or remove capabilities for your host.
 
 ## Custom LLM Provider Drivers
 

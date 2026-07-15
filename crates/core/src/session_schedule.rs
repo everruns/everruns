@@ -118,8 +118,8 @@ pub enum ScheduleLimitError {
 /// interval gate). Each fire dispatches a real worker turn, so these bound
 /// operator compute on open-signup deployments (see `specs/threat-model.md`
 /// TM-SCHED-001).
-pub async fn enforce_create_limits(
-    store: &dyn crate::traits::SessionScheduleStore,
+pub async fn validate_schedule_create_limits<T: crate::traits::SessionScheduleStore + ?Sized>(
+    store: &T,
     session_id: SessionId,
     cron_expression: Option<&str>,
 ) -> std::result::Result<(), ScheduleLimitError> {

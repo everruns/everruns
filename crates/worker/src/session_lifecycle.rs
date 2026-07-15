@@ -1,7 +1,7 @@
 // Session lifecycle management
 //
 // Decision: Consolidates session status transitions and lifecycle event emission
-// into one place. Previously scattered across unified_worker, durable_worker,
+// into one place. Previously scattered across unified worker paths,
 // and activities — each with near-identical code.
 //
 // Workers call lifecycle methods; this module owns the event emission and

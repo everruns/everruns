@@ -22,7 +22,8 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
 use everruns_core::{
-    Agent, Harness, HarnessStatus, Message, MessageFilter, MessageRole, Session, SessionStatus,
+    Agent, Harness, HarnessStatus, Message, MessageFilter, MessageRole, Session,
+    SessionParticipant, SessionStatus,
 };
 use everruns_internal_protocol::proto;
 use everruns_internal_protocol::{
@@ -377,6 +378,9 @@ impl GrpcClient {
             api_key: proto_server.api_key,
             headers: proto_server.headers,
             auth_mode,
+            protocol_mode: everruns_core::McpProtocolMode::from(
+                proto_server.protocol_mode.as_str(),
+            ),
             oauth_provider_id: proto_server.oauth_provider_id,
         })
     }
@@ -512,6 +516,29 @@ impl GrpcClient {
                 org_id,
                 app_id: app_id.to_string(),
                 channel_id: channel_id.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+
+        let response = response.into_inner();
+        Ok(serde_json::json!({
+            "session_id": response.session_id,
+            "created_session": response.created_session,
+        }))
+    }
+
+    pub async fn invoke_agent_trigger(
+        &self,
+        org_id: i64,
+        agent_id: &str,
+        trigger_id: &str,
+    ) -> Result<serde_json::Value> {
+        let mut client = self.inner.lock().await;
+        let response = client
+            .invoke_agent_trigger(proto::InvokeAgentTriggerRequest {
+                org_id,
+                agent_id: agent_id.to_string(),
+                trigger_id: trigger_id.to_string(),
             })
             .await
             .map_err(grpc_status_to_error)?;
@@ -757,6 +784,13 @@ pub struct GrpcPaymentAuthority {
     agent_id: Option<String>,
 }
 
+/// Session-creation authority backed by the control-plane permission resolver.
+pub struct GrpcSessionCreationAuthority {
+    client: GrpcClient,
+    org_id: i64,
+    session_id: SessionId,
+}
+
 impl GrpcBudgetChecker {
     pub fn new(client: GrpcClient, org_id: i64) -> Self {
         Self {
@@ -784,6 +818,16 @@ impl GrpcPaymentAuthority {
     pub fn with_agent_id(mut self, agent_id: Option<String>) -> Self {
         self.agent_id = agent_id;
         self
+    }
+}
+
+impl GrpcSessionCreationAuthority {
+    pub fn new(client: GrpcClient, org_id: i64, session_id: SessionId) -> Self {
+        Self {
+            client,
+            org_id,
+            session_id,
+        }
     }
 }
 
@@ -1129,6 +1173,12 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         .as_ref()
         .map(|u| proto_uuid_to_uuid(Some(u)))
         .transpose()?;
+    let harness_id = proto_agent
+        .harness_id
+        .as_ref()
+        .map(|u| proto_uuid_to_uuid(Some(u)))
+        .transpose()?
+        .ok_or_else(|| anyhow::anyhow!("proto Agent missing harness_id"))?;
 
     let status = match proto_agent.status.to_lowercase().as_str() {
         "active" => everruns_core::AgentStatus::Active,
@@ -1145,6 +1195,7 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         description: non_empty_string(proto_agent.description),
         system_prompt: proto_agent.system_prompt,
         default_model_id: default_model_id.map(|u| u.into()),
+        harness_id: harness_id.into(),
         default_version_id: None,
         forked_from_agent_id: None,
         forked_from_version_id: None,
@@ -1358,6 +1409,7 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         owner: None,
         effective_owner: None,
         title: non_empty_string(proto_session.title),
+        goal: proto_session.goal.clone(),
         locale: non_empty_string(proto_session.locale),
         preview: None,
         output_preview: None,
@@ -1511,6 +1563,10 @@ fn proto_model_with_provider_to_model(proto: proto::ResolvedModel) -> Result<Res
 
 #[async_trait]
 impl SessionFileSystem for GrpcAdapter {
+    fn is_mount_resolver(&self) -> bool {
+        false
+    }
+
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let mut client = self.client.inner.lock().await;
 
@@ -2611,6 +2667,52 @@ impl everruns_core::traits::SessionScheduleStore for GrpcOrgAdapter {
         proto_schedule_to_schema(proto_schedule)
     }
 
+    async fn create_schedule_enforcing_limits(
+        &self,
+        session_id: everruns_core::SessionId,
+        description: String,
+        cron_expression: Option<String>,
+        scheduled_at: Option<chrono::DateTime<chrono::Utc>>,
+        timezone: String,
+    ) -> std::result::Result<
+        everruns_core::session_schedule::SessionSchedule,
+        everruns_core::session_schedule::ScheduleLimitError,
+    > {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::CreateSessionScheduleRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            description,
+            cron_expression,
+            scheduled_at: scheduled_at.map(everruns_internal_protocol::datetime_to_proto_timestamp),
+            timezone,
+            org_id: self.org_id,
+        };
+        let response = client
+            .create_session_schedule(request)
+            .await
+            .map_err(|status| {
+                if matches!(
+                    status.code(),
+                    tonic::Code::ResourceExhausted | tonic::Code::InvalidArgument
+                ) {
+                    everruns_core::session_schedule::ScheduleLimitError::Rejected(
+                        status.message().to_string(),
+                    )
+                } else {
+                    everruns_core::session_schedule::ScheduleLimitError::Store(
+                        grpc_status_to_error(status),
+                    )
+                }
+            })?;
+        let proto_schedule = response.into_inner().schedule.ok_or_else(|| {
+            everruns_core::session_schedule::ScheduleLimitError::Store(grpc_missing_field(
+                "No schedule in response",
+            ))
+        })?;
+        proto_schedule_to_schema(proto_schedule)
+            .map_err(everruns_core::session_schedule::ScheduleLimitError::Store)
+    }
+
     async fn cancel_schedule(
         &self,
         session_id: everruns_core::SessionId,
@@ -3197,10 +3299,54 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         .await
     }
 
+    async fn create_session_with_options(
+        &self,
+        request: everruns_core::platform_store::PlatformCreateSessionRequest,
+    ) -> Result<Session> {
+        self.execute_platform_command(
+            "create_session",
+            serde_json::json!({
+                "harness_id": request.harness_id.to_string(),
+                "agent_id": request.agent_id.map(|id| id.to_string()),
+                "title": request.title,
+                "goal": request.goal,
+                "locale": request.locale,
+                "tags": ["managed"],
+                "capabilities": [],
+                "tools": [],
+                "mcp_servers": {},
+                "initial_files": [],
+                "blueprint_id": request.blueprint_id,
+                "blueprint_config": request.blueprint_config,
+                "parent_session_id": request.parent_session_id.map(|id| id.to_string()),
+                "forked_from_session_id": request.forked_from_session_id.map(|id| id.to_string()),
+                "budget_root_session_id": request.budget_root_session_id.map(|id| id.to_string()),
+                "seed": request.seed,
+            }),
+        )
+        .await
+    }
+
     async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>> {
         self.execute_platform_lookup(
             "get_session",
             serde_json::json!({ "session_id": id.to_string() }),
+        )
+        .await
+    }
+
+    async fn add_agent_session_participant(
+        &self,
+        session_id: SessionId,
+        agent_id: AgentId,
+    ) -> Result<SessionParticipant> {
+        self.execute_platform_command(
+            "add_session_participant",
+            serde_json::json!({
+                "session_id": session_id.to_string(),
+                "kind": "agent",
+                "agent_id": agent_id.to_string(),
+            }),
         )
         .await
     }
@@ -3368,7 +3514,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         // Called infrequently, value stable across runtime
         static BASE_URL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
         BASE_URL.get_or_init(|| {
-            everruns_config::env_string_any(
+            everruns_core::config::env_string_any(
                 &["PUBLIC_APP_URL", "FRONTEND_URL", "APP_URL"],
                 "http://localhost:9300",
             )
@@ -3603,6 +3749,42 @@ fn proto_value_to_json(value: prost_types::Value) -> serde_json::Value {
 }
 
 // ============================================================================
+// OutboundToolRateLimiter — gate tool execution via control-plane limiter
+// ============================================================================
+
+pub struct GrpcOutboundToolRateLimiter {
+    client: GrpcClient,
+}
+
+impl GrpcOutboundToolRateLimiter {
+    pub fn new(client: GrpcClient) -> Self {
+        Self { client }
+    }
+}
+
+#[async_trait]
+impl everruns_core::traits::OutboundToolRateLimiter for GrpcOutboundToolRateLimiter {
+    async fn check_org(&self, org_id: &everruns_core::typed_id::OrgId) -> bool {
+        let mut client = self.client.inner.lock().await;
+        let request = proto::CheckOutboundToolRateLimitRequest {
+            org_key: org_id.to_string(),
+        };
+
+        match client.check_outbound_tool_rate_limit(request).await {
+            Ok(response) => response.into_inner().allowed,
+            Err(error) => {
+                tracing::error!(
+                    %error,
+                    org_id = %org_id,
+                    "gRPC outbound tool rate-limit check failed; denying tool call"
+                );
+                false
+            }
+        }
+    }
+}
+
+// ============================================================================
 // BudgetChecker — check budget status from check_budget tool
 // ============================================================================
 
@@ -3713,21 +3895,49 @@ impl everruns_core::traits::PaymentAuthority for GrpcPaymentAuthority {
     }
 }
 
+#[async_trait]
+impl everruns_core::traits::SessionCreationAuthority for GrpcSessionCreationAuthority {
+    async fn authorize_session_creation(
+        &self,
+        session_id: SessionId,
+    ) -> everruns_core::error::Result<SessionId> {
+        if session_id != self.session_id {
+            return Err(AgentLoopError::tool(
+                "session-creation authority is scoped to the current session",
+            ));
+        }
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .authorize_session_creation(proto::AuthorizeSessionCreationRequest {
+                org_id: self.org_id,
+                session_id: session_id.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+        SessionId::parse(&response.budget_root_session_id).map_err(|error| {
+            AgentLoopError::store(format!("Invalid budget root session id: {error}"))
+        })
+    }
+}
+
 // ============================================================================
 // GrpcSessionTaskRegistry - SessionTaskRegistry over gRPC
 // ============================================================================
 //
-// Task and message payloads travel as canonical core JSON (see worker.proto),
-// so lifecycle invariants stay server-side in DbSessionTaskRegistry and the
-// record shape is defined once in everruns-core.
+// Task and message payloads travel as native protobuf messages (EVE-642), so
+// there is no intermediate JSON encode/decode into byte fields. Lifecycle
+// invariants stay server-side in DbSessionTaskRegistry and the record shape is
+// defined once in everruns-core; the proto↔core conversions live in
+// everruns-internal-protocol.
 
-fn decode_task(bytes: &[u8]) -> Result<everruns_core::SessionTask> {
-    serde_json::from_slice(bytes)
+fn decode_task(proto: proto::SessionTaskProto) -> Result<everruns_core::SessionTask> {
+    everruns_internal_protocol::proto_to_session_task(proto)
         .map_err(|e| AgentLoopError::store(format!("Invalid session task payload: {e}")))
 }
 
-fn decode_task_message(bytes: &[u8]) -> Result<everruns_core::TaskMessage> {
-    serde_json::from_slice(bytes)
+fn decode_task_message(proto: proto::TaskMessageProto) -> Result<everruns_core::TaskMessage> {
+    everruns_internal_protocol::proto_to_task_message(proto)
         .map_err(|e| AgentLoopError::store(format!("Invalid task message payload: {e}")))
 }
 
@@ -3737,14 +3947,19 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         &self,
         input: everruns_core::CreateSessionTask,
     ) -> Result<everruns_core::SessionTask> {
-        let create_json = serde_json::to_vec(&input)
-            .map_err(|e| AgentLoopError::store(format!("Failed to encode task create: {e}")))?;
+        let create = everruns_internal_protocol::create_session_task_to_proto(&input);
         let mut client = self.client.inner.lock().await;
         let response = client
-            .create_session_task(proto::CreateSessionTaskRequest { create_json })
+            .create_session_task(proto::CreateSessionTaskRequest {
+                create: Some(create),
+            })
             .await
             .map_err(grpc_status_to_error)?;
-        decode_task(&response.into_inner().task_json)
+        let task = response
+            .into_inner()
+            .task
+            .ok_or_else(|| AgentLoopError::store("Missing task in create response"))?;
+        decode_task(task)
     }
 
     async fn update(
@@ -3753,23 +3968,17 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         task_id: &str,
         update: everruns_core::SessionTaskUpdate,
     ) -> Result<Option<everruns_core::SessionTask>> {
-        let update_json = serde_json::to_vec(&update)
-            .map_err(|e| AgentLoopError::store(format!("Failed to encode task update: {e}")))?;
+        let update = everruns_internal_protocol::session_task_update_to_proto(&update);
         let mut client = self.client.inner.lock().await;
         let response = client
             .update_session_task(proto::UpdateSessionTaskRequest {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
                 task_id: task_id.to_string(),
-                update_json,
+                update: Some(update),
             })
             .await
             .map_err(grpc_status_to_error)?;
-        response
-            .into_inner()
-            .task_json
-            .as_deref()
-            .map(decode_task)
-            .transpose()
+        response.into_inner().task.map(decode_task).transpose()
     }
 
     async fn get(
@@ -3785,12 +3994,7 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
             })
             .await
             .map_err(grpc_status_to_error)?;
-        response
-            .into_inner()
-            .task_json
-            .as_deref()
-            .map(decode_task)
-            .transpose()
+        response.into_inner().task.map(decode_task).transpose()
     }
 
     async fn list(
@@ -3809,9 +4013,9 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
             .map_err(grpc_status_to_error)?;
         response
             .into_inner()
-            .task_json
-            .iter()
-            .map(|bytes| decode_task(bytes))
+            .tasks
+            .into_iter()
+            .map(decode_task)
             .collect()
     }
 
@@ -3828,12 +4032,7 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
             })
             .await
             .map_err(grpc_status_to_error)?;
-        response
-            .into_inner()
-            .task_json
-            .as_deref()
-            .map(decode_task)
-            .transpose()
+        response.into_inner().task.map(decode_task).transpose()
     }
 
     async fn record_message(
@@ -3842,18 +4041,21 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
         task_id: &str,
         message: everruns_core::NewTaskMessage,
     ) -> Result<everruns_core::TaskMessage> {
-        let message_json = serde_json::to_vec(&message)
-            .map_err(|e| AgentLoopError::store(format!("Failed to encode task message: {e}")))?;
+        let message = everruns_internal_protocol::new_task_message_to_proto(&message);
         let mut client = self.client.inner.lock().await;
         let response = client
             .record_session_task_message(proto::RecordSessionTaskMessageRequest {
                 session_id: Some(uuid_to_proto(session_id.uuid())),
                 task_id: task_id.to_string(),
-                message_json,
+                message: Some(message),
             })
             .await
             .map_err(grpc_status_to_error)?;
-        decode_task_message(&response.into_inner().message_json)
+        let message = response
+            .into_inner()
+            .message
+            .ok_or_else(|| AgentLoopError::store("Missing message in record response"))?;
+        decode_task_message(message)
     }
 
     async fn list_messages(
@@ -3874,9 +4076,9 @@ impl everruns_core::session_task::SessionTaskRegistry for GrpcAdapter {
             .map_err(grpc_status_to_error)?;
         response
             .into_inner()
-            .message_json
-            .iter()
-            .map(|bytes| decode_task_message(bytes))
+            .messages
+            .into_iter()
+            .map(decode_task_message)
             .collect()
     }
 }

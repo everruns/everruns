@@ -6,7 +6,9 @@ Verify that a session can be created for an existing agent and starts in the cor
 
 ## Preconditions
 
-- API server running (`just start-dev`)
+- API server running locally (`just start-dev`) or a deployed API is available
+- Set `BASE_URL` to the API origin (for example, `http://localhost:9300`)
+- For authenticated deployments, configure `curl` with the required authorization and organization headers
 - An agent exists (create one first)
 
 ## Test Data
@@ -21,7 +23,7 @@ Verify that a session can be created for an existing agent and starts in the cor
 
 1. Create agent:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/agents" \
+   curl -s -X POST "${BASE_URL}/api/v1/agents" \
      -H "Content-Type: application/json" \
      -d '{
        "name": "chat-agent",
@@ -33,7 +35,7 @@ Verify that a session can be created for an existing agent and starts in the cor
 
 2. Create session:
    ```bash
-   curl -s -X POST "http://localhost:9300/api/v1/sessions" \
+   curl -s -X POST "${BASE_URL}/api/v1/sessions" \
      -H "Content-Type: application/json" \
      -d '{"agent_id": "{agent_id}"}'
    ```
@@ -41,7 +43,7 @@ Verify that a session can be created for an existing agent and starts in the cor
 
 3. Fetch session:
    ```bash
-   curl -s "http://localhost:9300/api/v1/sessions/{session_id}"
+   curl -s "${BASE_URL}/api/v1/sessions/{session_id}"
    ```
 
 ## Expected Result
@@ -54,7 +56,7 @@ Verify that a session can be created for an existing agent and starts in the cor
 | `status` | `"started"` |
 | `preview` | `null` (no messages yet) |
 | `output_preview` | `null` |
-| `usage` | All counters at 0 |
+| `usage` | `null` before the first turn |
 
 ## Validation Commands
 

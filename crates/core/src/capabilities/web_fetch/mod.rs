@@ -321,9 +321,51 @@ struct SessionFileSaver {
     session_id: SessionId,
 }
 
+impl SessionFileSaver {
+    async fn resolve_destination(&self, path: &str) -> Result<String, FileSaveError> {
+        let path = path.trim();
+        if path.is_empty() {
+            return Err(FileSaveError::PathNotAllowed(
+                "Destination path must name a file".to_string(),
+            ));
+        }
+
+        // SessionFileSystem is the path authority: this preserves mount routing,
+        // host-backed display identity, and backend containment policy.
+        let resolved = self.file_store.resolve_path(path);
+        let root = self.file_store.resolve_path("");
+        if resolved == root || resolved == "/" {
+            return Err(FileSaveError::PathNotAllowed(format!(
+                "Destination resolves to the workspace root: {resolved}"
+            )));
+        }
+
+        let existing = self
+            .file_store
+            .stat_file(self.session_id, &resolved)
+            .await
+            .map_err(|error| {
+                FileSaveError::Other(format!(
+                    "Could not inspect destination path {resolved}: {error}"
+                ))
+            })?;
+        if existing.is_some_and(|entry| entry.is_directory) {
+            return Err(FileSaveError::PathNotAllowed(format!(
+                "Destination is an existing directory: {resolved}"
+            )));
+        }
+
+        Ok(resolved)
+    }
+}
+
 #[async_trait]
 impl FileSaver for SessionFileSaver {
     async fn save(&self, path: &str, bytes: &[u8]) -> Result<SaveResult, FileSaveError> {
+        // Revisit after upgrading fetchkit beyond 0.4.1: confirm upstream calls
+        // validate_path before network I/O. Keep this save-time check as defense
+        // in depth unless the FileSaver contract guarantees the path is unchanged.
+        let path = self.resolve_destination(path).await?;
         let (content, encoding) = match std::str::from_utf8(bytes) {
             Ok(text) => (text.to_string(), "text"),
             Err(_) => {
@@ -334,7 +376,7 @@ impl FileSaver for SessionFileSaver {
 
         let file = self
             .file_store
-            .write_file(self.session_id, path, &content, encoding)
+            .write_file(self.session_id, &path, &content, encoding)
             .await
             .map_err(|e| FileSaveError::Other(e.to_string()))?;
 
@@ -342,6 +384,10 @@ impl FileSaver for SessionFileSaver {
             path: file.path,
             bytes_written: bytes.len() as u64,
         })
+    }
+
+    async fn validate_path(&self, path: &str) -> Result<(), FileSaveError> {
+        self.resolve_destination(path).await.map(|_| ())
     }
 }
 
@@ -460,10 +506,14 @@ impl WebFetchTool {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
 
+        // Revisit after fetchkit publishes a nonblank save_to_file schema:
+        // retain boundary normalization for callers that bypass schema validation.
         let save_to_file = arguments
             .get("save_to_file")
             .and_then(|v| v.as_str())
-            .map(|s| s.to_string());
+            .map(str::trim)
+            .filter(|path| !path.is_empty())
+            .map(str::to_string);
 
         Ok(FetchRequest {
             url,
@@ -507,6 +557,7 @@ impl Tool for WebFetchTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_web_fetch(
             &tool_call.arguments,
@@ -1756,13 +1807,22 @@ mod tests {
     /// In-memory SessionFileSystem for testing file downloads
     struct MockFileStore {
         files: tokio::sync::Mutex<std::collections::HashMap<(SessionId, String), (String, String)>>,
+        directories: tokio::sync::Mutex<std::collections::HashSet<(SessionId, String)>>,
     }
 
     impl MockFileStore {
         fn new() -> Self {
             Self {
                 files: tokio::sync::Mutex::new(std::collections::HashMap::new()),
+                directories: tokio::sync::Mutex::new(std::collections::HashSet::new()),
             }
+        }
+
+        async fn add_directory(&self, session_id: SessionId, path: &str) {
+            self.directories
+                .lock()
+                .await
+                .insert((session_id, path.to_string()));
         }
 
         async fn get_file(&self, session_id: SessionId, path: &str) -> Option<(String, String)> {
@@ -1776,6 +1836,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for MockFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             session_id: SessionId,
@@ -1846,9 +1910,25 @@ mod tests {
 
         async fn stat_file(
             &self,
-            _session_id: SessionId,
-            _path: &str,
+            session_id: SessionId,
+            path: &str,
         ) -> crate::error::Result<Option<crate::session_file::FileStat>> {
+            if self
+                .directories
+                .lock()
+                .await
+                .contains(&(session_id, path.to_string()))
+            {
+                return Ok(Some(crate::session_file::FileStat {
+                    path: path.to_string(),
+                    name: path.rsplit('/').next().unwrap_or(path).to_string(),
+                    is_directory: true,
+                    is_readonly: false,
+                    size_bytes: 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                }));
+            }
             Ok(None)
         }
 
@@ -1893,6 +1973,58 @@ mod tests {
     fn test_web_fetch_tool_requires_context() {
         let tool = WebFetchTool::default();
         assert!(tool.requires_context());
+    }
+
+    #[test]
+    fn test_save_to_file_is_trimmed_and_blank_is_absent() {
+        let blank = WebFetchTool::parse_request(&serde_json::json!({
+            "url": "https://example.com",
+            "save_to_file": "  \n\t "
+        }))
+        .unwrap();
+        assert_eq!(blank.save_to_file, None);
+
+        let path = WebFetchTool::parse_request(&serde_json::json!({
+            "url": "https://example.com",
+            "save_to_file": "  /downloads/file.txt  "
+        }))
+        .unwrap();
+        assert_eq!(path.save_to_file.as_deref(), Some("/downloads/file.txt"));
+    }
+
+    #[tokio::test]
+    async fn test_blank_save_to_file_fetches_inline_without_file_store() {
+        let tool = WebFetchTool::new(false, None);
+        let mut context = ToolContext::new(SessionId::new());
+        context.egress_service = Some(Arc::new(CannedEgress));
+
+        let result = tool
+            .execute_with_context(
+                serde_json::json!({
+                    "url": "http://93.184.216.34/file.txt",
+                    "save_to_file": "  \n "
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("blank save_to_file should fetch inline: {result:?}");
+        };
+        assert_eq!(value["content"], "pong from egress");
+        assert!(value.get("saved_path").is_none() || value["saved_path"].is_null());
+    }
+
+    #[test]
+    fn test_save_error_remains_distinct_from_http_errors() {
+        let result = WebFetchTool::map_error(FetchError::SaveError(
+            "Path not allowed: Destination is an existing directory: /downloads".to_string(),
+        ));
+        assert!(matches!(
+            result,
+            ToolExecutionResult::ToolError(message)
+                if message == "Failed to save file: Path not allowed: Destination is an existing directory: /downloads"
+        ));
     }
 
     #[test]
@@ -1984,6 +2116,54 @@ mod tests {
         } else {
             panic!("Expected successful response, got: {:?}", result);
         }
+    }
+
+    #[tokio::test]
+    async fn test_session_file_saver_rejects_workspace_roots_and_directories() {
+        let file_store = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        file_store.add_directory(session_id, "/downloads").await;
+        let saver = SessionFileSaver {
+            file_store,
+            session_id,
+        };
+
+        for path in ["", "   ", "/", "/workspace", "/workspace/"] {
+            let error = saver.validate_path(path).await.unwrap_err();
+            assert!(
+                matches!(error, FileSaveError::PathNotAllowed(_)),
+                "root destination {path:?} should be a path error: {error}"
+            );
+        }
+
+        let error = saver.validate_path("/downloads").await.unwrap_err();
+        assert!(
+            matches!(error, FileSaveError::PathNotAllowed(ref message) if message.contains("directory")),
+            "directory destination should be a precise path error: {error}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_session_file_saver_resolves_and_saves_valid_path() {
+        let file_store = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        let saver = SessionFileSaver {
+            file_store: file_store.clone(),
+            session_id,
+        };
+
+        saver.validate_path("downloads/file.txt").await.unwrap();
+        let saved = saver
+            .save("downloads/file.txt", b"downloaded")
+            .await
+            .unwrap();
+
+        assert_eq!(saved.path, "/downloads/file.txt");
+        assert_eq!(saved.bytes_written, 10);
+        assert_eq!(
+            file_store.get_file(session_id, "/downloads/file.txt").await,
+            Some(("downloaded".to_string(), "text".to_string()))
+        );
     }
 
     #[tokio::test]

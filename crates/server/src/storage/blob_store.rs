@@ -14,10 +14,11 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use base64::Engine;
 use chrono::{DateTime, Utc};
-use everruns_config::{env_bool, env_opt_string, env_string};
+use everruns_core::config::{env_bool, env_opt_string, env_string};
 use futures::StreamExt;
 use object_store::{
-    Attribute, Attributes, ObjectStore, PutOptions, PutPayload, path::Path as ObjectPath,
+    Attribute, Attributes, ObjectStore, ObjectStoreExt, PutOptions, PutPayload,
+    path::Path as ObjectPath,
 };
 use std::borrow::Cow;
 use std::sync::Arc;

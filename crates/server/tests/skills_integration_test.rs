@@ -10,7 +10,23 @@ use test_harness::TestServer;
 
 const VALID_SKILL_MD: &str = "---\nname: test-skill\ndescription: A test skill for integration testing.\n---\n\n# Test Skill\n\n## Instructions\n\n1. Read the input data\n2. Process it according to the rules\n3. Return the result\n";
 
-const VALID_SKILL_MD_2: &str = "---\nname: data-analysis\ndescription: Analyze datasets and generate reports.\n---\n\n# Data Analysis\n\nUse pandas to analyze the provided dataset.\n";
+/// Generate a unique, schema-valid skill name for this test run.
+///
+/// All tests share one PostgreSQL database (and the default org), and skill
+/// names are unique per org, so fixed names collide across tests (409). Names
+/// must match `^[a-z0-9]+(-[a-z0-9]+)*$`, so derive a lowercase-hex suffix from
+/// a UUIDv7 and prefix it.
+fn unique_skill_name(prefix: &str) -> String {
+    format!(
+        "{prefix}-{}",
+        &uuid::Uuid::now_v7().simple().to_string()[..12]
+    )
+}
+
+/// Build a minimal valid skill markdown document for `name`.
+fn skill_md(name: &str, description: &str) -> String {
+    format!("---\nname: {name}\ndescription: {description}\n---\n\n# {name}\n")
+}
 
 // ============================================================
 // Skill CRUD Tests
@@ -20,13 +36,17 @@ const VALID_SKILL_MD_2: &str = "---\nname: data-analysis\ndescription: Analyze d
 async fn test_create_skill() {
     let server = TestServer::new().await;
 
+    let name = unique_skill_name("test-skill");
     let resp = server
-        .post("/v1/skills", json!({ "skill_md": VALID_SKILL_MD }))
+        .post(
+            "/v1/skills",
+            json!({ "skill_md": skill_md(&name, "A test skill for integration testing.") }),
+        )
         .await;
 
     assert_eq!(resp.status(), StatusCode::CREATED);
     let body = resp.json_value();
-    assert_eq!(body["name"], "test-skill");
+    assert_eq!(body["name"], name);
     assert_eq!(body["description"], "A test skill for integration testing.");
     assert_eq!(body["source_type"], "markdown");
     assert_eq!(body["status"], "active");
@@ -38,13 +58,21 @@ async fn test_list_skills() {
     let server = TestServer::new().await;
 
     // Create two skills
+    let name_a = unique_skill_name("test-skill");
+    let name_b = unique_skill_name("data-analysis");
     server
-        .post("/v1/skills", json!({ "skill_md": VALID_SKILL_MD }))
+        .post(
+            "/v1/skills",
+            json!({ "skill_md": skill_md(&name_a, "A test skill for integration testing.") }),
+        )
         .await
         .assert_status(StatusCode::CREATED);
 
     server
-        .post("/v1/skills", json!({ "skill_md": VALID_SKILL_MD_2 }))
+        .post(
+            "/v1/skills",
+            json!({ "skill_md": skill_md(&name_b, "Analyze datasets and generate reports.") }),
+        )
         .await
         .assert_status(StatusCode::CREATED);
 
@@ -55,16 +83,20 @@ async fn test_list_skills() {
     assert!(skills.len() >= 2);
 
     let names: Vec<&str> = skills.iter().filter_map(|s| s["name"].as_str()).collect();
-    assert!(names.contains(&"test-skill"));
-    assert!(names.contains(&"data-analysis"));
+    assert!(names.contains(&name_a.as_str()));
+    assert!(names.contains(&name_b.as_str()));
 }
 
 #[tokio::test]
 async fn test_get_skill() {
     let server = TestServer::new().await;
 
+    let name = unique_skill_name("test-skill");
     let create_resp = server
-        .post("/v1/skills", json!({ "skill_md": VALID_SKILL_MD }))
+        .post(
+            "/v1/skills",
+            json!({ "skill_md": skill_md(&name, "A test skill for integration testing.") }),
+        )
         .await
         .assert_status(StatusCode::CREATED);
 
@@ -76,7 +108,7 @@ async fn test_get_skill() {
         .assert_success();
 
     let body = get_resp.json_value();
-    assert_eq!(body["name"], "test-skill");
+    assert_eq!(body["name"], name);
     assert_eq!(body["id"], skill_id);
 }
 
@@ -84,8 +116,12 @@ async fn test_get_skill() {
 async fn test_get_skill_content() {
     let server = TestServer::new().await;
 
+    let name = unique_skill_name("test-skill");
     let create_resp = server
-        .post("/v1/skills", json!({ "skill_md": VALID_SKILL_MD }))
+        .post(
+            "/v1/skills",
+            json!({ "skill_md": skill_md(&name, "A test skill for integration testing.") }),
+        )
         .await
         .assert_status(StatusCode::CREATED);
 
@@ -97,7 +133,12 @@ async fn test_get_skill_content() {
         .assert_success();
 
     let body = content_resp.json_value();
-    assert!(body["skill_md"].as_str().unwrap().contains("# Test Skill"));
+    assert!(
+        body["skill_md"]
+            .as_str()
+            .unwrap()
+            .contains(&format!("# {name}"))
+    );
 }
 
 #[tokio::test]
@@ -134,14 +175,19 @@ async fn test_deleted_skill_content_returns_not_found() {
 async fn test_update_skill() {
     let server = TestServer::new().await;
 
+    let name = unique_skill_name("test-skill");
     let create_resp = server
-        .post("/v1/skills", json!({ "skill_md": VALID_SKILL_MD }))
+        .post(
+            "/v1/skills",
+            json!({ "skill_md": skill_md(&name, "A test skill for integration testing.") }),
+        )
         .await
         .assert_status(StatusCode::CREATED);
 
     let skill_id = create_resp.json_value()["id"].as_str().unwrap().to_string();
 
-    let updated_md = "---\nname: test-skill\ndescription: Updated description.\n---\n\n# Updated\n";
+    let updated_md =
+        format!("---\nname: {name}\ndescription: Updated description.\n---\n\n# Updated\n");
     let update_resp = server
         .patch(
             &format!("/v1/skills/{skill_id}"),
@@ -158,14 +204,19 @@ async fn test_update_skill() {
 async fn test_update_skill_preserves_user_invocable_false() {
     let server = TestServer::new().await;
 
-    let initial_md = "---\nname: hidden-skill\ndescription: Hidden command.\nuser-invocable: false\n---\n\n# Hidden\n";
+    let name = unique_skill_name("hidden-skill");
+    let initial_md = format!(
+        "---\nname: {name}\ndescription: Hidden command.\nuser-invocable: false\n---\n\n# Hidden\n"
+    );
     let create_resp = server
         .post("/v1/skills", json!({ "skill_md": initial_md }))
         .await
         .assert_status(StatusCode::CREATED);
     let skill_id = create_resp.json_value()["id"].as_str().unwrap().to_string();
 
-    let updated_md = "---\nname: hidden-skill\ndescription: Updated hidden command.\nuser-invocable: false\n---\n\n# Hidden Updated\n";
+    let updated_md = format!(
+        "---\nname: {name}\ndescription: Updated hidden command.\nuser-invocable: false\n---\n\n# Hidden Updated\n"
+    );
     let update_resp = server
         .patch(
             &format!("/v1/skills/{skill_id}"),
@@ -183,16 +234,19 @@ async fn test_update_skill_preserves_user_invocable_false() {
 async fn test_update_skill_preserves_disable_model_invocation_flag() {
     let server = TestServer::new().await;
 
-    let skill_md = "---
-name: model-invocation-flag-test
+    let name = unique_skill_name("model-invocation-flag-test");
+    let initial_md = format!(
+        "---
+name: {name}
 description: Test disable-model-invocation persistence.
 disable-model-invocation: true
 ---
 
 # Test
-";
+"
+    );
     let create_resp = server
-        .post("/v1/skills", json!({ "skill_md": skill_md }))
+        .post("/v1/skills", json!({ "skill_md": initial_md }))
         .await
         .assert_status(StatusCode::CREATED);
 
@@ -201,14 +255,16 @@ disable-model-invocation: true
 
     let skill_id = created_body["id"].as_str().unwrap().to_string();
 
-    let updated_md = "---
-name: model-invocation-flag-test
+    let updated_md = format!(
+        "---
+name: {name}
 description: Updated description.
 disable-model-invocation: true
 ---
 
 # Updated
-";
+"
+    );
     let update_resp = server
         .patch(
             &format!("/v1/skills/{skill_id}"),
@@ -226,8 +282,12 @@ disable-model-invocation: true
 async fn test_update_skill_status() {
     let server = TestServer::new().await;
 
+    let name = unique_skill_name("test-skill");
     let create_resp = server
-        .post("/v1/skills", json!({ "skill_md": VALID_SKILL_MD }))
+        .post(
+            "/v1/skills",
+            json!({ "skill_md": skill_md(&name, "A test skill for integration testing.") }),
+        )
         .await
         .assert_status(StatusCode::CREATED);
 
@@ -249,20 +309,34 @@ async fn test_update_skill_status() {
 async fn test_delete_skill() {
     let server = TestServer::new().await;
 
+    let name = unique_skill_name("test-skill");
     let create_resp = server
-        .post("/v1/skills", json!({ "skill_md": VALID_SKILL_MD }))
+        .post(
+            "/v1/skills",
+            json!({ "skill_md": skill_md(&name, "A test skill for integration testing.") }),
+        )
         .await
         .assert_status(StatusCode::CREATED);
 
     let skill_id = create_resp.json_value()["id"].as_str().unwrap().to_string();
 
-    // Delete the skill
+    // DELETE archives the skill (soft delete); it stays GET-able as `archived`.
     server
         .delete(&format!("/v1/skills/{skill_id}"))
         .await
         .assert_status(StatusCode::NO_CONTENT);
+    server
+        .get(&format!("/v1/skills/{skill_id}"))
+        .await
+        .assert_status(StatusCode::OK);
 
-    // Verify it's gone
+    // POST /delete (destroy) permanently deletes the archived skill; only then
+    // is it gone (status `deleted`, excluded from GET).
+    server
+        .post(&format!("/v1/skills/{skill_id}/delete"), json!({}))
+        .await
+        .assert_success();
+
     let get_resp = server.get(&format!("/v1/skills/{skill_id}")).await;
     assert_eq!(get_resp.status(), StatusCode::NOT_FOUND);
 }
@@ -302,15 +376,17 @@ async fn test_validate_skill() {
 async fn test_create_skill_duplicate_name() {
     let server = TestServer::new().await;
 
+    let md = skill_md(
+        &unique_skill_name("test-skill"),
+        "A test skill for integration testing.",
+    );
     server
-        .post("/v1/skills", json!({ "skill_md": VALID_SKILL_MD }))
+        .post("/v1/skills", json!({ "skill_md": md }))
         .await
         .assert_status(StatusCode::CREATED);
 
     // Duplicate name should fail
-    let resp = server
-        .post("/v1/skills", json!({ "skill_md": VALID_SKILL_MD }))
-        .await;
+    let resp = server.post("/v1/skills", json!({ "skill_md": md })).await;
 
     assert_eq!(resp.status(), StatusCode::CONFLICT);
 }
@@ -357,8 +433,12 @@ async fn test_skill_appears_in_capabilities_listing() {
     let server = TestServer::new().await;
 
     // Create a skill
+    let name = unique_skill_name("test-skill");
     server
-        .post("/v1/skills", json!({ "skill_md": VALID_SKILL_MD }))
+        .post(
+            "/v1/skills",
+            json!({ "skill_md": skill_md(&name, "A test skill for integration testing.") }),
+        )
         .await
         .assert_status(StatusCode::CREATED);
 
@@ -378,8 +458,8 @@ async fn test_skill_appears_in_capabilities_listing() {
     );
     let skill_cap = skill_caps
         .iter()
-        .find(|c| c["name"].as_str() == Some("test-skill"))
-        .expect("Should find test-skill in capabilities");
+        .find(|c| c["name"].as_str() == Some(name.as_str()))
+        .expect("Should find the created skill in capabilities");
 
     assert_eq!(skill_cap["category"], "Skills");
     assert!(skill_cap["id"].as_str().unwrap().starts_with("skill:"));
@@ -394,8 +474,12 @@ async fn test_disabled_skill_hidden_from_capabilities() {
     let server = TestServer::new().await;
 
     // Create and disable a skill
+    let name = unique_skill_name("test-skill");
     let create_resp = server
-        .post("/v1/skills", json!({ "skill_md": VALID_SKILL_MD }))
+        .post(
+            "/v1/skills",
+            json!({ "skill_md": skill_md(&name, "A test skill for integration testing.") }),
+        )
         .await
         .assert_status(StatusCode::CREATED);
 
@@ -416,7 +500,7 @@ async fn test_disabled_skill_hidden_from_capabilities() {
 
     let skill_caps: Vec<&serde_json::Value> = capabilities
         .iter()
-        .filter(|c| c["name"].as_str() == Some("test-skill"))
+        .filter(|c| c["name"].as_str() == Some(name.as_str()))
         .collect();
 
     assert!(
@@ -430,8 +514,12 @@ async fn test_agent_with_skill_capability() {
     let server = TestServer::new().await;
 
     // Create a skill
+    let name = unique_skill_name("test-skill");
     let create_resp = server
-        .post("/v1/skills", json!({ "skill_md": VALID_SKILL_MD }))
+        .post(
+            "/v1/skills",
+            json!({ "skill_md": skill_md(&name, "A test skill for integration testing.") }),
+        )
         .await
         .assert_status(StatusCode::CREATED);
 
@@ -443,16 +531,18 @@ async fn test_agent_with_skill_capability() {
     let capabilities = caps_resp.json_value()["data"].as_array().unwrap().clone();
     let skill_cap = capabilities
         .iter()
-        .find(|c| c["name"].as_str() == Some("test-skill"))
+        .find(|c| c["name"].as_str() == Some(name.as_str()))
         .expect("Skill capability should exist");
     let cap_id = skill_cap["id"].as_str().unwrap();
 
-    // Create agent with skill capability
+    // Create agent with skill capability (agent names are unique per org, so
+    // derive a unique name to avoid cross-test collisions on the shared DB).
+    let agent_name = unique_skill_name("skill-agent");
     let agent_resp = server
         .post(
             "/v1/agents",
             json!({
-                "name": "skill-agent",
+                "name": agent_name,
                 "display_name": "Skill Agent",
                 "system_prompt": "You are a helpful assistant.",
                 "capabilities": [
@@ -464,7 +554,7 @@ async fn test_agent_with_skill_capability() {
         .assert_status(StatusCode::CREATED);
 
     let agent = agent_resp.json_value();
-    assert_eq!(agent["name"], "skill-agent");
+    assert_eq!(agent["name"], agent_name);
 
     // Verify capabilities include the skill
     let agent_caps = agent["capabilities"].as_array().unwrap();

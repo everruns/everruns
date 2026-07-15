@@ -169,16 +169,25 @@ async fn authorize_ag_ui_request(
     // private app configurations.
     // Mitigation: Require a published app, an enabled AG-UI channel, and
     // `anonymous=true` before accepting unauthenticated traffic.
+    //
+    // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
+    // "app does not exist" apart from "app exists but is not published / has no
+    // AG-UI channel / is misconfigured". Every such case collapses to a single
+    // generic 404 (matching the FCP channel in `api/fcp.rs`); the real reason is
+    // logged server-side only.
     if app.status != AppStatus::Published {
-        return Err(forbidden("App is not published"));
+        tracing::debug!(app_id = %app.public_id, status = ?app.status, "AG-UI request rejected: app not published");
+        return Err(not_found());
     }
 
-    let channel = app
-        .ag_ui_channel()
-        .ok_or_else(|| bad_request("App does not have an enabled AG-UI channel"))?;
-    let channel_config = channel
-        .ag_ui_config()
-        .ok_or_else(|| bad_request("Invalid AG-UI channel configuration"))?;
+    let Some(channel) = app.ag_ui_channel() else {
+        tracing::debug!(app_id = %app.public_id, "AG-UI request rejected: no enabled AG-UI channel");
+        return Err(not_found());
+    };
+    let Some(channel_config) = channel.ag_ui_config() else {
+        tracing::error!(app_id = %app.public_id, "AG-UI channel config did not deserialize");
+        return Err(not_found());
+    };
     if let Some(auth) = channel_config.auth.as_ref() {
         state
             .auth_verifier
@@ -194,7 +203,11 @@ async fn authorize_ag_ui_request(
             .map_err(ag_ui_auth_error_response)?;
     } else {
         if !channel_config.anonymous {
-            return Err(forbidden("Anonymous AG-UI access is disabled"));
+            // No auth provider configured and anonymous access disabled: the
+            // channel is not reachable. Collapse to a generic 404 rather than a
+            // 403 so callers cannot confirm the app exists (TM-TENANT-002).
+            tracing::debug!(app_id = %app.public_id, "AG-UI request rejected: anonymous access disabled with no auth provider");
+            return Err(not_found());
         }
         if let Some(expected_token) = channel_config.token.as_deref()
             && !expected_token.is_empty()
@@ -323,20 +336,35 @@ async fn run_agent(
     headers: HeaderMap,
     request: Request,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, Response> {
-    // EVE-415: monotonic anchor for the AG-UI ingress phase. Used to attribute
-    // the gap between accepted request and `ReasonAtom: starting LLM call`
-    // (~600-700ms baseline) to the AG-UI handler vs. the durable runtime.
-    // The handler emits a single structured `ag_ui.ingress_complete` log just
-    // before returning the SSE stream so downstream profilers can isolate the
-    // ingress portion without grepping for adjacent timestamps.
-    let ingress_start = Instant::now();
-
     let request_id = req_id.map(|Extension(r)| r.0);
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
     let AuthorizedAgUiRequest {
         app,
         channel_config,
     } = authorize_ag_ui_request(&state, &app_id, &headers, peer_addr).await?;
+
+    run_app_agent_stream(state, app, channel_config, "ag_ui", request, request_id).await
+}
+
+/// Shared AG-UI ingress + streaming core, reused by both the AG-UI channel and
+/// the Public Chat channel. `tag_prefix` scopes the session routing tags
+/// (`{prefix}:app:{id}` / `{prefix}:thread:{id}`) so reusing a thread ID across
+/// channels or apps can never merge tenants or sessions (TM-TENANT-009).
+pub(crate) async fn run_app_agent_stream(
+    state: AgUiState,
+    app: App,
+    channel_config: AgUiChannelConfig,
+    tag_prefix: &str,
+    request: Request,
+    request_id: Option<String>,
+) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, Response> {
+    // EVE-415: monotonic anchor for the ingress phase. Used to attribute
+    // the gap between accepted request and `ReasonAtom: starting LLM call`
+    // (~600-700ms baseline) to the AG-UI handler vs. the durable runtime.
+    // The handler emits a single structured `ag_ui.ingress_complete` log just
+    // before returning the SSE stream so downstream profilers can isolate the
+    // ingress portion without grepping for adjacent timestamps.
+    let ingress_start = Instant::now();
 
     let Json(req): Json<AgUiRunAgentInput> = Json::from_request(request, &state)
         .await
@@ -364,13 +392,13 @@ async fn run_agent(
     let thread_tag = thread_id.to_string();
     let run_tag = run_id.to_string();
 
-    // THREAT[TM-TENANT-009]: Reusing the same AG-UI thread ID across apps must
+    // THREAT[TM-TENANT-009]: Reusing the same thread ID across apps/channels must
     // not merge tenants or app sessions.
-    // Mitigation: Scope the session lookup tags by both app public ID and
-    // thread ID so thread collisions stay isolated per app.
+    // Mitigation: Scope the session lookup tags by channel prefix, app public
+    // ID, and thread ID so thread collisions stay isolated per app and channel.
     let routing_tags = vec![
-        format!("ag_ui:app:{}", app.public_id),
-        format!("ag_ui:thread:{}", thread_tag),
+        format!("{tag_prefix}:app:{}", app.public_id),
+        format!("{tag_prefix}:thread:{}", thread_tag),
     ];
     let session = find_or_create_session(
         &state,
@@ -443,6 +471,7 @@ async fn run_agent(
                     role: ApiMessageRole::User,
                     content: trigger_parts,
                 },
+                addressed_participant_id: None,
                 controls: None,
                 metadata: Some(ag_ui_message_metadata(&app, thread_tag, run_tag)),
                 tags: None,
@@ -767,8 +796,10 @@ async fn find_or_create_session(
                         harness_id: Some(app.harness_id),
                         harness_name: None,
                         agent_id: app.agent_id,
+                        agent_name: None,
                         agent_identity_id: app.agent_identity_id,
                         title: Some(title),
+                        goal: None,
                         locale: None,
                         tags: routing_tags.to_vec(),
                         model_id: None,
@@ -782,6 +813,9 @@ async fn find_or_create_session(
                         max_iterations: None,
                         parallel_tool_calls: None,
                         parent_session_id: None,
+                        forked_from_session_id: None,
+                        budget_root_session_id: None,
+                        seed: everruns_core::SessionSeedMode::Fresh,
                     },
                 )
                 .await?;
@@ -945,20 +979,21 @@ fn is_terminal_public_output_message(
     assistant_emitted_delta || !public_content_parts_to_string(&message.content).is_empty()
 }
 
-fn ensure_assistant_message_id(
-    state: &mut AgUiStreamState,
-    event: &everruns_core::Event,
-) -> AgUiMessageId {
+/// Returns the AG-UI `messageId` for the assistant message currently being
+/// streamed, allocating a fresh id the first time a message scope opens.
+///
+/// The id is message-scoped, not turn-scoped: `close_assistant_text_without_finishing`
+/// clears the cached id at every non-terminal message boundary, so a commentary
+/// message and the final answer within one turn receive distinct ids. The id is a
+/// random public identifier and is never derived from `turn_id`, so the internal
+/// turn uuid is never exposed on the public AG-UI transport.
+///
+/// Once EVE-772 lands `message_id` on the streaming lifecycle events, this should
+/// key off the streamed `message_id` so the AG-UI id equals the stored `Message.id`.
+fn ensure_assistant_message_id(state: &mut AgUiStreamState) -> AgUiMessageId {
     state
         .assistant_message_id
-        .get_or_insert_with(|| {
-            event
-                .context
-                .turn_id
-                .as_ref()
-                .map(|id| AgUiMessageId::from(id.uuid()))
-                .unwrap_or_else(AgUiMessageId::random)
-        })
+        .get_or_insert_with(AgUiMessageId::random)
         .clone()
 }
 
@@ -1073,7 +1108,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
     match event.event_type.as_str() {
         "output.message.delta" => {
             if let Ok(data) = parse_event_data::<OutputMessageDeltaData>(event) {
-                let message_id = ensure_assistant_message_id(state, event);
+                let message_id = ensure_assistant_message_id(state);
                 if !state.assistant_content_started {
                     state
                         .queue
@@ -1098,7 +1133,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
                     close_assistant_text_without_finishing(state);
                     return;
                 }
-                let message_id = ensure_assistant_message_id(state, event);
+                let message_id = ensure_assistant_message_id(state);
                 if !state.assistant_content_started {
                     state
                         .queue
@@ -1187,7 +1222,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             state.public_tool_activity_opened_thinking = false;
         }
         "tool.started" if parse_event_data::<ToolStartedData>(event).is_ok() => {
-            ensure_assistant_message_id(state, event);
+            ensure_assistant_message_id(state);
             state.active_tool_activity_count += 1;
             match state.tool_visibility {
                 AgUiToolVisibility::None => {}
@@ -1203,7 +1238,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             }
         }
         "tool.completed" if parse_event_data::<ToolCompletedData>(event).is_ok() => {
-            ensure_assistant_message_id(state, event);
+            ensure_assistant_message_id(state);
             state.active_tool_activity_count = state.active_tool_activity_count.saturating_sub(1);
             push_public_tool_activity_end(state);
         }
@@ -1698,6 +1733,26 @@ mod tests {
             "The Base harness is the default execution wrapper."
         );
         assert!(state.finished);
+
+        // EVE-773: the commentary message and the final answer are distinct AG-UI
+        // messages, so they must carry distinct message-scoped ids, and neither may
+        // leak the raw turn uuid onto the public transport.
+        let start_ids: Vec<&AgUiMessageId> = state
+            .queue
+            .iter()
+            .filter_map(|event| match event {
+                AgUiEvent::TextMessageStart(event) => Some(&event.message_id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(start_ids.len(), 2);
+        assert_ne!(
+            start_ids[0], start_ids[1],
+            "commentary and final answer must have distinct messageIds"
+        );
+        let turn_message_id = AgUiMessageId::from(turn_id.uuid());
+        assert_ne!(*start_ids[0], turn_message_id);
+        assert_ne!(*start_ids[1], turn_message_id);
     }
 
     #[tokio::test]
@@ -1887,9 +1942,12 @@ mod tests {
         );
         translate_event(&mut state, &output_completed);
 
-        let expected_message_id = AgUiMessageId::from(turn_id.uuid());
+        // The public messageId is message-scoped and must never be the raw turn uuid.
+        let turn_message_id = AgUiMessageId::from(turn_id.uuid());
         match &state.queue[5] {
-            AgUiEvent::TextMessageStart(event) => assert_eq!(event.message_id, expected_message_id),
+            AgUiEvent::TextMessageStart(event) => {
+                assert_ne!(event.message_id, turn_message_id);
+            }
             _ => panic!("expected text start event"),
         }
     }

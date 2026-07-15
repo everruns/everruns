@@ -18,6 +18,8 @@ interface AgentIdentitySelectProps {
   includeNone?: boolean;
   noneLabel?: string;
   disabled?: boolean;
+  /** Additional className for the trigger. */
+  className?: string;
 }
 
 export function AgentIdentitySelect({
@@ -27,6 +29,7 @@ export function AgentIdentitySelect({
   includeNone = true,
   noneLabel = "No identity",
   disabled,
+  className,
 }: AgentIdentitySelectProps) {
   const { data: identities = [] } = useAgentIdentities({ includeArchived: !!value });
   const identityMap = useMemo(
@@ -50,7 +53,7 @@ export function AgentIdentitySelect({
       onValueChange={(next) => onValueChange(next === "none" ? "" : next)}
       disabled={disabled}
     >
-      <SelectTrigger>
+      <SelectTrigger className={className}>
         <SelectValue placeholder={placeholder}>{displayLabel}</SelectValue>
       </SelectTrigger>
       <SelectContent>

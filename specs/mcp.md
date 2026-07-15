@@ -14,7 +14,9 @@ Routing is intentionally split:
 - OAuth discovery metadata lives at `/.well-known/oauth-authorization-server`
 - Protected-resource metadata lives at `/.well-known/oauth-protected-resource/mcp` (RFC 9728 §3.1 path-derived for the `/mcp` resource)
 
-Everruns also acts as an **MCP client** (connecting to remote MCP servers). That side is covered in [`specs/mcp-servers.md`](mcp-servers.md), with the in-process runtime path (shared `everruns-mcp` crate, HTTP + optional stdio transport, pluggable auth) in [`specs/runtime-mcp.md`](runtime-mcp.md).
+Everruns also acts as an **MCP client** (connecting to remote MCP servers). That side is covered in [`specs/mcp-servers.md`](mcp-servers.md), with the in-process runtime path (shared `everruns-mcp` crate, HTTP + optional stdio transport, pluggable auth) in [`specs/runtime-mcp.md`](runtime-mcp.md). The client speaks the legacy (`2025-03-26`), current (`2025-06-18`), and 2026 stateless RC (`2026-07-28`) eras, auto-negotiated per server — see [`specs/mcp-servers.md`](mcp-servers.md) ("Multi-era protocol support").
+
+> **Server-side RC adoption (follow-up).** This document describes Everruns' own `/mcp` *server* endpoint, which today negotiates `2025-06-18`/`2025-03-26`. Adopting the 2026 stateless RC on the server side — accepting session-less `_meta`-bearing requests, emitting `ttlMs`/`cacheScope` cache directives, and honoring the routable headers — is a separate workstream from the client-side multi-era support already shipped. When taken on, mind the `cacheScope` tenant-isolation requirement (per-user vs shared tool caches) given the per-user OAuth model below.
 
 ## Protocol
 
@@ -35,7 +37,7 @@ The endpoint is stateless request/response per JSON-RPC call — no `Mcp-Session
 - **Routing headers.** `2026-07-28` Streamable HTTP adds optional `Mcp-Method` and `Mcp-Name` request headers so gateways/load-balancers/rate-limiters can route on the operation without parsing the body. They are optional and the body stays authoritative; when present they must be singular and agree with the body (`Mcp-Method` vs the JSON-RPC `method`, and `Mcp-Name` vs `params.name` on `tools/call`), otherwise the request is rejected `400 Bad Request`. See [`specs/production-deployment.md`](production-deployment.md#mcp-endpoint-scaling) for the proxy contract.
 - **The richer tool shape** (`title`, `outputSchema`, `structuredContent`, entity-card tools) introduced in `2025-06-18` applies to `2025-06-18` and every later version, including `2026-07-28`; only the `2025-03-26` fallback omits it.
 
-The Tasks extension (server-directed long-running `tools/call` driven by `tasks/get`/`tasks/update`/`tasks/cancel`) is tracked separately as optional interop alignment for the existing `agent_run` → `session_get_status` poll pattern (Linear EVE-669); it is not yet implemented.
+The Tasks extension (server-directed long-running `tools/call` driven by `tasks/get`/`tasks/update`/`tasks/cancel`) is implemented as optional, additive interop alignment for the existing `agent_run` → `session_get_status` poll pattern. See [Tasks extension (2026-07-28)](#tasks-extension-2026-07-28) below.
 
 ### Supported Methods
 
@@ -47,6 +49,11 @@ The Tasks extension (server-directed long-running `tools/call` driven by `tasks/
 | `tools/call` | Execute a tool |
 | `resources/list` | Discover static Everruns resources |
 | `resources/read` | Read a static Everruns resource by URI |
+| `tasks/get` | (2026-07-28 Tasks extension) Poll a task handle for status + result |
+| `tasks/update` | (2026-07-28 Tasks extension) Provide input to a task in `input_required` |
+| `tasks/cancel` | (2026-07-28 Tasks extension) Request cancellation of a task |
+
+`tasks/list` is intentionally not implemented — SEP-2663 removed it, and Everruns never exposed a server-side task list. The `tasks/*` methods are only routed under the negotiated `2026-07-28` protocol; a `2025-*` client that sends them gets `-32601 Method not found`.
 
 ### Entity Cards
 
@@ -75,6 +82,85 @@ including the URI scheme, sandboxing requirements, and the planned
 | `text` | `text` | Plain text |
 | `image` | `data`, `mime_type` | Base64-encoded image |
 | `resource` | `uri`, `mime_type`, `text` | External resource reference |
+
+## Tasks extension (2026-07-28)
+
+Everruns' `/mcp` server implements the MCP Tasks extension
+(`io.modelcontextprotocol/tasks`, SEP-2663) as optional, **additive** interop
+alignment. It is not new capability: Everruns already runs long agent turns as
+the poll pattern (`agent_run` returns a session id + hint, clients poll
+`session_get_status`), all state Postgres-backed with no server-side session
+memory. Tasks is the standardized vocabulary for that same pattern, so a
+**task handle is a session id**. Field names follow final SEP-2663 and the
+official Tasks extension overview: task handles use `ttlMs` and
+`pollIntervalMs`.
+
+The whole surface is gated: it activates only when the negotiated protocol is
+`2026-07-28` **and** the client advertised the extension. `2025-*` clients (and
+`2026-07-28` clients that did not opt in) see today's shapes byte-for-byte
+unchanged.
+
+### Capability negotiation
+
+- **Server advertises** the extension in `initialize` capabilities under
+  `capabilities.extensions["io.modelcontextprotocol/tasks"]`, only when the
+  negotiated protocol is `2026-07-28`.
+- **Client opts in** per request via
+  `params._meta["io.modelcontextprotocol/clientCapabilities"].extensions["io.modelcontextprotocol/tasks"]`.
+  Per SEP-2663 the server must never return a task to a client that did not
+  declare support — this is what keeps the change back-compatible.
+
+### Session ↔ task mapping
+
+| Tasks extension | Everruns equivalent |
+|-----------------|---------------------|
+| task handle / `taskId` | `session_id` (Postgres-backed, instance-agnostic) |
+| `tools/call` returns `CreateTaskResult` | `agent_run` / `session_send_message` return the task handle alongside their existing fields |
+| `tasks/get` | `session_get_status` (status + events, surfaced under `result`) |
+| `tasks/update` (provide input on `input_required`) | `session_send_message` |
+| `tasks/cancel` | `cancel_session` (cooperative) |
+| lifecycle state | derived from session status |
+| `tasks/list` | not implemented (removed by SEP-2663) |
+
+### Status mapping
+
+Session status → task lifecycle state:
+
+| Session status | Task status |
+|----------------|-------------|
+| `started`, `active` | `working` |
+| `waiting_for_tool_results`, `paused` | `input_required` |
+| `idle` | `completed` |
+
+`failed` and `cancelled` are part of the SEP-2663 vocabulary but are not
+persisted session statuses today (cancellation emits a turn event and the
+session returns to `idle`), so they are unreachable from status alone. The
+mapping helper is total against the vocabulary so callers with stronger
+information can still report them.
+
+### Task-handle shape and additivity
+
+When active, `agent_run` / `session_send_message` merge `CreateTaskResult`
+fields (`resultType: "task"`, `taskId`, `status`, `ttlMs`, `pollIntervalMs`)
+into the tools/call `result`; the existing `content` / `structuredContent` are
+untouched. `tasks/get` returns a `Task` object (`taskId`, `status`, `ttlMs`,
+`pollIntervalMs`) with the full `session_get_status` payload under `result`.
+
+**Structured result.** When the task's session reported a deterministic,
+schema-bound result (`result.json`, produced by a task declared with a
+`result_schema` — see [`specs/subagents.md`](subagents.md) and
+[`specs/session-tasks.md`](session-tasks.md)), `tasks/get` adds that JSON under
+`result.structured_result`, so Tasks clients get the machine result instead of
+re-parsing last-message text. It is additive: the existing status snapshot
+(session status, latest output, events) is unchanged, and a plain agent turn
+that reported no structured result omits the field. Retrieval is scoped by the
+same org `session_get_status` already validated, so tenant isolation is
+preserved; when a session reported more than one structured result the most
+recently updated one wins.
+
+Implementation: `crates/server/src/api/mcp_endpoint/tasks.rs` (mapping helpers,
+capability gating, task-handle shapes) and `mod.rs` (`handle_tasks_method` and
+the `handle_tools_call` augmentation).
 
 ## Architecture
 
@@ -391,7 +477,7 @@ MCP clients authenticate via OAuth 2.1 Bearer tokens, which don't carry org cont
 
 ### Per-Call `organization_id` Override
 
-All org-scoped tools (`agent_run`, `session_send_message`, `session_get_status`, `agent_get_card`, `discover`, `query`, `execute`) accept an optional `organization_id` parameter (format: `org_{32-hex}`). When provided:
+All org-scoped tools (`agent_run`, `session_send_message`, `session_get_status`, `agent_get_card`, `discover`, `query`, `execute`) accept an optional `organization_id` parameter (format: `org_{32-hex}`). The `2026-07-28` Tasks methods (`tasks/get`, `tasks/update`, `tasks/cancel`) accept it as a request param too, resolved through the same path. When provided:
 
 1. User membership is validated against the database (not stale JWT claims)
 2. A `ResolvedOrg` is constructed for the target org

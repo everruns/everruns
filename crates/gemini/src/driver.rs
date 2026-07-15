@@ -9,7 +9,7 @@
 // exponential backoff. Retry metadata is included in the response for observability.
 
 use async_trait::async_trait;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -30,8 +30,10 @@ use everruns_core::driver_registry::{
 use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
 use everruns_core::is_provider_quota_message;
 use everruns_core::llm_retry::{
-    LlmRetryConfig, RetryMetadata, is_transient_error, is_transient_send_error, send_error_message,
+    LlmRetryConfig, RetryDecision, RetryMetadata, SendOutcome, retry_request, send_error_message,
 };
+use everruns_core::stream_accumulator::StreamToolCallAccumulator;
+use everruns_core::stream_reconnect::connect_bytes_with_reconnect;
 use everruns_core::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
@@ -291,6 +293,98 @@ impl GeminiChatDriver {
     fn models_url(&self) -> String {
         format!("{}/models", self.base_url)
     }
+
+    /// Send one streaming `streamGenerateContent` request, applying the shared
+    /// header-phase retry loop (transient send failures, 429, and 5xx), and
+    /// return the raw response plus its retry metadata.
+    ///
+    /// Invoked once per reconnect attempt by [`connect_bytes_with_reconnect`]. It
+    /// re-sends the identical request and consumes no body bytes, so retrying is
+    /// idempotent. Terminal classification and error messages are preserved
+    /// exactly.
+    async fn send_generate_content_request(
+        &self,
+        request: &GeminiRequest,
+        url: &str,
+        model: &str,
+    ) -> Result<(reqwest::Response, RetryMetadata)> {
+        let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+
+        retry_request(
+            &self.retry_config,
+            "GeminiDriver",
+            || {
+                self.client
+                    .post(url)
+                    .header("Content-Type", "application/json")
+                    .header("x-goog-api-key", &self.api_key)
+                    .json(request)
+                    .send()
+                    .map(|r| r.map_err(SendOutcome::Send))
+            },
+            |response, attempts, can_retry| {
+                let model = model.to_string();
+                let last_error = Arc::clone(&last_error);
+                async move {
+                    let status = response.status();
+                    let error_text = response.text().await.unwrap_or_default();
+
+                    // Don't retry if this is a request-too-large error.
+                    if is_gemini_request_too_large(status, &error_text) {
+                        return RetryDecision::Terminal(AgentLoopError::request_too_large(
+                            format!("Gemini API error ({}): {}", status, error_text),
+                        ));
+                    }
+
+                    if can_retry {
+                        // Exhausted billing quota is not transient — fail fast
+                        // instead of burning retries.
+                        if is_provider_quota_message(&error_text) {
+                            return RetryDecision::Terminal(AgentLoopError::llm_kind(
+                                LlmErrorKind::QuotaExhausted,
+                                format!("Gemini API error ({}): {}", status, error_text),
+                            ));
+                        }
+
+                        let wait = self.retry_config.calculate_backoff(attempts);
+                        *last_error.lock().unwrap() = Some(error_text);
+                        return RetryDecision::Retry {
+                            wait,
+                            rate_limit_info: None,
+                        };
+                    }
+
+                    // Non-retryable error or max retries exceeded
+                    let error_msg = format!("Gemini API error ({}): {}", status, error_text);
+
+                    // Check if this is a model-not-found error
+                    if is_gemini_model_not_found(status, &error_text) {
+                        return RetryDecision::Terminal(AgentLoopError::model_not_available(model));
+                    }
+
+                    // Attach the semantic error kind while the HTTP status and
+                    // body are still available (see LlmErrorKind).
+                    let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
+
+                    if attempts > 0 {
+                        return RetryDecision::Terminal(AgentLoopError::llm_kind(
+                            kind,
+                            format!(
+                                "{} (after {} retries, last error: {})",
+                                error_msg,
+                                attempts,
+                                last_error.lock().unwrap().take().unwrap_or_default()
+                            ),
+                        ));
+                    }
+
+                    RetryDecision::Terminal(AgentLoopError::llm_kind(kind, error_msg))
+                }
+            },
+            |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
+        )
+        .await
+    }
 }
 
 #[async_trait]
@@ -336,153 +430,30 @@ impl ChatDriver for GeminiChatDriver {
                 .and_then(|cfg| cfg.gemini_cached_content.clone()),
         };
 
-        // Retry loop for rate limit (429) and transient errors
-        let mut retry_metadata = RetryMetadata::default();
-        let mut last_error: Option<String> = None;
-
+        // Establish the byte stream, transparently reconnecting on a transport
+        // failure that lands before the first chunk (the "error decoding
+        // response body" flake). Header-phase retries (429/5xx and transient
+        // send failures) are handled inside the per-attempt send. Gemini parses
+        // SSE by hand, so this uses the raw byte-stream reconnect variant.
         let url = self.stream_url(&config.model);
-
-        let response = loop {
-            let response = match self
-                .client
-                .post(&url)
-                .header("Content-Type", "application/json")
-                .header("x-goog-api-key", &self.api_key)
-                .json(&request)
-                .send()
-                .await
-            {
-                Ok(response) => response,
-                Err(e) => {
-                    // A send failure never produced an HTTP response, so it
-                    // bypasses the status-based retry below. Connection-level
-                    // errors (incl. a stale pooled keep-alive connection,
-                    // EVE-635) are transient — retry them with backoff, matching
-                    // SDK `APIConnectionError` behavior.
-                    if is_transient_send_error(&e)
-                        && retry_metadata.attempts < self.retry_config.max_retries
-                    {
-                        let wait_duration =
-                            self.retry_config.calculate_backoff(retry_metadata.attempts);
-                        tracing::warn!(
-                            error = %e,
-                            attempt = retry_metadata.attempts + 1,
-                            max_retries = self.retry_config.max_retries,
-                            wait_secs = wait_duration.as_secs_f64(),
-                            "GeminiDriver: transient connection error sending request, retrying"
-                        );
-                        retry_metadata.record_retry(wait_duration, None);
-                        last_error = Some(format!("Failed to send request: {e}"));
-                        tokio::time::sleep(wait_duration).await;
-                        continue;
-                    }
-                    return Err(AgentLoopError::llm(send_error_message(
-                        &e,
-                        retry_metadata.attempts,
-                    )));
-                }
-            };
-
-            let status = response.status();
-
-            if status.is_success() {
-                break response;
-            }
-
-            // Check if this is a retryable error
-            if is_transient_error(status) && retry_metadata.attempts < self.retry_config.max_retries
-            {
-                let error_text = response.text().await.unwrap_or_default();
-
-                // Don't retry if this is a request-too-large error
-                if is_gemini_request_too_large(status, &error_text) {
-                    return Err(AgentLoopError::request_too_large(format!(
-                        "Gemini API error ({}): {}",
-                        status, error_text
-                    )));
-                }
-
-                // Exhausted billing quota is not transient — fail fast
-                // instead of burning retries.
-                if is_provider_quota_message(&error_text) {
-                    return Err(AgentLoopError::llm_kind(
-                        LlmErrorKind::QuotaExhausted,
-                        format!("Gemini API error ({}): {}", status, error_text),
-                    ));
-                }
-
-                let wait_duration = self.retry_config.calculate_backoff(retry_metadata.attempts);
-
-                tracing::warn!(
-                    status = %status,
-                    attempt = retry_metadata.attempts + 1,
-                    max_retries = self.retry_config.max_retries,
-                    wait_secs = wait_duration.as_secs_f64(),
-                    "GeminiDriver: transient error, retrying"
-                );
-
-                retry_metadata.record_retry(wait_duration, None);
-                last_error = Some(error_text);
-
-                tokio::time::sleep(wait_duration).await;
-                continue;
-            }
-
-            // Non-retryable error or max retries exceeded
-            let error_text = response.text().await.unwrap_or_default();
-            let error_msg = format!("Gemini API error ({}): {}", status, error_text);
-
-            // Check if this is a model-not-found error
-            if is_gemini_model_not_found(status, &error_text) {
-                return Err(AgentLoopError::model_not_available(config.model.clone()));
-            }
-
-            if is_gemini_request_too_large(status, &error_text) {
-                return Err(AgentLoopError::request_too_large(error_msg));
-            }
-
-            // Attach the semantic error kind while the HTTP status and body
-            // are still available (see LlmErrorKind).
-            let kind = LlmErrorKind::from_provider_status(status.as_u16(), &error_text);
-
-            if retry_metadata.attempts > 0 {
-                return Err(AgentLoopError::llm_kind(
-                    kind,
-                    format!(
-                        "{} (after {} retries, last error: {})",
-                        error_msg,
-                        retry_metadata.attempts,
-                        last_error.unwrap_or_default()
-                    ),
-                ));
-            }
-
-            return Err(AgentLoopError::llm_kind(kind, error_msg));
-        };
-
-        if retry_metadata.had_retries() {
-            tracing::info!(
-                attempts = retry_metadata.attempts,
-                total_wait_secs = retry_metadata.total_retry_wait.as_secs_f64(),
-                "GeminiDriver: request succeeded after retries"
-            );
-        }
+        let (byte_stream, retry_metadata) =
+            connect_bytes_with_reconnect(&self.retry_config, "GeminiDriver", |_attempt| {
+                self.send_generate_content_request(&request, &url, &config.model)
+            })
+            .await?;
 
         // Gemini streams SSE events with JSON data, each containing a candidate
         let model = config.model.clone();
         let prompt_tokens = Arc::new(Mutex::new(0u32));
         let completion_tokens = Arc::new(Mutex::new(0u32));
         let cached_tokens = Arc::new(Mutex::new(Option::<u32>::None));
-        let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
+        let accumulated_tool_calls = Arc::new(Mutex::new(StreamToolCallAccumulator::new()));
         let tool_call_counter = Arc::new(Mutex::new(0u32));
         let shared_retry_metadata = if retry_metadata.had_retries() {
             Some(Arc::new(retry_metadata))
         } else {
             None
         };
-
-        // Gemini SSE stream: each event has `data: {...}` lines
-        let byte_stream = response.bytes_stream();
 
         // Use a buffered approach to handle SSE events
         let converted_stream: LlmResponseStream = Box::pin(futures::stream::unfold(
@@ -609,13 +580,11 @@ impl ChatDriver for GeminiChatDriver {
                                                         accumulated_tool_calls
                                                             .lock()
                                                             .unwrap()
-                                                            .push(ToolCall {
-                                                                id: call_id,
-                                                                name: function_call.name.clone(),
-                                                                arguments: function_call
-                                                                    .args
-                                                                    .clone(),
-                                                            });
+                                                            .push_complete(
+                                                                call_id,
+                                                                function_call.name.clone(),
+                                                                function_call.args.clone(),
+                                                            );
                                                     }
                                                     _ => {}
                                                 }
@@ -626,9 +595,10 @@ impl ChatDriver for GeminiChatDriver {
                                         if let Some(reason) = &candidate.finish_reason
                                             && (reason == "STOP" || reason == "MAX_TOKENS")
                                         {
-                                            let tool_calls: Vec<ToolCall> = std::mem::take(
-                                                &mut *accumulated_tool_calls.lock().unwrap(),
-                                            );
+                                            let tool_calls: Vec<ToolCall> = accumulated_tool_calls
+                                                .lock()
+                                                .unwrap()
+                                                .take_finalized();
                                             if !tool_calls.is_empty() {
                                                 let result =
                                                     Ok(LlmStreamEvent::ToolCalls(tool_calls));
@@ -718,7 +688,8 @@ impl ChatDriver for GeminiChatDriver {
                             buffer.push_str(&String::from_utf8_lossy(&bytes));
                         }
                         Some(Err(e)) => {
-                            let result = Ok(LlmStreamEvent::Error(format!("Stream error: {}", e)));
+                            let result =
+                                Ok(LlmStreamEvent::Error(format!("Stream error: {}", e).into()));
                             return Some((
                                 result,
                                 (
@@ -738,7 +709,7 @@ impl ChatDriver for GeminiChatDriver {
                         None => {
                             // Stream ended - emit Done if we haven't already
                             let tool_calls: Vec<ToolCall> =
-                                std::mem::take(&mut *accumulated_tool_calls.lock().unwrap());
+                                accumulated_tool_calls.lock().unwrap().take_finalized();
                             if !tool_calls.is_empty() {
                                 let result = Ok(LlmStreamEvent::ToolCalls(tool_calls));
                                 return Some((

@@ -1,34 +1,51 @@
-# TC004: Full Auth - Failed Login with Random User
+# TC004: Full Auth - Failed Login (Wrong Password / Unknown User)
 
 ## Description
 
-Verify that login fails when attempting to log in with credentials for a non-existent user in full authentication mode.
+Verify that authentication fails with a calm generic message when the
+password is wrong or the account is unknown, and that the login door never
+reveals whether an account exists for an email. Login never creates
+accounts — signup is the explicit `/signup` path (TC001).
 
 ## Preconditions
 
 - `AUTH_MODE=full`
 - `AUTH_JWT_SECRET=MJ5SiIlm9mTmiVJV8O2NLrxnuEZDFuO/iXkjVXGqWD0=`
-- `AUTH_DISABLE_SIGNUP=false`
 - `AUTH_DISABLE_PASSWORD=false`
+- An account exists for `testuser@example.com` (created via TC001)
 
 ## Test Data
 
 | Field    | Value                       |
 |----------|-----------------------------|
-| Email    | randomuser123@example.com   |
-| Password | RandomPassword456!          |
+| Email    | testuser@example.com        |
+| Password | WrongPassword456!           |
 
 ## Steps
 
-1. Navigate to the login page
-2. Enter email: `randomuser123@example.com`
-3. Enter password: `RandomPassword456!`
-4. Click the login button
+1. Navigate to the login page (`/login`)
+2. Enter email: `testuser@example.com`
+3. Click "Continue with email"
+4. Enter password: `WrongPassword456!`
+5. Click "Continue"
 
 ## Expected Result
 
-- Login fails
-- User is not authenticated
-- An appropriate error message is displayed (e.g., "Invalid credentials")
-- User remains on the login page
-- No session is established
+- Authentication fails; no session is established
+- A calm, muted (not alarm-red) alert reads "Email or password doesn't
+  match. Try again or reset your password." — with "reset your password"
+  linking to `/forgot-password` prefilled with the email. It must not reveal
+  whether the account exists or which field was wrong
+- User remains on the password screen and can retry or go back
+
+## Variant: unknown email
+
+Repeat with `randomuser123@example.com` / any password: identical generic
+alert, no account created (login never signs up — see TC001 for the
+explicit signup path).
+
+## Variant: signup disabled
+
+With `AUTH_DISABLE_SIGNUP=true`: the "Create an account" link disappears
+from `/login` and `/signup` shows "Signups are closed"; failed logins behave
+exactly as above.

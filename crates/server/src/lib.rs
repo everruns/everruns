@@ -63,6 +63,9 @@ pub mod harnesses;
 pub mod direct_worker_adapters;
 pub mod execution_metadata;
 pub mod knowledge_store;
+
+// ATIF trajectory interchange (specs/atif-adoption.md)
+pub mod atif;
 pub use direct_worker_adapters::DirectWorkerAdapters;
 pub mod max_iterations;
 
@@ -112,6 +115,9 @@ pub mod session_scheduler;
 
 // Session-task orphan reconciler schedule seeder
 pub mod session_task_reaper_scheduler;
+
+// Retained background-task supervision for server-owned control-plane loops
+pub mod supervised_task;
 
 // Background sweep: time out sessions stuck in waiting_for_tool_results
 pub mod tool_result_timeout;

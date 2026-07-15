@@ -85,7 +85,7 @@ Full-featured OpenTelemetry integration following the [Gen-AI semantic conventio
 
 ### Span Attributes by Type
 
-For the complete attribute tables per span type (invoke_agent, chat, execute_tool, reason, act, thinking), see `crates/core/src/observation/otel.rs`. Key attributes follow the OTel Gen-AI semantic conventions:
+For the complete attribute tables per span type (invoke_agent, chat, execute_tool, reason, act, thinking), see `crates/observability/src/otel.rs`. Key attributes follow the OTel Gen-AI semantic conventions:
 
 - **All spans**: `gen_ai.operation.name`, `gen_ai.conversation.id`, `duration_ms`
 - **invoke_agent**: `gen_ai.agent.id`, `gen_ai.agent.name`, `turn.id`, usage tokens
@@ -95,7 +95,7 @@ For the complete attribute tables per span type (invoke_agent, chat, execute_too
 
 ### Trace Context Propagation
 
-Spans use the `tracing` crate's native parent-child mechanism. The `OtelEventListener` maintains a `HashMap<String, tracing::Span>` to track active spans. When a child event arrives, the listener looks up the parent span, enters its context, and creates the child span (inheriting the parent). See `crates/core/src/observation/otel.rs` for the full implementation.
+Spans use the `tracing` crate's native parent-child mechanism. The `OtelEventListener` maintains a `HashMap<String, tracing::Span>` to track active spans. When a child event arrives, the listener looks up the parent span, enters its context, and creates the child span (inheriting the parent). See `crates/observability/src/otel.rs` for the full implementation.
 
 HTTP-layer correlation identifiers (`request_id`, `session_id`) are recorded as span fields on every HTTP request span and propagated into durable execution. See [`specs/correlation-ids.md`](./correlation-ids.md) for the full contract.
 
@@ -120,7 +120,7 @@ Messages are converted to OpenAI-compatible format using `Message::to_openai_for
 
 | File | Purpose |
 |------|---------|
-| `crates/core/src/observation/otel.rs` | `OtelEventListener` — all span creation/lifecycle |
+| `crates/observability/src/otel.rs` | `OtelEventListener` — all span creation/lifecycle |
 | `crates/core/src/telemetry.rs` | Gen-AI semantic conventions, config, init |
 | `crates/server/src/main.rs` | Listener registration |
 
@@ -171,7 +171,7 @@ Integration with [Braintrust](https://www.braintrust.dev/) for LLM observability
 
 ### Data Mapping
 
-For the complete field-by-field mapping (LLM generation, tool events, thinking events), see `crates/core/src/observation/braintrust.rs`. Key mappings:
+For the complete field-by-field mapping (LLM generation, tool events, thinking events), see `crates/observability/src/braintrust.rs`. Key mappings:
 
 - **Token usage**: `metadata.usage.*` → `metrics.prompt_tokens`, `metrics.completion_tokens`, `metrics.tokens`
 - **Cache tokens**: `metadata.usage.cache_read_tokens` → `metrics.cache_read_tokens`
@@ -205,7 +205,7 @@ Consumers should group by `metadata.session_id` and use Braintrust timeline/thre
 
 ### Implementation
 
-- **File**: `crates/core/src/observation/braintrust.rs`
+- **File**: `crates/observability/src/braintrust.rs`
 - **Registration**: `crates/server/src/main.rs` (event listener setup)
 - **Configuration**: `docs/sre/environment-variables.md`
 - **Format conversion**: `crates/core/src/message.rs` (`Message::to_openai_format()`)
@@ -225,7 +225,7 @@ Authorization: Bearer {api_key}
 Content-Type: application/json
 ```
 
-See `crates/core/src/observation/braintrust.rs` for the full request/response format.
+See `crates/observability/src/braintrust.rs` for the full request/response format.
 
 ---
 
@@ -248,4 +248,4 @@ Tests verify delivery and mapping correctness:
 7. **privacy controls**: redaction/summary modes strip raw tool payloads by default
 8. **session grouping metadata**: root turn spans carry stable `session_id` and session-ordering metadata
 
-Both test suites must cover dev_worker (DEV_MODE) and durable_worker (Full mode) execution paths.
+Both test suites must cover the task worker's DEV_MODE direct-store and full-mode gRPC-store execution paths.

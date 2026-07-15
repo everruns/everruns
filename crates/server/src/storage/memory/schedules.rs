@@ -41,6 +41,51 @@ impl InMemoryDatabase {
         Ok(row)
     }
 
+    pub async fn create_session_schedule_with_limits(
+        &self,
+        input: CreateSessionScheduleRow,
+        max_per_session: u32,
+        max_per_org: i64,
+    ) -> Result<Option<SessionScheduleRow>> {
+        let mut schedules = self.session_schedules.write();
+        let active_session_count = schedules
+            .values()
+            .filter(|r| r.session_id == input.session_id && r.enabled)
+            .count();
+        let active_org_count = schedules
+            .values()
+            .filter(|r| r.org_id == input.org_id && r.enabled)
+            .count();
+        if active_session_count >= max_per_session as usize
+            || active_org_count >= max_per_org as usize
+        {
+            return Ok(None);
+        }
+
+        let now = Self::now();
+        let id = ScheduleId::new();
+        let public_id = id.to_string();
+        let row = SessionScheduleRow {
+            id,
+            public_id,
+            org_id: input.org_id,
+            session_id: input.session_id,
+            owner_principal_id: input.owner_principal_id,
+            resolved_owner_user_id: input.resolved_owner_user_id,
+            description: input.description,
+            cron_expression: input.cron_expression,
+            scheduled_at: input.scheduled_at,
+            timezone: input.timezone,
+            enabled: true,
+            next_trigger_at: input.next_trigger_at,
+            last_triggered_at: None,
+            trigger_count: 0,
+            created_at: now,
+            updated_at: now,
+        };
+        schedules.insert(id, row.clone());
+        Ok(Some(row))
+    }
     pub async fn get_session_schedule(
         &self,
         org_id: i64,

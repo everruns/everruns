@@ -305,6 +305,13 @@ impl Database {
             .await?;
 
             let mut tx = self.pool.begin().await?;
+            let previous_key: Option<String> = sqlx::query_as::<_, (String,)>(
+                "SELECT blob_key FROM workspace_file_blobs WHERE file_id = $1",
+            )
+            .bind(file_id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .map(|(key,)| key);
             sqlx::query(
                 r#"
                 INSERT INTO workspace_file_blobs (file_id, blob_key, content_sha256, size_bytes)
@@ -339,6 +346,17 @@ impl Database {
             .fetch_optional(&mut *tx)
             .await?;
             tx.commit().await?;
+
+            // Once PostgreSQL points at the new immutable revision, delete the
+            // superseded object immediately so repeated same-size updates cannot
+            // amplify physical object-store usage until the delayed GC runs.
+            if previous_key
+                .as_deref()
+                .is_some_and(|old_key| old_key != key.as_str())
+                && let Some(previous_key) = previous_key
+            {
+                blob.delete(&previous_key).await?;
+            }
 
             if let Some(row) = row.as_mut() {
                 row.content = Some(content.clone());
@@ -432,6 +450,14 @@ impl Database {
                 return Ok(None);
             }
 
+            let previous_key: Option<String> = sqlx::query_as::<_, (String,)>(
+                "SELECT blob_key FROM workspace_file_blobs WHERE file_id = $1",
+            )
+            .bind(existing.id)
+            .fetch_optional(&mut *tx)
+            .await?
+            .map(|(key,)| key);
+
             let size_bytes = new_content.len() as i64;
             let sha = content_sha256(&new_content);
             let key = workspace_file_key(session_id, existing.id, &sha);
@@ -476,6 +502,17 @@ impl Database {
             .fetch_optional(&mut *tx)
             .await?;
             tx.commit().await?;
+
+            // CAS updates also replace the sidecar pointer. Remove the old
+            // immutable revision after commit to bound physical storage growth
+            // without reintroducing in-place overwrites.
+            if previous_key
+                .as_deref()
+                .is_some_and(|old_key| old_key != key.as_str())
+                && let Some(previous_key) = previous_key
+            {
+                blob.delete(&previous_key).await?;
+            }
 
             if let Some(row) = row.as_mut() {
                 row.content = Some(new_content);
