@@ -118,6 +118,8 @@ async fn create_detached_session(db: &Arc<StorageBackend>, origin: &SessionRow) 
         harness_id: origin.harness_id,
         agent_id: origin.agent_id,
         agent_identity_id: origin.agent_identity_id,
+        agent_version_id: None,
+        agent_config_hash: None,
         owner_principal_id: origin.owner_principal_id,
         resolved_owner_user_id: origin.resolved_owner_user_id,
         title: Some("Detached budget peer".into()),

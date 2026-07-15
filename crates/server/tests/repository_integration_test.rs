@@ -616,6 +616,8 @@ async fn test_detached_budget_root_override_canonicalizes_postgres_chain() {
         harness_id: None,
         agent_id: None,
         agent_identity_id: None,
+        agent_version_id: None,
+        agent_config_hash: None,
         owner_principal_id,
         resolved_owner_user_id: Some(owner.id),
         title: Some(format!("detached-root-{}", Uuid::now_v7())),
