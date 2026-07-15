@@ -15,4 +15,11 @@ Not shipped; consumed by server and runtime tests and by manual smoke tests.
   warning. The fixture targets the Everruns host only; Claude Code would
   reject the `interface` field in `.claude-plugin/plugin.json`.
 
+- `oauth-mail/` — minimal fixture whose `.mcp.json` marks its MCP server
+  `"auth": "oauth"`. It exercises the plugin OAuth-anchor install path
+  (`crates/server/.../plugins/oauth_anchor.rs`): install creates a disabled
+  anchor `mcp_servers` row, assigns a host-owned `mcp_oauth_*` provider id,
+  and surfaces it in the connections API; uninstall removes it. The URL is a
+  non-routable `.test` host and is never contacted by automated tests.
+
 Automated tests must not call the live MCP server.

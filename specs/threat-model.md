@@ -1416,6 +1416,7 @@ Installed plugins (`specs/plugins.md`) compile third-party remote content into a
 | TM-PLUGIN-005 | Code-execution smuggling via plugin components | High | v1 compiles data-only contributions; `hooks`, `lspServers`, `monitors` and other executable components are dropped with install warnings and never executed server-side; MCP tools execute remotely under existing TM-MCP controls | MITIGATED |
 | TM-PLUGIN-006 | Server filesystem read via `local_path` marketplace source | High | `local_path` is rejected unless the deployment is dev-grade (`DeploymentGrade::from_env().is_dev()`); production deployments only accept `github`/`url` sources | MITIGATED |
 | TM-PLUGIN-007 | Typosquatting / spoofed plugin names in an org's marketplaces | Medium | Marketplace registration is admin-gated; plugin and marketplace names are unique per org; no global plugin namespace exists in v1, so impersonation requires an admin to register the hostile marketplace | **ACCEPTED** |
+| TM-PLUGIN-008 | Plugin binds an OAuth MCP server to another provider's tokens (e.g. `github`) or smuggles key material | High | The compiler drops any plugin-supplied `oauth_provider_id` and `api_key` with a warning; the provider id is assigned server-side at install from a host-created anchor `mcp_servers` row (`plugin:` install path), so plugin content can only mark a server as OAuth, never choose whose tokens it reads | MITIGATED |
 
 ### Mitigation Details
 

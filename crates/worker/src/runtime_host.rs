@@ -34,14 +34,14 @@ use crate::worker_adapters::{
 /// Credential handling:
 /// - **API-key** servers carry the decrypted key, which we bake in as a
 ///   `Bearer` Authorization header.
-/// - **OAuth** servers resolved via the *session-scoped* path arrive with the
-///   token already injected into `headers` (control plane downgrades auth mode).
-/// - We preserve `auth_mode`/`oauth_provider_id` on the connection so a future
-///   worker `McpAuthProvider` can resolve tokens. Until then, OAuth servers
-///   resolved via the non-scoped `resolve_by_prefix` fallback (which returns the
-///   OAuth metadata but no token in `headers`) are not authenticated — see the
-///   PR follow-up. The client uses `NoAuthProvider`, so auth must be expressed
-///   via `headers`.
+/// - **OAuth** servers resolve the session's connection token for
+///   `oauth_provider_id` via the host's `UserConnectionResolver` (same lookup
+///   scoped tool discovery uses) and bake it in as a `Bearer` header. When no
+///   token is connected, the connection is marked `pending_oauth_provider` so
+///   the executor returns a `connection_required` tool result instead of a
+///   raw 401.
+/// - The client uses `NoAuthProvider`, so auth is always expressed via
+///   `headers`.
 struct WorkerMcpResolver<A: WorkerAdapters> {
     adapters: A,
     org_id: i64,
@@ -58,12 +58,41 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             .map_err(|e| anyhow::anyhow!(e.to_string()))?;
 
         let mut headers = info.headers;
-        if let Some(api_key) = info.api_key {
-            let has_authorization = headers
+        let has_authorization = |headers: &std::collections::HashMap<String, String>| {
+            headers
                 .keys()
-                .any(|k| k.eq_ignore_ascii_case("authorization"));
-            if !has_authorization {
-                headers.insert("Authorization".to_string(), format!("Bearer {api_key}"));
+                .any(|k| k.eq_ignore_ascii_case("authorization"))
+        };
+        if let Some(api_key) = info.api_key
+            && !has_authorization(&headers)
+        {
+            headers.insert("Authorization".to_string(), format!("Bearer {api_key}"));
+        }
+
+        let mut pending_oauth_provider = None;
+        if info.auth_mode == everruns_core::McpServerAuthMode::OAuth
+            && !has_authorization(&headers)
+            && let Some(provider) = info.oauth_provider_id.as_deref()
+        {
+            match self
+                .adapters
+                .connection_resolver()
+                .get_connection_token(self.session_id.into(), provider)
+                .await
+            {
+                Ok(Some(token)) => {
+                    headers.insert("Authorization".to_string(), format!("Bearer {token}"));
+                }
+                Ok(None) => pending_oauth_provider = Some(provider.to_string()),
+                Err(error) => {
+                    tracing::warn!(
+                        server = %info.name,
+                        provider,
+                        %error,
+                        "failed to resolve MCP OAuth connection token"
+                    );
+                    pending_oauth_provider = Some(provider.to_string());
+                }
             }
         }
 
@@ -76,6 +105,7 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
             auth_mode: info.auth_mode,
             protocol_mode: info.protocol_mode,
             oauth_provider_id: info.oauth_provider_id,
+            pending_oauth_provider,
         }))
     }
 }

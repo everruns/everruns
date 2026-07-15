@@ -11,6 +11,13 @@
       "description": "Search official Microsoft documentation through the Microsoft Learn MCP server.",
       "version": "0.1.0",
       "category": "research"
+    },
+    {
+      "name": "oauth-mail",
+      "source": "./oauth-mail",
+      "description": "Fixture plugin whose MCP server requires OAuth. Exercises the plugin OAuth-anchor install path.",
+      "version": "0.1.0",
+      "category": "productivity"
     }
   ]
 }

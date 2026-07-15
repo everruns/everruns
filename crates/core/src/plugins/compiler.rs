@@ -10,7 +10,9 @@ use crate::capabilities::{
     DeclarativeCapabilitySkill, DeclarativeCapabilitySkillFile,
     validate_declarative_capability_definition,
 };
-use crate::mcp_server::{McpServerTransportType, ScopedMcpServer, ScopedMcpServers};
+use crate::mcp_server::{
+    McpServerAuthMode, McpServerTransportType, ScopedMcpServer, ScopedMcpServers,
+};
 
 use super::file_set::PluginFileSet;
 use super::manifest::{McpServersField, PluginManifest};
@@ -426,11 +428,57 @@ fn compile_mcp_servers(
             .unwrap_or("")
             .to_string();
 
+        // Literal headers (sent only to the plugin's own server URL).
+        let mut headers = std::collections::HashMap::new();
+        if let Some(header_map) = server_config.get("headers").and_then(|v| v.as_object()) {
+            for (header_name, header_value) in header_map {
+                match header_value.as_str() {
+                    Some(value) => {
+                        headers.insert(header_name.clone(), value.to_string());
+                    }
+                    None => warnings.push(format!(
+                        "MCP server '{server_name}': header '{header_name}' is not a string and will be ignored"
+                    )),
+                }
+            }
+        }
+
+        // Authentication. `"auth": "oauth"` (alias `auth_mode`) is an Everruns
+        // extension marking the server as OAuth-authenticated; other hosts
+        // ignore it and negotiate OAuth at the protocol level. `api_key` is
+        // rejected — a plugin package cannot carry key material.
+        let auth_value = server_config
+            .get("auth")
+            .or_else(|| server_config.get("auth_mode"))
+            .and_then(|v| v.as_str());
+        let auth_mode = match auth_value.map(str::to_ascii_lowercase).as_deref() {
+            Some("oauth") => McpServerAuthMode::OAuth,
+            Some("none") | None => McpServerAuthMode::None,
+            Some(other) => {
+                warnings.push(format!(
+                    "MCP server '{server_name}': auth mode '{other}' is not supported for plugin servers and will be ignored"
+                ));
+                McpServerAuthMode::None
+            }
+        };
+
+        // A plugin must never bind to an existing OAuth provider — that would
+        // let third-party plugin content read tokens connected for other
+        // providers (e.g. github). The host assigns the provider id at
+        // install time (see specs/plugins.md).
+        if server_config.get("oauth_provider_id").is_some() {
+            warnings.push(format!(
+                "MCP server '{server_name}': 'oauth_provider_id' cannot be set by a plugin and will be ignored"
+            ));
+        }
+
         servers.insert(
             server_name,
             ScopedMcpServer {
                 transport_type: McpServerTransportType::Http,
                 url,
+                headers,
+                auth_mode,
                 ..ScopedMcpServer::default()
             },
         );
@@ -679,6 +727,122 @@ mod tests {
         );
         // No servers compiled since only one was stdio.
         assert!(result.unwrap().is_none());
+    }
+
+    #[test]
+    fn oauth_mcp_server_preserves_auth_and_headers() {
+        let mut warnings = Vec::new();
+        let file_set = PluginFileSet {
+            files: {
+                let mut f = std::collections::BTreeMap::new();
+                f.insert(
+                    ".mcp.json".to_string(),
+                    serde_json::json!({
+                        "mcpServers": {
+                            "resend": {
+                                "type": "http",
+                                "url": "https://mcp.resend.com/mcp",
+                                "auth": "oauth",
+                                "headers": { "X-Custom": "1", "X-Bad": 5 },
+                                "oauth_provider_id": "github"
+                            }
+                        }
+                    })
+                    .to_string()
+                    .into_bytes(),
+                );
+                f
+            },
+            dir_name: "resend".to_string(),
+        };
+        let manifest = PluginManifest {
+            name: "resend".to_string(),
+            display_name: None,
+            version: None,
+            description: Some("test".to_string()),
+            author: None,
+            homepage: None,
+            repository: None,
+            license: None,
+            keywords: Vec::new(),
+            skills: None,
+            commands: None,
+            agents: None,
+            mcp_servers: None,
+            extra: Default::default(),
+        };
+        let servers = compile_mcp_servers(&file_set, &manifest, &mut warnings)
+            .expect("compile")
+            .expect("servers");
+        let server = servers.get("resend").expect("resend server");
+        assert_eq!(server.auth_mode, McpServerAuthMode::OAuth);
+        // Plugin content must never bind a provider id; the host assigns it
+        // at install time.
+        assert!(server.oauth_provider_id.is_none());
+        assert_eq!(
+            server.headers.get("X-Custom").map(String::as_str),
+            Some("1")
+        );
+        assert!(!server.headers.contains_key("X-Bad"));
+        assert!(
+            warnings
+                .iter()
+                .any(|w| w.contains("oauth_provider_id") && w.contains("ignored")),
+            "expected oauth_provider_id warning, got: {warnings:?}"
+        );
+        assert!(
+            warnings.iter().any(|w| w.contains("X-Bad")),
+            "expected non-string header warning, got: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn unsupported_auth_mode_produces_warning() {
+        let mut warnings = Vec::new();
+        let file_set = PluginFileSet {
+            files: {
+                let mut f = std::collections::BTreeMap::new();
+                f.insert(
+                    ".mcp.json".to_string(),
+                    serde_json::json!({
+                        "mcpServers": {
+                            "svc": { "url": "https://example.com/mcp", "auth": "api_key" }
+                        }
+                    })
+                    .to_string()
+                    .into_bytes(),
+                );
+                f
+            },
+            dir_name: "svc".to_string(),
+        };
+        let manifest = PluginManifest {
+            name: "svc".to_string(),
+            display_name: None,
+            version: None,
+            description: Some("test".to_string()),
+            author: None,
+            homepage: None,
+            repository: None,
+            license: None,
+            keywords: Vec::new(),
+            skills: None,
+            commands: None,
+            agents: None,
+            mcp_servers: None,
+            extra: Default::default(),
+        };
+        let servers = compile_mcp_servers(&file_set, &manifest, &mut warnings)
+            .expect("compile")
+            .expect("servers");
+        assert_eq!(
+            servers.get("svc").expect("svc").auth_mode,
+            McpServerAuthMode::None
+        );
+        assert!(
+            warnings.iter().any(|w| w.contains("api_key")),
+            "expected auth warning, got: {warnings:?}"
+        );
     }
 
     #[test]

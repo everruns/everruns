@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "oauth-mail": {
+      "type": "http",
+      "url": "https://mcp.oauth-mail.test/mcp",
+      "auth": "oauth"
+    }
+  }
+}
