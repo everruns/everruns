@@ -1432,10 +1432,9 @@ impl ReasonAtom {
         });
 
         // Resolve the speed (service tier) from the latest user message's
-        // `controls.speed`, gated the same way: a model whose profile has no
-        // speed config never gets a `service_tier` (sending flex/priority to
-        // an unsupported model is a 400). Unknown models pass through — let
-        // the API decide.
+        // `controls.speed`, gated against the selected model profile. Sending
+        // a tier outside a model's advertised set causes provider-side 400s.
+        // Unknown models pass through — let the API decide.
         let speed = messages
             .iter()
             .rev()
@@ -1447,17 +1446,33 @@ impl ReasonAtom {
                     &model_with_provider.provider_type,
                     &model_with_provider.model,
                 );
-                match profile {
-                    Some(p) if p.speed.is_none() => {
-                        tracing::warn!(
-                            model = %model_with_provider.model,
-                            speed = %speed,
-                            "Stripping speed: model does not support service tiers"
-                        );
-                        false
-                    }
-                    _ => true,
+                let Some(p) = profile else {
+                    return true;
+                };
+                let Some(speed_config) = p.speed else {
+                    tracing::warn!(
+                        model = %model_with_provider.model,
+                        speed = %speed,
+                        "Stripping speed: model does not support service tiers"
+                    );
+                    return false;
+                };
+                let supported = speed_config.values.iter().any(|value| {
+                    matches!(
+                        (&value.value, speed.as_str()),
+                        (crate::model::Speed::Flex, "flex")
+                            | (crate::model::Speed::Default, "default")
+                            | (crate::model::Speed::Priority, "priority")
+                    )
+                });
+                if !supported {
+                    tracing::warn!(
+                        model = %model_with_provider.model,
+                        speed = %speed,
+                        "Stripping speed: model does not support requested service tier"
+                    );
                 }
+                supported
             });
 
         // Resolve verbosity from the latest user message's `controls.verbosity`,

@@ -23,7 +23,7 @@ use everruns_core::runtime_agent::RuntimeAgent;
 use everruns_core::session::{Session, SessionStatus};
 use everruns_core::traits::{NoopEventEmitter, ResolvedModel};
 use everruns_core::typed_id::{HarnessId, MessageId, PrincipalId, SessionId, TurnId};
-use everruns_core::{Message, ToolCall};
+use everruns_core::{Controls, Message, ToolCall};
 use futures::stream;
 use serde_json::json;
 use std::sync::Arc;
@@ -269,6 +269,48 @@ impl everruns_core::ChatDriver for ThinkingLeakDriver {
     }
 }
 
+#[derive(Clone, Debug)]
+struct SpeedCapturingDriver {
+    captured_speed: Arc<Mutex<Option<String>>>,
+}
+
+#[async_trait]
+impl everruns_core::ChatDriver for SpeedCapturingDriver {
+    async fn chat_completion_stream(
+        &self,
+        _messages: Vec<everruns_core::LlmMessage>,
+        config: &everruns_core::LlmCallConfig,
+    ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
+        *self.captured_speed.lock().await = config.speed.clone();
+
+        Ok(Box::pin(stream::iter(vec![
+            Ok(everruns_core::LlmStreamEvent::TextDelta("ok".to_string())),
+            Ok(everruns_core::LlmStreamEvent::Done(Box::new(
+                everruns_core::LlmCompletionMetadata {
+                    total_tokens: Some(4),
+                    prompt_tokens: Some(2),
+                    completion_tokens: Some(2),
+                    model: Some(config.model.clone()),
+                    finish_reason: Some("stop".to_string()),
+                    ..Default::default()
+                },
+            ))),
+        ])))
+    }
+}
+
+fn create_speed_capturing_driver_registry(
+    captured_speed: Arc<Mutex<Option<String>>>,
+) -> DriverRegistry {
+    let mut registry = DriverRegistry::new();
+    registry.register(DriverId::OpenAI, move |_config| {
+        Box::new(SpeedCapturingDriver {
+            captured_speed: captured_speed.clone(),
+        })
+    });
+    registry
+}
+
 #[tokio::test]
 async fn test_reason_atom_with_fixed_response() {
     use everruns_core::in_memory::InMemoryEventEmitter;
@@ -347,6 +389,132 @@ async fn test_reason_atom_with_fixed_response() {
             panic!("Expected OutputMessageCompleted data");
         }
     }
+}
+
+#[tokio::test]
+async fn test_reason_atom_strips_speed_not_advertised_by_model_profile() {
+    use everruns_core::in_memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    provider_store
+        .set_default_model(ResolvedModel {
+            model: "gpt-5.4-nano".to_string(),
+            provider_type: DriverId::OpenAI,
+            api_key: Some("fake-api-key".to_string()),
+            base_url: None,
+            provider_metadata: None,
+        })
+        .await;
+
+    let mut message = Message::user("Use the requested speed.");
+    message.controls = Some(Controls {
+        speed: Some("priority".to_string()),
+        ..Default::default()
+    });
+    message_retriever
+        .seed(session_id.into(), vec![message])
+        .await;
+
+    let captured_speed = Arc::new(Mutex::new(Some("not-called".to_string())));
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        CapabilityRegistry::new(),
+        create_speed_capturing_driver_registry(captured_speed.clone()),
+        InMemoryEventEmitter::new(),
+    );
+
+    let result = atom
+        .execute(ReasonInput {
+            context: create_context(session_id),
+            harness_id,
+            agent_id: Some(agent_id.into()),
+            org_id: 0,
+            mcp_tool_definitions: vec![],
+            previous_response_id: None,
+            iteration: 1,
+        })
+        .await
+        .expect("ReasonAtom should succeed");
+
+    assert!(result.success);
+    assert_eq!(*captured_speed.lock().await, None);
+}
+
+#[tokio::test]
+async fn test_reason_atom_preserves_speed_advertised_by_model_profile() {
+    use everruns_core::in_memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    provider_store
+        .set_default_model(ResolvedModel {
+            model: "gpt-5.4-nano".to_string(),
+            provider_type: DriverId::OpenAI,
+            api_key: Some("fake-api-key".to_string()),
+            base_url: None,
+            provider_metadata: None,
+        })
+        .await;
+
+    let mut message = Message::user("Use the requested speed.");
+    message.controls = Some(Controls {
+        speed: Some("flex".to_string()),
+        ..Default::default()
+    });
+    message_retriever
+        .seed(session_id.into(), vec![message])
+        .await;
+
+    let captured_speed = Arc::new(Mutex::new(None));
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        CapabilityRegistry::new(),
+        create_speed_capturing_driver_registry(captured_speed.clone()),
+        InMemoryEventEmitter::new(),
+    );
+
+    let result = atom
+        .execute(ReasonInput {
+            context: create_context(session_id),
+            harness_id,
+            agent_id: Some(agent_id.into()),
+            org_id: 0,
+            mcp_tool_definitions: vec![],
+            previous_response_id: None,
+            iteration: 1,
+        })
+        .await
+        .expect("ReasonAtom should succeed");
+
+    assert!(result.success);
+    assert_eq!(*captured_speed.lock().await, Some("flex".to_string()));
 }
 
 #[tokio::test]
