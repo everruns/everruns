@@ -224,6 +224,7 @@ async fn test_gpt52_vs_gpt54_reasoning() {
             )],
             controls: Some(Controls {
                 speed: None,
+                verbosity: None,
                 model_id: None,
                 locale: None,
                 reasoning: Some(ReasoningConfig {

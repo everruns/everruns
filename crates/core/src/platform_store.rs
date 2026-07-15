@@ -16,6 +16,7 @@ use crate::typed_id::{AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 /// Simplified message representation for platform management tools.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +38,9 @@ pub struct PlatformCreateSessionRequest {
     pub blueprint_config: Option<serde_json::Value>,
     pub parent_session_id: Option<SessionId>,
     pub forked_from_session_id: Option<SessionId>,
+    /// Internal-only override for the budget/delegation root. Detached spawns
+    /// set this explicitly; ordinary forks must leave it unset.
+    pub budget_root_session_id: Option<SessionId>,
     pub seed: SessionSeedMode,
 }
 
@@ -56,6 +60,33 @@ pub trait PlatformStore: Send + Sync {
 
     /// Get a harness by ID.
     async fn get_harness(&self, id: HarnessId) -> Result<Option<Harness>>;
+
+    /// Get the effective harness chain from root to the requested harness.
+    ///
+    /// Platform management lookups return the raw harness row. Runtime assembly
+    /// applies inherited parent harnesses first, so security-sensitive
+    /// compatibility checks must use this chain rather than a single raw row.
+    async fn get_harness_chain(&self, id: HarnessId) -> Result<Vec<Harness>> {
+        let mut chain = Vec::new();
+        let mut current_id = Some(id);
+        let mut seen = HashSet::new();
+
+        while let Some(harness_id) = current_id {
+            if !seen.insert(harness_id) {
+                return Err(crate::error::AgentLoopError::tool(format!(
+                    "Harness inheritance cycle detected at {harness_id}"
+                )));
+            }
+            let Some(harness) = self.get_harness(harness_id).await? else {
+                return Ok(Vec::new());
+            };
+            current_id = harness.parent_harness_id;
+            chain.push(harness);
+        }
+
+        chain.reverse();
+        Ok(chain)
+    }
 
     /// Create a new harness.
     ///
@@ -227,10 +258,11 @@ pub trait PlatformStore: Send + Sync {
     ) -> Result<Session> {
         if request.goal.is_some()
             || request.forked_from_session_id.is_some()
+            || request.budget_root_session_id.is_some()
             || request.seed != SessionSeedMode::Fresh
         {
             return Err(crate::error::AgentLoopError::tool(
-                "platform store does not support goal, lineage, or seeded session creation",
+                "platform store does not support goal, lineage, budget-root override, or seeded session creation",
             ));
         }
         self.create_session(
@@ -324,6 +356,7 @@ pub mod tests {
     /// registered but the store is not passed through.
     pub struct MockPlatformStore {
         pub harness: Harness,
+        pub extra_harnesses: std::sync::Mutex<std::collections::HashMap<HarnessId, Harness>>,
         pub agent: Agent,
         pub app: App,
         pub app_channel: AppChannel,
@@ -334,9 +367,15 @@ pub mod tests {
         /// call so tests can assert which harness a child session was
         /// created against. See `start_handoff_uses_target_harness_not_parent`.
         pub created_session_harness_ids: std::sync::Mutex<Vec<HarnessId>>,
+        /// Records internal budget-root overrides supplied to session creation.
+        pub created_session_budget_roots: std::sync::Mutex<Vec<Option<SessionId>>>,
         /// Status returned by `wait_for_idle` ("idle" by default). Tests set
         /// a terminal turn status (e.g. "completed") to exercise settle paths.
         pub wait_for_idle_status: std::sync::Mutex<String>,
+        /// Records every `send_message` call as `(session_id, content)` so
+        /// tests can assert which session was signaled (e.g. a detached peer
+        /// receiving a cooperative-cancel message).
+        pub sent_messages: std::sync::Mutex<Vec<(SessionId, String)>>,
     }
 
     impl Default for MockPlatformStore {
@@ -370,6 +409,7 @@ pub mod tests {
                     archived_at: None,
                     deleted_at: None,
                 },
+                extra_harnesses: std::sync::Mutex::new(std::collections::HashMap::new()),
                 agent: Agent {
                     public_id: crate::typed_id::AgentId::new(),
                     internal_id: uuid::Uuid::now_v7(),
@@ -485,7 +525,9 @@ pub mod tests {
                 extra_sessions: std::sync::Mutex::new(std::collections::HashMap::new()),
                 joined_participants: std::sync::Mutex::new(Vec::new()),
                 created_session_harness_ids: std::sync::Mutex::new(Vec::new()),
+                created_session_budget_roots: std::sync::Mutex::new(Vec::new()),
                 wait_for_idle_status: std::sync::Mutex::new("idle".to_string()),
+                sent_messages: std::sync::Mutex::new(Vec::new()),
             }
         }
     }
@@ -495,7 +537,10 @@ pub mod tests {
         async fn list_harnesses(&self) -> Result<Vec<Harness>> {
             Ok(vec![self.harness.clone()])
         }
-        async fn get_harness(&self, _id: HarnessId) -> Result<Option<Harness>> {
+        async fn get_harness(&self, id: HarnessId) -> Result<Option<Harness>> {
+            if let Some(harness) = self.extra_harnesses.lock().unwrap().get(&id).cloned() {
+                return Ok(Some(harness));
+            }
             Ok(Some(self.harness.clone()))
         }
         async fn create_harness(
@@ -754,6 +799,10 @@ pub mod tests {
             &self,
             request: PlatformCreateSessionRequest,
         ) -> Result<Session> {
+            self.created_session_budget_roots
+                .lock()
+                .expect("budget root recorder")
+                .push(request.budget_root_session_id);
             let mut session = self
                 .create_session(
                     request.harness_id,
@@ -826,7 +875,11 @@ pub mod tests {
         async fn delete_session(&self, _id: SessionId) -> Result<()> {
             Ok(())
         }
-        async fn send_message(&self, _id: SessionId, _content: &str) -> Result<()> {
+        async fn send_message(&self, id: SessionId, content: &str) -> Result<()> {
+            self.sent_messages
+                .lock()
+                .unwrap()
+                .push((id, content.to_string()));
             Ok(())
         }
         async fn get_messages(

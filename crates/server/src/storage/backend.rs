@@ -10,7 +10,7 @@ use everruns_core::message_filter::MessageQuery;
 use everruns_core::typed_id::{
     AgentId, AgentIdentityId, EventId, HarnessId, KnowledgeBaseId, KnowledgeEntryId,
     KnowledgeIndexId, LeasedResourceId, MemoryId, MessageId, NotificationId, PrincipalId,
-    ScheduleId, SessionId, SessionParticipantId, WorkspaceId,
+    ScheduleId, SessionId, SessionParticipantId, TriggerId, WorkspaceId,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -26,6 +26,11 @@ use crate::api::common::Pagination;
 /// caller input so a misconfigured limit can never request an unbounded or
 /// oversized delete; large backlogs drain over successive reaper ticks.
 const MAX_RETENTION_PRUNE_LIMIT: i64 = 1000;
+
+/// Hard cap for participant history returned in one session response.
+/// Storage queries fetch one extra row so callers can reject oversized histories
+/// instead of allocating or serializing unbounded attacker-created rows.
+pub const MAX_SESSION_PARTICIPANT_HISTORY: usize = 512;
 
 const TASK_ARTIFACT_ROOTS: &[&str] = &["/.tasks", "/.background", "/.agent-runs"];
 
@@ -833,6 +838,68 @@ impl StorageBackend {
 
     pub async fn destroy_agent_identity(&self, org_id: i64, id: AgentIdentityId) -> Result<bool> {
         dispatch!(self, destroy_agent_identity, org_id, id)
+    }
+
+    // ============================================
+    // Agent triggers
+    // ============================================
+
+    pub async fn create_agent_trigger(
+        &self,
+        input: CreateAgentTriggerRow,
+    ) -> Result<AgentTriggerRow> {
+        dispatch!(self, create_agent_trigger, input)
+    }
+
+    pub async fn get_agent_trigger(
+        &self,
+        org_id: i64,
+        id: TriggerId,
+    ) -> Result<Option<AgentTriggerRow>> {
+        dispatch!(self, get_agent_trigger, org_id, id)
+    }
+
+    pub async fn list_agent_triggers(
+        &self,
+        org_id: i64,
+        agent_id: Option<AgentId>,
+        include_archived: bool,
+    ) -> Result<Vec<AgentTriggerRow>> {
+        dispatch!(
+            self,
+            list_agent_triggers,
+            org_id,
+            agent_id,
+            include_archived
+        )
+    }
+
+    pub async fn update_agent_trigger(
+        &self,
+        org_id: i64,
+        id: TriggerId,
+        input: UpdateAgentTrigger,
+    ) -> Result<Option<AgentTriggerRow>> {
+        dispatch!(self, update_agent_trigger, org_id, id, input)
+    }
+
+    pub async fn set_agent_trigger_durable_schedule_id(
+        &self,
+        org_id: i64,
+        id: TriggerId,
+        durable_schedule_id: Option<Uuid>,
+    ) -> Result<Option<AgentTriggerRow>> {
+        dispatch!(
+            self,
+            set_agent_trigger_durable_schedule_id,
+            org_id,
+            id,
+            durable_schedule_id
+        )
+    }
+
+    pub async fn delete_agent_trigger(&self, org_id: i64, id: TriggerId) -> Result<bool> {
+        dispatch!(self, delete_agent_trigger, org_id, id)
     }
 
     // ============================================

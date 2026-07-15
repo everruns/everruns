@@ -5,7 +5,7 @@ use everruns_core::{
     AgentId, AgentIdentityId, EventId, HarnessId, ImageId, LeasedResourceId, McpServerId,
     MessageId, ModelId, NotificationId, PrincipalId, ProviderId, ScheduleId, ServiceKind,
     SessionId, SessionParticipant, SessionParticipantId, SessionParticipantKind,
-    SessionParticipantRole, SkillId,
+    SessionParticipantRole, SkillId, TriggerId,
 };
 use everruns_durable::UpdateField;
 use sqlx::FromRow;
@@ -874,6 +874,8 @@ pub struct CreateSessionRow {
     pub blueprint_config: Option<serde_json::Value>,
     /// Parent session ID for governed subagent depth tracking.
     pub parent_session_id: Option<everruns_core::SessionId>,
+    /// Explicit internal-only budget/delegation root for detached peers.
+    pub budget_root_session_id: Option<everruns_core::SessionId>,
     /// Internal id of an existing workspace to attach this session to. When
     /// `None`, `create_session` auto-creates a default 1:1 workspace whose id
     /// equals the new session id (the equality invariant). When `Some`, the
@@ -2445,6 +2447,46 @@ pub struct UpdateAgentIdentity {
     pub avatar_url: UpdateField<String>,
     pub locale: UpdateField<String>,
     pub timezone: UpdateField<String>,
+    pub status: Option<String>,
+}
+
+// ============================================
+// Agent trigger models (agent-owned invocation triggers)
+// ============================================
+
+#[derive(Debug, Clone, FromRow)]
+pub struct AgentTriggerRow {
+    pub id: TriggerId,
+    pub org_id: i64,
+    pub agent_id: AgentId,
+    pub trigger_type: String,
+    pub config: serde_json::Value,
+    pub enabled: bool,
+    pub durable_schedule_id: Option<Uuid>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub archived_at: Option<DateTime<Utc>>,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateAgentTriggerRow {
+    pub org_id: i64,
+    pub id: TriggerId,
+    pub agent_id: AgentId,
+    pub trigger_type: String,
+    pub config: serde_json::Value,
+    pub enabled: bool,
+    pub durable_schedule_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateAgentTrigger {
+    pub trigger_type: Option<String>,
+    pub config: Option<serde_json::Value>,
+    pub enabled: Option<bool>,
+    pub durable_schedule_id: UpdateField<Uuid>,
     pub status: Option<String>,
 }
 

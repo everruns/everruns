@@ -9,13 +9,14 @@ use serde_json::json;
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use everruns_core::TriggerId;
 use everruns_core::message_filter::MessageQuery;
 use everruns_core::{AgentId, DEFAULT_ORG_ID, HarnessId, PrincipalId};
 use everruns_server::org_init;
 use everruns_server::storage::{
-    CreateAgentRow, CreateBudgetRow, CreateEventRow, CreatePrincipalRow, CreateProviderRow,
-    CreateSessionRow, CreateUsageJournalRow, CreateUsageLedgerRow, Database, MESSAGE_SAFETY_LIMIT,
-    Repository, StorageBackend,
+    CreateAgentRow, CreateAgentTriggerRow, CreateBudgetRow, CreateEventRow, CreatePrincipalRow,
+    CreateProviderRow, CreateSessionRow, CreateUsageJournalRow, CreateUsageLedgerRow, Database,
+    MESSAGE_SAFETY_LIMIT, Repository, StorageBackend, UpdateAgentTrigger,
 };
 use test_harness::get_database_url;
 
@@ -66,6 +67,7 @@ fn session_input(owner_principal_id: PrincipalId, label: &str) -> CreateSessionR
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
         workspace_id: None,
     }
 }
@@ -309,11 +311,108 @@ async fn run_repository_conformance(repo: &dyn Repository, label: &str, harness_
     );
 }
 
+/// Dual-backend round-trip for agent triggers (EVE-757): create -> get -> list
+/// (with agent filter) -> update -> bind durable schedule -> soft delete. Runs
+/// against both the in-memory and PostgreSQL backends via `StorageBackend`.
+async fn run_agent_trigger_conformance(
+    backend: &StorageBackend,
+    label: &str,
+    harness_id: HarnessId,
+) {
+    // A real agent is required so the PostgreSQL FK is satisfied.
+    let (agent, _) = backend
+        .upsert_agent_by_name(
+            DEFAULT_ORG_ID,
+            agent_input(format!("trigger-owner-{label}"), harness_id),
+        )
+        .await
+        .expect("create agent");
+
+    let created = backend
+        .create_agent_trigger(CreateAgentTriggerRow {
+            org_id: DEFAULT_ORG_ID,
+            id: TriggerId::new(),
+            agent_id: agent.id,
+            trigger_type: "schedule".to_string(),
+            config: json!({
+                "cron_expression": "0 0 * * * *",
+                "timezone": "UTC",
+                "session_mode": "shared_session",
+                "message": "hello",
+            }),
+            enabled: true,
+            durable_schedule_id: None,
+        })
+        .await
+        .expect("create agent trigger");
+    assert_eq!(created.status, "active");
+    assert_eq!(created.agent_id, agent.id);
+
+    let fetched = backend
+        .get_agent_trigger(DEFAULT_ORG_ID, created.id)
+        .await
+        .expect("get agent trigger")
+        .expect("trigger exists");
+    assert_eq!(fetched.id, created.id);
+
+    let by_agent = backend
+        .list_agent_triggers(DEFAULT_ORG_ID, Some(agent.id), false)
+        .await
+        .expect("list by agent");
+    assert!(by_agent.iter().any(|t| t.id == created.id));
+    assert!(by_agent.iter().all(|t| t.agent_id == agent.id));
+
+    let updated = backend
+        .update_agent_trigger(
+            DEFAULT_ORG_ID,
+            created.id,
+            UpdateAgentTrigger {
+                enabled: Some(false),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update agent trigger")
+        .expect("update returns row");
+    assert!(!updated.enabled);
+
+    // Clearing the durable schedule binding round-trips (a NULL binding avoids
+    // needing a real durable_schedules row for the FK).
+    let cleared = backend
+        .set_agent_trigger_durable_schedule_id(DEFAULT_ORG_ID, created.id, None)
+        .await
+        .expect("clear durable schedule")
+        .expect("returns row");
+    assert!(cleared.durable_schedule_id.is_none());
+
+    assert!(
+        backend
+            .delete_agent_trigger(DEFAULT_ORG_ID, created.id)
+            .await
+            .expect("soft delete")
+    );
+    let archived = backend
+        .get_agent_trigger(DEFAULT_ORG_ID, created.id)
+        .await
+        .expect("get after delete")
+        .expect("row present after soft delete");
+    assert_eq!(archived.status, "archived");
+    assert!(
+        !backend
+            .list_agent_triggers(DEFAULT_ORG_ID, None, false)
+            .await
+            .expect("list active")
+            .iter()
+            .any(|t| t.id == created.id)
+    );
+}
+
 #[tokio::test]
 async fn in_memory_repository_conformance() {
     let backend = StorageBackend::in_memory();
     let harness_id = HarnessId::from_uuid(Uuid::nil());
     run_repository_conformance(&backend, "memory", harness_id).await;
+    run_agent_trigger_conformance(&backend, "memory", harness_id).await;
 }
 
 #[tokio::test]
@@ -326,4 +425,5 @@ async fn postgres_repository_conformance() {
         .await
         .expect("generic harness id");
     run_repository_conformance(&backend, "postgres", harness_id).await;
+    run_agent_trigger_conformance(&backend, "postgres", harness_id).await;
 }

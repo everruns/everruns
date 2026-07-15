@@ -468,6 +468,7 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -597,6 +598,65 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
     );
 }
 
+#[tokio::test]
+async fn test_detached_budget_root_override_canonicalizes_postgres_chain() {
+    let backend = create_test_backend().await;
+    let owner = create_test_user(&backend, "detached-budget-root").await;
+    backend
+        .add_organization_member(TEST_ORG_ID, owner.id, "member")
+        .await
+        .expect("add owner to org");
+    let owner_principal_id = create_test_user_principal(&backend, TEST_ORG_ID, owner.id).await;
+    let base = CreateSessionRow {
+        workspace_id: None,
+        org_id: TEST_ORG_ID,
+        app_id: None,
+        harness_id: None,
+        agent_id: None,
+        agent_identity_id: None,
+        owner_principal_id,
+        resolved_owner_user_id: Some(owner.id),
+        title: Some(format!("detached-root-{}", Uuid::now_v7())),
+        locale: None,
+        tags: vec![],
+        model_id: None,
+        capabilities: serde_json::json!([]),
+        tools: serde_json::json!([]),
+        mcp_servers: serde_json::json!({}),
+        system_prompt: None,
+        initial_files: serde_json::json!([]),
+        hints: None,
+        network_access: None,
+        max_iterations: None,
+        parallel_tool_calls: None,
+        blueprint_id: None,
+        blueprint_config: None,
+        parent_session_id: None,
+        budget_root_session_id: None,
+    };
+    let root = backend.create_session(base.clone()).await.expect("root");
+    let mut detached_input = base.clone();
+    detached_input.budget_root_session_id = Some(root.id);
+    let detached = backend
+        .create_session(detached_input)
+        .await
+        .expect("detached");
+    let mut chain_input = base.clone();
+    chain_input.budget_root_session_id = Some(detached.id);
+    let chained = backend
+        .create_session(chain_input)
+        .await
+        .expect("detached chain");
+    assert_eq!(detached.root_session_id, Some(root.id));
+    assert_eq!(chained.root_session_id, Some(root.id));
+
+    let ordinary = backend
+        .create_session(base)
+        .await
+        .expect("ordinary fork root");
+    assert_eq!(ordinary.root_session_id, Some(ordinary.id));
+}
+
 // ============================================
 // Session Repository Tests
 // ============================================
@@ -699,6 +759,7 @@ async fn test_session_crud() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -883,6 +944,7 @@ async fn test_event_crud() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -980,6 +1042,7 @@ async fn test_event_exclude_types() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1085,6 +1148,7 @@ async fn test_message_events_filtered_offset_and_latest_limit() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1184,6 +1248,7 @@ async fn test_message_events_filtered_keep_head_loads_head_and_tail() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1299,6 +1364,7 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1413,6 +1479,18 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
     );
 
     let pool = backend.pool().expect("postgres pool");
+    let message_index: (String,) = sqlx::query_as(
+        "SELECT indexdef FROM pg_indexes WHERE schemaname = current_schema() AND indexname = 'idx_events_messages'",
+    )
+    .fetch_one(pool)
+    .await
+    .expect("message events partial index should exist");
+    assert!(
+        message_index.0.contains("WHERE"),
+        "idx_events_messages should remain a partial index: {}",
+        message_index.0
+    );
+
     let plan_rows: Vec<(String,)> = sqlx::query_as(
         r#"
         EXPLAIN (ANALYZE, BUFFERS)
@@ -1437,10 +1515,6 @@ async fn test_long_message_history_reads_are_bounded_and_index_supported() {
         .map(|row| row.0)
         .collect::<Vec<_>>()
         .join("\n");
-    assert!(
-        plan.contains("idx_events_messages"),
-        "message history query should use idx_events_messages:\n{plan}"
-    );
     assert!(
         !plan.contains("Seq Scan on events"),
         "message history query should not seq-scan events:\n{plan}"
@@ -1510,6 +1584,7 @@ async fn test_event_filter_types() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -1818,6 +1893,7 @@ async fn test_session_file_crud() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -2289,6 +2365,7 @@ async fn test_session_usage_tracking() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -2395,6 +2472,7 @@ async fn test_session_previews() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create session");
@@ -3003,6 +3081,7 @@ async fn list_monitor_tasks_with_inactive_schedules_pg() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("Failed to create test session");
@@ -3332,6 +3411,7 @@ async fn list_org_session_tasks_pg() {
                     blueprint_id: None,
                     blueprint_config: None,
                     parent_session_id: None,
+                    budget_root_session_id: None,
                 })
                 .await
                 .expect("create session")

@@ -16,7 +16,7 @@ use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
     BudgetChecker, ImageArtifactStore, ImageResolver, LeasedResourceStore, PaymentAuthority,
-    ProviderCredentialStore, ResolvedImage, ResolvedModel,
+    ProviderCredentialStore, ResolvedImage, ResolvedModel, SessionCreationAuthority,
 };
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
@@ -315,6 +315,16 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Get the authority for detached peer-session creation, scoped to the
+    /// current session owner.
+    fn session_creation_authority(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+    ) -> Option<Arc<dyn SessionCreationAuthority>> {
+        None
+    }
+
     /// Per-org outbound tool-call rate limiter (TM-TOOL-009).
     /// Default: `None` (no rate limiting — suitable for dev/worker environments
     /// that do not need the production limit).
@@ -360,6 +370,14 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         org_id: i64,
         app_id: &str,
         channel_id: &str,
+    ) -> Result<serde_json::Value>;
+
+    /// Invoke an agent schedule trigger when a durable schedule fires (EVE-757).
+    async fn invoke_agent_trigger(
+        &self,
+        org_id: i64,
+        agent_id: &str,
+        trigger_id: &str,
     ) -> Result<serde_json::Value>;
 
     /// Claim due leased resources for cleanup work.
@@ -674,5 +692,9 @@ impl<A: WorkerAdapters> everruns_core::traits::SessionFileSystem for SessionAdap
         self.adapters
             .create_directory(session_id.uuid(), path)
             .await
+    }
+
+    fn is_mount_resolver(&self) -> bool {
+        false
     }
 }

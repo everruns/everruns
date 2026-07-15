@@ -322,6 +322,7 @@ impl Tool for ListSkillsTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         crate::tool_narration::narrate_skill(&tool_call.name, &tool_call.arguments, phase, locale)
     }
@@ -450,6 +451,7 @@ impl Tool for ActivateSkillFromVfsTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         crate::tool_narration::narrate_skill(&tool_call.name, &tool_call.arguments, phase, locale)
     }
@@ -777,6 +779,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for MockFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             session_id: SessionId,

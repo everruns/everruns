@@ -22,10 +22,9 @@
 //
 // Determinism note: one llmsim driver serves the parent and every child. Tool
 // calls are content-keyed (`ToolCallConfig::Conditional`) so parent/child
-// scheduling order is irrelevant, and the parent agent's `max_iterations(2)`
-// means the re-triggered second `spawn_agent` reason is generated but never
-// reaches Act (the turn state machine completes at the cap before acting), so
-// exactly one delegation runs per parent turn.
+// scheduling order is irrelevant. The subagent and handoff proofs use separate
+// parent sessions inside the same runtime so a background completion wake or
+// previous trigger in one transcript cannot steer the other target's turn.
 
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -245,7 +244,8 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
     // agent_handoff target pointing at the plain target agent below.
     let parent_harness_id = HarnessId::from_seed(677);
     let parent_agent_id = AgentId::from_seed(677);
-    let parent_session_id = SessionId::from_seed(677);
+    let parent_subagent_session_id = SessionId::from_seed(677);
+    let parent_handoff_session_id = SessionId::from_seed(679);
     // Handoff target: a plain agent with no delegation capabilities — it just
     // replies. Its harness/agent must be seeded so the child session is runnable.
     let target_harness_id = HarnessId::from_seed(678);
@@ -273,10 +273,15 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
         .id(parent_agent_id)
         .max_iterations(2)
         .build();
-    let parent_session = SessionBuilder::new(parent_harness_id)
-        .id(parent_session_id)
+    let parent_subagent_session = SessionBuilder::new(parent_harness_id)
+        .id(parent_subagent_session_id)
         .agent(parent_agent_id)
-        .title("EVE-677 parent")
+        .title("EVE-677 parent subagent")
+        .build();
+    let parent_handoff_session = SessionBuilder::new(parent_harness_id)
+        .id(parent_handoff_session_id)
+        .agent(parent_agent_id)
+        .title("EVE-677 parent handoff")
         .build();
 
     let target_harness = HarnessBuilder::new("target", "You are a specialist agent that replies.")
@@ -312,7 +317,8 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
         .llm_sim(spawn_agent_sim(HANDOFF_TARGET_ID))
         .harness(parent_harness)
         .agent(parent_agent)
-        .session(parent_session)
+        .session(parent_subagent_session)
+        .session(parent_handoff_session)
         .harness(target_harness)
         .agent(target_agent)
         .build()
@@ -323,7 +329,7 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
     // AC #6: the single assembled `spawn_agent` advertises the union of the two
     // active delegation targets, in the dispatcher's canonical order.
     let context = runtime
-        .load_context(parent_session_id)
+        .load_context(parent_subagent_session_id)
         .await
         .expect("load context");
     let spawn_agent = context
@@ -341,7 +347,7 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
     // ---- Target 1: subagent (background) -----------------------------------
     let turn = runtime
         .run_text_turn(
-            parent_session_id,
+            parent_subagent_session_id,
             format!("Please {TRIGGER_SUBAGENT} right now."),
         )
         .await
@@ -352,16 +358,30 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
         turn.error
     );
 
-    let subagent_task = registry
-        .list(parent_session_id, None)
+    let subagent_tasks = registry
+        .list(parent_subagent_session_id, None)
         .await
-        .expect("list tasks")
+        .expect("list tasks");
+    assert_eq!(
+        subagent_tasks
+            .iter()
+            .filter(|t| t.kind == TASK_KIND_SUBAGENT)
+            .count(),
+        1,
+        "spawn_agent(subagent) should register exactly one subagent task"
+    );
+    let subagent_task = subagent_tasks
         .into_iter()
         .find(|t| t.kind == TASK_KIND_SUBAGENT)
         .expect("spawn_agent(subagent) registered a subagent task");
     assert_eq!(subagent_task.spec["mode"], "background");
 
-    let settled = await_terminal(registry.as_ref(), parent_session_id, &subagent_task.id).await;
+    let settled = await_terminal(
+        registry.as_ref(),
+        parent_subagent_session_id,
+        &subagent_task.id,
+    )
+    .await;
     assert_eq!(
         settled.state,
         SessionTaskState::Succeeded,
@@ -392,20 +412,10 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
         "child transcript should contain its marker: {child_reply}"
     );
 
-    // The background subagent completion queues a wake for the parent; the
-    // runtime injects it as a user message on the next turn's first reason
-    // iteration. We deliberately do NOT drain it with an intermediate turn: any
-    // parent turn whose own prompt matches no llmsim pattern would walk the
-    // newest-first scan back to the still-present TRIGGER_SUBAGENT message and
-    // spawn a *second* subagent (the wake text itself matches nothing). The
-    // handoff turn below is safe precisely because its newer TRIGGER_HANDOFF
-    // message wins the newest-first scan, so the stale subagent trigger is never
-    // reached and the pending wake is absorbed harmlessly.
-
     // ---- Target 2: agent handoff (foreground) ------------------------------
     let turn = runtime
         .run_text_turn(
-            parent_session_id,
+            parent_handoff_session_id,
             format!("Please {TRIGGER_HANDOFF} right now."),
         )
         .await
@@ -413,9 +423,9 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
     assert!(turn.success, "parent handoff turn failed: {:?}", turn.error);
 
     // AC #3: the handoff has its OWN kind — `list_tasks(kind=subagent)` must not
-    // return it, and there is exactly one subagent task (from target 1).
+    // return it in the handoff parent session.
     let tasks = registry
-        .list(parent_session_id, None)
+        .list(parent_handoff_session_id, None)
         .await
         .expect("list tasks");
     assert_eq!(
@@ -423,7 +433,7 @@ async fn spawn_agent_dispatches_subagent_and_handoff_via_llmsim() {
             .iter()
             .filter(|t| t.kind == TASK_KIND_SUBAGENT)
             .count(),
-        1,
+        0,
         "the handoff must not be recorded under the subagent kind"
     );
     // Foreground settles inline, so the handoff task is already terminal.

@@ -29,6 +29,16 @@ use std::sync::Arc;
 /// the seam that keeps the platform store honest without it owning the runtime.
 #[async_trait]
 pub trait LocalSessionRunner: Send + Sync {
+    /// Sessions this host can currently route messages to.
+    ///
+    /// `None` means every session in the organization is routable. Embedded
+    /// hosts with a narrower or dynamic route set must return `Some`, including
+    /// an empty vector when no session is active, so schedule claims stay scoped
+    /// to work the host can deliver.
+    async fn routable_session_ids(&self) -> Result<Option<Vec<SessionId>>> {
+        Ok(None)
+    }
+
     /// Create a child/local session and persist it in the session catalog.
     async fn create_session(
         &self,
@@ -44,6 +54,7 @@ pub trait LocalSessionRunner: Send + Sync {
         request: PlatformCreateSessionRequest,
     ) -> Result<Session> {
         if request.forked_from_session_id.is_some()
+            || request.budget_root_session_id.is_some()
             || request.seed != everruns_core::session::SessionSeedMode::Fresh
         {
             return Err(unsupported("create_session(seed)"));

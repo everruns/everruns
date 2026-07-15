@@ -20,6 +20,7 @@ here that walks that path.
 | Unverified user verifies (pending / resend / wrong-address / expired) | `TC006_email_verification_flow.md` |
 | OAuth rejection categories land on the login door, never a dead end | `TC007_oauth_error_paths.md` |
 | **Closed traps + gated-verify recovery** (no path silently no-ops) | `TC008_reachability_dead_end_recovery.md` |
+| Protected route delegates login to a trusted remote origin | `TC010_external_login_origin.md` |
 
 Account states referenced across the suite (see `machine.ts`):
 **S0** `none` · **S1** `local_unverified` · **S2** `local_verified` ·

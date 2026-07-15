@@ -219,6 +219,35 @@ impl SessionService {
         .await
     }
 
+    /// Create a session owned by an agent that its own schedule trigger woke
+    /// (EVE-757). Mirrors [`Self::create_from_app`] but there is no App row:
+    /// the session runs on the agent's harness (P1), is hosted by the agent
+    /// (P2, via `agent_public_id`), and is owned by `owner_principal_id` so the
+    /// shared-session reuse lookup (`find_session_by_tags_and_owner`) matches
+    /// across fires. `app_id` is `None`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_from_agent_trigger(
+        &self,
+        caller: &Caller,
+        harness_id: Uuid,
+        agent_internal_id: Uuid,
+        agent_public_id: AgentId,
+        owner_principal_id: PrincipalId,
+        resolved_owner_user_id: Option<Uuid>,
+        req: CreateSessionRequest,
+    ) -> Result<Session> {
+        self.create_inner(
+            caller,
+            harness_id,
+            Some(agent_internal_id),
+            Some(agent_public_id),
+            None,
+            Some((owner_principal_id, resolved_owner_user_id)),
+            req,
+        )
+        .await
+    }
+
     /// Fork a session into a new, independent session (specs/forking-sessions.md).
     ///
     /// Creates a fresh session that is config-identical to `parent_id` (modulo
@@ -303,6 +332,7 @@ impl SessionService {
             parallel_tool_calls: parent.parallel_tool_calls,
             parent_session_id: None,
             forked_from_session_id: Some(parent_id),
+            budget_root_session_id: None,
             seed: SessionSeedMode::Fork,
             workspace_id: None,
         };
@@ -767,6 +797,7 @@ impl SessionService {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: req.parent_session_id,
+            budget_root_session_id: req.budget_root_session_id,
             workspace_id,
         };
         let row = self.db.create_session(input).await?;
@@ -946,6 +977,7 @@ impl SessionService {
             blueprint_id: Some(blueprint_id),
             blueprint_config,
             parent_session_id: None,
+            budget_root_session_id: None,
         };
         let mut row = self.db.create_session(input).await?;
         if requested_goal.is_some() {
@@ -1768,6 +1800,7 @@ impl SessionService {
             blueprint_config: None,
             network_access: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         };
         let row = self.db.create_session(input).await?;
         let session_id = row.id.uuid();
@@ -2702,6 +2735,7 @@ mod tests {
             parallel_tool_calls: None,
             parent_session_id: None,
             forked_from_session_id: None,
+            budget_root_session_id: None,
             seed: SessionSeedMode::Fresh,
         }
     }
@@ -3062,6 +3096,7 @@ mod tests {
                 blueprint_id: None,
                 blueprint_config: None,
                 parent_session_id: None,
+                budget_root_session_id: None,
             })
             .await
             .unwrap();
@@ -4078,6 +4113,7 @@ mod tests {
                 blueprint_config: None,
                 network_access: None,
                 parent_session_id: None,
+                budget_root_session_id: None,
             })
             .await
             .unwrap();
@@ -4408,6 +4444,7 @@ mod tests {
                 blueprint_config: None,
                 network_access: None,
                 parent_session_id: None,
+                budget_root_session_id: None,
             })
             .await
             .unwrap();

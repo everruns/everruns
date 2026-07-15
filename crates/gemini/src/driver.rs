@@ -688,7 +688,8 @@ impl ChatDriver for GeminiChatDriver {
                             buffer.push_str(&String::from_utf8_lossy(&bytes));
                         }
                         Some(Err(e)) => {
-                            let result = Ok(LlmStreamEvent::Error(format!("Stream error: {}", e)));
+                            let result =
+                                Ok(LlmStreamEvent::Error(format!("Stream error: {}", e).into()));
                             return Some((
                                 result,
                                 (

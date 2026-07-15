@@ -240,6 +240,7 @@ fn harness(harness_id: everruns_core::HarnessId) -> Harness {
 
 fn agent(
     agent_id: everruns_core::AgentId,
+    harness_id: everruns_core::HarnessId,
     default_model: Option<everruns_core::typed_id::ModelId>,
 ) -> Agent {
     Agent {
@@ -252,6 +253,7 @@ fn agent(
             "Keep the recommendation practical: one primary pick, one backup, one reason each."
                 .into(),
         default_model_id: default_model,
+        harness_id,
         default_version_id: None,
         forked_from_agent_id: None,
         forked_from_version_id: None,
@@ -382,7 +384,7 @@ pub async fn run_weekend_concierge_demo() -> ExampleResult<ExampleRun> {
             provider_metadata: None,
         })
         .harness(harness(harness_id))
-        .agent(agent(agent_id, None))
+        .agent(agent(agent_id, harness_id, None))
         .session(session(session_id, harness_id, agent_id))
         .seed_text_file(
             session_id,

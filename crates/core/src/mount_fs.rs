@@ -109,6 +109,18 @@ impl MountFs {
         Arc::new(Self::new(workspace))
     }
 
+    /// Wrap only when `workspace` is not already a [`MountFs`].
+    ///
+    /// Re-wrapping would collapse nested mount tables (e.g. multi-root
+    /// workspaces) into a single primary view and break named-mount display.
+    pub fn wrap_if_needed(workspace: Arc<dyn SessionFileSystem>) -> Arc<dyn SessionFileSystem> {
+        if workspace.is_mount_resolver() {
+            workspace
+        } else {
+            Self::wrap(workspace)
+        }
+    }
+
     /// Register an additional mount (e.g. a read-only skills source or a named
     /// volume) backed by a different store. Longest-prefix wins at resolution.
     pub fn with_mount(
@@ -312,6 +324,10 @@ impl SessionFileSystem for MountFs {
         self.primary.display_root()
     }
 
+    fn is_mount_resolver(&self) -> bool {
+        true
+    }
+
     fn resolve_path(&self, input: &str) -> String {
         // The absolute virtual path: relative inputs resolve against cwd,
         // `.`/`..` collapse, leading `..` clamps at root. This is the namespace
@@ -426,6 +442,28 @@ impl SessionFileSystem for MountFs {
     ) -> Result<Vec<GrepMatch>> {
         match path_pattern {
             Some(pp) => {
+                let matcher = crate::session_path::GrepPathPattern::new(pp)?;
+                if matcher.is_glob() && (!pp.starts_with('/') || pp.starts_with(WORKSPACE_MOUNT)) {
+                    let mut matches = Vec::new();
+                    for resolved in self.grep_mounts() {
+                        matches.extend(
+                            resolved
+                                .backend
+                                .grep_files(session_id, pattern, Some(&resolved.backend_path))
+                                .await?
+                                .into_iter()
+                                .map(|grep_match| resolved.map_grep_match(grep_match))
+                                .filter(|grep_match| matcher.is_match(&grep_match.path)),
+                        );
+                    }
+                    matches.sort_by(|a, b| {
+                        a.path
+                            .cmp(&b.path)
+                            .then(a.line_number.cmp(&b.line_number))
+                            .then(a.line.cmp(&b.line))
+                    });
+                    return Ok(matches);
+                }
                 let resolved = self.resolve(pp)?;
                 Ok(resolved
                     .backend
@@ -486,6 +524,7 @@ impl SessionFileSystem for MountFs {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session_path::GrepPathPattern;
 
     fn sid() -> SessionId {
         SessionId::from_seed(1)
@@ -500,6 +539,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for FlatStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(&self, sid: SessionId, path: &str) -> Result<Option<SessionFile>> {
             let files = self.files.lock().unwrap();
             Ok(files.get(path).map(|content| SessionFile {
@@ -565,11 +608,12 @@ mod tests {
             pattern: &str,
             path_pattern: Option<&str>,
         ) -> Result<Vec<GrepMatch>> {
+            let path_pattern = path_pattern.map(GrepPathPattern::new).transpose()?;
             let files = self.files.lock().unwrap();
             let mut matches = Vec::new();
             for (path, content) in files.iter() {
-                if let Some(filter) = path_pattern
-                    && !path.contains(filter)
+                if let Some(filter) = &path_pattern
+                    && !filter.is_match(path)
                 {
                     continue;
                 }
@@ -746,5 +790,67 @@ mod tests {
                 "/workspace/roots/backend/Cargo.toml".to_string()
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn grep_resolves_workspace_glob_to_backend_namespace() {
+        let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        let fs = MountFs::new(backend);
+        fs.write_file(sid(), "/workspace/src/lib.rs", "needle", "text")
+            .await
+            .unwrap();
+        fs.write_file(sid(), "/workspace/docs/readme.md", "needle", "text")
+            .await
+            .unwrap();
+
+        let matches = fs
+            .grep_files(sid(), "needle", Some("/workspace/src/**/*.rs"))
+            .await
+            .unwrap();
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].path, "/src/lib.rs");
+    }
+
+    #[tokio::test]
+    async fn grep_glob_searches_every_matching_mount() {
+        let workspace: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        let volume: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        let fs = MountFs::new(workspace).with_mount("/workspace/roots/backend", volume, "/");
+        fs.write_file(sid(), "/workspace/Cargo.toml", "needle", "text")
+            .await
+            .unwrap();
+        fs.write_file(
+            sid(),
+            "/workspace/roots/backend/Cargo.toml",
+            "needle",
+            "text",
+        )
+        .await
+        .unwrap();
+
+        let paths: Vec<_> = fs
+            .grep_files(sid(), "needle", Some("**/*.toml"))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|hit| hit.path)
+            .collect();
+        assert_eq!(
+            paths,
+            vec![
+                "/Cargo.toml".to_string(),
+                "/workspace/roots/backend/Cargo.toml".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn mount_fs_identifies_as_resolver() {
+        let workspace: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        let fs = MountFs::wrap(workspace);
+        assert!(fs.is_mount_resolver());
+        let again = MountFs::wrap_if_needed(fs.clone());
+        assert!(Arc::ptr_eq(&fs, &again));
     }
 }

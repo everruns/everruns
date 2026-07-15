@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ModelWithProvider, ReasoningEffort } from "@/lib/api/types";
+import type { ModelWithProvider, ReasoningEffort, Verbosity } from "@/lib/api/types";
 
 // How many recently-used models to remember and surface in the picker.
 const RECENT_MODELS_LIMIT = 2;
@@ -35,6 +35,8 @@ export function useChatModelSelection({
   defaultModel,
   reasoningEffort,
   setReasoningEffort,
+  verbosity,
+  setVerbosity,
 }: {
   agentId?: string;
   sessionId: string;
@@ -42,6 +44,8 @@ export function useChatModelSelection({
   defaultModel?: ModelWithProvider;
   reasoningEffort: ReasoningEffort | "";
   setReasoningEffort: (value: ReasoningEffort | "") => void;
+  verbosity: Verbosity | "";
+  setVerbosity: (value: Verbosity | "") => void;
 }) {
   const [selectedModelId, setSelectedModelId] = useState("");
   const [recentModelIds, setRecentModelIds] = useState<string[]>([]);
@@ -113,6 +117,35 @@ export function useChatModelSelection({
     ? getReasoningEffortName(reasoningEffortConfig.default)
     : "Medium";
 
+  const verbosityConfig = activeModel?.profile?.verbosity;
+  const supportsVerbosity = Boolean(verbosityConfig);
+
+  // Clear the verbosity override when it no longer applies: the active model has
+  // no verbosity config, or the stored value isn't offered by this model.
+  useEffect(() => {
+    if (!supportsVerbosity) {
+      setVerbosity("");
+      return;
+    }
+
+    if (
+      verbosityConfig &&
+      verbosity &&
+      !verbosityConfig.values.some((item) => item.value === verbosity)
+    ) {
+      setVerbosity("");
+    }
+  }, [supportsVerbosity, verbosityConfig, verbosity, setVerbosity]);
+
+  const getVerbosityName = (value: string): string => {
+    const item = verbosityConfig?.values.find((entry) => entry.value === value);
+    return item?.name ?? value;
+  };
+
+  const defaultVerbosityName = verbosityConfig?.default
+    ? getVerbosityName(verbosityConfig.default)
+    : "Medium";
+
   const modelTriggerLabel = selectedModel?.display_name ?? "Default";
   const defaultModelOptionLabel = defaultModel?.display_name
     ? `Default (${defaultModel.display_name})`
@@ -154,6 +187,10 @@ export function useChatModelSelection({
     supportsReasoning,
     reasoningEffortConfig,
     defaultEffortName,
+    supportsVerbosity,
+    verbosityConfig,
+    defaultVerbosityName,
+    getVerbosityName,
     modelTriggerLabel,
     defaultModelOptionLabel,
     getReasoningEffortName,
