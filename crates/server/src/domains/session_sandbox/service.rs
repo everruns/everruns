@@ -612,6 +612,7 @@ mod tests {
                 blueprint_id: None,
                 blueprint_config: None,
                 parent_session_id: None,
+                budget_root_session_id: None,
             })
             .await
             .unwrap();
@@ -671,6 +672,7 @@ mod tests {
                 blueprint_id: None,
                 blueprint_config: None,
                 parent_session_id: None,
+                budget_root_session_id: None,
             })
             .await
             .unwrap();
@@ -732,6 +734,7 @@ mod tests {
                 blueprint_id: None,
                 blueprint_config: None,
                 parent_session_id: None,
+                budget_root_session_id: None,
             })
             .await
             .unwrap();

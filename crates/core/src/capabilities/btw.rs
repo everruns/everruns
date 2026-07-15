@@ -164,6 +164,7 @@ mod tests {
             owner: None,
             effective_owner: None,
             title: None,
+            goal: None,
             locale: None,
             preview: None,
             output_preview: None,

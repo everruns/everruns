@@ -120,6 +120,30 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn get_principals_for_session_list(
+        &self,
+        org_id: i64,
+        principal_ids: &[PrincipalId],
+        resolved_user_ids: &[Uuid],
+    ) -> Result<Vec<PrincipalRow>> {
+        let principal_ids: Vec<Uuid> = principal_ids.iter().map(|id| id.uuid()).collect();
+        let rows = sqlx::query_as::<_, PrincipalRow>(
+            r#"
+            SELECT id, public_id, org_id, kind, subject_id, parent_principal_id, resolved_user_id, metadata, status, created_at, updated_at, archived_at, deleted_at
+            FROM principals
+            WHERE org_id = $1
+              AND (id = ANY($2) OR (kind = 'user' AND subject_id = ANY($3)))
+            "#,
+        )
+        .bind(org_id)
+        .bind(&principal_ids)
+        .bind(resolved_user_ids)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
     pub async fn list_principals_by_resolved_user(
         &self,
         org_id: i64,

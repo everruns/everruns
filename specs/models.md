@@ -14,6 +14,7 @@ See `crates/core/src/agent.rs` for full field definitions.
 
 Key design points:
 - All entity IDs use the dual-ID pattern (internal UUID PK + external public_id). See `specs/id-schema.md`.
+- `harness_id` is required and points to the active harness that supplies the agent's base execution environment. Creating an agent without an explicit harness defaults to the org's built-in `generic` harness.
 - `capabilities` field stores enabled capability references (resolved at runtime from registry)
 - `default_version_id` selects the immutable AgentVersion used by default deployments when `FEATURE_AGENT_VERSIONS` is enabled. See `specs/agent-versions.md`.
 - `status`: `active`, `archived`, or `deleted`
@@ -51,20 +52,25 @@ Last-resort validation limits to guard against abuse. API returns generic `400 B
 
 ### Session
 
-An instance of agentic loop execution. Sessions are top-level entities under organizations, with an agent assigned to work in each session.
+An instance of agentic loop execution. Sessions are top-level entities under organizations, with an optional host agent assigned to work in each session.
 
 See `crates/core/src/session.rs` for full field definitions.
 
 See `specs/localization.md` for locale/timezone resolution and durable preference rules.
 
 Key design points:
-- Sessions are direct children of organizations (not agents). The `agent_id` specifies which agent is assigned.
+- Sessions are direct children of organizations (not agents). The `agent_id` column is a denormalized pointer to the active host agent for existing reads.
+- `session_participants` records the users and agents associated with the session. Existing sessions are backfilled with an owner user participant and, when `agent_id` is present, a host agent participant.
+- The database enforces at most one active host agent participant per session.
 - `agent_version_id` captures the immutable AgentVersion used for runtime execution when agent versions are enabled.
 - `app_id` is a nullable internal backreference set only when the server creates a session from an App channel. User/API, MCP, and platform-management session creation paths cannot set it.
 - `locale` is an optional session-level BCP 47 tag (for example `uk-UA`). The worker carries it through turn loading and prompt construction so scheduled runs, resumed runs, and subagents can inherit localized behavior.
 - `timezone` should be a separate optional session-level IANA timezone for unattended execution defaults. Interactive turns may override it with live browser timezone for that turn.
 - `features` field is computed at read time by aggregating `features()` from all active capabilities (not stored). See `specs/capabilities.md#capability-features`.
 - `capabilities` allows session-level capabilities additive to the agent's. Agent capabilities applied first, then session capabilities.
+- Server-managed agent/user scoped memories are represented by `memories.scope`
+  (`org`, `agent`, `user`) and are mounted at session creation under reserved
+  `/memory/*` paths. See `specs/memory.md`.
 - Status transitions: `started` → `active` (processing) → `idle` (waiting for input)
 - Sessions work indefinitely — after processing, status returns to `idle`.
 
@@ -121,7 +127,15 @@ See `specs/localization.md` for precedence rules.
 
 **Controls:**
 
-Optional per-message overrides for model selection and reasoning configuration.
+Optional per-message overrides for model selection, reasoning configuration, speed (service tier), and verbosity.
+
+**Speed (Service Tier):**
+
+When `controls.speed` is set (`flex`, `default`, or `priority`), OpenAI requests carry the matching `service_tier`; see [LLM Drivers spec](llm-drivers.md).
+
+**Verbosity:**
+
+When `controls.verbosity` is set (`low`, `medium`, or `high`), OpenAI requests carry the matching `verbosity`, hinting how expansive the model's answer should be (independent of reasoning effort). Only sent to models whose profile advertises a `verbosity` config (currently the GPT-5.5 and GPT-5.6 series); it is stripped for models that do not support it. See [LLM Drivers spec](llm-drivers.md).
 
 **Extended Thinking:**
 
@@ -221,7 +235,7 @@ separate usage meanings (`configured`, `resolved`, `exposed`, `invoked`,
 
 ### LLM Provider
 
-Configuration for LLM API providers. See `crates/core/src/llm_models.rs` for full type definitions.
+Configuration for LLM API providers. See `crates/core/src/provider.rs` for full type definitions.
 
 Key design points:
 - `provider_type` stored as plain string without CHECK constraint (forward compatibility)
@@ -236,7 +250,7 @@ Default providers and models seeded on startup. See `crates/server/src/seed.rs` 
 
 ### LLM Model
 
-Configuration for a specific model within a provider. See `crates/core/src/llm_models.rs`.
+Configuration for a specific model within a provider. See `crates/core/src/model.rs`.
 
 Key design points:
 - `source` enum: `manual` (user-added), `discovered` (from provider API), `predefined` (seeded)
@@ -253,7 +267,7 @@ Read-only metadata describing model capabilities, costs, and limits. Computed at
 
 **IMPORTANT:** Never guess or extrapolate profile data (pricing, limits, capabilities). Prefer models.dev when a model is listed there; otherwise source directly from the provider's official documentation (e.g. `developers.openai.com/api/docs/models/<id>`, Anthropic model cards). When a profile is added ahead of the models.dev entry, note the provider-doc source in a comment on the profile block and revisit once models.dev catches up. Never guess values.
 
-See `crates/core/src/llm_models.rs` for `LlmModelProfile`, `LlmModelCost`, `LlmModelLimits`, and `ReasoningEffortConfig` types.
+See `crates/core/src/model.rs` for `ModelProfile`, `ModelCost`, `ModelLimits`, and `ReasoningEffortConfig` types.
 
 Profiles matched by provider_type + model_id with version normalization (e.g., "gpt-4o-2024-11-20" → "gpt-4o").
 

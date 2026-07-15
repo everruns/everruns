@@ -1095,12 +1095,30 @@ async fn handle_tasks_get(
 
     match tool_session_get_status(&args, org, state).await {
         Ok(status_json) => {
-            let status_value: Value = serde_json::from_str(&status_json).unwrap_or(Value::Null);
+            let mut status_value: Value = serde_json::from_str(&status_json).unwrap_or(Value::Null);
             let session_status = status_value
                 .get("status")
                 .and_then(Value::as_str)
                 .unwrap_or("");
             let task_status = tasks::task_status_from_session_status(session_status);
+
+            // EVE-728: when the task reported a deterministic structured result
+            // (result.json via a `result_schema`, EVE-678), surface it under
+            // `result.structured_result` so Tasks clients get the machine result
+            // instead of only last-message / status text. The read is org-scoped
+            // (same org `tool_session_get_status` already validated), preserving
+            // tenant isolation. Parse failures / absent results are silently
+            // skipped — the status payload is still returned.
+            if let Ok(session_id) = task_id.parse::<everruns_core::typed_id::SessionId>()
+                && let Ok(Some(structured)) =
+                    crate::domains::session_tasks::read_structured_task_result(
+                        &state.db, org.org_id, session_id,
+                    )
+                    .await
+                && let Some(obj) = status_value.as_object_mut()
+            {
+                obj.insert("structured_result".to_string(), structured);
+            }
 
             let mut task = tasks::task_handle(task_id, task_status);
             // The full session_get_status payload is the task's result view. For

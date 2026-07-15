@@ -13,7 +13,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 use std::sync::Arc;
 
@@ -29,6 +29,15 @@ pub type TaskProgress = crate::background::BackgroundProgress;
 /// Well-known task kinds. Kind stays a free-form string; these constants
 /// cover the built-in executors.
 pub const TASK_KIND_SUBAGENT: &str = "subagent";
+/// Detached peer session. Canceling this task cooperatively cancels the peer
+/// session (standard send/cancel path) and settles the tracking task
+/// `canceled` — cancel means cancel, not detach-only (EVE-766).
+pub const TASK_KIND_SESSION: &str = "session";
+/// Cross-agent handoff to a different configured Agent in the same harness.
+/// Distinct from `subagent` so `list_tasks(kind="subagent")` returns only
+/// same-agent subagents and not handoffs (they share the spawn shape but are a
+/// different target). Matches the historical `session_resources.kind`.
+pub const TASK_KIND_AGENT_HANDOFF: &str = "agent_handoff";
 pub const TASK_KIND_EXTERNAL_AGENT: &str = "external_agent";
 pub const TASK_KIND_BACKGROUND_TOOL: &str = "background_tool";
 /// Long-lived monitor task linked to a session schedule. Stays `running`
@@ -196,12 +205,20 @@ pub struct SessionTask {
     /// Owning session.
     #[cfg_attr(feature = "openapi", schema(value_type = String))]
     pub session_id: SessionId,
+    /// Root of the owning session's delegation tree (EVE-680). Populated on
+    /// API reads from the denormalized storage column so cross-session tooling
+    /// (e.g. the Work view) can group a whole tree's tasks by one id. `None`
+    /// for a top-level session that is its own root, or when unavailable.
+    /// Storage-derived, never client-settable on create.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+    pub root_session_id: Option<SessionId>,
     /// Task kind: "subagent", "external_agent", "background_tool", "monitor", …
     pub kind: String,
     /// Human-readable label.
     pub display_name: String,
     /// Kind-specific input (instructions, tool args, external agent id).
-    #[serde(default)]
+    #[serde(default, serialize_with = "serialize_public_task_spec")]
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub spec: Value,
     pub state: SessionTaskState,
@@ -247,6 +264,32 @@ pub struct SessionTask {
 
 fn default_attempt() -> i32 {
     1
+}
+
+fn serialize_public_task_spec<S>(
+    spec: &Value,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    redacted_public_task_spec(spec).serialize(serializer)
+}
+
+fn redacted_public_task_spec(spec: &Value) -> Value {
+    let mut public = spec.clone();
+    let Some(configs) = public.get_mut("push_configs").and_then(Value::as_array_mut) else {
+        return public;
+    };
+    for config in configs {
+        let Some(config) = config.as_object_mut() else {
+            continue;
+        };
+        if config.remove("secret").is_some() {
+            config.insert("has_secret".to_string(), Value::Bool(true));
+        }
+    }
+    public
 }
 
 /// Input for creating a task.
@@ -429,6 +472,9 @@ pub fn new_session_task(input: CreateSessionTask, now: DateTime<Utc>) -> Session
     SessionTask {
         id: input.id.unwrap_or_else(generate_task_id),
         session_id: input.session_id,
+        // Denormalized at storage insert from the owning session's root; a
+        // freshly-built task carries no root until read back.
+        root_session_id: None,
         kind: input.kind,
         display_name: input.display_name,
         spec: input.spec,
@@ -918,6 +964,41 @@ mod tests {
         assert!(t.id.starts_with("task_"));
         assert_eq!(t.state, SessionTaskState::Queued);
         assert!(t.started_at.is_none());
+    }
+
+    #[test]
+    fn serialization_redacts_spec_push_config_secrets() {
+        let mut t = task();
+        t.spec = serde_json::json!({
+            "instructions": "notify",
+            "push_configs": [
+                {
+                    "url": "https://hooks.example.com/everruns",
+                    "secret": "LEAKME-HMAC-KEY",
+                    "event_filter": ["terminal"]
+                },
+                {
+                    "url": "https://hooks.example.com/no-secret",
+                    "event_filter": ["message"]
+                }
+            ]
+        });
+
+        let serialized = serde_json::to_value(&t).expect("task serializes");
+        let configs = serialized["spec"]["push_configs"]
+            .as_array()
+            .expect("push configs stay visible");
+        assert_eq!(configs[0]["url"], "https://hooks.example.com/everruns");
+        assert_eq!(configs[0]["has_secret"], true);
+        assert!(configs[0].get("secret").is_none());
+        assert!(configs[1].get("secret").is_none());
+
+        // Redaction is presentation-only so the worker can still sign webhook
+        // deliveries from the stored task spec.
+        assert_eq!(
+            t.spec["push_configs"][0]["secret"], "LEAKME-HMAC-KEY",
+            "stored spec remains unchanged for delivery"
+        );
     }
 
     #[test]

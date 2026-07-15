@@ -62,7 +62,7 @@ Current built-in system command:
 
 SKILL.md frontmatter supports `user-invocable` (default: `true`). Skills with `user-invocable: false` provide context/tools but don't appear as slash commands.
 
-For DB-backed skills, `user_invocable` is stored in the metadata JSON field (no schema migration needed). See `crates/server/src/services/skill.rs`.
+For DB-backed skills, `user_invocable` is stored in the metadata JSON field (no schema migration needed). See `crates/server/src/domains/skills/commands.rs`.
 
 ## API
 

@@ -61,6 +61,7 @@ impl ToolCallHook for HumanIntentToolCallHook {
         tool_call: &ToolCall,
         _phase: ToolNarrationPhase,
         _locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         human_intent(&tool_call.arguments).map(truncate_intent)
     }
@@ -144,7 +145,13 @@ mod tests {
         };
 
         assert_eq!(
-            hook.narration(None, &tool_call, ToolNarrationPhase::Started, None),
+            hook.narration(
+                None,
+                &tool_call,
+                ToolNarrationPhase::Started,
+                None,
+                Default::default()
+            ),
             Some("Listing all harnesses".to_string())
         );
 

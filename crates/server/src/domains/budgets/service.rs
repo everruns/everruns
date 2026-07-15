@@ -141,12 +141,15 @@ impl BudgetService {
 
     fn scope_from_session(
         session: &SessionRow,
-        session_subject_id: &str,
+        _session_subject_id: &str,
         agent_id_override: Option<&str>,
     ) -> BudgetScope {
         let (app_subject_id, app_channel_subject_id) = extract_app_subjects(&session.tags);
+        let root_session_id = session.root_session_id.unwrap_or(session.id);
         BudgetScope {
-            session_subject_id: session_subject_id.to_string(),
+            // Session-scoped budgets are owned by the root of a delegation
+            // tree, so descendants debit and check the same shared pool.
+            session_subject_id: root_session_id.to_string(),
             agent_subject_id: agent_id_override
                 .map(ToOwned::to_owned)
                 .or_else(|| session.agent_id.map(|id| id.to_string())),

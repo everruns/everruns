@@ -68,6 +68,7 @@ impl AgentStore for DbAgentStore {
                     description: row.description,
                     system_prompt: row.system_prompt,
                     default_model_id: row.default_model_id,
+                    harness_id: row.harness_id,
                     default_version_id: row.default_version_id,
                     forked_from_agent_id: row.forked_from_agent_id,
                     forked_from_version_id: row.forked_from_version_id,

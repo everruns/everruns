@@ -105,6 +105,58 @@ fn per_type_builders_accept_explicit_timestamps() {
 }
 
 #[tokio::test]
+async fn default_runtime_uses_runtime_safe_capability_preset() {
+    let runtime = InProcessRuntimeBuilder::new()
+        .llm_sim(LlmSimConfig::fixed("ok"))
+        .single_session(|s| {
+            s.harness("time", "You know the current time.")
+                .with_capability("current_time")
+                .agent("time-agent", "Use tools when helpful.")
+        })
+        .build()
+        .await
+        .unwrap();
+
+    let session_id = runtime.default_session_id().expect("default session id");
+    let context = runtime.load_context(session_id).await.unwrap();
+    assert!(
+        context
+            .runtime_agent
+            .tools
+            .iter()
+            .any(|tool| tool.name() == "get_current_time"),
+        "default runtime should expose runtime-backed built-in capabilities",
+    );
+
+    let platform_only_runtime = InProcessRuntimeBuilder::new()
+        .llm_sim(LlmSimConfig::fixed("ok"))
+        .single_session(|s| {
+            s.harness("platform", "You manage the platform.")
+                .with_capability("platform_management")
+                .agent("platform-agent", "Use tools when helpful.")
+        })
+        .build()
+        .await
+        .unwrap();
+
+    let platform_session_id = platform_only_runtime
+        .default_session_id()
+        .expect("default session id");
+    let platform_context = platform_only_runtime
+        .load_context(platform_session_id)
+        .await
+        .unwrap();
+    assert!(
+        platform_context.resolved_capability_configs.is_empty(),
+        "platform-only capability should not resolve from runtime defaults"
+    );
+    assert!(
+        platform_context.runtime_agent.tools.is_empty(),
+        "unresolved platform-only capability should not contribute tools"
+    );
+}
+
+#[tokio::test]
 async fn runtime_executes_tool_loop_and_persists_messages() {
     let harness_id = "harness_00000000000000000000000000000021".parse().unwrap();
     let agent_id = "agent_00000000000000000000000000000021".parse().unwrap();

@@ -172,6 +172,9 @@ pub struct AuthConfig {
     pub base_url: String,
     /// Frontend URL for post-auth redirects (UI origin, same as base_url in production)
     pub frontend_url: String,
+    /// Trusted origin hosting the login page. When absent, login stays on the
+    /// frontend origin. Never derived from request input (TM-WEB-008).
+    pub login_origin: Option<String>,
     /// JWT configuration
     pub jwt: JwtConfig,
     /// Admin user (for admin mode or initial setup)
@@ -201,6 +204,15 @@ pub struct AuthConfig {
     /// — never an on-screen signal). Requires a configured email sender;
     /// self-host default is off, keeping instant-session signup.
     pub signup_email_confirm: bool,
+    /// When true, a newly registered / first-time-OAuth user is auto-added to
+    /// `DEFAULT_ORG_ID` as a member. This is the single-tenant convenience
+    /// (one shared org for a single-binary / small self-host). It MUST stay off
+    /// for any multi-tenant deployment: there a fresh signup must own no org so
+    /// the zero-org onboarding flow creates the user's own org — otherwise every
+    /// tenant lands in the same shared organization. Default off; opt in with
+    /// `AUTH_AUTO_JOIN_DEFAULT_ORG=true`. Does not affect the admin-mode
+    /// bootstrap owner, which always seeds the default org.
+    pub auto_join_default_org: bool,
 }
 
 /// Cloudflare Turnstile keys for the auth surface.
@@ -218,6 +230,7 @@ impl Default for AuthConfig {
             mode: AuthMode::None,
             base_url: "http://localhost:9300/api".to_string(),
             frontend_url: "http://localhost:9300".to_string(),
+            login_origin: None,
             jwt: JwtConfig::default(),
             admin: None,
             google: None,
@@ -228,6 +241,7 @@ impl Default for AuthConfig {
             session_max_age: Duration::from_secs(30 * 24 * 60 * 60), // 30 days
             turnstile: None,
             signup_email_confirm: false,
+            auto_join_default_org: false,
         }
     }
 }
@@ -266,6 +280,8 @@ impl AuthConfig {
         let frontend_url = env_opt_string_any(&["FRONTEND_URL"])
             .or(public_app_url.clone())
             .unwrap_or_else(|| frontend_url_from_auth_base_url(&base_url, &api_prefix));
+        let login_origin = env_opt_string_any(&["AUTH_LOGIN_ORIGIN"])
+            .map(|value| normalize_login_origin(&value).unwrap_or_else(|err| panic!("{err}")));
 
         // JWT configuration
         // TM-AUTH-002: Require AUTH_JWT_SECRET when authentication is enabled.
@@ -400,6 +416,12 @@ impl AuthConfig {
             .map(|s| s.to_lowercase() == "true" || s == "1")
             .unwrap_or(false);
 
+        // Off by default: multi-tenant-safe. Single-binary / small self-host
+        // opts in to the shared default org via AUTH_AUTO_JOIN_DEFAULT_ORG=true.
+        let auto_join_default_org = std::env::var("AUTH_AUTO_JOIN_DEFAULT_ORG")
+            .map(|s| s.to_lowercase() == "true" || s == "1")
+            .unwrap_or(false);
+
         let session_max_age = std::env::var("AUTH_SESSION_MAX_AGE")
             .ok()
             .and_then(|s| s.parse().ok())
@@ -425,6 +447,7 @@ impl AuthConfig {
             mode,
             base_url,
             frontend_url,
+            login_origin,
             jwt,
             admin,
             google,
@@ -435,6 +458,7 @@ impl AuthConfig {
             session_max_age,
             turnstile,
             signup_email_confirm,
+            auto_join_default_org,
         };
 
         // Fail fast on conflicting auth-config combinations so operators see
@@ -509,6 +533,33 @@ impl AuthConfig {
             || self.mode == AuthMode::Admin
             || self.mode == AuthMode::External
     }
+
+    /// Origin used for browser redirects to the login page.
+    pub fn login_origin(&self) -> &str {
+        self.login_origin.as_deref().unwrap_or(&self.frontend_url)
+    }
+}
+
+fn normalize_login_origin(value: &str) -> Result<String, String> {
+    // THREAT[TM-WEB-008]: the only allowed external login destination is a
+    // trusted deployment origin; request/query input never reaches this path.
+    // Mitigation: reject credentials, paths, queries, fragments, and non-HTTP schemes.
+    let parsed = url::Url::parse(value)
+        .map_err(|_| "AUTH_LOGIN_ORIGIN must be an absolute http(s) origin".to_string())?;
+    if !matches!(parsed.scheme(), "http" | "https")
+        || parsed.host_str().is_none()
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.path() != "/"
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return Err(
+            "AUTH_LOGIN_ORIGIN must contain only an http(s) origin (no credentials, path, query, or fragment)"
+                .to_string(),
+        );
+    }
+    Ok(parsed.origin().ascii_serialization())
 }
 
 fn normalize_api_prefix(api_prefix: &str) -> String {
@@ -561,6 +612,7 @@ mod tests {
         "API_PREFIX",
         "APP_URL",
         "AUTH_BASE_URL",
+        "AUTH_LOGIN_ORIGIN",
         "BASE_URL",
         "FRONTEND_URL",
         "PUBLIC_APP_URL",
@@ -664,6 +716,50 @@ mod tests {
             frontend_url_from_auth_base_url("/api", "/api"),
             DEFAULT_PUBLIC_APP_URL
         );
+    }
+
+    #[test]
+    fn test_normalize_login_origin_accepts_only_http_origins() {
+        assert_eq!(
+            normalize_login_origin("https://id.example.com/"),
+            Ok("https://id.example.com".to_string())
+        );
+        assert_eq!(
+            normalize_login_origin("http://localhost:9300"),
+            Ok("http://localhost:9300".to_string())
+        );
+        for invalid in [
+            "id.example.com",
+            "javascript:alert(1)",
+            "https://user@id.example.com",
+            "https://id.example.com/login",
+            "https://id.example.com?next=/login",
+        ] {
+            assert!(
+                normalize_login_origin(invalid).is_err(),
+                "accepted {invalid}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_from_env_loads_login_origin() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_auth_url_env();
+        unsafe {
+            std::env::set_var("DEPLOYMENT_GRADE", "dev");
+            std::env::set_var("AUTH_LOGIN_ORIGIN", "https://id.example.com/");
+        }
+
+        let config = AuthConfig::from_env();
+
+        assert_eq!(
+            config.login_origin.as_deref(),
+            Some("https://id.example.com")
+        );
+        assert_eq!(config.login_origin(), "https://id.example.com");
+        clear_auth_url_env();
+        unsafe { std::env::remove_var("DEPLOYMENT_GRADE") };
     }
 
     #[test]

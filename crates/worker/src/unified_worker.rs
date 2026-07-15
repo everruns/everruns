@@ -37,7 +37,10 @@ use crate::grpc_durable_store::GrpcDurableStore;
 use crate::runtime_host::WorkerRuntimeHost;
 use crate::task_error::summarize_task_failure;
 use crate::worker_adapters::WorkerAdapters;
-use crate::{activities::ScheduledAppChannelInput, activities::activity_types};
+use crate::{
+    activities::ScheduledAgentTriggerInput, activities::ScheduledAppChannelInput,
+    activities::activity_types,
+};
 
 // Re-export atom types
 pub use everruns_core::atoms::{InputAtomInput, ReasonInput, ReasonResult};
@@ -117,6 +120,7 @@ impl Default for TaskWorkerConfig {
                 "leased_resource_cleanup".to_string(),
                 "session_task_reaper".to_string(),
                 activity_types::INVOKE_SCHEDULED_APP_CHANNEL.to_string(),
+                activity_types::INVOKE_AGENT_TRIGGER.to_string(),
             ],
             max_concurrent_tasks: DEFAULT_MAX_CONCURRENT_TASKS,
             claim_batch_size: DEFAULT_CLAIM_BATCH_SIZE,
@@ -847,15 +851,14 @@ where
 
         // Execute tasks concurrently
         for task in tasks {
-            self.in_flight.fetch_add(1, Ordering::SeqCst);
-
             let store = self.store.clone();
             let adapters = self.adapters.clone();
             let worker_id = self.config.worker_id.clone();
-            let in_flight = self.in_flight.clone();
+            let in_flight_guard = InFlightTaskGuard::increment(self.in_flight.clone());
             let heartbeat_interval = self.config.heartbeat_interval;
 
             task_handles.spawn(async move {
+                let _in_flight_guard = in_flight_guard;
                 let result =
                     execute_task(&store, &adapters, &worker_id, heartbeat_interval, &task).await;
 
@@ -881,8 +884,6 @@ where
                         "Task execution failed"
                     );
                 }
-
-                in_flight.fetch_sub(1, Ordering::SeqCst);
             });
         }
 
@@ -900,6 +901,23 @@ impl ShutdownHandle {
     /// Trigger shutdown of the worker
     pub fn shutdown(&self) {
         let _ = self.tx.send(true);
+    }
+}
+
+struct InFlightTaskGuard {
+    in_flight: Arc<AtomicUsize>,
+}
+
+impl InFlightTaskGuard {
+    fn increment(in_flight: Arc<AtomicUsize>) -> Self {
+        in_flight.fetch_add(1, Ordering::SeqCst);
+        Self { in_flight }
+    }
+}
+
+impl Drop for InFlightTaskGuard {
+    fn drop(&mut self) {
+        self.in_flight.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
@@ -952,111 +970,148 @@ where
         heartbeat_interval,
     );
 
-    // Execute based on activity type
-    let (result, turn_input_opt) = match task.activity_type.as_str() {
-        "process_input" | "reason" => {
-            let turn_input: DurableTurnInput = serde_json::from_value(task.input.clone())
-                .map_err(|e| anyhow::anyhow!("Failed to parse task input: {}", e))?;
+    // Execute based on activity type. Keep fallible parsing inside this result so
+    // cleanup below runs before malformed tasks are failed.
+    let execution = async {
+        let (result, turn_input_opt) = match task.activity_type.as_str() {
+            "process_input" | "reason" => {
+                let turn_input: DurableTurnInput = serde_json::from_value(task.input.clone())
+                    .map_err(|e| anyhow::anyhow!("Failed to parse task input: {}", e))?;
 
-            let res = match task.activity_type.as_str() {
-                "process_input" => execute_input_activity(adapters, &turn_input).await,
-                "reason" => execute_reason_activity(adapters, &turn_input).await,
-                _ => unreachable!(),
-            };
-            (res, Some(turn_input))
-        }
-        "act" => {
-            let act_input: ActInput = serde_json::from_value(task.input.clone())
-                .map_err(|e| anyhow::anyhow!("Failed to parse ActInput: {}", e))?;
+                let res = match task.activity_type.as_str() {
+                    "process_input" => execute_input_activity(adapters, &turn_input).await,
+                    "reason" => execute_reason_activity(adapters, &turn_input).await,
+                    _ => unreachable!(),
+                };
+                (res, Some(turn_input))
+            }
+            "act" => {
+                let act_input: ActInput = serde_json::from_value(task.input.clone())
+                    .map_err(|e| anyhow::anyhow!("Failed to parse ActInput: {}", e))?;
 
-            // Extract previous_response_id injected by reason→act scheduling
-            let previous_response_id = task
-                .input
-                .get("previous_response_id")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
+                // Extract previous_response_id injected by reason→act scheduling
+                let previous_response_id = task
+                    .input
+                    .get("previous_response_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
 
-            // Extract iteration count from act task input (carried through from reason)
-            let iteration = task
-                .input
-                .get("iteration")
-                .and_then(|v| v.as_u64())
-                .and_then(|raw| u32::try_from(raw).ok())
-                .filter(|&it| it > 0)
-                .unwrap_or(1);
+                // Extract iteration count from act task input (carried through from reason)
+                let iteration = task
+                    .input
+                    .get("iteration")
+                    .and_then(|v| v.as_u64())
+                    .and_then(|raw| u32::try_from(raw).ok())
+                    .filter(|&it| it > 0)
+                    .unwrap_or(1);
 
-            let act_request_id = task
-                .input
-                .get("request_id")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string());
-            let resume_state = parse_resume_state(&task.input)?;
+                let act_request_id = task
+                    .input
+                    .get("request_id")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
+                let resume_state = parse_resume_state(&task.input)?;
 
-            // Create DurableTurnInput from ActInput context
-            let mut turn_input = resume_state.unwrap_or(DurableTurnInput {
-                org_id: act_input
-                    .org_id
-                    .expect("ActInput.org_id must be set for durable turns"),
-                session_id: act_input.context.session_id,
-                harness_id: act_input.harness_id,
-                agent_id: act_input.agent_id,
-                input_message_id: act_input.context.input_message_id,
-                turn_id: Some(act_input.context.turn_id),
-                previous_response_id: previous_response_id.clone(),
-                iteration,
-                request_id: act_request_id.clone(),
-                started_at: None,
-                cumulative_usage: None,
-                tool_call_count: 0,
-                llm_call_count: 0,
-                time_to_first_token_ms: None,
-                final_message_id: None,
-                final_answer_preview: None,
-            });
-            turn_input.previous_response_id = previous_response_id;
-            turn_input.iteration = iteration;
-            turn_input.request_id = act_request_id;
+                // Create DurableTurnInput from ActInput context
+                let mut turn_input = resume_state.unwrap_or(DurableTurnInput {
+                    org_id: act_input.org_id.ok_or_else(|| {
+                        anyhow::anyhow!("ActInput.org_id must be set for durable turns")
+                    })?,
+                    session_id: act_input.context.session_id,
+                    harness_id: act_input.harness_id,
+                    agent_id: act_input.agent_id,
+                    input_message_id: act_input.context.input_message_id,
+                    turn_id: Some(act_input.context.turn_id),
+                    previous_response_id: previous_response_id.clone(),
+                    iteration,
+                    request_id: act_request_id.clone(),
+                    started_at: None,
+                    cumulative_usage: None,
+                    tool_call_count: 0,
+                    llm_call_count: 0,
+                    time_to_first_token_ms: None,
+                    final_message_id: None,
+                    final_answer_preview: None,
+                });
+                turn_input.previous_response_id = previous_response_id;
+                turn_input.iteration = iteration;
+                turn_input.request_id = act_request_id;
 
-            let res = execute_act_activity(adapters, &act_input).await;
-            (res, Some(turn_input))
-        }
-        "leased_resource_cleanup" => {
-            let cleanup_input: crate::leased_resource_cleanup::LeasedResourceCleanupInput =
-                serde_json::from_value(task.input.clone())
-                    .map_err(|e| anyhow::anyhow!("Failed to parse cleanup input: {}", e))?;
-            let res =
-                crate::leased_resource_cleanup::execute_cleanup_activity(adapters, &cleanup_input)
-                    .await;
-            (res, None)
-        }
-        "session_task_reaper" => {
-            let reaper_input: crate::session_task_reaper::SessionTaskReaperInput =
-                serde_json::from_value(task.input.clone())
-                    .map_err(|e| anyhow::anyhow!("Failed to parse reaper input: {}", e))?;
-            let res =
-                crate::session_task_reaper::execute_reaper_activity(adapters, &reaper_input).await;
-            (res, None)
-        }
-        activity_types::INVOKE_SCHEDULED_APP_CHANNEL => {
-            let input: ScheduledAppChannelInput = serde_json::from_value(task.input.clone())
-                .map_err(|e| anyhow::anyhow!("Failed to parse scheduled app input: {}", e))?;
-            let res = adapters
-                .invoke_scheduled_app_channel(input.org_id, &input.app_id, &input.channel_id)
-                .await
-                .map_err(anyhow::Error::from);
-            (res, None)
-        }
-        _ => (
-            Err(anyhow::anyhow!(
-                "Unknown activity type: {}",
-                task.activity_type
-            )),
-            None,
-        ),
-    };
+                let res = execute_act_activity(adapters, &act_input).await;
+                (res, Some(turn_input))
+            }
+            "leased_resource_cleanup" => {
+                let cleanup_input: crate::leased_resource_cleanup::LeasedResourceCleanupInput =
+                    serde_json::from_value(task.input.clone())
+                        .map_err(|e| anyhow::anyhow!("Failed to parse cleanup input: {}", e))?;
+                let res = crate::leased_resource_cleanup::execute_cleanup_activity(
+                    adapters,
+                    &cleanup_input,
+                )
+                .await;
+                (res, None)
+            }
+            "session_task_reaper" => {
+                let reaper_input: crate::session_task_reaper::SessionTaskReaperInput =
+                    serde_json::from_value(task.input.clone())
+                        .map_err(|e| anyhow::anyhow!("Failed to parse reaper input: {}", e))?;
+                let res =
+                    crate::session_task_reaper::execute_reaper_activity(adapters, &reaper_input)
+                        .await;
+                (res, None)
+            }
+            activity_types::INVOKE_SCHEDULED_APP_CHANNEL => {
+                let input: ScheduledAppChannelInput = serde_json::from_value(task.input.clone())
+                    .map_err(|e| anyhow::anyhow!("Failed to parse scheduled app input: {}", e))?;
+                let res = adapters
+                    .invoke_scheduled_app_channel(input.org_id, &input.app_id, &input.channel_id)
+                    .await
+                    .map_err(anyhow::Error::from);
+                (res, None)
+            }
+            activity_types::INVOKE_AGENT_TRIGGER => {
+                let input: ScheduledAgentTriggerInput = serde_json::from_value(task.input.clone())
+                    .map_err(|e| anyhow::anyhow!("Failed to parse agent trigger input: {}", e))?;
+                let res = adapters
+                    .invoke_agent_trigger(input.org_id, &input.agent_id, &input.trigger_id)
+                    .await
+                    .map_err(anyhow::Error::from);
+                (res, None)
+            }
+            _ => (
+                Err(anyhow::anyhow!(
+                    "Unknown activity type: {}",
+                    task.activity_type
+                )),
+                None,
+            ),
+        };
+        Ok::<_, anyhow::Error>((result, turn_input_opt))
+    }
+    .await;
 
     let _ = heartbeat_cancel_tx.send(());
     let _ = heartbeat_handle.await;
+
+    let (result, turn_input_opt) = match execution {
+        Ok(execution) => execution,
+        Err(e) => {
+            let failure = summarize_task_failure(
+                task.id,
+                task.workflow_id,
+                &task.activity_type,
+                task.attempt,
+                Some(task.max_attempts),
+                &task.input,
+                &e,
+            );
+            let _ = store
+                .fail_task_and_record(task, &failure.persisted_message)
+                .await;
+
+            return Err(e);
+        }
+    };
 
     match result {
         Ok(output) => {
@@ -1243,8 +1298,16 @@ async fn execute_reason_activity<A: WorkerAdapters>(
         iteration: input.iteration,
     };
 
+    let event_metadata = input.agent_id.map(|agent_id| {
+        let mut metadata = serde_json::Map::new();
+        metadata.insert(
+            "agent_id".to_string(),
+            serde_json::Value::String(agent_id.to_string()),
+        );
+        metadata
+    });
     let result = runtime_execute_reason_activity(
-        &WorkerRuntimeHost::new(adapters.clone()),
+        &WorkerRuntimeHost::with_event_metadata(adapters.clone(), event_metadata),
         input.org_id,
         reason_input,
     )
@@ -1291,23 +1354,31 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
     input: &DurableTurnInput,
     output: &serde_json::Value,
 ) -> Result<()> {
-    let pending_user_message_count = if completed_activity == "reason" {
+    // A reason that produced a final answer (no tool calls) is winding the turn
+    // down; a reason that emitted tool calls is not.
+    let reason_final_answer = if completed_activity == "reason" {
         let reason_result: everruns_core::ReasonResult = serde_json::from_value(output.clone())
             .map_err(|error| anyhow::anyhow!("Invalid reason output payload: {}", error))?;
-        if reason_result.success && !reason_result.has_tool_calls {
-            store
-                .consume_pending_signals(workflow_id)
-                .await
-                .map_err(|error| anyhow::anyhow!("Failed to consume workflow signals: {}", error))?
-                .into_iter()
-                .filter(|signal| signal.signal_type == everruns_durable::signal_types::USER_MESSAGE)
-                .count()
-        } else {
-            0
-        }
+        reason_result.success && !reason_result.has_tool_calls
     } else {
-        0
+        false
     };
+
+    // Drain queued USER_MESSAGE steering signals (task wakes) at the boundaries
+    // that precede another reason iteration. The already-persisted wake message
+    // is picked up by that reason (it re-reads full history); consuming the
+    // signal here is what governs turn continuation and, being destructive,
+    // gives exactly-once delivery — see `drains_wake_signals_after`.
+    let pending_user_message_count =
+        count_drained_wakes(store, workflow_id, completed_activity, reason_final_answer).await?;
+
+    if completed_activity == "act" && pending_user_message_count > 0 {
+        debug!(
+            %workflow_id,
+            pending_user_message_count,
+            "delivering mid-turn task wake(s) at the act→reason boundary"
+        );
+    }
 
     match plan_next_host_turn(
         &WorkerRuntimeHost::new(adapters.clone()),
@@ -1349,6 +1420,51 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
     }
 
     Ok(())
+}
+
+/// Iteration boundaries at which queued `USER_MESSAGE` steering signals (task
+/// wakes) are drained.
+///
+/// A wake is delivered as a persisted user message plus a durable
+/// `USER_MESSAGE` signal (see `SessionTaskWaker`). The message is picked up by
+/// the next reason iteration (which re-reads full history); the signal governs
+/// whether the loop runs that next iteration. Draining it:
+/// - at the `act`→`reason` boundary delivers a wake that arrived **mid-turn**
+///   at the very next reason, so an active parent reacts without ending its
+///   turn (EVE-681); and
+/// - at a final-answer `reason` boundary decides continue-vs-idle for a wake
+///   that arrived as the turn wound down.
+///
+/// Because `consume_pending_signals` is a destructive read, a wake drained at
+/// the act boundary is not seen again by the end-of-turn drain — mid-turn XOR
+/// next-turn, never both.
+fn drains_wake_signals_after(completed_activity: &str, reason_final_answer: bool) -> bool {
+    match completed_activity {
+        "act" => true,
+        "reason" => reason_final_answer,
+        _ => false,
+    }
+}
+
+/// Consume and count queued `USER_MESSAGE` wakes for `workflow_id` when this
+/// activity boundary is a drain point (see [`drains_wake_signals_after`]).
+/// Returns 0 without touching the store at non-drain boundaries.
+async fn count_drained_wakes<S: TaskStore>(
+    store: &Arc<S>,
+    workflow_id: Uuid,
+    completed_activity: &str,
+    reason_final_answer: bool,
+) -> Result<usize> {
+    if !drains_wake_signals_after(completed_activity, reason_final_answer) {
+        return Ok(0);
+    }
+    Ok(store
+        .consume_pending_signals(workflow_id)
+        .await
+        .map_err(|error| anyhow::anyhow!("Failed to consume workflow signals: {}", error))?
+        .into_iter()
+        .filter(|signal| signal.signal_type == everruns_durable::signal_types::USER_MESSAGE)
+        .count())
 }
 
 async fn enqueue_reason_task<S: TaskStore>(
@@ -1394,6 +1510,175 @@ mod tests {
     use everruns_core::error::Result as CoreResult;
     use std::collections::HashMap;
     use std::sync::atomic::AtomicBool;
+
+    // ---- EVE-681: mid-turn task wake drain ----
+
+    fn user_message_signal() -> everruns_durable::WorkflowSignal {
+        everruns_durable::WorkflowSignal::new(
+            everruns_durable::signal_types::USER_MESSAGE,
+            serde_json::json!({}),
+        )
+    }
+
+    /// `TaskStore` stub returning a fixed set of pending signals and counting
+    /// how many times `consume_pending_signals` is called.
+    #[derive(Clone)]
+    struct RecordingStore {
+        signals: Vec<everruns_durable::WorkflowSignal>,
+        consume_calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait::async_trait]
+    impl TaskStore for RecordingStore {
+        async fn register_worker(&self, _worker: WorkerInfo) -> Result<(), StoreError> {
+            Ok(())
+        }
+        async fn worker_heartbeat(
+            &self,
+            _worker_id: &str,
+            _current_load: usize,
+            _accepting_tasks: bool,
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
+        async fn deregister_worker(&self, _worker_id: &str) -> Result<usize, StoreError> {
+            Ok(0)
+        }
+        async fn claim_task(
+            &self,
+            _worker_id: &str,
+            _activity_types: &[String],
+            _max_tasks: usize,
+        ) -> Result<Vec<ClaimedTask>, StoreError> {
+            Ok(vec![])
+        }
+        async fn heartbeat_task(
+            &self,
+            _task_id: Uuid,
+            _worker_id: &str,
+            _details: Option<serde_json::Value>,
+        ) -> Result<HeartbeatResponse, StoreError> {
+            Ok(HeartbeatResponse {
+                accepted: true,
+                should_cancel: false,
+            })
+        }
+        async fn get_workflow_status(
+            &self,
+            _workflow_id: Uuid,
+        ) -> Result<WorkflowStatus, StoreError> {
+            Ok(WorkflowStatus::Running)
+        }
+        async fn record_activity_started(&self, _task: &ClaimedTask, _worker_id: &str) {}
+        async fn complete_task_and_record(
+            &self,
+            _task: &ClaimedTask,
+            _worker_id: &str,
+            _output: serde_json::Value,
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
+        async fn fail_task_and_record(
+            &self,
+            _task: &ClaimedTask,
+            _error: &str,
+        ) -> Result<TaskFailureOutcome, StoreError> {
+            Ok(TaskFailureOutcome::MovedToDlq)
+        }
+        async fn enqueue_task_and_record(
+            &self,
+            _workflow_id: Uuid,
+            _activity_id: String,
+            _activity_type: String,
+            _input: serde_json::Value,
+        ) -> Result<Uuid, StoreError> {
+            Ok(Uuid::now_v7())
+        }
+        async fn update_workflow_status(
+            &self,
+            _workflow_id: Uuid,
+            _status: WorkflowStatus,
+            _output: Option<serde_json::Value>,
+            _error: Option<WorkflowError>,
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
+        async fn complete_workflow(
+            &self,
+            _workflow_id: Uuid,
+            _event_output: serde_json::Value,
+            _stored_output: Option<serde_json::Value>,
+            _error: Option<WorkflowError>,
+        ) -> Result<(), StoreError> {
+            Ok(())
+        }
+        async fn consume_pending_signals(
+            &self,
+            _workflow_id: Uuid,
+        ) -> Result<Vec<everruns_durable::WorkflowSignal>, StoreError> {
+            self.consume_calls.fetch_add(1, Ordering::SeqCst);
+            Ok(self.signals.clone())
+        }
+    }
+
+    #[test]
+    fn wake_signals_drain_at_act_and_final_reason_boundaries() {
+        // `act` always precedes another reason → the mid-turn delivery point.
+        assert!(drains_wake_signals_after("act", false));
+        // A final-answer reason drains to decide continue-vs-idle.
+        assert!(drains_wake_signals_after("reason", true));
+        // A tool-calling reason does not drain; the following `act` will.
+        assert!(!drains_wake_signals_after("reason", false));
+        // Turn start and unknown activities never drain.
+        assert!(!drains_wake_signals_after("process_input", false));
+        assert!(!drains_wake_signals_after("input", false));
+    }
+
+    #[tokio::test]
+    async fn act_boundary_drains_and_counts_only_user_message_wakes() {
+        // Two wakes plus an unrelated signal accrued during the turn.
+        let store = Arc::new(RecordingStore {
+            signals: vec![
+                user_message_signal(),
+                everruns_durable::WorkflowSignal::new(
+                    everruns_durable::signal_types::CANCEL,
+                    serde_json::json!({}),
+                ),
+                user_message_signal(),
+            ],
+            consume_calls: Arc::new(AtomicUsize::new(0)),
+        });
+
+        let count = count_drained_wakes(&store, Uuid::now_v7(), "act", false)
+            .await
+            .expect("act boundary drains");
+
+        // Only USER_MESSAGE wakes count; the cancel signal is ignored here.
+        assert_eq!(count, 2);
+        assert_eq!(store.consume_calls.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn tool_calling_reason_does_not_drain_wakes() {
+        let store = Arc::new(RecordingStore {
+            signals: vec![user_message_signal()],
+            consume_calls: Arc::new(AtomicUsize::new(0)),
+        });
+
+        // A reason that emitted tool calls (`reason_final_answer = false`) must
+        // not consume signals — the following `act` boundary owns that drain,
+        // so the wake is delivered exactly once.
+        let count = count_drained_wakes(&store, Uuid::now_v7(), "reason", false)
+            .await
+            .expect("non-drain boundary");
+
+        assert_eq!(count, 0);
+        assert_eq!(
+            store.consume_calls.load(Ordering::SeqCst),
+            0,
+            "must not touch the signal store at a non-drain boundary"
+        );
+    }
 
     #[test]
     fn parse_resume_state_allows_missing_field() {
@@ -1774,6 +2059,14 @@ mod tests {
                 _org_id: i64,
                 _app_id: &str,
                 _channel_id: &str,
+            ) -> CoreResult<serde_json::Value> {
+                unimplemented!()
+            }
+            async fn invoke_agent_trigger(
+                &self,
+                _org_id: i64,
+                _agent_id: &str,
+                _trigger_id: &str,
             ) -> CoreResult<serde_json::Value> {
                 unimplemented!()
             }

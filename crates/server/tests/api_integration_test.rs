@@ -1536,13 +1536,16 @@ async fn test_session_filesystem() {
 
     let fs_url = format!("/v1/sessions/{}/fs", session.id);
 
-    // List root (should be empty)
+    // List root (new sessions mount scoped memory under the reserved memory root)
     let data: Value = server
         .get(&fs_url)
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(data["data"].as_array().unwrap().len(), 0);
+    let root_entries = data["data"].as_array().unwrap();
+    assert_eq!(root_entries.len(), 1);
+    assert_eq!(root_entries[0]["path"], "/memory");
+    assert_eq!(root_entries[0]["is_directory"], true);
 
     // Create a file
     let file: SessionFile = server

@@ -10,7 +10,7 @@ description: Blueprint-only GitHub repository exploration capability that spawns
 | **Features** | None |
 | **Dependencies** | [`subagents`](/capabilities/sub-agents/) |
 
-GitHub Scout lets an agent spawn a specialist subagent for read-only GitHub repository exploration. The host agent receives the `spawn_subagent` tool through the dependency on `subagents`; monitoring and steering are handled by the generic `session_tasks` tools (`list_tasks`, `get_task`, `message_task`, `cancel_task`). The GitHub API tools stay private inside the spawned `github_scout` blueprint session.
+GitHub Scout lets an agent spawn a specialist subagent for read-only GitHub repository exploration. The host agent receives `spawn_agent` with `target.type: "subagent"` through the dependency on `subagents`; monitoring and steering are handled by the generic `session_tasks` tools (`list_tasks`, `get_task`, `message_task`, `cancel_task`). The GitHub API tools stay private inside the spawned `github_scout` blueprint session.
 
 ## How to Use
 
@@ -18,10 +18,11 @@ Enable the `github_scout` capability on an agent or harness. Then spawn the blue
 
 ```json
 {
-  "name": "spawn_subagent",
+  "name": "spawn_agent",
   "arguments": {
     "name": "Scout",
     "instructions": "Find where authentication middleware is implemented.",
+    "target": { "type": "subagent" },
     "blueprint": "github_scout",
     "config": {
       "repos": ["fastify/fastify"]

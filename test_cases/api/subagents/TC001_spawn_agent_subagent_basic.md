@@ -2,7 +2,7 @@
 
 ## Description
 
-Verify that an agent with the `subagents` capability can spawn a subagent via the `spawn_subagent` tool, creating a child session with `parent_session_id` set and returning `subagent_id`, `name`, and `status` in the tool result.
+Verify that an agent with the `subagents` capability can spawn a subagent via the `spawn_agent` tool, creating a child session with `parent_session_id` set and returning `subagent_id`, `name`, and `status` in the tool result.
 
 ## Preconditions
 
@@ -15,7 +15,7 @@ Verify that an agent with the `subagents` capability can spawn a subagent via th
 |-------|-------|
 | Agent Name | Subagent Orchestrator |
 | Capabilities | `subagents` |
-| System Prompt | You are an orchestrator. When asked to delegate, use spawn_subagent with the given name and task. |
+| System Prompt | You are an orchestrator. When asked to delegate, use spawn_agent with the given name and task. |
 | User Message | Spawn a subagent named "Greeter" with the task: "Say hello and list 3 fun facts about cats." |
 
 ## Steps
@@ -26,7 +26,7 @@ Verify that an agent with the `subagents` capability can spawn a subagent via th
      -H "Content-Type: application/json" \
      -d '{
        "name": "Subagent Orchestrator",
-       "system_prompt": "You are an orchestrator. When asked to delegate, use spawn_subagent with the given name and task.",
+       "system_prompt": "You are an orchestrator. When asked to delegate, use spawn_agent with the given name and task.",
        "capabilities": ["subagents"]
      }'
    ```
@@ -69,7 +69,7 @@ Verify that an agent with the `subagents` capability can spawn a subagent via th
 
 | Check | Expected |
 |-------|----------|
-| spawn_subagent called | `tool.called` event with `tool_name: "spawn_subagent"` |
+| spawn_agent called | `tool.called` event with `tool_name: "spawn_agent"` |
 | Tool args contain name | `arguments.name` is `"Greeter"` |
 | Tool args contain instructions | `arguments.instructions` is non-empty |
 
@@ -100,8 +100,8 @@ Verify that an agent with the `subagents` capability can spawn a subagent via th
 ## Validation Commands
 
 ```bash
-# Assert: spawn_subagent tool was called
-curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "spawn_subagent")] | length > 0'
+# Assert: spawn_agent tool was called
+curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "spawn_agent")] | length > 0'
 
 # Assert: tool result contains subagent_id
 curl -s ".../events" | jq '[.data[] | select(.type == "tool.completed")] | .[0].data.result | fromjson | has("subagent_id")'

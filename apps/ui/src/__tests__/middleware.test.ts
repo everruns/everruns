@@ -4,6 +4,7 @@ import { config, proxy } from "@/proxy";
 
 describe("auth proxy", () => {
   const previousAuthMode = process.env.AUTH_MODE;
+  const previousLoginOrigin = process.env.AUTH_LOGIN_ORIGIN;
 
   afterEach(() => {
     if (previousAuthMode === undefined) {
@@ -11,6 +12,27 @@ describe("auth proxy", () => {
     } else {
       process.env.AUTH_MODE = previousAuthMode;
     }
+    if (previousLoginOrigin === undefined) {
+      delete process.env.AUTH_LOGIN_ORIGIN;
+    } else {
+      process.env.AUTH_LOGIN_ORIGIN = previousLoginOrigin;
+    }
+  });
+
+  it("redirects protected routes to the configured external login origin", () => {
+    process.env.AUTH_MODE = "full";
+    process.env.AUTH_LOGIN_ORIGIN = "https://id.example.com";
+    const request = {
+      cookies: { has: () => false },
+      nextUrl: new URL("https://app.example.com/oauth/authorize?client_id=test"),
+      url: "https://app.example.com/oauth/authorize?client_id=test",
+    } as unknown as Parameters<typeof proxy>[0];
+
+    const response = proxy(request);
+
+    expect(response.headers.get("location")).toBe(
+      "https://id.example.com/login?return_to=%2Foauth%2Fauthorize%3Fclient_id%3Dtest",
+    );
   });
 
   it("redirects protected routes to login when the access token is missing", () => {

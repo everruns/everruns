@@ -133,6 +133,39 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn get_harness_ancestry_by_ids(
+        &self,
+        org_id: i64,
+        ids: &[HarnessId],
+    ) -> Result<Vec<HarnessRow>> {
+        let ids: Vec<Uuid> = ids.iter().map(|id| id.uuid()).collect();
+        Ok(sqlx::query_as::<_, HarnessRow>(
+            r#"
+            WITH RECURSIVE ancestry_ids(id) AS (
+                SELECT id
+                FROM harnesses
+                WHERE org_id = $1 AND id = ANY($2)
+                UNION
+                SELECT parent.id
+                FROM harnesses parent
+                JOIN harnesses child ON child.parent_harness_id = parent.id
+                JOIN ancestry_ids ancestry ON ancestry.id = child.id
+                WHERE parent.org_id = $1
+            )
+            SELECT h.id, h.org_id, h.name, h.display_name, h.description, h.system_prompt,
+                   h.parent_harness_id, h.default_model_id, h.tags, h.status,
+                   h.created_at, h.updated_at, h.archived_at, h.deleted_at,
+                   h.initial_files, h.mcp_servers, h.network_access, h.embedder_metadata, h.is_built_in
+            FROM harnesses h
+            JOIN ancestry_ids ancestry ON ancestry.id = h.id
+            "#,
+        )
+        .bind(org_id)
+        .bind(&ids)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
     pub async fn get_harness_by_name(&self, org_id: i64, name: &str) -> Result<Option<HarnessRow>> {
         let row = sqlx::query_as::<_, HarnessRow>(
             r#"
@@ -342,6 +375,27 @@ impl Database {
         .await?;
 
         Ok(rows)
+    }
+
+    pub async fn get_harness_capabilities_by_harness_ids(
+        &self,
+        org_id: i64,
+        harness_ids: &[HarnessId],
+    ) -> Result<Vec<HarnessCapabilityRow>> {
+        let harness_ids: Vec<Uuid> = harness_ids.iter().map(|id| id.uuid()).collect();
+        Ok(sqlx::query_as::<_, HarnessCapabilityRow>(
+            r#"
+            SELECT hc.id, hc.harness_id, hc.capability_id, hc.position, hc.config, hc.created_at
+            FROM harness_capabilities hc
+            JOIN harnesses h ON h.id = hc.harness_id
+            WHERE h.org_id = $1 AND hc.harness_id = ANY($2)
+            ORDER BY hc.harness_id, hc.position ASC
+            "#,
+        )
+        .bind(org_id)
+        .bind(&harness_ids)
+        .fetch_all(&self.pool)
+        .await?)
     }
 
     /// Set capabilities for a harness (replaces existing capabilities)

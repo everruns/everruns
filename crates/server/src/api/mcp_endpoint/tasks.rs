@@ -19,17 +19,8 @@
 // 2025-* clients (and 2026 clients that did not opt in) see the pre-existing
 // shapes unchanged — the task fields are strictly additive.
 //
-// Schema source: the official MCP Tasks extension docs
-// (https://modelcontextprotocol.io/extensions/tasks/overview) and SEP-2663
-// (https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2663 /
-// https://github.com/modelcontextprotocol/experimental-ext-tasks).
-//
-// ASSUMPTION / FIELDS TO RECONCILE: the extension is still an experimental RC
-// and the two authoritative sources disagree on the duration field spelling —
-// the overview page uses `ttlMs` / `pollIntervalMs`, while the PR summary uses
-// `ttlSeconds` / `pollIntervalMilliseconds`. We emit `ttlMs` / `pollIntervalMs`
-// (the docs page, which shows concrete JSON) and centralize them here so a
-// single edit reconciles the wire shape once the spec freezes.
+// Schema source: final SEP-2663 and the official MCP Tasks extension overview.
+// Both specify `ttlMs` / `pollIntervalMs`, so those field names are canonical.
 
 use serde_json::{Value, json};
 
@@ -244,5 +235,7 @@ mod tests {
         assert_eq!(result["status"], "working");
         assert!(result.get("ttlMs").is_some());
         assert!(result.get("pollIntervalMs").is_some());
+        assert!(result.get("ttlSeconds").is_none());
+        assert!(result.get("pollIntervalMilliseconds").is_none());
     }
 }
