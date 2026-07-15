@@ -501,7 +501,11 @@ pub use session::{
     Session, SessionParticipant, SessionParticipantKind, SessionParticipantRole, SessionSeedMode,
     SessionStatus, SubagentStatus,
 };
-pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, InitialFile, SessionFile};
+pub use session_file::{
+    FileInfo, FileStat, GREP_MAX_CONTEXT_LINES, GREP_MAX_RETURN_BYTES, GrepContextBlock,
+    GrepContextLine, GrepMatch, GrepOptions, GrepResult, GrepSearchResult, InitialFile,
+    SessionFile,
+};
 pub use session_resource::{
     RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
 };

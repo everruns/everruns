@@ -6,7 +6,10 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::session::Session;
-use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
+use everruns_core::session_file::{
+    FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
+    build_grep_search_result,
+};
 use everruns_core::traits::{
     KeyInfo, SecretInfo, SessionFileSystem, SessionFileSystemFactory,
     SessionFileSystemFactoryContext, SessionMutator, SessionStorageStore, SessionStore,
@@ -399,6 +402,41 @@ impl SessionFileSystem for InMemorySessionFileStore {
         }
 
         Ok(matches)
+    }
+
+    async fn grep_files_with_options(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        let regex = Regex::new(pattern)
+            .map_err(|error| AgentLoopError::tool(format!("Invalid regex pattern: {error}")))?;
+        let path_pattern = options
+            .path_pattern
+            .as_deref()
+            .map(everruns_core::session_path::GrepPathPattern::new)
+            .transpose()?;
+        let files = self.files.read().await;
+        let text_files = files
+            .iter()
+            .filter(|((sid, path), entry)| {
+                *sid == session_id
+                    && !entry.file.is_directory
+                    && entry.file.encoding == "text"
+                    && path_pattern
+                        .as_ref()
+                        .is_none_or(|matcher| matcher.is_match(path))
+            })
+            .filter_map(|((_, path), entry)| {
+                entry
+                    .file
+                    .content
+                    .as_ref()
+                    .map(|content| (path.clone(), content.clone()))
+            })
+            .collect();
+        Ok(build_grep_search_result(text_files, &regex, options))
     }
 
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {

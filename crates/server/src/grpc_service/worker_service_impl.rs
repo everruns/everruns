@@ -1066,38 +1066,73 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        // Grep via WorkspaceFileService
-        let grep_input = GrepInput {
-            pattern: req.pattern.clone(),
-            path_pattern: req.path_pattern.clone(),
+        let options = everruns_core::GrepOptions {
+            path_pattern: req.path_pattern,
+            before_context: req.before_context as usize,
+            after_context: req.after_context as usize,
+            offset: req.offset as usize,
+            limit: req.limit as usize,
+            max_bytes: req.max_bytes as usize,
         };
+        let grep_result = everruns_core::SessionFileSystem::grep_files_with_options(
+            &self.session_file_service,
+            everruns_core::SessionId::from_uuid(session_id),
+            &req.pattern,
+            &options,
+        )
+        .await
+        .map_err(|e| {
+            // Check if it's a regex error
+            if e.to_string().contains("regex") {
+                return Status::invalid_argument(format!("Invalid regex pattern: {}", e));
+            }
+            tracing::error!("Failed to grep files: {}", e);
+            Status::internal("Failed to grep files")
+        })?;
 
-        let grep_results = self
-            .session_file_service
-            .grep(session_id, grep_input)
-            .await
-            .map_err(|e| {
-                // Check if it's a regex error
-                if e.to_string().contains("regex") {
-                    return Status::invalid_argument(format!("Invalid regex pattern: {}", e));
-                }
-                tracing::error!("Failed to grep files: {}", e);
-                Status::internal("Failed to grep files")
-            })?;
-
-        // Convert GrepResult to proto GrepMatch (flatten)
-        let matches: Vec<proto::GrepMatch> = grep_results
+        let matches = grep_result
+            .matches
             .into_iter()
-            .flat_map(|result| {
-                result.matches.into_iter().map(|m| proto::GrepMatch {
-                    path: m.path,
-                    line_number: m.line_number as u64,
-                    line: m.line,
-                })
+            .map(|item| proto::GrepMatch {
+                path: item.path,
+                line_number: item.line_number as u64,
+                line: item.line,
+            })
+            .collect();
+        let blocks = grep_result
+            .blocks
+            .into_iter()
+            .map(|block| proto::GrepContextBlock {
+                path: block.path,
+                start_line: block.start_line as u64,
+                end_line: block.end_line as u64,
+                match_line_numbers: block
+                    .match_line_numbers
+                    .into_iter()
+                    .map(|line| line as u64)
+                    .collect(),
+                lines: block
+                    .lines
+                    .into_iter()
+                    .map(|line| proto::GrepContextLine {
+                        line_number: line.line_number as u64,
+                        line: line.line,
+                        is_match: line.is_match,
+                    })
+                    .collect(),
             })
             .collect();
 
-        Ok(Response::new(SessionGrepFilesResponse { matches }))
+        Ok(Response::new(SessionGrepFilesResponse {
+            matches,
+            blocks,
+            total_matches: grep_result.total_matches as u64,
+            returned_matches: grep_result.returned_matches as u64,
+            bytes_returned: grep_result.bytes_returned as u64,
+            bytes_total: grep_result.bytes_total as u64,
+            next_offset: grep_result.next_offset.map(|offset| offset as u64),
+            byte_truncated: grep_result.byte_truncated,
+        }))
     }
 
     async fn session_create_directory(

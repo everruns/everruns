@@ -343,6 +343,20 @@ fn grep_files_parameters_schema() -> Value {
                 "type": "string",
                 "description": "Optional glob filtering canonical paths (e.g., '*.txt', 'docs/*', 'src/**/*.rs'). Basename-only globs match at any depth; non-glob values use legacy substring matching"
             },
+            "before_context": {
+                "type": "integer",
+                "description": "Number of lines before each match. Default: 0, maximum: 20. Overlapping ranges are merged",
+                "default": 0,
+                "minimum": 0,
+                "maximum": crate::GREP_MAX_CONTEXT_LINES
+            },
+            "after_context": {
+                "type": "integer",
+                "description": "Number of lines after each match. Default: 0, maximum: 20. Overlapping ranges are merged",
+                "default": 0,
+                "minimum": 0,
+                "maximum": crate::GREP_MAX_CONTEXT_LINES
+            },
             "offset": {
                 "type": "integer",
                 "description": "Starting match offset. Default: 0",
@@ -1707,7 +1721,7 @@ impl Tool for GrepFilesTool {
     }
 
     fn description(&self) -> &str {
-        "Search file contents using a regex pattern. Returns matching lines with file paths and line numbers."
+        "Search file contents using a Rust regex. Optionally returns bounded before/after context as merged blocks with numbered lines and explicit match markers. Offset and limit paginate matches, not context lines; output is capped at 64 KiB with resume metadata."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -1737,6 +1751,33 @@ impl Tool for GrepFilesTool {
         };
 
         let path_pattern = arguments.get("path_pattern").and_then(|v| v.as_str());
+        let parse_context = |name: &str| -> Result<usize, String> {
+            let Some(value) = arguments.get(name) else {
+                return Ok(0);
+            };
+            let Some(value) = value.as_i64() else {
+                return Err(format!("{name} must be a non-negative integer"));
+            };
+            if value < 0 {
+                return Err(format!("{name} must be a non-negative integer"));
+            }
+            let value = value as usize;
+            if value > crate::GREP_MAX_CONTEXT_LINES {
+                return Err(format!(
+                    "{name} must not exceed {}",
+                    crate::GREP_MAX_CONTEXT_LINES
+                ));
+            }
+            Ok(value)
+        };
+        let before_context = match parse_context("before_context") {
+            Ok(value) => value,
+            Err(error) => return ToolExecutionResult::tool_error(error),
+        };
+        let after_context = match parse_context("after_context") {
+            Ok(value) => value,
+            Err(error) => return ToolExecutionResult::tool_error(error),
+        };
         let offset = arguments
             .get("offset")
             .and_then(|v| v.as_u64())
@@ -1757,15 +1798,24 @@ impl Tool for GrepFilesTool {
         };
 
         match file_store
-            .grep_files(context.session_id, pattern, path_pattern)
+            .grep_files_with_options(
+                context.session_id,
+                pattern,
+                &crate::GrepOptions {
+                    path_pattern: path_pattern.map(ToString::to_string),
+                    before_context,
+                    after_context,
+                    offset,
+                    limit,
+                    max_bytes: crate::GREP_MAX_RETURN_BYTES,
+                },
+            )
             .await
         {
-            Ok(matches) => {
-                let total_matches = matches.len();
-                let results: Vec<Value> = matches
+            Ok(search) => {
+                let results: Vec<Value> = search
+                    .matches
                     .iter()
-                    .skip(offset)
-                    .take(limit)
                     .map(|m| {
                         json!({
                             "path": fs_display_path(file_store.as_ref(), &m.path),
@@ -1774,33 +1824,56 @@ impl Tool for GrepFilesTool {
                         })
                     })
                     .collect();
+                let blocks: Vec<Value> = search
+                    .blocks
+                    .iter()
+                    .map(|block| {
+                        json!({
+                            "path": fs_display_path(file_store.as_ref(), &block.path),
+                            "start_line": block.start_line,
+                            "end_line": block.end_line,
+                            "match_line_numbers": block.match_line_numbers,
+                            "lines": block.lines
+                        })
+                    })
+                    .collect();
 
                 let mut result = json!({
                     "pattern": pattern,
-                    "matches": results,
-                    "match_count": results.len(),
-                    "total_matches": total_matches,
+                    "match_count": search.returned_matches,
+                    "total_matches": search.total_matches,
                     "offset": offset,
                     "limit": limit
                 });
-                let bytes_returned = serde_json::to_string(&results)
-                    .expect("grep_files matches always serialize")
-                    .len();
-                let next_offset = offset.saturating_add(results.len());
-                let truncation = if next_offset < total_matches {
+                if before_context == 0 && after_context == 0 {
+                    result["matches"] = Value::Array(results);
+                } else {
+                    result["blocks"] = Value::Array(blocks);
+                }
+                let truncation = if let Some(next_offset) = search.next_offset {
                     TruncationInfo::with_resume(
-                        bytes_returned,
-                        None,
+                        search.bytes_returned,
+                        Some(search.bytes_total),
                         next_offset as u64,
                         format!(
                             "call grep_files with offset={} to resume from match {}",
                             next_offset,
                             next_offset + 1
                         ),
-                        TruncationReason::LineCap,
+                        if search.byte_truncated {
+                            TruncationReason::SizeCap
+                        } else {
+                            TruncationReason::LineCap
+                        },
+                    )
+                } else if search.byte_truncated {
+                    TruncationInfo::without_resume(
+                        search.bytes_returned,
+                        Some(search.bytes_total),
+                        TruncationReason::SizeCap,
                     )
                 } else {
-                    TruncationInfo::not_truncated(bytes_returned)
+                    TruncationInfo::not_truncated(search.bytes_returned)
                 };
                 truncation.attach(&mut result);
                 ToolExecutionResult::success(result)
@@ -2389,6 +2462,44 @@ mod tests {
                     .then_with(|| a.line_number.cmp(&b.line_number))
             });
             Ok(matches)
+        }
+
+        async fn grep_files_with_options(
+            &self,
+            _session_id: SessionId,
+            pattern: &str,
+            options: &crate::GrepOptions,
+        ) -> Result<crate::GrepSearchResult> {
+            let regex = regex::Regex::new(pattern).map_err(|error| {
+                crate::AgentLoopError::tool(format!("Invalid regex pattern: {error}"))
+            })?;
+            let path_matcher = options
+                .path_pattern
+                .as_deref()
+                .map(crate::session_path::GrepPathPattern::new)
+                .transpose()?;
+            let files = self
+                .files
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(path, entry)| {
+                    !entry.is_directory
+                        && entry.encoding == "text"
+                        && path_matcher
+                            .as_ref()
+                            .is_none_or(|matcher| matcher.is_match(path))
+                })
+                .filter_map(|(path, entry)| {
+                    entry
+                        .content
+                        .as_ref()
+                        .map(|content| (path.clone(), content.clone()))
+                })
+                .collect();
+            Ok(crate::session_file::build_grep_search_result(
+                files, &regex, options,
+            ))
         }
 
         async fn create_directory(&self, _session_id: SessionId, path: &str) -> Result<FileInfo> {
@@ -3030,6 +3141,63 @@ mod tests {
         assert_eq!(value["truncation"]["truncated"], true);
         assert_eq!(value["truncation"]["reason"], "line_cap");
         assert_eq!(value["truncation"]["next_offset"], 2);
+    }
+
+    #[tokio::test]
+    async fn test_grep_files_returns_merged_numbered_context() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/notes.txt", "before\nmatch one\nbetween\nmatch two\nafter");
+        let context = make_context(store);
+
+        let value = expect_success(
+            GrepFilesTool
+                .execute_with_context(
+                    json!({"pattern": "match", "before_context": 1, "after_context": 1}),
+                    &context,
+                )
+                .await,
+        );
+
+        assert!(value.get("matches").is_none());
+        assert_eq!(value["blocks"].as_array().unwrap().len(), 1);
+        assert_eq!(value["blocks"][0]["start_line"], 1);
+        assert_eq!(value["blocks"][0]["end_line"], 5);
+        assert_eq!(value["blocks"][0]["match_line_numbers"], json!([2, 4]));
+        assert_eq!(value["blocks"][0]["lines"].as_array().unwrap().len(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_grep_files_rejects_invalid_context_values() {
+        let context = make_context(Arc::new(MockFileStore::default()));
+        for arguments in [
+            json!({"pattern": "x", "before_context": -1}),
+            json!({"pattern": "x", "after_context": 21}),
+            json!({"pattern": "x", "before_context": 1.5}),
+        ] {
+            let result = GrepFilesTool
+                .execute_with_context(arguments, &context)
+                .await;
+            assert!(matches!(result, ToolExecutionResult::ToolError(_)));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_grep_files_enforces_total_byte_budget() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/large.txt", &format!("match {}", "x".repeat(70_000)));
+        let context = make_context(store);
+        let value = expect_success(
+            GrepFilesTool
+                .execute_with_context(json!({"pattern": "match"}), &context)
+                .await,
+        );
+
+        assert!(
+            value["matches"][0]["line"].as_str().unwrap().len() <= crate::GREP_MAX_RETURN_BYTES
+        );
+        assert_eq!(value["truncation"]["truncated"], true);
+        assert_eq!(value["truncation"]["reason"], "size_cap");
+        assert!(value["truncation"]["bytes_total"].as_u64().unwrap() > 64 * 1024);
     }
 
     #[tokio::test]

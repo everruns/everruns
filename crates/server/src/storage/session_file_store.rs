@@ -5,7 +5,8 @@
 
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, FileInfo, FileStat, GrepMatch, Result, SessionFile, SessionId, StoreResultExt,
+    AgentLoopError, FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, Result,
+    SessionFile, SessionId, StoreResultExt, session_file::build_grep_search_result,
     traits::SessionFileSystem,
 };
 use regex::Regex;
@@ -570,6 +571,46 @@ impl SessionFileSystem for DbSessionFileStore {
         }
 
         Ok(results)
+    }
+
+    async fn grep_files_with_options(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        let regex = Regex::new(pattern)
+            .map_err(|error| AgentLoopError::store(format!("Invalid regex pattern: {error}")))?;
+        let path_matcher = options
+            .path_pattern
+            .as_deref()
+            .map(everruns_core::session_path::GrepPathPattern::new)
+            .transpose()?;
+        let files = self
+            .db
+            .grep_session_files(session_id.uuid(), pattern, None, GREP_MAX_FILE_BYTES)
+            .await
+            .store_err()?;
+        let mut text_files = Vec::new();
+        for info in files {
+            if path_matcher
+                .as_ref()
+                .is_some_and(|matcher| !matcher.is_match(&info.path))
+            {
+                continue;
+            }
+            if let Some(file) = self
+                .db
+                .get_session_file(session_id.uuid(), &info.path)
+                .await
+                .store_err()?
+                && let Some(content) = file.content
+                && let Ok(text) = String::from_utf8(content)
+            {
+                text_files.push((info.path, text));
+            }
+        }
+        Ok(build_grep_search_result(text_files, &regex, options))
     }
 
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {

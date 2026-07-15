@@ -23,6 +23,8 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
+use crate::session_file::{GrepOptions, GrepSearchResult};
+
 use crate::error::{AgentLoopError, Result};
 use crate::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
 use crate::traits::SessionFileSystem;
@@ -223,6 +225,16 @@ impl ResolvedMount {
     fn map_grep_match(&self, mut grep_match: GrepMatch) -> GrepMatch {
         grep_match.path = self.to_virtual_output_path(&grep_match.path);
         grep_match
+    }
+
+    fn map_grep_result(&self, mut result: GrepSearchResult) -> GrepSearchResult {
+        for grep_match in &mut result.matches {
+            grep_match.path = self.to_virtual_output_path(&grep_match.path);
+        }
+        for block in &mut result.blocks {
+            block.path = self.to_virtual_output_path(&block.path);
+        }
+        result
     }
 
     fn to_virtual_output_path(&self, backend_path: &str) -> String {
@@ -494,6 +506,75 @@ impl SessionFileSystem for MountFs {
                 Ok(matches)
             }
         }
+    }
+
+    async fn grep_files_with_options(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        if let Some(path_pattern) = options.path_pattern.as_deref()
+            && path_pattern.starts_with('/')
+            && !path_pattern.starts_with(WORKSPACE_MOUNT)
+        {
+            let resolved = self.resolve(path_pattern)?;
+            let mut backend_options = options.clone();
+            backend_options.path_pattern = Some(resolved.backend_path.clone());
+            return resolved
+                .backend
+                .grep_files_with_options(session_id, pattern, &backend_options)
+                .await
+                .map(|result| resolved.map_grep_result(result));
+        }
+
+        let mounts = self.grep_mounts();
+        if mounts.len() == 1 {
+            let resolved = &mounts[0];
+            let mut backend_options = options.clone();
+            backend_options.path_pattern = options.path_pattern.as_ref().map(|path| {
+                if path.starts_with(WORKSPACE_MOUNT) {
+                    path.strip_prefix(WORKSPACE_MOUNT)
+                        .unwrap_or(path)
+                        .to_string()
+                } else {
+                    path.clone()
+                }
+            });
+            return resolved
+                .backend
+                .grep_files_with_options(session_id, pattern, &backend_options)
+                .await
+                .map(|result| resolved.map_grep_result(result));
+        }
+
+        let mut backend_options = options.clone();
+        backend_options.offset = 0;
+        backend_options.limit = usize::MAX;
+        backend_options.max_bytes = usize::MAX;
+        let path_matcher = options
+            .path_pattern
+            .as_deref()
+            .map(crate::session_path::GrepPathPattern::new)
+            .transpose()?;
+        let mut results = Vec::new();
+        for resolved in mounts {
+            let mut mount_options = backend_options.clone();
+            mount_options.path_pattern = Some(resolved.backend_path.clone());
+            let result = resolved
+                .backend
+                .grep_files_with_options(session_id, pattern, &mount_options)
+                .await?;
+            let mut mapped = resolved.map_grep_result(result);
+            if let Some(matcher) = &path_matcher {
+                mapped.matches.retain(|item| matcher.is_match(&item.path));
+                mapped.blocks.retain(|block| matcher.is_match(&block.path));
+            }
+            results.push(mapped);
+        }
+        Ok(crate::session_file::merge_grep_search_results(
+            results, options,
+        ))
     }
 
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {

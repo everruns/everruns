@@ -671,6 +671,20 @@ message GrepMatch {
     string line = 3;
 }
 
+message GrepContextLine {
+    uint64 line_number = 1;
+    string line = 2;
+    bool is_match = 3;
+}
+
+message GrepContextBlock {
+    string path = 1;
+    uint64 start_line = 2;
+    uint64 end_line = 3;
+    repeated uint64 match_line_numbers = 4;
+    repeated GrepContextLine lines = 5;
+}
+
 message SessionReadFileRequest {
     Uuid session_id = 1;
     string path = 2;
@@ -736,10 +750,22 @@ message SessionGrepFilesRequest {
     Uuid session_id = 1;
     string pattern = 2;
     optional string path_pattern = 3;
+    uint64 before_context = 4;
+    uint64 after_context = 5;
+    uint64 offset = 6;
+    uint64 limit = 7;
+    uint64 max_bytes = 8;
 }
 
 message SessionGrepFilesResponse {
     repeated GrepMatch matches = 1;
+    repeated GrepContextBlock blocks = 2;
+    uint64 total_matches = 3;
+    uint64 returned_matches = 4;
+    uint64 bytes_returned = 5;
+    uint64 bytes_total = 6;
+    optional uint64 next_offset = 7;
+    bool byte_truncated = 8;
 }
 
 message SessionCreateDirectoryRequest {

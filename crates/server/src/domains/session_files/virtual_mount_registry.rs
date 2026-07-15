@@ -169,6 +169,28 @@ impl VirtualMountRegistry {
         }
         results
     }
+
+    /// Clone bounded UTF-8 file content for a single contextual grep scan.
+    pub fn grep_text_files(
+        &self,
+        session_id: &Uuid,
+        max_file_bytes: usize,
+    ) -> Vec<(String, String)> {
+        let mounts = self.mounts.read();
+        let Some(session_mounts) = mounts.get(session_id) else {
+            return Vec::new();
+        };
+        session_mounts
+            .iter()
+            .flat_map(|mount| mount.tree.all_files())
+            .filter(|(_, file)| file.content.len() <= max_file_bytes)
+            .filter_map(|(path, file)| {
+                std::str::from_utf8(&file.content)
+                    .ok()
+                    .map(|content| (path.to_string(), content.to_string()))
+            })
+            .collect()
+    }
 }
 
 impl Default for VirtualMountRegistry {

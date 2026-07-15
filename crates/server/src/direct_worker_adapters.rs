@@ -15,7 +15,9 @@ use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::permissions::PermissionResolver;
-use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
+use everruns_core::session_file::{
+    FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
+};
 use everruns_core::traits::{
     BudgetChecker, CreateStoredImage, ImageArtifactStore, PaymentAuthority,
     ProviderCredentialStore, ProviderCredentials, ResolvedImage, ResolvedModel,
@@ -1238,6 +1240,23 @@ impl WorkerAdapters for DirectWorkerAdapters {
         }
 
         Ok(matches)
+    }
+
+    async fn grep_files_with_options(
+        &self,
+        session_id: Uuid,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        crate::domains::session_files::service::grep_session_files_with_options(
+            &self.db,
+            self.virtual_registry.as_deref(),
+            session_id,
+            pattern,
+            options,
+        )
+        .await
+        .map_err(|error| store_error(format!("Failed to grep files: {error}")))
     }
 
     async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo> {
@@ -3697,6 +3716,41 @@ mod tests {
 
         let result = adapters.grep_files(session_id, "[invalid", None).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn grep_files_returns_bounded_merged_context() {
+        let adapters = test_adapters();
+        let session_id = Uuid::new_v4();
+        seed_file(
+            &adapters.db,
+            session_id,
+            "/events.log",
+            "before\nError one\nbetween\nError two\nafter\n",
+        )
+        .await;
+
+        let result = adapters
+            .grep_files_with_options(
+                session_id,
+                "Error",
+                &GrepOptions {
+                    path_pattern: None,
+                    before_context: 1,
+                    after_context: 1,
+                    offset: 0,
+                    limit: 2,
+                    max_bytes: everruns_core::GREP_MAX_RETURN_BYTES,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.total_matches, 2);
+        assert_eq!(result.returned_matches, 2);
+        assert_eq!(result.blocks.len(), 1);
+        assert_eq!(result.blocks[0].match_line_numbers, vec![2, 4]);
+        assert_eq!(result.blocks[0].lines.len(), 5);
     }
 
     async fn seed_harness_for_platform_store(
