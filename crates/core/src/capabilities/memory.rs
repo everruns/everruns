@@ -183,18 +183,7 @@ impl Capability for MemoryCapability {
 mod tests {
     use super::*;
 
-    #[test]
-    fn id_and_name() {
-        let cap = MemoryCapability;
-        assert_eq!(cap.id(), "memory");
-        assert_eq!(cap.name(), "Memory");
-    }
-
-    #[test]
-    fn dependencies_include_file_system() {
-        let cap = MemoryCapability;
-        assert_eq!(cap.dependencies(), vec!["session_file_system"]);
-    }
+    // Metadata/dependency constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn validate_accepts_empty_config() {

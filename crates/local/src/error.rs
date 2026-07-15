@@ -11,6 +11,9 @@ pub enum LocalError {
     #[error("serialization error: {0}")]
     Serde(#[from] serde_json::Error),
 
+    #[error("io error: {0}")]
+    Io(#[from] std::io::Error),
+
     #[error("configuration error: {0}")]
     Config(String),
 

@@ -3,7 +3,6 @@
 import { use, useMemo, useCallback, useState } from "react";
 import {
   useAgent,
-  useHarnesses,
   useSessions,
   useCreateSession,
   useCapabilities,
@@ -38,6 +37,7 @@ import {
   BarChart3,
   GitBranch,
   Rocket,
+  Telescope,
   Terminal,
   Boxes,
 } from "lucide-react";
@@ -68,7 +68,6 @@ import {
   getEntityNameClassName,
   getEntityStatusBadgeVariant,
 } from "@/lib/entity-lifecycle";
-import { useOrganization } from "@/hooks/use-organizations";
 import { formatTokens, pluralize } from "@/lib/formatting";
 import { normalizeTags } from "@/lib/tags";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
@@ -84,6 +83,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("overview");
   const agentVersionsEnabled = useFeatureFlag("agent_versions");
+  const observersEnabled = useFeatureFlag("observers");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   usePageTitle(agent ? getDisplayName(agent) : null, "Agent");
   // Fetch only top 10 sessions for the overview
@@ -97,10 +97,8 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const { data: models } = useModels();
   const { data: stats, isLoading: statsLoading, error: statsError } = useAgentStats(agentId);
   const createSession = useCreateSession();
-  const { data: organization } = useOrganization();
   const exportAgent = useExportAgent();
   const copyAgent = useCopyAgent();
-  const { data: harnesses } = useHarnesses();
 
   // Create a map of model_id -> model for quick lookups
   const modelMap = useMemo(() => {
@@ -113,11 +111,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const agentTags = normalizeTags(agent?.tags);
 
   const handleNewSession = async () => {
-    const harnessId = organization?.default_harness_id || harnesses?.[0]?.id;
-    if (!harnessId) return;
     try {
+      // Agent-first: omit the harness so the server derives it from the agent's
+      // own harness (falling back to the org default only when the agent has none).
       const session = await createSession.mutateAsync({
-        request: { harness_id: harnessId, agent_id: agentId },
+        request: { agent_id: agentId },
       });
       router.push(`/sessions/${session.id}`);
     } catch (error) {
@@ -258,6 +256,14 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                 <Button variant="outline">
                   <Rocket className="size-4" />
                   Create app
+                </Button>
+              </Link>
+            )}
+            {observersEnabled && agent.status === "active" && (
+              <Link href={{ pathname: "/observers/new", query: { agent_id: agentId } }}>
+                <Button variant="outline">
+                  <Telescope className="size-4" />
+                  Observe this agent
                 </Button>
               </Link>
             )}

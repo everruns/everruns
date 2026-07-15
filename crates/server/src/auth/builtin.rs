@@ -7,9 +7,7 @@
 
 use async_trait::async_trait;
 use axum::Router;
-use everruns_core::{
-    DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgMembership, OrgRole, PlatformDefinition,
-};
+use everruns_core::{OrgMembership, OrgRole, PlatformDefinition};
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;
@@ -37,7 +35,8 @@ const PAT_CACHE_MAX_CAPACITY: u64 = 10_000;
 /// This is the default for OSS deployments.
 ///
 /// HARNESS-SEED SAFETY NET (see also `specs/authentication.md`):
-/// `register` and `oauth_callback` both add new users to `DEFAULT_ORG_ID`.
+/// When default-org auto-join is enabled, `register` and `oauth_callback`
+/// add new users to `DEFAULT_ORG_ID`.
 /// The background seed task (see `seed::spawn_seed_task_with_platform_definition`)
 /// provisions built-in harnesses for that org, but it runs asynchronously
 /// with a 500 ms initial delay — so a user who signs up during the startup
@@ -243,34 +242,35 @@ impl BuiltinAuthBackend {
 
         // Enforce subject user still exists. Deleted users must not remain authenticated
         // with previously issued JWTs until token expiry.
-        let user_exists = self.db.get_user(user_id).await.map_err(|e| {
+        let user = self.db.get_user(user_id).await.map_err(|e| {
             tracing::error!("Failed to fetch JWT user: {}", e);
             AuthError::unauthorized("Failed to validate token user")
         })?;
-        if user_exists.is_none() {
+        let Some(user) = user else {
             tracing::warn!(user_id = %user_id, "JWT subject user not found");
             return Err(AuthError::unauthorized("Invalid or expired token"));
-        }
+        };
 
-        // Fetch organization memberships for the user
+        // Fetch real organization memberships for the user. A zero-org user must
+        // stay zero-org so onboarding can create an isolated tenant-owned org.
         let organizations = fetch_user_organizations(&self.db, user_id).await?;
 
-        // If user has no organizations, fall back to default organization
-        if organizations.is_empty() {
-            tracing::warn!(
-                user_id = %user_id,
-                "User has no organizations, falling back to default org"
-            );
-        }
-        let organizations = organizations_or_default(organizations);
+        let roles: Vec<String> = serde_json::from_value(user.roles).map_err(|e| {
+            tracing::error!(user_id = %user_id, error = %e, "Failed to decode JWT user roles");
+            AuthError::unauthorized("Failed to validate token user")
+        })?;
+        let is_platform_user = platform_user_from_roles(&roles);
 
-        let is_platform_user = platform_user_from_roles(&claims.roles);
-
+        // EVE-715: derive identity fields (name, email) from the freshly-loaded DB
+        // user row rather than the JWT claims. Profile updates write the DB but do
+        // not mint a new token, so claim-sourced values go stale until re-login.
+        // The PAT and caller-resolution paths already read fresh; this keeps the
+        // JWT/MCP paths consistent (and complements EVE-703's DB-sourced roles).
         Ok(AuthUser {
             id: user_id,
-            email: claims.email,
-            name: claims.name,
-            roles: claims.roles,
+            email: user.email,
+            name: user.name,
+            roles,
             is_platform_user,
             auth_method,
             organizations,
@@ -344,6 +344,7 @@ impl AuthBackend for BuiltinAuthBackend {
             db: self.db.clone(),
             auth: auth_state,
             frontend_url: self.config.frontend_url.clone(),
+            login_origin: self.config.login_origin.clone(),
             base_url: api_base_url,
         };
         let cli_routes = super::cli_auth::cli_auth_routes(cli_state);
@@ -362,6 +363,7 @@ impl AuthBackend for BuiltinAuthBackend {
             db: self.db.clone(),
             auth: auth_state.clone(),
             frontend_url: self.config.frontend_url.clone(),
+            login_origin: self.config.login_origin.clone(),
             base_url: api_base_url.clone(),
         };
         let mcp_oauth_state = super::mcp_oauth::McpOAuthState {
@@ -370,6 +372,7 @@ impl AuthBackend for BuiltinAuthBackend {
             jwt_service: self.jwt_service.clone(),
             issuer_url: root_url_from_api_base(&api_base_url),
             frontend_url: self.config.frontend_url.clone(),
+            login_origin: self.config.login_origin.clone(),
             rate_limiter: self.rate_limiter.clone(),
         };
         Some(
@@ -390,9 +393,12 @@ impl AuthBackend for BuiltinAuthBackend {
 
         AuthConfigResponse {
             mode: self.config.mode.as_str().to_string(),
+            login_origin: self.config.login_origin.clone(),
             password_auth_enabled: self.config.password_auth_enabled(),
             oauth_providers,
             signup_enabled: self.config.signup_enabled(),
+            signup_email_confirm: self.config.signup_email_confirm,
+            captcha: None,
         }
     }
 }
@@ -416,20 +422,6 @@ pub(super) async fn fetch_user_organizations(
             role: row.role.parse::<OrgRole>().unwrap_or(OrgRole::Member),
         })
         .collect())
-}
-
-/// Return organizations as-is, or fall back to default org membership if empty
-pub(super) fn organizations_or_default(organizations: Vec<OrgMembership>) -> Vec<OrgMembership> {
-    if organizations.is_empty() {
-        vec![OrgMembership {
-            org_id: DEFAULT_ORG_ID,
-            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
-            name: "Default Organization".to_string(),
-            role: OrgRole::Member,
-        }]
-    } else {
-        organizations
-    }
 }
 
 #[cfg(test)]
@@ -686,6 +678,214 @@ mod tests {
                 .validate_personal_access_token("not-an-api-key")
                 .await;
             assert!(result.is_err(), "malformed key must be rejected");
+        }
+    }
+
+    // EVE-703: JWT role claims are not an authorization source. Tokens can be
+    // stale or attacker-controlled in tests; platform status must come from the
+    // current server-side user row after subject validation.
+    mod jwt_roles_trust_boundary {
+        use super::super::super::backend::AuthBackend;
+        use super::super::*;
+        use crate::storage::StorageBackend;
+        use crate::storage::models::CreateUserRow;
+
+        const MCP_RESOURCE: &str = "https://app.example.com/mcp";
+
+        async fn backend_with_user_roles(roles: Vec<String>) -> (BuiltinAuthBackend, uuid::Uuid) {
+            let db = Arc::new(StorageBackend::in_memory());
+            let backend = BuiltinAuthBackend::new(
+                AuthConfig::default(),
+                db.clone(),
+                Arc::new(crate::platform::oss_platform_definition()),
+            );
+            let user = db
+                .create_user(CreateUserRow {
+                    email: "roles@example.com".to_string(),
+                    name: "Roles User".to_string(),
+                    avatar_url: None,
+                    roles,
+                    password_hash: None,
+                    email_verified: true,
+                    auth_provider: None,
+                    auth_provider_id: None,
+                    external_id: None,
+                })
+                .await
+                .expect("create user");
+            (backend, user.id)
+        }
+
+        #[tokio::test]
+        async fn access_token_admin_claim_does_not_grant_platform_access() {
+            let (backend, user_id) = backend_with_user_roles(vec!["user".to_string()]).await;
+            let forged_roles = vec!["admin".to_string()];
+            let token = backend
+                .jwt_service
+                .generate_access_token(user_id, "roles@example.com", "Roles User", &forged_roles)
+                .expect("generate token");
+
+            let user = backend
+                .validate_token(&token)
+                .await
+                .expect("token subject exists");
+            assert_eq!(user.roles, vec!["user".to_string()]);
+            assert!(
+                !user.is_platform_user,
+                "platform access must be derived from DB roles, not JWT roles"
+            );
+        }
+
+        #[tokio::test]
+        async fn access_token_uses_db_admin_role_even_when_token_roles_are_stale() {
+            let (backend, user_id) = backend_with_user_roles(vec!["admin".to_string()]).await;
+            let stale_roles = vec!["user".to_string()];
+            let token = backend
+                .jwt_service
+                .generate_access_token(user_id, "roles@example.com", "Roles User", &stale_roles)
+                .expect("generate token");
+
+            let user = backend
+                .validate_token(&token)
+                .await
+                .expect("token subject exists");
+            assert_eq!(user.roles, vec!["admin".to_string()]);
+            assert!(
+                user.is_platform_user,
+                "current DB admin role must grant platform access despite stale token roles"
+            );
+        }
+
+        #[tokio::test]
+        async fn mcp_token_admin_claim_does_not_grant_platform_access() {
+            let (backend, user_id) = backend_with_user_roles(vec!["user".to_string()]).await;
+            let forged_roles = vec!["admin".to_string()];
+            let token = backend
+                .jwt_service
+                .generate_mcp_access_token(
+                    user_id,
+                    "roles@example.com",
+                    "Roles User",
+                    &forged_roles,
+                    MCP_RESOURCE,
+                )
+                .expect("generate mcp token");
+
+            let user = backend
+                .validate_mcp_token(&token, MCP_RESOURCE)
+                .await
+                .expect("mcp token subject exists");
+            assert_eq!(user.roles, vec!["user".to_string()]);
+            assert!(
+                !user.is_platform_user,
+                "MCP platform access must be derived from DB roles, not JWT roles"
+            );
+        }
+    }
+
+    // EVE-715: profile-name updates must surface on the next request within the
+    // same access-token session. `/v1/auth/me` builds `UserInfoResponse.name` from
+    // `AuthUser.name`, which comes from `auth_user_from_claims`. Because profile
+    // updates write the DB but do not mint a new token, the name must be sourced
+    // from the freshly-loaded DB user row, not the (now stale) JWT claim.
+    mod jwt_fresh_profile_name {
+        use super::super::super::backend::AuthBackend;
+        use super::super::*;
+        use crate::storage::StorageBackend;
+        use crate::storage::models::{CreateUserRow, UpdateUser};
+
+        const MCP_RESOURCE: &str = "https://app.example.com/mcp";
+
+        async fn backend_with_named_user(name: &str) -> (BuiltinAuthBackend, uuid::Uuid) {
+            let db = Arc::new(StorageBackend::in_memory());
+            let backend = BuiltinAuthBackend::new(
+                AuthConfig::default(),
+                db.clone(),
+                Arc::new(crate::platform::oss_platform_definition()),
+            );
+            let user = db
+                .create_user(CreateUserRow {
+                    email: "profile@example.com".to_string(),
+                    name: name.to_string(),
+                    avatar_url: None,
+                    roles: vec!["user".to_string()],
+                    password_hash: None,
+                    email_verified: true,
+                    auth_provider: None,
+                    auth_provider_id: None,
+                    external_id: None,
+                })
+                .await
+                .expect("create user");
+            (backend, user.id)
+        }
+
+        #[tokio::test]
+        async fn access_token_reflects_db_name_after_profile_update() {
+            let (backend, user_id) = backend_with_named_user("Original Name").await;
+            // Token minted with the original name; a profile rename does not reissue it.
+            let token = backend
+                .jwt_service
+                .generate_access_token(user_id, "profile@example.com", "Original Name", &[])
+                .expect("generate token");
+
+            let before = backend.validate_token(&token).await.expect("validate");
+            assert_eq!(before.name, "Original Name");
+
+            backend
+                .db
+                .update_user(
+                    user_id,
+                    UpdateUser {
+                        name: Some("Updated Name".to_string()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .expect("rename user");
+
+            // Same access token, next request: name must reflect the DB write.
+            let after = backend.validate_token(&token).await.expect("validate");
+            assert_eq!(
+                after.name, "Updated Name",
+                "auth_user_from_claims must source name from the fresh DB user row"
+            );
+        }
+
+        #[tokio::test]
+        async fn mcp_token_reflects_db_name_after_profile_update() {
+            let (backend, user_id) = backend_with_named_user("Original Name").await;
+            let token = backend
+                .jwt_service
+                .generate_mcp_access_token(
+                    user_id,
+                    "profile@example.com",
+                    "Original Name",
+                    &[],
+                    MCP_RESOURCE,
+                )
+                .expect("generate mcp token");
+
+            backend
+                .db
+                .update_user(
+                    user_id,
+                    UpdateUser {
+                        name: Some("Updated Name".to_string()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .expect("rename user");
+
+            let after = backend
+                .validate_mcp_token(&token, MCP_RESOURCE)
+                .await
+                .expect("validate mcp");
+            assert_eq!(
+                after.name, "Updated Name",
+                "MCP path must also source name from the fresh DB user row"
+            );
         }
     }
 

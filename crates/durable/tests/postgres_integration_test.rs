@@ -9,7 +9,7 @@
 
 #![cfg(feature = "postgres-tests")]
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use chrono::Utc;
 use serde_json::json;
@@ -54,6 +54,17 @@ async fn reset_durable_tables(pool: &PgPool) {
     .execute(pool)
     .await
     .expect("Failed to reset durable test tables");
+
+    // TRUNCATE bypasses the row-level triggers that maintain `durable_stat_counters`
+    // (migration 082), so the cumulative health counters would otherwise stay
+    // non-zero while the tables they track are now empty. That stale drift made
+    // `postgres_repository_test`'s counter==COUNT(*) health check flaky when this
+    // binary ran first against the shared DB. The triggers UPDATE pre-seeded rows,
+    // so the rows must remain — zero the values in place instead of truncating.
+    sqlx::query("UPDATE durable_stat_counters SET value = 0")
+        .execute(pool)
+        .await
+        .expect("Failed to reset durable stat counters");
 }
 
 /// Create a test store with a fresh database connection
@@ -330,7 +341,10 @@ async fn test_optimistic_concurrency_conflict() {
         .await
         .unwrap();
 
-    // Second append with same expected sequence fails
+    // Second append with same expected sequence fails. EVE-639: append_events
+    // now relies on the UNIQUE(workflow_id, sequence_num) constraint to detect
+    // conflicts instead of a pre-read MAX(sequence_num), so the conflicting
+    // `actual` sequence is reported as -1 (unknown) rather than read back.
     let result = store
         .append_events(
             workflow_id,
@@ -341,11 +355,12 @@ async fn test_optimistic_concurrency_conflict() {
 
     assert!(matches!(
         result,
-        Err(StoreError::ConcurrencyConflict {
-            expected: 0,
-            actual: 1
-        })
+        Err(StoreError::ConcurrencyConflict { expected: 0, .. })
     ));
+
+    // The conflicting append must not have mutated the log: only the first
+    // event is present, so the next correct sequence remains 1.
+    assert_eq!(store.count_events(workflow_id).await.unwrap(), 1);
 
     cleanup_workflow(&store, workflow_id).await;
 }
@@ -453,6 +468,72 @@ async fn test_start_workflow_with_task_writes_initial_state_in_one_step() {
     let task = store.get_task(task_id).await.unwrap();
     assert_eq!(task.status, TaskStatus::Pending);
     assert_eq!(task.activity_type, "process_input");
+
+    cleanup_workflow(&store, workflow_id).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_start_workflow_with_task_is_idempotent_for_concurrent_same_workflow() {
+    let store = create_test_store().await;
+    let workflow_id = Uuid::now_v7();
+    let barrier = Arc::new(tokio::sync::Barrier::new(8));
+
+    let mut handles = Vec::new();
+    for attempt in 0..8 {
+        let store = store.clone();
+        let barrier = Arc::clone(&barrier);
+        handles.push(tokio::spawn(async move {
+            barrier.wait().await;
+            store
+                .start_workflow_with_task(
+                    workflow_id,
+                    "turn_workflow",
+                    json!({"session_id": "session_race"}),
+                    TaskDefinition {
+                        workflow_id: Some(workflow_id),
+                        activity_id: format!("input-{attempt}"),
+                        activity_type: "process_input".to_string(),
+                        input: json!({"session_id": "session_race", "attempt": attempt}),
+                        options: ActivityOptions::default(),
+                    },
+                )
+                .await
+        }));
+    }
+
+    let mut task_ids = Vec::new();
+    for handle in handles {
+        task_ids.push(handle.await.unwrap().unwrap());
+    }
+    task_ids.sort();
+    task_ids.dedup();
+    assert_eq!(
+        task_ids.len(),
+        1,
+        "concurrent duplicate starts must reuse the first queued task"
+    );
+
+    let workflow = store.get_workflow_info(workflow_id).await.unwrap();
+    assert_eq!(workflow.status, WorkflowStatus::Running);
+
+    let events = store.load_events(workflow_id).await.unwrap();
+    assert_eq!(events.len(), 2);
+    assert!(matches!(
+        &events[0].1,
+        WorkflowEvent::WorkflowStarted { .. }
+    ));
+    assert!(matches!(
+        &events[1].1,
+        WorkflowEvent::ActivityScheduled { .. }
+    ));
+
+    let task_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM durable_task_queue WHERE workflow_id = $1")
+            .bind(workflow_id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(task_count, 1);
 
     cleanup_workflow(&store, workflow_id).await;
 }
@@ -2039,4 +2120,313 @@ async fn test_stale_reclaim_allows_remaining_attempts() {
     cleanup_workflow(&store, workflow_id).await;
     cleanup_worker(&store, "worker-1").await;
     cleanup_worker(&store, "worker-2").await;
+}
+
+// ============================================
+// EVE-639 regression tests
+// ============================================
+
+/// EVE-639 #3: a single `append_events` call writes all events in one
+/// multi-row INSERT with contiguous, monotonic sequence numbers starting at the
+/// caller's `expected_sequence`.
+#[tokio::test]
+async fn test_append_events_multi_row_sequences() {
+    let store = create_test_store().await;
+    let workflow_id = Uuid::now_v7();
+
+    store
+        .create_workflow(workflow_id, "append_seq_test", json!({}), None)
+        .await
+        .unwrap();
+
+    // First call: two events at sequences 0 and 1.
+    let next = store
+        .append_events(
+            workflow_id,
+            0,
+            vec![
+                WorkflowEvent::WorkflowStarted { input: json!({}) },
+                WorkflowEvent::ActivityScheduled {
+                    activity_id: "a-0".to_string(),
+                    activity_type: "act".to_string(),
+                    input: json!({}),
+                    options: ActivityOptions::default(),
+                },
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(next, 2, "next sequence after two events should be 2");
+
+    // Second call: three more events at 2, 3, 4.
+    let next = store
+        .append_events(
+            workflow_id,
+            2,
+            vec![
+                WorkflowEvent::ActivityCompleted {
+                    activity_id: "a-0".to_string(),
+                    result: json!({"v": 1}),
+                },
+                WorkflowEvent::ActivityScheduled {
+                    activity_id: "a-1".to_string(),
+                    activity_type: "act".to_string(),
+                    input: json!({}),
+                    options: ActivityOptions::default(),
+                },
+                WorkflowEvent::ActivityCompleted {
+                    activity_id: "a-1".to_string(),
+                    result: json!({"v": 2}),
+                },
+            ],
+        )
+        .await
+        .unwrap();
+    assert_eq!(next, 5);
+
+    // Sequences must be exactly 0..5, contiguous and ordered.
+    let events = store.load_events(workflow_id).await.unwrap();
+    let seqs: Vec<i32> = events.iter().map(|(s, _)| *s).collect();
+    assert_eq!(seqs, vec![0, 1, 2, 3, 4]);
+
+    // An empty append is a no-op that returns expected_sequence.
+    let next = store.append_events(workflow_id, 5, vec![]).await.unwrap();
+    assert_eq!(next, 5);
+    assert_eq!(store.count_events(workflow_id).await.unwrap(), 5);
+
+    cleanup_workflow(&store, workflow_id).await;
+}
+
+/// EVE-639 #2: claiming K tasks across W workflows assigns each workflow's
+/// ActivityStarted event the correct next sequence (set-based path), and
+/// ActivityStarted is written only on the FIRST attempt — a reclaim + re-claim
+/// does not append a second one.
+#[tokio::test]
+async fn test_claim_task_set_based_first_attempt_only() {
+    let store = create_test_store().await;
+    register_test_worker(&store, "set-worker", vec!["work".to_string()]).await;
+
+    // Two workflows, each with one task. Workflow A also has a pre-existing
+    // event log (WorkflowStarted + ActivityScheduled) so its ActivityStarted
+    // must land at sequence 2; workflow B starts empty so it lands at 0.
+    let wf_a = Uuid::now_v7();
+    let wf_b = Uuid::now_v7();
+    store
+        .create_workflow(wf_a, "set_test_a", json!({}), None)
+        .await
+        .unwrap();
+    store
+        .create_workflow(wf_b, "set_test_b", json!({}), None)
+        .await
+        .unwrap();
+
+    store
+        .append_events(
+            wf_a,
+            0,
+            vec![
+                WorkflowEvent::WorkflowStarted { input: json!({}) },
+                WorkflowEvent::ActivityScheduled {
+                    activity_id: "a-task".to_string(),
+                    activity_type: "work".to_string(),
+                    input: json!({}),
+                    options: ActivityOptions::default(),
+                },
+            ],
+        )
+        .await
+        .unwrap();
+
+    let task_a = store
+        .enqueue_task(TaskDefinition {
+            workflow_id: Some(wf_a),
+            activity_id: "a-task".to_string(),
+            activity_type: "work".to_string(),
+            input: json!({}),
+            options: ActivityOptions {
+                retry_policy: RetryPolicy::exponential()
+                    .with_max_attempts(5)
+                    .with_initial_interval(Duration::from_millis(1)),
+                ..Default::default()
+            },
+        })
+        .await
+        .unwrap();
+    let _task_b = store
+        .enqueue_task(TaskDefinition {
+            workflow_id: Some(wf_b),
+            activity_id: "b-task".to_string(),
+            activity_type: "work".to_string(),
+            input: json!({}),
+            options: ActivityOptions::default(),
+        })
+        .await
+        .unwrap();
+
+    // One claim call grabs both tasks across both workflows.
+    let claimed = store
+        .claim_task("set-worker", &["work".to_string()], 10)
+        .await
+        .unwrap();
+    assert_eq!(claimed.len(), 2);
+
+    // Workflow A: ActivityStarted appended at sequence 2.
+    let ev_a = store.load_events(wf_a).await.unwrap();
+    assert_eq!(
+        ev_a.len(),
+        3,
+        "wf_a: started + scheduled + activity_started"
+    );
+    assert!(matches!(
+        &ev_a[2],
+        (2, WorkflowEvent::ActivityStarted { activity_id, attempt: 1, .. })
+            if activity_id == "a-task"
+    ));
+
+    // Workflow B: ActivityStarted appended at sequence 0.
+    let ev_b = store.load_events(wf_b).await.unwrap();
+    assert_eq!(ev_b.len(), 1);
+    assert!(matches!(
+        &ev_b[0],
+        (0, WorkflowEvent::ActivityStarted { activity_id, attempt: 1, .. })
+            if activity_id == "b-task"
+    ));
+
+    // Make task A stale and reclaim it; the reclaim path must NOT write a second
+    // ActivityStarted, and the subsequent re-claim (attempt 2) must not either.
+    sqlx::query(
+        "UPDATE durable_task_queue SET heartbeat_at = NOW() - INTERVAL '60 seconds' WHERE id = $1",
+    )
+    .bind(task_a)
+    .execute(store.pool())
+    .await
+    .unwrap();
+    let reclaim = store
+        .reclaim_stale_tasks(Duration::from_secs(30))
+        .await
+        .unwrap();
+    assert!(reclaim.reclaimed_ids.contains(&task_a));
+
+    // Re-claim task A (now attempt 2).
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    let reclaimed = store
+        .claim_task("set-worker", &["work".to_string()], 10)
+        .await
+        .unwrap();
+    assert!(reclaimed.iter().any(|t| t.id == task_a && t.attempt == 2));
+
+    // Still exactly one ActivityStarted for wf_a (no per-reclaim duplicates).
+    let started_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM durable_workflow_events WHERE workflow_id = $1 AND event_type = 'activity_started'",
+    )
+    .bind(wf_a)
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(
+        started_count, 1,
+        "activity_started must be written only on the first attempt"
+    );
+
+    cleanup_workflow(&store, wf_a).await;
+    cleanup_workflow(&store, wf_b).await;
+    cleanup_worker(&store, "set-worker").await;
+}
+
+/// EVE-639 #4: a `fail_task` racing a stale `reclaim_stale_tasks` on the same
+/// task must not double-increment `attempt` or double-route. Exactly one actor
+/// wins; the task ends requeued once, attempt unchanged (neither path bumps it).
+#[tokio::test]
+async fn test_fail_task_and_reclaim_no_double_increment() {
+    let store = create_test_store().await;
+    register_test_worker(&store, "race-worker", vec!["race".to_string()]).await;
+
+    let workflow_id = Uuid::now_v7();
+    store
+        .create_workflow(workflow_id, "race_test", json!({}), None)
+        .await
+        .unwrap();
+
+    // max_attempts high so neither path routes to DLQ; we are isolating the
+    // attempt/double-route race, not exhaustion.
+    let task_id = store
+        .enqueue_task(TaskDefinition {
+            workflow_id: Some(workflow_id),
+            activity_id: "race-task".to_string(),
+            activity_type: "race".to_string(),
+            input: json!({}),
+            options: ActivityOptions {
+                retry_policy: RetryPolicy::exponential()
+                    .with_max_attempts(10)
+                    .with_initial_interval(Duration::from_millis(1)),
+                ..Default::default()
+            },
+        })
+        .await
+        .unwrap();
+
+    // Claim it: attempt becomes 1, status 'claimed'.
+    let claimed = store
+        .claim_task("race-worker", &["race".to_string()], 1)
+        .await
+        .unwrap();
+    assert_eq!(claimed.len(), 1);
+    assert_eq!(claimed[0].attempt, 1);
+
+    // Make it stale so reclaim is eligible to act on it.
+    sqlx::query(
+        "UPDATE durable_task_queue SET heartbeat_at = NOW() - INTERVAL '60 seconds' WHERE id = $1",
+    )
+    .bind(task_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    // Fire fail_task and reclaim concurrently.
+    let store2 = store.clone();
+    let (fail_res, reclaim_res) = tokio::join!(
+        store.fail_task(task_id, "boom"),
+        store2.reclaim_stale_tasks(Duration::from_secs(30)),
+    );
+
+    // Both calls must succeed at the API level; the loser of the race either
+    // returns TaskNotOwned (fail_task) or simply does not include the task
+    // (reclaim). Neither may panic or error otherwise.
+    match fail_res {
+        Ok(_) | Err(StoreError::TaskNotOwned(_)) => {}
+        other => panic!("unexpected fail_task result: {other:?}"),
+    }
+    let reclaim = reclaim_res.expect("reclaim must not error");
+
+    let task = store.get_task(task_id).await.unwrap();
+
+    // attempt is bumped only by claim_task; neither fail nor reclaim bumps it.
+    assert_eq!(task.attempt, 1, "attempt must not be double-incremented");
+
+    // The task must be requeued exactly once (pending) and NOT dead — high
+    // max_attempts means no legitimate DLQ routing, so 'dead' here would mean a
+    // path mis-decided under the race.
+    assert_eq!(
+        task.status,
+        TaskStatus::Pending,
+        "task must be requeued exactly once, not sealed/dead"
+    );
+
+    // It must not appear in the DLQ.
+    let dlq_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM durable_dead_letter_queue WHERE workflow_id = $1")
+            .bind(workflow_id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(dlq_count, 0, "task must not be double-routed to the DLQ");
+
+    // Sanity: reclaim never sealed this task under the race.
+    assert!(
+        reclaim.sealed_tasks.iter().all(|s| s.task_id != task_id),
+        "task must not be sealed under the race"
+    );
+
+    cleanup_workflow(&store, workflow_id).await;
+    cleanup_worker(&store, "race-worker").await;
 }

@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from "react";
 import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
 import { DevChatRuntimeScene } from "@/app/dev/_components/dev-chat-runtime-preview";
+import { DevChatNavRailPreview } from "@/app/dev/_components/dev-chat-nav-rail-preview";
 import {
   devCommands,
   devModels,
@@ -12,9 +13,18 @@ import { ChatComposer } from "@/components/chat/chat-composer";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import type { PendingImage } from "@/lib/api/images";
-import type { ReasoningEffortConfig } from "@/lib/api/types";
+import type { ReasoningEffortConfig, VerbosityConfig } from "@/lib/api/types";
 
 const reasoningEffortConfig: ReasoningEffortConfig = {
+  default: "medium",
+  values: [
+    { value: "low", name: "Low" },
+    { value: "medium", name: "Medium" },
+    { value: "high", name: "High" },
+  ],
+};
+
+const verbosityConfig: VerbosityConfig = {
   default: "medium",
   values: [
     { value: "low", name: "Low" },
@@ -28,6 +38,7 @@ export default function DevChatComponentsPage() {
   const [inputValue, setInputValue] = useState("/ship tighten the tool transcript UI");
   const [selectedModelId, setSelectedModelId] = useState(devModels[0]?.id ?? "");
   const [reasoningEffort, setReasoningEffort] = useState("medium");
+  const [verbosity, setVerbosity] = useState("");
   const [pendingImages, setPendingImages] = useState<PendingImage[]>(() => makePendingImages());
 
   const emptyToolResults = useMemo(() => new Map(), []);
@@ -63,6 +74,18 @@ export default function DevChatComponentsPage() {
             </p>
           </div>
           <DevChatRuntimeScene scenario="chat-components" />
+        </section>
+
+        <section className="space-y-3">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-foreground">Turn navigation rail</h2>
+            <p className="text-sm text-muted-foreground">
+              Multi-turn transcript with the turn navigation rail (md+ screens). Hover a marker on
+              the right gutter to preview the turn; click to jump. The active turn fills with the
+              gold accent as you scroll.
+            </p>
+          </div>
+          <DevChatNavRailPreview />
         </section>
 
         <section className="space-y-3 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
@@ -111,6 +134,7 @@ export default function DevChatComponentsPage() {
                   dropZoneProps={{}}
                   handlePaste={() => undefined}
                   selectedModelId={selectedModelId}
+                  recentModels={devModels.slice(0, 2)}
                   onModelChange={setSelectedModelId}
                   modelTriggerLabel={
                     devModels.find((model) => model.id === selectedModelId)?.display_name ??
@@ -126,6 +150,14 @@ export default function DevChatComponentsPage() {
                     value
                   }
                   onReasoningEffortChange={setReasoningEffort}
+                  supportsVerbosity
+                  verbosity={verbosity}
+                  verbosityConfig={verbosityConfig}
+                  defaultVerbosityName="Medium"
+                  getVerbosityName={(value) =>
+                    verbosityConfig.values.find((item) => item.value === value)?.name ?? value
+                  }
+                  onVerbosityChange={setVerbosity}
                   isActive={false}
                   cancelCurrentTurn={{
                     mutate: () => undefined,

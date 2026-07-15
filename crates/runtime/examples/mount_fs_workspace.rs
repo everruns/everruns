@@ -4,15 +4,15 @@
 // mount point and the default current working directory — not a magic prefix
 // re-implemented in every store. The same resolver works over the in-memory VFS
 // and over a real host directory, and a worktree switch repoints every surface
-// at once while the model-facing `/workspace` stays stable.
+// at once while preserving the backing filesystem's visible path identity.
 //
 // Run it:
 //   cargo run -p everruns-runtime --example mount_fs_workspace
 //
 // See `specs/file-store.md` for the contract.
 
-use everruns_core::{MountFs, SessionFileSystem, SessionId};
-use everruns_runtime::{InMemorySessionFileStore, RealDiskFileStore};
+use everruns_core::{MountFs, SessionFileSystem, SessionId, WorkspaceRootSet};
+use everruns_runtime::{InMemorySessionFileStore, RealDiskFileStore, multi_root_file_system};
 use std::sync::Arc;
 
 #[tokio::main]
@@ -41,7 +41,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("read {input:<24} -> backend key {} ✓", file.path);
     }
 
-    // Display renders the stable /workspace view for the model.
+    // The in-memory backend's own display identity is /workspace.
     assert_eq!(fs.display_root(), "/workspace");
     assert_eq!(fs.display_path("/src/lib.rs"), "/workspace/src/lib.rs");
     println!(
@@ -77,11 +77,47 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  /workspace/notes.md -> on disk: {on_disk_b:?}");
     assert_eq!(on_disk_b, "from worktree B");
 
-    // The model-facing namespace never changed, even though the disk root did.
-    assert_eq!(host_fs.display_root(), "/workspace");
+    // The visible root follows the real-disk backend.
+    assert_eq!(host_fs.display_root(), disk.root().display().to_string());
     println!(
-        "\nmodel-facing root stayed `{}` across the switch ✓",
+        "\nmodel-facing root follows the backing store: `{}` ✓",
         host_fs.display_root()
+    );
+
+    // ---------------------------------------------------------------------
+    // 3. Multiple host roots in one session namespace.
+    // ---------------------------------------------------------------------
+    let primary = tempfile::tempdir()?;
+    let backend = tempfile::tempdir()?;
+    let roots = WorkspaceRootSet::new(
+        primary.path(),
+        [("backend".to_string(), backend.path().to_path_buf())],
+    )?;
+    let multi_root_fs = multi_root_file_system(&roots)?;
+
+    multi_root_fs
+        .write_file(session, "/workspace/README.md", "primary", "text")
+        .await?;
+    multi_root_fs
+        .write_file(
+            session,
+            "/workspace/roots/backend/Cargo.toml",
+            "backend",
+            "text",
+        )
+        .await?;
+    assert_eq!(
+        std::fs::read_to_string(primary.path().join("README.md"))?,
+        "primary"
+    );
+    assert_eq!(
+        std::fs::read_to_string(backend.path().join("Cargo.toml"))?,
+        "backend"
+    );
+    println!(
+        "multi-root write: /workspace -> {}, /workspace/roots/backend -> {}",
+        primary.path().display(),
+        backend.path().display()
     );
 
     println!("\nmount_fs_workspace example OK");

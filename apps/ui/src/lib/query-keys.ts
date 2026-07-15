@@ -52,6 +52,8 @@ export const queryKeys = {
     detail: (org?: string, sessionId?: string) => ["session", org, sessionId] as const,
     contextReport: (org?: string, sessionId?: string) =>
       ["session", org, sessionId, "context-report"] as const,
+    participants: (org?: string, sessionId?: string) =>
+      ["session", org, sessionId, "participants"] as const,
     stats: (org?: string) => ["sessions", "stats", org] as const,
   },
 
@@ -169,6 +171,13 @@ export const queryKeys = {
     list: () => ["user-connections"] as const,
   },
 
+  // User preference (key/value) queries
+  userPreferences: {
+    all: ["user-preferences"] as const,
+    list: () => ["user-preferences"] as const,
+    detail: (key: string) => ["user-preferences", key] as const,
+  },
+
   payments: {
     all: ["payments"] as const,
     accounts: (params: Record<string, unknown> = {}) => ["payments", "accounts", params] as const,
@@ -194,6 +203,12 @@ export const queryKeys = {
     all: ["session-tasks"] as const,
     list: (sessionId: string) => ["session-tasks", sessionId] as const,
     detail: (sessionId: string, taskId: string) => ["session-task", sessionId, taskId] as const,
+  },
+
+  // Org-wide task queries (cross-session Work view — EVE-756)
+  orgTasks: {
+    all: ["org-tasks"] as const,
+    list: () => ["org-tasks", "list"] as const,
   },
 
   // Command queries
@@ -237,6 +252,14 @@ export const queryKeys = {
     cases: (evalId: string) => ["eval", evalId, "cases"] as const,
     runs: (evalId: string) => ["eval", evalId, "runs"] as const,
     runDetail: (evalId: string, runId: string) => ["eval", evalId, "run", runId] as const,
+  },
+
+  // Observer queries
+  observers: {
+    all: ["observers"] as const,
+    list: (includeArchived = false) => ["observers", { includeArchived }] as const,
+    detail: (observerId: string) => ["observer", observerId] as const,
+    scores: (observerId: string) => ["observer", observerId, "scores"] as const,
   },
 
   // Policy queries

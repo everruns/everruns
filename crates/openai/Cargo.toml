@@ -46,7 +46,7 @@ inventory.workspace = true
 # default-features = false sheds core's heavy optional subtrees
 # (telemetry/OTLP, a2a gRPC, web-fetch/fetchkit) that this provider does not
 # need, keeping the standalone crate's dependency tree small.
-everruns-core = { path = "../core", version = "0.17.0", default-features = false }
+everruns-core = { path = "../core", version = "0.17.9", default-features = false }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

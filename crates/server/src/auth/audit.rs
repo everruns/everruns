@@ -11,33 +11,29 @@
 //   auth.api_key.created, auth.api_key.deleted
 //   auth.oauth.success, auth.oauth.failure
 
+use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::storage::StorageBackend;
 use crate::storage::models::CreateAuditLogRow;
+use axum::extract::{ConnectInfo, Extension};
 use axum::http::HeaderMap;
 use everruns_core::{AuditEvent, AuditLogger};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use uuid::Uuid;
 
-/// Extract client IP from request headers (X-Forwarded-For > X-Real-IP > unknown).
-pub fn client_ip(headers: &HeaderMap) -> Option<String> {
-    if let Some(forwarded) = headers.get("x-forwarded-for")
-        && let Ok(val) = forwarded.to_str()
-        && let Some(first) = val.split(',').next()
-    {
-        let trimmed = first.trim();
-        if !trimmed.is_empty() {
-            return Some(trimmed.to_string());
-        }
-    }
-    if let Some(real_ip) = headers.get("x-real-ip")
-        && let Ok(val) = real_ip.to_str()
-    {
-        let trimmed = val.trim();
-        if !trimmed.is_empty() {
-            return Some(trimmed.to_string());
-        }
-    }
-    None
+/// Extract the audit client IP using the same trusted-proxy contract as auth
+/// rate limiting: forwarding headers count only from trusted peers.
+pub fn client_ip(peer: Option<SocketAddr>, headers: &HeaderMap) -> Option<String> {
+    Some(extract_client_ip_from_parts(peer, headers).to_string())
+}
+
+/// Axum-handler adapter for `client_ip`.
+pub fn client_ip_from_connect_info(
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
+    headers: &HeaderMap,
+) -> Option<String> {
+    let peer = connect_info.map(|Extension(ConnectInfo(addr))| addr);
+    client_ip(peer, headers)
 }
 
 /// Emit a legacy audit log entry (event_type string format). Non-blocking.
@@ -139,32 +135,50 @@ impl AuditLogger for StorageAuditLogger {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::net::SocketAddr;
 
     #[test]
-    fn test_client_ip_from_x_forwarded_for() {
+    fn test_client_ip_uses_rightmost_forwarded_hop_from_trusted_proxy() {
         let mut headers = HeaderMap::new();
-        headers.insert("x-forwarded-for", "1.2.3.4, 10.0.0.1".parse().unwrap());
-        assert_eq!(client_ip(&headers), Some("1.2.3.4".to_string()));
+        headers.insert("x-forwarded-for", "1.2.3.4, 70.41.3.18".parse().unwrap());
+        let peer: SocketAddr = "127.0.0.1:443".parse().unwrap();
+        assert_eq!(
+            client_ip(Some(peer), &headers),
+            Some("70.41.3.18".to_string())
+        );
     }
 
     #[test]
-    fn test_client_ip_from_x_real_ip() {
+    fn test_client_ip_ignores_spoofed_forwarded_for_from_untrusted_peer() {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-forwarded-for", "8.8.8.8".parse().unwrap());
+        let peer: SocketAddr = "198.51.100.10:443".parse().unwrap();
+        assert_eq!(
+            client_ip(Some(peer), &headers),
+            Some("198.51.100.10".to_string())
+        );
+    }
+
+    #[test]
+    fn test_client_ip_from_x_real_ip_from_trusted_proxy() {
         let mut headers = HeaderMap::new();
         headers.insert("x-real-ip", "5.6.7.8".parse().unwrap());
-        assert_eq!(client_ip(&headers), Some("5.6.7.8".to_string()));
+        let peer: SocketAddr = "127.0.0.1:443".parse().unwrap();
+        assert_eq!(client_ip(Some(peer), &headers), Some("5.6.7.8".to_string()));
     }
 
     #[test]
-    fn test_client_ip_prefers_forwarded_for() {
+    fn test_client_ip_prefers_forwarded_for_from_trusted_proxy() {
         let mut headers = HeaderMap::new();
         headers.insert("x-forwarded-for", "1.1.1.1".parse().unwrap());
         headers.insert("x-real-ip", "2.2.2.2".parse().unwrap());
-        assert_eq!(client_ip(&headers), Some("1.1.1.1".to_string()));
+        let peer: SocketAddr = "127.0.0.1:443".parse().unwrap();
+        assert_eq!(client_ip(Some(peer), &headers), Some("1.1.1.1".to_string()));
     }
 
     #[test]
-    fn test_client_ip_none_when_empty() {
+    fn test_client_ip_falls_back_to_loopback_without_peer() {
         let headers = HeaderMap::new();
-        assert_eq!(client_ip(&headers), None);
+        assert_eq!(client_ip(None, &headers), Some("127.0.0.1".to_string()));
     }
 }

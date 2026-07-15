@@ -1,6 +1,14 @@
 "use client";
 
-import { CalendarClock, Hash, MessageSquareText, Monitor, RefreshCw, Webhook } from "lucide-react";
+import {
+  CalendarClock,
+  Globe,
+  Hash,
+  MessageSquareText,
+  Monitor,
+  RefreshCw,
+  Webhook,
+} from "lucide-react";
 import { SlackIcon as Slack } from "@/components/icons/slack-icon";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -19,7 +27,7 @@ import { CronInput, CronLabel, isSupportedCronExpression } from "@/components/ap
 import {
   DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
   DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS,
-} from "@/lib/api/types/app-types";
+} from "@/lib/api/types";
 import type {
   AgUiChannelConfig,
   AgUiToolVisibility,
@@ -29,6 +37,7 @@ import type {
   ChannelType,
   FcpChannelConfig,
   InvocationSessionMode,
+  PublicChatChannelConfig,
   ScheduleChannelConfig,
   SessionStrategy,
   SlackChannelConfig,
@@ -43,9 +52,19 @@ import {
   getSlackReplyModeDisplayName,
 } from "@/lib/app-channels";
 import { generateChannelToken } from "@/lib/channel-tokens";
+import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { cn } from "@/lib/utils";
 
-export const CHANNEL_FORM_KINDS: ChannelType[] = ["schedule", "webhook", "ag_ui", "fcp", "slack"];
+export const CHANNEL_FORM_KINDS: ChannelType[] = [
+  "schedule",
+  "webhook",
+  "ag_ui",
+  "public_chat",
+  "fcp",
+  "slack",
+];
+
+const DEFAULT_PUBLIC_CHAT_EXPIRATION_HOURS = 6;
 
 const DEFAULT_FCP_EXPIRATION_HOURS = 6;
 const DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS = 120;
@@ -79,6 +98,22 @@ export type ChannelFormState = {
   fcpExpirationHours: number;
   fcpRateLimitPerMinute: string;
   fcpResponseTimeoutSeconds: string;
+  publicChatAnonymous: boolean;
+  publicChatToken: string;
+  publicChatExpirationHours: number;
+  publicChatRateLimitPerMinute: string;
+  publicChatToolVisibility: AgUiToolVisibility;
+  publicChatGenericToolText: string;
+  publicChatDisplayName: string;
+  publicChatLogoUrl: string;
+  publicChatPrimaryColor: string;
+  publicChatWelcomeMessage: string;
+  publicChatCaptchaEnabled: boolean;
+  publicChatTurnstileSiteKey: string;
+  publicChatTurnstileSecretKey: string;
+  publicChatGoogleEnabled: boolean;
+  publicChatGoogleClientId: string;
+  publicChatGoogleAllowedDomains: string;
 };
 
 function secretValue(value?: string, configured?: boolean): string {
@@ -117,6 +152,22 @@ export function getDefaultChannelFormState(
     fcpExpirationHours: DEFAULT_FCP_EXPIRATION_HOURS,
     fcpRateLimitPerMinute: "",
     fcpResponseTimeoutSeconds: String(DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS),
+    publicChatAnonymous: true,
+    publicChatToken: "",
+    publicChatExpirationHours: DEFAULT_PUBLIC_CHAT_EXPIRATION_HOURS,
+    publicChatRateLimitPerMinute: "",
+    publicChatToolVisibility: "generic",
+    publicChatGenericToolText: DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
+    publicChatDisplayName: "",
+    publicChatLogoUrl: "",
+    publicChatPrimaryColor: "",
+    publicChatWelcomeMessage: "",
+    publicChatCaptchaEnabled: false,
+    publicChatTurnstileSiteKey: "",
+    publicChatTurnstileSecretKey: "",
+    publicChatGoogleEnabled: false,
+    publicChatGoogleClientId: "",
+    publicChatGoogleAllowedDomains: "",
   };
 
   if (!channel) return base;
@@ -184,6 +235,40 @@ export function getDefaultChannelFormState(
           : String(DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS),
     };
   }
+  if (channel.channel_type === "public_chat") {
+    const config = channel.channel_config as PublicChatChannelConfig;
+    return {
+      ...base,
+      kind: "public_chat",
+      publicChatAnonymous: config.anonymous ?? true,
+      publicChatToken: secretValue(config.token, config.token_configured),
+      publicChatExpirationHours:
+        typeof config.session_expiration_seconds === "number"
+          ? config.session_expiration_seconds / 3600
+          : base.publicChatExpirationHours,
+      publicChatRateLimitPerMinute:
+        typeof config.rate_limit_per_minute === "number"
+          ? String(config.rate_limit_per_minute)
+          : "",
+      publicChatToolVisibility: config.tool_visibility || "generic",
+      publicChatGenericToolText: config.generic_tool_text || DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
+      publicChatDisplayName: config.branding?.display_name ?? "",
+      publicChatLogoUrl: config.branding?.logo_url ?? "",
+      publicChatPrimaryColor: config.branding?.primary_color ?? "",
+      publicChatWelcomeMessage: config.branding?.welcome_message ?? "",
+      publicChatCaptchaEnabled: config.captcha?.enabled ?? false,
+      publicChatTurnstileSiteKey: config.captcha?.site_key ?? "",
+      // Secret key is write-only and never returned; always start blank.
+      publicChatTurnstileSecretKey: "",
+      publicChatGoogleEnabled: config.auth?.provider?.type === "google_oidc",
+      publicChatGoogleClientId:
+        config.auth?.provider?.type === "google_oidc" ? config.auth.provider.client_id : "",
+      publicChatGoogleAllowedDomains:
+        config.auth?.provider?.type === "google_oidc"
+          ? (config.auth.provider.allowed_domains ?? []).join(", ")
+          : "",
+    };
+  }
   if (channel.channel_type === "slack") {
     const config = channel.channel_config as SlackChannelConfig;
     return {
@@ -246,6 +331,60 @@ export function buildChannelConfig(state: ChannelFormState) {
             : DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS,
       };
     }
+    case "public_chat": {
+      const rateLimit = Number.parseInt(state.publicChatRateLimitPerMinute, 10);
+      const branding = {
+        ...(state.publicChatDisplayName.trim()
+          ? { display_name: state.publicChatDisplayName.trim() }
+          : {}),
+        ...(state.publicChatLogoUrl.trim() ? { logo_url: state.publicChatLogoUrl.trim() } : {}),
+        ...(state.publicChatPrimaryColor.trim()
+          ? { primary_color: state.publicChatPrimaryColor.trim() }
+          : {}),
+        ...(state.publicChatWelcomeMessage.trim()
+          ? { welcome_message: state.publicChatWelcomeMessage.trim() }
+          : {}),
+      };
+      const captcha = state.publicChatTurnstileSiteKey.trim()
+        ? {
+            provider: "turnstile" as const,
+            enabled: state.publicChatCaptchaEnabled,
+            site_key: state.publicChatTurnstileSiteKey.trim(),
+            ...(state.publicChatTurnstileSecretKey.trim()
+              ? { secret_key: state.publicChatTurnstileSecretKey.trim() }
+              : {}),
+          }
+        : undefined;
+      const allowedDomains = state.publicChatGoogleAllowedDomains
+        .split(",")
+        .map((d) => d.trim())
+        .filter(Boolean);
+      const auth =
+        state.publicChatGoogleEnabled && state.publicChatGoogleClientId.trim()
+          ? {
+              mode: "google_oidc" as const,
+              provider: {
+                type: "google_oidc" as const,
+                client_id: state.publicChatGoogleClientId.trim(),
+                ...(allowedDomains.length > 0 ? { allowed_domains: allowedDomains } : {}),
+              },
+            }
+          : undefined;
+      return {
+        anonymous: state.publicChatAnonymous,
+        ...(state.publicChatToken.trim() ? { token: state.publicChatToken.trim() } : {}),
+        session_expiration_seconds: Math.max(0, Math.round(state.publicChatExpirationHours * 3600)),
+        ...(Number.isFinite(rateLimit) && rateLimit > 0
+          ? { rate_limit_per_minute: rateLimit }
+          : {}),
+        tool_visibility: state.publicChatToolVisibility,
+        generic_tool_text:
+          state.publicChatGenericToolText.trim() || DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
+        ...(Object.keys(branding).length > 0 ? { branding } : {}),
+        ...(captcha ? { captcha } : {}),
+        ...(auth ? { auth } : {}),
+      };
+    }
     case "slack":
       return {
         ...(state.slackSigningSecret.trim()
@@ -279,6 +418,30 @@ export function isChannelFormValid(state: ChannelFormState): boolean {
     if (!Number.isFinite(timeout) || timeout <= 0 || timeout > 600) return false;
     return true;
   }
+  if (state.kind === "public_chat") {
+    // The backend caps generic_tool_text regardless of tool visibility.
+    if (state.publicChatGenericToolText.trim().length > 120) {
+      return false;
+    }
+    // Captcha needs a site key when enabled or when a secret is being set.
+    if (
+      (state.publicChatCaptchaEnabled || state.publicChatTurnstileSecretKey.trim()) &&
+      !state.publicChatTurnstileSiteKey.trim()
+    ) {
+      return false;
+    }
+    // Google sign-in needs a client ID when enabled.
+    if (state.publicChatGoogleEnabled && !state.publicChatGoogleClientId.trim()) {
+      return false;
+    }
+    // Turning anonymous access off requires a sign-in provider; otherwise the
+    // server forbids every request and the chat is unreachable. (A shared token
+    // only gates the anonymous path, so it cannot substitute here.)
+    if (!state.publicChatAnonymous && !state.publicChatGoogleEnabled) {
+      return false;
+    }
+    return true;
+  }
   if (state.kind === "slack") return true;
   return false;
 }
@@ -291,6 +454,8 @@ function channelIcon(kind: ChannelType) {
       return Webhook;
     case "ag_ui":
       return Monitor;
+    case "public_chat":
+      return Globe;
     case "fcp":
       return MessageSquareText;
     case "slack":
@@ -308,6 +473,8 @@ function channelDescription(kind: ChannelType): string {
       return "Authenticated HTTP endpoint. Bearer token or Everruns webhook token header.";
     case "ag_ui":
       return "Public client surface. Tool names, args, and results are never sent to AG-UI clients.";
+    case "public_chat":
+      return "Hosted, branded chat website for this one agent. Anonymous or sign-in; optional Turnstile.";
     case "fcp":
       return "Free Communication Protocol. Text-in / text-out HTTP endpoint with a Markdown handshake.";
     case "slack":
@@ -324,9 +491,11 @@ export function ChannelTypePicker({
   value: ChannelType;
   onChange: (value: ChannelType) => void;
 }) {
+  const publicChatEnabled = useFeatureFlag("public_chat");
+  const kinds = CHANNEL_FORM_KINDS.filter((kind) => kind !== "public_chat" || publicChatEnabled);
   return (
     <div className="grid gap-3 md:grid-cols-2">
-      {CHANNEL_FORM_KINDS.map((kind) => {
+      {kinds.map((kind) => {
         const Icon = channelIcon(kind);
         const selected = value === kind;
         return (
@@ -640,6 +809,240 @@ export function ChannelForm({
             <p className="text-xs text-muted-foreground">
               How long the endpoint waits for the agent before returning 504. Must be 1-600s.
             </p>
+          </div>
+        </div>
+      )}
+
+      {state.kind === "public_chat" && (section === "all" || section === "invocation") && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border p-3">
+            <div>
+              <p className="text-sm font-medium">Anonymous access</p>
+              <p className="text-xs text-muted-foreground">
+                When on, anyone with the link can chat (optionally gated by the shared token below).
+                Turn off to require sign-in — you must enable Google sign-in below, otherwise the
+                chat rejects every request.
+              </p>
+            </div>
+            <Switch
+              checked={state.publicChatAnonymous}
+              onCheckedChange={(checked) => update("publicChatAnonymous", checked)}
+            />
+          </div>
+
+          <div className="space-y-3">
+            <p className="text-sm font-medium">Branding</p>
+            <FieldGrid>
+              <div className="space-y-2">
+                <Label htmlFor="public_chat_display_name">Display name</Label>
+                <Input
+                  id="public_chat_display_name"
+                  value={state.publicChatDisplayName}
+                  onChange={(event) => update("publicChatDisplayName", event.target.value)}
+                  maxLength={120}
+                  placeholder="Falls back to the app name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="public_chat_primary_color">Primary color</Label>
+                <Input
+                  id="public_chat_primary_color"
+                  value={state.publicChatPrimaryColor}
+                  onChange={(event) => update("publicChatPrimaryColor", event.target.value)}
+                  placeholder="#0A1636"
+                />
+              </div>
+            </FieldGrid>
+            <div className="space-y-2">
+              <Label htmlFor="public_chat_logo_url">Logo URL</Label>
+              <Input
+                id="public_chat_logo_url"
+                value={state.publicChatLogoUrl}
+                onChange={(event) => update("publicChatLogoUrl", event.target.value)}
+                placeholder="https://example.com/logo.png"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="public_chat_welcome">Welcome message</Label>
+              <Textarea
+                id="public_chat_welcome"
+                value={state.publicChatWelcomeMessage}
+                onChange={(event) => update("publicChatWelcomeMessage", event.target.value)}
+                placeholder="Shown before the visitor's first message."
+                rows={2}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="public_chat_token">Shared token (optional)</Label>
+            <div className="flex gap-2">
+              <Input
+                id="public_chat_token"
+                value={state.publicChatToken}
+                onChange={(event) => update("publicChatToken", event.target.value)}
+                className="font-mono"
+                placeholder={
+                  mode === "edit" ? "Leave blank to keep existing token" : "Optional bearer token"
+                }
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => update("publicChatToken", generateChannelToken())}
+                aria-label="Regenerate Public Chat token"
+              >
+                <RefreshCw className="size-4" />
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between border p-3">
+              <div>
+                <p className="text-sm font-medium">Bot mitigation (Cloudflare Turnstile)</p>
+                <p className="text-xs text-muted-foreground">
+                  Challenge anonymous visitors before they can chat. Signed-in visitors are exempt.
+                </p>
+              </div>
+              <Switch
+                checked={state.publicChatCaptchaEnabled}
+                onCheckedChange={(checked) => update("publicChatCaptchaEnabled", checked)}
+              />
+            </div>
+            <FieldGrid>
+              <div className="space-y-2">
+                <Label htmlFor="public_chat_turnstile_site_key">Turnstile site key</Label>
+                <Input
+                  id="public_chat_turnstile_site_key"
+                  value={state.publicChatTurnstileSiteKey}
+                  onChange={(event) => update("publicChatTurnstileSiteKey", event.target.value)}
+                  className="font-mono"
+                  placeholder="0x4AAAAAAA..."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="public_chat_turnstile_secret_key">Turnstile secret key</Label>
+                <Input
+                  id="public_chat_turnstile_secret_key"
+                  type="password"
+                  value={state.publicChatTurnstileSecretKey}
+                  onChange={(event) => update("publicChatTurnstileSecretKey", event.target.value)}
+                  className="font-mono"
+                  placeholder={
+                    mode === "edit" ? "Leave blank to keep existing secret" : "0x4AAAAAAA..."
+                  }
+                />
+              </div>
+            </FieldGrid>
+            <p className="text-xs text-muted-foreground">
+              The secret key is write-only and never shown after saving.
+            </p>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between border p-3">
+              <div>
+                <p className="text-sm font-medium">Google sign-in</p>
+                <p className="text-xs text-muted-foreground">
+                  Require visitors to sign in with Google. When on, every request must present a
+                  valid Google account; signed-in visitors skip the Turnstile challenge.
+                </p>
+              </div>
+              <Switch
+                checked={state.publicChatGoogleEnabled}
+                onCheckedChange={(checked) => update("publicChatGoogleEnabled", checked)}
+              />
+            </div>
+            {state.publicChatGoogleEnabled && (
+              <FieldGrid>
+                <div className="space-y-2">
+                  <Label htmlFor="public_chat_google_client_id">Google OAuth client ID</Label>
+                  <Input
+                    id="public_chat_google_client_id"
+                    value={state.publicChatGoogleClientId}
+                    onChange={(event) => update("publicChatGoogleClientId", event.target.value)}
+                    className="font-mono"
+                    placeholder="1234-abc.apps.googleusercontent.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="public_chat_google_domains">Allowed domains (optional)</Label>
+                  <Input
+                    id="public_chat_google_domains"
+                    value={state.publicChatGoogleAllowedDomains}
+                    onChange={(event) =>
+                      update("publicChatGoogleAllowedDomains", event.target.value)
+                    }
+                    placeholder="example.com, partner.com"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Comma-separated. Leave blank to allow any Google account.
+                  </p>
+                </div>
+              </FieldGrid>
+            )}
+          </div>
+
+          <FieldGrid>
+            <div className="space-y-2">
+              <Label htmlFor="public_chat_tool_visibility">Tool visibility</Label>
+              <Select
+                value={state.publicChatToolVisibility}
+                onValueChange={(value) =>
+                  update("publicChatToolVisibility", value as AgUiToolVisibility)
+                }
+              >
+                <SelectTrigger id="public_chat_tool_visibility">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{getAgUiToolVisibilityDisplayName("none")}</SelectItem>
+                  <SelectItem value="generic">
+                    {getAgUiToolVisibilityDisplayName("generic")}
+                  </SelectItem>
+                  <SelectItem value="narrated">
+                    {getAgUiToolVisibilityDisplayName("narrated")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="public_chat_rate_limit">Rate limit / minute</Label>
+              <Input
+                id="public_chat_rate_limit"
+                value={state.publicChatRateLimitPerMinute}
+                onChange={(event) => update("publicChatRateLimitPerMinute", event.target.value)}
+                inputMode="numeric"
+                placeholder="No per-channel cap"
+              />
+            </div>
+          </FieldGrid>
+          {state.publicChatToolVisibility === "generic" && (
+            <div className="space-y-2">
+              <Label htmlFor="public_chat_generic_tool_text">Generic activity text</Label>
+              <Input
+                id="public_chat_generic_tool_text"
+                value={state.publicChatGenericToolText}
+                onChange={(event) => update("publicChatGenericToolText", event.target.value)}
+                maxLength={120}
+              />
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label htmlFor="public_chat_expiration">Session expiration (hours)</Label>
+            <Input
+              id="public_chat_expiration"
+              value={String(state.publicChatExpirationHours)}
+              onChange={(event) => {
+                const parsed = Number.parseFloat(event.target.value);
+                update("publicChatExpirationHours", Number.isFinite(parsed) ? parsed : 0);
+              }}
+              inputMode="numeric"
+              placeholder="6"
+            />
+            <p className="text-xs text-muted-foreground">0 = never expire a visitor session.</p>
           </div>
         </div>
       )}

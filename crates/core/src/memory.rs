@@ -15,7 +15,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::typed_id::MemoryId;
+use crate::typed_id::{AgentId, MemoryId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -57,6 +57,40 @@ impl From<&str> for MemoryStatus {
     }
 }
 
+/// Ownership scope for a Memory.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum MemoryScope {
+    /// Organization-managed Memory selected through explicit `memory.mounts[]`.
+    #[default]
+    Org,
+    /// Agent-owned Memory that follows the agent across sessions.
+    Agent,
+    /// User-owned Memory that follows the user across sessions.
+    User,
+}
+
+impl std::fmt::Display for MemoryScope {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MemoryScope::Org => write!(f, "org"),
+            MemoryScope::Agent => write!(f, "agent"),
+            MemoryScope::User => write!(f, "user"),
+        }
+    }
+}
+
+impl From<&str> for MemoryScope {
+    fn from(s: &str) -> Self {
+        match s {
+            "agent" => MemoryScope::Agent,
+            "user" => MemoryScope::User,
+            _ => MemoryScope::Org,
+        }
+    }
+}
+
 /// A Memory — org-scoped named store.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -76,6 +110,15 @@ pub struct Memory {
     /// Optional human-readable description.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Memory ownership scope.
+    #[serde(default)]
+    pub scope: MemoryScope,
+    /// Owning agent for agent-scoped memories.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_agent_id: Option<AgentId>,
+    /// Owning user for user-scoped memories.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub owner_user_id: Option<Uuid>,
     /// Principal that created the memory (free-form; resolved at the domain layer).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub owner_principal_id: Option<String>,

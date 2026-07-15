@@ -4,11 +4,28 @@ use chrono::{DateTime, Utc};
 use everruns_core::{
     AgentId, AgentIdentityId, EventId, HarnessId, ImageId, LeasedResourceId, McpServerId,
     MessageId, ModelId, NotificationId, PrincipalId, ProviderId, ScheduleId, ServiceKind,
-    SessionId, SkillId,
+    SessionId, SessionParticipant, SessionParticipantId, SessionParticipantKind,
+    SessionParticipantRole, SkillId, TriggerId,
 };
 use everruns_durable::UpdateField;
 use sqlx::FromRow;
 use uuid::Uuid;
+
+/// Canonical form of an email address used as a user identity (EVE-704).
+///
+/// Email is the account identity key across register / login / OAuth linking /
+/// password recovery, so it must be treated case-insensitively: `John@x.com`
+/// and `john@x.com` are the same mailbox and must resolve to one account. We
+/// canonicalize by trimming surrounding whitespace and lowercasing, matching
+/// the normalization the rate limiters and org-invitation matching already use
+/// (`req.email.trim().to_lowercase()`). Applied at the storage trust boundary
+/// (both backends' `create_user*` and `get_user_by_email`) so every caller —
+/// register, login, forgot/resend, verify, oauth_callback linking, admin
+/// bootstrap — shares one identity notion, backed by a case-insensitive unique
+/// index on `users(lower(email))`.
+pub fn normalize_email(email: &str) -> String {
+    email.trim().to_lowercase()
+}
 
 // ============================================
 // Organization models
@@ -28,6 +45,12 @@ pub struct OrganizationRow {
     /// User who created this organization. NULL for seeded/external orgs.
     #[sqlx(default)]
     pub created_by: Option<Uuid>,
+    /// When the org's creator finished or skipped the setup wizard. NULL means
+    /// onboarding is still incomplete and the resume redirect sends the current
+    /// org's members back to /setup. Seeded/default and externally-synced orgs
+    /// are created already-complete. See migration 090.
+    #[sqlx(default)]
+    pub onboarding_completed_at: Option<DateTime<Utc>>,
 }
 
 /// Organization member row from database
@@ -132,6 +155,35 @@ pub struct UpdateOrgTaskWebhook {
     pub url: Option<String>,
     pub secret: Option<Option<String>>,
     pub enabled: Option<bool>,
+}
+
+/// Per-task push-notification config row (EVE-682).
+///
+/// Session/task-scoped outbound webhook target. Has no `org_id`: authorization
+/// is via the owning session's org. `event_filter` selects which task
+/// transitions deliver ('terminal', 'awaiting_input', 'message').
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct SessionTaskPushConfigRow {
+    pub id: i64,
+    pub public_id: String,
+    pub session_id: SessionId,
+    pub task_id: String,
+    pub url: String,
+    pub secret: Option<String>,
+    pub event_filter: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating a per-task push-notification config.
+#[derive(Debug, Clone)]
+pub struct CreateSessionTaskPushConfig {
+    pub public_id: String,
+    pub session_id: SessionId,
+    pub task_id: String,
+    pub url: String,
+    pub secret: Option<String>,
+    pub event_filter: Vec<String>,
 }
 
 /// Input for creating an organization member
@@ -403,6 +455,7 @@ pub struct AgentRow {
     pub description: Option<String>,
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,
+    pub harness_id: HarnessId,
     #[sqlx(default)]
     pub default_version_id: Option<everruns_core::AgentVersionId>,
     #[sqlx(default)]
@@ -512,6 +565,7 @@ pub struct CreateAgentRow {
     pub description: Option<String>,
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,
+    pub harness_id: HarnessId,
     pub tags: Vec<String>,
     /// Starter files copied into new sessions (JSONB in DB)
     pub initial_files: serde_json::Value,
@@ -534,6 +588,7 @@ pub struct UpdateAgent {
     pub description: Option<String>,
     pub system_prompt: Option<String>,
     pub default_model_id: Option<ModelId>,
+    pub harness_id: Option<HarnessId>,
     pub default_version_id: Option<everruns_core::AgentVersionId>,
     pub forked_from_agent_id: Option<AgentId>,
     pub forked_from_version_id: Option<everruns_core::AgentVersionId>,
@@ -675,6 +730,8 @@ pub struct SessionRow {
     pub resolved_owner_user_id: Option<Uuid>,
     pub title: Option<String>,
     #[sqlx(default)]
+    pub goal: Option<String>,
+    #[sqlx(default)]
     pub locale: Option<String>,
     pub tags: Vec<String>,
     pub model_id: Option<ModelId>,
@@ -722,6 +779,12 @@ pub struct SessionRow {
     /// Cumulative cache creation tokens for all LLM calls in this session
     #[sqlx(default)]
     pub total_cache_creation_tokens: i64,
+    /// Denormalized count of turn.completed, turn.failed, and turn.cancelled events
+    #[sqlx(default)]
+    pub turn_count: i64,
+    /// Denormalized count of tool.completed events
+    #[sqlx(default)]
+    pub tool_call_count: i64,
     /// Cumulative provider-reported actual cost in USD for this session
     #[sqlx(default)]
     pub total_actual_cost_usd: f64,
@@ -735,6 +798,12 @@ pub struct SessionRow {
     // -- Subagent nesting fields --
     #[sqlx(default)]
     pub parent_session_id: Option<SessionId>,
+    /// Root of this session's delegation tree (EVE-680). A top-level session is
+    /// its own root; a subagent child inherits its parent's root. Denormalized
+    /// so a whole tree is one indexed query. Set by the storage layer at
+    /// creation; `#[sqlx(default)]` because most SELECTs don't project it.
+    #[sqlx(default)]
+    pub root_session_id: Option<SessionId>,
     // -- Fork lineage fields (specs/forking-sessions.md) --
     #[sqlx(default)]
     pub forked_from_session_id: Option<SessionId>,
@@ -803,13 +872,59 @@ pub struct CreateSessionRow {
     pub blueprint_id: Option<String>,
     /// Validated blueprint config (JSONB in DB).
     pub blueprint_config: Option<serde_json::Value>,
-    /// Parent session ID for subagent nesting guard (set by spawn_subagent).
+    /// Parent session ID for governed subagent depth tracking.
     pub parent_session_id: Option<everruns_core::SessionId>,
+    /// Explicit internal-only budget/delegation root for detached peers.
+    pub budget_root_session_id: Option<everruns_core::SessionId>,
     /// Internal id of an existing workspace to attach this session to. When
     /// `None`, `create_session` auto-creates a default 1:1 workspace whose id
     /// equals the new session id (the equality invariant). When `Some`, the
     /// session attaches to that workspace and no new workspace is created.
     pub workspace_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct SessionParticipantRow {
+    pub id: SessionParticipantId,
+    pub org_id: i64,
+    pub session_id: SessionId,
+    pub kind: String,
+    pub agent_id: Option<AgentId>,
+    pub agent_version_id: Option<everruns_core::AgentVersionId>,
+    pub principal_id: PrincipalId,
+    pub role: String,
+    pub joined_at: DateTime<Utc>,
+    pub left_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+impl SessionParticipantRow {
+    pub fn to_core(&self) -> SessionParticipant {
+        SessionParticipant {
+            id: self.id,
+            session_id: self.session_id,
+            kind: SessionParticipantKind::from(self.kind.as_str()),
+            agent_id: self.agent_id,
+            agent_version_id: self.agent_version_id,
+            principal_id: self.principal_id,
+            role: SessionParticipantRole::from(self.role.as_str()),
+            joined_at: self.joined_at,
+            left_at: self.left_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateSessionParticipantRow {
+    pub org_id: i64,
+    pub session_id: SessionId,
+    pub kind: SessionParticipantKind,
+    pub agent_id: Option<AgentId>,
+    pub agent_version_id: Option<everruns_core::AgentVersionId>,
+    pub principal_id: PrincipalId,
+    pub role: SessionParticipantRole,
+    pub joined_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -818,6 +933,7 @@ pub struct UpdateSession {
     pub agent_version_id: Option<everruns_core::AgentVersionId>,
     pub agent_config_hash: Option<String>,
     pub title: Option<String>,
+    pub goal: Option<String>,
     pub agent_identity_id: UpdateField<AgentIdentityId>,
     pub owner_principal_id: Option<PrincipalId>,
     pub resolved_owner_user_id: UpdateField<Uuid>,
@@ -1154,6 +1270,9 @@ pub struct MemoryRow {
     pub public_id: String,
     pub name: String,
     pub description: Option<String>,
+    pub scope: String,
+    pub owner_agent_id: Option<AgentId>,
+    pub owner_user_id: Option<Uuid>,
     pub source_type: String,
     pub source_config: serde_json::Value,
     pub is_readonly: bool,
@@ -1174,6 +1293,9 @@ pub struct CreateMemoryRow {
     pub public_id: String,
     pub name: String,
     pub description: Option<String>,
+    pub scope: String,
+    pub owner_agent_id: Option<AgentId>,
+    pub owner_user_id: Option<Uuid>,
     pub source_type: String,
     pub source_config: serde_json::Value,
     pub is_readonly: bool,
@@ -1919,6 +2041,21 @@ pub struct CreateSkillFileRow {
 }
 
 // ============================================
+// User Preference models
+// ============================================
+
+/// User preference (key/value) row from database
+#[derive(Debug, Clone, FromRow)]
+pub struct UserPreferenceRow {
+    pub id: Uuid,
+    pub user_id: Uuid,
+    pub key: String,
+    pub value: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+// ============================================
 // User Connection models
 // ============================================
 
@@ -2139,6 +2276,12 @@ pub struct UpsertSessionResourceRow {
 pub struct SessionTaskRow {
     pub id: String,
     pub session_id: SessionId,
+    /// Root of the owning session's delegation tree (EVE-680). Denormalized
+    /// from `sessions.root_session_id` at insert so `GET /v1/tasks` can filter a
+    /// whole tree's work by a local column. DB-only — not part of the core
+    /// `SessionTask`; `#[sqlx(default)]` so queries that omit it still map.
+    #[sqlx(default)]
+    pub root_session_id: Option<SessionId>,
     pub kind: String,
     pub display_name: String,
     pub spec: serde_json::Value,
@@ -2168,6 +2311,9 @@ impl SessionTaskRow {
         Ok(Self {
             id: task.id.clone(),
             session_id: task.session_id,
+            // Populated at the storage insert from the owning session's root;
+            // the core task carries no root, so default to None here.
+            root_session_id: None,
             kind: task.kind.clone(),
             display_name: task.display_name.clone(),
             spec: task.spec.clone(),
@@ -2200,6 +2346,7 @@ impl SessionTaskRow {
         Ok(everruns_core::SessionTask {
             id: self.id.clone(),
             session_id: self.session_id,
+            root_session_id: self.root_session_id,
             kind: self.kind.clone(),
             display_name: self.display_name.clone(),
             spec: self.spec.clone(),
@@ -2300,6 +2447,46 @@ pub struct UpdateAgentIdentity {
     pub avatar_url: UpdateField<String>,
     pub locale: UpdateField<String>,
     pub timezone: UpdateField<String>,
+    pub status: Option<String>,
+}
+
+// ============================================
+// Agent trigger models (agent-owned invocation triggers)
+// ============================================
+
+#[derive(Debug, Clone, FromRow)]
+pub struct AgentTriggerRow {
+    pub id: TriggerId,
+    pub org_id: i64,
+    pub agent_id: AgentId,
+    pub trigger_type: String,
+    pub config: serde_json::Value,
+    pub enabled: bool,
+    pub durable_schedule_id: Option<Uuid>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub archived_at: Option<DateTime<Utc>>,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateAgentTriggerRow {
+    pub org_id: i64,
+    pub id: TriggerId,
+    pub agent_id: AgentId,
+    pub trigger_type: String,
+    pub config: serde_json::Value,
+    pub enabled: bool,
+    pub durable_schedule_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateAgentTrigger {
+    pub trigger_type: Option<String>,
+    pub config: Option<serde_json::Value>,
+    pub enabled: Option<bool>,
+    pub durable_schedule_id: UpdateField<Uuid>,
     pub status: Option<String>,
 }
 
@@ -2568,8 +2755,43 @@ pub struct EvalRunRow {
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
     pub summary: Option<serde_json::Value>,
+    /// 'internal' (everruns executed) or 'external' (imported). See migration 086.
+    pub source: String,
+    /// External system's run id: cross-eval group key and idempotency key.
+    pub source_run_id: Option<String>,
+    /// Open-vocab provenance for external runs (system, version, url, labels).
+    pub attribution: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// A read-only share token for an eval run (migration 091). The raw token is
+/// never stored — only its hash. `revoked_at`/`expires_at` disable a link.
+#[derive(Debug, Clone, FromRow)]
+pub struct EvalRunShareTokenRow {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub public_id: String,
+    pub eval_run_id: Uuid,
+    pub token_hash: String,
+    pub token_prefix: String,
+    pub created_by: Option<Uuid>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub revoked_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for minting an eval-run share token.
+#[derive(Debug, Clone)]
+pub struct CreateEvalRunShareTokenRow {
+    pub public_id: String,
+    pub org_id: i64,
+    pub eval_run_id: Uuid,
+    pub token_hash: String,
+    pub token_prefix: String,
+    pub created_by: Option<Uuid>,
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 /// Input for creating an eval run
@@ -2630,6 +2852,45 @@ pub struct CreateEvalCaseResultRow {
     pub artifacts: Option<serde_json::Value>,
 }
 
+/// Input for importing one externally-executed eval run (a single eval's worth
+/// of a Mira-style run group). The storage layer upserts the eval and its cases
+/// by name, replaces any prior run sharing `source_run_id`, then writes a
+/// completed external run with fully-populated results. See `import_eval_run`.
+#[derive(Debug, Clone)]
+pub struct ImportEvalRunInput {
+    pub eval_name: String,
+    pub eval_description: Option<String>,
+    pub eval_tags: Vec<String>,
+    pub run_public_id: String,
+    pub source: String,
+    pub source_run_id: String,
+    pub attribution: Option<serde_json::Value>,
+    pub triggered_by: String,
+    pub summary: Option<serde_json::Value>,
+    pub cases: Vec<ImportEvalCaseInput>,
+}
+
+/// One case-result within an imported external run. The case is identity-only
+/// (name + optional display conversation); everruns never re-executes it, so
+/// scorers are left empty. Transcript and open-vocab metrics ride inside
+/// `metadata` rather than dedicated columns.
+#[derive(Debug, Clone)]
+pub struct ImportEvalCaseInput {
+    pub case_name: String,
+    pub case_description: Option<String>,
+    pub conversation: serde_json::Value,
+    pub target_snapshot: Option<serde_json::Value>,
+    pub status: String,
+    pub scores: Option<serde_json::Value>,
+    pub metadata: Option<serde_json::Value>,
+    pub turns: Option<i32>,
+    pub latency_ms: Option<i64>,
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
+    pub error_message: Option<String>,
+    pub artifacts: Option<serde_json::Value>,
+}
+
 /// Input for updating an eval case result
 #[derive(Debug, Clone, Default)]
 pub struct UpdateEvalCaseResultRow {
@@ -2686,6 +2947,46 @@ pub struct UpdateAgentHealthCheckRunRow {
     pub status: Option<String>,
     pub summary: Option<serde_json::Value>,
     pub results: Option<serde_json::Value>,
+    pub error_message: Option<String>,
+}
+
+// ============================================================================
+// Eval run dataset models (async dataset export — specs/dataset-export.md)
+// ============================================================================
+
+/// Async dataset-export handle row from database.
+#[derive(Debug, Clone, FromRow)]
+pub struct EvalRunDatasetRow {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub public_id: String,
+    pub eval_run_id: Option<Uuid>,
+    pub request: serde_json::Value,
+    pub status: String,
+    pub body: Option<String>,
+    pub record_count: Option<i64>,
+    pub error_message: Option<String>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Input for creating an eval run dataset export handle.
+#[derive(Debug, Clone)]
+pub struct CreateEvalRunDatasetRow {
+    pub public_id: String,
+    pub eval_run_id: Uuid,
+    pub request: serde_json::Value,
+}
+
+/// Input for updating an eval run dataset export handle. `None` fields are left
+/// unchanged; `started_at`/`completed_at` are set from `status` transitions.
+#[derive(Debug, Clone, Default)]
+pub struct UpdateEvalRunDatasetRow {
+    pub status: Option<String>,
+    pub body: Option<String>,
+    pub record_count: Option<i64>,
     pub error_message: Option<String>,
 }
 

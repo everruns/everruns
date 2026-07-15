@@ -75,7 +75,7 @@ So wording and localization stay consistent without a global registry,
 locale-aware phrasing helpers that capabilities call from `narrate()`:
 `narrate_read_file`, `narrate_shell_exec`, `narrate_search_web`,
 `narrate_web_fetch`, `narrate_tool_search`, `narrate_skill`,
-`narrate_secret_store`, `narrate_spawn_subagent`, `narrate_write_todos`, and the
+`narrate_secret_store`, `narrate_subagent_spawn`, `narrate_write_todos`, and the
 generic builders `generic_phrase` / `labeled_phrase`, plus argument utilities
 (`arg_str`, `safe_arg_str`, `basename`, `truncate`, `url_display`).
 
@@ -115,6 +115,11 @@ When the relevant argument is absent, drop the value and keep the bare verb.
 
 Arguments shown in narration are **display values, not faithful echoes**:
 
+- **Filesystem paths.** When a [`SessionFileSystem`] is available on the act path,
+  path-bearing helpers (e.g. `narrate_list_directory`) render through
+  `display_path()` so narration matches tool results. Capabilities receive this
+  via [`ToolNarrationContext`] on `Tool::narrate` / `ToolCallHook::narration`.
+  Offline builders without a store fall back to legacy argument echo.
 - **Truncate.** queries / patterns / commands: ~48–80 chars with an ellipsis.
   File paths show the basename only.
 - **URLs.** show host + path; strip the scheme, query string, and fragment (the

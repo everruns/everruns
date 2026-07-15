@@ -273,6 +273,7 @@ impl Tool for SandboxExecTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Sandbox");
         Some(crate::tool_narration::narrate_shell_exec(
@@ -755,14 +756,7 @@ mod tests {
         ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    #[test]
-    fn session_sandbox_capability_metadata() {
-        let cap = SessionSandboxCapability;
-        assert_eq!(cap.id(), SESSION_SANDBOX_CAPABILITY_ID);
-        assert_eq!(cap.name(), "Session Sandbox");
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-        assert_eq!(cap.dependencies(), vec!["session_storage"]);
-    }
+    // Metadata/dependency constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn session_sandbox_tools_with_config() {

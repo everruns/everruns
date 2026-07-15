@@ -1,17 +1,23 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDown, Bot, Loader2 } from "lucide-react";
 import type { CommandDescriptor, Controls } from "@/lib/api/types";
+import { getEventData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { useSessionContext } from "@/app/(main)/sessions/[sessionId]/session-context";
 import {
+  useAgents,
   useImageAttachments,
   useImageDropZone,
+  useMessageScrollerVisibility,
   useModels,
   useScrollManager,
   useSessionCommands,
+  useSessionParticipants,
+  useTurnKeyboardNavigation,
 } from "@/hooks";
+import { getDisplayName } from "@/lib/entity-lifecycle";
 import { useChatModelSelection } from "@/hooks/use-chat-model-selection";
 import { executeSessionCommand } from "@/lib/api/commands";
 import { ApiError } from "@/lib/api/client";
@@ -21,9 +27,18 @@ import { useMutation } from "@tanstack/react-query";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
+import { ChatNavRail, type ChatNavAnchor } from "@/components/chat/chat-nav-rail";
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { MessageContent } from "@/components/chat/message-content";
 import { SessionTaskChips } from "@/components/session/session-task-chips";
+import { SessionParticipantsRail } from "@/components/session/session-participants-rail";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { StreamingMessage } from "@/components/streaming-message";
 import { ThinkingIndicator } from "@/components/thinking-indicator";
 import { Button } from "@/components/ui/button";
@@ -112,6 +127,8 @@ export function ChatPanel() {
     isActive,
     reasoningEffort,
     setReasoningEffort,
+    verbosity,
+    setVerbosity,
     setIsWaitingForResponse,
     isThinking,
     streamingText,
@@ -126,7 +143,10 @@ export function ChatPanel() {
   } = useSessionContext();
 
   const { data: models = [] } = useModels();
+  const { data: participants } = useSessionParticipants(sessionId);
+  const { data: agents } = useAgents();
   const [inputValue, setInputValue] = useState("");
+  const [addressedParticipantId, setAddressedParticipantId] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [voiceError, setVoiceError] = useState<VoiceErrorState | null>(null);
   const [voiceState, setVoiceState] = useState<"idle" | "connecting" | "connected">("idle");
@@ -138,9 +158,14 @@ export function ChatPanel() {
 
   const {
     selectedModelId,
+    recentModels,
     supportsReasoning,
     reasoningEffortConfig,
     defaultEffortName,
+    supportsVerbosity,
+    verbosityConfig,
+    defaultVerbosityName,
+    getVerbosityName,
     modelTriggerLabel,
     defaultModelOptionLabel,
     getReasoningEffortName,
@@ -153,6 +178,8 @@ export function ChatPanel() {
     defaultModel: llmModel,
     reasoningEffort,
     setReasoningEffort,
+    verbosity,
+    setVerbosity,
   });
 
   const {
@@ -176,6 +203,37 @@ export function ChatPanel() {
       sessionId,
       scrollDeps: [streamingText, isThinking],
     });
+
+  // Turn navigation rail: one marker per user turn. Anchors must line up with
+  // the `data-message-anchor` markers that ChatMessageList sets on user rows.
+  const navAnchors = useMemo<ChatNavAnchor[]>(() => {
+    const anchors: ChatNavAnchor[] = [];
+    for (const event of chatEvents) {
+      if (event.type !== "input.message") continue;
+      const data = getEventData(event, "input.message");
+      if (!data) continue;
+      const text = getMessageText(data).trim();
+      anchors.push({
+        id: event.id,
+        label: text.length > 80 ? `${text.slice(0, 80)}…` : text,
+      });
+    }
+    return anchors;
+  }, [chatEvents, getMessageText]);
+
+  const { currentAnchorId, scrollToAnchor } = useMessageScrollerVisibility(
+    scrollContainerRef,
+    navAnchors.length,
+  );
+
+  // Keyboard turn stepping (Alt+↑/↓, or j/k outside inputs), built on the same
+  // anchors and scrollToAnchor the rail uses.
+  const navAnchorIds = useMemo(() => navAnchors.map((anchor) => anchor.id), [navAnchors]);
+  useTurnKeyboardNavigation({
+    anchorIds: navAnchorIds,
+    currentAnchorId,
+    onNavigate: scrollToAnchor,
+  });
 
   const { isDraggingOver, dropZoneProps, handlePaste } = useImageDropZone({
     onImageFiles: addFiles,
@@ -210,11 +268,13 @@ export function ChatPanel() {
       text,
       images,
       controls,
+      addressedParticipantId: addressed,
     }: {
       text: string;
       images: Array<{ imageId: string; filename?: string }>;
       controls?: Controls;
-    }) => sendUserMessageWithImages(sessionId, text, images, controls),
+      addressedParticipantId?: string | null;
+    }) => sendUserMessageWithImages(sessionId, text, images, controls, addressed),
   });
   const executeCommand = useMutation({
     mutationFn: async ({
@@ -406,6 +466,41 @@ export function ChatPanel() {
     [executeCommand, persistSelection, setInputValue],
   );
 
+  // Addressing: a compact selector lets the user route a turn to a specific
+  // guest agent. Only surfaced when the session has ≥2 active agent
+  // participants; the default (none) preserves host-responds behavior.
+  const agentNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const agent of agents ?? []) {
+      map.set(agent.id, getDisplayName(agent));
+    }
+    return map;
+  }, [agents]);
+
+  const activeAgentParticipants = useMemo(
+    () => (participants ?? []).filter((p) => !p.left_at && p.kind === "agent"),
+    [participants],
+  );
+  const addressableParticipants = useMemo(
+    () => activeAgentParticipants.filter((p) => p.role !== "host"),
+    [activeAgentParticipants],
+  );
+  const showAddressing = activeAgentParticipants.length >= 2 && addressableParticipants.length > 0;
+
+  // Drop a stale selection if the addressed participant leaves or the session
+  // changes, so a departed guest can't silently keep receiving turns.
+  useEffect(() => {
+    if (
+      addressedParticipantId &&
+      !addressableParticipants.some((p) => p.id === addressedParticipantId)
+    ) {
+      setAddressedParticipantId(null);
+    }
+  }, [addressableParticipants, addressedParticipantId]);
+
+  const addressedParticipantLabel = (p: (typeof addressableParticipants)[number]): string =>
+    (p.agent_id && agentNameById.get(p.agent_id)) || "Agent";
+
   const submitMessage = async (controls?: Controls) => {
     if (!canSubmit) return;
     setSubmitError(null);
@@ -428,6 +523,7 @@ export function ChatPanel() {
           text: inputValue.trim(),
           images: uploadedImageIds,
           controls,
+          addressedParticipantId,
         });
         clearImages();
       } else {
@@ -435,6 +531,7 @@ export function ChatPanel() {
           sessionId,
           content: inputValue.trim(),
           controls,
+          addressedParticipantId,
         });
       }
 
@@ -467,119 +564,175 @@ export function ChatPanel() {
 
   return (
     <>
-      <div
-        ref={scrollContainerRef}
-        onScroll={handleScrollUp}
-        className={cn(
-          "relative flex-1 overflow-y-auto bg-background bg-brand-dots px-3 py-4 sm:px-4",
-          !eventsLoading && chatEvents.length === 0 && "flex flex-col justify-end",
-        )}
-      >
-        <ChatMessageList
-          events={events}
-          chatEvents={chatEvents}
-          sessionId={sessionId}
-          toolResultsMap={toolResultsMap}
-          toolProgressMap={toolProgressMap}
-          toolOutputMap={toolOutputMap}
-          eventsLoading={eventsLoading}
-          hasMoreEvents={hasMoreEvents}
-          loadingOlderEvents={loadingOlderEvents}
-          getMessageText={getMessageText}
-          getToolCalls={getToolCalls}
-        />
+      <div className="flex min-h-0 flex-1">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <div className="relative flex min-h-0 flex-1 flex-col">
+            <div
+              ref={scrollContainerRef}
+              onScroll={handleScrollUp}
+              className={cn(
+                "relative flex-1 overflow-y-auto bg-background bg-brand-dots px-3 py-4 sm:px-4",
+                !eventsLoading && chatEvents.length === 0 && "flex flex-col justify-end",
+              )}
+            >
+              <ChatMessageList
+                events={events}
+                chatEvents={chatEvents}
+                sessionId={sessionId}
+                toolResultsMap={toolResultsMap}
+                toolProgressMap={toolProgressMap}
+                toolOutputMap={toolOutputMap}
+                eventsLoading={eventsLoading}
+                hasMoreEvents={hasMoreEvents}
+                loadingOlderEvents={loadingOlderEvents}
+                getMessageText={getMessageText}
+                getToolCalls={getToolCalls}
+                participants={participants}
+              />
 
-        {(isThinking || streamingText) && (
-          <div className="mt-4 flex justify-start">
-            <div className={chatSurfaceStyles.agentMessageRow}>
-              <div className={chatSurfaceStyles.agentIcon}>
-                <Bot className="h-3 w-3" />
-              </div>
-              <div className={chatSurfaceStyles.agentMessage}>
-                {streamingIteration && streamingIteration > 1 && (
-                  <div className="mb-1 text-xs text-muted-foreground">
-                    {t("iteration", { value: streamingIteration })}
+              {(isThinking || streamingText) && (
+                <div className="mt-4 flex justify-start">
+                  <div className={chatSurfaceStyles.agentMessageRow}>
+                    <div className={chatSurfaceStyles.agentIcon}>
+                      <Bot className="h-3 w-3" />
+                    </div>
+                    <div className={chatSurfaceStyles.agentMessage}>
+                      {streamingIteration && streamingIteration > 1 && (
+                        <div className="mb-1 text-xs text-muted-foreground">
+                          {t("iteration", { value: streamingIteration })}
+                        </div>
+                      )}
+                      {isThinking && !streamingText ? (
+                        <ThinkingIndicator />
+                      ) : streamingText ? (
+                        <StreamingMessage text={streamingText} />
+                      ) : null}
+                    </div>
                   </div>
-                )}
-                {isThinking && !streamingText ? (
-                  <ThinkingIndicator />
-                ) : streamingText ? (
-                  <StreamingMessage text={streamingText} />
-                ) : null}
-              </div>
+                </div>
+              )}
+
+              {submitError && (
+                <div className="mt-4">
+                  <ChatErrorAlert message={submitError} />
+                </div>
+              )}
+
+              {voiceError && (
+                <div className="mt-4">
+                  <ChatErrorAlert
+                    message={voiceError.message}
+                    description={voiceError.description}
+                  />
+                </div>
+              )}
+
+              <div ref={messagesEndRef} />
+
+              {hasNewMessages && (
+                <button
+                  type="button"
+                  onClick={dismissNewMessages}
+                  className={chatSurfaceStyles.floatingNotice}
+                >
+                  <ArrowDown className="h-3 w-3" />
+                  {t("new_messages")}
+                </button>
+              )}
             </div>
+
+            <ChatNavRail
+              anchors={navAnchors}
+              currentAnchorId={currentAnchorId}
+              onJump={scrollToAnchor}
+            />
           </div>
-        )}
 
-        {submitError && (
-          <div className="mt-4">
-            <ChatErrorAlert message={submitError} />
-          </div>
-        )}
+          <SessionTaskChips
+            sessionId={sessionId}
+            basePath={sessionBasePath}
+            hasTasksFeature={hasTasksFeature}
+          />
 
-        {voiceError && (
-          <div className="mt-4">
-            <ChatErrorAlert message={voiceError.message} description={voiceError.description} />
-          </div>
-        )}
+          {showAddressing && (
+            <div className="flex items-center gap-2 px-3 pt-2 sm:px-4">
+              <span className="text-xs text-muted-foreground">Address</span>
+              <Select
+                value={addressedParticipantId ?? "__host__"}
+                onValueChange={(value) =>
+                  setAddressedParticipantId(value === "__host__" ? null : value)
+                }
+              >
+                <SelectTrigger size="sm" className="h-7 w-auto min-w-40">
+                  <SelectValue>
+                    {addressedParticipantId
+                      ? addressedParticipantLabel(
+                          addressableParticipants.find((p) => p.id === addressedParticipantId) ??
+                            addressableParticipants[0],
+                        )
+                      : "Session host (default)"}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__host__">Session host (default)</SelectItem>
+                  {addressableParticipants.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {addressedParticipantLabel(p)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
-        <div ref={messagesEndRef} />
+          <ChatComposer
+            commands={commands}
+            models={models}
+            inputValue={inputValue}
+            onInputChange={setInputValue}
+            onSubmit={submitMessage}
+            onCommandSelect={handleCommandSelect}
+            pendingImages={pendingImages}
+            hasImages={hasImages}
+            removeImage={removeImage}
+            addFiles={addFiles}
+            isDraggingOver={isDraggingOver}
+            dropZoneProps={dropZoneProps}
+            handlePaste={handlePaste}
+            selectedModelId={selectedModelId}
+            recentModels={recentModels}
+            onModelChange={handleModelChange}
+            modelTriggerLabel={modelTriggerLabel}
+            defaultModelOptionLabel={defaultModelOptionLabel}
+            supportsReasoning={supportsReasoning}
+            reasoningEffort={reasoningEffort}
+            reasoningEffortConfig={reasoningEffortConfig}
+            defaultEffortName={defaultEffortName}
+            getReasoningEffortName={getReasoningEffortName}
+            onReasoningEffortChange={(value) => setReasoningEffort(value as typeof reasoningEffort)}
+            supportsVerbosity={supportsVerbosity}
+            verbosity={verbosity}
+            verbosityConfig={verbosityConfig}
+            defaultVerbosityName={defaultVerbosityName}
+            getVerbosityName={getVerbosityName}
+            onVerbosityChange={(value) => setVerbosity(value as typeof verbosity)}
+            isActive={isActive}
+            cancelCurrentTurn={cancelCurrentTurn}
+            canSubmit={canSubmit}
+            isUploading={isUploading}
+            sendPending={
+              sendMessage.isPending || sendMessageWithImages.isPending || executeCommand.isPending
+            }
+            textareaRef={textareaRef}
+            voiceEnabled={voiceAvailable}
+            voiceActive={voiceState === "connected"}
+            voicePending={voiceState === "connecting"}
+            onToggleVoice={toggleVoice}
+          />
+        </div>
 
-        {hasNewMessages && (
-          <button
-            type="button"
-            onClick={dismissNewMessages}
-            className={chatSurfaceStyles.floatingNotice}
-          >
-            <ArrowDown className="h-3 w-3" />
-            {t("new_messages")}
-          </button>
-        )}
+        <SessionParticipantsRail sessionId={sessionId} />
       </div>
-
-      <SessionTaskChips
-        sessionId={sessionId}
-        basePath={sessionBasePath}
-        hasTasksFeature={hasTasksFeature}
-      />
-
-      <ChatComposer
-        commands={commands}
-        models={models}
-        inputValue={inputValue}
-        onInputChange={setInputValue}
-        onSubmit={submitMessage}
-        onCommandSelect={handleCommandSelect}
-        pendingImages={pendingImages}
-        hasImages={hasImages}
-        removeImage={removeImage}
-        addFiles={addFiles}
-        isDraggingOver={isDraggingOver}
-        dropZoneProps={dropZoneProps}
-        handlePaste={handlePaste}
-        selectedModelId={selectedModelId}
-        onModelChange={handleModelChange}
-        modelTriggerLabel={modelTriggerLabel}
-        defaultModelOptionLabel={defaultModelOptionLabel}
-        supportsReasoning={supportsReasoning}
-        reasoningEffort={reasoningEffort}
-        reasoningEffortConfig={reasoningEffortConfig}
-        defaultEffortName={defaultEffortName}
-        getReasoningEffortName={getReasoningEffortName}
-        onReasoningEffortChange={(value) => setReasoningEffort(value as typeof reasoningEffort)}
-        isActive={isActive}
-        cancelCurrentTurn={cancelCurrentTurn}
-        canSubmit={canSubmit}
-        isUploading={isUploading}
-        sendPending={
-          sendMessage.isPending || sendMessageWithImages.isPending || executeCommand.isPending
-        }
-        textareaRef={textareaRef}
-        voiceEnabled={voiceAvailable}
-        voiceActive={voiceState === "connected"}
-        voicePending={voiceState === "connecting"}
-        onToggleVoice={toggleVoice}
-      />
 
       <Dialog open={!!btwOverlay} onOpenChange={(open) => !open && closeBtwOverlay()}>
         <DialogContent className="sm:max-w-2xl">

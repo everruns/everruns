@@ -2,6 +2,7 @@
 
 use super::super::models::*;
 use super::InMemoryDatabase;
+use crate::errors::BadRequestError;
 use anyhow::Result;
 use uuid::Uuid;
 
@@ -30,6 +31,53 @@ impl InMemoryDatabase {
             updated_at: now,
         };
         self.app_channels.write().insert(id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn create_app_channel_enforcing_schedule_cap(
+        &self,
+        org_id: i64,
+        app_id: Uuid,
+        input: CreateAppChannelRow,
+        max_enabled_schedule_channels: i64,
+    ) -> Result<AppChannelRow> {
+        let apps = self.apps.read();
+        let org_app_ids: std::collections::HashSet<Uuid> = apps
+            .values()
+            .filter(|a| a.org_id == org_id)
+            .map(|a| a.id)
+            .collect();
+        drop(apps);
+
+        let mut channels = self.app_channels.write();
+        let count = channels
+            .values()
+            .filter(|ch| {
+                org_app_ids.contains(&ch.app_id) && ch.channel_type == "schedule" && ch.enabled
+            })
+            .count() as i64;
+        if count >= max_enabled_schedule_channels {
+            return Err(BadRequestError::new(format!(
+                "Organization may have at most {max_enabled_schedule_channels} enabled schedule channel(s); currently has {count}"
+            ))
+            .into());
+        }
+
+        let now = Self::now();
+        let id = Uuid::now_v7();
+        let row = AppChannelRow {
+            id,
+            app_id,
+            public_id: input.public_id,
+            channel_type: input.channel_type,
+            channel_config: input.channel_config,
+            channel_config_encrypted: input.channel_config_encrypted,
+            durable_schedule_id: input.durable_schedule_id,
+            enabled: input.enabled,
+            created_at: now,
+            updated_at: now,
+        };
+        channels.insert(id, row.clone());
         Ok(row)
     }
 
@@ -66,6 +114,55 @@ impl InMemoryDatabase {
         input: UpdateAppChannel,
     ) -> Result<Option<AppChannelRow>> {
         let mut channels = self.app_channels.write();
+        let Some(ch) = channels.get_mut(&id) else {
+            return Ok(None);
+        };
+        if let Some(channel_type) = input.channel_type {
+            ch.channel_type = channel_type;
+        }
+        if let Some(channel_config) = input.channel_config {
+            ch.channel_config = channel_config;
+        }
+        if let Some(encrypted) = input.channel_config_encrypted {
+            ch.channel_config_encrypted = Some(encrypted);
+        }
+        input.durable_schedule_id.apply(&mut ch.durable_schedule_id);
+        if let Some(enabled) = input.enabled {
+            ch.enabled = enabled;
+        }
+        ch.updated_at = Self::now();
+        Ok(Some(ch.clone()))
+    }
+
+    pub async fn update_app_channel_enforcing_schedule_cap(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateAppChannel,
+        max_enabled_schedule_channels: i64,
+    ) -> Result<Option<AppChannelRow>> {
+        let apps = self.apps.read();
+        let org_app_ids: std::collections::HashSet<Uuid> = apps
+            .values()
+            .filter(|a| a.org_id == org_id)
+            .map(|a| a.id)
+            .collect();
+        drop(apps);
+
+        let mut channels = self.app_channels.write();
+        let count = channels
+            .values()
+            .filter(|ch| {
+                org_app_ids.contains(&ch.app_id) && ch.channel_type == "schedule" && ch.enabled
+            })
+            .count() as i64;
+        if count >= max_enabled_schedule_channels {
+            return Err(BadRequestError::new(format!(
+                "Organization may have at most {max_enabled_schedule_channels} enabled schedule channel(s); currently has {count}"
+            ))
+            .into());
+        }
+
         let Some(ch) = channels.get_mut(&id) else {
             return Ok(None);
         };

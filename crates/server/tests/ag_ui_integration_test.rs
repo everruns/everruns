@@ -373,9 +373,11 @@ async fn test_ag_ui_public_image_upload_requires_published_app() {
         .assert_status(StatusCode::CREATED)
         .json();
 
+    // EVE-632 / TM-TENANT-002: an unpublished app must return a generic 404,
+    // not a 403 that confirms the app exists.
     upload_ag_ui_image(&server, &app.public_id, vec![])
         .await
-        .assert_status(StatusCode::FORBIDDEN);
+        .assert_status(StatusCode::NOT_FOUND);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -745,7 +747,9 @@ async fn test_ag_ui_unpublished_app_rejected() {
         "forwardedProps": {}
     });
 
+    // EVE-632 / TM-TENANT-002: an unpublished app must return a generic 404,
+    // not a 403 that confirms the app exists.
     send_ag_ui_run(&server, &app.public_id, &payload)
         .await
-        .assert_status(StatusCode::FORBIDDEN);
+        .assert_status(StatusCode::NOT_FOUND);
 }

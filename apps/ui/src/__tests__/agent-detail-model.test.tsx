@@ -57,6 +57,7 @@ jest.mock("@/components/agents/agent-preview", () => ({
 const mockAgent: Agent = {
   id: "agent-1",
   name: "test-agent",
+  harness_id: "harness_test",
   display_name: "Test Agent",
   description: "A test agent",
   system_prompt: "You are helpful",

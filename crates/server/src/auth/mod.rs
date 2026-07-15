@@ -17,6 +17,7 @@ pub mod personal_access_token;
 pub mod personal_access_token_routes;
 pub mod rate_limit;
 pub mod routes;
+pub mod share_token;
 
 pub use backend::AuthBackend;
 pub use builtin::BuiltinAuthBackend;

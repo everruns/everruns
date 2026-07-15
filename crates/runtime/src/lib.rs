@@ -15,6 +15,11 @@
 //! - reuse runtime-owned host phase execution from durable or server-backed hosts
 //! - map `plan_next_host_turn(...)` onto their own queue, retry, or in-memory host
 //!
+//! `InProcessRuntimeBuilder::new()` starts from a runtime-safe built-in
+//! capability registry. Hosted Everruns product capabilities and capabilities
+//! that require optional host backends can still be enabled by supplying an
+//! explicit [`PlatformDefinition`](everruns_core::PlatformDefinition).
+//!
 //! For a runnable example, see:
 //!
 //! ```text
@@ -108,6 +113,11 @@ pub use backends::{
 };
 pub use builders::{AgentBuilder, HarnessBuilder, SessionBuilder, SingleSessionBuilder};
 pub use everruns_core::AssembledTurnContext;
+// Embeddable in-process task-transition observation (EVE-729): embedders
+// implement `TaskTransitionObserver` to receive task lifecycle transitions
+// (terminal / awaiting_input / outbound message) in process, with the same
+// filter semantics as server webhook delivery but without HTTP.
+pub use everruns_core::task_observer::{TaskTransition, TaskTransitionObserver};
 pub use file_store_decorators::{
     ApprovalGatingFileStore, DEFAULT_WRITE_BLOCKLIST, FileApprovalGate, WriteBlocklistFileStore,
 };
@@ -119,7 +129,7 @@ pub use in_memory::{
     InMemorySessionFileStore, InMemorySessionFileSystemFactory, InMemorySessionStorageStore,
     InMemorySessionStore,
 };
-pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory};
+pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory, multi_root_file_system};
 pub use runtime::{
     InProcessRuntime, InProcessRuntimeBuilder, TurnResult, in_process_internal_org_id,
 };

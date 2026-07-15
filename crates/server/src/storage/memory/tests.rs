@@ -3,11 +3,48 @@ use super::*;
 use crate::api::common::Pagination;
 use chrono::Utc;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
-use everruns_core::{AgentId, DEFAULT_ORG_ID, SessionId};
+use everruns_core::{
+    AgentId, DEFAULT_ORG_ID, HarnessId, PrincipalId, SessionId, SessionParticipantKind,
+    SessionParticipantRole,
+};
 
 /// Default pagination for tests (large enough to not truncate).
 fn default_pagination() -> Pagination {
     Pagination::new(0, 1000)
+}
+
+fn test_harness_id() -> HarnessId {
+    HarnessId::from_uuid(uuid::Uuid::nil())
+}
+
+fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
+    CreateSessionRow {
+        workspace_id: None,
+        org_id: DEFAULT_ORG_ID,
+        app_id: None,
+        harness_id: None,
+        agent_id,
+        agent_identity_id: None,
+        owner_principal_id: PrincipalId::from_seed(1),
+        resolved_owner_user_id: None,
+        title: None,
+        locale: None,
+        tags: vec![],
+        model_id: None,
+        capabilities: serde_json::json!([]),
+        tools: serde_json::json!([]),
+        mcp_servers: serde_json::json!({}),
+        system_prompt: None,
+        initial_files: serde_json::Value::Array(vec![]),
+        hints: None,
+        network_access: None,
+        max_iterations: None,
+        parallel_tool_calls: None,
+        blueprint_id: None,
+        blueprint_config: None,
+        parent_session_id: None,
+        budget_root_session_id: None,
+    }
 }
 
 #[tokio::test]
@@ -24,6 +61,8 @@ async fn test_create_and_get_agent() {
                 description: Some("A test agent".to_string()),
                 system_prompt: "You are helpful".to_string(),
                 default_model_id: None,
+
+                harness_id: test_harness_id(),
                 tags: vec!["test".to_string()],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -116,6 +155,8 @@ async fn test_create_and_list_sessions() {
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
+
+                harness_id: test_harness_id(),
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -154,6 +195,7 @@ async fn test_create_and_list_sessions() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -197,6 +239,7 @@ async fn test_set_session_fork_lineage_roundtrip() {
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     };
 
     let parent = db.create_session(new_session()).await.unwrap();
@@ -228,6 +271,209 @@ async fn test_set_session_fork_lineage_roundtrip() {
 }
 
 #[tokio::test]
+async fn detached_budget_root_override_is_canonical_and_org_scoped() {
+    let db = InMemoryDatabase::new();
+    let root = db
+        .create_session(test_session_input(None))
+        .await
+        .expect("root session");
+
+    let mut detached_input = test_session_input(None);
+    detached_input.budget_root_session_id = Some(root.id);
+    let detached = db
+        .create_session(detached_input)
+        .await
+        .expect("detached peer");
+    assert_eq!(detached.parent_session_id, None);
+    assert_eq!(detached.root_session_id, Some(root.id));
+
+    let mut chain_input = test_session_input(None);
+    chain_input.budget_root_session_id = Some(detached.id);
+    let chained = db
+        .create_session(chain_input)
+        .await
+        .expect("detached chain");
+    assert_eq!(chained.root_session_id, Some(root.id));
+
+    // A normal fork has lineage but no internal budget-root override, so its
+    // storage root remains independent.
+    let ordinary_fork = db
+        .create_session(test_session_input(None))
+        .await
+        .expect("ordinary fork storage row");
+    assert_eq!(ordinary_fork.root_session_id, Some(ordinary_fork.id));
+
+    let mut cross_org = test_session_input(None);
+    cross_org.org_id = DEFAULT_ORG_ID + 1;
+    cross_org.budget_root_session_id = Some(root.id);
+    let error = db
+        .create_session(cross_org)
+        .await
+        .expect_err("cross-org budget linkage must be rejected");
+    assert!(error.to_string().contains("not found in organization"));
+}
+
+#[tokio::test]
+async fn test_create_session_seeds_agent_and_user_participants() {
+    let db = InMemoryDatabase::new();
+    let agent_id = AgentId::new();
+
+    let session = db
+        .create_session(test_session_input(Some(agent_id)))
+        .await
+        .unwrap();
+    let participants = db
+        .list_session_participants(DEFAULT_ORG_ID, session.id)
+        .await
+        .unwrap();
+
+    assert_eq!(participants.len(), 2);
+    assert_eq!(session.agent_id, Some(agent_id));
+
+    let host = participants
+        .iter()
+        .map(SessionParticipantRow::to_core)
+        .find(|participant| participant.role == SessionParticipantRole::Host)
+        .unwrap();
+    assert_eq!(host.kind, SessionParticipantKind::Agent);
+    assert_eq!(host.agent_id, Some(agent_id));
+    assert_eq!(host.principal_id, PrincipalId::from_seed(1));
+
+    let user = participants
+        .iter()
+        .map(SessionParticipantRow::to_core)
+        .find(|participant| participant.kind == SessionParticipantKind::User)
+        .unwrap();
+    assert_eq!(user.role, SessionParticipantRole::Member);
+    assert_eq!(user.agent_id, None);
+    assert_eq!(user.principal_id, PrincipalId::from_seed(1));
+}
+
+#[tokio::test]
+async fn test_create_session_without_agent_seeds_user_participant_only() {
+    let db = InMemoryDatabase::new();
+
+    let session = db.create_session(test_session_input(None)).await.unwrap();
+    let participants = db
+        .list_session_participants(DEFAULT_ORG_ID, session.id)
+        .await
+        .unwrap();
+
+    assert_eq!(participants.len(), 1);
+    let participant = participants[0].to_core();
+    assert_eq!(participant.kind, SessionParticipantKind::User);
+    assert_eq!(participant.role, SessionParticipantRole::Member);
+    assert_eq!(participant.agent_id, None);
+}
+
+#[tokio::test]
+async fn test_create_session_participant_rejects_second_active_host() {
+    let db = InMemoryDatabase::new();
+    let agent_id = AgentId::new();
+
+    let session = db
+        .create_session(test_session_input(Some(agent_id)))
+        .await
+        .unwrap();
+
+    let err = db
+        .create_session_participant(CreateSessionParticipantRow {
+            org_id: DEFAULT_ORG_ID,
+            session_id: session.id,
+            kind: SessionParticipantKind::Agent,
+            agent_id: Some(AgentId::new()),
+            agent_version_id: None,
+            principal_id: PrincipalId::from_seed(1),
+            role: SessionParticipantRole::Host,
+            joined_at: None,
+        })
+        .await
+        .unwrap_err();
+
+    assert!(
+        err.to_string()
+            .contains("session already has an active host participant")
+    );
+}
+
+#[tokio::test]
+async fn test_ensure_active_user_session_participant_is_idempotent() {
+    let db = InMemoryDatabase::new();
+    let session = db.create_session(test_session_input(None)).await.unwrap();
+    let principal_id = PrincipalId::from_seed(42);
+
+    let input = CreateSessionParticipantRow {
+        org_id: DEFAULT_ORG_ID,
+        session_id: session.id,
+        kind: SessionParticipantKind::User,
+        agent_id: None,
+        agent_version_id: None,
+        principal_id,
+        role: SessionParticipantRole::Member,
+        joined_at: None,
+    };
+    let first = db
+        .ensure_active_user_session_participant(input.clone())
+        .await
+        .unwrap();
+    let second = db
+        .ensure_active_user_session_participant(input)
+        .await
+        .unwrap();
+
+    assert_eq!(first.id, second.id);
+    let active_for_principal = db
+        .list_session_participants(DEFAULT_ORG_ID, session.id)
+        .await
+        .unwrap()
+        .into_iter()
+        .filter(|row| {
+            row.kind == "user" && row.principal_id == principal_id && row.left_at.is_none()
+        })
+        .count();
+    assert_eq!(active_for_principal, 1);
+}
+
+#[tokio::test]
+async fn test_leave_session_participant_preserves_history() {
+    let db = InMemoryDatabase::new();
+    let session = db.create_session(test_session_input(None)).await.unwrap();
+    let member = db
+        .create_session_participant(CreateSessionParticipantRow {
+            org_id: DEFAULT_ORG_ID,
+            session_id: session.id,
+            kind: SessionParticipantKind::Agent,
+            agent_id: Some(AgentId::new()),
+            agent_version_id: None,
+            principal_id: PrincipalId::from_seed(1),
+            role: SessionParticipantRole::Member,
+            joined_at: None,
+        })
+        .await
+        .unwrap();
+
+    let left = db
+        .leave_session_participant(DEFAULT_ORG_ID, session.id, member.id)
+        .await
+        .unwrap()
+        .expect("participant should exist");
+    assert!(left.left_at.is_some());
+
+    let participants = db
+        .list_session_participants(DEFAULT_ORG_ID, session.id)
+        .await
+        .unwrap();
+    assert_eq!(participants.len(), 2);
+    assert_eq!(
+        participants
+            .iter()
+            .find(|row| row.id == member.id)
+            .and_then(|row| row.left_at),
+        left.left_at
+    );
+}
+
+#[tokio::test]
 async fn test_session_aggregate_stats_by_agent_and_harness() {
     let db = InMemoryDatabase::new();
 
@@ -241,6 +487,8 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
+
+                harness_id: test_harness_id(),
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -299,6 +547,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -360,6 +609,8 @@ async fn test_session_updated_at() {
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
+
+                harness_id: test_harness_id(),
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -399,6 +650,7 @@ async fn test_session_updated_at() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -443,6 +695,8 @@ async fn test_events_sequence() {
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
+
+                harness_id: test_harness_id(),
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -481,6 +735,7 @@ async fn test_events_sequence() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -526,6 +781,8 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
+
+                harness_id: test_harness_id(),
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -564,6 +821,7 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -644,6 +902,7 @@ async fn test_list_message_events_filtered_caps_unbounded_history() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -676,6 +935,8 @@ async fn test_list_message_events_filtered_caps_unbounded_history() {
         .await
         .unwrap();
     assert_eq!(limited.len(), cap);
+    assert_eq!(limited.first().unwrap().sequence, (total - cap + 1) as i32);
+    assert_eq!(limited.last().unwrap().sequence, total as i32);
 }
 
 #[tokio::test]
@@ -744,6 +1005,7 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -892,6 +1154,7 @@ async fn test_unpin_session_is_scoped_by_org() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -931,6 +1194,8 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
+
+                harness_id: test_harness_id(),
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -969,6 +1234,7 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -1643,6 +1909,8 @@ async fn test_list_events_empty_session_with_limit() {
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
+
+                harness_id: test_harness_id(),
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -1681,6 +1949,7 @@ async fn test_list_events_empty_session_with_limit() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -1707,6 +1976,8 @@ async fn test_sessions_pagination() {
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
+
+                harness_id: test_harness_id(),
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -1746,6 +2017,7 @@ async fn test_sessions_pagination() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -1811,6 +2083,8 @@ async fn test_sessions_pagination_ordering() {
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
+
+                harness_id: test_harness_id(),
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -1850,6 +2124,7 @@ async fn test_sessions_pagination_ordering() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -2311,6 +2586,8 @@ async fn create_test_agent(
             description: description.map(|d| d.to_string()),
             system_prompt: String::new(),
             default_model_id: None,
+
+            harness_id: test_harness_id(),
             tags: vec![],
             initial_files: serde_json::json!([]),
             tools: serde_json::json!([]),
@@ -2583,6 +2860,7 @@ async fn test_search_sessions_by_title() {
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     })
     .await
     .unwrap();
@@ -2612,6 +2890,7 @@ async fn test_search_sessions_by_title() {
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     })
     .await
     .unwrap();
@@ -2657,6 +2936,7 @@ async fn test_search_sessions_with_agent_filter() {
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     })
     .await
     .unwrap();
@@ -2686,6 +2966,7 @@ async fn test_search_sessions_with_agent_filter() {
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     })
     .await
     .unwrap();
@@ -2879,6 +3160,8 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
                 description: None,
                 system_prompt: String::new(),
                 default_model_id: None,
+
+                harness_id: test_harness_id(),
                 tags: vec![],
                 initial_files: serde_json::json!([]),
                 tools: serde_json::json!([]),
@@ -2917,6 +3200,7 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -3110,6 +3394,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -3139,6 +3424,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -3168,6 +3454,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -3263,6 +3550,7 @@ async fn test_session_system_prompt_and_initial_files_round_trip() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -3316,6 +3604,7 @@ async fn test_session_system_prompt_defaults_to_none() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -3462,4 +3751,375 @@ async fn test_export_user_data() {
     // Non-existent user returns None
     let missing = db.export_user_data(uuid::Uuid::now_v7()).await.unwrap();
     assert!(missing.is_none());
+}
+
+#[tokio::test]
+async fn test_user_preferences_crud_and_isolation() {
+    let db = InMemoryDatabase::new();
+    let user_a = uuid::Uuid::now_v7();
+    let user_b = uuid::Uuid::now_v7();
+
+    // Missing key reads as None.
+    assert!(
+        db.get_user_preference(user_a, "theme")
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    // Set creates the row.
+    let created = db
+        .set_user_preference(user_a, "theme", "\"dark\"")
+        .await
+        .unwrap();
+    assert_eq!(created.key, "theme");
+    assert_eq!(created.value, "\"dark\"");
+
+    // Set again upserts (updates value, keeps identity, no duplicate row).
+    let updated = db
+        .set_user_preference(user_a, "theme", "\"light\"")
+        .await
+        .unwrap();
+    assert_eq!(updated.id, created.id, "upsert must reuse the same row");
+    assert_eq!(updated.value, "\"light\"");
+    assert_eq!(db.list_user_preferences(user_a).await.unwrap().len(), 1);
+
+    // Preferences are isolated per user.
+    db.set_user_preference(user_b, "theme", "\"system\"")
+        .await
+        .unwrap();
+    assert_eq!(
+        db.get_user_preference(user_a, "theme")
+            .await
+            .unwrap()
+            .unwrap()
+            .value,
+        "\"light\""
+    );
+    assert_eq!(db.list_user_preferences(user_b).await.unwrap().len(), 1);
+
+    // Delete removes only the targeted key and reports whether a row was hit.
+    assert!(db.delete_user_preference(user_a, "theme").await.unwrap());
+    assert!(!db.delete_user_preference(user_a, "theme").await.unwrap());
+    assert!(
+        db.get_user_preference(user_a, "theme")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    // user_b is unaffected by user_a's delete.
+    assert_eq!(db.list_user_preferences(user_b).await.unwrap().len(), 1);
+}
+
+// Account linking: signing in with an OAuth provider whose verified email
+// matches an existing password account must attach the provider identity to
+// that account (same email = same account) WITHOUT dropping password auth.
+// Mirrors the linking branch in `oauth_callback` (crates/server/src/auth/routes.rs).
+#[tokio::test]
+async fn link_oauth_identity_attaches_provider_and_preserves_password() {
+    let db = InMemoryDatabase::new();
+
+    let email = format!("linker-{}@example.com", Uuid::now_v7());
+    let user = db
+        .create_user(CreateUserRow {
+            email: email.clone(),
+            name: "Linker".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: Some("argon2-hash".to_string()),
+            email_verified: true,
+            auth_provider: Some("local".to_string()),
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+
+    // Before linking, the Google identity resolves to nobody.
+    assert!(
+        db.get_user_by_oauth("google", "google-sub-1")
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let linked = db
+        .link_oauth_identity(user.id, "google", "google-sub-1")
+        .await
+        .unwrap()
+        .expect("existing user linked");
+    assert_eq!(linked.id, user.id);
+
+    // Google login now resolves to the same account.
+    let by_oauth = db
+        .get_user_by_oauth("google", "google-sub-1")
+        .await
+        .unwrap()
+        .expect("oauth lookup resolves to linked account");
+    assert_eq!(by_oauth.id, user.id);
+
+    // Password auth is preserved: hash intact and email lookup still works, so
+    // password login and password reset keep functioning for the linked user.
+    assert_eq!(by_oauth.password_hash.as_deref(), Some("argon2-hash"));
+    let by_email = db.get_user_by_email(&email).await.unwrap().unwrap();
+    assert_eq!(by_email.id, user.id);
+    assert_eq!(by_email.password_hash.as_deref(), Some("argon2-hash"));
+
+    // Linking a non-existent user is a no-op (None), not an error.
+    assert!(
+        db.link_oauth_identity(Uuid::now_v7(), "google", "x")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+// EVE-704: user email is a case-insensitive identity. Registering `John@x.com`
+// then `john@x.com` must resolve to a single account, and login / OAuth-linking
+// lookups must find that account regardless of the casing supplied. This test
+// fails against the pre-fix backend (verbatim store + exact-match lookup),
+// where the second casing would appear as a distinct, unfound account.
+#[tokio::test]
+async fn test_user_email_is_case_insensitive_identity() {
+    let db = InMemoryDatabase::new();
+
+    // Registered with mixed case and stray surrounding whitespace.
+    let created = db
+        .create_user(CreateUserRow {
+            email: "  John.Doe@Example.COM ".to_string(),
+            name: "John".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: Some("argon2-hash".to_string()),
+            email_verified: true,
+            auth_provider: Some("local".to_string()),
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+
+    // Stored in canonical (trim + lowercase) form.
+    assert_eq!(created.email, "john.doe@example.com");
+
+    // Every casing of the same mailbox resolves to the one account — this is the
+    // register pre-check (duplicate signup blocked), login, and OAuth-linking
+    // lookup path in `auth::routes`.
+    for lookup in [
+        "john.doe@example.com",
+        "John.Doe@Example.COM",
+        "JOHN.DOE@EXAMPLE.COM",
+        "  john.doe@example.com  ",
+    ] {
+        let found = db
+            .get_user_by_email(lookup)
+            .await
+            .unwrap()
+            .unwrap_or_else(|| panic!("email lookup {lookup:?} must resolve to the account"));
+        assert_eq!(
+            found.id, created.id,
+            "lookup {lookup:?} resolved to wrong account"
+        );
+    }
+}
+
+#[test]
+fn test_normalize_email_trims_and_lowercases() {
+    assert_eq!(normalize_email("  Alice@Example.COM "), "alice@example.com");
+    assert_eq!(normalize_email("alice@example.com"), "alice@example.com");
+    assert_eq!(normalize_email("\tBob@X.io\n"), "bob@x.io");
+}
+
+// ============================================
+// Agent trigger round-trips (EVE-757)
+// ============================================
+
+fn schedule_trigger_input(agent_id: AgentId) -> CreateAgentTriggerRow {
+    CreateAgentTriggerRow {
+        org_id: DEFAULT_ORG_ID,
+        id: everruns_core::TriggerId::new(),
+        agent_id,
+        trigger_type: "schedule".to_string(),
+        config: serde_json::json!({
+            "cron_expression": "0 0 * * * *",
+            "timezone": "UTC",
+            "session_mode": "shared_session",
+            "message": "hello",
+        }),
+        enabled: true,
+        durable_schedule_id: None,
+    }
+}
+
+#[tokio::test]
+async fn test_agent_trigger_create_get_list_update_delete_round_trip() {
+    let db = InMemoryDatabase::new();
+    let agent_id = AgentId::new();
+
+    // Create
+    let created = db
+        .create_agent_trigger(schedule_trigger_input(agent_id))
+        .await
+        .unwrap();
+    assert_eq!(created.status, "active");
+    assert_eq!(created.trigger_type, "schedule");
+    assert!(created.enabled);
+    assert_eq!(created.agent_id, agent_id);
+
+    // Config round-trips into the typed core accessor.
+    let trigger = everruns_core::AgentTrigger {
+        id: created.id,
+        agent_id: created.agent_id,
+        trigger_type: created.trigger_type.as_str().into(),
+        config: created.config.clone(),
+        enabled: created.enabled,
+        created_at: created.created_at,
+        updated_at: created.updated_at,
+        archived_at: created.archived_at,
+        deleted_at: created.deleted_at,
+    };
+    let schedule = trigger.schedule_config().unwrap();
+    assert_eq!(schedule.cron_expression, "0 0 * * * *");
+    assert_eq!(schedule.message, "hello");
+
+    // Get
+    let fetched = db
+        .get_agent_trigger(DEFAULT_ORG_ID, created.id)
+        .await
+        .unwrap()
+        .expect("trigger exists");
+    assert_eq!(fetched.id, created.id);
+
+    // Cross-org isolation.
+    assert!(
+        db.get_agent_trigger(999, created.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    // List
+    let listed = db
+        .list_agent_triggers(DEFAULT_ORG_ID, None, false)
+        .await
+        .unwrap();
+    assert_eq!(listed.len(), 1);
+
+    // Update
+    let updated = db
+        .update_agent_trigger(
+            DEFAULT_ORG_ID,
+            created.id,
+            UpdateAgentTrigger {
+                enabled: Some(false),
+                config: Some(serde_json::json!({
+                    "cron_expression": "0 5 * * * *",
+                    "message": "updated",
+                })),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+        .expect("update returns row");
+    assert!(!updated.enabled);
+    assert_eq!(updated.config["message"], serde_json::json!("updated"));
+
+    // Soft delete (archive)
+    assert!(
+        db.delete_agent_trigger(DEFAULT_ORG_ID, created.id)
+            .await
+            .unwrap()
+    );
+    let after_delete = db
+        .get_agent_trigger(DEFAULT_ORG_ID, created.id)
+        .await
+        .unwrap()
+        .expect("row still present after soft delete");
+    assert_eq!(after_delete.status, "archived");
+    assert!(after_delete.archived_at.is_some());
+
+    // Archived rows are excluded unless include_archived.
+    assert!(
+        db.list_agent_triggers(DEFAULT_ORG_ID, None, false)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        db.list_agent_triggers(DEFAULT_ORG_ID, None, true)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+
+    // Second delete is a no-op (already archived, not active).
+    assert!(
+        !db.delete_agent_trigger(DEFAULT_ORG_ID, created.id)
+            .await
+            .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn test_agent_trigger_set_durable_schedule_id() {
+    let db = InMemoryDatabase::new();
+    let created = db
+        .create_agent_trigger(schedule_trigger_input(AgentId::new()))
+        .await
+        .unwrap();
+    assert!(created.durable_schedule_id.is_none());
+
+    let schedule_id = uuid::Uuid::now_v7();
+    let bound = db
+        .set_agent_trigger_durable_schedule_id(DEFAULT_ORG_ID, created.id, Some(schedule_id))
+        .await
+        .unwrap()
+        .expect("bind returns row");
+    assert_eq!(bound.durable_schedule_id, Some(schedule_id));
+
+    // Clearing the binding works too.
+    let cleared = db
+        .set_agent_trigger_durable_schedule_id(DEFAULT_ORG_ID, created.id, None)
+        .await
+        .unwrap()
+        .expect("clear returns row");
+    assert!(cleared.durable_schedule_id.is_none());
+}
+
+#[tokio::test]
+async fn test_agent_trigger_list_filters_by_agent() {
+    let db = InMemoryDatabase::new();
+    let agent_a = AgentId::new();
+    let agent_b = AgentId::new();
+
+    db.create_agent_trigger(schedule_trigger_input(agent_a))
+        .await
+        .unwrap();
+    db.create_agent_trigger(schedule_trigger_input(agent_a))
+        .await
+        .unwrap();
+    db.create_agent_trigger(schedule_trigger_input(agent_b))
+        .await
+        .unwrap();
+
+    let for_a = db
+        .list_agent_triggers(DEFAULT_ORG_ID, Some(agent_a), false)
+        .await
+        .unwrap();
+    assert_eq!(for_a.len(), 2);
+    assert!(for_a.iter().all(|t| t.agent_id == agent_a));
+
+    let for_b = db
+        .list_agent_triggers(DEFAULT_ORG_ID, Some(agent_b), false)
+        .await
+        .unwrap();
+    assert_eq!(for_b.len(), 1);
+
+    let all = db
+        .list_agent_triggers(DEFAULT_ORG_ID, None, false)
+        .await
+        .unwrap();
+    assert_eq!(all.len(), 3);
 }

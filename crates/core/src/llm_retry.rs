@@ -14,7 +14,9 @@
 // Design: exponential backoff with 25% jitter, respecting provider retry-after hints.
 // Defaults match official SDKs: 2 retries, 1s initial, 60s max, 2x multiplier.
 
-use rand::Rng;
+use crate::error::AgentLoopError;
+use rand::RngExt;
+use std::future::Future;
 use std::time::Duration;
 
 /// Maximum retry-after value to honor (seconds).
@@ -411,6 +413,15 @@ pub fn send_error_message(err: &reqwest::Error, attempts: u32) -> String {
 /// This complements HTTP-status-based retry detection for streaming APIs that can
 /// emit retryable provider failures inside an otherwise successful event stream.
 pub fn is_transient_error_message(message: &str) -> bool {
+    // A subscription/plan usage limit (e.g. Codex `usage_limit_reached`) surfaces
+    // as a 429 ("too many requests") but does not recover within the retry
+    // window — it resets hours later at `resets_at`. Treating it as transient
+    // would waste retries and suppress the human-readable error message the
+    // reason atom emits for terminal failures, so it is explicitly non-transient.
+    if crate::user_facing_error::is_usage_limit_message(message) {
+        return false;
+    }
+
     let msg = message.trim().to_ascii_lowercase();
 
     [
@@ -429,6 +440,169 @@ pub fn is_transient_error_message(message: &str) -> bool {
     ]
     .iter()
     .any(|needle| msg.contains(needle))
+}
+
+/// Classify an in-band provider error using structured fields first.
+///
+/// Machine-readable provider codes are authoritative, followed by HTTP status.
+/// Message matching is retained only for legacy drivers that cannot preserve
+/// either field.
+pub fn is_transient_stream_error(error: &crate::driver_registry::LlmStreamError) -> bool {
+    if let Some(code) = error.code.as_deref()
+        && let Some(kind) = crate::error::LlmErrorKind::from_provider_code(code)
+    {
+        return matches!(
+            kind,
+            crate::error::LlmErrorKind::RateLimited | crate::error::LlmErrorKind::Unavailable
+        );
+    }
+
+    if let Some(status) = error
+        .status
+        .and_then(|status| reqwest::StatusCode::from_u16(status).ok())
+    {
+        return is_transient_error(status);
+    }
+
+    is_transient_error_message(&error.message)
+}
+
+// ============================================================================
+// Generic retry executor
+// ============================================================================
+
+/// Outcome of a failed *send* (no HTTP response was produced).
+///
+/// Lets the [`retry_request`] caller's send closure distinguish a hard error
+/// that must propagate immediately (e.g. an auth-header failure) from a
+/// `reqwest` transport error that should be classified for transient retry.
+pub enum SendOutcome {
+    /// A `reqwest` send error (connection/TLS/timeout). Classified via
+    /// [`is_transient_send_error`] for retry.
+    Send(reqwest::Error),
+    /// A non-transport error that must abort the loop immediately (e.g. an
+    /// `AuthHeaderProvider` failure resolved per attempt).
+    Fatal(AgentLoopError),
+}
+
+/// Decision returned by the per-attempt classifier when a response carries a
+/// non-success HTTP status.
+pub enum RetryDecision {
+    /// Retry after the given wait duration, recording the supplied rate-limit
+    /// info against the retry metadata.
+    Retry {
+        wait: Duration,
+        rate_limit_info: Option<RateLimitInfo>,
+    },
+    /// Retry immediately without counting an attempt or sleeping (e.g.
+    /// Anthropic's one-shot `max_tokens` fallback that mutates the request and
+    /// re-sends). Use sparingly — the classifier is responsible for ensuring
+    /// this cannot loop forever.
+    RetryNow,
+    /// Stop and return this terminal error to the caller.
+    Terminal(AgentLoopError),
+}
+
+/// Run the shared LLM request retry loop.
+///
+/// Reproduces the loop every native streaming driver hand-rolled: send the
+/// request, retry transient *send* failures with backoff, break on success,
+/// and otherwise defer to a provider-specific `classify` closure for terminal
+/// vs. retry decisions on a non-success HTTP status.
+///
+/// - `send` builds and sends the request fresh each attempt (so per-attempt
+///   auth/header rebuilds are the caller's responsibility). It returns the
+///   `reqwest::Response` on success, or a [`SendOutcome`] distinguishing a
+///   transport error (retryable) from a fatal error (propagated immediately).
+/// - `classify` is invoked with the failed response, the current attempt count,
+///   and a `bool` indicating whether more retries remain; it consumes the
+///   response body as needed and returns a [`RetryDecision`].
+/// - `send_error` builds the terminal error when a send failure is not (or no
+///   longer) retryable, given the `reqwest::Error` and the attempt count.
+///
+/// On success returns the `reqwest::Response` plus the accumulated
+/// [`RetryMetadata`].
+pub async fn retry_request<S, SFut, C, CFut, E>(
+    config: &LlmRetryConfig,
+    driver_name: &str,
+    mut send: S,
+    mut classify: C,
+    send_error: E,
+) -> Result<(reqwest::Response, RetryMetadata), AgentLoopError>
+where
+    S: FnMut() -> SFut,
+    SFut: Future<Output = Result<reqwest::Response, SendOutcome>>,
+    C: FnMut(reqwest::Response, u32, bool) -> CFut,
+    CFut: Future<Output = RetryDecision>,
+    E: Fn(&reqwest::Error, u32) -> AgentLoopError,
+{
+    let mut retry_metadata = RetryMetadata::default();
+
+    let response = loop {
+        let response = match send().await {
+            Ok(response) => response,
+            Err(SendOutcome::Fatal(err)) => return Err(err),
+            Err(SendOutcome::Send(e)) => {
+                // A send failure never produced an HTTP response, so it bypasses
+                // the status-based retry below. Connection-level errors (incl. a
+                // stale pooled keep-alive connection, EVE-635) are transient —
+                // retry them with backoff, matching SDK `APIConnectionError`.
+                if is_transient_send_error(&e) && retry_metadata.attempts < config.max_retries {
+                    let wait_duration = config.calculate_backoff(retry_metadata.attempts);
+                    tracing::warn!(
+                        error = %e,
+                        driver = driver_name,
+                        attempt = retry_metadata.attempts + 1,
+                        max_retries = config.max_retries,
+                        wait_secs = wait_duration.as_secs_f64(),
+                        "transient connection error sending request, retrying"
+                    );
+                    retry_metadata.record_retry(wait_duration, None);
+                    tokio::time::sleep(wait_duration).await;
+                    continue;
+                }
+                return Err(send_error(&e, retry_metadata.attempts));
+            }
+        };
+
+        let status = response.status();
+        if status.is_success() {
+            break response;
+        }
+
+        let can_retry = is_transient_error(status) && retry_metadata.attempts < config.max_retries;
+        match classify(response, retry_metadata.attempts, can_retry).await {
+            RetryDecision::Retry {
+                wait,
+                rate_limit_info,
+            } => {
+                tracing::warn!(
+                    status = %status,
+                    driver = driver_name,
+                    attempt = retry_metadata.attempts + 1,
+                    max_retries = config.max_retries,
+                    wait_secs = wait.as_secs_f64(),
+                    "rate limit or transient error, retrying"
+                );
+                retry_metadata.record_retry(wait, rate_limit_info);
+                tokio::time::sleep(wait).await;
+                continue;
+            }
+            RetryDecision::RetryNow => continue,
+            RetryDecision::Terminal(err) => return Err(err),
+        }
+    };
+
+    if retry_metadata.had_retries() {
+        tracing::info!(
+            driver = driver_name,
+            attempts = retry_metadata.attempts,
+            total_wait_secs = retry_metadata.total_retry_wait.as_secs_f64(),
+            "request succeeded after retries"
+        );
+    }
+
+    Ok((response, retry_metadata))
 }
 
 // ============================================================================
@@ -657,8 +831,231 @@ mod tests {
     }
 
     #[test]
+    fn structured_stream_error_prefers_code_and_status_over_message() {
+        use crate::driver_registry::LlmStreamError;
+
+        assert!(is_transient_stream_error(&LlmStreamError::provider(
+            Some("processing_error"),
+            None,
+            "An error occurred while processing your request.",
+        )));
+        assert!(is_transient_stream_error(&LlmStreamError::provider(
+            None::<String>,
+            Some(503),
+            "opaque failure",
+        )));
+        assert!(!is_transient_stream_error(&LlmStreamError::provider(
+            Some("invalid_request_error"),
+            Some(503),
+            "server unavailable",
+        )));
+        assert!(!is_transient_stream_error(&LlmStreamError::provider(
+            Some("insufficient_quota"),
+            Some(429),
+            "rate limit",
+        )));
+    }
+
+    #[test]
+    fn test_is_transient_error_message_treats_usage_limit_as_non_transient() {
+        // Codex `usage_limit_reached` arrives as a 429 ("too many requests") but
+        // resets hours later — retrying inside the backoff window is pointless
+        // and would suppress the terminal user-facing message.
+        assert!(!is_transient_error_message(
+            "Codex API error (429 Too Many Requests): {\"error\":{\"type\":\"usage_limit_reached\",\"resets_at\":1783767823}}"
+        ));
+    }
+
+    #[test]
     fn test_max_retry_after_constant() {
         // Verify the constant matches SDK behavior
         assert_eq!(MAX_RETRY_AFTER_SECS, 60);
+    }
+
+    // ------------------------------------------------------------------------
+    // retry_request executor tests (no live server; responses are synthesized)
+    // ------------------------------------------------------------------------
+
+    /// Build a `reqwest::Response` with a chosen status and body for testing.
+    fn fake_response(status: u16, body: &str) -> reqwest::Response {
+        let http_response = http::Response::builder()
+            .status(status)
+            .body(body.to_string())
+            .unwrap();
+        reqwest::Response::from(http_response)
+    }
+
+    /// Zero-backoff config so retries don't actually sleep in tests.
+    fn fast_config(max_retries: u32) -> LlmRetryConfig {
+        LlmRetryConfig {
+            max_retries,
+            initial_backoff: Duration::from_millis(0),
+            max_backoff: Duration::from_millis(0),
+            backoff_multiplier: 1.0,
+            jitter_factor: 0.0,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_retry_request_success_first_try() {
+        let config = fast_config(2);
+        let (resp, meta) = retry_request(
+            &config,
+            "TestDriver",
+            || async { Ok(fake_response(200, "ok")) },
+            |_resp, _attempt, _can_retry| async {
+                RetryDecision::Terminal(AgentLoopError::llm("unreachable"))
+            },
+            |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
+        )
+        .await
+        .expect("should succeed");
+        assert!(resp.status().is_success());
+        assert_eq!(meta.attempts, 0);
+        assert!(!meta.had_retries());
+    }
+
+    #[tokio::test]
+    async fn test_retry_request_retries_then_succeeds() {
+        let config = fast_config(3);
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let calls_send = calls.clone();
+        let (resp, meta) = retry_request(
+            &config,
+            "TestDriver",
+            move || {
+                let calls = calls_send.clone();
+                async move {
+                    let n = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    // First two attempts return 429, third succeeds.
+                    if n < 2 {
+                        Ok(fake_response(429, "rate limited"))
+                    } else {
+                        Ok(fake_response(200, "ok"))
+                    }
+                }
+            },
+            |_resp, _attempt, can_retry| async move {
+                assert!(can_retry, "429 within budget should be retryable");
+                RetryDecision::Retry {
+                    wait: Duration::from_millis(0),
+                    rate_limit_info: None,
+                }
+            },
+            |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
+        )
+        .await
+        .expect("should eventually succeed");
+        assert!(resp.status().is_success());
+        assert_eq!(meta.attempts, 2);
+    }
+
+    #[tokio::test]
+    async fn test_retry_request_terminal_decision_propagates() {
+        let config = fast_config(2);
+        let result = retry_request(
+            &config,
+            "TestDriver",
+            || async { Ok(fake_response(400, "bad request")) },
+            |_resp, _attempt, _can_retry| async {
+                RetryDecision::Terminal(AgentLoopError::llm("classified terminal"))
+            },
+            |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
+        )
+        .await;
+        let err = result.expect_err("terminal decision should error");
+        assert!(err.to_string().contains("classified terminal"));
+    }
+
+    #[tokio::test]
+    async fn test_retry_request_retry_now_does_not_count_attempt() {
+        let config = fast_config(2);
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
+        let calls_send = calls.clone();
+        let (resp, meta) = retry_request(
+            &config,
+            "TestDriver",
+            move || {
+                let calls = calls_send.clone();
+                async move {
+                    let n = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                    if n == 0 {
+                        Ok(fake_response(400, "max_tokens too large"))
+                    } else {
+                        Ok(fake_response(200, "ok"))
+                    }
+                }
+            },
+            {
+                let mut used_fallback = false;
+                move |_resp, _attempt, _can_retry| {
+                    let do_fallback = !used_fallback;
+                    used_fallback = true;
+                    async move {
+                        if do_fallback {
+                            RetryDecision::RetryNow
+                        } else {
+                            RetryDecision::Terminal(AgentLoopError::llm("unreachable"))
+                        }
+                    }
+                }
+            },
+            |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
+        )
+        .await
+        .expect("RetryNow then success");
+        assert!(resp.status().is_success());
+        // RetryNow must NOT increment the attempt counter.
+        assert_eq!(meta.attempts, 0);
+    }
+
+    #[tokio::test]
+    async fn test_retry_request_send_error_exhausts() {
+        // A send closure that always returns a transient send error must, after
+        // exhausting retries, return the send_error-built terminal error.
+        let config = fast_config(1);
+
+        // Obtain a real transient reqwest::Error (connection refused).
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+        let make_err = || async {
+            reqwest::Client::new()
+                .get(format!("http://{addr}/"))
+                .send()
+                .await
+                .expect_err("closed port")
+        };
+
+        let result = retry_request(
+            &config,
+            "TestDriver",
+            move || async move { Err(SendOutcome::Send(make_err().await)) },
+            |_resp, _attempt, _can_retry| async {
+                RetryDecision::Terminal(AgentLoopError::llm("unreachable"))
+            },
+            |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
+        )
+        .await;
+        let err = result.expect_err("send errors should exhaust to terminal");
+        // After 1 retry, message notes the retry count.
+        assert!(err.to_string().contains("after 1 retries"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn test_retry_request_fatal_send_propagates_immediately() {
+        let config = fast_config(3);
+        let result = retry_request(
+            &config,
+            "TestDriver",
+            || async { Err(SendOutcome::Fatal(AgentLoopError::llm("auth failed"))) },
+            |_resp, _attempt, _can_retry| async {
+                RetryDecision::Terminal(AgentLoopError::llm("unreachable"))
+            },
+            |e, attempts| AgentLoopError::llm(send_error_message(e, attempts)),
+        )
+        .await;
+        let err = result.expect_err("fatal send should propagate");
+        assert!(err.to_string().contains("auth failed"));
     }
 }

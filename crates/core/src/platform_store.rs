@@ -11,11 +11,12 @@ use crate::app::{App, AppChannel, ChannelType};
 use crate::capability_dto::CapabilityInfo;
 use crate::error::Result;
 use crate::harness::Harness;
-use crate::session::Session;
+use crate::session::{Session, SessionParticipant, SessionSeedMode};
 use crate::typed_id::{AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 /// Simplified message representation for platform management tools.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +24,24 @@ pub struct PlatformMessage {
     pub role: String,
     pub content: String,
     pub created_at: DateTime<Utc>,
+}
+
+/// Options for platform-backed session creation from model-facing tools.
+#[derive(Debug, Clone)]
+pub struct PlatformCreateSessionRequest {
+    pub harness_id: HarnessId,
+    pub agent_id: Option<AgentId>,
+    pub title: Option<String>,
+    pub goal: Option<String>,
+    pub locale: Option<String>,
+    pub blueprint_id: Option<String>,
+    pub blueprint_config: Option<serde_json::Value>,
+    pub parent_session_id: Option<SessionId>,
+    pub forked_from_session_id: Option<SessionId>,
+    /// Internal-only override for the budget/delegation root. Detached spawns
+    /// set this explicitly; ordinary forks must leave it unset.
+    pub budget_root_session_id: Option<SessionId>,
+    pub seed: SessionSeedMode,
 }
 
 /// Trait for platform-level management operations.
@@ -41,6 +60,33 @@ pub trait PlatformStore: Send + Sync {
 
     /// Get a harness by ID.
     async fn get_harness(&self, id: HarnessId) -> Result<Option<Harness>>;
+
+    /// Get the effective harness chain from root to the requested harness.
+    ///
+    /// Platform management lookups return the raw harness row. Runtime assembly
+    /// applies inherited parent harnesses first, so security-sensitive
+    /// compatibility checks must use this chain rather than a single raw row.
+    async fn get_harness_chain(&self, id: HarnessId) -> Result<Vec<Harness>> {
+        let mut chain = Vec::new();
+        let mut current_id = Some(id);
+        let mut seen = HashSet::new();
+
+        while let Some(harness_id) = current_id {
+            if !seen.insert(harness_id) {
+                return Err(crate::error::AgentLoopError::tool(format!(
+                    "Harness inheritance cycle detected at {harness_id}"
+                )));
+            }
+            let Some(harness) = self.get_harness(harness_id).await? else {
+                return Ok(Vec::new());
+            };
+            current_id = harness.parent_harness_id;
+            chain.push(harness);
+        }
+
+        chain.reverse();
+        Ok(chain)
+    }
 
     /// Create a new harness.
     ///
@@ -193,7 +239,7 @@ pub trait PlatformStore: Send + Sync {
     /// of inheriting from `harness_id`/`agent_id`. `blueprint_config` is
     /// validated config for the blueprint (JSON, optional).
     /// `parent_session_id` links child subagent/handoff sessions to their parent
-    /// (used as the nesting guard in spawn_subagent).
+    /// (used to compute governed subagent delegation depth).
     #[allow(clippy::too_many_arguments)]
     async fn create_session(
         &self,
@@ -206,8 +252,40 @@ pub trait PlatformStore: Send + Sync {
         parent_session_id: Option<SessionId>,
     ) -> Result<Session>;
 
+    async fn create_session_with_options(
+        &self,
+        request: PlatformCreateSessionRequest,
+    ) -> Result<Session> {
+        if request.goal.is_some()
+            || request.forked_from_session_id.is_some()
+            || request.budget_root_session_id.is_some()
+            || request.seed != SessionSeedMode::Fresh
+        {
+            return Err(crate::error::AgentLoopError::tool(
+                "platform store does not support goal, lineage, budget-root override, or seeded session creation",
+            ));
+        }
+        self.create_session(
+            request.harness_id,
+            request.agent_id,
+            request.title.as_deref(),
+            request.locale.as_deref(),
+            request.blueprint_id.as_deref(),
+            request.blueprint_config.as_ref(),
+            request.parent_session_id,
+        )
+        .await
+    }
+
     /// Get a session by ID.
     async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>>;
+
+    /// Add an agent as a member participant in an existing session.
+    async fn add_agent_session_participant(
+        &self,
+        session_id: SessionId,
+        agent_id: AgentId,
+    ) -> Result<SessionParticipant>;
 
     /// Get the latest estimated context breakdown for a session.
     async fn get_session_context_report(&self, id: SessionId) -> Result<SessionContextReport>;
@@ -278,14 +356,26 @@ pub mod tests {
     /// registered but the store is not passed through.
     pub struct MockPlatformStore {
         pub harness: Harness,
+        pub extra_harnesses: std::sync::Mutex<std::collections::HashMap<HarnessId, Harness>>,
         pub agent: Agent,
         pub app: App,
         pub app_channel: AppChannel,
         pub session: Session,
+        pub extra_sessions: std::sync::Mutex<std::collections::HashMap<SessionId, Session>>,
+        pub joined_participants: std::sync::Mutex<Vec<SessionParticipant>>,
         /// Records the `harness_id` argument of every `create_session`
         /// call so tests can assert which harness a child session was
         /// created against. See `start_handoff_uses_target_harness_not_parent`.
         pub created_session_harness_ids: std::sync::Mutex<Vec<HarnessId>>,
+        /// Records internal budget-root overrides supplied to session creation.
+        pub created_session_budget_roots: std::sync::Mutex<Vec<Option<SessionId>>>,
+        /// Status returned by `wait_for_idle` ("idle" by default). Tests set
+        /// a terminal turn status (e.g. "completed") to exercise settle paths.
+        pub wait_for_idle_status: std::sync::Mutex<String>,
+        /// Records every `send_message` call as `(session_id, content)` so
+        /// tests can assert which session was signaled (e.g. a detached peer
+        /// receiving a cooperative-cancel message).
+        pub sent_messages: std::sync::Mutex<Vec<(SessionId, String)>>,
     }
 
     impl Default for MockPlatformStore {
@@ -319,6 +409,7 @@ pub mod tests {
                     archived_at: None,
                     deleted_at: None,
                 },
+                extra_harnesses: std::sync::Mutex::new(std::collections::HashMap::new()),
                 agent: Agent {
                     public_id: crate::typed_id::AgentId::new(),
                     internal_id: uuid::Uuid::now_v7(),
@@ -327,6 +418,8 @@ pub mod tests {
                     description: Some("test agent".to_string()),
                     system_prompt: "You are helpful.".to_string(),
                     default_model_id: None,
+
+                    harness_id: crate::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
                     default_version_id: None,
                     forked_from_agent_id: None,
                     forked_from_version_id: None,
@@ -398,6 +491,7 @@ pub mod tests {
                         owner: None,
                         effective_owner: None,
                         title: Some("Test Session".to_string()),
+                        goal: None,
                         locale: None,
                         preview: None,
                         output_preview: None,
@@ -428,7 +522,12 @@ pub mod tests {
                         blueprint_config: None,
                     }
                 },
+                extra_sessions: std::sync::Mutex::new(std::collections::HashMap::new()),
+                joined_participants: std::sync::Mutex::new(Vec::new()),
                 created_session_harness_ids: std::sync::Mutex::new(Vec::new()),
+                created_session_budget_roots: std::sync::Mutex::new(Vec::new()),
+                wait_for_idle_status: std::sync::Mutex::new("idle".to_string()),
+                sent_messages: std::sync::Mutex::new(Vec::new()),
             }
         }
     }
@@ -438,7 +537,10 @@ pub mod tests {
         async fn list_harnesses(&self) -> Result<Vec<Harness>> {
             Ok(vec![self.harness.clone()])
         }
-        async fn get_harness(&self, _id: HarnessId) -> Result<Option<Harness>> {
+        async fn get_harness(&self, id: HarnessId) -> Result<Option<Harness>> {
+            if let Some(harness) = self.extra_harnesses.lock().unwrap().get(&id).cloned() {
+                return Ok(Some(harness));
+            }
             Ok(Some(self.harness.clone()))
         }
         async fn create_harness(
@@ -688,10 +790,71 @@ pub mod tests {
             s.blueprint_id = blueprint_id.map(|b| b.to_string());
             s.blueprint_config = blueprint_config.cloned();
             s.parent_session_id = parent_session_id;
+            if let Ok(mut sessions) = self.extra_sessions.lock() {
+                sessions.insert(s.id, s.clone());
+            }
             Ok(s)
         }
-        async fn get_session_by_id(&self, _id: SessionId) -> Result<Option<Session>> {
+        async fn create_session_with_options(
+            &self,
+            request: PlatformCreateSessionRequest,
+        ) -> Result<Session> {
+            self.created_session_budget_roots
+                .lock()
+                .expect("budget root recorder")
+                .push(request.budget_root_session_id);
+            let mut session = self
+                .create_session(
+                    request.harness_id,
+                    request.agent_id,
+                    request.title.as_deref(),
+                    request.locale.as_deref(),
+                    request.blueprint_id.as_deref(),
+                    request.blueprint_config.as_ref(),
+                    request.parent_session_id,
+                )
+                .await?;
+            session.goal = request.goal;
+            session.forked_from_session_id = request.forked_from_session_id;
+            if let Ok(mut sessions) = self.extra_sessions.lock() {
+                sessions.insert(session.id, session.clone());
+            }
+            Ok(session)
+        }
+        async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>> {
+            if id == self.session.id {
+                return Ok(Some(self.session.clone()));
+            }
+            if let Some(session) = self
+                .extra_sessions
+                .lock()
+                .ok()
+                .and_then(|sessions| sessions.get(&id).cloned())
+            {
+                return Ok(Some(session));
+            }
             Ok(Some(self.session.clone()))
+        }
+        async fn add_agent_session_participant(
+            &self,
+            session_id: SessionId,
+            agent_id: AgentId,
+        ) -> Result<SessionParticipant> {
+            let participant = SessionParticipant {
+                id: crate::typed_id::SessionParticipantId::new(),
+                session_id,
+                kind: crate::session::SessionParticipantKind::Agent,
+                agent_id: Some(agent_id),
+                agent_version_id: self.agent.default_version_id,
+                principal_id: self.session.owner_principal_id,
+                role: crate::session::SessionParticipantRole::Member,
+                joined_at: chrono::Utc::now(),
+                left_at: None,
+            };
+            if let Ok(mut participants) = self.joined_participants.lock() {
+                participants.push(participant.clone());
+            }
+            Ok(participant)
         }
         async fn get_session_context_report(&self, id: SessionId) -> Result<SessionContextReport> {
             Ok(SessionContextReport {
@@ -712,7 +875,11 @@ pub mod tests {
         async fn delete_session(&self, _id: SessionId) -> Result<()> {
             Ok(())
         }
-        async fn send_message(&self, _id: SessionId, _content: &str) -> Result<()> {
+        async fn send_message(&self, id: SessionId, content: &str) -> Result<()> {
+            self.sent_messages
+                .lock()
+                .unwrap()
+                .push((id, content.to_string()));
             Ok(())
         }
         async fn get_messages(
@@ -734,7 +901,7 @@ pub mod tests {
             ])
         }
         async fn wait_for_idle(&self, _id: SessionId, _t: Option<u64>) -> Result<String> {
-            Ok("idle".to_string())
+            Ok(self.wait_for_idle_status.lock().unwrap().clone())
         }
         async fn list_capabilities(&self, search: Option<&str>) -> Result<Vec<CapabilityInfo>> {
             let registry = crate::capabilities::CapabilityRegistry::with_builtins();

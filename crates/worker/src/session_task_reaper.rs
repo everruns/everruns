@@ -164,6 +164,63 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
 
     let registry = adapters.reaper_session_task_registry();
 
+    // Reconcile orphans through the shared loop so tests exercise this exact
+    // code path. Production supplies the global inventory executor lookup and an
+    // adapter-backed ToolContext; tests inject their own.
+    let mut summary = reconcile_orphans(
+        candidates,
+        &registry,
+        input,
+        find_task_executor,
+        |session_id| {
+            ToolContext::with_stores(
+                session_id,
+                std::sync::Arc::new(AdapterSessionFileStore::new(adapters.clone())),
+                adapters.storage_store(),
+            )
+            .with_session_task_registry(registry.clone())
+            .with_egress_service_opt(adapters.egress_service())
+        },
+    )
+    .await;
+
+    // Retention pass (EVE-580): prune terminal task records, their messages,
+    // and their result_path artifacts once finished_at ages past the TTL.
+    summary.pruned = run_retention_pass(input, |ttl, limit| {
+        adapters.prune_terminal_session_tasks(ttl, limit)
+    })
+    .await;
+
+    info!(
+        candidates = summary.candidates,
+        reaped = summary.reaped,
+        reattached = summary.reattached,
+        skipped = summary.skipped,
+        pruned = summary.pruned,
+        "Session task reaper pass completed"
+    );
+
+    Ok(serde_json::to_value(summary)?)
+}
+
+/// Reconcile one batch of orphaned tasks: re-attach re-attachable kinds (up to
+/// `max_attempts`) or fail the rest as orphaned, so lifecycle invariants,
+/// `task.updated` events, and wake_policy fire exactly as for any other
+/// terminal transition. Factored out of `execute_reaper_activity` so production
+/// and tests drive the identical loop — production passes the global
+/// `find_task_executor` and an adapter-backed context builder; tests inject
+/// their own.
+async fn reconcile_orphans<F, C>(
+    candidates: Vec<(everruns_core::SessionId, String)>,
+    registry: &std::sync::Arc<dyn everruns_core::session_task::SessionTaskRegistry>,
+    input: &SessionTaskReaperInput,
+    executor_for: F,
+    make_reattach_ctx: C,
+) -> ReapSummary
+where
+    F: Fn(&str) -> Option<std::sync::Arc<dyn everruns_core::session_task::TaskExecutor>>,
+    C: Fn(everruns_core::SessionId) -> ToolContext,
+{
     let mut summary = ReapSummary {
         candidates: candidates.len(),
         reaped: 0,
@@ -218,7 +275,7 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
         }
 
         // Try to find a re-attachable executor for this kind.
-        let should_reattach = find_task_executor(&task.kind)
+        let should_reattach = executor_for(&task.kind)
             .is_some_and(|exec| exec.can_reattach_task(&task))
             && (task.attempt as i64) < input.max_attempts;
 
@@ -272,15 +329,9 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
 
             // Build a minimal ToolContext for the executor. Background-tool
             // reattach needs the session file store to persist fresh artifacts.
-            let ctx = ToolContext::with_stores(
-                session_id,
-                std::sync::Arc::new(AdapterSessionFileStore::new(adapters.clone())),
-                adapters.storage_store(),
-            )
-            .with_session_task_registry(registry.clone())
-            .with_egress_service_opt(adapters.egress_service());
+            let ctx = make_reattach_ctx(session_id);
 
-            let executor = find_task_executor(&task.kind).expect("checked above");
+            let executor = executor_for(&task.kind).expect("checked above");
             match executor.start(&updated_task, &ctx).await {
                 Ok(()) => {
                     info!(
@@ -421,23 +472,7 @@ pub async fn execute_reaper_activity<A: WorkerAdapters>(
         }
     }
 
-    // Retention pass (EVE-580): prune terminal task records, their messages,
-    // and their result_path artifacts once finished_at ages past the TTL.
-    summary.pruned = run_retention_pass(input, |ttl, limit| {
-        adapters.prune_terminal_session_tasks(ttl, limit)
-    })
-    .await;
-
-    info!(
-        candidates = summary.candidates,
-        reaped = summary.reaped,
-        reattached = summary.reattached,
-        skipped = summary.skipped,
-        pruned = summary.pruned,
-        "Session task reaper pass completed"
-    );
-
-    Ok(serde_json::to_value(summary)?)
+    summary
 }
 
 /// Run the retention pass of one reaper tick (EVE-580): prune terminal task
@@ -491,8 +526,8 @@ mod tests {
     use async_trait::async_trait;
     use everruns_core::session_task::{
         CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskRegistry,
-        SessionTaskState, TaskExecutor, TaskLinks, TaskMessage, TaskWakePolicy, apply_task_update,
-        new_session_task,
+        SessionTaskState, TASK_KIND_SUBAGENT, TaskExecutor, TaskLinks, TaskMessage, TaskWakePolicy,
+        apply_task_update, new_session_task,
     };
     use everruns_core::{Result as CoreResult, SessionId};
     use std::collections::HashMap;
@@ -819,11 +854,16 @@ mod tests {
                 updated_at: now,
             })
         }
+
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
     }
 
-    // Helper: run the reaper logic inline, calling executors directly via the
-    // provided lookup function instead of inventory, so tests don't need
-    // `inventory::submit!` in a lib-test context.
+    // Drive the production `reconcile_orphans` loop with an injected executor
+    // lookup (so tests don't need `inventory::submit!` in a lib-test context)
+    // and in-memory stores for the re-attach ToolContext. This exercises the
+    // real reaper code path rather than a reimplementation.
     async fn run_reaper_with_executor_lookup(
         orphans: Vec<(SessionId, String)>,
         registry: Arc<MockRegistry>,
@@ -834,110 +874,20 @@ mod tests {
         let storage: Arc<dyn everruns_core::traits::SessionStorageStore> =
             Arc::new(MockStorageStore);
         let file_store: Arc<dyn everruns_core::traits::SessionFileSystem> = Arc::new(MockFileStore);
+        let registry_dyn: Arc<dyn SessionTaskRegistry> = registry;
 
-        let mut reaped = 0usize;
-        let mut reattached = 0usize;
-        let mut skipped = 0usize;
-
-        for (session_id, task_id) in &orphans {
-            // Get current task snapshot.
-            let task = match registry.get(*session_id, task_id).await {
-                Ok(Some(t)) => t,
-                _ => {
-                    skipped += 1;
-                    continue;
-                }
-            };
-
-            if task.state.is_terminal() {
-                skipped += 1;
-                continue;
-            }
-
-            let should_reattach = executor_for(&task.kind)
-                .is_some_and(|exec| exec.can_reattach_task(&task))
-                && (task.attempt as i64) < input.max_attempts;
-
-            if should_reattach {
-                let new_attempt = task.attempt + 1;
-                let supersede = SessionTaskUpdate {
-                    worker_id: Some("reaper".to_string()),
-                    heartbeat_at: Some(chrono::Utc::now()),
-                    state_detail: Some(format!("re-attached (attempt {new_attempt})")),
-                    expected_attempt: Some(task.attempt),
-                    increment_attempt: true,
-                    ..Default::default()
-                };
-                let updated_task = match registry.update(*session_id, task_id, supersede).await {
-                    Ok(Some(t)) if t.attempt == new_attempt => t,
-                    _ => {
-                        skipped += 1;
-                        continue;
-                    }
-                };
-
-                let ctx = everruns_core::traits::ToolContext::with_stores(
-                    *session_id,
-                    file_store.clone(),
-                    storage.clone(),
-                )
-                .with_session_task_registry(registry.clone());
-
-                let executor = executor_for(&task.kind).unwrap();
-                match executor.start(&updated_task, &ctx).await {
-                    Ok(()) => {
-                        reattached += 1;
-                        continue;
-                    }
-                    Err(e) => {
-                        // Fall back to orphaned-fail.
-                        let fail = SessionTaskUpdate {
-                            state: Some(SessionTaskState::Failed),
-                            error: Some(TaskError {
-                                kind: "orphaned".to_string(),
-                                message: format!("worker heartbeat stopped; re-attach failed: {e}"),
-                            }),
-                            expected_attempt: Some(new_attempt),
-                            ..Default::default()
-                        };
-                        match registry.update(*session_id, task_id, fail).await {
-                            Ok(Some(t)) if t.state == SessionTaskState::Failed => {
-                                reaped += 1;
-                            }
-                            _ => {
-                                skipped += 1;
-                            }
-                        }
-                        continue;
-                    }
-                }
-            }
-
-            // Non-reattachable or exhausted: fail as orphaned.
-            let update = SessionTaskUpdate {
-                state: Some(SessionTaskState::Failed),
-                error: Some(TaskError {
-                    kind: "orphaned".to_string(),
-                    message: "worker heartbeat stopped".to_string(),
-                }),
-                increment_attempt: true,
-                ..Default::default()
-            };
-            match registry.update(*session_id, task_id, update).await {
-                Ok(Some(task)) if task.state == SessionTaskState::Failed => {
-                    reaped += 1;
-                }
-                _ => {
-                    skipped += 1;
-                }
-            }
-        }
+        let summary =
+            reconcile_orphans(orphans, &registry_dyn, input, executor_for, |session_id| {
+                ToolContext::with_stores(session_id, file_store.clone(), storage.clone())
+                    .with_session_task_registry(registry_dyn.clone())
+            })
+            .await;
 
         serde_json::json!({
-            "candidates": orphans.len(),
-            "reaped": reaped,
-            "reattached": reattached,
-            "skipped": skipped,
+            "candidates": summary.candidates,
+            "reaped": summary.reaped,
+            "reattached": summary.reattached,
+            "skipped": summary.skipped,
         })
     }
 
@@ -990,6 +940,84 @@ mod tests {
             updated.attempt, 2,
             "orphan reap must supersede the executor's attempt"
         );
+    }
+
+    #[tokio::test]
+    async fn reaper_fails_orphaned_depth_two_subagent_task() {
+        let registry = Arc::new(MockRegistry::default());
+        let root_session_id = SessionId::new();
+        let child_session_id = SessionId::new();
+        let grandchild_session_id = SessionId::new();
+
+        let parent_task = registry
+            .create(CreateSessionTask {
+                session_id: root_session_id,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: "Child".to_string(),
+                spec: serde_json::json!({"mode": "background"}),
+                state: SessionTaskState::Running,
+                links: TaskLinks {
+                    child_session_id: Some(child_session_id),
+                    ..Default::default()
+                },
+                wake_policy: TaskWakePolicy::OnTerminal,
+            })
+            .await
+            .unwrap();
+
+        let grandchild_task = registry
+            .create(CreateSessionTask {
+                session_id: child_session_id,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: "Grandchild".to_string(),
+                spec: serde_json::json!({"mode": "background"}),
+                state: SessionTaskState::Running,
+                links: TaskLinks {
+                    child_session_id: Some(grandchild_session_id),
+                    ..Default::default()
+                },
+                wake_policy: TaskWakePolicy::OnTerminal,
+            })
+            .await
+            .unwrap();
+
+        // Simulate the nested background watcher disappearing after it had
+        // heartbeated. The storage query that detects stale heartbeats is
+        // covered elsewhere; this proves the depth-2 subagent task goes through
+        // the same terminal update path as any other orphan.
+        let orphans = vec![(child_session_id, grandchild_task.id.clone())];
+        let input = SessionTaskReaperInput::default();
+        let result = run_reaper(orphans, registry.clone(), &input).await;
+
+        assert_eq!(result["reaped"], 1);
+        assert_eq!(result["reattached"], 0);
+        assert_eq!(result["skipped"], 0);
+
+        let updated_grandchild = registry
+            .get(child_session_id, &grandchild_task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(updated_grandchild.kind, TASK_KIND_SUBAGENT);
+        assert_eq!(updated_grandchild.state, SessionTaskState::Failed);
+        assert_eq!(
+            updated_grandchild.error.as_ref().map(|e| e.kind.as_str()),
+            Some("orphaned")
+        );
+        assert_eq!(
+            updated_grandchild.attempt, 2,
+            "orphan reap must fence the stale nested watcher attempt"
+        );
+
+        let unchanged_parent = registry
+            .get(root_session_id, &parent_task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(unchanged_parent.state, SessionTaskState::Running);
+        assert_eq!(unchanged_parent.attempt, 1);
     }
 
     #[tokio::test]

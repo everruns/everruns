@@ -208,11 +208,13 @@ export function useSendMessage() {
       sessionId,
       content,
       controls,
+      addressedParticipantId,
     }: {
       sessionId: string;
       content: string;
       controls?: Controls;
-    }) => sendUserMessage(sessionId, content, controls),
+      addressedParticipantId?: string | null;
+    }) => sendUserMessage(sessionId, content, controls, addressedParticipantId),
     onSuccess: (_, { sessionId }) => {
       // Invalidate events query to refresh the message list
       queryClient.invalidateQueries({

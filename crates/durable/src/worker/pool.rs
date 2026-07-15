@@ -15,7 +15,9 @@ use uuid::Uuid;
 
 use super::backpressure::{BackpressureConfig, BackpressureState, ResourceMonitor};
 use super::poller::{PollerConfig, PollerError, TaskPoller};
-use crate::persistence::{ClaimedTask, StoreError, WorkerInfo, WorkflowEventStore};
+use crate::persistence::{
+    CapacitySnapshot, ClaimedTask, StoreError, WorkerInfo, WorkflowEventStore,
+};
 
 /// Worker pool configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -219,6 +221,11 @@ pub struct WorkerPool {
     shutdown_rx: watch::Receiver<bool>,
     status: std::sync::RwLock<WorkerPoolStatus>,
     active_tasks: Arc<Semaphore>,
+    /// EVE-639: cached system capacity snapshot. Refreshed on the heartbeat tick
+    /// (every `heartbeat_interval`, default 5s) instead of being queried on every
+    /// poll iteration (min interval 10ms), which ran a SUM/COUNT aggregate over
+    /// `durable_workers` per poll.
+    capacity_snapshot: Arc<std::sync::RwLock<CapacitySnapshot>>,
     poll_handle: std::sync::Mutex<Option<JoinHandle<()>>>,
     heartbeat_handle: std::sync::Mutex<Option<JoinHandle<()>>>,
     reclaim_handle: std::sync::Mutex<Option<JoinHandle<()>>>,
@@ -243,6 +250,7 @@ impl WorkerPool {
             shutdown_rx,
             status: std::sync::RwLock::new(WorkerPoolStatus::Stopped),
             active_tasks: Arc::new(Semaphore::new(config.max_concurrency)),
+            capacity_snapshot: Arc::new(std::sync::RwLock::new(CapacitySnapshot::default())),
             poll_handle: std::sync::Mutex::new(None),
             heartbeat_handle: std::sync::Mutex::new(None),
             reclaim_handle: std::sync::Mutex::new(None),
@@ -282,6 +290,13 @@ impl WorkerPool {
 
         // Register with the store
         self.register_worker().await?;
+
+        // Seed the capacity snapshot so the first poll iterations have real
+        // data instead of the (0, 0) default. Refreshed thereafter on the
+        // heartbeat tick. A failure here is non-fatal (default => no cap).
+        if let Ok(snap) = self.store.get_capacity_snapshot().await {
+            *self.capacity_snapshot.write().unwrap() = snap;
+        }
 
         // Update status
         *self.status.write().unwrap() = WorkerPoolStatus::Running;
@@ -406,6 +421,7 @@ impl WorkerPool {
         let handlers = self.handlers.read().unwrap().clone();
         let active_tasks = Arc::clone(&self.active_tasks);
         let shutdown_rx = self.shutdown_rx.clone();
+        let capacity_snapshot = Arc::clone(&self.capacity_snapshot);
 
         let handle = tokio::spawn(async move {
             let mut poller = TaskPoller::new(
@@ -441,14 +457,12 @@ impl WorkerPool {
                     continue;
                 }
 
-                // Cap claim batch to fair share of total system capacity
-                let claim_limit = match store.get_capacity_snapshot().await {
-                    Ok(snap) => fair_share_claim_limit(
-                        my_available,
-                        snap.total_available,
-                        snap.active_workers,
-                    ),
-                    Err(_) => my_available, // error: no cap
+                // Cap claim batch to fair share of total system capacity.
+                // EVE-639: read the cached snapshot (refreshed on the heartbeat
+                // tick) instead of running a SUM/COUNT aggregate every poll.
+                let claim_limit = {
+                    let snap = capacity_snapshot.read().unwrap();
+                    fair_share_claim_limit(my_available, snap.total_available, snap.active_workers)
                 };
 
                 // Poll for tasks
@@ -535,6 +549,7 @@ impl WorkerPool {
         let interval = self.config.heartbeat_interval;
         let backpressure = Arc::clone(&self.backpressure);
         let mut shutdown_rx = self.shutdown_rx.clone();
+        let capacity_snapshot = Arc::clone(&self.capacity_snapshot);
 
         let handle = tokio::spawn(async move {
             let mut ticker = tokio::time::interval(interval);
@@ -548,6 +563,15 @@ impl WorkerPool {
 
                         if let Err(e) = store.worker_heartbeat(&worker_id, load, accepting).await {
                             error!("Heartbeat failed: {}", e);
+                        }
+
+                        // EVE-639: refresh the cached capacity snapshot here so the
+                        // poll loop never has to run the aggregate itself. Done
+                        // after the heartbeat so this worker's own fresh load is
+                        // reflected. A failure is non-fatal: keep the prior value.
+                        match store.get_capacity_snapshot().await {
+                            Ok(snap) => *capacity_snapshot.write().unwrap() = snap,
+                            Err(e) => debug!("Capacity snapshot refresh failed: {}", e),
                         }
                     }
                     _ = shutdown_rx.changed() => {

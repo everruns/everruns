@@ -97,5 +97,5 @@ Field descriptions:
 ### Encrypted Fields
 
 The following database fields are encrypted:
-- `llm_providers.api_key`: API keys for LLM provider integrations
+- `providers.api_key_encrypted`: API keys for LLM provider integrations
 - (Future) Additional sensitive credentials as needed

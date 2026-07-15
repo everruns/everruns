@@ -4,7 +4,7 @@
 
 use axum::Router;
 use axum::http::HeaderValue;
-use everruns_config::{env_bool, env_list, env_or, env_string_any};
+use everruns_core::config::{env_bool, env_list, env_or, env_string_any};
 
 pub const DEFAULT_API_PREFIX: &str = "/api";
 pub const DEFAULT_HTTP_ADDR: &str = "0.0.0.0:9000";

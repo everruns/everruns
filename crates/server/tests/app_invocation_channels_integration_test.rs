@@ -696,7 +696,8 @@ async fn webhook_channel_enforces_publish_and_enable_and_supports_raw_body_templ
             b"before publish".to_vec(),
         )
         .await
-        .assert_status(StatusCode::FORBIDDEN);
+        // EVE-632 / TM-TENANT-002: unpublished app -> generic 404.
+        .assert_status(StatusCode::NOT_FOUND);
 
     publish_app(&server, app_id).await;
 
@@ -719,7 +720,8 @@ async fn webhook_channel_enforces_publish_and_enable_and_supports_raw_body_templ
             b"disabled".to_vec(),
         )
         .await
-        .assert_status(StatusCode::FORBIDDEN);
+        // EVE-632 / TM-AUTHZ-006: disabled channel -> generic 404.
+        .assert_status(StatusCode::NOT_FOUND);
 
     server
         .patch(

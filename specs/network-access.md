@@ -67,9 +67,14 @@ final enforcement point.
 
 ### Bashkit
 
-Bashkit has no network builtins (TM-BASH-003: curl/wget not available).
-No enforcement needed today. If bashkit gains HTTP support, it must route HTTP
-through `EgressService` with `ToolContext.network_access`.
+Outbound HTTP for `bashkit_shell` is opt-in via per-capability config
+`{"enable_http": true}` and follows the same path as `web_fetch`: bashkit's
+`HttpTransport` is backed by `EgressService`
+(`crates/core/src/capabilities/bashkit_shell/egress_transport.rs`), which
+receives `ToolContext.network_access` and enforces it on every hop —
+curl/wget follow redirects manually, so redirect targets are re-checked too.
+With the config flag off (the default) or no egress service in context, the
+interpreter has no network path at all (TM-BASH-003).
 
 ## API
 
@@ -102,7 +107,7 @@ Omitting the field in update requests leaves it unchanged.
 ## Database
 
 JSONB column `network_access` on `harnesses`, `agents`, `sessions` tables.
-Migration: `013_network_access.sql`.
+Migration: `010_v0.8.9.sql`.
 
 ## Threat Model
 

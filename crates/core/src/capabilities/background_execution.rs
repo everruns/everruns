@@ -115,44 +115,8 @@ inventory::submit! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::capabilities::CapabilityRegistry;
 
-    #[test]
-    fn capability_metadata() {
-        let cap = BackgroundExecutionCapability;
-        assert_eq!(cap.id(), BACKGROUND_EXECUTION_CAPABILITY_ID);
-        assert_eq!(cap.id(), "background_execution");
-        assert_eq!(cap.name(), "Background Execution");
-        assert_eq!(cap.category(), Some("Execution"));
-        assert_eq!(cap.icon(), Some("zap"));
-        assert_eq!(cap.status(), CapabilityStatus::Available);
-    }
-
-    #[test]
-    fn capability_contributes_spawn_background_tool() {
-        let cap = BackgroundExecutionCapability;
-        let tools = cap.tools();
-        assert_eq!(tools.len(), 1);
-        assert_eq!(tools[0].name(), "spawn_background");
-    }
-
-    #[test]
-    fn capability_tool_definition_carries_spawn_background() {
-        let cap = BackgroundExecutionCapability;
-        let defs = cap.tool_definitions();
-        assert_eq!(defs.len(), 1);
-        assert_eq!(defs[0].name(), "spawn_background");
-    }
-
-    #[test]
-    fn capability_registered_in_builtins() {
-        let registry = CapabilityRegistry::with_builtins();
-        let cap = registry
-            .get(BACKGROUND_EXECUTION_CAPABILITY_ID)
-            .expect("background_execution must be registered as a built-in capability");
-        assert_eq!(cap.id(), BACKGROUND_EXECUTION_CAPABILITY_ID);
-        assert_eq!(cap.tools().len(), 1);
-    }
+    // Metadata/tool-list/registration constants covered by builtin_capabilities_satisfy_registry_invariants.
 
     #[test]
     fn can_reattach_task_true_when_spec_reattachable_true() {
@@ -163,6 +127,7 @@ mod tests {
         let task = SessionTask {
             id: "t1".to_string(),
             session_id: crate::SessionId::new(),
+            root_session_id: None,
             kind: crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
             display_name: "test".to_string(),
             spec: serde_json::json!({ "tool": "get_current_time", "reattachable": true }),
@@ -197,6 +162,7 @@ mod tests {
         let task = SessionTask {
             id: "t2".to_string(),
             session_id: crate::SessionId::new(),
+            root_session_id: None,
             kind: crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
             display_name: "test".to_string(),
             spec: serde_json::json!({ "tool": "some_side_effecting_tool", "reattachable": false }),
@@ -231,6 +197,7 @@ mod tests {
         let task = SessionTask {
             id: "t3".to_string(),
             session_id: crate::SessionId::new(),
+            root_session_id: None,
             kind: crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
             display_name: "test".to_string(),
             spec: serde_json::json!({ "tool": "old_task_without_reattachable_flag" }),

@@ -25,8 +25,9 @@ use crate::storage::{
     models::{CreateEventRow, EventsSummary as EventsSummaryRow, ListEventsParams},
 };
 use anyhow::{Result, bail};
-use everruns_core::typed_id::{AgentId, AgentVersionId, EventId, SessionId};
-use everruns_core::{Event, EventListener, EventRequest, FeatureFlags};
+use everruns_core::events::{INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED};
+use everruns_core::typed_id::{AgentId, AgentVersionId, EventId, PrincipalId, SessionId};
+use everruns_core::{Event, EventListener, EventRequest, FeatureFlags, SessionParticipantKind};
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;
@@ -167,6 +168,7 @@ impl EventService {
     /// Returns an error if event_type doesn't match the data type.
     pub async fn emit(&self, mut request: EventRequest) -> Result<Event> {
         self.attach_agent_version_metadata(&mut request).await;
+        self.attach_session_participant_metadata(&mut request).await;
         Self::validate_event_type_consistency(&request)?;
 
         // Only skip PG for delta events when the delivery backend supports it
@@ -229,6 +231,94 @@ impl EventService {
                 .or_insert_with(|| serde_json::Value::String(hash));
         }
         request.metadata = Some(serde_json::Value::Object(metadata));
+    }
+
+    async fn attach_session_participant_metadata(&self, request: &mut EventRequest) {
+        if request.event_type != INPUT_MESSAGE && request.event_type != OUTPUT_MESSAGE_COMPLETED {
+            return;
+        }
+
+        let mut metadata = match request.metadata.take() {
+            Some(serde_json::Value::Object(map)) => map,
+            Some(other) => {
+                request.metadata = Some(other);
+                return;
+            }
+            None => return,
+        };
+
+        if metadata.contains_key("participant_id") {
+            request.metadata = Some(serde_json::Value::Object(metadata));
+            return;
+        }
+
+        let participant = match request.event_type.as_str() {
+            INPUT_MESSAGE => {
+                let principal_id = metadata
+                    .get("initiator_principal_id")
+                    .and_then(|value| value.as_str())
+                    .and_then(|value| value.parse::<PrincipalId>().ok());
+                match principal_id {
+                    Some(principal_id) => {
+                        self.find_active_participant(request.session_id, |row| {
+                            row.kind == SessionParticipantKind::User.to_string()
+                                && row.principal_id == principal_id
+                        })
+                        .await
+                    }
+                    None => None,
+                }
+            }
+            OUTPUT_MESSAGE_COMPLETED => {
+                let agent_id = metadata
+                    .get("agent_id")
+                    .and_then(|value| value.as_str())
+                    .and_then(|value| value.parse::<AgentId>().ok());
+                match agent_id {
+                    Some(agent_id) => {
+                        self.find_active_participant(request.session_id, |row| {
+                            row.kind == SessionParticipantKind::Agent.to_string()
+                                && row.agent_id == Some(agent_id)
+                        })
+                        .await
+                    }
+                    None => None,
+                }
+            }
+            _ => None,
+        };
+
+        if let Some(participant_id) = participant {
+            metadata.insert(
+                "participant_id".to_string(),
+                serde_json::Value::String(participant_id.to_string()),
+            );
+        }
+
+        request.metadata = Some(serde_json::Value::Object(metadata));
+    }
+
+    async fn find_active_participant<F>(
+        &self,
+        session_id: SessionId,
+        matches_participant: F,
+    ) -> Option<everruns_core::SessionParticipantId>
+    where
+        F: Fn(&crate::storage::models::SessionParticipantRow) -> bool,
+    {
+        let session = self
+            .db
+            .get_session_unscoped(session_id)
+            .await
+            .ok()
+            .flatten()?;
+        self.db
+            .list_session_participants(session.org_id, session_id)
+            .await
+            .ok()?
+            .into_iter()
+            .find(|row| row.left_at.is_none() && matches_participant(row))
+            .map(|row| row.id)
     }
 
     /// Emit an ephemeral event (skip PG, deliver via EventDelivery only).
@@ -469,6 +559,13 @@ impl everruns_core::traits::EventEmitter for EventService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::event_delivery::EventDelivery;
+    use crate::storage::StorageBackend;
+    use crate::storage::models::{CreateSessionParticipantRow, CreateSessionRow};
+    use everruns_core::events::{EventContext, InputMessageData, OutputMessageCompletedData};
+    use everruns_core::{DEFAULT_ORG_ID, HarnessId, Message, PrincipalId, SessionParticipantRole};
+    use everruns_core::{SessionParticipantKind, typed_id::AgentId};
+    use std::sync::Arc;
 
     fn sample_metadata() -> AgentVersionEventMetadata {
         AgentVersionEventMetadata {
@@ -508,5 +605,111 @@ mod tests {
         cache.insert(id, sample_metadata()).await;
         assert!(cache.get(&id).await.is_some());
         assert!(cache.get(&SessionId::new()).await.is_none());
+    }
+
+    fn test_session_input(agent_id: AgentId) -> CreateSessionRow {
+        CreateSessionRow {
+            workspace_id: None,
+            org_id: DEFAULT_ORG_ID,
+            app_id: None,
+            harness_id: Some(HarnessId::from_uuid(Uuid::nil())),
+            agent_id: Some(agent_id),
+            agent_identity_id: None,
+            owner_principal_id: PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            title: None,
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn message_events_attach_active_participant_metadata() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let event_service = EventService::new(db.clone(), EventDelivery::in_memory());
+        let host_agent_id = AgentId::new();
+        let guest_agent_id = AgentId::new();
+        let session = db
+            .create_session(test_session_input(host_agent_id))
+            .await
+            .unwrap();
+        let guest = db
+            .create_session_participant(CreateSessionParticipantRow {
+                org_id: DEFAULT_ORG_ID,
+                session_id: session.id,
+                kind: SessionParticipantKind::Agent,
+                agent_id: Some(guest_agent_id),
+                agent_version_id: None,
+                principal_id: PrincipalId::from_seed(2),
+                role: SessionParticipantRole::Member,
+                joined_at: None,
+            })
+            .await
+            .unwrap();
+        let owner_user = db
+            .list_session_participants(DEFAULT_ORG_ID, session.id)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|row| row.kind == "user" && row.principal_id == PrincipalId::from_seed(1))
+            .unwrap();
+
+        let input = event_service
+            .emit(
+                EventRequest::new(
+                    session.id,
+                    EventContext::empty(),
+                    InputMessageData::new(Message::user("hello")),
+                )
+                .with_metadata(serde_json::json!({
+                    "initiator_principal_id": PrincipalId::from_seed(1).to_string()
+                })),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            input
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("participant_id"))
+                .and_then(|value| value.as_str()),
+            Some(owner_user.id.to_string().as_str())
+        );
+
+        let output = event_service
+            .emit(
+                EventRequest::new(
+                    session.id,
+                    EventContext::empty(),
+                    OutputMessageCompletedData::new(Message::assistant("hi")),
+                )
+                .with_metadata(serde_json::json!({
+                    "agent_id": guest_agent_id.to_string()
+                })),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            output
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("participant_id"))
+                .and_then(|value| value.as_str()),
+            Some(guest.id.to_string().as_str())
+        );
     }
 }

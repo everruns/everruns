@@ -12,6 +12,7 @@ import {
   PageContainer,
   PageBreadcrumb,
   PageMasthead,
+  EmptyState,
   PageColumns,
   PageMain,
   PageFooter,
@@ -52,15 +53,18 @@ export default function AgentsAllPageClient() {
             data={agents}
             errorMessagePrefix="Failed to load agents"
             emptyState={
-              <div className="border border-dashed py-12 text-center">
-                <p className="mb-4 text-muted-foreground">No agents yet</p>
-                <Link href="/agents/new">
-                  <Button>
-                    <Plus className="size-4" />
-                    Create your first agent
-                  </Button>
-                </Link>
-              </div>
+              <EmptyState
+                icon={<Boxes />}
+                title="No agents yet"
+                action={
+                  <Link href="/agents/new">
+                    <Button variant="accent">
+                      <Plus className="size-4" />
+                      Create your first agent
+                    </Button>
+                  </Link>
+                }
+              />
             }
           >
             {(items) => (

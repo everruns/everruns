@@ -15,11 +15,12 @@ use crate::errors::{BadRequestError, ResourceLimitError, ResourceNotFoundError};
 use crate::max_iterations;
 use crate::org_init;
 use crate::server::ResourceLimitsConfig;
-use crate::services::PrincipalService;
+use crate::services::{PrincipalService, row_to_principal};
 use crate::storage::{
     StorageBackend,
     models::{
-        CreateEventRow, CreateSessionFileRow, CreateSessionRow, MemoryFileRow, UpdateSession,
+        CreateEventRow, CreateMemoryRow, CreateSessionFileRow, CreateSessionRow, MemoryFileRow,
+        MemoryRow, UpdateSession, UpsertSessionKeyValue, UpsertSessionSecret,
     },
 };
 use anyhow::Result;
@@ -27,13 +28,14 @@ use everruns_core::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use everruns_core::{
     AgentCapabilityConfig, AgentId, AgentVersionPolicy, Caller, CapabilityRegistry,
     DeclarativeCapabilityDefinition, FeatureFlags, HarnessId, InitialFile, ModelId, MountAccess,
-    MountEntry, MountPoint, MountSource, OrgRole, Permission, Policy, PrincipalId, Rule, Session,
-    SessionFile, SessionId, SessionStatus, TokenUsage, WorkspaceId,
+    MountEntry, MountPoint, MountSource, OrgRole, Permission, Policy, PrincipalId,
+    PrincipalSummary, Rule, Session, SessionFile, SessionId, SessionSeedMode, SessionStatus,
+    TokenUsage, WorkspaceId,
     capabilities::{
         MEMORY_CAPABILITY_ID, RiskLevel, SystemPromptContext, collect_capabilities_with_configs,
         compute_features, resolve_capability_configs,
     },
-    is_declarative_capability,
+    is_declarative_capability, is_mcp_capability, is_plugin_capability, is_skill_capability,
     memory::{MemoryConfig, MemoryMountAccess},
     merge_capabilities, merge_initial_files, normalize_initial_file_path,
     parse_declarative_capability_id,
@@ -45,6 +47,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::api::sessions::{CreateSessionRequest, UpdateSessionRequest};
+
+const AGENT_MEMORY_MOUNT_PATH: &str = "/memory/agent";
+const USER_MEMORY_MOUNT_PATH: &str = "/memory/user";
 
 /// Policy: View sessions (read-only).
 pub const SESSION_VIEW: Policy = Policy {
@@ -64,6 +69,7 @@ pub const SESSION_MANAGE: Policy = Policy {
 #[derive(Debug, Clone, Default)]
 pub struct ForkOverrides {
     pub title: Option<String>,
+    pub goal: Option<String>,
     pub tags: Option<Vec<String>>,
     pub model_id: Option<ModelId>,
     pub agent_id: Option<AgentId>,
@@ -89,6 +95,21 @@ pub struct SessionService {
     session_sandbox_service: Option<Arc<SessionSandboxService>>,
     caps: OrgCaps,
     resource_limits: ResourceLimitsConfig,
+}
+
+#[derive(Default)]
+struct SessionListHydration {
+    owners: HashMap<PrincipalId, PrincipalSummary>,
+    effective_owners: HashMap<Uuid, PrincipalSummary>,
+    agent_public_ids: HashMap<AgentId, AgentId>,
+    agent_capability_ids: HashMap<AgentId, Vec<String>>,
+    harness_capability_ids: HashMap<HarnessId, Vec<String>>,
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+struct ScopedMemoryContext {
+    agent_id: Option<AgentId>,
+    user_id: Option<Uuid>,
 }
 
 impl SessionService {
@@ -198,6 +219,35 @@ impl SessionService {
         .await
     }
 
+    /// Create a session owned by an agent that its own schedule trigger woke
+    /// (EVE-757). Mirrors [`Self::create_from_app`] but there is no App row:
+    /// the session runs on the agent's harness (P1), is hosted by the agent
+    /// (P2, via `agent_public_id`), and is owned by `owner_principal_id` so the
+    /// shared-session reuse lookup (`find_session_by_tags_and_owner`) matches
+    /// across fires. `app_id` is `None`.
+    #[allow(clippy::too_many_arguments)]
+    pub async fn create_from_agent_trigger(
+        &self,
+        caller: &Caller,
+        harness_id: Uuid,
+        agent_internal_id: Uuid,
+        agent_public_id: AgentId,
+        owner_principal_id: PrincipalId,
+        resolved_owner_user_id: Option<Uuid>,
+        req: CreateSessionRequest,
+    ) -> Result<Session> {
+        self.create_inner(
+            caller,
+            harness_id,
+            Some(agent_internal_id),
+            Some(agent_public_id),
+            None,
+            Some((owner_principal_id, resolved_owner_user_id)),
+            req,
+        )
+        .await
+    }
+
     /// Fork a session into a new, independent session (specs/forking-sessions.md).
     ///
     /// Creates a fresh session that is config-identical to `parent_id` (modulo
@@ -222,7 +272,6 @@ impl SessionService {
             .get_session(org_id, parent_id)
             .await?
             .ok_or_else(|| ResourceNotFoundError::new("Session"))?;
-        let parent_workspace = parent_row.workspace_id;
         let parent = Self::row_to_session(parent_row, &caller.org_public_id, None);
 
         // Resolve the agent's internal id (public -> internal) when one is
@@ -255,6 +304,7 @@ impl SessionService {
                 None => "Fork".to_string(),
             })
         });
+        let goal = overrides.goal.or(parent.goal);
         let harness_uuid = parent.harness_id.uuid();
 
         // Build a create request from the parent's config + overrides. A new
@@ -264,8 +314,10 @@ impl SessionService {
             harness_id: Some(parent.harness_id),
             harness_name: None,
             agent_id: agent_public_id,
+            agent_name: None,
             agent_identity_id: parent.agent_identity_id,
             title,
+            goal,
             locale: overrides.locale.or(parent.locale),
             tags: overrides.tags.unwrap_or(parent.tags),
             model_id: overrides.model_id.or(parent.model_id),
@@ -279,10 +331,13 @@ impl SessionService {
             max_iterations: parent.max_iterations,
             parallel_tool_calls: parent.parallel_tool_calls,
             parent_session_id: None,
+            forked_from_session_id: Some(parent_id),
+            budget_root_session_id: None,
+            seed: SessionSeedMode::Fork,
             workspace_id: None,
         };
 
-        let mut child = self
+        let child = self
             .create_inner(
                 caller,
                 harness_uuid,
@@ -294,21 +349,65 @@ impl SessionService {
             )
             .await?;
 
-        // Copy conversation history (persisted events) in sequence order. Each
-        // copy re-allocates a fresh per-session sequence (1..N) via
-        // create_event, so the child's ordering matches the parent's. Original
-        // EventContext ids are preserved so intra-history correlation stays
-        // consistent; the fork's own new turns mint their own ids.
+        Ok(child)
+    }
+
+    async fn apply_session_seed(
+        &self,
+        org_id: i64,
+        source_session_id: SessionId,
+        child_session_id: SessionId,
+        child_workspace_id: Uuid,
+        seed: SessionSeedMode,
+        child: &mut Session,
+    ) -> Result<()> {
+        let source = self
+            .db
+            .get_session(org_id, source_session_id)
+            .await?
+            .ok_or_else(|| ResourceNotFoundError::new("Source session"))?;
+        let fork_sequence = if seed == SessionSeedMode::Fork {
+            Some(
+                self.copy_session_events(source_session_id, child_session_id)
+                    .await?,
+            )
+            .flatten()
+        } else {
+            None
+        };
+
+        if matches!(seed, SessionSeedMode::Fork | SessionSeedMode::Workspace) {
+            self.copy_workspace_files(source.workspace_id, child_workspace_id)
+                .await?;
+        }
+        if seed == SessionSeedMode::Fork {
+            self.copy_session_storage(source_session_id, child_session_id)
+                .await?;
+        }
+
+        self.db
+            .set_session_fork_lineage(child_session_id, source_session_id, fork_sequence)
+            .await?;
+        child.forked_from_session_id = Some(source_session_id);
+        child.forked_from_sequence = fork_sequence;
+        Ok(())
+    }
+
+    async fn copy_session_events(
+        &self,
+        source_session_id: SessionId,
+        child_session_id: SessionId,
+    ) -> Result<Option<i32>> {
         let mut events = self
             .db
-            .list_events(parent_id, None, None, &[], &[], None, None)
+            .list_events(source_session_id, None, None, &[], &[], None, None)
             .await?;
-        events.sort_by_key(|e| e.sequence);
-        let fork_sequence = events.last().map(|e| e.sequence);
+        events.sort_by_key(|event| event.sequence);
+        let fork_sequence = events.last().map(|event| event.sequence);
         for event in events {
             self.db
                 .create_event(CreateEventRow {
-                    session_id: child.id,
+                    session_id: child_session_id,
                     event_type: event.event_type,
                     ts: event.ts,
                     context: event.context,
@@ -318,20 +417,19 @@ impl SessionService {
                 })
                 .await?;
         }
+        Ok(fork_sequence)
+    }
 
-        // Deep-copy workspace files into the child's new, isolated workspace.
-        // The file repo keys rows by workspace id (the `session_id` parameter is
-        // the workspace id under the 1:1 invariant), so read from the parent
-        // workspace and write to the child workspace. Path-ascending order
-        // copies parents before children. Paths already populated by the
-        // child's capability mounts / initial files are skipped so the copy
-        // never collides with the freshly-mounted, typically read-only set.
-        let child_workspace = child.workspace_id.uuid();
-        let files = self.db.list_all_session_files(parent_workspace).await?;
+    async fn copy_workspace_files(
+        &self,
+        source_workspace_id: Uuid,
+        child_workspace_id: Uuid,
+    ) -> Result<()> {
+        let files = self.db.list_all_session_files(source_workspace_id).await?;
         for file in files {
             if self
                 .db
-                .get_session_file(child_workspace, &file.path)
+                .get_session_file(child_workspace_id, &file.path)
                 .await?
                 .is_some()
             {
@@ -341,13 +439,13 @@ impl SessionService {
                 None
             } else {
                 self.db
-                    .get_session_file(parent_workspace, &file.path)
+                    .get_session_file(source_workspace_id, &file.path)
                     .await?
                     .and_then(|row| row.content)
             };
             self.db
                 .create_session_file(CreateSessionFileRow {
-                    session_id: SessionId::from_uuid(child_workspace),
+                    session_id: SessionId::from_uuid(child_workspace_id),
                     path: file.path,
                     content,
                     is_directory: file.is_directory,
@@ -355,14 +453,49 @@ impl SessionService {
                 })
                 .await?;
         }
+        Ok(())
+    }
 
-        self.db
-            .set_session_fork_lineage(child.id, parent_id, fork_sequence)
-            .await?;
-        child.forked_from_session_id = Some(parent_id);
-        child.forked_from_sequence = fork_sequence;
-
-        Ok(child)
+    async fn copy_session_storage(
+        &self,
+        source_session_id: SessionId,
+        child_session_id: SessionId,
+    ) -> Result<()> {
+        for key in self.db.list_session_keys(source_session_id.uuid()).await? {
+            if let Some(row) = self
+                .db
+                .get_session_key_value(source_session_id.uuid(), &key.key)
+                .await?
+            {
+                self.db
+                    .upsert_session_key_value(UpsertSessionKeyValue {
+                        session_id: child_session_id,
+                        key: row.key,
+                        value: row.value,
+                    })
+                    .await?;
+            }
+        }
+        for secret in self
+            .db
+            .list_session_secrets(source_session_id.uuid())
+            .await?
+        {
+            if let Some(row) = self
+                .db
+                .get_session_secret(source_session_id.uuid(), &secret.name)
+                .await?
+            {
+                self.db
+                    .upsert_session_secret(UpsertSessionSecret {
+                        session_id: child_session_id,
+                        name: row.name,
+                        value_encrypted: row.value_encrypted,
+                    })
+                    .await?;
+            }
+        }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -392,6 +525,9 @@ impl SessionService {
                 "Session limit reached (max {max_sessions})"
             ))
             .into());
+        }
+        if req.seed != SessionSeedMode::Fresh && req.forked_from_session_id.is_none() {
+            return Err(BadRequestError::new("seed requires forked_from_session_id").into());
         }
 
         // EVE-508: check per-org concurrent session cap before creating.
@@ -502,13 +638,9 @@ impl SessionService {
 
         let session_capabilities = sanitize_session_capabilities(req.capabilities);
 
-        // Validate session-level capability refs before persisting
-        crate::domains::capabilities::validation::validate_capability_refs(
-            &self.db,
-            org_id,
-            &session_capabilities,
-        )
-        .await?;
+        // EVE-AARDVARK: authorize high-risk session capability assignment
+        // before full config validation so unauthorized callers cannot force
+        // expensive validation for capabilities they are not allowed to use.
         self.require_admin_for_high_risk_session_capabilities(
             caller,
             org_id,
@@ -517,6 +649,29 @@ impl SessionService {
             &session_capabilities,
         )
         .await?;
+
+        // Validate session-level capability refs before persisting.
+        crate::domains::capabilities::validation::validate_capability_refs(
+            &self.db,
+            org_id,
+            &session_capabilities,
+        )
+        .await?;
+
+        // EVE-709: reject sessions whose harness/agent/session require a built-in
+        // capability that is not available in this deployment (e.g. a feature-gated
+        // `container_sandbox` when `FEATURE_CONTAINER_SANDBOX` is off). Without this
+        // gate the missing capability's tools are silently dropped and the session
+        // degrades into a different execution environment (e.g. bash), so the user
+        // believes isolated work ran when it did not. Fail clearly instead.
+        self.require_available_capabilities(
+            org_id,
+            harness_id.uuid(),
+            agent_id.map(|id| id.uuid()),
+            &session_capabilities,
+        )
+        .await?;
+
         let mut scoped_mcp_layers = vec![&effective_harness.mcp_servers];
         if let Some(ref agent_mcp_servers) = agent_mcp_servers {
             scoped_mcp_layers.push(agent_mcp_servers);
@@ -611,6 +766,10 @@ impl SessionService {
             None => None,
         };
 
+        let requested_goal = req.goal.clone();
+        let forked_from_session_id = req.forked_from_session_id;
+        let seed = req.seed;
+
         let input = CreateSessionRow {
             org_id,
             app_id,
@@ -632,23 +791,27 @@ impl SessionService {
             network_access: req
                 .network_access
                 .as_ref()
-                .map(|na| serde_json::to_value(na).unwrap()),
+                .map(|na| serde_json::to_value(na).unwrap_or_default()),
             max_iterations: max_iterations::to_db(req.max_iterations)?,
             parallel_tool_calls: req.parallel_tool_calls,
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: req.parent_session_id,
+            budget_root_session_id: req.budget_root_session_id,
             workspace_id,
         };
         let row = self.db.create_session(input).await?;
-        let row = if let Some(version) = resolved_agent_version.as_ref() {
+        let row = if resolved_agent_version.is_some() || requested_goal.is_some() {
             self.db
                 .update_session(
                     org_id,
                     row.id,
                     UpdateSession {
-                        agent_version_id: Some(version.id),
-                        agent_config_hash: Some(version.config_hash.clone()),
+                        agent_version_id: resolved_agent_version.as_ref().map(|version| version.id),
+                        agent_config_hash: resolved_agent_version
+                            .as_ref()
+                            .map(|version| version.config_hash.clone()),
+                        goal: requested_goal,
                         ..Default::default()
                     },
                 )
@@ -666,6 +829,18 @@ impl SessionService {
         // Override agent_id with public_id (DB stores internal UUID as FK)
         session.agent_id = agent_public_id;
 
+        let scoped_memory = ScopedMemoryContext {
+            agent_id,
+            // User memory is private to the resolved user. Do not materialize it
+            // into caller-attached shared workspaces because workspace files are
+            // currently workspace-wide rather than participant-local.
+            user_id: if workspace_id.is_none() {
+                resolved_owner_user_id
+            } else {
+                None
+            },
+        };
+
         // Apply capability mounts (harness + agent + session capabilities) and
         // seed initial files into the session's workspace. Key by workspace_id
         // (not session id) so an attached shared workspace receives them; for
@@ -676,6 +851,7 @@ impl SessionService {
             agent_id.map(|a| a.uuid()),
             &session_capabilities,
             session.workspace_id.uuid(),
+            Some(scoped_memory),
         )
         .await?;
 
@@ -728,6 +904,18 @@ impl SessionService {
         )
         .await;
 
+        if let Some(source_session_id) = forked_from_session_id {
+            self.apply_session_seed(
+                org_id,
+                source_session_id,
+                session.id,
+                session.workspace_id.uuid(),
+                seed,
+                &mut session,
+            )
+            .await?;
+        }
+
         Ok(session)
     }
 
@@ -759,6 +947,7 @@ impl SessionService {
             .principal_service
             .default_owner_principal(caller, None)
             .await?;
+        let requested_goal = req.goal.clone();
 
         let input = CreateSessionRow {
             workspace_id: None,
@@ -782,14 +971,29 @@ impl SessionService {
             network_access: req
                 .network_access
                 .as_ref()
-                .map(|na| serde_json::to_value(na).unwrap()),
+                .map(|na| serde_json::to_value(na).unwrap_or_default()),
             max_iterations: max_iterations::to_db(req.max_iterations)?,
             parallel_tool_calls: req.parallel_tool_calls,
             blueprint_id: Some(blueprint_id),
             blueprint_config,
             parent_session_id: None,
+            budget_root_session_id: None,
         };
-        let row = self.db.create_session(input).await?;
+        let mut row = self.db.create_session(input).await?;
+        if requested_goal.is_some() {
+            row = self
+                .db
+                .update_session(
+                    org_id,
+                    row.id,
+                    UpdateSession {
+                        goal: requested_goal,
+                        ..Default::default()
+                    },
+                )
+                .await?
+                .unwrap_or(row);
+        }
         let mut session = Self::row_to_session(row, org_public_id, Some(harness_id));
         self.populate_features(org_id, &mut session).await?;
 
@@ -818,6 +1022,7 @@ impl SessionService {
         agent_id: Option<Uuid>,
         session_capabilities: &[AgentCapabilityConfig],
         session_id: impl Into<uuid::Uuid> + Copy,
+        scoped_memory: Option<ScopedMemoryContext>,
     ) -> Result<()> {
         let session_id = session_id.into();
 
@@ -828,6 +1033,7 @@ impl SessionService {
                 agent_id,
                 session_capabilities,
                 session_id,
+                scoped_memory,
             )
             .await?;
         if mounts.is_empty() {
@@ -868,13 +1074,11 @@ impl SessionService {
         agent_id: Option<Uuid>,
         session_capabilities: &[AgentCapabilityConfig],
         session_id: Uuid,
+        scoped_memory: Option<ScopedMemoryContext>,
     ) -> Result<Vec<MountPoint>> {
         let capability_configs = self
             .collect_session_capability_configs(org_id, harness_id, agent_id, session_capabilities)
             .await?;
-        if capability_configs.is_empty() {
-            return Ok(vec![]);
-        }
 
         let ctx = SystemPromptContext::without_file_store(SessionId::from_uuid(session_id));
         let resolved_configs =
@@ -887,6 +1091,13 @@ impl SessionService {
             self.collect_workspace_memory_mounts(org_id, &resolved_configs)
                 .await?,
         );
+        ensure_no_reserved_memory_mounts(&mounts)?;
+        if let Some(scoped_memory) = scoped_memory {
+            mounts.extend(
+                self.collect_scoped_memory_mounts(org_id, scoped_memory)
+                    .await?,
+            );
+        }
         Ok(mounts)
     }
 
@@ -905,6 +1116,7 @@ impl SessionService {
                 agent_id,
                 session_capabilities,
                 session_id,
+                None,
             )
             .await?;
 
@@ -954,10 +1166,12 @@ impl SessionService {
         session_initial_files: &[InitialFile],
         session_id: Uuid,
     ) -> Result<()> {
-        for file in self
+        let files = self
             .collect_initial_files(org_id, harness_id, agent_id, session_initial_files)
-            .await?
-        {
+            .await?;
+        ensure_no_reserved_memory_initial_files(&files)?;
+
+        for file in files {
             self.session_file_service
                 .create_file(
                     session_id,
@@ -1101,19 +1315,12 @@ impl SessionService {
             .map(|r| Self::row_to_session(r, org_public_id, fallback))
             .collect();
 
-        for session in &mut sessions {
-            self.hydrate_ownership(org_id, session).await?;
+        if sessions.is_empty() {
+            return Ok((sessions, total));
         }
 
-        // Populate features before resolving agent IDs (needs internal UUIDs)
-        for session in &mut sessions {
-            self.populate_features(org_id, session).await?;
-        }
-
-        // Resolve agent internal UUIDs to public IDs
-        for session in &mut sessions {
-            self.resolve_session_agent_id(org_id, session).await?;
-        }
+        let hydration = self.load_session_list_hydration(org_id, &sessions).await?;
+        self.apply_session_list_hydration(&mut sessions, &hydration);
 
         // Fetch previews for all sessions in batch queries
         let session_ids: Vec<Uuid> = sessions.iter().map(|s| s.id.uuid()).collect();
@@ -1141,6 +1348,185 @@ impl SessionService {
         }
 
         Ok((sessions, total))
+    }
+
+    async fn load_session_list_hydration(
+        &self,
+        org_id: i64,
+        sessions: &[Session],
+    ) -> Result<SessionListHydration> {
+        // THREAT[TM-TENANT-001]: every batch loader receives the caller's org_id;
+        // capability-table reads additionally join through their org-scoped owner.
+        let principal_ids: Vec<PrincipalId> = sessions
+            .iter()
+            .map(|session| session.owner_principal_id)
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        let resolved_user_ids: Vec<Uuid> = sessions
+            .iter()
+            .filter_map(|session| session.resolved_owner_user_id)
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        let principal_rows = self
+            .db
+            .get_principals_for_session_list(org_id, &principal_ids, &resolved_user_ids)
+            .await?;
+
+        let mut hydration = SessionListHydration::default();
+        for row in principal_rows {
+            let principal = row_to_principal(row);
+            if principal.status != everruns_core::PrincipalStatus::Deleted {
+                hydration.owners.insert(principal.id, principal.summary());
+            }
+            if principal.kind == everruns_core::PrincipalKind::User
+                && let Some(user_id) = principal.subject_id
+            {
+                hydration
+                    .effective_owners
+                    .insert(user_id, principal.summary());
+            }
+        }
+
+        let agent_ids: Vec<AgentId> = sessions
+            .iter()
+            .filter_map(|session| session.agent_id)
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+        if !agent_ids.is_empty() {
+            let agent_rows = self.db.get_agents_by_ids(org_id, &agent_ids).await?;
+            let existing_agent_ids: Vec<AgentId> = agent_rows.iter().map(|row| row.id).collect();
+            for row in agent_rows {
+                if let Ok(public_id) = row.public_id.parse::<AgentId>() {
+                    hydration.agent_public_ids.insert(row.id, public_id);
+                }
+            }
+            for row in self
+                .db
+                .get_agent_capabilities_by_agent_ids(org_id, &existing_agent_ids)
+                .await?
+            {
+                let capability_ids = hydration
+                    .agent_capability_ids
+                    .entry(row.agent_id)
+                    .or_default();
+                if !capability_ids.contains(&row.capability_id) {
+                    capability_ids.push(row.capability_id);
+                }
+            }
+        }
+
+        let harness_ids: HashSet<HarnessId> =
+            sessions.iter().map(|session| session.harness_id).collect();
+        hydration.harness_capability_ids = self
+            .load_session_list_harness_capability_ids(org_id, harness_ids)
+            .await?;
+
+        Ok(hydration)
+    }
+
+    async fn load_session_list_harness_capability_ids(
+        &self,
+        org_id: i64,
+        root_ids: HashSet<HarnessId>,
+    ) -> Result<HashMap<HarnessId, Vec<String>>> {
+        let root_id_list: Vec<HarnessId> = root_ids.iter().copied().collect();
+        let rows_by_id: HashMap<HarnessId, _> = self
+            .db
+            .get_harness_ancestry_by_ids(org_id, &root_id_list)
+            .await?
+            .into_iter()
+            .map(|row| (row.id, row))
+            .collect();
+
+        let loaded_ids: Vec<HarnessId> = rows_by_id.keys().copied().collect();
+        let mut layer_capability_ids: HashMap<HarnessId, Vec<String>> = HashMap::new();
+        for row in self
+            .db
+            .get_harness_capabilities_by_harness_ids(org_id, &loaded_ids)
+            .await?
+        {
+            layer_capability_ids
+                .entry(row.harness_id)
+                .or_default()
+                .push(row.capability_id);
+        }
+
+        let mut effective_by_root = HashMap::new();
+        for root_id in root_ids {
+            if !rows_by_id.contains_key(&root_id) {
+                continue;
+            }
+            let mut chain = Vec::new();
+            let mut visited = HashSet::new();
+            let mut cursor = Some(root_id);
+            while let Some(id) = cursor {
+                if !visited.insert(id) {
+                    anyhow::bail!("Harness inheritance cycle detected");
+                }
+                let row = rows_by_id
+                    .get(&id)
+                    .ok_or_else(|| ResourceNotFoundError::new("Parent harness"))?;
+                chain.push(id);
+                cursor = row.parent_harness_id;
+            }
+
+            let mut capability_ids = Vec::new();
+            for id in chain.into_iter().rev() {
+                for capability_id in layer_capability_ids.get(&id).into_iter().flatten() {
+                    if !capability_ids.contains(capability_id) {
+                        capability_ids.push(capability_id.clone());
+                    }
+                }
+            }
+            effective_by_root.insert(root_id, capability_ids);
+        }
+
+        Ok(effective_by_root)
+    }
+
+    fn apply_session_list_hydration(
+        &self,
+        sessions: &mut [Session],
+        hydration: &SessionListHydration,
+    ) {
+        for session in sessions {
+            session.owner = hydration.owners.get(&session.owner_principal_id).cloned();
+            session.effective_owner = session
+                .resolved_owner_user_id
+                .and_then(|id| hydration.effective_owners.get(&id).cloned());
+
+            let agent_internal_id = session.agent_id;
+            let mut capability_ids = hydration
+                .harness_capability_ids
+                .get(&session.harness_id)
+                .cloned()
+                .unwrap_or_default();
+            if let Some(agent_id) = agent_internal_id
+                && let Some(agent_capability_ids) = hydration.agent_capability_ids.get(&agent_id)
+            {
+                for capability_id in agent_capability_ids {
+                    if !capability_ids.contains(capability_id) {
+                        capability_ids.push(capability_id.clone());
+                    }
+                }
+            }
+            for capability in &session.capabilities {
+                let capability_id = capability.capability_id().to_string();
+                if !capability_ids.contains(&capability_id) {
+                    capability_ids.push(capability_id);
+                }
+            }
+            session.features = compute_features(&capability_ids, &self.capability_registry);
+
+            if let Some(agent_id) = agent_internal_id
+                && let Some(public_id) = hydration.agent_public_ids.get(&agent_id)
+            {
+                session.agent_id = Some(*public_id);
+            }
+        }
     }
 
     pub async fn update(
@@ -1247,6 +1633,7 @@ impl SessionService {
         };
         let input = UpdateSession {
             title: req.title,
+            goal: req.goal,
             agent_identity_id,
             owner_principal_id,
             resolved_owner_user_id,
@@ -1413,6 +1800,7 @@ impl SessionService {
             blueprint_config: None,
             network_access: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         };
         let row = self.db.create_session(input).await?;
         let session_id = row.id.uuid();
@@ -1421,8 +1809,18 @@ impl SessionService {
         self.populate_features(org_id, &mut session).await?;
 
         // Apply capability mounts
-        self.apply_capability_mounts(org_id, harness_id, None, &[], session_id)
-            .await?;
+        self.apply_capability_mounts(
+            org_id,
+            harness_id,
+            None,
+            &[],
+            session_id,
+            Some(ScopedMemoryContext {
+                agent_id: None,
+                user_id: Some(user_id),
+            }),
+        )
+        .await?;
 
         Ok(session)
     }
@@ -1606,24 +2004,18 @@ impl SessionService {
     ) -> Result<Vec<String>> {
         let mut capability_ids = Vec::new();
 
-        if self
-            .resolve_effective_harness(org_id, HarnessId::from_uuid(harness_id))
-            .await?
-            .is_some()
-        {
-            capability_ids.extend(
-                self.resolve_effective_harness(org_id, HarnessId::from_uuid(harness_id))
-                    .await?
-                    .map(|harness| {
-                        harness
-                            .capabilities
-                            .into_iter()
-                            .map(|cap| cap.capability_id().to_string())
-                            .collect::<Vec<_>>()
-                    })
-                    .unwrap_or_default(),
-            );
-        }
+        capability_ids.extend(
+            self.resolve_effective_harness(org_id, HarnessId::from_uuid(harness_id))
+                .await?
+                .map(|harness| {
+                    harness
+                        .capabilities
+                        .into_iter()
+                        .map(|cap| cap.capability_id().to_string())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default(),
+        );
 
         if let Some(agent_id) = agent_id
             && self
@@ -1711,6 +2103,12 @@ impl SessionService {
                 .await?
                 .filter(|memory| memory.status == "active")
                 .ok_or_else(|| ResourceNotFoundError::new("Memory"))?;
+            if memory.scope != "org" {
+                return Err(BadRequestError::new(
+                    "Scoped memories are server-managed and cannot be mounted explicitly",
+                )
+                .into());
+            }
 
             if memory.is_readonly && mount.mode == MemoryMountAccess::ReadWrite {
                 return Err(BadRequestError::new(format!(
@@ -1735,6 +2133,149 @@ impl SessionService {
         }
 
         Ok(mounts)
+    }
+
+    async fn collect_scoped_memory_mounts(
+        &self,
+        org_id: i64,
+        context: ScopedMemoryContext,
+    ) -> Result<Vec<MountPoint>> {
+        let mut mounts = Vec::with_capacity(2);
+
+        if let Some(agent_id) = context.agent_id {
+            let memory = self
+                .get_or_create_scoped_memory(
+                    org_id,
+                    "agent",
+                    Some(agent_id),
+                    None,
+                    format!("agent-memory-{}", agent_id.uuid().simple()),
+                    "Server-managed per-agent memory.",
+                )
+                .await?;
+            mounts.push(
+                self.memory_row_to_mount(memory, AGENT_MEMORY_MOUNT_PATH)
+                    .await?,
+            );
+        }
+
+        if let Some(user_id) = context.user_id {
+            let memory = self
+                .get_or_create_scoped_memory(
+                    org_id,
+                    "user",
+                    None,
+                    Some(user_id),
+                    format!("user-memory-{}", user_id.simple()),
+                    "Server-managed per-user memory.",
+                )
+                .await?;
+            mounts.push(
+                self.memory_row_to_mount(memory, USER_MEMORY_MOUNT_PATH)
+                    .await?,
+            );
+        }
+
+        Ok(mounts)
+    }
+
+    async fn get_or_create_scoped_memory(
+        &self,
+        org_id: i64,
+        scope: &str,
+        owner_agent_id: Option<AgentId>,
+        owner_user_id: Option<Uuid>,
+        name: String,
+        description: &str,
+    ) -> Result<MemoryRow> {
+        if let Some(memory) = self
+            .db
+            .get_memory_by_scope_owner(org_id, scope, owner_agent_id, owner_user_id)
+            .await?
+            .filter(|memory| memory.status == "active")
+        {
+            return Ok(memory);
+        }
+
+        self.db
+            .create_memory(
+                org_id,
+                CreateMemoryRow {
+                    public_id: MemoryId::new().to_string(),
+                    name,
+                    description: Some(description.to_string()),
+                    scope: scope.to_string(),
+                    owner_agent_id,
+                    owner_user_id,
+                    source_type: "manual".to_string(),
+                    source_config: serde_json::json!({}),
+                    is_readonly: false,
+                    sync_status: "idle".to_string(),
+                    owner_principal_id: None,
+                    resolved_owner_user_id: owner_user_id,
+                },
+            )
+            .await
+    }
+
+    async fn memory_row_to_mount(&self, memory: MemoryRow, mount_path: &str) -> Result<MountPoint> {
+        let files = self.db.list_all_memory_files(memory.id).await?;
+        Ok(MountPoint::new(
+            mount_path,
+            MountAccess::ReadWrite,
+            MountSource::directory(memory_files_to_mount_entries(files)),
+            MEMORY_CAPABILITY_ID,
+        ))
+    }
+
+    /// EVE-709: reject session creation when a required built-in capability is not
+    /// available in this deployment.
+    ///
+    /// The effective capability set (harness chain + agent + session) may name
+    /// built-in capabilities that are feature-gated (e.g. `container_sandbox`
+    /// behind `FEATURE_CONTAINER_SANDBOX`). When such a capability is disabled it
+    /// is absent from the registry, its tools never register, and the session
+    /// silently runs without them — degrading into a different execution
+    /// environment. Rather than degrade silently, fail with a clear error naming
+    /// the unavailable capabilities.
+    ///
+    /// Only plain built-in references are checked. Namespaced refs
+    /// (`declarative:`, `plugin:`, `skill:`, `mcp:`) resolve from org data rather
+    /// than the registry, so their absence from the registry is expected and is
+    /// validated separately by `validate_capability_refs`.
+    async fn require_available_capabilities(
+        &self,
+        org_id: i64,
+        harness_id: Uuid,
+        agent_id: Option<Uuid>,
+        session_capabilities: &[AgentCapabilityConfig],
+    ) -> Result<()> {
+        let capability_ids = self
+            .collect_session_capability_ids(org_id, harness_id, agent_id, session_capabilities)
+            .await?;
+
+        let mut missing: Vec<String> = capability_ids
+            .into_iter()
+            .filter(|id| {
+                !is_declarative_capability(id)
+                    && !is_plugin_capability(id)
+                    && !is_skill_capability(id)
+                    && !is_mcp_capability(id)
+                    && !self.capability_registry.has(id)
+            })
+            .collect();
+
+        if missing.is_empty() {
+            return Ok(());
+        }
+
+        missing.sort();
+        missing.dedup();
+        Err(BadRequestError::new(format!(
+            "Harness requires capabilities unavailable in this deployment: {}",
+            missing.join(", ")
+        ))
+        .into())
     }
 
     async fn require_admin_for_high_risk_session_capabilities(
@@ -1904,6 +2445,7 @@ impl SessionService {
             owner: None,
             effective_owner: None,
             title: row.title,
+            goal: row.goal,
             locale: row.locale,
             preview: None,        // Populated separately in list()
             output_preview: None, // Populated separately in list()
@@ -1997,6 +2539,41 @@ fn memory_files_to_mount_entries(mut files: Vec<MemoryFileRow>) -> HashMap<Strin
     entries
 }
 
+fn ensure_no_reserved_memory_mounts(mounts: &[MountPoint]) -> Result<()> {
+    for mount in mounts {
+        if let Some(reserved) = reserved_memory_path(&mount.path) {
+            return Err(BadRequestError::new(format!(
+                "Mount path {} is reserved for server-managed memory ({reserved})",
+                mount.path
+            ))
+            .into());
+        }
+    }
+    Ok(())
+}
+
+fn ensure_no_reserved_memory_initial_files(files: &[InitialFile]) -> Result<()> {
+    for file in files {
+        if let Some(reserved) = reserved_memory_path(&file.path) {
+            return Err(BadRequestError::new(format!(
+                "Initial file path {} is reserved for server-managed memory ({reserved})",
+                file.path
+            ))
+            .into());
+        }
+    }
+    Ok(())
+}
+
+fn reserved_memory_path(path: &str) -> Option<&'static str> {
+    let path = normalize_initial_file_path(path);
+    if path == "/memory" || path.starts_with("/memory/") {
+        Some("/memory/*")
+    } else {
+        None
+    }
+}
+
 fn insert_mount_directory(entries: &mut HashMap<String, MountEntry>, segments: &[&str]) {
     let Some((name, rest)) = segments.split_first() else {
         return;
@@ -2054,7 +2631,7 @@ mod tests {
     use crate::services::{CapabilityService, PrincipalService};
     use crate::storage::{
         CreateHarnessRow, CreateMemoryFileRow, CreateModelRow, CreateOrganizationRow,
-        CreateProviderRow, StorageBackend,
+        CreateProviderRow, StorageBackend, UpdateAgent,
     };
     use everruns_core::capabilities::Capability;
     use everruns_core::{Caller, DEFAULT_ORG_ID, InitialFile, OrgRole};
@@ -2105,7 +2682,10 @@ mod tests {
         assert_eq!(sanitized, capabilities);
     }
 
-    fn test_ctx(caller: Caller, db: Arc<StorageBackend>) -> Ctx {
+    async fn test_ctx(caller: Caller, db: Arc<StorageBackend>) -> Ctx {
+        crate::org_init::initialize_org_harnesses(&db, caller.org_id)
+            .await
+            .expect("initialize built-in harnesses for session service tests");
         let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
         Ctx::new(
             caller,
@@ -2137,8 +2717,10 @@ mod tests {
             harness_id: Some(harness_id),
             harness_name: None,
             agent_id,
+            agent_name: None,
             agent_identity_id: None,
             title: Some("Test Session".to_string()),
+            goal: None,
             locale: None,
             tags: vec![],
             model_id,
@@ -2152,7 +2734,455 @@ mod tests {
             max_iterations: None,
             parallel_tool_calls: None,
             parent_session_id: None,
+            forked_from_session_id: None,
+            budget_root_session_id: None,
+            seed: SessionSeedMode::Fresh,
         }
+    }
+
+    #[tokio::test]
+    async fn session_list_lookup_count_is_independent_of_page_size() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
+
+        let parent = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "list-parent-harness".to_string(),
+            display_name: Some("List Parent Harness".to_string()),
+            description: None,
+            system_prompt: Some("parent".to_string()),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "list-child-harness".to_string(),
+            display_name: Some("List Child Harness".to_string()),
+            description: None,
+            system_prompt: Some("child".to_string()),
+            parent_harness_id: Some(parent.id),
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+            id: None,
+            name: "list-agent".to_string(),
+            display_name: Some("List Agent".to_string()),
+            description: None,
+            system_prompt: "agent".to_string(),
+            default_model_id: None,
+            harness_id: None,
+            harness_name: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            tools: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let service = SessionService::new(db.clone());
+
+        for index in 0..20 {
+            let mut request = build_create_request(harness.id, Some(agent.public_id), None);
+            request.title = Some(format!("List session {index}"));
+            service
+                .create(
+                    &caller,
+                    harness.id.uuid(),
+                    Some(agent.internal_id),
+                    Some(agent.public_id),
+                    request,
+                )
+                .await
+                .unwrap();
+        }
+
+        db.reset_session_list_lookup_count();
+        let (one, _) = service
+            .list(
+                &caller,
+                None,
+                Some(everruns_core::ANONYMOUS_USER_ID),
+                None,
+                Pagination {
+                    limit: 1,
+                    offset: 0,
+                },
+            )
+            .await
+            .unwrap();
+        let one_lookup_count = db.session_list_lookup_count();
+        assert_eq!(one.len(), 1);
+
+        db.reset_session_list_lookup_count();
+        let (twenty, _) = service
+            .list(
+                &caller,
+                None,
+                Some(everruns_core::ANONYMOUS_USER_ID),
+                None,
+                Pagination {
+                    limit: 20,
+                    offset: 0,
+                },
+            )
+            .await
+            .unwrap();
+        let twenty_lookup_count = db.session_list_lookup_count();
+        assert_eq!(twenty.len(), 20);
+
+        assert_eq!(
+            twenty_lookup_count, one_lookup_count,
+            "session-list storage lookups must stay bounded as page size grows"
+        );
+        assert_eq!(
+            twenty_lookup_count, 9,
+            "session-list hydration should use the fixed batch-query budget"
+        );
+
+        db.set_session_list_lookup_delay_ms(2);
+        db.reset_session_list_lookup_count();
+        let legacy_started = tokio::time::Instant::now();
+        let (legacy_rows, _) = db
+            .list_sessions(
+                DEFAULT_ORG_ID,
+                None,
+                None,
+                Pagination {
+                    limit: 20,
+                    offset: 0,
+                },
+            )
+            .await
+            .unwrap();
+        let mut legacy_sessions: Vec<Session> = legacy_rows
+            .into_iter()
+            .map(|row| SessionService::row_to_session(row, &caller.org_public_id, None))
+            .collect();
+        for session in &mut legacy_sessions {
+            service
+                .hydrate_ownership(DEFAULT_ORG_ID, session)
+                .await
+                .unwrap();
+        }
+        for session in &mut legacy_sessions {
+            service
+                .resolve_effective_harness(DEFAULT_ORG_ID, session.harness_id)
+                .await
+                .unwrap();
+            service
+                .populate_features(DEFAULT_ORG_ID, session)
+                .await
+                .unwrap();
+        }
+        for session in &mut legacy_sessions {
+            service
+                .resolve_session_agent_id(DEFAULT_ORG_ID, session)
+                .await
+                .unwrap();
+        }
+        let legacy_ids: Vec<Uuid> = legacy_sessions
+            .iter()
+            .map(|session| session.id.uuid())
+            .collect();
+        db.get_session_previews(&legacy_ids).await.unwrap();
+        db.get_session_output_previews(&legacy_ids).await.unwrap();
+        db.list_pinned_session_ids(everruns_core::ANONYMOUS_USER_ID, DEFAULT_ORG_ID)
+            .await
+            .unwrap();
+        let legacy_elapsed = legacy_started.elapsed();
+        let legacy_lookup_count = db.session_list_lookup_count();
+
+        db.reset_session_list_lookup_count();
+        let batched_started = tokio::time::Instant::now();
+        service
+            .list(
+                &caller,
+                None,
+                Some(everruns_core::ANONYMOUS_USER_ID),
+                None,
+                Pagination {
+                    limit: 20,
+                    offset: 0,
+                },
+            )
+            .await
+            .unwrap();
+        let batched_elapsed = batched_started.elapsed();
+        let batched_lookup_count = db.session_list_lookup_count();
+        db.set_session_list_lookup_delay_ms(0);
+
+        eprintln!(
+            "sessions-list benchmark (20 rows, 2ms simulated DB latency): before={legacy_lookup_count} lookups/{legacy_elapsed:?}, after={batched_lookup_count} lookups/{batched_elapsed:?}"
+        );
+        assert_eq!(legacy_lookup_count, 244);
+        assert_eq!(batched_lookup_count, 9);
+        assert!(
+            batched_elapsed * 5 < legacy_elapsed,
+            "batched hydration should be materially faster under cross-cloud latency"
+        );
+    }
+
+    #[tokio::test]
+    async fn session_list_batch_hydration_preserves_response_fields() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
+
+        let parent = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "hydration-parent".to_string(),
+            display_name: Some("Hydration Parent".to_string()),
+            description: None,
+            system_prompt: Some("parent".to_string()),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![AgentCapabilityConfig::new("session_file_system")],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "hydration-child".to_string(),
+            display_name: Some("Hydration Child".to_string()),
+            description: None,
+            system_prompt: Some("child".to_string()),
+            parent_harness_id: Some(parent.id),
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![AgentCapabilityConfig::new("session_tasks")],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+            id: None,
+            name: "hydration-agent".to_string(),
+            display_name: Some("Hydration Agent".to_string()),
+            description: None,
+            system_prompt: "agent".to_string(),
+            default_model_id: None,
+            harness_id: None,
+            harness_name: None,
+            tags: vec![],
+            capabilities: vec![AgentCapabilityConfig::new("session_schedule")],
+            initial_files: vec![],
+            tools: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let service = SessionService::new(db.clone());
+
+        let mut agent_request = build_create_request(harness.id, Some(agent.public_id), None);
+        agent_request.title = Some("agent session".to_string());
+        agent_request.capabilities = vec![AgentCapabilityConfig::new("session_storage")];
+        let agent_session = service
+            .create(
+                &caller,
+                harness.id.uuid(),
+                Some(agent.internal_id),
+                Some(agent.public_id),
+                agent_request,
+            )
+            .await
+            .unwrap();
+        let no_agent_session = service
+            .create(
+                &caller,
+                harness.id.uuid(),
+                None,
+                None,
+                build_create_request(harness.id, None, None),
+            )
+            .await
+            .unwrap();
+
+        for (event_type, text) in [
+            ("input.message", "input preview"),
+            ("output.message.completed", "output preview"),
+        ] {
+            db.create_event(CreateEventRow {
+                session_id: agent_session.id,
+                event_type: event_type.to_string(),
+                ts: chrono::Utc::now(),
+                context: serde_json::json!({}),
+                data: serde_json::json!({
+                    "message": {"content": [{"type": "text", "text": text}]}
+                }),
+                metadata: None,
+                tags: None,
+            })
+            .await
+            .unwrap();
+        }
+        db.pin_session(
+            everruns_core::ANONYMOUS_USER_ID,
+            agent_session.id,
+            DEFAULT_ORG_ID,
+        )
+        .await
+        .unwrap();
+
+        db.update_agent(
+            DEFAULT_ORG_ID,
+            AgentId::from_uuid(agent.internal_id),
+            UpdateAgent {
+                status: Some("deleted".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let missing_agent_id = AgentId::new();
+        let missing_owner_id = PrincipalId::new();
+        let missing_reference_session = db
+            .create_session(CreateSessionRow {
+                workspace_id: None,
+                org_id: DEFAULT_ORG_ID,
+                app_id: None,
+                harness_id: Some(harness.id),
+                agent_id: Some(missing_agent_id),
+                agent_identity_id: None,
+                owner_principal_id: missing_owner_id,
+                resolved_owner_user_id: None,
+                title: Some("missing references".to_string()),
+                locale: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                system_prompt: None,
+                initial_files: serde_json::json!([]),
+                hints: None,
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+                blueprint_id: None,
+                blueprint_config: None,
+                parent_session_id: None,
+                budget_root_session_id: None,
+            })
+            .await
+            .unwrap();
+
+        let (sessions, total) = service
+            .list(
+                &caller,
+                None,
+                Some(everruns_core::ANONYMOUS_USER_ID),
+                None,
+                Pagination {
+                    limit: 20,
+                    offset: 0,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(total, 3);
+        assert_eq!(sessions.len(), 3);
+        assert!(
+            sessions
+                .windows(2)
+                .all(|pair| pair[0].created_at >= pair[1].created_at)
+        );
+
+        let listed_agent = sessions
+            .iter()
+            .find(|session| session.id == agent_session.id)
+            .unwrap();
+        assert_eq!(listed_agent.agent_id, Some(agent.public_id));
+        assert!(listed_agent.owner.is_some());
+        assert_eq!(listed_agent.preview.as_deref(), Some("input preview"));
+        assert_eq!(
+            listed_agent.output_preview.as_deref(),
+            Some("output preview")
+        );
+        assert_eq!(listed_agent.is_pinned, Some(true));
+        for feature in ["file_system", "session_tasks", "schedules", "key_value"] {
+            assert!(
+                listed_agent.features.iter().any(|value| value == feature),
+                "missing feature {feature}: {:?}",
+                listed_agent.features
+            );
+        }
+
+        let listed_no_agent = sessions
+            .iter()
+            .find(|session| session.id == no_agent_session.id)
+            .unwrap();
+        assert_eq!(listed_no_agent.agent_id, None);
+        assert_eq!(listed_no_agent.is_pinned, Some(false));
+        assert!(
+            listed_no_agent
+                .features
+                .iter()
+                .any(|value| value == "file_system")
+        );
+        assert!(
+            listed_no_agent
+                .features
+                .iter()
+                .any(|value| value == "session_tasks")
+        );
+
+        let listed_missing = sessions
+            .iter()
+            .find(|session| session.id == missing_reference_session.id)
+            .unwrap();
+        assert_eq!(listed_missing.agent_id, Some(missing_agent_id));
+        assert!(listed_missing.owner.is_none());
+
+        let (empty_page, empty_total) = service
+            .list(
+                &caller,
+                None,
+                Some(everruns_core::ANONYMOUS_USER_ID),
+                None,
+                Pagination {
+                    limit: 20,
+                    offset: 100,
+                },
+            )
+            .await
+            .unwrap();
+        assert!(empty_page.is_empty());
+        assert_eq!(empty_total, 3);
     }
 
     async fn create_second_org(db: &StorageBackend) -> i64 {
@@ -2208,7 +3238,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(1);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "app-backref-harness".to_string(),
@@ -2318,7 +3348,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(1);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "fork-harness".to_string(),
@@ -2375,6 +3405,20 @@ mod tests {
         })
         .await
         .unwrap();
+        db.upsert_session_key_value(UpsertSessionKeyValue {
+            session_id: parent.id,
+            key: "state".to_string(),
+            value: "ready".to_string(),
+        })
+        .await
+        .unwrap();
+        db.upsert_session_secret(UpsertSessionSecret {
+            session_id: parent.id,
+            name: "API_TOKEN".to_string(),
+            value_encrypted: b"ciphertext".to_vec(),
+        })
+        .await
+        .unwrap();
 
         let parent_events = db
             .list_events(parent.id, None, None, &[], &[], None, None)
@@ -2421,6 +3465,19 @@ mod tests {
             .expect("forked workspace should contain the parent's file");
         assert_eq!(copied.content.as_deref(), Some(b"fork me".as_slice()));
 
+        let copied_kv = db
+            .get_session_key_value(child.id.uuid(), "state")
+            .await
+            .unwrap()
+            .expect("forked session should contain KV");
+        assert_eq!(copied_kv.value, "ready");
+        let copied_secret = db
+            .get_session_secret(child.id.uuid(), "API_TOKEN")
+            .await
+            .unwrap()
+            .expect("forked session should contain secret");
+        assert_eq!(copied_secret.value_encrypted, b"ciphertext");
+
         // The parent is untouched.
         let parent_after = db.get_session(1, parent.id).await.unwrap().unwrap();
         assert_eq!(parent_after.forked_from_session_id, None);
@@ -2431,7 +3488,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(1);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "harness".to_string(),
@@ -2471,6 +3528,8 @@ mod tests {
             description: None,
             system_prompt: "Agent prompt".to_string(),
             default_model_id: None,
+            harness_id: None,
+            harness_name: None,
             tags: vec![],
             capabilities: vec![],
             initial_files: vec![
@@ -2535,11 +3594,173 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn scoped_memories_are_auto_created_and_mounted_for_new_sessions() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_service = SessionService::new(db.clone());
+        let user = db
+            .create_user(crate::storage::CreateUserRow {
+                external_id: None,
+                email: "memory-owner@example.com".to_string(),
+                name: "Memory Owner".to_string(),
+                avatar_url: None,
+                roles: vec![],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: None,
+                auth_provider_id: None,
+            })
+            .await
+            .unwrap();
+        let caller = Caller {
+            user_id: Some(user.id),
+            ..external_caller(DEFAULT_ORG_ID)
+        };
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
+
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "scoped-memory-harness".to_string(),
+            display_name: Some("Scoped Memory Harness".to_string()),
+            description: None,
+            system_prompt: Some("Harness prompt".to_string()),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        let agent = crate::domains::agents::CreateAgent(CreateAgentRequest {
+            id: None,
+            name: "scoped-memory-agent".to_string(),
+            display_name: Some("Scoped Memory Agent".to_string()),
+            description: None,
+            system_prompt: "Agent prompt".to_string(),
+            default_model_id: None,
+            harness_id: None,
+            harness_name: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            tools: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        let session = session_service
+            .create(
+                &caller,
+                harness.id.uuid(),
+                Some(agent.internal_id),
+                Some(agent.public_id),
+                build_create_request(harness.id, Some(agent.public_id), None),
+            )
+            .await
+            .unwrap();
+
+        let file_service = WorkspaceFileService::new(db.clone());
+        let agent_mount = file_service
+            .stat(session.id.uuid(), AGENT_MEMORY_MOUNT_PATH)
+            .await
+            .unwrap()
+            .expect("agent memory mount exists");
+        assert!(agent_mount.is_directory);
+        assert!(!agent_mount.is_readonly);
+
+        let user_mount = file_service
+            .stat(session.id.uuid(), USER_MEMORY_MOUNT_PATH)
+            .await
+            .unwrap()
+            .expect("user memory mount exists");
+        assert!(user_mount.is_directory);
+        assert!(!user_mount.is_readonly);
+
+        assert!(
+            db.get_memory_by_scope_owner(
+                DEFAULT_ORG_ID,
+                "agent",
+                Some(AgentId::from_uuid(agent.internal_id)),
+                None,
+            )
+            .await
+            .unwrap()
+            .is_some()
+        );
+        assert!(
+            db.get_memory_by_scope_owner(DEFAULT_ORG_ID, "user", None, Some(user.id))
+                .await
+                .unwrap()
+                .is_some()
+        );
+        assert!(
+            db.list_memories(DEFAULT_ORG_ID, None, false)
+                .await
+                .unwrap()
+                .is_empty(),
+            "scoped memories stay hidden from org memory listing"
+        );
+    }
+
+    #[tokio::test]
+    async fn session_initial_files_cannot_claim_reserved_memory_paths() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_service = SessionService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
+
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "reserved-memory-path-harness".to_string(),
+            display_name: Some("Reserved Memory Path Harness".to_string()),
+            description: None,
+            system_prompt: Some("Harness prompt".to_string()),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+            embedder_metadata: Default::default(),
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        let mut req = build_create_request(harness.id, None, None);
+        req.initial_files.push(InitialFile {
+            path: "/memory/agent/profile.md".to_string(),
+            content: "owned by the server".to_string(),
+            encoding: "text".to_string(),
+            is_readonly: false,
+        });
+
+        let err = session_service
+            .create(&caller, harness.id.uuid(), None, None, req)
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("reserved for server-managed memory"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
     async fn inherited_harness_starter_files_are_copied_into_new_sessions() {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(1);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let parent = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "parent".to_string(),
@@ -2627,7 +3848,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(1);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "harness".to_string(),
@@ -2654,6 +3875,8 @@ mod tests {
             description: None,
             system_prompt: "Agent prompt".to_string(),
             default_model_id: None,
+            harness_id: None,
+            harness_name: None,
             tags: vec![],
             capabilities: vec![],
             initial_files: vec![],
@@ -2736,7 +3959,7 @@ mod tests {
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
         let other_org_id = create_second_org(&db).await;
-        let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone());
+        let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone()).await;
 
         let other_harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "other-harness".to_string(),
@@ -2776,7 +3999,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
         let other_org_id = create_second_org(&db).await;
         let other_model_id = create_model(&db, other_org_id, "cross-org-model").await;
 
@@ -2819,7 +4042,7 @@ mod tests {
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
         let other_org_id = create_second_org(&db).await;
-        let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone());
+        let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone()).await;
 
         let other_harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "other-harness".to_string(),
@@ -2846,6 +4069,8 @@ mod tests {
             description: None,
             system_prompt: "Other".to_string(),
             default_model_id: None,
+            harness_id: None,
+            harness_name: None,
             tags: vec![],
             capabilities: vec![AgentCapabilityConfig::new("session_schedule")],
             initial_files: vec![],
@@ -2888,6 +4113,7 @@ mod tests {
                 blueprint_config: None,
                 network_access: None,
                 parent_session_id: None,
+                budget_root_session_id: None,
             })
             .await
             .unwrap();
@@ -2933,6 +4159,66 @@ mod tests {
         fn risk_level(&self) -> RiskLevel {
             RiskLevel::High
         }
+    }
+
+    // EVE-709: a harness declaring a built-in capability that is not registered in
+    // this deployment (e.g. feature-gated `container_sandbox`) must fail session
+    // creation with a clear error rather than silently dropping the capability's
+    // tools and degrading into a different execution environment.
+    #[tokio::test]
+    async fn create_rejects_harness_with_unavailable_builtin_capability() {
+        let db = Arc::new(StorageBackend::in_memory());
+        // Empty registry stands in for a deployment where `container_sandbox` is
+        // feature-gated off, so it is absent from the capability registry.
+        let registry = CapabilityRegistry::new();
+        let session_service = SessionService::with_registry(db.clone(), registry);
+        let owner = Caller::internal(DEFAULT_ORG_ID);
+
+        let harness = db
+            .create_harness(
+                owner.org_id,
+                CreateHarnessRow {
+                    name: "coding-container".to_string(),
+                    display_name: Some("Coding (Container)".to_string()),
+                    description: None,
+                    system_prompt: Some("coding".to_string()),
+                    parent_harness_id: None,
+                    default_model_id: None,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    embedder_metadata: serde_json::json!({}),
+                    is_built_in: false,
+                },
+            )
+            .await
+            .unwrap();
+        db.set_harness_capabilities(
+            harness.id.uuid(),
+            vec![("container_sandbox".to_string(), 0, serde_json::json!({}))],
+        )
+        .await
+        .unwrap();
+
+        // Owner (admin) so the high-risk capability gate does not fire first.
+        let err = session_service
+            .create(
+                &owner,
+                harness.id.uuid(),
+                None,
+                None,
+                build_create_request(harness.id, None, None),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("capabilities unavailable in this deployment")
+                && err.to_string().contains("container_sandbox"),
+            "unexpected error: {err}"
+        );
     }
 
     #[tokio::test]
@@ -3090,7 +4376,7 @@ mod tests {
         let file_service = WorkspaceFileService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
         let other_org_id = create_second_org(&db).await;
-        let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone());
+        let other_ctx = test_ctx(Caller::internal(other_org_id), db.clone()).await;
 
         let other_harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "other-harness".to_string(),
@@ -3117,6 +4403,8 @@ mod tests {
             description: None,
             system_prompt: "Other".to_string(),
             default_model_id: None,
+            harness_id: None,
+            harness_name: None,
             tags: vec![],
             capabilities: vec![AgentCapabilityConfig::new("sample_data")],
             initial_files: vec![],
@@ -3156,6 +4444,7 @@ mod tests {
                 blueprint_config: None,
                 network_access: None,
                 parent_session_id: None,
+                budget_root_session_id: None,
             })
             .await
             .unwrap();
@@ -3167,6 +4456,7 @@ mod tests {
                 Some(other_agent.internal_id),
                 &[],
                 session_row.id.uuid(),
+                None,
             )
             .await
             .unwrap();
@@ -3187,7 +4477,7 @@ mod tests {
         let session_service = SessionService::new(db.clone());
         let file_service = WorkspaceFileService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let memory = CreateMemory {
             name: "Repo Memory".to_string(),
@@ -3277,7 +4567,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let memory = CreateMemory {
             name: "Read-only Repo".to_string(),
@@ -3342,7 +4632,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "harness".to_string(),
@@ -3379,6 +4669,7 @@ mod tests {
                 session.id.uuid(),
                 UpdateSessionRequest {
                     title: None,
+                    goal: None,
                     agent_identity_id: UpdateField::Unchanged,
                     locale: None,
                     tags: Some(vec!["__internal:app_invocation".to_string()]),
@@ -3397,7 +4688,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "harness".to_string(),
@@ -3440,6 +4731,7 @@ mod tests {
                     session.id.uuid(),
                     UpdateSessionRequest {
                         title: None,
+                        goal: None,
                         agent_identity_id: UpdateField::Unchanged,
                         locale: None,
                         tags: Some(forbidden.clone()),
@@ -3459,7 +4751,7 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
         let caller = Caller::internal(DEFAULT_ORG_ID);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "harness".to_string(),
@@ -3509,7 +4801,7 @@ mod tests {
     async fn app_session_creation_enforces_total_session_cap() {
         let db = Arc::new(StorageBackend::in_memory());
         let caller = Caller::internal(DEFAULT_ORG_ID);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "app-session-cap-harness".to_string(),
@@ -3587,7 +4879,7 @@ mod tests {
 
         let db = Arc::new(StorageBackend::in_memory());
         let caller = Caller::internal(DEFAULT_ORG_ID);
-        let ctx = test_ctx(caller.clone(), db.clone());
+        let ctx = test_ctx(caller.clone(), db.clone()).await;
 
         let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
             name: "cap-test-harness".to_string(),

@@ -16,9 +16,9 @@ impl Database {
     pub async fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (org_id, public_id, name, display_name, description, system_prompt, default_model_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'active')
-            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
+            INSERT INTO agents (org_id, public_id, name, display_name, description, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'active')
+            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, harness_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
             "#,
         )
@@ -29,6 +29,7 @@ impl Database {
         .bind(&input.description)
         .bind(&input.system_prompt)
         .bind(input.default_model_id)
+        .bind(input.harness_id)
         .bind(&input.tags)
         .bind(&input.initial_files)
         .bind(&input.tools)
@@ -52,13 +53,14 @@ impl Database {
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (id, org_id, public_id, name, display_name, description, system_prompt, default_model_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'active')
+            INSERT INTO agents (id, org_id, public_id, name, display_name, description, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'active')
             ON CONFLICT (id) DO UPDATE SET
                 name = EXCLUDED.name,
                 display_name = EXCLUDED.display_name,
                 description = EXCLUDED.description,
                 system_prompt = EXCLUDED.system_prompt,
+                harness_id = EXCLUDED.harness_id,
                 tags = EXCLUDED.tags,
                 initial_files = EXCLUDED.initial_files,
                 tools = EXCLUDED.tools,
@@ -72,6 +74,7 @@ impl Database {
                 OR agents.display_name IS DISTINCT FROM EXCLUDED.display_name
                 OR agents.description IS DISTINCT FROM EXCLUDED.description
                 OR agents.system_prompt IS DISTINCT FROM EXCLUDED.system_prompt
+                OR agents.harness_id IS DISTINCT FROM EXCLUDED.harness_id
                 OR agents.tags IS DISTINCT FROM EXCLUDED.tags
                 OR agents.initial_files IS DISTINCT FROM EXCLUDED.initial_files
                 OR agents.tools IS DISTINCT FROM EXCLUDED.tools
@@ -79,7 +82,7 @@ impl Database {
                 OR agents.network_access IS DISTINCT FROM EXCLUDED.network_access
                 OR agents.max_iterations IS DISTINCT FROM EXCLUDED.max_iterations
                 OR agents.parallel_tool_calls IS DISTINCT FROM EXCLUDED.parallel_tool_calls
-            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
+            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, harness_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
             "#,
         )
@@ -91,6 +94,7 @@ impl Database {
         .bind(&input.description)
         .bind(&input.system_prompt)
         .bind(input.default_model_id.map(|m| m.uuid()))
+        .bind(input.harness_id.uuid())
         .bind(&input.tags)
         .bind(&input.initial_files)
         .bind(&input.tools)
@@ -107,7 +111,7 @@ impl Database {
     pub async fn get_agent(&self, org_id: i64, id: AgentId) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
+            SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, harness_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
             FROM agents
             WHERE org_id = $1 AND id = $2
@@ -119,6 +123,22 @@ impl Database {
         .await?;
 
         Ok(row)
+    }
+
+    pub async fn get_agents_by_ids(&self, org_id: i64, ids: &[AgentId]) -> Result<Vec<AgentRow>> {
+        let ids: Vec<Uuid> = ids.iter().map(|id| id.uuid()).collect();
+        Ok(sqlx::query_as::<_, AgentRow>(
+            r#"
+            SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, harness_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
+            FROM agents
+            WHERE org_id = $1 AND id = ANY($2)
+            "#,
+        )
+        .bind(org_id)
+        .bind(&ids)
+        .fetch_all(&self.pool)
+        .await?)
     }
 
     /// Look up the owning org for an agent by its public_id, without scoping
@@ -141,7 +161,7 @@ impl Database {
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
+            SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, harness_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
             FROM agents
             WHERE org_id = $1 AND public_id = $2
@@ -189,7 +209,7 @@ impl Database {
         let limit_idx = param_idx + 1;
         let offset_idx = param_idx + 2;
         let sql = format!(
-            r#"SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
+            r#"SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, harness_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
                 FROM agents
                 WHERE org_id = $1{status_sql}{search_sql}
@@ -224,7 +244,7 @@ impl Database {
     pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
+            SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, harness_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
             FROM agents
             WHERE org_id = $1 AND name = $2 AND status != 'deleted'
@@ -253,21 +273,22 @@ impl Database {
                 description = COALESCE($5, description),
                 system_prompt = COALESCE($6, system_prompt),
                 default_model_id = COALESCE($7, default_model_id),
-                tags = COALESCE($8, tags),
-                status = COALESCE($9, status),
-                initial_files = COALESCE($10, initial_files),
-                tools = COALESCE($11, tools),
-                mcp_servers = COALESCE($12, mcp_servers),
-                network_access = CASE WHEN $13 THEN $14 ELSE network_access END,
-                max_iterations = CASE WHEN $15 THEN $16 ELSE max_iterations END,
-                default_version_id = COALESCE($17, default_version_id),
-                forked_from_agent_id = COALESCE($18, forked_from_agent_id),
-                forked_from_version_id = COALESCE($19, forked_from_version_id),
-                root_agent_id = COALESCE($20, root_agent_id),
-                parallel_tool_calls = CASE WHEN $21 THEN $22 ELSE parallel_tool_calls END,
+                harness_id = COALESCE($8, harness_id),
+                tags = COALESCE($9, tags),
+                status = COALESCE($10, status),
+                initial_files = COALESCE($11, initial_files),
+                tools = COALESCE($12, tools),
+                mcp_servers = COALESCE($13, mcp_servers),
+                network_access = CASE WHEN $14 THEN $15 ELSE network_access END,
+                max_iterations = CASE WHEN $16 THEN $17 ELSE max_iterations END,
+                default_version_id = COALESCE($18, default_version_id),
+                forked_from_agent_id = COALESCE($19, forked_from_agent_id),
+                forked_from_version_id = COALESCE($20, forked_from_version_id),
+                root_agent_id = COALESCE($21, root_agent_id),
+                parallel_tool_calls = CASE WHEN $22 THEN $23 ELSE parallel_tool_calls END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
+            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, harness_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
             "#,
         )
@@ -278,6 +299,7 @@ impl Database {
         .bind(&input.description)
         .bind(&input.system_prompt)
         .bind(input.default_model_id.map(|m| m.uuid()))
+        .bind(input.harness_id.map(|h| h.uuid()))
         .bind(&input.tags)
         .bind(&input.status)
         .bind(&input.initial_files)
@@ -344,14 +366,15 @@ impl Database {
             WITH existing AS (
                 SELECT id FROM agents WHERE org_id = $1 AND public_id = $2
             )
-            INSERT INTO agents (org_id, public_id, name, display_name, description, system_prompt, default_model_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'active')
+            INSERT INTO agents (org_id, public_id, name, display_name, description, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'active')
             ON CONFLICT (org_id, public_id) DO UPDATE SET
                 name = EXCLUDED.name,
                 display_name = EXCLUDED.display_name,
                 description = EXCLUDED.description,
                 system_prompt = EXCLUDED.system_prompt,
                 default_model_id = EXCLUDED.default_model_id,
+                harness_id = EXCLUDED.harness_id,
                 tags = EXCLUDED.tags,
                 initial_files = EXCLUDED.initial_files,
                 tools = EXCLUDED.tools,
@@ -361,7 +384,7 @@ impl Database {
                 parallel_tool_calls = EXCLUDED.parallel_tool_calls,
                 status = 'active',
                 updated_at = NOW()
-            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
+            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, harness_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
             "#,
         )
@@ -372,6 +395,7 @@ impl Database {
         .bind(&input.description)
         .bind(&input.system_prompt)
         .bind(input.default_model_id)
+        .bind(input.harness_id)
         .bind(&input.tags)
         .bind(&input.initial_files)
         .bind(&input.tools)
@@ -395,13 +419,14 @@ impl Database {
     ) -> Result<(AgentRow, bool)> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            INSERT INTO agents (org_id, public_id, name, display_name, description, system_prompt, default_model_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, 'active')
+            INSERT INTO agents (org_id, public_id, name, display_name, description, system_prompt, default_model_id, harness_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'active')
             ON CONFLICT (org_id, name) WHERE status != 'deleted' DO UPDATE SET
                 display_name = EXCLUDED.display_name,
                 description = EXCLUDED.description,
                 system_prompt = EXCLUDED.system_prompt,
                 default_model_id = EXCLUDED.default_model_id,
+                harness_id = EXCLUDED.harness_id,
                 tags = EXCLUDED.tags,
                 initial_files = EXCLUDED.initial_files,
                 tools = EXCLUDED.tools,
@@ -411,7 +436,7 @@ impl Database {
                 parallel_tool_calls = EXCLUDED.parallel_tool_calls,
                 status = 'active',
                 updated_at = NOW()
-            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
+            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, harness_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations, parallel_tool_calls,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, total_actual_cost_usd, total_estimated_cost_usd, total_cost_usd
             "#,
         )
@@ -422,6 +447,7 @@ impl Database {
         .bind(&input.description)
         .bind(&input.system_prompt)
         .bind(input.default_model_id)
+        .bind(input.harness_id)
         .bind(&input.tags)
         .bind(&input.initial_files)
         .bind(&input.tools)
@@ -628,6 +654,27 @@ impl Database {
         .await?;
 
         Ok(rows)
+    }
+
+    pub async fn get_agent_capabilities_by_agent_ids(
+        &self,
+        org_id: i64,
+        agent_ids: &[AgentId],
+    ) -> Result<Vec<AgentCapabilityRow>> {
+        let agent_ids: Vec<Uuid> = agent_ids.iter().map(|id| id.uuid()).collect();
+        Ok(sqlx::query_as::<_, AgentCapabilityRow>(
+            r#"
+            SELECT ac.id, ac.agent_id, ac.capability_id, ac.position, ac.config, ac.created_at
+            FROM agent_capabilities ac
+            JOIN agents a ON a.id = ac.agent_id
+            WHERE a.org_id = $1 AND ac.agent_id = ANY($2)
+            ORDER BY ac.agent_id, ac.position ASC
+            "#,
+        )
+        .bind(org_id)
+        .bind(&agent_ids)
+        .fetch_all(&self.pool)
+        .await?)
     }
 
     /// Set capabilities for an agent (replaces existing capabilities)

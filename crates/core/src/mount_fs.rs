@@ -23,7 +23,7 @@
 use async_trait::async_trait;
 use std::sync::Arc;
 
-use crate::error::Result;
+use crate::error::{AgentLoopError, Result};
 use crate::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
 use crate::traits::SessionFileSystem;
 use crate::typed_id::SessionId;
@@ -44,6 +44,20 @@ struct Mount {
     backend: Arc<dyn SessionFileSystem>,
     /// Path inside the backend's own keyspace that `mount_point` maps to.
     backend_root: String,
+    /// Whether returned backend paths should remain in the backend's canonical
+    /// keyspace. The root and `/workspace` mounts preserve the legacy primary
+    /// workspace contract (`/src/lib.rs`); named mounts report their mounted
+    /// virtual path (`/workspace/roots/backend/src/lib.rs`).
+    primary_workspace: bool,
+}
+
+#[derive(Clone)]
+struct ResolvedMount {
+    mount_point: String,
+    backend: Arc<dyn SessionFileSystem>,
+    backend_root: String,
+    backend_path: String,
+    primary_workspace: bool,
 }
 
 /// Mount-based resolver. Implements `SessionFileSystem`, so it drops into
@@ -72,11 +86,13 @@ impl MountFs {
                 mount_point: "/".to_string(),
                 backend: workspace.clone(),
                 backend_root: "/".to_string(),
+                primary_workspace: true,
             },
             Mount {
                 mount_point: WORKSPACE_MOUNT.to_string(),
                 backend: workspace.clone(),
                 backend_root: "/".to_string(),
+                primary_workspace: true,
             },
         ];
         let mut fs = Self {
@@ -93,6 +109,18 @@ impl MountFs {
         Arc::new(Self::new(workspace))
     }
 
+    /// Wrap only when `workspace` is not already a [`MountFs`].
+    ///
+    /// Re-wrapping would collapse nested mount tables (e.g. multi-root
+    /// workspaces) into a single primary view and break named-mount display.
+    pub fn wrap_if_needed(workspace: Arc<dyn SessionFileSystem>) -> Arc<dyn SessionFileSystem> {
+        if workspace.is_mount_resolver() {
+            workspace
+        } else {
+            Self::wrap(workspace)
+        }
+    }
+
     /// Register an additional mount (e.g. a read-only skills source or a named
     /// volume) backed by a different store. Longest-prefix wins at resolution.
     pub fn with_mount(
@@ -105,6 +133,7 @@ impl MountFs {
             mount_point: normalize_virtual(&mount_point.into(), "/"),
             backend,
             backend_root: normalize_virtual(&backend_root.into(), "/"),
+            primary_workspace: false,
         });
         self.sort_mounts();
         self
@@ -126,19 +155,83 @@ impl MountFs {
     /// Relative inputs are joined to cwd; `.`/`..` are collapsed (clamped at
     /// root); the longest matching mount is selected and the remainder is mapped
     /// into that backend's keyspace.
-    fn resolve(&self, input: &str) -> (Arc<dyn SessionFileSystem>, String) {
+    fn resolve(&self, input: &str) -> Result<ResolvedMount> {
+        reject_additional_root_traversal(input, &self.cwd)?;
         let virtual_path = normalize_virtual(input, &self.cwd());
         for mount in &self.mounts {
             if let Some(rest) = mount_suffix(&mount.mount_point, &virtual_path) {
-                return (
-                    mount.backend.clone(),
-                    join_backend_path(&mount.backend_root, &rest),
-                );
+                return Ok(ResolvedMount {
+                    mount_point: mount.mount_point.clone(),
+                    backend: mount.backend.clone(),
+                    backend_root: mount.backend_root.clone(),
+                    backend_path: join_backend_path(&mount.backend_root, &rest),
+                    primary_workspace: mount.primary_workspace,
+                });
             }
         }
         // The root mount matches every absolute path, so this is unreachable in
         // practice; fall back to the primary backend with the literal path.
-        (self.primary.clone(), virtual_path)
+        Ok(ResolvedMount {
+            mount_point: "/".to_string(),
+            backend: self.primary.clone(),
+            backend_root: "/".to_string(),
+            backend_path: virtual_path,
+            primary_workspace: true,
+        })
+    }
+
+    fn grep_mounts(&self) -> Vec<ResolvedMount> {
+        let mut out: Vec<ResolvedMount> = Vec::new();
+        for mount in self.mounts.iter().rev() {
+            if out.iter().any(|existing| {
+                Arc::ptr_eq(&existing.backend, &mount.backend)
+                    && existing.backend_root == mount.backend_root
+            }) {
+                continue;
+            }
+            out.push(ResolvedMount {
+                mount_point: mount.mount_point.clone(),
+                backend: mount.backend.clone(),
+                backend_root: mount.backend_root.clone(),
+                backend_path: mount.backend_root.clone(),
+                primary_workspace: mount.primary_workspace,
+            });
+        }
+        out
+    }
+}
+
+impl ResolvedMount {
+    fn map_session_file(&self, mut file: SessionFile) -> SessionFile {
+        file.path = self.to_virtual_output_path(&file.path);
+        file.name = FileInfo::name_from_path(&file.path);
+        file
+    }
+
+    fn map_file_info(&self, mut info: FileInfo) -> FileInfo {
+        info.path = self.to_virtual_output_path(&info.path);
+        info.name = FileInfo::name_from_path(&info.path);
+        info
+    }
+
+    fn map_file_stat(&self, mut stat: FileStat) -> FileStat {
+        stat.path = self.to_virtual_output_path(&stat.path);
+        stat.name = FileInfo::name_from_path(&stat.path);
+        stat
+    }
+
+    fn map_grep_match(&self, mut grep_match: GrepMatch) -> GrepMatch {
+        grep_match.path = self.to_virtual_output_path(&grep_match.path);
+        grep_match
+    }
+
+    fn to_virtual_output_path(&self, backend_path: &str) -> String {
+        if self.primary_workspace {
+            return normalize_virtual(backend_path, "/");
+        }
+        let normalized = normalize_virtual(backend_path, "/");
+        let rest = mount_suffix(&self.backend_root, &normalized).unwrap_or(normalized);
+        join_backend_path(&self.mount_point, &rest)
     }
 }
 
@@ -165,6 +258,36 @@ fn normalize_virtual(input: &str, cwd: &str) -> String {
     } else {
         format!("/{}", stack.join("/"))
     }
+}
+
+fn reject_additional_root_traversal(input: &str, cwd: &str) -> Result<()> {
+    let combined = if input.starts_with('/') {
+        input.to_string()
+    } else {
+        format!("{}/{}", cwd.trim_end_matches('/'), input)
+    };
+    let segments: Vec<&str> = combined
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    for window_start in 0..segments.len().saturating_sub(2) {
+        if segments[window_start] == "workspace" && segments[window_start + 1] == "roots" {
+            let root_name_idx = window_start + 2;
+            if segments[root_name_idx].is_empty() {
+                continue;
+            }
+            if segments
+                .iter()
+                .skip(root_name_idx + 1)
+                .any(|segment| *segment == "..")
+            {
+                return Err(AgentLoopError::tool(format!(
+                    "path traversal rejected: {input}"
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// If `virtual_path` is at or under `mount_point`, return the suffix as a
@@ -198,7 +321,11 @@ fn join_backend_path(backend_root: &str, rest: &str) -> String {
 #[async_trait]
 impl SessionFileSystem for MountFs {
     fn display_root(&self) -> String {
-        WORKSPACE_MOUNT.to_string()
+        self.primary.display_root()
+    }
+
+    fn is_mount_resolver(&self) -> bool {
+        true
     }
 
     fn resolve_path(&self, input: &str) -> String {
@@ -206,18 +333,32 @@ impl SessionFileSystem for MountFs {
         // `.`/`..` collapse, leading `..` clamps at root. This is the namespace
         // the shell sees — `/workspace` is just the default cwd, and any path
         // is reachable from the root mount.
-        normalize_virtual(input, &self.cwd())
+        let virtual_path = normalize_virtual(input, &self.cwd());
+        match self.resolve(&virtual_path) {
+            Ok(resolved) if resolved.primary_workspace => {
+                resolved.backend.display_path(&resolved.backend_path)
+            }
+            _ => virtual_path,
+        }
     }
 
     fn display_path(&self, path: &str) -> String {
-        // `path` is a backend keyspace path (e.g. `/foo`); render it under the
-        // workspace mount.
-        crate::session_path::to_display_path(path)
+        let virtual_path = normalize_virtual(path, "/");
+        match self.resolve(&virtual_path) {
+            Ok(resolved) if resolved.primary_workspace => {
+                resolved.backend.display_path(&resolved.backend_path)
+            }
+            _ => virtual_path,
+        }
     }
 
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
-        let (backend, backend_path) = self.resolve(path);
-        backend.read_file(session_id, &backend_path).await
+        let resolved = self.resolve(path)?;
+        Ok(resolved
+            .backend
+            .read_file(session_id, &resolved.backend_path)
+            .await?
+            .map(|file| resolved.map_session_file(file)))
     }
 
     async fn write_file(
@@ -227,10 +368,13 @@ impl SessionFileSystem for MountFs {
         content: &str,
         encoding: &str,
     ) -> Result<SessionFile> {
-        let (backend, backend_path) = self.resolve(path);
-        backend
-            .write_file(session_id, &backend_path, content, encoding)
-            .await
+        let resolved = self.resolve(path)?;
+        Ok(resolved.map_session_file(
+            resolved
+                .backend
+                .write_file(session_id, &resolved.backend_path, content, encoding)
+                .await?,
+        ))
     }
 
     async fn write_file_if_content_matches(
@@ -242,17 +386,19 @@ impl SessionFileSystem for MountFs {
         content: &str,
         encoding: &str,
     ) -> Result<Option<SessionFile>> {
-        let (backend, backend_path) = self.resolve(path);
-        backend
+        let resolved = self.resolve(path)?;
+        Ok(resolved
+            .backend
             .write_file_if_content_matches(
                 session_id,
-                &backend_path,
+                &resolved.backend_path,
                 expected_content,
                 expected_encoding,
                 content,
                 encoding,
             )
-            .await
+            .await?
+            .map(|file| resolved.map_session_file(file)))
     }
 
     async fn delete_file(
@@ -261,20 +407,31 @@ impl SessionFileSystem for MountFs {
         path: &str,
         recursive: bool,
     ) -> Result<bool> {
-        let (backend, backend_path) = self.resolve(path);
-        backend
-            .delete_file(session_id, &backend_path, recursive)
+        let resolved = self.resolve(path)?;
+        resolved
+            .backend
+            .delete_file(session_id, &resolved.backend_path, recursive)
             .await
     }
 
     async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
-        let (backend, backend_path) = self.resolve(path);
-        backend.list_directory(session_id, &backend_path).await
+        let resolved = self.resolve(path)?;
+        Ok(resolved
+            .backend
+            .list_directory(session_id, &resolved.backend_path)
+            .await?
+            .into_iter()
+            .map(|info| resolved.map_file_info(info))
+            .collect())
     }
 
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
-        let (backend, backend_path) = self.resolve(path);
-        backend.stat_file(session_id, &backend_path).await
+        let resolved = self.resolve(path)?;
+        Ok(resolved
+            .backend
+            .stat_file(session_id, &resolved.backend_path)
+            .await?
+            .map(|stat| resolved.map_file_stat(stat)))
     }
 
     async fn grep_files(
@@ -285,35 +442,89 @@ impl SessionFileSystem for MountFs {
     ) -> Result<Vec<GrepMatch>> {
         match path_pattern {
             Some(pp) => {
-                let (backend, backend_path) = self.resolve(pp);
-                backend
-                    .grep_files(session_id, pattern, Some(&backend_path))
-                    .await
+                let matcher = crate::session_path::GrepPathPattern::new(pp)?;
+                if matcher.is_glob() && (!pp.starts_with('/') || pp.starts_with(WORKSPACE_MOUNT)) {
+                    let mut matches = Vec::new();
+                    for resolved in self.grep_mounts() {
+                        matches.extend(
+                            resolved
+                                .backend
+                                .grep_files(session_id, pattern, Some(&resolved.backend_path))
+                                .await?
+                                .into_iter()
+                                .map(|grep_match| resolved.map_grep_match(grep_match))
+                                .filter(|grep_match| matcher.is_match(&grep_match.path)),
+                        );
+                    }
+                    matches.sort_by(|a, b| {
+                        a.path
+                            .cmp(&b.path)
+                            .then(a.line_number.cmp(&b.line_number))
+                            .then(a.line.cmp(&b.line))
+                    });
+                    return Ok(matches);
+                }
+                let resolved = self.resolve(pp)?;
+                Ok(resolved
+                    .backend
+                    .grep_files(session_id, pattern, Some(&resolved.backend_path))
+                    .await?
+                    .into_iter()
+                    .map(|grep_match| resolved.map_grep_match(grep_match))
+                    .collect())
             }
-            None => self.primary.grep_files(session_id, pattern, None).await,
+            None => {
+                let mut matches = Vec::new();
+                for resolved in self.grep_mounts() {
+                    matches.extend(
+                        resolved
+                            .backend
+                            .grep_files(session_id, pattern, Some(&resolved.backend_path))
+                            .await?
+                            .into_iter()
+                            .map(|grep_match| resolved.map_grep_match(grep_match)),
+                    );
+                }
+                matches.sort_by(|a, b| {
+                    a.path
+                        .cmp(&b.path)
+                        .then(a.line_number.cmp(&b.line_number))
+                        .then(a.line.cmp(&b.line))
+                });
+                Ok(matches)
+            }
         }
     }
 
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
-        let (backend, backend_path) = self.resolve(path);
-        backend.create_directory(session_id, &backend_path).await
+        let resolved = self.resolve(path)?;
+        Ok(resolved.map_file_info(
+            resolved
+                .backend
+                .create_directory(session_id, &resolved.backend_path)
+                .await?,
+        ))
     }
 
     async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
-        let (backend, backend_path) = self.resolve(&file.path);
+        let resolved = self.resolve(&file.path)?;
         let seeded = InitialFile {
-            path: backend_path,
+            path: resolved.backend_path,
             content: file.content.clone(),
             encoding: file.encoding.clone(),
             is_readonly: file.is_readonly,
         };
-        backend.seed_initial_file(session_id, &seeded).await
+        resolved
+            .backend
+            .seed_initial_file(session_id, &seeded)
+            .await
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::session_path::GrepPathPattern;
 
     fn sid() -> SessionId {
         SessionId::from_seed(1)
@@ -328,6 +539,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for FlatStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(&self, sid: SessionId, path: &str) -> Result<Option<SessionFile>> {
             let files = self.files.lock().unwrap();
             Ok(files.get(path).map(|content| SessionFile {
@@ -375,16 +590,44 @@ mod tests {
         async fn list_directory(&self, _: SessionId, _: &str) -> Result<Vec<FileInfo>> {
             Ok(vec![])
         }
-        async fn stat_file(&self, _: SessionId, _: &str) -> Result<Option<FileStat>> {
-            Ok(None)
+        async fn stat_file(&self, _: SessionId, path: &str) -> Result<Option<FileStat>> {
+            let files = self.files.lock().unwrap();
+            Ok(files.get(path).map(|content| FileStat {
+                path: path.to_string(),
+                name: path.rsplit('/').next().unwrap_or("").to_string(),
+                is_directory: false,
+                is_readonly: false,
+                size_bytes: content.len() as i64,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }))
         }
         async fn grep_files(
             &self,
             _: SessionId,
-            _: &str,
-            _: Option<&str>,
+            pattern: &str,
+            path_pattern: Option<&str>,
         ) -> Result<Vec<GrepMatch>> {
-            Ok(vec![])
+            let path_pattern = path_pattern.map(GrepPathPattern::new).transpose()?;
+            let files = self.files.lock().unwrap();
+            let mut matches = Vec::new();
+            for (path, content) in files.iter() {
+                if let Some(filter) = &path_pattern
+                    && !filter.is_match(path)
+                {
+                    continue;
+                }
+                for (idx, line) in content.lines().enumerate() {
+                    if line.contains(pattern) {
+                        matches.push(GrepMatch {
+                            path: path.clone(),
+                            line_number: idx + 1,
+                            line: line.to_string(),
+                        });
+                    }
+                }
+            }
+            Ok(matches)
         }
         async fn create_directory(&self, sid: SessionId, path: &str) -> Result<FileInfo> {
             Ok(FileInfo {
@@ -460,12 +703,13 @@ mod tests {
     }
 
     #[test]
-    fn display_is_the_workspace_view() {
+    fn display_uses_the_primary_backends_identity() {
         let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
         let fs = MountFs::new(backend);
         assert_eq!(fs.display_root(), "/workspace");
         assert_eq!(fs.display_path("/src/lib.rs"), "/workspace/src/lib.rs");
         assert_eq!(fs.display_path("/"), "/workspace");
+        assert_eq!(fs.resolve_path("src/lib.rs"), "/workspace/src/lib.rs");
     }
 
     #[tokio::test]
@@ -484,5 +728,129 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(from_volume.content.as_deref(), Some("1,2,3"));
+    }
+
+    #[tokio::test]
+    async fn additional_mount_outputs_use_virtual_paths() {
+        let workspace: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        let volume: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        let fs = MountFs::new(workspace).with_mount("/workspace/roots/backend", volume, "/");
+
+        let written = fs
+            .write_file(
+                sid(),
+                "/workspace/roots/backend/Cargo.toml",
+                "name = \"backend\"",
+                "text",
+            )
+            .await
+            .unwrap();
+        assert_eq!(written.path, "/workspace/roots/backend/Cargo.toml");
+
+        let stat = fs
+            .stat_file(sid(), "/workspace/roots/backend/Cargo.toml")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(stat.path, "/workspace/roots/backend/Cargo.toml");
+        assert_eq!(
+            fs.display_path(&stat.path),
+            "/workspace/roots/backend/Cargo.toml"
+        );
+        assert_eq!(
+            fs.resolve_path("/workspace/roots/backend/Cargo.toml"),
+            "/workspace/roots/backend/Cargo.toml"
+        );
+    }
+
+    #[tokio::test]
+    async fn grep_without_path_searches_all_mounts() {
+        let workspace: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        let volume: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        let fs = MountFs::new(workspace).with_mount("/workspace/roots/backend", volume, "/");
+
+        fs.write_file(sid(), "/workspace/README.md", "needle primary", "text")
+            .await
+            .unwrap();
+        fs.write_file(
+            sid(),
+            "/workspace/roots/backend/Cargo.toml",
+            "needle backend",
+            "text",
+        )
+        .await
+        .unwrap();
+
+        let matches = fs.grep_files(sid(), "needle", None).await.unwrap();
+        let paths: Vec<_> = matches.into_iter().map(|m| m.path).collect();
+        assert_eq!(
+            paths,
+            vec![
+                "/README.md".to_string(),
+                "/workspace/roots/backend/Cargo.toml".to_string()
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn grep_resolves_workspace_glob_to_backend_namespace() {
+        let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        let fs = MountFs::new(backend);
+        fs.write_file(sid(), "/workspace/src/lib.rs", "needle", "text")
+            .await
+            .unwrap();
+        fs.write_file(sid(), "/workspace/docs/readme.md", "needle", "text")
+            .await
+            .unwrap();
+
+        let matches = fs
+            .grep_files(sid(), "needle", Some("/workspace/src/**/*.rs"))
+            .await
+            .unwrap();
+
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].path, "/src/lib.rs");
+    }
+
+    #[tokio::test]
+    async fn grep_glob_searches_every_matching_mount() {
+        let workspace: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        let volume: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        let fs = MountFs::new(workspace).with_mount("/workspace/roots/backend", volume, "/");
+        fs.write_file(sid(), "/workspace/Cargo.toml", "needle", "text")
+            .await
+            .unwrap();
+        fs.write_file(
+            sid(),
+            "/workspace/roots/backend/Cargo.toml",
+            "needle",
+            "text",
+        )
+        .await
+        .unwrap();
+
+        let paths: Vec<_> = fs
+            .grep_files(sid(), "needle", Some("**/*.toml"))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|hit| hit.path)
+            .collect();
+        assert_eq!(
+            paths,
+            vec![
+                "/Cargo.toml".to_string(),
+                "/workspace/roots/backend/Cargo.toml".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn mount_fs_identifies_as_resolver() {
+        let workspace: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        let fs = MountFs::wrap(workspace);
+        assert!(fs.is_mount_resolver());
+        let again = MountFs::wrap_if_needed(fs.clone());
+        assert!(Arc::ptr_eq(&fs, &again));
     }
 }

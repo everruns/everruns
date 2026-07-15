@@ -406,6 +406,7 @@ impl InMemoryAgenticLoopBuilder {
             description: None,
             system_prompt: self.system_prompt,
             default_model_id: None,
+            harness_id,
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -442,6 +443,7 @@ impl InMemoryAgenticLoopBuilder {
             owner: None,
             effective_owner: None,
             title: Some("In-Memory Session".to_string()),
+            goal: None,
             locale: None,
             preview: None,
             output_preview: None,
@@ -544,9 +546,9 @@ impl InMemoryAgenticLoopBuilder {
         );
         let mut act_atom = ActAtom::new(tool_registry.clone(), event_emitter.clone())
             .with_tool_registry(Arc::new(tool_registry.clone()));
-        if let Some(handle) = self.reasoning_effort_handle {
+        if let Some(handle) = &self.reasoning_effort_handle {
             reason_atom = reason_atom.with_reasoning_effort_handle(handle.clone());
-            act_atom = act_atom.with_reasoning_effort_handle(handle);
+            act_atom = act_atom.with_reasoning_effort_handle(handle.clone());
         }
 
         Ok(InMemoryAgenticLoop {
@@ -564,6 +566,7 @@ impl InMemoryAgenticLoopBuilder {
             reason_atom: Arc::new(reason_atom),
             act_atom: Arc::new(act_atom),
             max_iterations: self.max_iterations,
+            reasoning_effort_handle: self.reasoning_effort_handle,
         })
     }
 }
@@ -619,6 +622,7 @@ pub struct InMemoryAgenticLoop {
     reason_atom: Arc<ReasonAtom>,
     act_atom: Arc<ActAtom<ToolRegistry, BridgingEventEmitter>>,
     max_iterations: usize,
+    reasoning_effort_handle: Option<crate::traits::ReasoningEffortHandle>,
 }
 
 impl InMemoryAgenticLoop {
@@ -670,6 +674,13 @@ impl InMemoryAgenticLoop {
     /// let result = runner.run_turn(input).await?;
     /// ```
     pub async fn run_turn(&self, input: impl Into<InputMessage>) -> Result<TurnResult> {
+        // The live effort override is turn-scoped: tools may set it for later
+        // LLM steps in this turn, but stale values must not override the next
+        // turn's message controls.
+        if let Some(handle) = &self.reasoning_effort_handle {
+            handle.set(None);
+        }
+
         // Add user message
         let message = self
             .message_retriever

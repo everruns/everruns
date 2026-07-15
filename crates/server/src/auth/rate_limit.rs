@@ -41,6 +41,9 @@ enum RateLimitBackend {
         login: Arc<KeyedLimiter>,
         register: Arc<KeyedLimiter>,
         refresh: Arc<KeyedLimiter>,
+        account_login: Arc<StringKeyedLimiter>,
+        email_send_minute: Arc<StringKeyedLimiter>,
+        email_send_daily: Arc<StringKeyedLimiter>,
     },
     /// Distributed rate limiting (Valkey sliding-window counter)
     Valkey(ValkeyClient),
@@ -58,6 +61,30 @@ const REGISTER_LIMIT: u32 = 5;
 const REFRESH_LIMIT: u32 = 30;
 const WINDOW_SECS: u64 = 60;
 
+/// Per-account login attempts across ALL source IPs (TM-AUTH-001): the per-IP
+/// limiter alone leaves one account open to distributed credential stuffing.
+/// 20 attempts / 15 min is far above any human retry pattern.
+const ACCOUNT_LOGIN_LIMIT: u32 = 20;
+const ACCOUNT_LOGIN_WINDOW_SECS: u64 = 900;
+
+/// Per-address outbound account email (verification / password reset):
+/// 1 per minute with a small daily budget — email-bombing protection on top
+/// of the per-IP register limiter. Callers stay enumeration-safe by returning
+/// the generic success response without sending when over budget.
+const EMAIL_SEND_MINUTE_LIMIT: u32 = 1;
+const EMAIL_SEND_DAILY_LIMIT: u32 = 8;
+const DAY_SECS: u64 = 86_400;
+
+fn string_keyed_limiter(limit: u32, window_secs: u64) -> Arc<StringKeyedLimiter> {
+    // Token bucket shaped to "limit per window": burst of `limit`, refilling
+    // one permit per window/limit seconds.
+    let period = std::time::Duration::from_secs((window_secs / u64::from(limit.max(1))).max(1));
+    let quota = Quota::with_period(period)
+        .expect("non-zero period")
+        .allow_burst(NonZeroU32::new(limit.max(1)).unwrap());
+    Arc::new(RateLimiter::keyed(quota))
+}
+
 impl AuthRateLimiter {
     /// Create an in-memory rate limiter (per-instance, no external deps).
     pub fn new() -> Self {
@@ -72,6 +99,9 @@ impl AuthRateLimiter {
                 refresh: Arc::new(RateLimiter::keyed(Quota::per_minute(
                     NonZeroU32::new(REFRESH_LIMIT).unwrap(),
                 ))),
+                account_login: string_keyed_limiter(ACCOUNT_LOGIN_LIMIT, ACCOUNT_LOGIN_WINDOW_SECS),
+                email_send_minute: string_keyed_limiter(EMAIL_SEND_MINUTE_LIMIT, WINDOW_SECS),
+                email_send_daily: string_keyed_limiter(EMAIL_SEND_DAILY_LIMIT, DAY_SECS),
             },
         }
     }
@@ -98,12 +128,96 @@ impl AuthRateLimiter {
         self.check("refresh", REFRESH_LIMIT, ip).await
     }
 
+    /// Per-account login throttle across all IPs. `account_key` should be the
+    /// submitted email, trimmed and lowercased (works for unknown emails too —
+    /// no DB read required). Fail-closed on backend errors like the other
+    /// auth limiters.
+    pub async fn check_account_login(&self, account_key: &str) -> Result<(), RateLimitError> {
+        match &self.backend {
+            RateLimitBackend::InMemory { account_login, .. } => {
+                match account_login.check_key(&account_key.to_string()) {
+                    Ok(_) => Ok(()),
+                    Err(_) => {
+                        tracing::warn!("Per-account login rate limit exceeded (in-memory)");
+                        Err(RateLimitError)
+                    }
+                }
+            }
+            RateLimitBackend::Valkey(client) => {
+                let key = format!("rl:auth:account_login:{account_key}");
+                match client
+                    .check_rate_limit(&key, ACCOUNT_LOGIN_LIMIT, ACCOUNT_LOGIN_WINDOW_SECS)
+                    .await
+                {
+                    Ok(_) => Ok(()),
+                    Err(RateLimitCheckError::Exceeded) => {
+                        tracing::warn!("Per-account login rate limit exceeded (valkey)");
+                        Err(RateLimitError)
+                    }
+                    Err(RateLimitCheckError::BackendError) => {
+                        tracing::warn!(
+                            "Per-account login limit Valkey error — denying (fail-closed)"
+                        );
+                        Err(RateLimitError)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Per-address budget for verification / password-reset emails
+    /// (1/minute + a small daily cap). `email_key` should be trimmed and
+    /// lowercased. Callers return the normal enumeration-safe success
+    /// response without sending when this is exceeded.
+    pub async fn check_account_email_send(&self, email_key: &str) -> Result<(), RateLimitError> {
+        match &self.backend {
+            RateLimitBackend::InMemory {
+                email_send_minute,
+                email_send_daily,
+                ..
+            } => {
+                let key = email_key.to_string();
+                if email_send_minute.check_key(&key).is_err()
+                    || email_send_daily.check_key(&key).is_err()
+                {
+                    tracing::warn!("Per-address email-send budget exceeded (in-memory)");
+                    return Err(RateLimitError);
+                }
+                Ok(())
+            }
+            RateLimitBackend::Valkey(client) => {
+                let minute_key = format!("rl:auth:email_send_min:{email_key}");
+                let daily_key = format!("rl:auth:email_send_day:{email_key}");
+                for (key, limit, window) in [
+                    (&minute_key, EMAIL_SEND_MINUTE_LIMIT, WINDOW_SECS),
+                    (&daily_key, EMAIL_SEND_DAILY_LIMIT, DAY_SECS),
+                ] {
+                    match client.check_rate_limit(key, limit, window).await {
+                        Ok(_) => {}
+                        Err(RateLimitCheckError::Exceeded) => {
+                            tracing::warn!("Per-address email-send budget exceeded (valkey)");
+                            return Err(RateLimitError);
+                        }
+                        Err(RateLimitCheckError::BackendError) => {
+                            tracing::warn!(
+                                "Email-send budget Valkey error — denying (fail-closed)"
+                            );
+                            return Err(RateLimitError);
+                        }
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+
     async fn check(&self, endpoint: &str, limit: u32, ip: IpAddr) -> Result<(), RateLimitError> {
         match &self.backend {
             RateLimitBackend::InMemory {
                 login,
                 register,
                 refresh,
+                ..
             } => {
                 let limiter = match endpoint {
                     "login" => login,
@@ -156,16 +270,44 @@ impl From<RateLimitError> for Response {
     }
 }
 
-fn extract_forwarded_ip_from_headers(headers: &HeaderMap) -> Option<IpAddr> {
-    if let Some(forwarded) = headers.get("x-forwarded-for")
-        && let Ok(val) = forwarded.to_str()
-        && let Some(first) = val.split(',').next()
-        && let Ok(ip) = first.trim().parse::<IpAddr>()
-    {
-        return Some(ip);
-    }
+/// Number of trusted reverse-proxy hops directly in front of the server.
+///
+/// Each trusted proxy *appends* the peer IP it observed to the RIGHT of
+/// `X-Forwarded-For`, so the real client IP is the entry `hops`-from-the-right.
+/// Everything further left is client-supplied and MUST NOT be trusted. Default
+/// is 1 (a single reverse proxy — the documented deployment topology, e.g.
+/// Caddy). Operators who stack additional proxies (a CDN/LB in front of the
+/// reverse proxy) set `TRUSTED_PROXY_HOPS` to that count.
+fn trusted_proxy_hops() -> usize {
+    static HOPS: std::sync::LazyLock<usize> = std::sync::LazyLock::new(|| {
+        everruns_core::config::env_or("TRUSTED_PROXY_HOPS", 1usize).max(1)
+    });
+    *HOPS
+}
 
-    None
+/// Extract the real client IP from `X-Forwarded-For`, honoring `trusted_hops`
+/// trusted reverse-proxy hops.
+///
+/// TM-AUTH-001 / TM-DOS: a standard reverse proxy *appends* the peer IP it saw
+/// to the right of any client-supplied `X-Forwarded-For`. Taking the leftmost
+/// entry therefore returns a fully attacker-controlled value, letting one client
+/// mint unlimited distinct rate-limit keys. The real client IP is the entry
+/// `hops`-from-the-right; entries further left are never used. Returns `None`
+/// when the header is absent, empty, unparseable, or shorter than the configured
+/// hop count (a misconfiguration / spoofing attempt — the caller then falls back
+/// to the trusted peer IP).
+fn extract_forwarded_ip_from_headers(headers: &HeaderMap, trusted_hops: usize) -> Option<IpAddr> {
+    let forwarded = headers.get("x-forwarded-for")?.to_str().ok()?;
+    let entries: Vec<&str> = forwarded
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect();
+    let hops = trusted_hops.max(1);
+    // The rightmost `hops` entries were appended by trusted proxies; the client
+    // IP is the entry immediately to their left.
+    let idx = entries.len().checked_sub(hops)?;
+    entries.get(idx)?.parse::<IpAddr>().ok()
 }
 
 fn extract_real_ip_from_headers(headers: &HeaderMap) -> Option<IpAddr> {
@@ -210,7 +352,7 @@ pub fn extract_client_ip_from_parts(peer: Option<SocketAddr>, headers: &HeaderMa
         let peer_ip = peer.ip();
 
         if is_trusted_proxy_ip(peer_ip) {
-            if let Some(ip) = extract_forwarded_ip_from_headers(headers) {
+            if let Some(ip) = extract_forwarded_ip_from_headers(headers, trusted_proxy_hops()) {
                 return ip;
             }
             if let Some(ip) = extract_real_ip_from_headers(headers) {
@@ -254,7 +396,7 @@ enum ApiBackend {
 
 impl ApiRateLimiter {
     fn api_rpm() -> u32 {
-        let rpm: u32 = everruns_config::env_or("RATE_LIMIT_API_REQUESTS_PER_MINUTE", 1200);
+        let rpm: u32 = everruns_core::config::env_or("RATE_LIMIT_API_REQUESTS_PER_MINUTE", 1200);
         rpm.max(1)
     }
 
@@ -399,19 +541,19 @@ impl OrgRateLimiter {
     }
 
     pub fn from_env_with_valkey(client: Option<ValkeyClient>) -> Self {
-        let session_rpm: u32 = everruns_config::env_or(
+        let session_rpm: u32 = everruns_core::config::env_or(
             "RATE_LIMIT_ORG_SESSION_CREATE_PER_MINUTE",
             DEFAULT_SESSION_CREATE_RPM,
         );
-        let schedule_rpm: u32 = everruns_config::env_or(
+        let schedule_rpm: u32 = everruns_core::config::env_or(
             "RATE_LIMIT_ORG_SCHEDULE_CREATE_PER_MINUTE",
             DEFAULT_SCHEDULE_CREATE_RPM,
         );
-        let org_rph: u32 = everruns_config::env_or(
+        let org_rph: u32 = everruns_core::config::env_or(
             "RATE_LIMIT_USER_ORG_CREATE_PER_HOUR",
             DEFAULT_ORG_CREATE_RPH,
         );
-        let tool_rpm: u32 = everruns_config::env_or(
+        let tool_rpm: u32 = everruns_core::config::env_or(
             "RATE_LIMIT_ORG_TOOL_CALLS_PER_MINUTE",
             DEFAULT_ORG_TOOL_CALLS_RPM,
         );
@@ -583,6 +725,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn account_login_limit_blocks_across_ips() {
+        let limiter = AuthRateLimiter::new();
+        // The per-account limiter is IP-independent: exhaust it for one
+        // account and it stays blocked regardless of source, while another
+        // account is unaffected.
+        for _ in 0..ACCOUNT_LOGIN_LIMIT {
+            let _ = limiter.check_account_login("victim@example.com").await;
+        }
+        assert!(
+            limiter
+                .check_account_login("victim@example.com")
+                .await
+                .is_err()
+        );
+        assert!(
+            limiter
+                .check_account_login("other@example.com")
+                .await
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn email_send_budget_one_per_minute_per_address() {
+        let limiter = AuthRateLimiter::new();
+        assert!(
+            limiter
+                .check_account_email_send("a@example.com")
+                .await
+                .is_ok()
+        );
+        assert!(
+            limiter
+                .check_account_email_send("a@example.com")
+                .await
+                .is_err(),
+            "second send within a minute must be over budget"
+        );
+        assert!(
+            limiter
+                .check_account_email_send("b@example.com")
+                .await
+                .is_ok(),
+            "budget is per address"
+        );
+    }
+
+    #[tokio::test]
     async fn test_different_ips_have_separate_limits() {
         let limiter = AuthRateLimiter::new();
         let ip1 = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 3));
@@ -596,6 +786,9 @@ mod tests {
 
     #[test]
     fn test_extract_ip_from_x_forwarded_for_from_trusted_proxy() {
+        // With one trusted proxy hop (default), the client IP is the RIGHTMOST
+        // X-Forwarded-For entry — the one the trusted proxy appended. The left
+        // entry is client-supplied and must not be used.
         let mut req = Request::builder()
             .header("x-forwarded-for", "203.0.113.50, 70.41.3.18")
             .body(Body::empty())
@@ -606,7 +799,54 @@ mod tests {
                 443,
             ))));
         let ip = extract_client_ip(&req);
-        assert_eq!(ip, IpAddr::V4(Ipv4Addr::new(203, 0, 113, 50)));
+        assert_eq!(ip, IpAddr::V4(Ipv4Addr::new(70, 41, 3, 18)));
+    }
+
+    // TM-AUTH-001 / TM-DOS regression: a spoofed leftmost X-Forwarded-For entry
+    // must not change the derived client IP, so an attacker rotating the left
+    // value cannot mint distinct rate-limit keys.
+    #[test]
+    fn test_spoofed_leftmost_xff_does_not_change_client_ip() {
+        let client_ip = |xff: &str| {
+            let mut req = Request::builder()
+                .header("x-forwarded-for", xff)
+                .body(Body::empty())
+                .unwrap();
+            req.extensions_mut()
+                .insert(ConnectInfo(std::net::SocketAddr::from((
+                    [127, 0, 0, 1],
+                    443,
+                ))));
+            extract_client_ip(&req)
+        };
+        // The real (rightmost, proxy-appended) IP is identical; only the spoofed
+        // leftmost value differs. Both must resolve to the same real client IP.
+        let real = IpAddr::V4(Ipv4Addr::new(70, 41, 3, 18));
+        assert_eq!(client_ip("1.1.1.1, 70.41.3.18"), real);
+        assert_eq!(client_ip("2.2.2.2, 70.41.3.18"), real);
+        assert_eq!(client_ip("9.9.9.9, 8.8.8.8, 70.41.3.18"), real);
+    }
+
+    #[test]
+    fn test_extract_forwarded_ip_selects_hops_from_right() {
+        use axum::http::HeaderValue;
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "x-forwarded-for",
+            HeaderValue::from_static("1.1.1.1, 2.2.2.2, 3.3.3.3"),
+        );
+        // One hop: rightmost entry.
+        assert_eq!(
+            extract_forwarded_ip_from_headers(&headers, 1),
+            Some(IpAddr::V4(Ipv4Addr::new(3, 3, 3, 3)))
+        );
+        // Two hops: second from the right.
+        assert_eq!(
+            extract_forwarded_ip_from_headers(&headers, 2),
+            Some(IpAddr::V4(Ipv4Addr::new(2, 2, 2, 2)))
+        );
+        // Chain shorter than the hop count is not trusted.
+        assert_eq!(extract_forwarded_ip_from_headers(&headers, 5), None);
     }
 
     #[test]

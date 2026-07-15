@@ -31,9 +31,12 @@ use everruns_core::channel::{
 };
 use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
 use everruns_core::validate_safe_url;
-use everruns_core::{App, AppStatus, Caller, SessionStrategy, SlackChannelConfig, SlackReplyMode};
+use everruns_core::{
+    App, AppStatus, Caller, SessionParticipantKind, SessionParticipantRole, SessionStrategy,
+    SlackChannelConfig, SlackReplyMode,
+};
 use everruns_worker::AgentRunner;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use moka::sync::Cache;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
@@ -46,10 +49,10 @@ use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
 use crate::middleware::RequestId;
-use crate::services::EventService;
+use crate::services::{EventService, PrincipalService};
 use crate::slack_delivery::SlackDeliveryDispatcher;
 use crate::storage::StorageBackend;
-use crate::storage::models::UpdateSession;
+use crate::storage::models::{CreateSessionParticipantRow, SessionParticipantRow, UpdateSession};
 
 use super::common::ErrorResponse;
 
@@ -365,13 +368,20 @@ async fn handle_slack_event(
     })?
     .ok_or_else(|| ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))?;
 
-    // 2. Verify app is published and has a Slack channel
+    // 2. Verify app is published and has a Slack channel.
+    //
+    // THREAT[TM-TENANT-002]: An unauthenticated caller must not be able to tell
+    // "app does not exist" apart from "app exists but is not published / has no
+    // Slack channel". Every such case collapses to the same generic 404
+    // (matching the FCP channel in `api/fcp.rs`); the real reason is logged
+    // server-side only.
     if app.status != AppStatus::Published {
-        return Err(ErrorResponse::new("App is not published").into_response(StatusCode::FORBIDDEN));
+        tracing::debug!(app_id = %app_id, status = ?app.status, "Slack webhook rejected: app not published");
+        return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
     }
     let slack_channel = app.slack_channel().ok_or_else(|| {
-        ErrorResponse::new("App has no enabled Slack channel")
-            .into_response(StatusCode::BAD_REQUEST)
+        tracing::debug!(app_id = %app_id, "Slack webhook rejected: no enabled Slack channel");
+        ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND)
     })?;
 
     // 3. Parse Slack channel config
@@ -642,7 +652,9 @@ async fn process_slack_message(
                 harness_id: Some(app.harness_id),
                 harness_name: None,
                 agent_id: app.agent_id,
+                agent_name: None,
                 title: Some(title),
+                goal: None,
                 locale: None,
                 tags: desired_tags.clone(),
                 agent_identity_id: app.agent_identity_id,
@@ -657,6 +669,9 @@ async fn process_slack_message(
                 max_iterations: None,
                 parallel_tool_calls: None,
                 parent_session_id: None,
+                forked_from_session_id: None,
+                budget_root_session_id: None,
+                seed: everruns_core::SessionSeedMode::Fresh,
             };
             let internal_caller = Caller::internal(org_id);
             let s = state
@@ -695,6 +710,11 @@ async fn process_slack_message(
             );
         }
     }
+
+    let speaker_participant = match external_actor.as_ref() {
+        Some(actor) => Some(ensure_slack_user_participant(state, org_id, session.id, actor).await?),
+        None => None,
+    };
 
     // Inject thread context: when joining an existing thread mid-conversation,
     // fetch prior messages from Slack and inject them as context so the agent
@@ -759,11 +779,29 @@ async fn process_slack_message(
             role: MessageRole::User,
             content,
         },
+        addressed_participant_id: None,
         controls: None,
-        metadata: Some(slack_message_metadata(app, event)),
+        metadata: Some(slack_message_metadata(
+            app,
+            event,
+            speaker_participant.as_ref(),
+        )),
         tags: None,
         external_actor,
     };
+    let mut event_metadata = execution_metadata::app_message_metadata(
+        app.public_id,
+        app.owner_principal_id,
+        app.agent_identity_id,
+    );
+    if let Some(participant) = &speaker_participant
+        && let Some(map) = event_metadata.as_object_mut()
+    {
+        map.insert(
+            "participant_id".to_string(),
+            serde_json::Value::String(participant.id.to_string()),
+        );
+    }
 
     let message = state
         .message_service
@@ -774,11 +812,7 @@ async fn process_slack_message(
                 harness_id: app.harness_id.uuid(),
                 agent_id: app.agent_id.map(|agent_id| agent_id.uuid()),
                 session_id: session.id.uuid(),
-                event_metadata: Some(execution_metadata::app_message_metadata(
-                    app.public_id,
-                    app.owner_principal_id,
-                    app.agent_identity_id,
-                )),
+                event_metadata: Some(event_metadata),
                 request_id,
             },
             create_msg,
@@ -851,8 +885,36 @@ async fn process_slack_message(
     Ok(())
 }
 
-fn slack_message_metadata(app: &App, event: &SlackEvent) -> HashMap<String, serde_json::Value> {
-    [
+async fn ensure_slack_user_participant(
+    state: &SlackState,
+    org_id: i64,
+    session_id: everruns_core::typed_id::SessionId,
+    actor: &everruns_core::ExternalActor,
+) -> anyhow::Result<SessionParticipantRow> {
+    let principal = PrincipalService::new(state.db.clone())
+        .ensure_external_actor_principal(org_id, actor)
+        .await?;
+    state
+        .db
+        .ensure_active_user_session_participant(CreateSessionParticipantRow {
+            org_id,
+            session_id,
+            kind: SessionParticipantKind::User,
+            agent_id: None,
+            agent_version_id: None,
+            principal_id: principal.id,
+            role: SessionParticipantRole::Member,
+            joined_at: None,
+        })
+        .await
+}
+
+fn slack_message_metadata(
+    app: &App,
+    event: &SlackEvent,
+    participant: Option<&SessionParticipantRow>,
+) -> HashMap<String, serde_json::Value> {
+    let mut metadata: HashMap<String, serde_json::Value> = [
         (
             "_app_id".to_string(),
             serde_json::Value::String(app.public_id.to_string()),
@@ -867,7 +929,14 @@ fn slack_message_metadata(app: &App, event: &SlackEvent) -> HashMap<String, serd
         ),
     ]
     .into_iter()
-    .collect()
+    .collect();
+    if let Some(participant) = participant {
+        metadata.insert(
+            "participant_id".to_string(),
+            serde_json::Value::String(participant.id.to_string()),
+        );
+    }
+    metadata
 }
 
 /// Supported image MIME types for Slack file attachments.
@@ -1782,21 +1851,7 @@ mod tests {
         assert!(event.bot_id.is_some());
     }
 
-    #[test]
-    fn test_slack_channel_config_deserialization() {
-        let json = r#"{
-            "signing_secret": "abc123",
-            "bot_token": "xoxb-token",
-            "channel_id": "C0123456789",
-            "team_id": "T0123456789",
-            "session_strategy": "per_thread"
-        }"#;
-        let config: SlackChannelConfig = serde_json::from_str(json).unwrap();
-        assert_eq!(config.signing_secret, "abc123");
-        assert_eq!(config.bot_token, "xoxb-token");
-        assert_eq!(config.channel_id.unwrap(), "C0123456789");
-        assert_eq!(config.session_strategy, SessionStrategy::PerThread);
-    }
+    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     #[test]
     fn test_slack_channel_config_defaults() {
@@ -2007,23 +2062,7 @@ mod tests {
         assert_eq!(meta.get("team_id").unwrap(), "T456");
     }
 
-    #[test]
-    fn test_external_actor_serialization_roundtrip() {
-        let actor = everruns_core::ExternalActor {
-            actor_id: "U123".to_string(),
-            actor_name: Some("Alice".to_string()),
-            source: "slack".to_string(),
-            metadata: None,
-        };
-
-        let json = serde_json::to_value(&actor).unwrap();
-        assert_eq!(json["actor_id"], "U123");
-        assert_eq!(json["actor_name"], "Alice");
-        assert_eq!(json["source"], "slack");
-
-        let deserialized: everruns_core::ExternalActor = serde_json::from_value(json).unwrap();
-        assert_eq!(deserialized, actor);
-    }
+    // Trivial derive-only serde round-trips removed; covered by the derive + handler tests.
 
     // Test helpers
     fn test_app() -> App {
@@ -2108,7 +2147,7 @@ mod tests {
         let app = test_app();
         let event = test_event("C123", Some("1234.5678"), None);
 
-        let metadata = slack_message_metadata(&app, &event);
+        let metadata = slack_message_metadata(&app, &event, None);
 
         assert_eq!(
             metadata.get("_app_id"),
@@ -2443,6 +2482,7 @@ mod tests {
             blueprint_config: None,
             network_access: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         };
         let session = db.create_session(row).await.unwrap();
         session.id

@@ -19,11 +19,12 @@
 use std::sync::Arc;
 
 use everruns_core::events::{
-    EventContext, EventRequest, OutputMessageCompletedData, SessionIdledData, TurnSealedData,
+    EventContext, EventData, EventRequest, OutputMessageCompletedData, SessionIdledData,
+    TurnSealedData,
 };
 use everruns_core::traits::EventEmitter;
 use everruns_core::typed_id::{MessageId, SessionId, TurnId};
-use everruns_core::{Caller, Message, UserFacingError, user_facing_error_codes};
+use everruns_core::{Caller, Message, TURN_STARTED, UserFacingError, user_facing_error_codes};
 use everruns_durable::SealedTaskInfo;
 
 use crate::domains::sessions::SessionService;
@@ -33,7 +34,7 @@ use crate::services::EventService;
 struct SealedSessionContext {
     org_id: i64,
     session_id: SessionId,
-    turn_id: TurnId,
+    turn_id: Option<TurnId>,
     input_message_id: MessageId,
 }
 
@@ -66,11 +67,10 @@ fn extract_context(input: &serde_json::Value) -> Option<SealedSessionContext> {
 
     let session_id = session_id_v.and_then(parse_id::<SessionId>)?;
     let input_message_id = input_message_id_v.and_then(parse_id::<MessageId>)?;
-    // A missing/unparseable turn_id means we cannot correlate the user-facing
-    // events to the real turn. Fabricating a fresh TurnId would emit a
-    // turn.sealed whose turn_id matches nothing, so bail out instead. The task
-    // is still sealed in the DLQ regardless of whether we surface the event.
-    let turn_id = turn_id_v.and_then(parse_id::<TurnId>)?;
+    // Initial process_input tasks can be sealed before their worker persists a
+    // generated turn_id. Keep session-level context so the seal can still
+    // release the active session; only turn-scoped events require a real turn.
+    let turn_id = turn_id_v.and_then(parse_id::<TurnId>);
 
     Some(SealedSessionContext {
         org_id,
@@ -82,6 +82,39 @@ fn extract_context(input: &serde_json::Value) -> Option<SealedSessionContext> {
 
 fn parse_id<T: std::str::FromStr>(v: &serde_json::Value) -> Option<T> {
     v.as_str().and_then(|s| s.parse::<T>().ok())
+}
+
+async fn recover_turn_id_from_events(
+    event_service: &EventService,
+    ctx: &SealedSessionContext,
+    sealed: &SealedTaskInfo,
+) -> Option<TurnId> {
+    let filter_types = [TURN_STARTED.to_string()];
+    let events = match event_service
+        .list(
+            ctx.session_id.uuid(),
+            None,
+            None,
+            &filter_types,
+            &[],
+            None,
+            Some(100),
+        )
+        .await
+    {
+        Ok(events) => events,
+        Err(e) => {
+            tracing::warn!(task_id = %sealed.task_id, error = %e, "Failed to recover turn_id from turn.started events");
+            return None;
+        }
+    };
+
+    events.into_iter().rev().find_map(|event| match event.data {
+        EventData::TurnStarted(data) if data.input_message_id == ctx.input_message_id => {
+            Some(data.turn_id)
+        }
+        _ => None,
+    })
 }
 
 /// Emit the user-facing seal events for one sealed task and idle the session.
@@ -98,71 +131,87 @@ pub async fn handle_sealed_task(
             task_id = %sealed.task_id,
             workflow_id = ?sealed.workflow_id,
             activity_type = %sealed.activity_type,
-            "Cannot surface sealed turn: missing/unparseable session context (e.g. turn_id) in task input"
+            "Cannot surface sealed turn: missing/unparseable session context in task input"
         );
         return;
     };
 
-    let context = EventContext::turn(ctx.turn_id, ctx.input_message_id);
+    let turn_id = match ctx.turn_id {
+        Some(turn_id) => Some(turn_id),
+        None => recover_turn_id_from_events(event_service, &ctx, sealed).await,
+    };
 
-    // 1) turn.sealed — the canonical, distinct terminal event.
-    let detail = format!(
-        "No forward progress across {} consecutive recoveries; sealed to prevent a crash-loop.",
-        sealed.no_progress_count
-    );
-    if let Err(e) = event_service
-        .emit(EventRequest::new(
-            ctx.session_id,
-            context.clone(),
-            TurnSealedData {
-                turn_id: ctx.turn_id,
-                reason: sealed.reason.clone(),
-                detail: Some(detail.clone()),
-                iterations: None,
-                usage: None,
-            },
-        ))
-        .await
-    {
-        tracing::warn!(task_id = %sealed.task_id, error = %e, "Failed to emit turn.sealed event");
+    if let Some(turn_id) = turn_id {
+        let context = EventContext::turn(turn_id, ctx.input_message_id);
+
+        // 1) turn.sealed — the canonical, distinct terminal event.
+        let detail = format!(
+            "No forward progress across {} consecutive recoveries; sealed to prevent a crash-loop.",
+            sealed.no_progress_count
+        );
+        if let Err(e) = event_service
+            .emit(EventRequest::new(
+                ctx.session_id,
+                context.clone(),
+                TurnSealedData {
+                    turn_id,
+                    reason: sealed.reason.clone(),
+                    detail: Some(detail.clone()),
+                    iterations: None,
+                    usage: None,
+                },
+            ))
+            .await
+        {
+            tracing::warn!(task_id = %sealed.task_id, error = %e, "Failed to emit turn.sealed event");
+        }
+
+        // 2) User-facing assistant message so the conversation shows the stop.
+        let user_error = UserFacingError::new(user_facing_error_codes::PROCESSING_ERROR);
+        let mut message = Message::assistant(
+            "This turn was stopped because it repeatedly failed without making progress.",
+        );
+        let mut metadata = std::collections::HashMap::new();
+        user_error.apply_to_message_metadata(&mut metadata);
+        message.metadata = Some(metadata);
+        if let Err(e) = event_service
+            .emit(EventRequest::new(
+                ctx.session_id,
+                context.clone(),
+                OutputMessageCompletedData::new(message).with_user_facing_error(&user_error),
+            ))
+            .await
+        {
+            tracing::warn!(task_id = %sealed.task_id, error = %e, "Failed to emit sealed message");
+        }
+
+        // 3) session.idled so the UI unblocks.
+        if let Err(e) = event_service
+            .emit(EventRequest::new(
+                ctx.session_id,
+                context,
+                SessionIdledData {
+                    turn_id,
+                    iterations: None,
+                    usage: None,
+                },
+            ))
+            .await
+        {
+            tracing::warn!(task_id = %sealed.task_id, error = %e, "Failed to emit session.idled after seal");
+        }
+    } else {
+        tracing::warn!(
+            task_id = %sealed.task_id,
+            workflow_id = ?sealed.workflow_id,
+            activity_type = %sealed.activity_type,
+            "Sealed task has no recoverable turn_id; skipping turn-scoped events but idling session"
+        );
     }
 
-    // 2) User-facing assistant message so the conversation shows the stop.
-    let user_error = UserFacingError::new(user_facing_error_codes::PROCESSING_ERROR);
-    let mut message = Message::assistant(
-        "This turn was stopped because it repeatedly failed without making progress.",
-    );
-    let mut metadata = std::collections::HashMap::new();
-    user_error.apply_to_message_metadata(&mut metadata);
-    message.metadata = Some(metadata);
-    if let Err(e) = event_service
-        .emit(EventRequest::new(
-            ctx.session_id,
-            context.clone(),
-            OutputMessageCompletedData::new(message).with_user_facing_error(&user_error),
-        ))
-        .await
-    {
-        tracing::warn!(task_id = %sealed.task_id, error = %e, "Failed to emit sealed message");
-    }
-
-    // 3) session.idled so the UI unblocks.
-    if let Err(e) = event_service
-        .emit(EventRequest::new(
-            ctx.session_id,
-            context,
-            SessionIdledData {
-                turn_id: ctx.turn_id,
-                iterations: None,
-                usage: None,
-            },
-        ))
-        .await
-    {
-        tracing::warn!(task_id = %sealed.task_id, error = %e, "Failed to emit session.idled after seal");
-    }
-
-    // 4) Set session status to idle.
+    // 4) Set session status to idle even when an initial process_input task was
+    // sealed before it persisted a turn_id. This is the availability-critical
+    // side effect that prevents the session from staying wedged active.
     let caller = Caller::internal(ctx.org_id);
     if let Err(e) = session_service
         .update_status(&caller, ctx.session_id.uuid(), "idle".to_string())
@@ -199,31 +248,42 @@ mod tests {
         let ctx = extract_context(&input).expect("should parse");
         assert_eq!(ctx.org_id, 7);
         assert_eq!(ctx.session_id, session_id);
-        assert_eq!(ctx.turn_id, turn_id);
+        assert_eq!(ctx.turn_id, Some(turn_id));
         assert_eq!(ctx.input_message_id, message_id);
     }
 
     #[test]
-    fn extract_context_returns_none_when_turn_id_missing() {
-        // A missing turn_id must NOT fabricate a synthetic TurnId; we cannot
-        // correlate the sealed turn, so we surface nothing (the task is still
-        // sealed in the DLQ regardless).
+    fn extract_context_preserves_session_when_turn_id_missing() {
+        let session_id = SessionId::new();
+        let message_id = MessageId::new();
         let input = serde_json::json!({
             "org_id": 7,
-            "session_id": SessionId::new().to_string(),
-            "input_message_id": MessageId::new().to_string(),
+            "session_id": session_id.to_string(),
+            "input_message_id": message_id.to_string(),
         });
-        assert!(extract_context(&input).is_none());
+
+        let ctx = extract_context(&input).expect("session context should parse");
+        assert_eq!(ctx.org_id, 7);
+        assert_eq!(ctx.session_id, session_id);
+        assert_eq!(ctx.turn_id, None);
+        assert_eq!(ctx.input_message_id, message_id);
     }
 
     #[test]
-    fn extract_context_returns_none_when_turn_id_unparseable() {
+    fn extract_context_preserves_session_when_turn_id_unparseable() {
+        let session_id = SessionId::new();
+        let message_id = MessageId::new();
         let input = serde_json::json!({
             "org_id": 7,
-            "session_id": SessionId::new().to_string(),
+            "session_id": session_id.to_string(),
             "turn_id": "not-a-valid-id",
-            "input_message_id": MessageId::new().to_string(),
+            "input_message_id": message_id.to_string(),
         });
-        assert!(extract_context(&input).is_none());
+
+        let ctx = extract_context(&input).expect("session context should parse");
+        assert_eq!(ctx.org_id, 7);
+        assert_eq!(ctx.session_id, session_id);
+        assert_eq!(ctx.turn_id, None);
+        assert_eq!(ctx.input_message_id, message_id);
     }
 }

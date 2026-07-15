@@ -1113,9 +1113,12 @@ mod tests {
         fn auth_config_response(&self) -> AuthConfigResponse {
             AuthConfigResponse {
                 mode: "full".to_string(),
+                login_origin: None,
                 password_auth_enabled: false,
                 signup_enabled: false,
                 oauth_providers: vec![],
+                signup_email_confirm: false,
+                captcha: None,
             }
         }
     }

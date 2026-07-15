@@ -9,6 +9,10 @@ import {
   listPersonalAccessTokens,
   createPersonalAccessToken,
   deletePersonalAccessToken,
+  forgotPassword,
+  resetPassword,
+  verifyEmail,
+  resendVerification,
 } from "@/lib/api/auth";
 import { updateProfile } from "@/lib/api/users";
 import { useOrg } from "@/providers/org-provider";
@@ -19,6 +23,10 @@ import type {
   RegisterRequest,
   CreatePersonalAccessTokenRequest,
   UpdateProfileRequest,
+  ForgotPasswordRequest,
+  ResetPasswordRequest,
+  VerifyEmailRequest,
+  ResendVerificationRequest,
 } from "@/lib/api/types";
 
 export const authKeys = authQueryKeys;
@@ -78,6 +86,52 @@ export function useRegister() {
       // Refetch user data after registration and wait for it to complete
       await queryClient.refetchQueries({ queryKey: authKeys.user() });
     },
+  });
+}
+
+/**
+ * Hook for the forgot-password mutation (enumeration-safe).
+ */
+export function useForgotPassword() {
+  return useMutation({
+    mutationFn: (request: ForgotPasswordRequest) => forgotPassword(request),
+  });
+}
+
+/**
+ * Hook for the reset-password mutation.
+ */
+export function useResetPassword() {
+  return useMutation({
+    mutationFn: (request: ResetPasswordRequest) => resetPassword(request),
+  });
+}
+
+/**
+ * Hook for the verify-email mutation.
+ */
+export function useVerifyEmail() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: VerifyEmailRequest) => verifyEmail(request),
+    onSuccess: async () => {
+      // EVE-716: verifying the email also signs the user in (the endpoint sets a
+      // valid session). Refetch the current-user query so post-verification
+      // navigation sees the freshly authenticated (zero-org) user and resumes
+      // onboarding, instead of being bounced to /login by the stale
+      // pre-verification unauthenticated cache.
+      await queryClient.refetchQueries({ queryKey: authKeys.user() });
+    },
+  });
+}
+
+/**
+ * Hook for the resend-verification mutation (enumeration-safe).
+ */
+export function useResendVerification() {
+  return useMutation({
+    mutationFn: (request: ResendVerificationRequest) => resendVerification(request),
   });
 }
 

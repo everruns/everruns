@@ -7,9 +7,12 @@
 // key, so concurrent spawns cannot race. The resource registry is unused for
 // runs (retired as part of the session-tasks dual-write cleanup).
 
+use super::delegation_result::{
+    normalize_result_schema, schema_validation_errors, write_task_result_value,
+};
 use super::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SESSION_TASKS_CAPABILITY_ID,
-    SystemPromptContext,
+    SpawnMode, SystemPromptContext,
 };
 use crate::network_access::NetworkAccessList;
 use crate::session_task::{
@@ -22,8 +25,8 @@ use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionStorageStore, ToolContext};
 use crate::{Result, validate_safe_url};
 use a2a::{
-    AgentCard, CancelTaskRequest, GetTaskRequest, Message, Part, Role, SendMessageConfiguration,
-    SendMessageRequest, SendMessageResponse, Task, TaskState,
+    AgentCard, CancelTaskRequest, GetTaskRequest, Message, Part, PartContent, Role,
+    SendMessageConfiguration, SendMessageRequest, SendMessageResponse, Task, TaskState,
 };
 use a2a_client::A2AClientFactory;
 use a2a_client::agent_card::AgentCardResolver;
@@ -284,7 +287,7 @@ impl Capability for A2aAgentDelegationCapability {
         Some(format!(
             "<capability id=\"{}\">\n\
 Delegate work to configured external A2A agents with spawn_agent.\n\
-Use mode=\"background\" for long-running work; use wait_task (from session_tasks) later for results.\n\
+Use mode=\"background\" for long-running work and wait_task (from session_tasks) later for results; use mode=\"foreground\" when blocked on the result.\n\
 Use message_task for follow-up input or input_required tasks; use cancel_task to stop a remote task.\n\
 Available external agents:\n{}\n\
 </capability>",
@@ -499,25 +502,6 @@ impl From<&TaskState> for AgentRunStatus {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-enum AgentRunMode {
-    Wait,
-    Background,
-}
-
-impl AgentRunMode {
-    fn parse(value: Option<&str>) -> std::result::Result<Self, String> {
-        match value.unwrap_or("wait") {
-            "wait" => Ok(Self::Wait),
-            "background" => Ok(Self::Background),
-            other => Err(format!(
-                "Invalid mode: {other}. Expected wait or background"
-            )),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AgentRunRecord {
     run_id: String,
@@ -526,7 +510,7 @@ struct AgentRunRecord {
     external_agent_name: String,
     #[serde(alias = "task")]
     instructions: String,
-    mode: AgentRunMode,
+    mode: SpawnMode,
     status: AgentRunStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     remote_task_id: Option<String>,
@@ -538,6 +522,12 @@ struct AgentRunRecord {
     result_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    error_kind: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    result_schema: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    structured_result: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     last_remote_task_snapshot: Option<Value>,
     #[serde(default)]
@@ -563,8 +553,9 @@ impl AgentRunRecord {
         run_id: String,
         agent: &ExternalA2aAgentConfig,
         instructions: String,
-        mode: AgentRunMode,
+        mode: SpawnMode,
         wake_on_completion: bool,
+        result_schema: Option<Value>,
     ) -> Self {
         Self {
             run_id,
@@ -579,6 +570,9 @@ impl AgentRunRecord {
             result: None,
             result_path: None,
             error: None,
+            error_kind: None,
+            result_schema,
+            structured_result: None,
             last_remote_task_snapshot: None,
             wake_on_completion,
             task_id: None,
@@ -649,18 +643,7 @@ async fn list_run_ids(
         .collect()
 }
 
-fn require_str<'a>(
-    args: &'a Value,
-    field: &str,
-) -> std::result::Result<&'a str, ToolExecutionResult> {
-    args.get(field)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| {
-            ToolExecutionResult::tool_error(format!("Missing required parameter: {field}"))
-        })
-}
+use super::util::require_str_trimmed as require_str;
 
 async fn save_run(context: &ToolContext, record: &AgentRunRecord) -> Result<()> {
     mirror_run_to_task(context, record).await;
@@ -730,7 +713,10 @@ async fn mirror_run_to_task(context: &ToolContext, record: &AgentRunRecord) {
 
     let error = match record.status {
         AgentRunStatus::Failed => Some(TaskError {
-            kind: "remote_failed".to_string(),
+            kind: record
+                .error_kind
+                .clone()
+                .unwrap_or_else(|| "remote_failed".to_string()),
             message: record
                 .error
                 .clone()
@@ -826,6 +812,17 @@ fn task_text(task: &Task) -> Option<String> {
         })
 }
 
+fn first_data_artifact(task: &Task) -> Option<&Value> {
+    task.artifacts
+        .as_ref()?
+        .iter()
+        .flat_map(|artifact| artifact.parts.iter())
+        .find_map(|part| match &part.content {
+            PartContent::Data(value) => Some(value),
+            _ => None,
+        })
+}
+
 fn message_text(message: &Message) -> Option<String> {
     message.text().map(ToString::to_string)
 }
@@ -860,10 +857,64 @@ fn apply_task(record: &mut AgentRunRecord, task: &Task) {
     record.result = task_text(task)
         .map(truncate_text)
         .or_else(|| record.result.clone());
+    record.structured_result = first_data_artifact(task).cloned();
     record.last_remote_task_snapshot = Some(bounded_task_snapshot(task));
 }
 
 async fn write_result_artifact(context: &ToolContext, record: &mut AgentRunRecord) -> Result<()> {
+    if let Some(schema) = record.result_schema.clone() {
+        if record.status != AgentRunStatus::Completed {
+            return Ok(());
+        }
+        let Some(value) = record.structured_result.clone() else {
+            record.status = AgentRunStatus::Failed;
+            record.error_kind = Some("no_result".to_string());
+            set_error(
+                record,
+                "External agent completed without a structured result artifact".to_string(),
+            );
+            record.result = None;
+            record.result_path = None;
+            return Ok(());
+        };
+        let errors = schema_validation_errors(&schema, &value);
+        if !errors.is_empty() {
+            record.status = AgentRunStatus::Failed;
+            record.error_kind = Some("schema_mismatch".to_string());
+            set_error(
+                record,
+                format!(
+                    "External agent result did not match result_schema: {}",
+                    errors.join("; ")
+                ),
+            );
+            record.result = None;
+            record.result_path = None;
+            return Ok(());
+        }
+        let Some(task_id) = record.task_id.as_deref() else {
+            record.status = AgentRunStatus::Failed;
+            record.error_kind = Some("result_write_failed".to_string());
+            set_error(
+                record,
+                "Structured result has no local session task".to_string(),
+            );
+            return Ok(());
+        };
+        let Some(result_path) = write_task_result_value(context, task_id, &value).await? else {
+            record.status = AgentRunStatus::Failed;
+            record.error_kind = Some("result_write_failed".to_string());
+            set_error(
+                record,
+                "Structured result could not be persisted".to_string(),
+            );
+            return Ok(());
+        };
+        record.result_path = Some(result_path);
+        record.result = Some(value.to_string());
+        return Ok(());
+    }
+
     let Some(file_store) = &context.file_store else {
         return Ok(());
     };
@@ -1023,6 +1074,11 @@ async fn submit_run(
             record.result = message_text(&message).map(truncate_text);
         }
     }
+    if record.status.is_terminal() {
+        write_result_artifact(context, record)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
     save_run(context, record).await.map_err(|e| e.to_string())
 }
 
@@ -1030,6 +1086,40 @@ async fn submit_run(
 /// expires. Sends a registry heartbeat on every poll iteration when
 /// `heartbeat_attempt` is provided, so the reaper knows the worker is alive
 /// and stale writes from a superseded executor are rejected.
+/// Terminal outcome of a poll loop, replacing the previous stringly-typed
+/// control flow (timeout/supersede were detected via `error.starts_with(...)`).
+/// `Err(String)` is still used for genuine I/O/transport failures; the
+/// non-error terminal states (completed, timed out, superseded) are typed.
+enum WaitOutcome {
+    /// The run reached a terminal status (or had no remote task to poll).
+    /// Boxed: `AgentRunRecord` is ~900 bytes and dwarfs the other variants;
+    /// boxing keeps the enum small (clippy `large_enum_variant`).
+    Completed(Box<AgentRunRecord>),
+    /// The poll deadline elapsed before the run finished.
+    TimedOut { run_id: String, timeout_secs: u64 },
+    /// The attempt fence revealed a newer executor owns this task.
+    Superseded {
+        run_id: String,
+        attempt: i32,
+        by_attempt: i32,
+    },
+}
+
+impl WaitOutcome {
+    /// User-facing timeout message. Kept byte-identical to the legacy string so
+    /// `timeout_or_error_result` surfaces the same text downstream.
+    fn timed_out_message(run_id: &str, timeout_secs: u64) -> String {
+        format!("Timed out waiting for external agent run {run_id} after {timeout_secs}s")
+    }
+
+    /// Diagnostic supersede message. Logged only; never surfaced to callers.
+    fn superseded_message(run_id: &str, attempt: i32, by_attempt: i32) -> String {
+        format!(
+            "{SUPERSEDED_ERROR_PREFIX} run {run_id} (attempt {attempt} superseded by {by_attempt})"
+        )
+    }
+}
+
 async fn wait_for_run(
     context: &ToolContext,
     agent: &ExternalA2aAgentConfig,
@@ -1038,7 +1128,7 @@ async fn wait_for_run(
     // When Some, write a heartbeat on every poll with this attempt fence so
     // a superseded executor's stale writes are rejected.
     heartbeat_attempt: Option<i32>,
-) -> std::result::Result<AgentRunRecord, String> {
+) -> std::result::Result<WaitOutcome, String> {
     if record.status.is_terminal() {
         write_result_artifact(context, &mut record)
             .await
@@ -1046,10 +1136,10 @@ async fn wait_for_run(
         save_run(context, &record)
             .await
             .map_err(|e| e.to_string())?;
-        return Ok(record);
+        return Ok(WaitOutcome::Completed(Box::new(record)));
     }
     let Some(remote_task_id) = record.remote_task_id.clone() else {
-        return Ok(record);
+        return Ok(WaitOutcome::Completed(Box::new(record)));
     };
     let client = build_client(agent, context).await?;
     let deadline = Instant::now() + Duration::from_secs(timeout_secs);
@@ -1084,10 +1174,11 @@ async fn wait_for_run(
             if let Ok(Some(task)) = heartbeat
                 && task.attempt != attempt
             {
-                return Err(format!(
-                    "{SUPERSEDED_ERROR_PREFIX} run {} (attempt {attempt} superseded by {})",
-                    record.run_id, task.attempt
-                ));
+                return Ok(WaitOutcome::Superseded {
+                    run_id: record.run_id.clone(),
+                    attempt,
+                    by_attempt: task.attempt,
+                });
             }
         }
 
@@ -1100,9 +1191,6 @@ async fn wait_for_run(
             .await
             .map_err(|e| format!("A2A get_task failed: {e}"))?;
         apply_task(&mut record, &task);
-        save_run(context, &record)
-            .await
-            .map_err(|e| e.to_string())?;
         if record.status.is_terminal() {
             write_result_artifact(context, &mut record)
                 .await
@@ -1110,36 +1198,61 @@ async fn wait_for_run(
             save_run(context, &record)
                 .await
                 .map_err(|e| e.to_string())?;
-            return Ok(record);
+            return Ok(WaitOutcome::Completed(Box::new(record)));
         }
+        save_run(context, &record)
+            .await
+            .map_err(|e| e.to_string())?;
         sleep(poll_interval).await;
     }
 
-    Err(format!(
-        "Timed out waiting for external agent run {} after {}s",
-        record.run_id, timeout_secs
-    ))
+    Ok(WaitOutcome::TimedOut {
+        run_id: record.run_id.clone(),
+        timeout_secs,
+    })
 }
 
-async fn timeout_or_error_result(
+/// Render a timeout outcome as a (successful) tool result reporting
+/// `timed_out: true`. Separated from the error path now that timeout is a
+/// typed `WaitOutcome` variant rather than a string-prefix sniff.
+async fn timed_out_result(
     context: &ToolContext,
     run_id: &str,
-    error: String,
+    message: String,
 ) -> ToolExecutionResult {
-    if error.starts_with("Timed out waiting for external agent run") {
-        return match load_run(context, run_id).await {
-            Ok(record) => ToolExecutionResult::success(json!({
-                "agent_run_id": record.run_id,
-                "status": record.status,
-                "timed_out": true,
-                "message": truncate_text(error),
-                "remote_task_id": record.remote_task_id,
-                "remote_context_id": record.remote_context_id,
-            })),
-            Err(e) => e,
-        };
+    match load_run(context, run_id).await {
+        Ok(record) => ToolExecutionResult::success(json!({
+            "agent_run_id": record.run_id,
+            "status": record.status,
+            "timed_out": true,
+            "message": truncate_text(message),
+            "remote_task_id": record.remote_task_id,
+            "remote_context_id": record.remote_context_id,
+        })),
+        Err(e) => e,
     }
-    ToolExecutionResult::tool_error(error)
+}
+
+/// Persist a Failed run record with `message`, notify the parent, and wake it
+/// when appropriate. Shared by the background monitor's timeout and error
+/// paths, which previously both flowed through a single `Err(String)` arm.
+async fn persist_failed_run(
+    context: &ToolContext,
+    run_id: &str,
+    fallback_record: AgentRunRecord,
+    message: String,
+) {
+    let mut failed = load_run(context, run_id).await.unwrap_or(fallback_record);
+    failed.status = AgentRunStatus::Failed;
+    set_error(&mut failed, message);
+    let _ = write_result_artifact(context, &mut failed).await;
+    let _ = save_run(context, &failed).await;
+    post_task_completion_message(context, &failed).await;
+    // Legacy wake: only when no registry is present (registry-level
+    // wake_policy handles it otherwise via post_task_completion_message).
+    if failed.wake_on_completion && context.session_task_registry.is_none() {
+        let _ = wake_parent(context, &failed).await;
+    }
 }
 
 /// Background poll loop for an A2A run. `heartbeat_attempt` is the task
@@ -1156,26 +1269,27 @@ async fn background_monitor(
     let fallback_record = record.clone();
     let record = match wait_for_run(&context, &agent, record, timeout_secs, heartbeat_attempt).await
     {
-        Ok(record) => record,
+        Ok(WaitOutcome::Completed(record)) => *record,
         // Superseded by a newer attempt (reaper re-attached the task to
         // another executor): exit silently — the new owner reports state;
         // writing failure here would overwrite its work.
-        Err(error) if error.starts_with(SUPERSEDED_ERROR_PREFIX) => {
+        Ok(WaitOutcome::Superseded { .. }) => {
             tracing::info!(run_id = %run_id, "A2A background monitor superseded; exiting");
             return;
         }
+        // Timeout and genuine errors both persist a Failed run record. Build
+        // the user-facing message from the typed outcome so the persisted text
+        // stays identical to the legacy string.
+        Ok(WaitOutcome::TimedOut {
+            run_id: timed_out_run_id,
+            timeout_secs,
+        }) => {
+            let message = WaitOutcome::timed_out_message(&timed_out_run_id, timeout_secs);
+            persist_failed_run(&context, &run_id, fallback_record, message).await;
+            return;
+        }
         Err(error) => {
-            let mut failed = load_run(&context, &run_id).await.unwrap_or(fallback_record);
-            failed.status = AgentRunStatus::Failed;
-            set_error(&mut failed, error);
-            let _ = write_result_artifact(&context, &mut failed).await;
-            let _ = save_run(&context, &failed).await;
-            post_task_completion_message(&context, &failed).await;
-            // Legacy wake: only when no registry is present (registry-level
-            // wake_policy handles it otherwise via post_task_completion_message).
-            if failed.wake_on_completion && context.session_task_registry.is_none() {
-                let _ = wake_parent(&context, &failed).await;
-            }
+            persist_failed_run(&context, &run_id, fallback_record, error).await;
             return;
         }
     };
@@ -1212,7 +1326,7 @@ impl Tool for SpawnAgentTool {
     }
 
     fn description(&self) -> &str {
-        "Delegate a task to a configured external A2A agent. Supports wait and background modes."
+        "Delegate a task to a configured external A2A agent in foreground or background mode."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -1224,14 +1338,17 @@ impl Tool for SpawnAgentTool {
                     "type": "object",
                     "properties": {
                         "type": {"type": "string", "enum": ["external_a2a"]},
-                        "external_agent_id": {"type": "string"}
+                        "id": {"type": "string", "description": "Configured external A2A agent id."},
+                        "external_agent_id": {"type": "string", "description": "Deprecated provider-specific spelling; prefer target.id."}
                     },
-                    "required": ["type", "external_agent_id"],
+                    "required": ["type"],
                     "additionalProperties": false
                 },
-                "mode": {"type": "string", "enum": ["wait", "background"], "default": "wait"},
+                "mode": {"type": "string", "enum": ["background", "foreground"], "default": "foreground"},
                 "wait_timeout_secs": {"type": "integer", "minimum": 1, "maximum": 86400},
-                "wake_on_completion": {"type": "boolean", "default": true}
+                "wake_on_completion": {"type": "boolean", "default": true},
+                "result_schema": {"type": "object", "description": "JSON Schema for a required structured result artifact from the external agent."},
+                "message_schema": {"type": "object", "description": "Not supported for external A2A targets; supplied values fail explicitly."}
             },
             "required": ["instructions", "target"],
             "additionalProperties": false
@@ -1266,17 +1383,25 @@ impl Tool for SpawnAgentTool {
                 "spawn_agent currently supports target.type = external_a2a",
             );
         }
+        if arguments
+            .get("lifetime")
+            .and_then(Value::as_str)
+            .is_some_and(|value| value == "detached")
+        {
+            return ToolExecutionResult::tool_error(
+                "lifetime=\"detached\" is only valid for local session targets (subagent or agent), not external_a2a.",
+            );
+        }
         let external_agent_id = match target
-            .get("external_agent_id")
+            .get("id")
+            .or_else(|| target.get("external_agent_id"))
             .and_then(Value::as_str)
             .map(str::trim)
             .filter(|s| !s.is_empty())
         {
             Some(id) => id,
             None => {
-                return ToolExecutionResult::tool_error(
-                    "Missing required parameter: target.external_agent_id",
-                );
+                return ToolExecutionResult::tool_error("Missing required parameter: target.id");
             }
         };
         let Some(agent) = self.config.agent(external_agent_id).cloned() else {
@@ -1284,9 +1409,14 @@ impl Tool for SpawnAgentTool {
                 "Unknown external A2A agent: {external_agent_id}"
             ));
         };
-        let mode = match AgentRunMode::parse(arguments.get("mode").and_then(Value::as_str)) {
-            Ok(mode) => mode,
-            Err(e) => return ToolExecutionResult::tool_error(e),
+        let mode = match arguments.get("mode").and_then(Value::as_str) {
+            None => SpawnMode::Foreground,
+            Some(value) if let Some(mode) = SpawnMode::parse(value) => mode,
+            Some(other) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Invalid mode: {other}. Expected background, foreground"
+                ));
+            }
         };
         let timeout_secs = arguments
             .get("wait_timeout_secs")
@@ -1296,13 +1426,33 @@ impl Tool for SpawnAgentTool {
             .get("wake_on_completion")
             .and_then(Value::as_bool)
             .unwrap_or(true);
+        let result_schema = match normalize_result_schema(&arguments) {
+            Ok(schema) => schema,
+            Err(error) => return error,
+        };
+        if arguments
+            .get("message_schema")
+            .is_some_and(|schema| !schema.is_null())
+        {
+            return ToolExecutionResult::tool_error(
+                "message_schema is not supported for external_a2a targets because remote agents cannot receive report_task_progress.",
+            );
+        }
+        if result_schema.is_some()
+            && (context.session_task_registry.is_none() || context.file_store.is_none())
+        {
+            return ToolExecutionResult::tool_error(
+                "result_schema for external_a2a requires session_task_registry and file_store context.",
+            );
+        }
         let run_id = run_id();
         let mut record = AgentRunRecord::new(
             run_id.clone(),
             &agent,
             instructions.clone(),
-            mode.clone(),
+            mode,
             wake_on_completion,
+            result_schema.clone(),
         );
         record.network_access = context.network_access.clone();
         // Create the session task tracking this run (specs/session-tasks.md).
@@ -1322,18 +1472,19 @@ impl Tool for SpawnAgentTool {
                             "external_agent_id": agent.id,
                             "instructions": &instructions,
                             "mode": &mode,
+                            "result_schema": result_schema,
                         }),
                         state: SessionTaskState::Queued,
                         links: TaskLinks::default(),
                         wake_policy: match mode {
-                            AgentRunMode::Background => TaskWakePolicy::OnTerminal,
-                            AgentRunMode::Wait => TaskWakePolicy::Silent,
+                            SpawnMode::Background => TaskWakePolicy::OnTerminal,
+                            SpawnMode::Foreground => TaskWakePolicy::Silent,
                         },
                     })
                     .await
                 {
                     Ok(created) => record.task_id = Some(created.id),
-                    Err(e) if mode == AgentRunMode::Background => {
+                    Err(e) if mode == SpawnMode::Background || result_schema.is_some() => {
                         // Background runs must be task-backed before remote work
                         // starts; surface this as a user-facing tool error (per
                         // the capability contract) rather than an internal error,
@@ -1346,7 +1497,7 @@ impl Tool for SpawnAgentTool {
                     Err(_) => {}
                 }
             }
-            None if mode == AgentRunMode::Background => {
+            None if mode == SpawnMode::Background => {
                 return ToolExecutionResult::tool_error(
                     "Background spawn_agent requires session_task_registry context so the run can be controlled with wait_task/message_task/cancel_task",
                 );
@@ -1365,7 +1516,7 @@ impl Tool for SpawnAgentTool {
             return ToolExecutionResult::success(record.public_json());
         }
         match mode {
-            AgentRunMode::Background => {
+            SpawnMode::Background => {
                 let context = context.clone();
                 // Capture the attempt at spawn time (1 for a fresh spawn).
                 // The heartbeat loop uses this to fence stale writes from any
@@ -1384,12 +1535,35 @@ impl Tool for SpawnAgentTool {
                 });
                 ToolExecutionResult::success(record.public_json())
             }
-            AgentRunMode::Wait => {
+            SpawnMode::Foreground => {
                 // Foreground wait: the tool executor owns the call stack so no
                 // separate heartbeat thread is needed; pass None.
                 match wait_for_run(context, &agent, record, timeout_secs, None).await {
-                    Ok(record) => ToolExecutionResult::success(record.public_json()),
-                    Err(error) => timeout_or_error_result(context, &run_id, error).await,
+                    Ok(WaitOutcome::Completed(record)) => {
+                        ToolExecutionResult::success(record.public_json())
+                    }
+                    Ok(WaitOutcome::TimedOut {
+                        run_id: timed_out_run_id,
+                        timeout_secs,
+                    }) => {
+                        let message =
+                            WaitOutcome::timed_out_message(&timed_out_run_id, timeout_secs);
+                        timed_out_result(context, &run_id, message).await
+                    }
+                    // Foreground waits pass `heartbeat_attempt: None`, so the
+                    // fence never fires and Superseded is unreachable here.
+                    // Surface it as a tool error rather than panicking if that
+                    // invariant ever changes.
+                    Ok(WaitOutcome::Superseded {
+                        run_id: superseded_run_id,
+                        attempt,
+                        by_attempt,
+                    }) => ToolExecutionResult::tool_error(WaitOutcome::superseded_message(
+                        &superseded_run_id,
+                        attempt,
+                        by_attempt,
+                    )),
+                    Err(error) => ToolExecutionResult::tool_error(error),
                 }
             }
         }
@@ -1698,6 +1872,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for TestFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             session_id: SessionId,
@@ -1832,7 +2010,10 @@ mod tests {
                     artifact_id: a2a::new_artifact_id(),
                     name: Some("echo".to_string()),
                     description: None,
-                    parts: vec![Part::text(format!("echo: {text}"))],
+                    parts: vec![
+                        Part::text(format!("echo: {text}")),
+                        Part::data(json!({"echo": text})),
+                    ],
                     metadata: None,
                     extensions: None,
                 }]),
@@ -1929,7 +2110,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn spawn_agent_wait_calls_real_a2a_agent() {
+    async fn spawn_agent_foreground_calls_real_a2a_agent_with_target_id_alias() {
         let base_url = spawn_real_a2a_agent().await;
         let config = configured_capability(base_url);
         let tool = SpawnAgentTool::new(config);
@@ -1941,8 +2122,8 @@ mod tests {
             .execute_with_context(
                 json!({
                     "instructions": "hello",
-                    "target": {"type": "external_a2a", "external_agent_id": "echo"},
-                    "mode": "wait",
+                    "target": {"type": "external_a2a", "id": "echo"},
+                    "mode": "foreground",
                     "wait_timeout_secs": 5
                 }),
                 &ctx,
@@ -1955,6 +2136,149 @@ mod tests {
         assert_eq!(value["status"], "completed");
         assert_eq!(value["result"], "echo: hello");
         assert!(value["result_path"].as_str().is_some());
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_rejects_legacy_wait_mode() {
+        let tool = SpawnAgentTool::new(configured_capability("http://127.0.0.1:1".to_string()));
+        let ctx = context(
+            Arc::new(TestStorageStore::default()),
+            Arc::new(TestFileStore::default()),
+        );
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "instructions": "never sent",
+                    "target": {"type": "external_a2a", "external_agent_id": "echo"},
+                    "mode": "wait"
+                }),
+                &ctx,
+            )
+            .await;
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("expected legacy mode rejection: {result:?}");
+        };
+        assert!(message.contains("background, foreground"));
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_foreground_validates_a2a_data_artifact_and_writes_task_result() {
+        let tool = SpawnAgentTool::new(configured_capability(spawn_real_a2a_agent().await));
+        let storage_store = Arc::new(TestStorageStore::default());
+        let file_store = Arc::new(TestFileStore::default());
+        let registry = Arc::new(InMemRegistry::default());
+        let ctx =
+            context(storage_store, file_store.clone()).with_session_task_registry(registry.clone());
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "instructions": "structured",
+                    "target": {"type": "external_a2a", "external_agent_id": "echo"},
+                    "mode": "foreground",
+                    "wait_timeout_secs": 5,
+                    "result_schema": {
+                        "type": "object",
+                        "properties": {"echo": {"type": "string"}},
+                        "required": ["echo"],
+                        "additionalProperties": false
+                    }
+                }),
+                &ctx,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success: {result:?}");
+        };
+        assert_eq!(value["status"], "completed");
+        let task_id = value["task_id"].as_str().expect("task_id");
+        let expected_path = crate::session_task::task_result_path(task_id);
+        assert_eq!(value["result_path"], expected_path);
+        let content = file_store
+            .files
+            .lock()
+            .unwrap()
+            .get(&expected_path)
+            .cloned()
+            .expect("result file");
+        assert_eq!(
+            serde_json::from_str::<Value>(&content).unwrap(),
+            json!({"echo": "structured"})
+        );
+        let task = registry
+            .get(ctx.session_id, task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(task.state, SessionTaskState::Succeeded);
+        assert_eq!(task.result_path.as_deref(), Some(expected_path.as_str()));
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_foreground_marks_a2a_schema_mismatch_failed() {
+        let tool = SpawnAgentTool::new(configured_capability(spawn_real_a2a_agent().await));
+        let storage_store = Arc::new(TestStorageStore::default());
+        let file_store = Arc::new(TestFileStore::default());
+        let registry = Arc::new(InMemRegistry::default());
+        let ctx = context(storage_store, file_store).with_session_task_registry(registry.clone());
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "instructions": "structured",
+                    "target": {"type": "external_a2a", "external_agent_id": "echo"},
+                    "mode": "foreground",
+                    "wait_timeout_secs": 5,
+                    "result_schema": {
+                        "type": "object",
+                        "properties": {"echo": {"type": "integer"}},
+                        "required": ["echo"]
+                    }
+                }),
+                &ctx,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected terminal run result: {result:?}");
+        };
+        assert_eq!(value["status"], "failed");
+        let task_id = value["task_id"].as_str().expect("task_id");
+        let task = registry
+            .get(ctx.session_id, task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(task.state, SessionTaskState::Failed);
+        assert_eq!(
+            task.error.as_ref().map(|error| error.kind.as_str()),
+            Some("schema_mismatch")
+        );
+        assert!(task.result_path.is_none());
+    }
+
+    #[tokio::test]
+    async fn spawn_agent_rejects_message_schema_for_external_a2a() {
+        let tool = SpawnAgentTool::new(configured_capability("http://127.0.0.1:1".to_string()));
+        let ctx = context(
+            Arc::new(TestStorageStore::default()),
+            Arc::new(TestFileStore::default()),
+        );
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "instructions": "never sent",
+                    "target": {"type": "external_a2a", "external_agent_id": "echo"},
+                    "message_schema": {"type": "object"}
+                }),
+                &ctx,
+            )
+            .await;
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("expected explicit rejection: {result:?}");
+        };
+        assert!(message.contains("message_schema is not supported for external_a2a"));
     }
 
     #[test]
@@ -2002,6 +2326,13 @@ mod tests {
             }))
             .is_err()
         );
+
+        let tool_schema = SpawnAgentTool::new(A2aDelegationConfig::default()).parameters_schema();
+        assert_eq!(
+            tool_schema["properties"]["mode"]["enum"],
+            json!(["background", "foreground"])
+        );
+        assert!(tool_schema["properties"]["target"]["properties"]["id"].is_object());
     }
 
     #[test]
@@ -2032,8 +2363,9 @@ mod tests {
             "run-policy".to_string(),
             &config,
             "instructions".to_string(),
-            AgentRunMode::Background,
+            SpawnMode::Background,
             false,
+            None,
         );
         let persisted_policy =
             NetworkAccessList::allow_only(vec!["allowed.example.com".to_string()]);
@@ -2394,6 +2726,7 @@ mod tests {
         crate::session_task::SessionTask {
             id: format!("task_{run_id}"),
             session_id,
+            root_session_id: None,
             kind: TASK_KIND_EXTERNAL_AGENT.to_string(),
             display_name: "Test external agent".to_string(),
             spec: json!({ "run_id": run_id }),
@@ -2444,8 +2777,9 @@ mod tests {
             run_id.clone(),
             &config,
             "instructions".to_string(),
-            AgentRunMode::Background,
+            SpawnMode::Background,
             false,
+            None,
         );
         record.status = AgentRunStatus::Completed;
         record.result = Some("done".to_string());
@@ -2546,8 +2880,9 @@ mod tests {
             run_id.clone(),
             &config,
             "instructions".to_string(),
-            AgentRunMode::Background,
+            SpawnMode::Background,
             false,
+            None,
         );
         record.remote_task_id = Some("remote-xyz".to_string());
         record.task_id = Some(task_id.clone());
@@ -2584,12 +2919,37 @@ mod tests {
 
         // Poll as the old executor (attempt 1): the first heartbeat reveals
         // the supersession and the loop exits before any remote call.
-        let err = wait_for_run(&ctx, &config, record, 30, Some(1))
+        let outcome = wait_for_run(&ctx, &config, record, 30, Some(1))
             .await
-            .expect_err("superseded poll must error");
+            .expect("superseded poll must not be a transport error");
+        // EVE-645: supersession is now a typed WaitOutcome variant rather than
+        // a string-prefix sniff on the error.
+        let WaitOutcome::Superseded {
+            run_id: superseded_run_id,
+            attempt,
+            by_attempt,
+        } = outcome
+        else {
+            panic!("expected Superseded outcome");
+        };
+        assert_eq!(superseded_run_id, run_id);
+        assert_eq!(attempt, 1);
+        assert_eq!(by_attempt, 2);
+        // Diagnostic string still carries the legacy prefix for log greps.
         assert!(
-            err.starts_with(SUPERSEDED_ERROR_PREFIX),
-            "expected superseded error, got: {err}"
+            WaitOutcome::superseded_message(&superseded_run_id, attempt, by_attempt)
+                .starts_with(SUPERSEDED_ERROR_PREFIX)
+        );
+    }
+
+    // EVE-645: timeout is selected via the typed WaitOutcome::TimedOut variant
+    // and its message stays byte-identical to the legacy string.
+    #[test]
+    fn wait_outcome_timed_out_message_is_stable() {
+        let msg = WaitOutcome::timed_out_message("run-123", 30);
+        assert_eq!(
+            msg,
+            "Timed out waiting for external agent run run-123 after 30s"
         );
     }
 
@@ -2617,8 +2977,9 @@ mod tests {
             run_id.clone(),
             &config,
             "instructions".to_string(),
-            AgentRunMode::Background,
+            SpawnMode::Background,
             false,
+            None,
         );
         assert!(record.remote_task_id.is_none());
 
@@ -2655,7 +3016,7 @@ mod tests {
             "external_agent_id": "echo",
             "external_agent_name": "Echo",
             "task": "legacy instructions",
-            "mode": "wait",
+            "mode": "foreground",
             "status": "submitted"
         });
 
@@ -2691,8 +3052,9 @@ mod tests {
             run_id.clone(),
             &config,
             "do something".to_string(),
-            AgentRunMode::Wait,
+            SpawnMode::Foreground,
             false,
+            None,
         );
         record.task_id = Some(task_id.clone());
 
@@ -2707,6 +3069,7 @@ mod tests {
         let fake_task = SessionTask {
             id: task_id.clone(),
             session_id: ctx.session_id,
+            root_session_id: None,
             kind: TASK_KIND_EXTERNAL_AGENT.to_string(),
             display_name: "Echo".to_string(),
             spec: json!({ "run_id": &run_id }),

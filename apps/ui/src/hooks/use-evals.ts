@@ -1,7 +1,7 @@
 // Eval hooks
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import {
   evalsCrudApi,
   listEvalCases,
@@ -17,8 +17,11 @@ import type {
   UpdateEvalRequest,
   CreateEvalCaseRequest,
   CreateEvalRunRequest,
+  EvalRun,
 } from "@/lib/api/types";
+import { MAX_COMPARE_RUNS } from "@/lib/eval-run-comparison";
 import { queryKeys } from "@/lib/query-keys";
+import { useOrg } from "@/providers/org-provider";
 import { createCrudHooks } from "./create-crud-hooks";
 import { useOrgScopedQuery } from "./create-crud-hooks";
 
@@ -101,6 +104,31 @@ export function useEvalRun(evalId: string | undefined, runId: string | undefined
     queryFn: () => getEvalRun(evalId!, runId!),
     enabled: !!evalId && !!runId,
   });
+}
+
+// Fetch several runs (with their case results) at once for cross-run
+// comparison. Org-scoped like `useEvalRun`; reuses the per-run query cache so a
+// run already viewed isn't refetched.
+export function useEvalRunComparison(evalId: string | undefined, runIds: string[]) {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
+
+  const boundedRunIds = runIds.slice(0, MAX_COMPARE_RUNS);
+
+  const queries = useQueries({
+    queries: boundedRunIds.map((runId) => ({
+      queryKey: [...queryKeys.evals.runDetail(evalId ?? "", runId), org],
+      queryFn: () => getEvalRun(evalId!, runId),
+      enabled: !!evalId && !!org && !!runId,
+    })),
+  });
+
+  return {
+    runs: queries.map((q) => q.data).filter((d): d is EvalRun => !!d),
+    isLoading: orgLoading || queries.some((q) => q.isLoading),
+    isError: queries.some((q) => q.isError),
+    errors: queries.map((q) => q.error).filter((error): error is Error => error instanceof Error),
+  };
 }
 
 export function useCreateEvalRun(evalId: string) {
