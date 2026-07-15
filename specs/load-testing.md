@@ -114,6 +114,7 @@ Named benches distinguish different test scenarios. Comparisons only match runs 
 | `history-depth` | Message history scaling | 1 session, 200+ messages |
 | `horizontal-scale` | Worker scaling | Fixed load, vary workers |
 | `burst` | Burst capacity | High concurrency, low messages |
+| `subagent-fanout` | Governed subagent tree fan-out: root sessions spawn background child tasks, selected children spawn grandchildren, and all tasks settle or fail through the session-task registry. Track root turn latency, task terminal latency, orphan/reaper counts, and cap-rejection rate. | Small tree first (for example 10 roots x 4 children x 2 grandchildren), then scale breadth until `max_active_descendant_tasks` is approached |
 
 ## Justfile Profiles
 

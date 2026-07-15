@@ -12,6 +12,7 @@ export * from "./use-auth";
 export * from "./use-durable";
 export * from "./use-image-attachments";
 export * from "./use-session-resources";
+export * from "./use-session-participants";
 export * from "./use-session-tasks";
 export * from "./use-session-schedules";
 export * from "./use-global-chat";

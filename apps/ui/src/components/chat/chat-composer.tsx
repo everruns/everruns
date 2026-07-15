@@ -6,16 +6,10 @@
  */
 "use client";
 
-import { Brain, ImagePlus, Loader2, Mic, MicOff, Send, StopCircle } from "lucide-react";
+import { ImagePlus, Loader2, Mic, MicOff, Send, StopCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { ModelEffortMenu } from "@/components/chat/model-effort-menu";
 import { ImageAttachments } from "@/components/chat/image-attachments";
 import {
   CommandAutocomplete,
@@ -24,7 +18,13 @@ import {
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { cn } from "@/lib/utils";
 import { ALLOWED_IMAGE_TYPES } from "@/lib/api/types";
-import type { CommandDescriptor, Controls, Model, ReasoningEffortConfig } from "@/lib/api/types";
+import type {
+  CommandDescriptor,
+  Controls,
+  Model,
+  ReasoningEffortConfig,
+  VerbosityConfig,
+} from "@/lib/api/types";
 import type { PendingImage } from "@/lib/api/images";
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/providers/locale-provider";
@@ -44,6 +44,7 @@ export function ChatComposer({
   dropZoneProps,
   handlePaste,
   selectedModelId,
+  recentModels,
   onModelChange,
   modelTriggerLabel,
   defaultModelOptionLabel,
@@ -53,6 +54,12 @@ export function ChatComposer({
   defaultEffortName,
   getReasoningEffortName,
   onReasoningEffortChange,
+  supportsVerbosity,
+  verbosity,
+  verbosityConfig,
+  defaultVerbosityName,
+  getVerbosityName,
+  onVerbosityChange,
   isActive,
   cancelCurrentTurn,
   canSubmit,
@@ -78,6 +85,7 @@ export function ChatComposer({
   dropZoneProps: React.HTMLAttributes<HTMLDivElement>;
   handlePaste: React.ClipboardEventHandler<HTMLTextAreaElement>;
   selectedModelId: string;
+  recentModels: Model[];
   onModelChange: (value: string) => void;
   modelTriggerLabel: string;
   defaultModelOptionLabel: string;
@@ -87,6 +95,12 @@ export function ChatComposer({
   defaultEffortName: string;
   getReasoningEffortName: (value: string) => string;
   onReasoningEffortChange: (value: string) => void;
+  supportsVerbosity: boolean;
+  verbosity: string;
+  verbosityConfig?: VerbosityConfig;
+  defaultVerbosityName: string;
+  getVerbosityName: (value: string) => string;
+  onVerbosityChange: (value: string) => void;
   isActive: boolean;
   cancelCurrentTurn: { mutate: () => void; isPending?: boolean };
   canSubmit: boolean;
@@ -111,11 +125,12 @@ export function ChatComposer({
   }, [hasCommands, showCommands]);
 
   const buildControls = (): Controls | undefined =>
-    selectedModelId || reasoningEffort
+    selectedModelId || reasoningEffort || verbosity
       ? {
           ...(selectedModelId && { model_id: selectedModelId }),
           locale: backendLocale,
           ...(reasoningEffort && supportsReasoning && { reasoning: { effort: reasoningEffort } }),
+          ...(verbosity && supportsVerbosity && { verbosity }),
         }
       : { locale: backendLocale };
 
@@ -203,65 +218,26 @@ export function ChatComposer({
               <ImagePlus className="icon-sharp h-4 w-4" />
             </Button>
 
-            <div className={chatSurfaceStyles.composerControlChip}>
-              <span className="shrink-0 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                {t("model")}
-              </span>
-              <Select value={selectedModelId} onValueChange={onModelChange}>
-                <SelectTrigger
-                  size="sm"
-                  nativeButton={false}
-                  render={<div />}
-                  className="h-7 w-[156px] min-w-0 cursor-pointer border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0 data-[size=sm]:h-7 [&_svg]:icon-sharp"
-                >
-                  <SelectValue>{modelTriggerLabel}</SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">{defaultModelOptionLabel}</SelectItem>
-                  {models
-                    .filter((m) => m.enabled)
-                    .map((model) => (
-                      <SelectItem key={model.id} value={model.id}>
-                        {model.display_name}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {supportsReasoning && reasoningEffortConfig && (
-              <div className={chatSurfaceStyles.composerControlChip}>
-                <Brain className="icon-sharp h-3.5 w-3.5 text-muted-foreground" />
-                <span className="shrink-0 text-[10px] uppercase tracking-[0.22em] text-muted-foreground">
-                  {t("reasoning")}
-                </span>
-                <Select
-                  value={reasoningEffort}
-                  onValueChange={(value) => onReasoningEffortChange(value)}
-                >
-                  <SelectTrigger
-                    size="sm"
-                    nativeButton={false}
-                    render={<div />}
-                    className="h-7 w-[116px] min-w-0 cursor-pointer border-0 bg-transparent px-0 py-0 text-sm shadow-none focus-visible:ring-0 data-[size=sm]:h-7 [&_svg]:icon-sharp"
-                  >
-                    <SelectValue>
-                      {reasoningEffort ? getReasoningEffortName(reasoningEffort) : t("default")}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">
-                      {t("default_with_value", { value: defaultEffortName })}
-                    </SelectItem>
-                    {reasoningEffortConfig.values.map((effort) => (
-                      <SelectItem key={effort.value} value={effort.value}>
-                        {effort.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <ModelEffortMenu
+              models={models}
+              recentModels={recentModels}
+              selectedModelId={selectedModelId}
+              onModelChange={onModelChange}
+              modelTriggerLabel={modelTriggerLabel}
+              defaultModelOptionLabel={defaultModelOptionLabel}
+              supportsReasoning={supportsReasoning}
+              reasoningEffort={reasoningEffort}
+              reasoningEffortConfig={reasoningEffortConfig}
+              defaultEffortName={defaultEffortName}
+              getReasoningEffortName={getReasoningEffortName}
+              onReasoningEffortChange={onReasoningEffortChange}
+              supportsVerbosity={supportsVerbosity}
+              verbosity={verbosity}
+              verbosityConfig={verbosityConfig}
+              defaultVerbosityName={defaultVerbosityName}
+              getVerbosityName={getVerbosityName}
+              onVerbosityChange={onVerbosityChange}
+            />
           </div>
 
           <div className="flex items-center gap-2">

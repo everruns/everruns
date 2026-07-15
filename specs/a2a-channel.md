@@ -222,6 +222,31 @@ separate task table in this iteration:
 session id. An unknown but well-formed task id surfaces `-32001 Task not
 found`. A malformed task id surfaces `-32602 Invalid params`.
 
+**Structured result artifact.** When the underlying session reported a
+deterministic, schema-bound result (`result.json`, produced by a task declared
+with a `result_schema` — see [`specs/subagents.md`](subagents.md) and
+[`specs/session-tasks.md`](session-tasks.md)), `tasks/get` surfaces that JSON as
+an A2A `Artifact` on the task rather than leaving the caller to parse
+last-message text:
+
+```json
+"artifacts": [
+  {
+    "artifactId": "result",
+    "name": "result",
+    "parts": [{ "kind": "data", "data": { "...": "the result.json object" } }]
+  }
+]
+```
+
+The artifact is present only when a result was reported; a plain agent turn
+returns the task with no `artifacts`. When a session reported more than one
+structured result the most recently updated one wins. Retrieval is org-scoped
+and further fenced by the same channel-binding check as the rest of `tasks/get`
+(TM-A2A-012): the artifact for a session created by one channel is never
+returned to an API key for a different channel, even within the same org — the
+cross-channel lookup collapses to `-32001 Task not found` with no artifact leak.
+
 `tasks/cancel` cancels the in-flight durable workflow for the underlying
 session and emits a `turn.cancelled` event so subsequent `tasks/get` calls
 observe the canceled state. Cancelling an already-terminal task is
@@ -368,6 +393,10 @@ Coverage required:
    not found`.
 7. Validation: empty text parts rejected; non-`message/send` methods
    rejected; malformed envelopes rejected.
+8. Structured result: a session that reported a schema-bound `result.json`
+   surfaces it as the `tasks/get` artifact `DataPart`; a session with no
+   reported result has no `artifacts`; the artifact is not leaked to a
+   different channel's API key (cross-channel lookup stays `-32001`).
 
 ## Rate Limiting
 

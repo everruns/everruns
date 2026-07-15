@@ -4,7 +4,7 @@
 // - Keep provenance in event.metadata so it does not change message payload shape.
 // - Record both initiator and acting_principal, but keep external_actor separate.
 
-use everruns_core::typed_id::{AgentIdentityId, AppId, PrincipalId, ScheduleId};
+use everruns_core::typed_id::{AgentIdentityId, AppId, PrincipalId, ScheduleId, TriggerId};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -33,6 +33,21 @@ pub fn scheduled_run_metadata(
     json!({
         "initiator": { "type": "schedule", "schedule_id": schedule_id },
         "acting_principal": acting_principal,
+        "initiator_principal_id": owner_principal_id,
+        "acting_principal_id": owner_principal_id,
+    })
+}
+
+/// Provenance for a message injected by an agent's own schedule trigger
+/// (EVE-757). Mirrors [`app_message_metadata`] but keyed on the trigger; the
+/// acting principal is the agent-owned session owner (no agent-identity layer).
+pub fn agent_trigger_message_metadata(
+    trigger_id: TriggerId,
+    owner_principal_id: PrincipalId,
+) -> Value {
+    json!({
+        "initiator": { "type": "agent_trigger", "trigger_id": trigger_id },
+        "acting_principal": { "type": "agent_trigger", "trigger_id": trigger_id },
         "initiator_principal_id": owner_principal_id,
         "acting_principal_id": owner_principal_id,
     })

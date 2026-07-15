@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { getLoginRedirectPath } from "@/lib/auth-redirect";
+import { getLoginRedirectPath, isFullPageLoginRedirect } from "@/lib/auth-redirect";
 
 const HOMEPAGE_DISCOVERY_LINKS = [
   '</api-doc/openapi.json>; rel="service-desc"; type="application/json"',
@@ -14,6 +14,14 @@ function authDisabled(): boolean {
   return process.env.AUTH_MODE === "none";
 }
 
+// Next.js inlines direct `process.env.NAME` reads while compiling proxy code.
+// Read through the environment object so standalone deployments can configure
+// the trusted login origin at runtime instead of baking it into the image.
+function configuredLoginOrigin(): string | undefined {
+  const runtimeEnv = process.env;
+  return runtimeEnv.AUTH_LOGIN_ORIGIN ?? runtimeEnv.NEXT_PUBLIC_AUTH_LOGIN_ORIGIN;
+}
+
 export function proxy(request: NextRequest) {
   if (request.nextUrl.pathname === "/") {
     const response = NextResponse.next();
@@ -25,7 +33,17 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const loginPath = getLoginRedirectPath(request.nextUrl.pathname, request.nextUrl.searchParams);
+  const loginPath = getLoginRedirectPath(
+    request.nextUrl.pathname,
+    request.nextUrl.searchParams,
+    configuredLoginOrigin(),
+  );
+  if (isFullPageLoginRedirect(loginPath)) {
+    // Preserve the configured absolute origin even when the reverse proxy's
+    // upstream Host matches that origin; NextResponse.redirect may otherwise
+    // collapse it to a relative Location header.
+    return new NextResponse(null, { status: 307, headers: { Location: loginPath } });
+  }
   return NextResponse.redirect(new URL(loginPath, request.url));
 }
 

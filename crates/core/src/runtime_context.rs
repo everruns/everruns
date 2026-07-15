@@ -453,6 +453,8 @@ mod tests {
             description: None,
             system_prompt: "Use tools.".into(),
             default_model_id: None,
+
+            harness_id: crate::typed_id::HarnessId::from_uuid(uuid::Uuid::nil()),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -488,6 +490,7 @@ mod tests {
             owner: None,
             effective_owner: None,
             title: Some("ctx".into()),
+            goal: None,
             locale: Some("en-US".into()),
             preview: None,
             output_preview: None,
@@ -565,6 +568,8 @@ mod tests {
         let message_store = InMemoryMessageRetriever::new();
         let mut input = InputMessage::user("What is 2 * 3?");
         input.controls = Some(Controls {
+            speed: None,
+            verbosity: None,
             model_id: None,
             reasoning: None,
             locale: Some("fr-FR".into()),

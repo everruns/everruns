@@ -5,8 +5,9 @@
 use crate::auth::{AuthState, ResolvedOrg, rate_limit::OrgRateLimiter};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::sessions::{
-    CancelSession, CreateSession, DeleteSession, ForkSession, GetOrCreateChatSession, GetSession,
-    GetSessionContextReport, GetSessionStats, ListSessions, PinSession, SESSION_MANAGE,
+    AddSessionParticipant, CancelSession, CreateSession, DeleteSession, ForkSession,
+    GetOrCreateChatSession, GetSession, GetSessionContextReport, GetSessionStats,
+    LeaveSessionParticipant, ListSessionParticipants, ListSessions, PinSession, SESSION_MANAGE,
     SESSION_VIEW, SessionService, UnpinSession, UpdateSessionCmd,
 };
 use crate::services::EventService;
@@ -23,7 +24,8 @@ use everruns_core::typed_id::{
 };
 use everruns_core::{
     BuiltInHarnessRole, Caller, PlatformDefinition, ResourceConfigResponse, ScopedMcpServers,
-    Session, SessionContextReport, ToolDefinition, evaluate_policies_with, is_mcp_tool,
+    Session, SessionContextReport, SessionParticipant, SessionParticipantKind,
+    SessionParticipantRole, SessionSeedMode, ToolDefinition, evaluate_policies_with, is_mcp_tool,
 };
 use everruns_worker::AgentRunner;
 
@@ -40,8 +42,9 @@ use utoipa::{IntoParams, ToSchema};
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateSessionRequest {
     /// ID of the harness for this session (format: harness_{32-hex}).
-    /// If omitted, the org default harness is used. New orgs default that to Generic.
-    /// Mutually exclusive with `harness_name`.
+    /// If omitted, the harness is derived from the agent (when one is supplied),
+    /// else the org default harness, else the built-in fallback. New orgs default
+    /// that to Generic. Mutually exclusive with `harness_name`.
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "harness_01933b5a00007000800000000000001")]
     pub harness_id: Option<HarnessId>,
@@ -52,9 +55,17 @@ pub struct CreateSessionRequest {
     #[schema(example = "generic")]
     pub harness_name: Option<String>,
     /// ID of the agent to work in this session (optional, format: agent_{32-hex}).
+    /// When supplied without a harness, the session inherits the agent's harness.
+    /// Mutually exclusive with `agent_name`.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub agent_id: Option<AgentId>,
+    /// Name of the agent to work in this session (optional).
+    /// Alternative to `agent_id` — looked up by name within the org.
+    /// Mutually exclusive with `agent_id`.
+    #[serde(default)]
+    #[schema(example = "support")]
+    pub agent_name: Option<String>,
     /// Optional resident agent identity used for unattended/background execution.
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001")]
@@ -63,6 +74,10 @@ pub struct CreateSessionRequest {
     #[serde(default)]
     #[schema(example = "Debug login issue")]
     pub title: Option<String>,
+    /// Optional objective for the session. Visible to the agent at system-prompt level.
+    #[serde(default)]
+    #[schema(example = "Investigate the queue latency regression and propose a fix")]
+    pub goal: Option<String>,
     /// Session locale (BCP 47, e.g. `uk-UA`).
     #[serde(default)]
     #[schema(example = "uk-UA")]
@@ -123,12 +138,24 @@ pub struct CreateSessionRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(example = true)]
     pub parallel_tool_calls: Option<bool>,
-    /// Internal: parent session for subagent nesting guard.
-    /// Set by the worker when spawning a child session so the child cannot itself
-    /// spawn further children (prevents runaway recursion).
+    /// Internal: parent session for governed subagent depth tracking.
+    /// Set by the worker when spawning a child session so nested delegation can
+    /// be bounded by max_subagent_depth.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[schema(ignore)]
     pub parent_session_id: Option<SessionId>,
+    /// Internal: lineage source when creating a detached peer session.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(ignore)]
+    pub forked_from_session_id: Option<SessionId>,
+    /// Internal: org-validated budget root for detached peer sessions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(ignore)]
+    pub budget_root_session_id: Option<SessionId>,
+    /// Internal: how to seed a detached peer session from its lineage source.
+    #[serde(default)]
+    #[schema(ignore)]
+    pub seed: SessionSeedMode,
     /// Attach this session to an existing Workspace (format: `wsp_<32-hex>`)
     /// instead of auto-creating a default per-session workspace. The workspace
     /// must exist in the caller's org and be `active`. Lets multiple sessions
@@ -147,6 +174,10 @@ pub struct ForkSessionRequest {
     #[serde(default)]
     #[schema(example = "Branch: try the async rewrite")]
     pub title: Option<String>,
+    /// Goal for the fork. Omitted inherits the parent's goal.
+    #[serde(default)]
+    #[schema(example = "Try the async rewrite from this state")]
+    pub goal: Option<String>,
     /// Tags for the fork. Replaces (does not merge with) the parent's tags.
     #[serde(default)]
     #[schema(example = json!(["experiment"]))]
@@ -283,6 +314,10 @@ pub struct UpdateSessionRequest {
     #[serde(default)]
     #[schema(example = "Updated session title")]
     pub title: Option<String>,
+    /// Updated session objective.
+    #[serde(default)]
+    #[schema(example = "Summarize the incident and list remediations")]
+    pub goal: Option<String>,
     /// Optional resident agent identity used for unattended/background execution.
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(
@@ -299,6 +334,20 @@ pub struct UpdateSessionRequest {
     #[serde(default)]
     #[schema(example = json!(["resolved"]))]
     pub tags: Option<Vec<String>>,
+}
+
+/// Request to add a participant to a session.
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct AddSessionParticipantRequest {
+    /// Participant kind to add.
+    pub kind: SessionParticipantKind,
+    /// Agent to add when `kind` is `agent`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
+    pub agent_id: Option<AgentId>,
+    /// Participant role. Omit for ordinary members. Host assignment is managed by session creation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role: Option<SessionParticipantRole>,
 }
 
 /// Request body for the `get_or_create_chat_session` operation.
@@ -424,6 +473,14 @@ pub fn routes(state: AppState) -> Router {
         // Session CRUD
         .route("/v1/sessions", post(create_session).get(list_sessions))
         .route(
+            "/v1/sessions/{session_id}/participants",
+            get(list_session_participants).post(add_session_participant),
+        )
+        .route(
+            "/v1/sessions/{session_id}/participants/{participant_id}",
+            axum::routing::delete(leave_session_participant),
+        )
+        .route(
             "/v1/sessions/{session_id}",
             get(get_session)
                 .patch(update_session)
@@ -505,9 +562,6 @@ pub async fn session_config(
         ),
         (status = 500, description = "Internal server error")
     ),
-    extensions(
-        ("x-cost-tier" = json!("paid")),
-    ),
     tag = "sessions"
 )]
 pub async fn create_session(
@@ -515,30 +569,27 @@ pub async fn create_session(
     State(state): State<AppState>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Session>>), (StatusCode, Json<ErrorResponse>)> {
-    if state
-        .org_rate_limiter
-        .check_session_create(org.org_id)
-        .await
-        .is_err()
-    {
-        return Err(
-            ErrorResponse::new("Too many requests. Please try again later.")
-                .with_code("rate_limited")
-                .with_retry_after(60)
-                .into_response(StatusCode::TOO_MANY_REQUESTS),
-        );
-    }
-    // `parent_session_id` is internal-only: the subagent/handoff spawn flow
-    // sets it via the platform store (DirectPlatformStore::create_session
-    // dispatches the command directly). External HTTP callers must never set
-    // it — that would let a client forge cross-session/cross-org parent links —
-    // so strip any client-supplied value at the public boundary.
+    check_session_create_rate_limit(&state, org.org_id).await?;
     let mut req = req;
-    req.parent_session_id = None;
+    strip_internal_only_fields(&mut req);
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     let session = CreateSession(req).run(&state.ctx(&org)).await?;
 
     Ok((StatusCode::CREATED, Json(urls.wrap(session))))
+}
+
+/// Strip request fields that only trusted internal dispatch paths may set.
+///
+/// Trusted worker dispatch sets these fields by invoking the domain command
+/// directly. Values supplied at the public HTTP boundary are forgery attempts
+/// and must never influence delegation ownership, lineage, or budget linkage.
+fn strip_internal_only_fields(req: &mut CreateSessionRequest) {
+    // THREAT[TM-TENANT-014]: Never let public callers select delegation or
+    // budget ownership metadata.
+    req.parent_session_id = None;
+    req.forked_from_session_id = None;
+    req.budget_root_session_id = None;
+    req.seed = SessionSeedMode::Fresh;
 }
 
 /// POST /v1/sessions/{session_id}/fork - Fork a session into an independent copy
@@ -556,7 +607,6 @@ pub async fn create_session(
         (status = 409, description = "Parent session is mid-turn and cannot be forked", body = ErrorResponse),
         (status = 500, description = "Internal server error")
     ),
-    extensions(("x-cost-tier" = json!("paid"))),
     tag = "sessions"
 )]
 pub async fn fork_session(
@@ -565,15 +615,49 @@ pub async fn fork_session(
     Path(session_id): Path<String>,
     body: Option<Json<ForkSessionRequest>>,
 ) -> Result<(StatusCode, Json<WithUrls<Session>>), (StatusCode, Json<ErrorResponse>)> {
+    let ctx = state.ctx(&org);
+
+    // Authorize before consuming the org's session-create budget. Forking
+    // creates a new session and deep-copies parent state, so successful forks
+    // share the same per-org velocity limit as ordinary session creation.
+    if let Some(policy) = ForkSession::policy() {
+        policy
+            .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+            .map_err(|e| crate::domains::common::CommandError::forbidden(e.message))?;
+    }
+
+    check_session_create_rate_limit(&state, org.org_id).await?;
+
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     let session = ForkSession {
         session_id,
         overrides: body.map(|Json(b)| b).unwrap_or_default(),
     }
-    .run(&state.ctx(&org))
+    .run(&ctx)
     .await?;
 
     Ok((StatusCode::CREATED, Json(urls.wrap(session))))
+}
+
+async fn check_session_create_rate_limit(
+    state: &AppState,
+    org_id: i64,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    if state
+        .org_rate_limiter
+        .check_session_create(org_id)
+        .await
+        .is_err()
+    {
+        return Err(
+            ErrorResponse::new("Too many requests. Please try again later.")
+                .with_code("rate_limited")
+                .with_retry_after(60)
+                .into_response(StatusCode::TOO_MANY_REQUESTS),
+        );
+    }
+
+    Ok(())
 }
 
 /// Guard the Platform Chat feature behind the org-effective `global_chat` flag.
@@ -696,6 +780,95 @@ pub async fn get_session(
     let session = GetSession { session_id }.run(&state.ctx(&org)).await?;
 
     Ok(Json(urls.wrap(session)))
+}
+
+/// GET /v1/sessions/{session_id}/participants - List session participants
+#[utoipa::path(
+    get,
+    path = "/v1/sessions/{session_id}/participants",
+    params(
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
+    ),
+    responses(
+        (status = 200, description = "Session participant history", body = Vec<SessionParticipant>),
+        (status = 400, description = "Invalid session ID"),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn list_session_participants(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> ApiResult<Vec<SessionParticipant>> {
+    Ok(Json(
+        ListSessionParticipants { session_id }
+            .run(&state.ctx(&org))
+            .await?,
+    ))
+}
+
+/// POST /v1/sessions/{session_id}/participants - Add a session participant
+#[utoipa::path(
+    post,
+    path = "/v1/sessions/{session_id}/participants",
+    params(
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
+    ),
+    request_body = AddSessionParticipantRequest,
+    responses(
+        (status = 201, description = "Participant added successfully", body = SessionParticipant),
+        (status = 400, description = "Invalid participant request"),
+        (status = 404, description = "Session or agent not found"),
+        (status = 409, description = "Participant conflicts with current membership"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn add_session_participant(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+    Json(req): Json<AddSessionParticipantRequest>,
+) -> Result<(StatusCode, Json<SessionParticipant>), (StatusCode, Json<ErrorResponse>)> {
+    let participant = AddSessionParticipant { session_id, req }
+        .run(&state.ctx(&org))
+        .await?;
+
+    Ok((StatusCode::CREATED, Json(participant)))
+}
+
+/// DELETE /v1/sessions/{session_id}/participants/{participant_id} - Leave a participant
+#[utoipa::path(
+    delete,
+    path = "/v1/sessions/{session_id}/participants/{participant_id}",
+    params(
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)"),
+        ("participant_id" = String, Path, description = "Participant ID (prefixed, e.g., part_...)")
+    ),
+    responses(
+        (status = 200, description = "Participant left successfully", body = SessionParticipant),
+        (status = 400, description = "Invalid ID"),
+        (status = 404, description = "Session or participant not found"),
+        (status = 409, description = "Host participant cannot leave through this endpoint"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn leave_session_participant(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((session_id, participant_id)): Path<(String, String)>,
+) -> ApiResult<SessionParticipant> {
+    Ok(Json(
+        LeaveSessionParticipant {
+            session_id,
+            participant_id,
+        }
+        .run(&state.ctx(&org))
+        .await?,
+    ))
 }
 
 /// GET /v1/sessions/{session_id}/context-report - Latest context breakdown
@@ -924,6 +1097,41 @@ mod tests {
     }
 
     #[test]
+    fn strip_internal_only_fields_drops_client_supplied_delegation_metadata() {
+        // A public HTTP client must not be able to forge the internal-only
+        // parent link; the boundary drops any caller-supplied value.
+        let json = format!(r#"{{"harness_id": "{}"}}"#, TEST_HARNESS_ID);
+        let mut req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
+        req.parent_session_id = Some(SessionId::new());
+        req.forked_from_session_id = Some(SessionId::new());
+        req.budget_root_session_id = Some(SessionId::new());
+        req.seed = SessionSeedMode::Fork;
+        assert!(req.parent_session_id.is_some());
+
+        strip_internal_only_fields(&mut req);
+
+        assert_eq!(req.parent_session_id, None);
+        assert_eq!(req.forked_from_session_id, None);
+        assert_eq!(req.budget_root_session_id, None);
+        assert_eq!(req.seed, SessionSeedMode::Fresh);
+    }
+
+    #[test]
+    fn strip_internal_only_fields_drops_client_supplied_fork_lineage_and_seed() {
+        // Public clients must not be able to trigger internal detached-spawn
+        // seeding from another session via the generic create-session API.
+        let mut req: CreateSessionRequest =
+            serde_json::from_str(&format!(r#"{{"harness_id": "{}"}}"#, TEST_HARNESS_ID)).unwrap();
+        req.forked_from_session_id = Some(SessionId::new());
+        req.seed = SessionSeedMode::Fork;
+
+        strip_internal_only_fields(&mut req);
+
+        assert_eq!(req.forked_from_session_id, None);
+        assert_eq!(req.seed, SessionSeedMode::Fresh);
+    }
+
+    #[test]
     fn test_create_session_request_missing_harness_id_is_none() {
         let json = r#"{}"#;
         let req: CreateSessionRequest = serde_json::from_str(json).unwrap();
@@ -1131,6 +1339,7 @@ mod tests {
             &db,
             42,
             None,
+            None,
             Some("generic"),
         )
         .await
@@ -1157,10 +1366,62 @@ mod tests {
             &db,
             42,
             None,
+            None,
             Some("generic"),
         )
         .await
         .unwrap();
         assert_eq!(harness_id, default_harness_id);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_session_harness_id_prefers_agent_over_org_default() {
+        // Agent-first (D4): with no explicit request harness, the agent's harness
+        // wins over the org default.
+        let db = StorageBackend::in_memory();
+        let default_harness_id: HarnessId = TEST_HARNESS_ID.parse().unwrap();
+        let agent_harness_id: HarnessId =
+            "harness_550e8400e29b41d4a716446655440009".parse().unwrap();
+
+        db.patch_organization_settings(
+            42,
+            UpdateOrganizationSettings {
+                default_harness_id: UpdateField::Set(default_harness_id),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let harness_id = crate::domains::sessions::queries::resolve_session_harness_id(
+            &db,
+            42,
+            None,
+            Some(agent_harness_id),
+            Some("generic"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(harness_id, agent_harness_id);
+    }
+
+    #[tokio::test]
+    async fn test_resolve_session_harness_id_request_overrides_agent() {
+        // Explicit request harness wins over the agent's harness (D4 override).
+        let db = StorageBackend::in_memory();
+        let requested: HarnessId = TEST_HARNESS_ID.parse().unwrap();
+        let agent_harness_id: HarnessId =
+            "harness_550e8400e29b41d4a716446655440009".parse().unwrap();
+
+        let harness_id = crate::domains::sessions::queries::resolve_session_harness_id(
+            &db,
+            42,
+            Some(requested),
+            Some(agent_harness_id),
+            Some("generic"),
+        )
+        .await
+        .unwrap();
+        assert_eq!(harness_id, requested);
     }
 }

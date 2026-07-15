@@ -143,6 +143,7 @@ pub struct DeleteQuery {
 
 /// Response for delete operation
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(as = DeleteFileResponse)]
 pub struct DeleteResponse {
     pub deleted: bool,
 }

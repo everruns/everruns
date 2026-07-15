@@ -24,7 +24,7 @@ raw output ───────────────────────
 2. Capability hooks                                        │
   │   • Tool Output Distillation  (non-exec tools)         │
   ▼                                                        ▼
-3. Final infrastructure hooks                      /workspace/outputs/
+3. Final infrastructure hooks                      <display-root>/outputs/
   │   • Persist Output  (exec tools → VFS)         {tool_call_id}.stdout
   │   • Output Hard Limit  (64 KiB ceiling)        {tool_call_id}.stderr
   ▼                                                  ▲
@@ -76,8 +76,8 @@ Two infrastructure hooks always run last, in order:
 Everything the pipeline elides is recoverable from the **session filesystem**:
 
 ```
-/workspace/outputs/{tool_call_id}.stdout    ← full standard output
-/workspace/outputs/{tool_call_id}.stderr    ← full standard error (when present)
+<display-root>/outputs/{tool_call_id}.stdout    ← full standard output
+<display-root>/outputs/{tool_call_id}.stderr    ← full standard error (when present)
 ```
 
 The inline result carries the pointer in `output_files` and `full_output`, plus a human-readable note telling the model to use `read_file` (with `offset`/`limit`) when it needs detail it can't see inline. Persisted streams are capped at 1 MiB each. Deleting the session cascades and removes them.
@@ -101,8 +101,8 @@ Together: the pipeline controls per-result size, compaction controls total-histo
 | Stage | Applies to | Effect | Destination of full output |
 |-------|-----------|--------|----------------------------|
 | Verbosity budget | exec/sandbox | Compact summary on success, diagnostic window on failure | `raw_output` → persisted in Stage 3 |
-| Distillation | MCP / web fetch / non-exec | Content-aware compact view | `/workspace/outputs/{id}.stdout` |
-| Persist Output | `persist_output` tools | Lossless write + pointer | `/workspace/outputs/{id}.{stdout,stderr}` |
+| Distillation | MCP / web fetch / non-exec | Content-aware compact view | `<display-root>/outputs/{id}.stdout` |
+| Persist Output | `persist_output` tools | Lossless write + pointer | `<display-root>/outputs/{id}.{stdout,stderr}` |
 | Output Hard Limit | all | 64 KiB ceiling backstop | (already persisted) |
 
 The agent always sees a lean view and can always recover the full original with `read_file`.

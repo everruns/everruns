@@ -108,6 +108,17 @@ impl TestServer {
         Self::with_mode_and_url(TestMode::InMemory, "http://127.0.0.1:0/api".to_string()).await
     }
 
+    /// In-memory test server with a shrunk ATIF export size cap, so 413
+    /// coverage does not need to build a 50 MiB document.
+    pub async fn in_memory_with_atif_export_cap(max_bytes: usize) -> Self {
+        Self::build(
+            TestMode::InMemory,
+            "http://127.0.0.1:0/api".to_string(),
+            Some(max_bytes),
+        )
+        .await
+    }
+
     /// Create a test server backed by a real TCP listener.
     ///
     /// Returns `(server, base_url)`. The server is served on a random port
@@ -166,6 +177,14 @@ impl TestServer {
     }
 
     async fn with_mode_and_url(mode: TestMode, api_base_url: String) -> Self {
+        Self::build(mode, api_base_url, None).await
+    }
+
+    async fn build(
+        mode: TestMode,
+        api_base_url: String,
+        atif_export_max_bytes: Option<usize>,
+    ) -> Self {
         // Create storage backend based on mode
         let (db, pool, durable_store) = match mode {
             TestMode::Postgres => {
@@ -297,13 +316,16 @@ impl TestServer {
             &platform_definition,
             event_delivery.clone(),
         );
-        let messages_state = api::messages::AppState::new(
+        let mut messages_state = api::messages::AppState::new(
             db.clone(),
             runner.clone(),
             auth_state.clone(),
             feature_flags.notifications,
             event_delivery.clone(),
         );
+        if let Some(max_bytes) = atif_export_max_bytes {
+            messages_state = messages_state.with_atif_export_max_bytes(max_bytes);
+        }
         let sse_tracker = Arc::new(everruns_server::api::sse::SseConnectionTracker::new(
             everruns_server::api::sse::SseConnectionLimits::default(),
         ));
@@ -501,6 +523,14 @@ impl TestServer {
             messages_state.session_service.clone(),
             messages_state.message_service.clone(),
         );
+        let agent_triggers_state = api::agent_triggers::AppState::new(
+            db.clone(),
+            Some(durable_store.clone()),
+            capability_service.clone(),
+            auth_state.clone(),
+            messages_state.session_service.clone(),
+            messages_state.message_service.clone(),
+        );
         let slack_state = api::slack_events::SlackState::new(
             db.clone(),
             encryption.clone(),
@@ -574,6 +604,7 @@ impl TestServer {
                 agent_identity_connections_state,
             ))
             .merge(api::apps::routes(apps_state))
+            .merge(api::agent_triggers::routes(agent_triggers_state))
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
             .merge(api::messages::routes(messages_state))
@@ -618,6 +649,7 @@ impl TestServer {
                     db: db.clone(),
                     auth: auth_state.clone(),
                     frontend_url: auth_config.frontend_url.clone(),
+                    login_origin: auth_config.login_origin.clone(),
                     base_url: auth_config.base_url.clone(),
                 },
             ));
@@ -648,6 +680,7 @@ impl TestServer {
                     db: db.clone(),
                     auth: auth_state.clone(),
                     frontend_url: auth_config.frontend_url.clone(),
+                    login_origin: auth_config.login_origin.clone(),
                     base_url: auth_config.base_url.clone(),
                 },
             ))
@@ -658,6 +691,7 @@ impl TestServer {
                     jwt_service: auth_backend.jwt_service.clone(),
                     issuer_url: auth_config.frontend_url.clone(),
                     frontend_url: auth_config.frontend_url.clone(),
+                    login_origin: auth_config.login_origin.clone(),
                     rate_limiter: auth_backend.rate_limiter.clone(),
                 },
             ));

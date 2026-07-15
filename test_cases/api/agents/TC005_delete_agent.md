@@ -8,6 +8,14 @@ Verify the two-stage agent deletion: soft delete (archive) via DELETE, then hard
 
 - API server running (`just start-dev`)
 
+## Test Data
+
+| Field | Value |
+|-------|-------|
+| Name | doomed-agent |
+| Display name | Doomed Agent |
+| System prompt | Temporary. |
+
 ## Steps
 
 1. Create agent:
@@ -42,8 +50,7 @@ Verify the two-stage agent deletion: soft delete (archive) via DELETE, then hard
 
 | Check | Expected |
 |-------|----------|
-| Step 2: HTTP status | 200 |
-| Step 2: `status` | `"archived"` |
+| Step 2: HTTP status | 204 with no response body |
 | Step 3: agent accessible | Returns agent with `status: "archived"` |
-| Step 4: HTTP status | 200 |
+| Step 4: HTTP status | 204 with no response body |
 | Step 5: HTTP status | 404 |

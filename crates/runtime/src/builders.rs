@@ -258,6 +258,7 @@ pub struct AgentBuilder {
     description: Option<String>,
     system_prompt: String,
     default_model_id: Option<ModelId>,
+    harness_id: HarnessId,
     tags: Vec<String>,
     capabilities: Vec<AgentCapabilityConfig>,
     initial_files: Vec<everruns_core::InitialFile>,
@@ -281,6 +282,7 @@ impl AgentBuilder {
             description: None,
             system_prompt: system_prompt.into(),
             default_model_id: None,
+            harness_id: HarnessId::new(),
             tags: Vec::new(),
             capabilities: Vec::new(),
             initial_files: Vec::new(),
@@ -328,6 +330,11 @@ impl AgentBuilder {
 
     pub fn default_model_id(mut self, default_model_id: ModelId) -> Self {
         self.default_model_id = Some(default_model_id);
+        self
+    }
+
+    pub fn harness_id(mut self, harness_id: HarnessId) -> Self {
+        self.harness_id = harness_id;
         self
     }
 
@@ -431,6 +438,7 @@ impl AgentBuilder {
             description: self.description,
             system_prompt: self.system_prompt,
             default_model_id: self.default_model_id,
+            harness_id: self.harness_id,
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -462,6 +470,7 @@ pub struct SessionBuilder {
     agent_id: Option<AgentId>,
     owner_principal_id: PrincipalId,
     title: Option<String>,
+    goal: Option<String>,
     locale: Option<String>,
     tags: Vec<String>,
     model_id: Option<ModelId>,
@@ -488,6 +497,7 @@ impl SessionBuilder {
             agent_id: None,
             owner_principal_id: PrincipalId::from_seed(1),
             title: None,
+            goal: None,
             locale: None,
             tags: Vec::new(),
             model_id: None,
@@ -538,6 +548,11 @@ impl SessionBuilder {
 
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.title = Some(title.into());
+        self
+    }
+
+    pub fn goal(mut self, goal: impl Into<String>) -> Self {
+        self.goal = Some(goal.into());
         self
     }
 
@@ -661,6 +676,7 @@ impl SessionBuilder {
             owner: None,
             effective_owner: None,
             title: self.title,
+            goal: self.goal,
             locale: self.locale,
             preview: None,
             output_preview: None,

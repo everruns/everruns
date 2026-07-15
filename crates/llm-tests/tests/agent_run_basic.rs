@@ -24,7 +24,7 @@ use rstest::rstest;
 
 use everruns_core::FileSystemCapability;
 use everruns_core::capabilities::CurrentTimeCapability;
-use everruns_core::in_memory_loop::InMemoryAgenticLoop;
+use everruns_core::in_memory_loop::{InMemoryAgenticLoop, TurnResult};
 use everruns_core::traits::ResolvedModel;
 
 // ============================================================================
@@ -37,27 +37,35 @@ use everruns_core::traits::ResolvedModel;
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::gemini_flash(GEMINI_FLASH)]
 #[case::openrouter_gpt4o_mini(OPENROUTER_GPT4O_MINI)]
-#[case::fireworks_gpt_oss(FIREWORKS_GPT_OSS)]
+#[case::fireworks_kimi_k2(FIREWORKS_KIMI_K2)]
 #[tokio::test]
 async fn test_basic_completion(#[case] config: ProviderModelConfig) {
-    let Some(model) = config.model() else {
+    if config.model().is_none() {
         eprintln!("Skipping: {} not set", config.label());
+        return;
+    }
+
+    let Some(result) = run_live_turn!(
+        config,
+        3,
+        |r: &TurnResult| r.success && !r.response.is_empty(),
+        {
+            let model = config.model().expect("model set (checked above)");
+            let runner = InMemoryAgenticLoop::builder()
+                .agent_name("Dad Joke Agent")
+                .system_prompt("Tell short dad jokes. Just the joke, no explanation.")
+                .model(model)
+                .driver_registry(all_providers_registry())
+                .max_iterations(3)
+                .build()
+                .await
+                .unwrap();
+            runner.run_turn("Tell me a dad joke").await.unwrap()
+        }
+    ) else {
         return;
     };
 
-    let runner = InMemoryAgenticLoop::builder()
-        .agent_name("Dad Joke Agent")
-        .system_prompt("Tell short dad jokes. Just the joke, no explanation.")
-        .model(model)
-        .driver_registry(all_providers_registry())
-        .max_iterations(3)
-        .build()
-        .await
-        .unwrap();
-
-    let result = runner.run_turn("Tell me a dad joke").await.unwrap();
-
-    skip_if_quota!(result, config.label());
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(!result.response.is_empty(), "Response should not be empty");
     assert_eq!(result.tool_calls_count, 0, "No tools should be called");
@@ -73,36 +81,55 @@ async fn test_basic_completion(#[case] config: ProviderModelConfig) {
 #[case::openai_gpt54(OPENAI_GPT54)]
 #[case::gemini_flash(GEMINI_FLASH)]
 #[case::openrouter_gpt4o_mini(OPENROUTER_GPT4O_MINI)]
-#[case::fireworks_gpt_oss(FIREWORKS_GPT_OSS)]
+#[case::fireworks_kimi_k2(FIREWORKS_KIMI_K2)]
 #[tokio::test]
 async fn test_tool_call(#[case] config: ProviderModelConfig) {
-    let Some(model) = config.model() else {
+    if config.model().is_none() {
         eprintln!("Skipping: {} not set", config.label());
+        return;
+    }
+
+    // Live models are occasionally non-deterministic about emitting a tool call
+    // for this borderline prompt: the "Should have called get_current_time"
+    // assertion has flaked on main across successive pinned models (gpt-oss-120b,
+    // then Anthropic Haiku / OpenAI). This case verifies the driver's
+    // tool-calling *path* end-to-end against each provider — not single-shot
+    // model determinism — so retry (also absorbing transient transport blips)
+    // and require the tool to be called (and the loop to iterate) on at least
+    // one attempt. A non-transient turn failure still surfaces via the asserts.
+    let Some(result) = run_live_turn!(
+        config,
+        3,
+        |r: &TurnResult| r.success && r.tool_calls_count > 0 && r.iterations > 1,
+        {
+            let model = config.model().expect("model set (checked above)");
+            let runner = InMemoryAgenticLoop::builder()
+                .agent_name("Time Agent")
+                .system_prompt("When asked about time, use get_current_time tool first.")
+                .model(model)
+                .driver_registry(all_providers_registry())
+                .capability(CurrentTimeCapability)
+                .max_iterations(5)
+                .build()
+                .await
+                .unwrap();
+            runner.run_turn("What time is it?").await.unwrap()
+        }
+    ) else {
         return;
     };
 
-    let runner = InMemoryAgenticLoop::builder()
-        .agent_name("Time Agent")
-        .system_prompt("When asked about time, use get_current_time tool first.")
-        .model(model)
-        .driver_registry(all_providers_registry())
-        .capability(CurrentTimeCapability)
-        .max_iterations(5)
-        .build()
-        .await
-        .unwrap();
-
-    let result = runner.run_turn("What time is it?").await.unwrap();
-
-    skip_if_quota!(result, config.label());
     assert!(result.success, "Turn should succeed: {:?}", result.error);
     assert!(
         result.tool_calls_count > 0,
-        "Should have called get_current_time"
+        "Should have called get_current_time (tool_calls_count={}, iterations={})",
+        result.tool_calls_count,
+        result.iterations
     );
     assert!(
         result.iterations > 1,
-        "Should have multiple iterations (reason -> act -> reason)"
+        "Should have multiple iterations (reason -> act -> reason); iterations={}",
+        result.iterations
     );
 }
 
@@ -117,27 +144,33 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
 // Gemini excluded: rejects additionalProperties in nested object schemas (separate issue)
 #[tokio::test]
 async fn test_file_system_tool_schemas_accepted(#[case] config: ProviderModelConfig) {
-    let Some(model) = config.model() else {
+    if config.model().is_none() {
         eprintln!("Skipping: {} not set", config.label());
+        return;
+    }
+
+    // Regression: edit_file schema had top-level oneOf which OpenAI rejects.
+    // This test ensures the schema is accepted by providers. Retry to absorb
+    // transient transport blips (observed on main: "Stream error: Transport
+    // error: error decoding response body") so a network hiccup during the live
+    // turn doesn't red main CI.
+    let Some(result) = run_live_turn!(config, 3, |r: &TurnResult| r.success, {
+        let model = config.model().expect("model set (checked above)");
+        let runner = InMemoryAgenticLoop::builder()
+            .agent_name("File Agent")
+            .system_prompt("Say hello. Do not use any tools.")
+            .model(model)
+            .driver_registry(all_providers_registry())
+            .capability(FileSystemCapability)
+            .max_iterations(1)
+            .build()
+            .await
+            .unwrap();
+        runner.run_turn("Say hello").await.unwrap()
+    }) else {
         return;
     };
 
-    // Regression: edit_file schema had top-level oneOf which OpenAI rejects.
-    // This test ensures the schema is accepted by providers.
-    let runner = InMemoryAgenticLoop::builder()
-        .agent_name("File Agent")
-        .system_prompt("Say hello. Do not use any tools.")
-        .model(model)
-        .driver_registry(all_providers_registry())
-        .capability(FileSystemCapability)
-        .max_iterations(1)
-        .build()
-        .await
-        .unwrap();
-
-    let result = runner.run_turn("Say hello").await.unwrap();
-
-    skip_if_quota!(result, config.label());
     assert!(
         result.success,
         "Turn should succeed with file system tools registered: {:?}",

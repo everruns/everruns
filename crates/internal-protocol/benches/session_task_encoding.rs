@@ -29,6 +29,7 @@ fn sample_task() -> st::SessionTask {
     st::SessionTask {
         id: "task_0123456789abcdef".to_string(),
         session_id: SessionId::new(),
+        root_session_id: None,
         kind: st::TASK_KIND_SUBAGENT.to_string(),
         display_name: "Investigate CI flake in worker integration suite".to_string(),
         spec: serde_json::json!({

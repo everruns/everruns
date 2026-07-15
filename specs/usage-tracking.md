@@ -79,61 +79,22 @@ Timeline:
 
 ### usage_journal / usage_ledger (Generic Metering Path)
 
-Budgeting and future cross-resource metering use a generic raw-fact journal plus rated ledger:
+Budgeting and future cross-resource metering use a generic raw-fact journal plus rated ledger, defined in `crates/server/migrations/020_budget_journal_ledger.sql`:
 
-```sql
-CREATE TABLE usage_journal (
-    id UUID PRIMARY KEY,
-    org_id BIGINT NOT NULL,
-    kind TEXT NOT NULL,            -- llm_generation, top_up, ...
-    event_id UUID,
-    session_id UUID,
-    user_id UUID,
-    principal_id UUID,
-    agent_id UUID,
-    harness_id UUID,
-    measures JSONB NOT NULL,       -- raw usage facts
-    metadata JSONB NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL
-);
+- `usage_journal` captures **raw facts**: an org-scoped row per metered event (`kind` = `llm_generation`, `top_up`, …) carrying the originating event/session/user/principal/agent/harness ids plus a `measures` JSONB of usage facts.
+- `usage_ledger` stores **rated postings** derived from those facts: each row references a journal entry, an optional `budget_id`, a `currency` (`usd`, `tokens`, `credits`, …), an `amount`, and a `meter_source`.
 
-CREATE TABLE usage_ledger (
-    id UUID PRIMARY KEY,
-    journal_id UUID NOT NULL REFERENCES usage_journal(id),
-    budget_id UUID,                -- set for budget-scoped postings
-    org_id BIGINT NOT NULL,
-    currency TEXT NOT NULL,        -- usd, tokens, credits, ...
-    amount DOUBLE PRECISION NOT NULL,
-    meter_source TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL
-);
-```
-
-`usage_journal` captures raw facts. `usage_ledger` stores rated postings derived from those facts. Budget balances are projections over budget-scoped ledger rows.
+Budget balances are projections over budget-scoped ledger rows.
 
 ### llm_generations Table (LLM Analytics Projection)
 
-LLM analytics still maintain a specialized `llm_generations` table for token-centric querying and denormalized session/agent totals:
-
-```sql
-CREATE TABLE llm_generations (
-    id UUID PRIMARY KEY,
-    session_id UUID NOT NULL REFERENCES sessions(id),
-    turn_id UUID,              -- Groups generations within a turn
-    event_id UUID,             -- Links to original llm.generation event
-    model TEXT,
-    provider TEXT,
-    input_tokens BIGINT NOT NULL DEFAULT 0,
-    output_tokens BIGINT NOT NULL DEFAULT 0,
-    cache_read_tokens BIGINT NOT NULL DEFAULT 0,
-    cache_creation_tokens BIGINT NOT NULL DEFAULT 0,
-    actual_cost_usd DOUBLE PRECISION,     -- Provider-reported cost (e.g. OpenRouter usage.cost); NULL when not reported
-    estimated_cost_usd DOUBLE PRECISION,  -- Price-table estimate from the model profile; NULL when no profile cost data
-    duration_ms INTEGER,
-    finish_reason TEXT,
-    created_at TIMESTAMPTZ NOT NULL
-);
-```
+LLM analytics still maintain a specialized `llm_generations` table (defined in
+`crates/server/migrations/001_base_schema.sql`) for token-centric querying and
+denormalized session/agent totals. Each row links a generation to its
+session/turn/originating event, records model and provider, the four disjoint
+token buckets (`input_tokens`, `output_tokens`, `cache_read_tokens`,
+`cache_creation_tokens`), and the two cost figures below (`actual_cost_usd`,
+`estimated_cost_usd`) alongside `duration_ms` and `finish_reason`.
 
 Cost is tracked as two independent figures per generation: `actual_cost_usd`, the
 provider's authoritative inline cost when reported (OpenRouter's `usage.cost`),

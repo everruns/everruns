@@ -5,13 +5,11 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 use super::{
     EmailAddress, EmailError, EmailMessage, EmailResult, EmailSender, EmailTag, RenderedEmail,
     SentEmail, system_email_from,
 };
-use crate::{EgressError, EgressRequest, EgressRequestKind, EgressService};
 
 const RESEND_API_BASE_URL: &str = "https://api.resend.com";
 const RESEND_REQUEST_TIMEOUT_MS: u64 = 30_000;
@@ -57,7 +55,7 @@ impl ResendEmailConfig {
 
 #[derive(Clone)]
 pub struct ResendEmailSender {
-    egress_service: Arc<dyn EgressService>,
+    http: reqwest::Client,
     config: ResendEmailConfig,
 }
 
@@ -71,17 +69,16 @@ impl std::fmt::Debug for ResendEmailSender {
 
 impl ResendEmailSender {
     pub fn new(config: ResendEmailConfig) -> Self {
-        Self::with_egress_service(config, Arc::new(crate::DirectEgressService::default()))
+        let http = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_millis(RESEND_REQUEST_TIMEOUT_MS))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("build Resend email HTTP client");
+        Self::with_http_client(config, http)
     }
 
-    pub fn with_egress_service(
-        config: ResendEmailConfig,
-        egress_service: Arc<dyn EgressService>,
-    ) -> Self {
-        Self {
-            egress_service,
-            config,
-        }
+    pub fn with_http_client(config: ResendEmailConfig, http: reqwest::Client) -> Self {
+        Self { http, config }
     }
 
     pub fn config(&self) -> &ResendEmailConfig {
@@ -94,39 +91,42 @@ impl EmailSender for ResendEmailSender {
     async fn send_email(&self, message: EmailMessage) -> EmailResult<SentEmail> {
         let rendered = message.validate()?;
         let request = ResendSendEmailRequest::from_message(system_email_from(), message, rendered);
-        let mut egress_request = EgressRequest::new(
-            "POST",
-            format!("{}/emails", self.config.api_base_url),
-            EgressRequestKind::SystemEmail,
-        )
-        .header("Authorization", format!("Bearer {}", self.config.api_key))
-        .header("Content-Type", "application/json")
-        .timeout_ms(RESEND_REQUEST_TIMEOUT_MS)
-        .body(serde_json::to_vec(&request).map_err(|error| {
+        let body = serde_json::to_vec(&request).map_err(|error| {
             EmailError::Transport(format!("failed to encode Resend request: {error}"))
-        })?);
+        })?;
+
+        let mut builder = self
+            .http
+            .post(format!("{}/emails", self.config.api_base_url))
+            .header("Authorization", format!("Bearer {}", self.config.api_key))
+            .header("Content-Type", "application/json")
+            .body(body);
 
         if let Some(key) = &request.idempotency_key {
-            egress_request = egress_request.header("Idempotency-Key", key);
+            builder = builder.header("Idempotency-Key", key);
         }
 
-        let response = self
-            .egress_service
-            .send(egress_request)
+        let response = builder
+            .send()
             .await
-            .map_err(EmailError::egress)?;
-        if !(200..300).contains(&response.status) {
+            .map_err(|error| EmailError::Transport(error.to_string()))?;
+        let status = response.status();
+        let body = response
+            .bytes()
+            .await
+            .map_err(|error| EmailError::Transport(error.to_string()))?
+            .to_vec();
+        if !status.is_success() {
             return Err(EmailError::Provider {
                 provider: "resend",
-                status: response.status,
-                body: String::from_utf8_lossy(&response.body).into_owned(),
+                status: status.as_u16(),
+                body: String::from_utf8_lossy(&body).into_owned(),
             });
         }
 
-        let body: ResendSendEmailResponse =
-            serde_json::from_slice(&response.body).map_err(|error| {
-                EmailError::Transport(format!("failed to decode Resend response: {error}"))
-            })?;
+        let body: ResendSendEmailResponse = serde_json::from_slice(&body).map_err(|error| {
+            EmailError::Transport(format!("failed to decode Resend response: {error}"))
+        })?;
         Ok(SentEmail {
             provider: "resend",
             id: body.id,
@@ -135,12 +135,6 @@ impl EmailSender for ResendEmailSender {
 
     fn name(&self) -> &'static str {
         "ResendEmailSender"
-    }
-}
-
-impl EmailError {
-    fn egress(error: EgressError) -> Self {
-        Self::Transport(error.to_string())
     }
 }
 
@@ -258,5 +252,44 @@ mod tests {
         assert!(body.get("reply_to").is_none());
         assert!(body.get("headers").is_none());
         assert!(body.get("idempotency_key").is_none());
+    }
+
+    #[tokio::test]
+    async fn resend_sender_uses_direct_http_outside_runtime_egress_policy() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/emails"))
+            .and(header("Authorization", "Bearer re_test"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "id": "email_allowed"
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let allowlist = crate::SystemAllowlist::from_toml(
+            r#"
+            [groups.test]
+            allowed = ["allowed.example.com"]
+            "#,
+        )
+        .unwrap();
+        assert!(
+            !allowlist.is_url_allowed(&format!("{}/emails", server.uri())),
+            "mock Resend endpoint should be outside the runtime system allowlist"
+        );
+
+        let sender = ResendEmailSender::new(test_config(server.uri()));
+        let sent = sender
+            .send_email(EmailMessage::minimal(
+                "delivered@example.com",
+                "Welcome",
+                "hello",
+                "<p>hello</p>",
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(sent.id, "email_allowed");
     }
 }

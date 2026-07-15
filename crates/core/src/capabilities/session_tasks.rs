@@ -2,8 +2,8 @@
 //
 // Generic agent-facing tools over the session task registry
 // (specs/session-tasks.md): list_tasks / get_task / message_task /
-// cancel_task / wait_task. Spawning stays per-capability (spawn_subagent,
-// spawn_agent, spawn_background) — every spawn creates a task and returns its
+// cancel_task / wait_task. Spawning stays with each creation surface
+// (spawn_agent, spawn_background) — every spawn creates a task and returns its
 // task_id; these tools provide the uniform query/messaging/cancel/wait plane.
 //
 // Decision: tools degrade gracefully when `context.session_task_registry` is
@@ -458,7 +458,7 @@ impl Tool for CancelTaskTool {
     }
 
     fn description(&self) -> &str {
-        "Request cooperative cancellation of a task. The task winds down and may still end succeeded or failed."
+        "Request cooperative cancellation of a task. The task winds down and may still end succeeded or failed. For a detached `session` task this also cancels the peer session (not just the tracking chip)."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -704,17 +704,18 @@ pub(crate) mod tests {
 
         async fn list(
             &self,
-            _session_id: SessionId,
+            session_id: SessionId,
             filter: Option<&SessionTaskFilter>,
         ) -> crate::error::Result<Vec<SessionTask>> {
             let tasks = self.tasks.lock().unwrap();
             Ok(tasks
                 .values()
                 .filter(|task| {
-                    filter.is_none_or(|f| {
-                        f.kind.as_deref().is_none_or(|kind| task.kind == kind)
-                            && f.state.is_none_or(|state| task.state == state)
-                    })
+                    task.session_id == session_id
+                        && filter.is_none_or(|f| {
+                            f.kind.as_deref().is_none_or(|kind| task.kind == kind)
+                                && f.state.is_none_or(|state| task.state == state)
+                        })
                 })
                 .cloned()
                 .collect())

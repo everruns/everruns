@@ -38,6 +38,15 @@ pub struct ScheduledAppChannelInput {
     pub channel_id: String,
 }
 
+/// Durable schedule target input for an agent-owned schedule trigger (EVE-757).
+/// Mirrors [`ScheduledAppChannelInput`], re-homed on the agent + trigger.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScheduledAgentTriggerInput {
+    pub org_id: i64,
+    pub agent_id: String,
+    pub trigger_id: String,
+}
+
 // ============================================================================
 // Activity Implementations
 // ============================================================================
@@ -165,6 +174,7 @@ pub mod activity_types {
     pub const REASON: &str = "reason";
     pub const ACT: &str = "act";
     pub const INVOKE_SCHEDULED_APP_CHANNEL: &str = "invoke_scheduled_app_channel";
+    pub const INVOKE_AGENT_TRIGGER: &str = "invoke_agent_trigger";
 }
 
 // ============================================================================

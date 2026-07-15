@@ -36,6 +36,14 @@ const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 /// Idle pooled-connection lifetime, so reused HTTP keep-alive/HTTP-2
 /// connections are eventually recycled.
 const HTTP_POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(90);
+/// Shorter idle lifetime for the streaming client. A provider/edge often closes
+/// idle keep-alive sockets after ~10-30s; reusing one the peer already closed is
+/// a dominant source of the mid-stream `error decoding response body` flake. The
+/// streaming reconnect layer (`stream_reconnect`) recovers from those, but
+/// recycling sooner avoids most of them outright — matching the official OpenAI
+/// SDK transport (httpx), whose default `keepalive_expiry` is 5s. Kept a little
+/// above 5s so genuinely rapid successive turns still reuse a warm connection.
+const HTTP_STREAM_POOL_IDLE_TIMEOUT: Duration = Duration::from_secs(15);
 /// DNS resolution is capped so a stuck resolver cannot stall a provider call
 /// past the outbound HTTP timeout. Mirrors `url_validation`'s lookup cap.
 const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
@@ -121,7 +129,7 @@ pub fn shared_streaming_http_client() -> reqwest::Client {
                 reqwest::Client::builder()
                     .connect_timeout(HTTP_CONNECT_TIMEOUT)
                     .read_timeout(HTTP_STREAM_READ_TIMEOUT)
-                    .pool_idle_timeout(HTTP_POOL_IDLE_TIMEOUT),
+                    .pool_idle_timeout(HTTP_STREAM_POOL_IDLE_TIMEOUT),
             )
             .build()
             // Fall back to a minimal but still SSRF-hardened client rather than

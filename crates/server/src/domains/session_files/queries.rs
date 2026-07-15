@@ -4,6 +4,30 @@ use everruns_core::typed_id::SessionId;
 use std::sync::Arc;
 use uuid::Uuid;
 
+pub const USER_MEMORY_MOUNT_PATH: &str = "/memory/user";
+
+#[derive(Debug, Clone, Copy)]
+pub struct SessionFileAccess {
+    pub workspace_key: Uuid,
+    pub user_memory_allowed: bool,
+}
+
+impl SessionFileAccess {
+    pub fn ensure_user_memory_access(&self, path: &str) -> Result<(), CommandError> {
+        if !self.user_memory_allowed && is_user_memory_path(path) {
+            return Err(user_memory_forbidden());
+        }
+        Ok(())
+    }
+
+    pub fn ensure_user_memory_mutation_access(&self, path: &str) -> Result<(), CommandError> {
+        if !self.user_memory_allowed && is_user_memory_path_or_ancestor(path) {
+            return Err(user_memory_forbidden());
+        }
+        Ok(())
+    }
+}
+
 pub fn service(ctx: &Ctx) -> Arc<WorkspaceFileService> {
     ctx.session_file_service
         .clone()
@@ -20,14 +44,25 @@ pub fn parse_session_id(session_id: &str) -> Result<SessionId, CommandError> {
 /// the workspace it is attached to — i.e. the file-store key. For the default
 /// 1:1 session this equals the session uuid; for a shared workspace it differs,
 /// so file operations must key by this value rather than `session_id.uuid()`.
-pub async fn verify_session(ctx: &Ctx, session_id: SessionId) -> Result<Uuid, CommandError> {
+pub async fn verify_session(
+    ctx: &Ctx,
+    session_id: SessionId,
+) -> Result<SessionFileAccess, CommandError> {
     let row = ctx
         .db
         .get_session(ctx.org_id(), session_id)
         .await
         .map_err(classify_storage)?
         .ok_or_else(|| CommandError::not_found("Session"))?;
-    Ok(row.workspace_id)
+    let user_memory_allowed = row
+        .resolved_owner_user_id
+        .zip(ctx.caller.user_id)
+        .is_some_and(|(owner, caller)| owner == caller)
+        || ctx.caller.is_internal;
+    Ok(SessionFileAccess {
+        workspace_key: row.workspace_id,
+        user_memory_allowed,
+    })
 }
 
 /// Resolve the session's workspace for a *write* and enforce the workspace
@@ -47,7 +82,8 @@ pub async fn verify_session_for_write(
     ctx: &Ctx,
     session_id: SessionId,
 ) -> Result<Uuid, CommandError> {
-    let workspace_key = verify_session(ctx, session_id).await?;
+    let access = verify_session(ctx, session_id).await?;
+    let workspace_key = access.workspace_key;
 
     if workspace_key != session_id.uuid() {
         crate::domains::workspaces::WORKSPACE_MANAGE
@@ -85,6 +121,33 @@ pub fn is_reserved_path(path: &str) -> bool {
     path.starts_with('_') || path.split('/').any(|segment| segment.starts_with('_'))
 }
 
+pub fn is_user_memory_path(path: &str) -> bool {
+    let path = normalize_path(path);
+    path == USER_MEMORY_MOUNT_PATH
+        || path
+            .strip_prefix(USER_MEMORY_MOUNT_PATH)
+            .is_some_and(|rest| rest.starts_with('/'))
+}
+
+pub fn is_user_memory_path_or_ancestor(path: &str) -> bool {
+    let path = normalize_path(path);
+    is_user_memory_path(&path)
+        || USER_MEMORY_MOUNT_PATH
+            .strip_prefix(path.trim_end_matches('/'))
+            .is_some_and(|rest| rest.starts_with('/'))
+}
+
+pub fn redact_user_memory_files<T>(files: Vec<T>, path: impl Fn(&T) -> &str) -> Vec<T> {
+    files
+        .into_iter()
+        .filter(|file| !is_user_memory_path(path(file)))
+        .collect()
+}
+
+fn user_memory_forbidden() -> CommandError {
+    CommandError::forbidden("User memory is private to the session owner")
+}
+
 pub fn classify_storage(error: anyhow::Error) -> CommandError {
     tracing::error!("Session file domain error: {error}");
     CommandError::internal(error)
@@ -106,5 +169,18 @@ mod tests {
         assert_eq!(normalize_path("/a//b/"), "/a/b");
         // A real top-level `workspace/` dir is not the alias.
         assert_eq!(normalize_path("/workspacefoo"), "/workspacefoo");
+    }
+
+    #[test]
+    fn detects_user_memory_paths_after_normalization() {
+        assert!(is_user_memory_path("/memory/user"));
+        assert!(is_user_memory_path("memory/user/notes.md"));
+        assert!(is_user_memory_path("/workspace/memory/user/notes.md"));
+        assert!(!is_user_memory_path("/memory/userland"));
+        assert!(!is_user_memory_path("/memory/agent"));
+        assert!(is_user_memory_path_or_ancestor("/"));
+        assert!(is_user_memory_path_or_ancestor("/memory"));
+        assert!(is_user_memory_path_or_ancestor("/memory/user/notes.md"));
+        assert!(!is_user_memory_path_or_ancestor("/notes.md"));
     }
 }

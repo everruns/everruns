@@ -657,7 +657,7 @@ async fn test_session_filesystem() {
 
     let fs_url = format!("{}/v1/sessions/{}/fs", API_BASE_URL, session.id);
 
-    // Step 3: List root directory (should be empty)
+    // Step 3: List root directory (new sessions mount scoped memory under the reserved memory root)
     println!("\nStep 3: Listing root directory...");
     let list_response = client
         .get(&fs_url)
@@ -667,8 +667,11 @@ async fn test_session_filesystem() {
 
     assert_eq!(list_response.status(), 200);
     let list_result: Value = list_response.json().await.expect("Failed to parse");
-    assert_eq!(list_result["data"].as_array().unwrap().len(), 0);
-    println!("Root directory is empty");
+    let root_entries = list_result["data"].as_array().unwrap();
+    assert_eq!(root_entries.len(), 1);
+    assert_eq!(root_entries[0]["path"], "/memory");
+    assert_eq!(root_entries[0]["is_directory"], true);
+    println!("Root directory contains scoped memory mount");
 
     // Step 4: Create a file
     println!("\nStep 4: Creating file...");
