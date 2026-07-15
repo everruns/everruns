@@ -13,7 +13,7 @@ use axum::{
     routing::{get, post},
 };
 use chrono::Utc;
-use everruns_core::typed_id::{AgentId, AgentVersionId, ModelId};
+use everruns_core::typed_id::{AgentId, AgentVersionId, HarnessId, ModelId};
 use everruns_core::{
     Agent, AgentCapabilityConfig, Caller, DeploymentGrade, InitialFile, OrgRole,
     PlatformDefinition, ResourceConfigResponse, ScopedMcpServers, evaluate_policies_with,
@@ -104,6 +104,10 @@ struct AgentFile {
     pub description: Option<String>,
     pub system_prompt: Option<String>,
     pub default_model_id: Option<ModelId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub harness_id: Option<HarnessId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub harness_name: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
     /// Capabilities - supports both string IDs and objects with ref/config
@@ -834,6 +838,8 @@ pub async fn upsert_agent(
                     description: req.description,
                     system_prompt: Some(req.system_prompt),
                     default_model_id: req.default_model_id,
+                    harness_id: req.harness_id,
+                    harness_name: req.harness_name,
                     tags: Some(req.tags),
                     capabilities: Some(req.capabilities),
                     initial_files: Some(req.initial_files),
@@ -1045,6 +1051,8 @@ async fn import_from_example(
         description: Some(seed.description.to_string()),
         system_prompt: seed.system_prompt.to_string(),
         default_model_id: None,
+        harness_id: None,
+        harness_name: None,
         tags: seed.tags.iter().map(|s| s.to_string()).collect(),
         capabilities,
         initial_files: vec![],
@@ -1132,6 +1140,8 @@ async fn import_from_file(
         description: agent_file.description,
         system_prompt,
         default_model_id: agent_file.default_model_id,
+        harness_id: agent_file.harness_id,
+        harness_name: agent_file.harness_name,
         tags: agent_file.tags,
         capabilities: agent_file
             .capabilities
@@ -1195,6 +1205,7 @@ fn agent_to_markdown(agent: &Agent) -> String {
     if let Some(model_id) = agent.default_model_id {
         yaml_lines.push(format!("default_model_id: \"{}\"", model_id));
     }
+    yaml_lines.push(format!("harness_id: \"{}\"", agent.harness_id));
 
     if !agent.tags.is_empty() {
         yaml_lines.push("tags:".to_string());
@@ -1272,6 +1283,8 @@ fn parse_agent_content(content: &str) -> Result<AgentFile, String> {
         description: None,
         system_prompt: Some(content.to_string()),
         default_model_id: None,
+        harness_id: None,
+        harness_name: None,
         tags: vec![],
         capabilities: vec![],
         initial_files: vec![],

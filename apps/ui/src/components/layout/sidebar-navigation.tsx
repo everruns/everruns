@@ -27,13 +27,15 @@ function NavLink({
 }) {
   if (item.flag && !featureFlags[item.flag]) return null;
 
+  const activePath = item.activePrefix ?? item.href;
   const isActive = item.exact
-    ? pathname === item.href
-    : pathname === item.href || pathname.startsWith(`${item.href}/`);
+    ? pathname === activePath
+    : pathname === activePath || pathname.startsWith(`${activePath}/`);
 
   return (
     <Link
       href={item.href}
+      prefetch={item.prefetch}
       className={cn(
         "flex items-center gap-2.5 border-l-2 px-3 py-1.5 text-[13px] font-semibold leading-5 transition-colors",
         isActive

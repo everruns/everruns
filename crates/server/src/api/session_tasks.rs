@@ -7,15 +7,17 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::session_tasks::{
-    CancelSessionTask, GetSessionTask, ListOrgTasks, ListSessionTasks, PostSessionTaskMessage,
-    SessionTaskDetail,
+    CancelSessionTask, CreateTaskPushConfig, DeleteTaskPushConfig, GetSessionTask, ListOrgTasks,
+    ListSessionTasks, ListTaskPushConfigs, PostSessionTaskMessage, SessionTaskDetail,
+    TaskPushConfig,
 };
 use crate::services::EventService;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
-    routing::{get, post},
+    http::StatusCode,
+    routing::{delete, get, post},
 };
 use everruns_core::session_task::{TaskMessage, TaskMessagePart};
 use everruns_core::{Caller, SessionTask};
@@ -69,6 +71,14 @@ pub fn routes(state: AppState) -> Router {
             "/v1/sessions/{session_id}/tasks/{task_id}/cancel",
             post(cancel_task),
         )
+        .route(
+            "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
+            get(list_push_configs).post(create_push_config),
+        )
+        .route(
+            "/v1/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}",
+            delete(delete_push_config),
+        )
         .with_state(state)
 }
 
@@ -77,6 +87,7 @@ pub struct ListOrgTasksQuery {
     pub state: Option<String>,
     pub kind: Option<String>,
     pub created_after: Option<String>,
+    pub root_session_id: Option<String>,
     pub limit: Option<u32>,
 }
 
@@ -88,6 +99,7 @@ pub struct ListOrgTasksQuery {
         ("state" = Option<String>, Query, description = "Filter by state"),
         ("kind" = Option<String>, Query, description = "Filter by kind"),
         ("created_after" = Option<String>, Query, description = "Only tasks created at/after this RFC3339 timestamp"),
+        ("root_session_id" = Option<String>, Query, description = "Only tasks whose owning session's delegation-tree root is this session"),
         ("limit" = Option<u32>, Query, description = "Max tasks, newest first (default 100, max 500)"),
     ),
     responses(
@@ -105,6 +117,7 @@ pub async fn list_org_tasks(
             state: query.state,
             kind: query.kind,
             created_after: query.created_after,
+            root_session_id: query.root_session_id,
             limit: query.limit,
         }
         .run(&state.ctx(&org))
@@ -266,4 +279,113 @@ pub async fn cancel_task(
         .run(&state.ctx(&org))
         .await?,
     ))
+}
+
+/// Request body for creating a per-task push config.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreatePushConfigBody {
+    /// URL to POST task events to.
+    #[schema(example = "https://hooks.example.com/everruns/tasks")]
+    pub url: String,
+    /// Optional HMAC-SHA256 signing secret (never returned once set).
+    #[serde(default)]
+    #[schema(example = "whsec_example_signing_secret_placeholder")]
+    pub secret: Option<String>,
+    /// Events that trigger delivery. Defaults to `["terminal"]`.
+    #[serde(default)]
+    pub event_filter: Option<Vec<String>>,
+}
+
+/// List per-task push-notification configs.
+#[utoipa::path(
+    get,
+    path = "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
+    params(
+        ("session_id" = String, Path, description = "Session ID"),
+        ("task_id" = String, Path, description = "Task ID"),
+    ),
+    responses(
+        (status = 200, description = "Push configs", body = Vec<TaskPushConfig>),
+        (status = 404, description = "Session or task not found"),
+    ),
+    tag = "session-tasks"
+)]
+pub async fn list_push_configs(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((session_id, task_id)): Path<(String, String)>,
+) -> ApiResult<Vec<TaskPushConfig>> {
+    Ok(Json(
+        ListTaskPushConfigs {
+            session_id,
+            task_id,
+        }
+        .run(&state.ctx(&org))
+        .await?,
+    ))
+}
+
+/// Create a per-task push-notification config.
+#[utoipa::path(
+    post,
+    path = "/v1/sessions/{session_id}/tasks/{task_id}/push-configs",
+    params(
+        ("session_id" = String, Path, description = "Session ID"),
+        ("task_id" = String, Path, description = "Task ID"),
+    ),
+    request_body = CreatePushConfigBody,
+    responses(
+        (status = 200, description = "Created push config", body = TaskPushConfig),
+        (status = 400, description = "Invalid request (bad URL or event_filter)"),
+        (status = 404, description = "Session or task not found"),
+    ),
+    tag = "session-tasks"
+)]
+pub async fn create_push_config(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((session_id, task_id)): Path<(String, String)>,
+    Json(body): Json<CreatePushConfigBody>,
+) -> ApiResult<TaskPushConfig> {
+    Ok(Json(
+        CreateTaskPushConfig {
+            session_id,
+            task_id,
+            url: body.url,
+            secret: body.secret,
+            event_filter: body.event_filter,
+        }
+        .run(&state.ctx(&org))
+        .await?,
+    ))
+}
+
+/// Delete a per-task push-notification config.
+#[utoipa::path(
+    delete,
+    path = "/v1/sessions/{session_id}/tasks/{task_id}/push-configs/{config_id}",
+    params(
+        ("session_id" = String, Path, description = "Session ID"),
+        ("task_id" = String, Path, description = "Task ID"),
+        ("config_id" = String, Path, description = "Push config ID (tpc_...)"),
+    ),
+    responses(
+        (status = 204, description = "Push config deleted"),
+        (status = 404, description = "Session, task, or push config not found"),
+    ),
+    tag = "session-tasks"
+)]
+pub async fn delete_push_config(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((session_id, task_id, config_id)): Path<(String, String, String)>,
+) -> Result<StatusCode, (StatusCode, Json<super::common::ErrorResponse>)> {
+    DeleteTaskPushConfig {
+        session_id,
+        task_id,
+        config_id,
+    }
+    .run(&state.ctx(&org))
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
 }

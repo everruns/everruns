@@ -553,6 +553,7 @@ pub trait Tool: Send + Sync {
         _tool_call: &crate::tool_types::ToolCall,
         _phase: crate::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         None
     }
@@ -2315,6 +2316,10 @@ mod tests {
 
     #[async_trait]
     impl crate::traits::SessionFileSystem for TestFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             _session_id: SessionId,
@@ -2595,6 +2600,13 @@ mod tests {
         }
         async fn get_session_by_id(&self, _id: SessionId) -> crate::Result<Option<crate::Session>> {
             Ok(None)
+        }
+        async fn add_agent_session_participant(
+            &self,
+            _session_id: SessionId,
+            _agent_id: AgentId,
+        ) -> crate::Result<crate::SessionParticipant> {
+            unreachable!()
         }
         async fn get_session_context_report(
             &self,
@@ -3896,6 +3908,7 @@ mod tests {
         crate::session_task::SessionTask {
             id: "t-reattach".to_string(),
             session_id: SessionId::new(),
+            root_session_id: None,
             kind: crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
             display_name: "Reattach test".to_string(),
             spec,

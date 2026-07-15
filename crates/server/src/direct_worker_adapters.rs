@@ -8,22 +8,25 @@
 
 use async_trait::async_trait;
 use everruns_core::budget::{BudgetSummary, BudgetToolResponse};
-use everruns_core::capabilities::{AgentCapabilityConfig, CapabilityRegistry};
+use everruns_core::capabilities::{
+    AgentCapabilityConfig, CapabilityRegistry, collect_message_filters_only,
+};
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
+use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
     BudgetChecker, CreateStoredImage, ImageArtifactStore, PaymentAuthority,
-    ProviderCredentialStore, ProviderCredentials, ResolvedImage, ResolvedModel, StoredImage,
-    StoredImageInfo,
+    ProviderCredentialStore, ProviderCredentials, ResolvedImage, ResolvedModel,
+    SessionCreationAuthority, StoredImage, StoredImageInfo,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
     Agent, AgentStatus, Caller, ContentPart, DriverId, DriverRegistry, EgressRequest,
     EgressRequestKind, EgressService, EventData, Harness, HarnessStatus, Message, MessageRole,
-    Session, SessionStatus, ToolDefinition, ToolResultContentPart, UtilityLlmService,
-    merge_harness,
+    Session, SessionParticipant, SessionStatus, ToolDefinition, ToolResultContentPart,
+    UtilityLlmService, merge_harness, resolve_runtime_capabilities,
 };
 use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
@@ -322,6 +325,31 @@ impl DirectWorkerAdapters {
         }
     }
 
+    async fn load_turn_messages(
+        &self,
+        session: &Session,
+        agent: Option<&Agent>,
+        harness: Option<&Harness>,
+    ) -> Result<Vec<Message>> {
+        let harness_chain: Vec<Harness> = harness.cloned().into_iter().collect();
+        let resolved =
+            resolve_runtime_capabilities(&harness_chain, agent, session, &self.capability_registry);
+        let message_filters = collect_message_filters_only(
+            &resolved.effective_overlay.capabilities,
+            &self.capability_registry,
+        );
+        let mut query = everruns_core::MessageQuery::new(session.id);
+        message_filters.apply_message_filters(&mut query);
+
+        let retriever = crate::storage::DbMessageRetriever::new(self.db.clone());
+        let mut messages = retriever.load_filtered(query).await.map_err(|error| {
+            tracing::error!("Failed to load bounded turn messages: {error}");
+            store_error("Failed to load messages")
+        })?;
+        message_filters.apply_post_load_filters(&mut messages);
+        Ok(messages)
+    }
+
     /// Set the agent runner for platform management tools (send_message, etc.)
     pub fn with_runner(mut self, runner: Arc<dyn everruns_worker::AgentRunner>) -> Self {
         self.runner = Some(runner);
@@ -552,6 +580,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 owner: None,
                 effective_owner: None,
                 title: r.title,
+                goal: r.goal,
                 locale: r.locale,
                 preview: None,
                 output_preview: None,
@@ -1183,19 +1212,23 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         let mut matches: Vec<GrepMatch> = results.into_iter().flat_map(|r| r.matches).collect();
 
-        // Also search virtual mounts (use regex path filtering to match DB semantics)
+        // Also search virtual mounts with the shared canonical-path glob semantics.
         if let Some(registry) = &self.virtual_registry
             && let Ok(regex) = regex::Regex::new(pattern)
         {
-            let path_regex = path_pattern
-                .map(regex::Regex::new)
+            let path_matcher = path_pattern
+                .map(everruns_core::session_path::GrepPathPattern::new)
                 .transpose()
                 .unwrap_or(None);
             let virtual_matches = registry.grep(&session_id, &regex, None, 512 * 1024);
             matches.extend(
                 virtual_matches
                     .into_iter()
-                    .filter(|vm| path_regex.as_ref().is_none_or(|re| re.is_match(&vm.path)))
+                    .filter(|vm| {
+                        path_matcher
+                            .as_ref()
+                            .is_none_or(|matcher| matcher.is_match(&vm.path))
+                    })
                     .map(|vm| GrepMatch {
                         path: vm.path,
                         line_number: vm.line_number,
@@ -1381,10 +1414,9 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
                 vec![]
             } else {
-                let egress = self
-                    .egress_service
-                    .clone()
-                    .unwrap_or_else(|| Arc::new(everruns_core::DirectEgressService::from_env()));
+                let egress = self.egress_service.clone().unwrap_or_else(|| {
+                    Arc::new(everruns_core::DirectEgressService::for_runtime_traffic_from_env())
+                });
                 build_scoped_mcp_tool_definitions(
                     &effective,
                     Some(session.id),
@@ -1404,8 +1436,13 @@ impl WorkerAdapters for DirectWorkerAdapters {
         let mut mcp_tool_definitions = org_mcp_tool_definitions;
         mcp_tool_definitions.extend(local_mcp_tool_definitions);
 
-        // Load messages
-        let messages = self.load_messages(session_id).await?;
+        // Load messages through the same capability-aware windowing used by
+        // reason atoms. Long sessions should fetch a bounded prompt candidate
+        // set (for example infinity_context's head+tail window), not the whole
+        // event history.
+        let messages = self
+            .load_turn_messages(&session, agent.as_ref(), harness.as_ref())
+            .await?;
 
         // Load model (session > agent > harness > default)
         let model = if let Some(model_id) = session.model_id {
@@ -1529,7 +1566,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 db: self.db.clone(),
                 egress_service: egress.clone(),
             });
-            registry = registry.with_notifier(notifier);
+            registry = registry.with_transition_observer(notifier);
         }
         Some(Arc::new(registry))
     }
@@ -1568,6 +1605,27 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 agent_id,
             ),
         ))
+    }
+
+    fn session_creation_authority(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Option<Arc<dyn SessionCreationAuthority>> {
+        Some(Arc::new(DirectPlatformStore::new(
+            org_id,
+            session_id,
+            self.db.clone(),
+            DirectPlatformStoreDeps {
+                event_service: self.event_service.clone(),
+                runner: self.runner.clone(),
+                capability_registry: self.capability_registry.clone(),
+                encryption: self.encryption.clone(),
+                workflow_store: self.workflow_store.clone(),
+                permission_resolver: self.permission_resolver.clone(),
+                egress_service: self.egress_service.clone(),
+            },
+        )))
     }
 
     fn outbound_tool_rate_limiter(
@@ -1627,6 +1685,46 @@ impl WorkerAdapters for DirectWorkerAdapters {
         )
         .await
         .map_err(|error| store_error(format!("Failed to invoke scheduled app channel: {error}")))?;
+
+        Ok(serde_json::json!({
+            "session_id": result.session_id.to_string(),
+            "created_session": result.created_session,
+        }))
+    }
+
+    async fn invoke_agent_trigger(
+        &self,
+        org_id: i64,
+        agent_id: &str,
+        trigger_id: &str,
+    ) -> Result<serde_json::Value> {
+        let runner = self
+            .runner
+            .clone()
+            .ok_or_else(|| store_error("Agent runner not configured"))?;
+        let session_service = if let Some(registry) = self.virtual_registry.clone() {
+            SessionService::with_registry(self.db.clone(), self.capability_registry.clone())
+                .with_virtual_registry(registry)
+        } else {
+            SessionService::with_registry(self.db.clone(), self.capability_registry.clone())
+        };
+        let message_service = MessageService::new(
+            self.db.clone(),
+            runner,
+            false,
+            self.event_service.event_delivery().clone(),
+        );
+
+        let result = crate::domains::agent_triggers::invoke_agent_trigger(
+            &self.db,
+            &session_service,
+            &message_service,
+            org_id,
+            agent_id,
+            trigger_id,
+        )
+        .await
+        .map_err(|error| store_error(format!("Failed to invoke agent trigger: {error}")))?;
 
         Ok(serde_json::json!({
             "session_id": result.session_id.to_string(),
@@ -1752,7 +1850,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 db: self.db.clone(),
                 egress_service: egress.clone(),
             });
-            registry = registry.with_notifier(notifier);
+            registry = registry.with_transition_observer(notifier);
         }
         Arc::new(registry)
     }
@@ -1874,6 +1972,7 @@ impl DirectWorkerAdapters {
             description: r.description,
             system_prompt: r.system_prompt,
             default_model_id: r.default_model_id,
+            harness_id: r.harness_id,
             default_version_id: r.default_version_id,
             forked_from_agent_id: r.forked_from_agent_id,
             forked_from_version_id: r.forked_from_version_id,
@@ -2127,10 +2226,67 @@ struct DirectTaskWebhookNotifier {
     egress_service: Arc<dyn EgressService>,
 }
 
+/// One resolved delivery target for a webhook notification. `label` is only for
+/// logging (a public id or a spec-embedded marker) and never affects delivery.
+struct WebhookTarget {
+    label: String,
+    url: String,
+    secret: Option<String>,
+}
+
+/// Parse spec-embedded push configs (EVE-682) that match `event`.
+///
+/// Spawn-time configs live in `task.spec["push_configs"]` as an array of
+/// `{ url, secret?, event_filter? }`. `event_filter` defaults to
+/// `["terminal"]`, matching org-webhook behavior. URLs were SSRF-validated at
+/// spawn time and delivery pins DNS, so no re-validation is needed here.
+fn spec_push_config_targets(
+    spec: &serde_json::Value,
+    event: crate::storage::session_task_store::TaskTransition,
+) -> Vec<WebhookTarget> {
+    let Some(entries) = spec.get("push_configs").and_then(|v| v.as_array()) else {
+        return Vec::new();
+    };
+    let mut targets = Vec::new();
+    for entry in entries {
+        let Some(url) = entry.get("url").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        let matches = match entry.get("event_filter").and_then(|v| v.as_array()) {
+            Some(filters) => filters
+                .iter()
+                .filter_map(|f| f.as_str())
+                .any(|f| f == event.filter_value()),
+            // Absent filter defaults to terminal-only.
+            None => event.filter_value() == "terminal",
+        };
+        if !matches {
+            continue;
+        }
+        targets.push(WebhookTarget {
+            label: "spec".to_string(),
+            url: url.to_string(),
+            secret: entry
+                .get("secret")
+                .and_then(|v| v.as_str())
+                .map(str::to_string),
+        });
+    }
+    targets
+}
+
 #[async_trait::async_trait]
-impl crate::storage::session_task_store::TaskWebhookNotifier for DirectTaskWebhookNotifier {
-    async fn notify(&self, task: &everruns_core::session_task::SessionTask) -> anyhow::Result<()> {
+impl crate::storage::session_task_store::TaskTransitionObserver for DirectTaskWebhookNotifier {
+    async fn on_transition(
+        &self,
+        task: &everruns_core::session_task::SessionTask,
+        event: crate::storage::session_task_store::TaskTransition,
+    ) -> anyhow::Result<()> {
+        use crate::storage::session_task_store::TaskTransition;
+
         // Resolve org_id from session (unscoped lookup — no harness required).
+        // Server-internal dispatch only: this is never a user-facing read, so
+        // the unscoped lookup does not widen any caller's tenant scope.
         let session = self
             .db
             .get_session_unscoped(task.session_id)
@@ -2140,18 +2296,49 @@ impl crate::storage::session_task_store::TaskWebhookNotifier for DirectTaskWebho
             return Ok(());
         };
 
-        let webhooks = self
-            .db
-            .list_enabled_org_task_webhooks(session.org_id)
-            .await
-            .map_err(|e| anyhow::anyhow!("webhook notifier: webhook lookup failed: {e}"))?;
+        let mut targets: Vec<WebhookTarget> = Vec::new();
 
-        if webhooks.is_empty() {
+        // Org webhooks are terminal-only and unchanged (EVE-579): they never
+        // fire on non-terminal events.
+        if event == TaskTransition::Terminal {
+            let webhooks = self
+                .db
+                .list_enabled_org_task_webhooks(session.org_id)
+                .await
+                .map_err(|e| anyhow::anyhow!("webhook notifier: webhook lookup failed: {e}"))?;
+            targets.extend(webhooks.into_iter().map(|w| WebhookTarget {
+                label: w.public_id,
+                url: w.url,
+                secret: w.secret,
+            }));
+        }
+
+        // Per-task push configs (EVE-682): DB-persisted (endpoint-created) plus
+        // spec-embedded (spawn-time) configs share this delivery path. Both are
+        // filtered by whether their event_filter includes this event.
+        let configs = self
+            .db
+            .list_task_push_configs(task.session_id, &task.id)
+            .await
+            .map_err(|e| anyhow::anyhow!("webhook notifier: push-config lookup failed: {e}"))?;
+        targets.extend(
+            configs
+                .into_iter()
+                .filter(|c| c.event_filter.iter().any(|f| f == event.filter_value()))
+                .map(|c| WebhookTarget {
+                    label: c.public_id,
+                    url: c.url,
+                    secret: c.secret,
+                }),
+        );
+        targets.extend(spec_push_config_targets(&task.spec, event));
+
+        if targets.is_empty() {
             return Ok(());
         }
 
         let payload = serde_json::json!({
-            "event": "task.terminal",
+            "event": event.event_name(),
             "task": {
                 "id": task.id,
                 "display_name": task.display_name,
@@ -2164,14 +2351,15 @@ impl crate::storage::session_task_store::TaskWebhookNotifier for DirectTaskWebho
         });
         let body = serde_json::to_vec(&payload)?;
 
-        for webhook in webhooks {
-            let req = build_task_webhook_request(&webhook.url, &body, webhook.secret.as_deref());
+        for target in targets {
+            let req = build_task_webhook_request(&target.url, &body, target.secret.as_deref());
 
             if let Err(e) = self.egress_service.send(req).await {
                 tracing::warn!(
-                    webhook_id = %webhook.public_id,
-                    url = %webhook.url,
+                    webhook = %target.label,
+                    url = %target.url,
                     task_id = %task.id,
+                    event = ?event,
                     "Task webhook delivery failed (best-effort): {e}"
                 );
             }
@@ -2242,6 +2430,49 @@ mod task_webhook_request_tests {
                 .headers
                 .iter()
                 .any(|(k, _)| k.eq_ignore_ascii_case("X-Everruns-Signature"))
+        );
+    }
+
+    use super::spec_push_config_targets;
+    use crate::storage::session_task_store::TaskTransition;
+
+    #[test]
+    fn spec_push_configs_filter_by_event() {
+        // EVE-682: spawn-time configs embedded in the task spec deliver only for
+        // events their event_filter includes; an absent filter defaults to
+        // terminal-only, matching org webhook behavior.
+        let spec = serde_json::json!({
+            "push_configs": [
+                { "url": "https://a.example.com", "secret": "s", "event_filter": ["message"] },
+                { "url": "https://b.example.com", "event_filter": ["terminal", "awaiting_input"] },
+                { "url": "https://c.example.com" },
+            ]
+        });
+
+        let terminal = spec_push_config_targets(&spec, TaskTransition::Terminal);
+        let terminal_urls: Vec<&str> = terminal.iter().map(|t| t.url.as_str()).collect();
+        assert_eq!(
+            terminal_urls,
+            vec!["https://b.example.com", "https://c.example.com"],
+            "terminal must include the explicit terminal filter and the default"
+        );
+
+        let message = spec_push_config_targets(&spec, TaskTransition::Message);
+        let message_urls: Vec<&str> = message.iter().map(|t| t.url.as_str()).collect();
+        assert_eq!(message_urls, vec!["https://a.example.com"]);
+        assert_eq!(
+            message[0].secret.as_deref(),
+            Some("s"),
+            "secret must be carried through for signing"
+        );
+
+        let awaiting = spec_push_config_targets(&spec, TaskTransition::AwaitingInput);
+        let awaiting_urls: Vec<&str> = awaiting.iter().map(|t| t.url.as_str()).collect();
+        assert_eq!(awaiting_urls, vec!["https://b.example.com"]);
+
+        // No push_configs key → no targets.
+        assert!(
+            spec_push_config_targets(&serde_json::json!({}), TaskTransition::Terminal).is_empty()
         );
     }
 }
@@ -2465,6 +2696,31 @@ impl DirectPlatformStore {
             _ => None,
         };
         Ok(status.map(str::to_string))
+    }
+}
+
+#[async_trait]
+impl SessionCreationAuthority for DirectPlatformStore {
+    async fn authorize_session_creation(
+        &self,
+        session_id: SessionId,
+    ) -> everruns_core::error::Result<SessionId> {
+        if session_id != self.session_id {
+            return Err(AgentLoopError::tool(
+                "session-creation authority is scoped to the current session",
+            ));
+        }
+        let caller = self.resolve_caller().await?;
+        crate::domains::sessions::SESSION_MANAGE
+            .evaluate_with(self.permission_resolver.as_ref(), &caller)
+            .map_err(|error| AgentLoopError::tool(error.message))?;
+        let session = self
+            .db
+            .get_session(self.org_id, session_id)
+            .await
+            .map_err(|error| store_error(format!("Failed to load session budget root: {error}")))?
+            .ok_or_else(|| store_error("Session not found for session-creation authority"))?;
+        Ok(session.root_session_id.unwrap_or(session.id))
     }
 }
 
@@ -2981,6 +3237,34 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         .await
     }
 
+    async fn create_session_with_options(
+        &self,
+        request: everruns_core::platform_store::PlatformCreateSessionRequest,
+    ) -> everruns_core::error::Result<Session> {
+        self.execute_domain_command(
+            "create_session",
+            serde_json::json!({
+                "harness_id": request.harness_id.to_string(),
+                "agent_id": request.agent_id.map(|id| id.to_string()),
+                "title": request.title,
+                "goal": request.goal,
+                "locale": request.locale,
+                "tags": ["managed"],
+                "capabilities": [],
+                "tools": [],
+                "mcp_servers": {},
+                "initial_files": [],
+                "blueprint_id": request.blueprint_id,
+                "blueprint_config": request.blueprint_config,
+                "parent_session_id": request.parent_session_id.map(|id| id.to_string()),
+                "forked_from_session_id": request.forked_from_session_id.map(|id| id.to_string()),
+                "budget_root_session_id": request.budget_root_session_id.map(|id| id.to_string()),
+                "seed": request.seed,
+            }),
+        )
+        .await
+    }
+
     async fn get_session_by_id(
         &self,
         id: SessionId,
@@ -2988,6 +3272,22 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         self.execute_domain_lookup(
             "get_session",
             serde_json::json!({ "session_id": id.to_string() }),
+        )
+        .await
+    }
+
+    async fn add_agent_session_participant(
+        &self,
+        session_id: SessionId,
+        agent_id: AgentId,
+    ) -> everruns_core::error::Result<SessionParticipant> {
+        self.execute_domain_command(
+            "add_session_participant",
+            serde_json::json!({
+                "session_id": session_id.to_string(),
+                "kind": "agent",
+                "agent_id": agent_id.to_string(),
+            }),
         )
         .await
     }
@@ -3460,6 +3760,7 @@ mod tests {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("seed session")
@@ -3630,6 +3931,81 @@ mod tests {
         );
     }
 
+    struct DenySessionManageResolver;
+
+    impl everruns_core::PermissionResolver for DenySessionManageResolver {
+        fn has_permission(
+            &self,
+            caller: &everruns_core::Caller,
+            permission: &everruns_core::Permission,
+        ) -> bool {
+            *permission != everruns_core::Permission::OrgSessionsManage
+                && everruns_core::DefaultPermissionResolver.has_permission(caller, permission)
+        }
+
+        fn caller_permissions(
+            &self,
+            caller: &everruns_core::Caller,
+        ) -> Vec<everruns_core::Permission> {
+            everruns_core::DefaultPermissionResolver
+                .caller_permissions(caller)
+                .into_iter()
+                .filter(|permission| *permission != everruns_core::Permission::OrgSessionsManage)
+                .collect()
+        }
+    }
+
+    #[tokio::test]
+    async fn session_creation_authority_uses_owner_permission_and_returns_root() {
+        let adapters = test_adapters();
+        let org_id = everruns_core::DEFAULT_ORG_ID;
+        let owner_id =
+            seed_platform_owner(&adapters.db, org_id, "detached-authority-owner@example.com").await;
+        let harness_id =
+            seed_harness_for_platform_store(&adapters.db, org_id, "authority-harness", false).await;
+        let root_id = seed_platform_session(&adapters.db, org_id, harness_id, Some(owner_id)).await;
+        let authority = adapters
+            .session_creation_authority(org_id, root_id)
+            .expect("direct authority");
+        assert_eq!(
+            authority
+                .authorize_session_creation(root_id)
+                .await
+                .expect("owner may create sessions"),
+            root_id
+        );
+
+        let denied_adapters =
+            test_adapters().with_permission_resolver(Arc::new(DenySessionManageResolver));
+        let denied_owner = seed_platform_owner(
+            &denied_adapters.db,
+            org_id,
+            "detached-authority-denied@example.com",
+        )
+        .await;
+        let denied_harness = seed_harness_for_platform_store(
+            &denied_adapters.db,
+            org_id,
+            "denied-authority-harness",
+            false,
+        )
+        .await;
+        let denied_session = seed_platform_session(
+            &denied_adapters.db,
+            org_id,
+            denied_harness,
+            Some(denied_owner),
+        )
+        .await;
+        let denied = denied_adapters
+            .session_creation_authority(org_id, denied_session)
+            .expect("direct authority")
+            .authorize_session_creation(denied_session)
+            .await
+            .expect_err("custom resolver denial must be honored");
+        assert!(denied.to_string().contains("Access denied"));
+    }
+
     /// Regression: the direct platform store's command ctx must carry the
     /// event service — wait_for_idle probes terminal turn events through the
     /// list_events command, and without it every subagent wait failed with
@@ -3673,6 +4049,7 @@ mod tests {
             description: None,
             system_prompt: String::new(),
             default_model_id: None,
+            harness_id: everruns_core::HarnessId::from_uuid(uuid::Uuid::nil()),
             tags: vec![],
             initial_files: serde_json::Value::Array(vec![]),
             tools: serde_json::Value::Array(vec![]),
@@ -4310,6 +4687,7 @@ mod tests {
                 blueprint_config: None,
                 network_access: None,
                 parent_session_id: None,
+                budget_root_session_id: None,
             })
             .await
             .expect("create session");

@@ -107,7 +107,7 @@ Omitting the field in update requests leaves it unchanged.
 ## Database
 
 JSONB column `network_access` on `harnesses`, `agents`, `sessions` tables.
-Migration: `013_network_access.sql`.
+Migration: `010_v0.8.9.sql`.
 
 ## Threat Model
 

@@ -21,7 +21,8 @@ V1 supports:
 
 - AgentCard discovery from configured external A2A agents.
 - JSON-RPC and HTTP+JSON transport negotiation through the official Rust A2A client.
-- `spawn_agent` in `wait` or `background` mode.
+- `spawn_agent` in `foreground` or `background` mode, using the same execution
+  vocabulary as local delegation providers.
 - `wait_task` for pending runs (generic session task tool).
 - `message_task` for follow-up or `input_required` runs (generic session task tool).
 - `cancel_task` for remote task cancellation (generic session task tool).
@@ -105,17 +106,36 @@ agent runs via the `ExternalAgentTaskExecutor`.
 ### `spawn_agent`
 
 Creates an external A2A run. Returns an `agent_run_id` and `task_id`.
+When other known delegation providers are active, external A2A is advertised as
+the `external_a2a` target in the shared `spawn_agent` dispatcher rather than as
+a competing tool definition.
 
 Parameters:
 
 - `instructions` required
 - `target.type = external_a2a`
-- `target.external_agent_id`
-- `mode = wait | background`
+- `target.id` (the A2A provider also accepts its provider-specific
+  `target.external_agent_id` spelling)
+- `mode = foreground | background`
 - `wait_timeout_secs`
 - `wake_on_completion`
+- `result_schema`: optional JSON Schema for a required terminal structured
+  artifact. The first A2A data part is validated against it.
+- `message_schema` is unsupported for remote A2A agents and causes an explicit
+  spawn error; Everruns cannot inject `report_task_progress` into a remote
+  agent.
 
-`mode = wait` blocks until the remote task reaches a terminal state or timeout. `mode = background` returns an `agent_run_id` immediately and monitors completion in a detached task.
+`mode = foreground` blocks until the remote task reaches a terminal state or
+timeout. `mode = background` returns an `agent_run_id` immediately and monitors
+completion in a detached task. The provider parses these values directly; the
+shared dispatcher does not translate provider-specific mode dialects.
+
+When `result_schema` is present, a completed remote task succeeds only if its
+first structured data artifact conforms. A valid value is written to
+`/.tasks/{task_id}/result.json` and recorded as the session-task result. Missing
+structured data fails with `error.kind = "no_result"`; invalid data fails with
+`error.kind = "schema_mismatch"`. Runs without a schema retain the legacy text
+summary and `/.agent-runs/{run_id}/result.json` snapshot behavior.
 
 ### Monitoring and steering agent runs
 
@@ -149,6 +169,7 @@ The following per-kind tools were retired in favour of the generic tools above:
 | `remote_context_id` | A2A `Task.contextId` |
 | `instructions` / follow-up message | A2A `Message` with `ROLE_USER` |
 | result summary | first text artifact, else status message text |
+| schema-bound machine result | first structured data artifact |
 | `input_required` | non-terminal interrupted run |
 | `auth_required` | non-terminal interrupted run |
 | `cancel_task` | A2A `CancelTask` |
@@ -177,7 +198,8 @@ Required mitigations:
 - The model cannot provide arbitrary A2A URLs; it chooses a configured `external_agent_id`.
 - Configured URLs pass `validate_safe_url` unless explicitly marked `allow_local_urls`.
 - Remote IDs are opaque strings and are only used with the configured agent that produced them.
-- Result snapshots are bounded by normal tool-result and session-resource limits.
+- Result snapshots are bounded by normal tool-result and session-task limits;
+  schema-bound data is treated as untrusted and validated before persistence.
 - Secret-bearing auth should move to encrypted org-managed external-agent config before production use with private agents.
 - Inbound A2A must be a separate App channel and follow `specs/public-endpoints.md`.
 
@@ -186,6 +208,9 @@ Required mitigations:
 Integration tests use the official Rust `a2a-server-lf` crate to start a real local A2A agent over JSON-RPC. Tests cover:
 
 - AgentCard discovery.
-- `spawn_agent` wait mode.
+- `spawn_agent` foreground mode and terminal/timeout parity with the former
+  blocking behavior.
+- Structured artifact validation and task-result persistence.
+- Schema mismatch settlement and explicit `message_schema` rejection.
 - Background mode (background spawn).
 - Local URL blocking unless `allow_local_urls` is set.

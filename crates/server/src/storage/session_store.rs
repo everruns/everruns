@@ -122,6 +122,7 @@ impl SessionStore for DbSessionStore {
                     owner: None,
                     effective_owner: None,
                     title: row.title,
+                    goal: row.goal,
                     locale: row.locale,
                     preview: None,
                     output_preview: None,

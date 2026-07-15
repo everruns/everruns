@@ -18,7 +18,7 @@ DuckDuckGo exposes one API layer:
 ┌────────────────────────────────────────────┐
 │              Agent Session                  │
 │                                             │
-│  Tool Call (duckduckgo_search)             │
+│  Tool Call (duckduckgo_instant_answer)     │
 │         ↓                                   │
 │  No API key needed                         │
 │         ↓                                   │
@@ -37,9 +37,9 @@ The DuckDuckGo Instant Answer API is free and requires no authentication. This m
 
 ## Tools
 
-### duckduckgo_search
+### duckduckgo_instant_answer
 
-Get instant answers from DuckDuckGo.
+Look up a DuckDuckGo Instant Answer. This is an instant-answer lookup (curated facts, definitions, abstracts), **not** a full web/SERP search. An empty result means DuckDuckGo has no curated instant answer for the query — it does **not** mean no matching web pages exist. For general web discovery agents should use a web-search or web-fetch tool.
 
 - **Parameters**:
   - `query`: string (required) — search query
@@ -53,6 +53,7 @@ Get instant answers from DuckDuckGo.
   - `definition`: `{ text, source, url }` — dictionary definition
   - `related_topics`: array of `{ text, url }` — related topics (flattened from groups, max 10)
   - `results`: array of `{ text, url }` — official/direct results
+  - `note`: present **only** when no instant answer was found — an explicit caveat that the empty result is not a definitive web-search result and matching web pages may still exist
 
 ## Security
 

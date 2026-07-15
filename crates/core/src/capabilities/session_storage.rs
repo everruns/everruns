@@ -121,6 +121,7 @@ impl Tool for KvStoreTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Key-Value Store");
         Some(crate::tool_narration::narrate_secret_store(
@@ -331,6 +332,7 @@ impl Tool for SecretStoreTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Secret Store");
         Some(crate::tool_narration::narrate_secret_store(

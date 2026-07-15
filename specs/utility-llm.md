@@ -28,8 +28,11 @@ endpoint.
 - `PlatformDefinition` carries the active service as part of the platform
   profile.
 - Runtime tool execution threads the service into `ToolContext`.
-- Concrete implementations must use `EgressService` for provider HTTP once
-  migrated; the utility LLM service remains the capability-facing typed API.
+- Concrete implementations use direct provider HTTP clients; the utility LLM
+  service remains the capability-facing typed API.
+- Utility LLM provider transport is host-owned. It does not route through
+  `EgressService` and is not governed by tenant/agent egress policy such as
+  `EVERRUNS_SYSTEM_ALLOWLIST_ENABLED`.
 
 The model is hardcoded to `gpt-5.5`. Requests do not expose tools, tool search,
 previous response IDs, model overrides, or provider credentials. By default the

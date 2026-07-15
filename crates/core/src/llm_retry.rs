@@ -413,6 +413,15 @@ pub fn send_error_message(err: &reqwest::Error, attempts: u32) -> String {
 /// This complements HTTP-status-based retry detection for streaming APIs that can
 /// emit retryable provider failures inside an otherwise successful event stream.
 pub fn is_transient_error_message(message: &str) -> bool {
+    // A subscription/plan usage limit (e.g. Codex `usage_limit_reached`) surfaces
+    // as a 429 ("too many requests") but does not recover within the retry
+    // window — it resets hours later at `resets_at`. Treating it as transient
+    // would waste retries and suppress the human-readable error message the
+    // reason atom emits for terminal failures, so it is explicitly non-transient.
+    if crate::user_facing_error::is_usage_limit_message(message) {
+        return false;
+    }
+
     let msg = message.trim().to_ascii_lowercase();
 
     [
@@ -431,6 +440,31 @@ pub fn is_transient_error_message(message: &str) -> bool {
     ]
     .iter()
     .any(|needle| msg.contains(needle))
+}
+
+/// Classify an in-band provider error using structured fields first.
+///
+/// Machine-readable provider codes are authoritative, followed by HTTP status.
+/// Message matching is retained only for legacy drivers that cannot preserve
+/// either field.
+pub fn is_transient_stream_error(error: &crate::driver_registry::LlmStreamError) -> bool {
+    if let Some(code) = error.code.as_deref()
+        && let Some(kind) = crate::error::LlmErrorKind::from_provider_code(code)
+    {
+        return matches!(
+            kind,
+            crate::error::LlmErrorKind::RateLimited | crate::error::LlmErrorKind::Unavailable
+        );
+    }
+
+    if let Some(status) = error
+        .status
+        .and_then(|status| reqwest::StatusCode::from_u16(status).ok())
+    {
+        return is_transient_error(status);
+    }
+
+    is_transient_error_message(&error.message)
 }
 
 // ============================================================================
@@ -794,6 +828,42 @@ mod tests {
             "invalid_request_error: bad tool schema"
         ));
         assert!(!is_transient_error_message("Model not available: gpt-99"));
+    }
+
+    #[test]
+    fn structured_stream_error_prefers_code_and_status_over_message() {
+        use crate::driver_registry::LlmStreamError;
+
+        assert!(is_transient_stream_error(&LlmStreamError::provider(
+            Some("processing_error"),
+            None,
+            "An error occurred while processing your request.",
+        )));
+        assert!(is_transient_stream_error(&LlmStreamError::provider(
+            None::<String>,
+            Some(503),
+            "opaque failure",
+        )));
+        assert!(!is_transient_stream_error(&LlmStreamError::provider(
+            Some("invalid_request_error"),
+            Some(503),
+            "server unavailable",
+        )));
+        assert!(!is_transient_stream_error(&LlmStreamError::provider(
+            Some("insufficient_quota"),
+            Some(429),
+            "rate limit",
+        )));
+    }
+
+    #[test]
+    fn test_is_transient_error_message_treats_usage_limit_as_non_transient() {
+        // Codex `usage_limit_reached` arrives as a 429 ("too many requests") but
+        // resets hours later — retrying inside the backoff window is pointless
+        // and would suppress the terminal user-facing message.
+        assert!(!is_transient_error_message(
+            "Codex API error (429 Too Many Requests): {\"error\":{\"type\":\"usage_limit_reached\",\"resets_at\":1783767823}}"
+        ));
     }
 
     #[test]

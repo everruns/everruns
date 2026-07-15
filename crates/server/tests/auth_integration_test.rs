@@ -712,6 +712,7 @@ async fn test_auth_config_returns_full_mode() {
     assert_eq!(body["mode"], "full");
     assert_eq!(body["password_auth_enabled"], true);
     assert_eq!(body["signup_enabled"], true);
+    assert!(body.get("login_origin").is_none());
 }
 
 // ============================================
@@ -776,6 +777,10 @@ async fn custom_platform_auth_router(
 
     let config = AuthConfig {
         mode: AuthMode::Full,
+        // These tests exercise the default-org membership + harness safety net,
+        // which is now opt-in (single-tenant). Enable it so `register` joins the
+        // default org and provisions its harnesses.
+        auto_join_default_org: true,
         jwt: JwtConfig {
             secret: "test-secret-for-auth-integration-tests".to_string(),
             access_token_lifetime: Duration::from_secs(900),

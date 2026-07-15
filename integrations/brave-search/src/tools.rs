@@ -67,6 +67,7 @@ impl Tool for BraveWebSearchTool {
         tool_call: &everruns_core::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(everruns_core::tool_narration::narrate_search_web(
             &tool_call.arguments,

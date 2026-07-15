@@ -5,7 +5,7 @@
 use axum::{
     Json, Router,
     body::Body,
-    extract::{FromRef, Path, Query, State},
+    extract::{ConnectInfo, Extension, FromRef, Path, Query, State},
     http::{HeaderMap, Request, StatusCode},
     middleware::{self, Next},
     response::{Redirect, Response},
@@ -16,6 +16,7 @@ use chrono::{Duration, Utc};
 use everruns_core::{DEFAULT_ORG_ID, OrgRole};
 use rand::RngExt;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -95,8 +96,9 @@ fn email_domain_allowed(email: &str, allowed_domains: &[String]) -> bool {
 /// identity must be rejected.
 ///
 /// Google: must report `email_verified` and, when `allowed_domains` is set,
-/// the email domain must be in that list. GitHub does not currently support
-/// per-provider gates here.
+/// the email domain must be in that list. GitHub: must report `email_verified`
+/// (derived from the real provider flag, not hardcoded — see EVE-702) so an
+/// attacker cannot pre-empt an account with an unverified GitHub address.
 fn oauth_identity_rejection_reason(
     provider: super::oauth::OAuthProvider,
     config: &super::config::AuthConfig,
@@ -119,7 +121,12 @@ fn oauth_identity_rejection_reason(
             }
             None
         }
-        super::oauth::OAuthProvider::GitHub => None,
+        super::oauth::OAuthProvider::GitHub => {
+            if !user_info.email_verified {
+                return Some("email_unverified");
+            }
+            None
+        }
     }
 }
 
@@ -224,6 +231,10 @@ pub struct UserInfoResponse {
     pub name: String,
     pub roles: Vec<String>,
     pub avatar_url: Option<String>,
+    /// Whether the account's email address has been verified. Drives the
+    /// in-app "verify your email" nudge so a signed-in but unverified user has
+    /// a surfaced path to verification (auth-flow dead-end audit).
+    pub email_verified: bool,
     /// Organizations the user belongs to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub organizations: Option<Vec<OrgMembershipResponse>>,
@@ -291,6 +302,10 @@ pub struct OAuthCallbackQuery {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct AuthConfigResponse {
     pub mode: String,
+    /// Trusted configured origin hosting the login page. Absent means the
+    /// frontend's same-origin `/login` route.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub login_origin: Option<String>,
     pub password_auth_enabled: bool,
     pub oauth_providers: Vec<String>,
     pub signup_enabled: bool,
@@ -439,6 +454,7 @@ pub fn routes(state: BuiltinAuthBackend) -> Router {
 pub async fn get_auth_config(State(state): State<BuiltinAuthBackend>) -> Json<AuthConfigResponse> {
     Json(AuthConfigResponse {
         mode: state.config.mode.as_str().to_string(),
+        login_origin: state.config.login_origin.clone(),
         password_auth_enabled: state.config.password_auth_enabled(),
         oauth_providers: oauth_providers(&state.config),
         signup_enabled: state.config.signup_enabled(),
@@ -483,11 +499,12 @@ async fn enforce_auth_captcha(
 /// POST /v1/auth/login - Login with email and password
 pub async fn login(
     State(state): State<BuiltinAuthBackend>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     jar: CookieJar,
     Json(req): Json<LoginRequest>,
 ) -> Result<(CookieJar, Json<TokenResponse>), AuthError> {
-    let ip = audit::client_ip(&headers);
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
 
     // In admin mode, check admin credentials directly (no database lookup)
     if state.config.mode == AuthMode::Admin {
@@ -637,7 +654,7 @@ pub async fn login(
             .as_array()
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     };
 
     audit::emit(
@@ -724,12 +741,16 @@ impl axum::response::IntoResponse for RegisterOutcome {
 /// POST /v1/auth/register - Register a new user
 pub async fn register(
     State(state): State<BuiltinAuthBackend>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     jar: CookieJar,
     Json(req): Json<RegisterRequest>,
 ) -> Result<RegisterOutcome, AuthError> {
-    // Check if signup is enabled
-    if state.config.disable_signup {
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
+
+    // Check if signup is enabled. Admin mode accepts password login for the
+    // configured administrator, but must not expose public self-registration.
+    if !state.config.signup_enabled() {
         return Err(AuthError::forbidden("Registration is disabled"));
     }
 
@@ -777,7 +798,7 @@ pub async fn register(
                 DEFAULT_ORG_ID,
                 None,
                 "auth.register.existing_email",
-                audit::client_ip(&headers),
+                ip.clone(),
                 serde_json::json!({}),
             );
             return Ok(RegisterOutcome::ConfirmationSent(OkResponse::ok()));
@@ -815,33 +836,39 @@ pub async fn register(
             AuthError::unauthorized(GENERIC_REGISTRATION_FAILED)
         })?;
 
-    // Add user to default organization
-    let _ = state
-        .db
-        .add_organization_member(DEFAULT_ORG_ID, user.id, "member")
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to add user to default org: {}", e);
-            // Continue anyway - user is created, they just might not have org membership
-        });
+    // Add user to the default organization — single-tenant convenience only.
+    // Gated on `auto_join_default_org` (off by default): in a multi-tenant
+    // deployment a fresh signup must own no org so the zero-org onboarding flow
+    // creates the user's own org, instead of every tenant landing in the shared
+    // default organization. See `specs/authentication.md`.
+    if state.config.auto_join_default_org {
+        let _ = state
+            .db
+            .add_organization_member(DEFAULT_ORG_ID, user.id, "member")
+            .await
+            .map_err(|e| {
+                tracing::error!("Failed to add user to default org: {}", e);
+                // Continue anyway - user is created, they just might not have org membership
+            });
 
-    // Harness-seed safety net: the async seed task (500 ms delay, see
-    // `seed::spawn_seed_task_with_platform_definition`) may not have
-    // provisioned DEFAULT_ORG_ID's built-in harnesses yet when a user
-    // registers immediately after server startup. Re-run the provisioner
-    // using the *platform definition*'s harness set (NOT the OSS default)
-    // so a custom `PlatformDefinition` is never overridden — that was the
-    // security concern addressed by PR #1462. The call is idempotent: if
-    // seeding has already completed, every harness is "unchanged". See
-    // EVE-390 and `specs/authentication.md`.
-    if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
-        &state.db,
-        DEFAULT_ORG_ID,
-        state.platform_definition.built_in_harnesses(),
-    )
-    .await
-    {
-        tracing::warn!(error = %e, "Failed to ensure default org harnesses (non-fatal)");
+        // Harness-seed safety net: the async seed task (500 ms delay, see
+        // `seed::spawn_seed_task_with_platform_definition`) may not have
+        // provisioned DEFAULT_ORG_ID's built-in harnesses yet when a user
+        // registers immediately after server startup. Re-run the provisioner
+        // using the *platform definition*'s harness set (NOT the OSS default)
+        // so a custom `PlatformDefinition` is never overridden — that was the
+        // security concern addressed by PR #1462. The call is idempotent: if
+        // seeding has already completed, every harness is "unchanged". See
+        // EVE-390 and `specs/authentication.md`.
+        if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
+            &state.db,
+            DEFAULT_ORG_ID,
+            state.platform_definition.built_in_harnesses(),
+        )
+        .await
+        {
+            tracing::warn!(error = %e, "Failed to ensure default org harnesses (non-fatal)");
+        }
     }
 
     // Email verification: on successful signup, issue a single-use verification
@@ -852,14 +879,14 @@ pub async fn register(
     issue_verification_email(&state, user.id, &user.email).await;
 
     if state.config.signup_email_confirm {
-        // No session until the emailed confirmation link is clicked — the
-        // verify-email endpoint mints it (see `verify_email`).
+        // No session is minted during confirm-mode signup. The emailed link
+        // only verifies the address; users sign in explicitly afterward.
         audit::emit(
             state.db.clone(),
             DEFAULT_ORG_ID,
             Some(user.id),
             "auth.register.pending_confirmation",
-            audit::client_ip(&headers),
+            ip.clone(),
             serde_json::json!({}),
         );
         return Ok(RegisterOutcome::ConfirmationSent(OkResponse::ok()));
@@ -876,7 +903,7 @@ pub async fn register(
         roles: vec!["user".to_string()],
         is_platform_user: false,
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     };
 
     audit::emit(
@@ -884,7 +911,7 @@ pub async fn register(
         DEFAULT_ORG_ID,
         Some(auth_user.id),
         "auth.register.success",
-        audit::client_ip(&headers),
+        ip,
         serde_json::json!({}),
     );
 
@@ -899,10 +926,13 @@ pub async fn register(
 /// primary flow for browser clients since the cookie is HttpOnly.
 pub async fn refresh_token(
     State(state): State<BuiltinAuthBackend>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     jar: CookieJar,
     body: Option<Json<RefreshTokenRequest>>,
 ) -> Result<(CookieJar, Json<TokenResponse>), AuthError> {
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
+
     // Prefer JSON body, fall back to cookie
     let refresh_token_value = if let Some(Json(req)) = body {
         req.refresh_token
@@ -965,7 +995,7 @@ pub async fn refresh_token(
             .as_array()
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     };
 
     audit::emit(
@@ -973,7 +1003,7 @@ pub async fn refresh_token(
         DEFAULT_ORG_ID,
         Some(auth_user.id),
         "auth.token_refresh.success",
-        audit::client_ip(&headers),
+        ip,
         serde_json::json!({}),
     );
 
@@ -1058,6 +1088,18 @@ pub async fn get_current_user(
         jar
     };
 
+    // Fetch the verified flag from the DB row (AuthUser does not carry it).
+    // Default to `true` when the row is absent (e.g. the anonymous user in
+    // `none` mode) so we never nag a principal whose mailbox we can't check.
+    let email_verified = state
+        .db
+        .get_user(user.id)
+        .await
+        .ok()
+        .flatten()
+        .map(|u| u.email_verified)
+        .unwrap_or(true);
+
     (
         jar,
         Json(UserInfoResponse {
@@ -1066,6 +1108,7 @@ pub async fn get_current_user(
             name: user.name,
             roles: user.roles,
             avatar_url: None,
+            email_verified,
             organizations,
         }),
     )
@@ -1128,7 +1171,7 @@ pub async fn oauth_redirect(
 fn oauth_failure_redirect(config: &super::config::AuthConfig, category: &str) -> Redirect {
     let url = format!(
         "{}/login?error={category}",
-        config.frontend_url.trim_end_matches('/')
+        config.login_origin().trim_end_matches('/')
     );
     Redirect::to(&url)
 }
@@ -1143,11 +1186,13 @@ fn oauth_failure_redirect(config: &super::config::AuthConfig, category: &str) ->
 /// (everything else). The state cookie is cleared on every outcome.
 pub async fn oauth_callback(
     State(state): State<BuiltinAuthBackend>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     Path(provider): Path<String>,
     Query(query): Query<OAuthCallbackQuery>,
     jar: CookieJar,
 ) -> (CookieJar, Redirect) {
+    let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
     let cleared_jar = jar
         .clone()
         .remove(Cookie::build(OAUTH_STATE_COOKIE).path("/"));
@@ -1159,7 +1204,7 @@ pub async fn oauth_callback(
             DEFAULT_ORG_ID,
             None,
             "auth.oauth.failure",
-            audit::client_ip(&headers),
+            audit::client_ip(peer_addr, &headers),
             serde_json::json!({"provider": provider, "reason": "provider_error", "error": err}),
         );
         let category = if err == "access_denied" {
@@ -1178,13 +1223,22 @@ pub async fn oauth_callback(
         );
     };
 
-    match oauth_callback_inner(&state, &headers, &provider, &code, &cb_state, jar).await {
+    match oauth_callback_inner(
+        &state, peer_addr, &headers, &provider, &code, &cb_state, jar,
+    )
+    .await
+    {
         Ok(ok) => ok,
         Err(e) => {
-            let category = if e.status == StatusCode::FORBIDDEN {
-                "oauth_not_permitted"
-            } else {
-                "oauth_failed"
+            // Map the failure onto a coarse, safe category the login page renders
+            // as fixed copy. CONFLICT is the "your verified email already has an
+            // account — use your original method" case: a PERMANENT condition, so
+            // it must not fall into the generic "didn't complete, try again"
+            // bucket that implies a transient error (auth-flow dead-end audit).
+            let category = match e.status {
+                StatusCode::FORBIDDEN => "oauth_not_permitted",
+                StatusCode::CONFLICT => "oauth_account_exists",
+                _ => "oauth_failed",
             };
             (cleared_jar, oauth_failure_redirect(&state.config, category))
         }
@@ -1197,6 +1251,7 @@ pub async fn oauth_callback(
 /// branded `/login?error=…` redirect.
 async fn oauth_callback_inner(
     state: &BuiltinAuthBackend,
+    peer_addr: Option<SocketAddr>,
     headers: &HeaderMap,
     provider: &str,
     code: &str,
@@ -1254,7 +1309,7 @@ async fn oauth_callback_inner(
             DEFAULT_ORG_ID,
             None,
             "auth.oauth.failure",
-            audit::client_ip(headers),
+            audit::client_ip(peer_addr, headers),
             serde_json::json!({"provider": provider, "reason": "exchange_failed"}),
         );
         AuthError::unauthorized("OAuth authentication failed")
@@ -1276,7 +1331,7 @@ async fn oauth_callback_inner(
             DEFAULT_ORG_ID,
             None,
             "auth.oauth.failure",
-            audit::client_ip(headers),
+            audit::client_ip(peer_addr, headers),
             serde_json::json!({"provider": provider, "reason": reason}),
         );
         return Err(AuthError::forbidden("OAuth account not permitted"));
@@ -1318,7 +1373,14 @@ async fn oauth_callback_inner(
                     reason = reason,
                     "OAuth login blocked: existing same-email account is not safe to auto-link"
                 );
-                return Err(AuthError::unauthorized(GENERIC_REGISTRATION_FAILED));
+                // 409, not the generic 401: the caller completed the provider
+                // handshake and thus owns this mailbox, so we can safely tell them
+                // the account already exists and to use their original method,
+                // rather than the misleading transient "try again" (dead-end
+                // audit). Still no auto-link — that remains refused (TM-AUTH-012).
+                return Err(AuthError::conflict(
+                    "This email already has an Everruns account. Sign in with your original method.",
+                ));
             }
 
             let linked = state
@@ -1347,7 +1409,7 @@ async fn oauth_callback_inner(
                 DEFAULT_ORG_ID,
                 Some(linked.id),
                 "auth.oauth.linked",
-                audit::client_ip(headers),
+                audit::client_ip(peer_addr, headers),
                 serde_json::json!({"provider": provider}),
             );
             tracing::info!(
@@ -1376,28 +1438,34 @@ async fn oauth_callback_inner(
                     AuthError::unauthorized("OAuth authentication failed")
                 })?;
 
-            // Add newly created user to default organization
-            let _ = state
-                .db
-                .add_organization_member(DEFAULT_ORG_ID, created_user.id, "member")
-                .await
-                .map_err(|e| {
-                    tracing::error!("Failed to add OAuth user to default org: {}", e);
-                    // Continue anyway
-                });
+            // Add newly created user to the default organization — single-tenant
+            // convenience only, gated on `auto_join_default_org` (off by default).
+            // In a multi-tenant deployment a first-time-OAuth user must own no org
+            // so zero-org onboarding creates their own. See `register` and
+            // `specs/authentication.md`.
+            if state.config.auto_join_default_org {
+                let _ = state
+                    .db
+                    .add_organization_member(DEFAULT_ORG_ID, created_user.id, "member")
+                    .await
+                    .map_err(|e| {
+                        tracing::error!("Failed to add OAuth user to default org: {}", e);
+                        // Continue anyway
+                    });
 
-            // Harness-seed safety net (see equivalent comment in `register` and
-            // EVE-390). Drive the provisioner from `platform_definition`, not
-            // `oss_built_in_harnesses()`, so a custom platform definition is
-            // never overridden on OAuth signup.
-            if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
-                &state.db,
-                DEFAULT_ORG_ID,
-                state.platform_definition.built_in_harnesses(),
-            )
-            .await
-            {
-                tracing::warn!(error = %e, "Failed to ensure default org harnesses (non-fatal)");
+                // Harness-seed safety net (see equivalent comment in `register` and
+                // EVE-390). Drive the provisioner from `platform_definition`, not
+                // `oss_built_in_harnesses()`, so a custom platform definition is
+                // never overridden on OAuth signup.
+                if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
+                    &state.db,
+                    DEFAULT_ORG_ID,
+                    state.platform_definition.built_in_harnesses(),
+                )
+                .await
+                {
+                    tracing::warn!(error = %e, "Failed to ensure default org harnesses (non-fatal)");
+                }
             }
 
             created_user
@@ -1420,7 +1488,7 @@ async fn oauth_callback_inner(
             .as_array()
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     };
 
     audit::emit(
@@ -1428,7 +1496,7 @@ async fn oauth_callback_inner(
         DEFAULT_ORG_ID,
         Some(auth_user.id),
         "auth.oauth.success",
-        audit::client_ip(headers),
+        audit::client_ip(peer_addr, headers),
         serde_json::json!({"provider": provider}),
     );
 
@@ -1472,7 +1540,9 @@ fn generate_recovery_token() -> (String, String) {
 }
 
 /// True when this account authenticates with a local password (vs OAuth-only).
-/// Password reset and verification only make sense for password accounts.
+/// Verification only applies to password accounts because OAuth providers own
+/// their own email proof. Password reset can add a password to OAuth-only
+/// accounts after the user proves inbox control with the emailed token.
 fn is_local_password_user(user: &crate::storage::models::UserRow) -> bool {
     user.password_hash.is_some()
         || user.auth_provider.as_deref() == Some("local")
@@ -1525,7 +1595,10 @@ async fn send_verification_email(state: &BuiltinAuthBackend, to: &str, raw_token
 /// response is identical to a fresh signup, and THIS email is the only place
 /// the user learns they already have an account (anti-enumeration).
 async fn send_account_exists_email(state: &BuiltinAuthBackend, to: &str) {
-    let url = format!("{}/login", state.config.frontend_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/login",
+        state.config.login_origin().trim_end_matches('/')
+    );
     let subject = "You already have an Everruns account";
     let text = format!(
         "Someone (probably you) tried to create an Everruns account with this email — but you already have one.Log in here:{url}Forgot your password? Use \"Reset your password\" on the login page. If this wasn't you, you can safely ignore this email."
@@ -1566,9 +1639,11 @@ async fn deliver_account_email(
 
 /// POST /v1/auth/forgot-password - Begin a password reset.
 ///
-/// Enumeration-safe: always returns 200 `{ "ok": true }`. If a local password
-/// account exists for the email, a single-use reset token (1h TTL) is created
-/// and emailed. OAuth-only accounts are skipped silently.
+/// Enumeration-safe: always returns 200 `{ "ok": true }`. If an account exists
+/// for the email, a single-use reset token (1h TTL) is created and emailed.
+/// Completing the reset sets a local password, including for OAuth-created
+/// accounts, so users never land in a "check your inbox" flow that sends no
+/// email for an existing account.
 pub async fn forgot_password(
     State(state): State<BuiltinAuthBackend>,
     Json(req): Json<EmailOnlyRequest>,
@@ -1588,9 +1663,7 @@ pub async fn forgot_password(
     {
         return Ok(OkResponse::ok());
     }
-    if let Ok(Some(user)) = state.db.get_user_by_email(&req.email).await
-        && is_local_password_user(&user)
-    {
+    if let Ok(Some(user)) = state.db.get_user_by_email(&req.email).await {
         let (raw_token, token_hash) = generate_recovery_token();
         let expires_at = Utc::now()
             + Duration::from_std(PASSWORD_RESET_TTL).unwrap_or_else(|_| Duration::hours(1));
@@ -1664,9 +1737,8 @@ pub async fn reset_password(
 /// POST /v1/auth/verify-email - Mark the user's email verified.
 pub async fn verify_email(
     State(state): State<BuiltinAuthBackend>,
-    jar: CookieJar,
     Json(req): Json<VerifyEmailRequest>,
-) -> Result<(CookieJar, Json<OkResponse>), AuthError> {
+) -> Result<Json<OkResponse>, AuthError> {
     let token_hash = crate::api::org_invitations::hash_invite_token(&req.token);
     let user_id = state
         .db
@@ -1693,37 +1765,7 @@ pub async fn verify_email(
             AuthError::internal("Email verification failed")
         })?;
 
-    // The single-use token proves control of the mailbox, so the confirmation
-    // link doubles as sign-in (required by confirm-mode signup, where no
-    // session exists before this point; harmless otherwise). Best-effort: a
-    // session failure must not fail verification itself.
-    let jar = match state.db.get_user(user_id).await {
-        Ok(Some(user)) => {
-            let organizations = builtin::fetch_user_organizations(&state.db, user.id)
-                .await
-                .unwrap_or_default();
-            let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
-            let auth_user = AuthUser {
-                id: user.id,
-                email: user.email,
-                name: user.name,
-                roles,
-                is_platform_user: false,
-                auth_method: AuthMethod::Jwt,
-                organizations: builtin::organizations_or_default(organizations),
-            };
-            match generate_token_response(&state, jar.clone(), &auth_user).await {
-                Ok((jar, _json)) => jar,
-                Err(err) => {
-                    tracing::warn!(error = %err.error, "verify-email session mint failed");
-                    jar
-                }
-            }
-        }
-        _ => jar,
-    };
-
-    Ok((jar, OkResponse::ok()))
+    Ok(OkResponse::ok())
 }
 
 /// POST /v1/auth/resend-verification - Re-send a verification email.
@@ -1864,6 +1906,15 @@ async fn get_or_create_admin_user(
         })?;
 
     let user = if let Some(user) = existing_user {
+        let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
+        if !roles.iter().any(|role| role == "admin") {
+            tracing::error!(
+                user_id = %user.id,
+                email = %user.email,
+                "Configured admin email collides with a non-admin account"
+            );
+            return Err(AuthError::unauthorized("Login failed"));
+        }
         user
     } else {
         // Create admin user
@@ -1956,7 +2007,7 @@ async fn get_or_create_admin_user(
             .as_array()
             .is_some_and(|roles| roles.iter().any(|role| role.as_str() == Some("admin"))),
         auth_method: AuthMethod::Jwt,
-        organizations: builtin::organizations_or_default(organizations),
+        organizations,
     })
 }
 
@@ -2201,6 +2252,37 @@ mod tests {
         );
     }
 
+    // EVE-702: GitHub identities with an unverified email are rejected, mirroring
+    // Google, so a hardcoded email_verified=true can no longer pre-empt accounts.
+    #[test]
+    fn test_github_rejects_unverified_email() {
+        let config = AuthConfig::default();
+        let user = make_google_user("user@example.com", false);
+        assert_eq!(
+            oauth_identity_rejection_reason(
+                super::super::oauth::OAuthProvider::GitHub,
+                &config,
+                &user
+            ),
+            Some("email_unverified")
+        );
+    }
+
+    // EVE-702: a verified GitHub email passes the gate.
+    #[test]
+    fn test_github_accepts_verified_email() {
+        let config = AuthConfig::default();
+        let user = make_google_user("user@example.com", true);
+        assert!(
+            oauth_identity_rejection_reason(
+                super::super::oauth::OAuthProvider::GitHub,
+                &config,
+                &user
+            )
+            .is_none()
+        );
+    }
+
     // EVE-451: No allowed_domains config means any verified domain is accepted.
     #[test]
     fn test_google_accepts_any_verified_domain_when_unrestricted() {
@@ -2233,34 +2315,9 @@ mod tests {
         );
     }
 
-    // EVE-451: GitHub flow currently has no per-provider gates here.
-    #[test]
-    fn test_github_has_no_provider_gates() {
-        let mut config = AuthConfig::default();
-        config.mode = AuthMode::Full;
-        config.github = Some(crate::auth::config::GitHubOAuthConfig {
-            base: crate::auth::config::OAuthProviderConfig {
-                client_id: "id".to_string(),
-                client_secret: "secret".to_string(),
-                redirect_uri: "http://localhost/callback".to_string(),
-            },
-        });
-        let user = super::super::oauth::OAuthUserInfo {
-            provider_id: "gh-1".to_string(),
-            email: "user@example.com".to_string(),
-            name: "User".to_string(),
-            avatar_url: None,
-            email_verified: false,
-        };
-        assert!(
-            oauth_identity_rejection_reason(
-                super::super::oauth::OAuthProvider::GitHub,
-                &config,
-                &user
-            )
-            .is_none()
-        );
-    }
+    // EVE-702 replaced EVE-451's "GitHub has no gates" assertion: GitHub now
+    // gates on email_verified. See test_github_rejects_unverified_email and
+    // test_github_accepts_verified_email above.
 
     #[test]
     fn test_oauth_providers_visible_when_oauth_enabled() {
@@ -2343,16 +2400,47 @@ mod oauth_state_tests {
     // Password reset + email verification
     // ========================================================================
 
+    use crate::auth::backend::AuthBackend;
     use crate::auth::config::AuthConfig;
     use crate::storage::StorageBackend;
     use crate::storage::models::CreateUserRow;
+    use async_trait::async_trait;
+    use everruns_core::{EmailMessage, EmailResult, EmailSender, PlatformDefinition, SentEmail};
     use std::sync::Arc;
+    use std::sync::Mutex;
 
     fn test_backend() -> BuiltinAuthBackend {
         BuiltinAuthBackend::new(
             AuthConfig::default(),
             Arc::new(StorageBackend::in_memory()),
             Arc::new(crate::platform::oss_platform_definition()),
+        )
+    }
+
+    #[derive(Default)]
+    struct RecordingEmailSender {
+        messages: Mutex<Vec<EmailMessage>>,
+    }
+
+    #[async_trait]
+    impl EmailSender for RecordingEmailSender {
+        async fn send_email(&self, message: EmailMessage) -> EmailResult<SentEmail> {
+            self.messages.lock().unwrap().push(message);
+            Ok(SentEmail {
+                provider: "recording",
+                id: "recording".to_string(),
+            })
+        }
+    }
+
+    fn backend_with_email_sender(
+        sender: Arc<RecordingEmailSender>,
+    ) -> (BuiltinAuthBackend, Arc<StorageBackend>) {
+        let db = Arc::new(StorageBackend::in_memory());
+        let platform = PlatformDefinition::builder().email_sender(sender).build();
+        (
+            BuiltinAuthBackend::new(AuthConfig::default(), db.clone(), Arc::new(platform)),
+            db,
         )
     }
 
@@ -2377,6 +2465,7 @@ mod oauth_state_tests {
         let db = state.db.clone();
         let outcome = register(
             State(state.clone()),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -2408,6 +2497,7 @@ mod oauth_state_tests {
         let db = state.db.clone();
         let _ = register(
             State(state.clone()),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -2428,6 +2518,114 @@ mod oauth_state_tests {
         assert_eq!(user.name, "Ada Lovelace");
     }
 
+    // Multi-tenant safety: with auto_join_default_org off (the default), a fresh
+    // signup owns NO org, so zero-org onboarding creates the user's own org
+    // instead of dumping every tenant into the shared default organization.
+    #[tokio::test]
+    async fn register_does_not_join_default_org_by_default() {
+        let state = full_mode_backend();
+        let db = state.db.clone();
+        let outcome = register(
+            State(state.clone()),
+            None,
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(RegisterRequest {
+                email: "solo@example.com".to_string(),
+                password: "password12345".to_string(),
+                name: None,
+                captcha_token: None,
+            }),
+        )
+        .await
+        .expect("register should succeed");
+
+        let RegisterOutcome::Session(status, jar, Json(tokens)) = outcome else {
+            panic!("default mode must return an instant session");
+        };
+        assert_eq!(status, StatusCode::CREATED);
+        assert!(
+            jar.get(ORG_COOKIE_NAME).is_none(),
+            "zero-org signup must not receive a synthetic org cookie"
+        );
+
+        let auth_user = state
+            .validate_token(&tokens.access_token)
+            .await
+            .expect("issued access token should validate");
+        assert!(
+            auth_user.organizations.is_empty(),
+            "issued token must preserve zero-org memberships, got {:?}",
+            auth_user.organizations
+        );
+
+        let user = db
+            .get_user_by_email("solo@example.com")
+            .await
+            .unwrap()
+            .expect("user created");
+        let orgs = db.list_user_organizations(user.id).await.unwrap();
+        assert!(
+            orgs.is_empty(),
+            "fresh signup must have zero org memberships by default, got {orgs:?}"
+        );
+    }
+
+    // Single-tenant opt-in: AUTH_AUTO_JOIN_DEFAULT_ORG=true restores the shared
+    // default-org membership for a single-binary / small self-host.
+    #[tokio::test]
+    async fn register_joins_default_org_when_opted_in() {
+        use crate::storage::models::CreateOrganizationRow;
+        let config = AuthConfig {
+            mode: AuthMode::Full,
+            auto_join_default_org: true,
+            ..Default::default()
+        };
+        let db = Arc::new(StorageBackend::in_memory());
+        // Membership can only attach if the default org exists.
+        db.create_organization_with_id(
+            DEFAULT_ORG_ID,
+            CreateOrganizationRow {
+                public_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
+                name: "Default Organization".to_string(),
+                created_by: None,
+            },
+        )
+        .await
+        .expect("seed default org");
+        let state = BuiltinAuthBackend::new(
+            config,
+            db.clone(),
+            Arc::new(crate::platform::oss_platform_definition()),
+        );
+        register(
+            State(state.clone()),
+            None,
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(RegisterRequest {
+                email: "joiner@example.com".to_string(),
+                password: "password12345".to_string(),
+                name: None,
+                captcha_token: None,
+            }),
+        )
+        .await
+        .expect("register should succeed");
+
+        let user = db
+            .get_user_by_email("joiner@example.com")
+            .await
+            .unwrap()
+            .expect("user created");
+        assert!(
+            db.is_organization_member(DEFAULT_ORG_ID, user.id)
+                .await
+                .unwrap(),
+            "opted-in signup should join the default org"
+        );
+    }
+
     async fn seed_local_user(db: &StorageBackend, email: &str, password: &str) -> Uuid {
         let user = db
             .create_user(CreateUserRow {
@@ -2444,6 +2642,97 @@ mod oauth_state_tests {
             .await
             .expect("create user");
         user.id
+    }
+
+    async fn seed_oauth_only_user(db: &StorageBackend, email: &str) -> Uuid {
+        let user = db
+            .create_user(CreateUserRow {
+                email: email.to_string(),
+                name: "OAuth User".to_string(),
+                avatar_url: None,
+                roles: vec!["user".to_string()],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: Some("google".to_string()),
+                auth_provider_id: Some("google-sub-1".to_string()),
+                external_id: None,
+            })
+            .await
+            .expect("create OAuth-only user");
+        user.id
+    }
+
+    #[tokio::test]
+    async fn admin_mode_register_is_disabled() {
+        let config = AuthConfig {
+            mode: AuthMode::Admin,
+            admin: Some(super::super::config::AdminConfig {
+                email: "admin@example.com".to_string(),
+                password: "password12345".to_string(),
+            }),
+            ..Default::default()
+        };
+        let state = BuiltinAuthBackend::new(
+            config,
+            Arc::new(StorageBackend::in_memory()),
+            Arc::new(crate::platform::oss_platform_definition()),
+        );
+
+        let err = register(
+            State(state),
+            None,
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(RegisterRequest {
+                email: "attacker@example.com".to_string(),
+                password: "password12345".to_string(),
+                name: None,
+                captcha_token: None,
+            }),
+        )
+        .await
+        .expect_err("admin mode must not allow self-registration");
+        assert_eq!(err.status, StatusCode::FORBIDDEN);
+    }
+
+    #[tokio::test]
+    async fn admin_login_rejects_non_admin_email_collision() {
+        let config = AuthConfig {
+            mode: AuthMode::Admin,
+            admin: Some(super::super::config::AdminConfig {
+                email: "admin@example.com".to_string(),
+                password: "password12345".to_string(),
+            }),
+            ..Default::default()
+        };
+        let db = Arc::new(StorageBackend::in_memory());
+        let attacker_id = seed_local_user(&db, " ADMIN@example.com ", "attacker12345").await;
+        let state = BuiltinAuthBackend::new(
+            config,
+            db.clone(),
+            Arc::new(crate::platform::oss_platform_definition()),
+        );
+
+        let err = login(
+            State(state),
+            None,
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(LoginRequest {
+                email: "admin@example.com".to_string(),
+                password: "password12345".to_string(),
+            }),
+        )
+        .await
+        .expect_err("admin bootstrap must fail closed on non-admin collision");
+        assert_eq!(err.status, StatusCode::UNAUTHORIZED);
+        assert!(
+            db.list_user_organizations(attacker_id)
+                .await
+                .unwrap()
+                .is_empty(),
+            "colliding user must not be promoted into any org"
+        );
     }
 
     #[tokio::test]
@@ -2606,13 +2895,9 @@ mod oauth_state_tests {
             .create_email_verification_token(user_id, &hash, Utc::now() - Duration::minutes(1))
             .await
             .unwrap();
-        let err = verify_email(
-            State(state),
-            CookieJar::new(),
-            Json(VerifyEmailRequest { token: raw }),
-        )
-        .await
-        .expect_err("expired token must be rejected");
+        let err = verify_email(State(state), Json(VerifyEmailRequest { token: raw }))
+            .await
+            .expect_err("expired token must be rejected");
         assert_eq!(err.status, StatusCode::BAD_REQUEST);
     }
 
@@ -2643,20 +2928,14 @@ mod oauth_state_tests {
             .await
             .unwrap();
 
-        let (jar, _ok) = verify_email(
+        let _ = verify_email(
             State(state.clone()),
-            CookieJar::new(),
             Json(VerifyEmailRequest { token: raw }),
         )
         .await
         .expect("verify should succeed");
 
         assert!(db.get_user(user_id).await.unwrap().unwrap().email_verified);
-        // The confirmation link doubles as sign-in: session cookies are set.
-        assert!(
-            jar.get("access_token").is_some(),
-            "verify must mint a session"
-        );
     }
 
     #[tokio::test]
@@ -2664,7 +2943,6 @@ mod oauth_state_tests {
         let state = test_backend();
         let err = verify_email(
             State(state),
-            CookieJar::new(),
             Json(VerifyEmailRequest {
                 token: "bad".to_string(),
             }),
@@ -2691,6 +2969,29 @@ mod oauth_state_tests {
     }
 
     #[tokio::test]
+    async fn forgot_password_sends_reset_email_for_oauth_only_account() {
+        let sender = Arc::new(RecordingEmailSender::default());
+        let (state, db) = backend_with_email_sender(sender.clone());
+        seed_oauth_only_user(&db, "oauth-only@example.com").await;
+
+        let resp = forgot_password(
+            State(state),
+            Json(EmailOnlyRequest {
+                email: "oauth-only@example.com".to_string(),
+                captcha_token: None,
+            }),
+        )
+        .await
+        .expect("enumeration-safe success");
+        assert!(resp.0.ok);
+
+        let messages = sender.messages.lock().unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].subject, "Reset your Everruns password");
+        assert_eq!(messages[0].to[0].email, "oauth-only@example.com");
+    }
+
+    #[tokio::test]
     async fn resend_verification_is_enumeration_safe_for_unknown_email() {
         let state = test_backend();
         let resp = resend_verification(
@@ -2713,6 +3014,7 @@ mod oauth_state_tests {
         let state = full_mode_backend();
         let err = register(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -2733,6 +3035,7 @@ mod oauth_state_tests {
         seed_local_user(&state.db, "cap@example.com", "password12345").await;
         let err = login(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(LoginRequest {
@@ -2772,6 +3075,7 @@ mod oauth_state_tests {
         for _ in 0..25 {
             let result = login(
                 State(state.clone()),
+                None,
                 HeaderMap::new(),
                 CookieJar::new(),
                 Json(LoginRequest {
@@ -2792,6 +3096,7 @@ mod oauth_state_tests {
         seed_local_user(&state.db, "fresh@example.com", "password12345").await;
         let err = login(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(LoginRequest {
@@ -2812,6 +3117,7 @@ mod oauth_state_tests {
         let db = state.db.clone();
         let RegisterOutcome::Session(_status, jar, _json) = register(
             State(state.clone()),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -2884,6 +3190,7 @@ mod oauth_state_tests {
         );
         let err = register(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -2907,6 +3214,7 @@ mod oauth_state_tests {
         let frontend = state.config.frontend_url.trim_end_matches('/').to_string();
         let (_jar, redirect) = oauth_callback(
             State(state),
+            None,
             HeaderMap::new(),
             Path("google".to_string()),
             Query(OAuthCallbackQuery {
@@ -2934,6 +3242,7 @@ mod oauth_state_tests {
         let frontend = state.config.frontend_url.trim_end_matches('/').to_string();
         let (_jar, redirect) = oauth_callback(
             State(state),
+            None,
             HeaderMap::new(),
             Path("google".to_string()),
             Query(OAuthCallbackQuery {
@@ -2952,6 +3261,34 @@ mod oauth_state_tests {
             .unwrap_or_default()
             .to_string();
         assert_eq!(location, format!("{frontend}/login?error=oauth_failed"));
+    }
+
+    #[tokio::test]
+    async fn oauth_callback_failure_honors_configured_login_origin() {
+        use axum::response::IntoResponse;
+        let mut state = full_mode_backend();
+        state.config.login_origin = Some("https://id.example.com".to_string());
+        let (_jar, redirect) = oauth_callback(
+            State(state),
+            None,
+            HeaderMap::new(),
+            Path("google".to_string()),
+            Query(OAuthCallbackQuery {
+                code: None,
+                state: None,
+                error: Some("access_denied".to_string()),
+            }),
+            CookieJar::new(),
+        )
+        .await;
+        let response = redirect.into_response();
+        assert_eq!(
+            response
+                .headers()
+                .get(axum::http::header::LOCATION)
+                .and_then(|value| value.to_str().ok()),
+            Some("https://id.example.com/login?error=oauth_cancelled")
+        );
     }
 
     // --- signup email-confirm mode (AUTH_SIGNUP_EMAIL_CONFIRM) ---
@@ -2975,6 +3312,7 @@ mod oauth_state_tests {
         let db = state.db.clone();
         let outcome = register(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -3006,6 +3344,7 @@ mod oauth_state_tests {
         seed_local_user(&state.db, "taken@example.com", "password12345").await;
         let outcome = register(
             State(state.clone()),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {
@@ -3025,6 +3364,7 @@ mod oauth_state_tests {
         let state = full_mode_backend();
         let err = register(
             State(state),
+            None,
             HeaderMap::new(),
             CookieJar::new(),
             Json(RegisterRequest {

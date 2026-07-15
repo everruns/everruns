@@ -15,7 +15,7 @@ use everruns_core::eval::EvalRun;
 use everruns_core::message_retriever::MessageRetriever;
 use uuid::Uuid;
 
-use super::dataset::{self, ExportEvalRunDatasetRequest};
+use super::dataset::{self, DatasetFormat, ExportEvalRunDatasetRequest};
 use crate::storage::StorageBackend;
 use crate::storage::message_store::DbMessageRetriever;
 use crate::storage::models::UpdateEvalRunDatasetRow;
@@ -34,6 +34,12 @@ pub async fn build_dataset_ndjson(
     // compaction model-view masking so the dataset matches what the model saw
     // (not the lossless durable log). The default config is used here; honoring
     // the exact per-run compaction config is a documented follow-up.
+    //
+    // Every format — including ATIF — folds the model-view messages, so ATIF
+    // training rows never contain content the model did not read (masked/dropped
+    // tool results). Only the whole-session export (`?format=atif`) still folds
+    // the raw event log, which is a debug/backup surface. See
+    // specs/dataset-export.md (Model-view faithfulness) and specs/atif-adoption.md.
     let retriever = DbMessageRetriever::new(db.clone());
     let compaction = CompactionConfig::default();
 
@@ -53,7 +59,18 @@ pub async fn build_dataset_ndjson(
             .await
             .map_err(|e| anyhow::anyhow!("load session messages: {e}"))?;
         let messages = build_model_view_messages(&stored, &compaction, None).messages;
-        let record = dataset::build_record(req.format, run, result, &messages, &req.redaction);
+        let record = if req.format == DatasetFormat::Atif {
+            crate::atif::build_case_record_from_messages(
+                run,
+                result,
+                &messages,
+                crate::atif::AtifOptions {
+                    redact_content: req.redaction.redact_content,
+                },
+            )
+        } else {
+            dataset::build_record(req.format, run, result, &messages, &req.redaction)
+        };
         let line = serde_json::to_string(&record)?;
         body.push_str(&line);
         body.push('\n');
