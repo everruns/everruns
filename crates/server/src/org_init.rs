@@ -94,6 +94,15 @@ pub async fn base_harness_id(db: &StorageBackend, org_id: i64) -> Result<Harness
         .with_context(|| format!("base harness not provisioned for org {org_id}"))
 }
 
+/// Resolve the `generic` built-in harness ID for an org at runtime.
+pub async fn generic_harness_id(db: &StorageBackend, org_id: i64) -> Result<HarnessId> {
+    db.get_harness_by_name(org_id, "generic")
+        .await?
+        .filter(|h| h.is_built_in)
+        .map(|h| h.id)
+        .with_context(|| format!("generic harness not provisioned for org {org_id}"))
+}
+
 /// Initialize built-in harnesses for a specific organization.
 ///
 /// Built-in harnesses are identified by name. IDs are assigned by the DB on

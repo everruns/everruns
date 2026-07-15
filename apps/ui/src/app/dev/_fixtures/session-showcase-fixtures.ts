@@ -6,6 +6,7 @@ import type { SessionNavKey } from "@/components/session/session-header";
 const agent: Agent = {
   id: "agent_session_showcase",
   name: "platform-chat",
+  harness_id: "harness_test",
   display_name: "Platform Chat",
   description: "Showcase agent for session UI states.",
   system_prompt: "You are a precise coding assistant.",

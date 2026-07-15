@@ -1,16 +1,16 @@
 //! System-wide outbound allowlist ("green list").
 //!
-//! An optional, host-owned global allowlist of well-known public resources
-//! (package registries, source hosting, AI/cloud provider APIs, ...). It is an
-//! internal, curated list — not agent/session/user configuration — shipped as
-//! an embedded TOML (`system_allowlist.toml`) and grouped by category so it
-//! stays manageable.
+//! An optional, host-owned global allowlist of well-known public resources for
+//! tenant/agent runtime egress. It is an internal, curated list — not
+//! agent/session/user configuration — shipped as an embedded TOML
+//! (`system_allowlist.toml`) and grouped by category so it stays manageable.
 //!
 //! When enabled via `EVERRUNS_SYSTEM_ALLOWLIST_ENABLED`, the egress boundary
-//! denies any outbound request whose URL does not match one of the groups, in
-//! addition to (and independently of) the per-agent/session
-//! [`NetworkAccessList`]. It is disabled by default, so the default behavior is
-//! unchanged. See `specs/system-allowlist.md`.
+//! denies any request routed through `EgressService` whose URL does not match
+//! one of the groups, in addition to (and independently of) the
+//! per-agent/session [`NetworkAccessList`]. Host-owned services do not use this
+//! boundary. It is disabled by default, so the default behavior is unchanged.
+//! See `specs/system-allowlist.md`.
 
 use crate::network_access::NetworkAccessList;
 use serde::Deserialize;

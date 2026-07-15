@@ -24,8 +24,9 @@ with no real shell, no subprocess spawning, and no host access. Learn more at
 [GitHub](https://github.com/everruns/bashkit).
 
 Because the interpreter is sandboxed by construction, bash here is **not** a
-shell-out to the host: there is no `/bin/bash` process, no network stack, and no
-filesystem beyond the session workspace.
+shell-out to the host: there is no `/bin/bash` process, no direct network stack,
+and no filesystem beyond the session workspace. Outbound HTTP for `curl`/`wget`
+is off by default and can be enabled per agent (see **Outbound HTTP** below).
 
 ## Tools
 
@@ -77,9 +78,19 @@ Every invocation runs under fixed limits to prevent runaway scripts:
 | Parser timeout | 5 s |
 | Wall-clock timeout | `timeout_ms` (default 30 s, max 60 s) |
 
+## Outbound HTTP (optional)
+
+Set the capability config `{"enable_http": true}` to let scripts use `curl` and
+`wget`. Every request — including each redirect hop — is routed through the
+platform egress boundary, where the agent/session network access list and the
+deployment-wide system allowlist are enforced. Policy denials surface as curl's
+native `access denied` failure (exit code 7). Without the flag, the interpreter
+has no network path at all.
+
 ## Security
 
-- **Sandboxed** — no network access, no host filesystem, no subprocess spawning.
+- **Sandboxed** — no direct network access (outbound HTTP is opt-in and
+  egress-routed), no host filesystem, no subprocess spawning.
 - **High risk** — because it exposes arbitrary scripted code execution, assigning
   `bashkit_shell` to an agent requires an org **Admin**. Existing agents that
   already had it keep working; the gate applies to new assignments only.

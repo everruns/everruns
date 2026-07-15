@@ -12,6 +12,7 @@ import { PromptEditor } from "@/components/ui/prompt-editor";
 import Link from "next/link";
 import { ArrowLeft, Check, X, Loader2 } from "lucide-react";
 import { ModelPicker } from "@/components/models/model-picker";
+import { HarnessSelect } from "@/components/harness/harness-select";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { agentFormSchema, getFieldErrors, type FieldErrors } from "@/lib/form-validation";
@@ -37,6 +38,7 @@ export default function NewAgentPage() {
     name: "",
     description: "",
     system_prompt: "",
+    harness_id: "",
     default_model_id: "",
   });
 
@@ -87,6 +89,7 @@ export default function NewAgentPage() {
         display_name: parsed.data.display_name,
         description: parsed.data.description,
         system_prompt: parsed.data.system_prompt,
+        harness_id: parsed.data.harness_id,
         default_model_id: parsed.data.default_model_id,
         capabilities: selectedCapabilities.length > 0 ? selectedCapabilities : undefined,
         initial_files: initialFiles.length > 0 ? initialFiles : undefined,
@@ -172,6 +175,28 @@ export default function NewAgentPage() {
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 rows={2}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="harness">
+                Harness <span className="text-destructive">*</span>
+              </Label>
+              <HarnessSelect
+                id="harness"
+                value={formData.harness_id}
+                onValueChange={(value) => {
+                  setFormData((prev) => ({ ...prev, harness_id: value }));
+                  setFieldErrors((prev) => ({ ...prev, harness_id: undefined }));
+                }}
+                placeholder="Select a harness"
+              />
+              {fieldErrors.harness_id && (
+                <p className="text-xs text-destructive">{fieldErrors.harness_id}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                The base execution harness this agent runs on. Sessions started from this agent
+                inherit it.
+              </p>
             </div>
 
             <div className="space-y-2">

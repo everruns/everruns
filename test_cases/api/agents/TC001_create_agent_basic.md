@@ -64,7 +64,7 @@ Verify that an agent can be created with required fields (name, system_prompt) p
 | `tags` | `[]` (empty) |
 | GET by ID returns same agent | Fields match create response |
 | GET by name returns same agent | Fields match create response |
-| Step 4: `display_name` | `null` (not set, UI falls back to name) |
+| Step 4: `display_name` | Member is omitted (UI falls back to `name`) |
 
 ## Validation Commands
 

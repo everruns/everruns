@@ -9,7 +9,7 @@
 
 #![cfg(feature = "postgres-tests")]
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use chrono::Utc;
 use serde_json::json;
@@ -480,6 +480,72 @@ async fn test_start_workflow_with_task_writes_initial_state_in_one_step() {
     let task = store.get_task(task_id).await.unwrap();
     assert_eq!(task.status, TaskStatus::Pending);
     assert_eq!(task.activity_type, "process_input");
+
+    cleanup_workflow(&store, workflow_id).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_start_workflow_with_task_is_idempotent_for_concurrent_same_workflow() {
+    let store = create_test_store().await;
+    let workflow_id = Uuid::now_v7();
+    let barrier = Arc::new(tokio::sync::Barrier::new(8));
+
+    let mut handles = Vec::new();
+    for attempt in 0..8 {
+        let store = store.clone();
+        let barrier = Arc::clone(&barrier);
+        handles.push(tokio::spawn(async move {
+            barrier.wait().await;
+            store
+                .start_workflow_with_task(
+                    workflow_id,
+                    "turn_workflow",
+                    json!({"session_id": "session_race"}),
+                    TaskDefinition {
+                        workflow_id: Some(workflow_id),
+                        activity_id: format!("input-{attempt}"),
+                        activity_type: "process_input".to_string(),
+                        input: json!({"session_id": "session_race", "attempt": attempt}),
+                        options: ActivityOptions::default(),
+                    },
+                )
+                .await
+        }));
+    }
+
+    let mut task_ids = Vec::new();
+    for handle in handles {
+        task_ids.push(handle.await.unwrap().unwrap());
+    }
+    task_ids.sort();
+    task_ids.dedup();
+    assert_eq!(
+        task_ids.len(),
+        1,
+        "concurrent duplicate starts must reuse the first queued task"
+    );
+
+    let workflow = store.get_workflow_info(workflow_id).await.unwrap();
+    assert_eq!(workflow.status, WorkflowStatus::Running);
+
+    let events = store.load_events(workflow_id).await.unwrap();
+    assert_eq!(events.len(), 2);
+    assert!(matches!(
+        &events[0].1,
+        WorkflowEvent::WorkflowStarted { .. }
+    ));
+    assert!(matches!(
+        &events[1].1,
+        WorkflowEvent::ActivityScheduled { .. }
+    ));
+
+    let task_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM durable_task_queue WHERE workflow_id = $1")
+            .bind(workflow_id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(task_count, 1);
 
     cleanup_workflow(&store, workflow_id).await;
 }

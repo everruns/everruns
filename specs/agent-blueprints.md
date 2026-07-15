@@ -4,7 +4,7 @@
 <!-- Design Decisions:
   - AgentBlueprint: code-defined agent template with private tools, baked-in prompt, fixed/default model
   - Contributed by capabilities via new `agent_blueprints()` trait method
-  - Spawned via `spawn_subagent` tool (new `blueprint` + `config` params)
+  - Spawned via `spawn_agent` with `target.type = "subagent"` plus `blueprint` + `config`
   - Child session stores `blueprint_id` — reason_activity and act_activity branch on it
   - Private tools: blueprint tools never leak to host agent's tool list
   - Fixed model: blueprint can hardcode model (e.g. Haiku for cheap scout work)
@@ -15,7 +15,7 @@
 
 ## Abstract
 
-Agent Blueprints are pre-built agent definitions contributed by capabilities. Unlike subagents (which inherit the parent's harness + agent config), blueprints encapsulate a complete agent — prompt, private tools, model selection — behind a simple invocation interface. The host agent spawns a blueprint via `spawn_subagent`, but the blueprint controls its own internals.
+Agent Blueprints are pre-built agent definitions contributed by capabilities. Unlike subagents (which inherit the parent's harness + agent config), blueprints encapsulate a complete agent — prompt, private tools, model selection — behind a simple invocation interface. The host agent spawns a blueprint via `spawn_agent` with a subagent target, but the blueprint controls its own internals.
 
 Inspired by Claude Code's built-in subagents (Explore, Plan, Claude Code Guide) and AmpCode's Librarian pattern.
 
@@ -108,9 +108,9 @@ Duplicate IDs across capabilities rejected at registration time.
 
 ## Execution: How It Actually Works
 
-### Spawn (in `spawn_subagent` tool)
+### Spawn (in `spawn_agent` with `target.type = "subagent"`)
 
-`SpawnSubagentTool::execute_with_context` gains a new branch:
+The subagent target implementation handles blueprint parameters:
 
 ```
 if blueprint param present:
@@ -122,7 +122,7 @@ if blueprint param present:
        - agent_id = None (blueprint replaces the agent)
        - blueprint_id = blueprint.id
        - blueprint_config = validated config
-       - subagent_name, subagent_task = as today
+       - lifecycle tracked via a SessionTask record (kind = subagent)
     4. PlatformStore.send_message(child_session_id, task)
     5. wait_for_idle(300s)
     6. Return result
@@ -211,12 +211,13 @@ The spawned session is **fully stateful** — real session with messages, events
 
 The `AgentBlueprint` definition is stateless (code template). The session instance is stateful.
 
-## Invocation: spawn_subagent Parameters
+## Invocation: `spawn_agent` Blueprint Parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `name` | string | Yes | Human-readable name (same as today) |
 | `instructions` | string | Yes | Instructions for the subagent (renamed from `task`) |
+| `target.type` | string | Yes | Must be `subagent` |
 | `blueprint` | string | No | Blueprint ID. When set, child uses blueprint's RuntimeAgent. |
 | `config` | object | No | Blueprint-specific config. Validated against `config_schema`. |
 
@@ -226,7 +227,7 @@ The `SubagentCapability` system prompt contribution expands to include available
 
 ```
 <available-blueprints>
-Specialized agents you can delegate to via spawn_subagent(blueprint: "<id>"):
+Specialized agents you can delegate to via spawn_agent(target.type="subagent", blueprint: "<id>"):
 
 - github_scout: Search GitHub repositories for code, issues, and discussions.
   Fast read-only agent. Use for codebase exploration, finding patterns,
@@ -250,7 +251,7 @@ Generated dynamically from `CapabilityRegistry::blueprints()`. Each entry shows 
 | Prompt injection via config | Config validated against typed JSON Schema. No free-form prompt override. |
 | Model cost | `Fixed` prevents host from running expensive models for cheap work. |
 | Tool leakage | Blueprint tools only instantiated in child's `act_activity`. Host's `act_activity` never loads them. |
-| Nesting | Same constraint as subagents — blueprint children cannot spawn subagents or blueprints. |
+| Nesting | Same governed-depth constraint as subagents. |
 | Resource exhaustion | `max_turns` limit on blueprint. Same 300s timeout as subagents. |
 | Blueprint impersonation | `blueprint_id` validated against registry at spawn time. Invalid IDs rejected. |
 
@@ -318,10 +319,11 @@ These use the GitHub token from User Connections. They are private to the bluepr
 
 ```json
 {
-  "name": "spawn_subagent",
+  "name": "spawn_agent",
   "arguments": {
     "name": "Scout",
     "instructions": "Find how authentication middleware is implemented in the fastify repo.",
+    "target": { "type": "subagent" },
     "blueprint": "github_scout",
     "config": { "repos": ["fastify/fastify"] }
   }
@@ -344,7 +346,7 @@ Child session runs with Haiku, 3 GitHub tools, scout prompt. Host gets back a su
 | Durable execution | Same (PostgreSQL workflow) | Same |
 | Event stream | Same (SSE events on child session) | Same |
 | Lifecycle | Same (spawn/get/message tools) | Same |
-| Nesting prevention | Same (cannot spawn children) | Same |
+| Nesting governance | Same `max_subagent_depth` policy | Same |
 | Use case | Parallel work with same capabilities | Specialist delegation with different capabilities |
 
 ## Changes Required
@@ -374,7 +376,7 @@ Add `AgentBlueprint` and `BlueprintModel` structs.
 
 Add `blueprints()` and `blueprint(id)` methods that aggregate across all registered capabilities.
 
-### SpawnSubagentTool (`crates/core/src/capabilities/subagents.rs`)
+### SpawnSubagentAsAgentTool (`crates/core/src/capabilities/subagents.rs`)
 
 - Add `blueprint` and `config` params to schema
 - New branch: when blueprint is set, validate config, create session with `blueprint_id`/`blueprint_config`/`agent_id=None`
@@ -408,7 +410,7 @@ legacy `subagent.*` events were retired — see `specs/events.md`.)
 4. Session model: `blueprint_id`, `blueprint_config` fields + migration
 5. `reason_activity` blueprint branch
 6. `act_activity` blueprint branch
-7. `spawn_subagent` blueprint parameter handling
+7. `spawn_agent` subagent blueprint parameter handling
 8. System prompt blueprint discovery
 
 ### Phase 2: GitHub Scout

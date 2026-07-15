@@ -501,6 +501,7 @@ impl Tool for ToolSearchTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_tool_search(
             &tool_call.arguments,

@@ -7,7 +7,7 @@ import { Suspense, useEffect } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { AuthUnavailableState } from "@/components/layout/auth-unavailable-state";
-import { getLoginRedirectPath } from "@/lib/auth-redirect";
+import { getLoginRedirectPath, navigateToLogin } from "@/lib/auth-redirect";
 import { useAuth } from "@/providers/auth-provider";
 import { useOrg } from "@/providers/org-provider";
 
@@ -23,7 +23,13 @@ function OnboardingLayoutInner({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { isAuthenticated, isLoading: authLoading, requiresAuth, authUnavailable } = useAuth();
+  const {
+    config,
+    isAuthenticated,
+    isLoading: authLoading,
+    requiresAuth,
+    authUnavailable,
+  } = useAuth();
   const { organizations, isLoading: orgLoading } = useOrg();
 
   const isLoading = authLoading || orgLoading;
@@ -31,9 +37,21 @@ function OnboardingLayoutInner({ children }: { children: React.ReactNode }) {
   // Redirect to login if auth is required but the user is not authenticated.
   useEffect(() => {
     if (!authLoading && !authUnavailable && requiresAuth && !isAuthenticated) {
-      router.replace(getLoginRedirectPath(pathname, searchParams));
+      navigateToLogin(
+        getLoginRedirectPath(pathname, searchParams, config?.login_origin),
+        router.replace,
+      );
     }
-  }, [authLoading, authUnavailable, requiresAuth, isAuthenticated, router, pathname, searchParams]);
+  }, [
+    authLoading,
+    authUnavailable,
+    requiresAuth,
+    isAuthenticated,
+    router,
+    pathname,
+    searchParams,
+    config?.login_origin,
+  ]);
 
   // Users that already have an org don't belong on onboarding — send them in.
   useEffect(() => {

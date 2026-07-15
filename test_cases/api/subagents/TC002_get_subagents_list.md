@@ -52,7 +52,7 @@ Verify that after spawning multiple subagents, `list_tasks` (from the generic se
      }'
    ```
 
-4. Wait for completion (120-180 seconds for two foreground subagents sequentially).
+4. Wait for completion (background subagents run in parallel; allow 120-180 seconds for both to finish).
 
 5. Retrieve events:
    ```bash
@@ -65,9 +65,9 @@ Verify that after spawning multiple subagents, `list_tasks` (from the generic se
 
 | Check | Expected |
 |-------|----------|
-| Alpha spawned | `tool.called` event with `tool_name: "spawn_subagent"` and `arguments.name: "Alpha"` |
-| Beta spawned | `tool.called` event with `tool_name: "spawn_subagent"` and `arguments.name: "Beta"` |
-| Both completed | Two `tool.completed` events for `spawn_subagent` with `status` in result |
+| Alpha spawned | `tool.called` event with `tool_name: "spawn_agent"` and `arguments.name: "Alpha"` |
+| Beta spawned | `tool.called` event with `tool_name: "spawn_agent"` and `arguments.name: "Beta"` |
+| Both completed | Two `tool.completed` events for `spawn_agent` with `status` in result |
 
 ### List Tasks Assertions
 
@@ -84,8 +84,8 @@ Verify that after spawning multiple subagents, `list_tasks` (from the generic se
 ## Validation Commands
 
 ```bash
-# Assert: spawn_subagent called twice
-curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "spawn_subagent")] | length == 2'
+# Assert: spawn_agent called twice
+curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "spawn_agent")] | length == 2'
 
 # Assert: list_tasks called
 curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "list_tasks")] | length > 0'

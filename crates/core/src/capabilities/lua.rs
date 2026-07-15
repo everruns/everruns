@@ -982,14 +982,14 @@ mod engine {
         let table = lua.create_table()?;
         table.set(
             "encode",
-            lua.create_function(|lua, s: mlua::String| {
+            lua.create_function(|lua, s: mlua::LuaString| {
                 let out = base64::engine::general_purpose::STANDARD.encode(s.as_bytes());
                 lua.create_string(out)
             })?,
         )?;
         table.set(
             "decode",
-            lua.create_function(|lua, s: mlua::String| {
+            lua.create_function(|lua, s: mlua::LuaString| {
                 let bytes = base64::engine::general_purpose::STANDARD
                     .decode(s.as_bytes())
                     .map_err(mlua::Error::external)?;
@@ -1286,6 +1286,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for EmptyFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             _session_id: SessionId,
@@ -1696,6 +1700,10 @@ mod tests {
 
         #[async_trait]
         impl SessionFileSystem for MapFileStore {
+            fn is_mount_resolver(&self) -> bool {
+                false
+            }
+
             async fn read_file(
                 &self,
                 session_id: SessionId,

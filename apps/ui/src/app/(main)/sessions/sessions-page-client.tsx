@@ -29,7 +29,10 @@ import { AgentFilterMenu } from "@/components/agent/agent-filter-menu";
 import { AgentIdentitySelect } from "@/components/agent-identity/agent-identity-select";
 import { Label } from "@/components/ui/label";
 import { Plus, ChevronLeft, ChevronRight, MessageSquare } from "lucide-react";
-import { exportSessionJsonl } from "@/lib/api/sessions";
+import { downloadSessionExport } from "@/lib/session-export";
+import { useOptionalNotificationsContext } from "@/providers/notifications-provider";
+import { useLocale } from "@/providers/locale-provider";
+import type { SessionExportFormat } from "@/lib/api/sessions";
 import type { ModelWithProvider, Agent } from "@/lib/api/types";
 import { getDisplayName, getEntityReferenceLabel } from "@/lib/entity-lifecycle";
 import { useOrganization } from "@/hooks/use-organizations";
@@ -48,6 +51,8 @@ const PAGE_SIZE = 20;
 
 export default function SessionsPageClient() {
   const router = useRouter();
+  const { locale } = useLocale();
+  const notificationsContext = useOptionalNotificationsContext();
   const [page, setPage] = useState(0);
   const [selectedAgentId, setSelectedAgentId] = useState<string>("");
   const [newSessionDialogOpen, setNewSessionDialogOpen] = useState(false);
@@ -100,14 +105,17 @@ export default function SessionsPageClient() {
   };
 
   const handleCreateSession = async () => {
-    if (!newSessionHarnessId) {
+    // Agent-first: when an agent is chosen, the server derives the harness from
+    // it, so the harness picker is hidden and no harness is sent. A no-agent
+    // session still requires an explicit harness.
+    if (!newSessionAgentId && !newSessionHarnessId) {
       console.error("No harness selected");
       return;
     }
     try {
       const session = await createSession.mutateAsync({
         request: {
-          harness_id: newSessionHarnessId,
+          harness_id: newSessionAgentId ? undefined : newSessionHarnessId,
           agent_id: newSessionAgentId || undefined,
           agent_identity_id: newSessionAgentIdentityId || undefined,
         },
@@ -140,10 +148,8 @@ export default function SessionsPageClient() {
     }
   };
 
-  const handleExport = (sessionId: string) => {
-    exportSessionJsonl(sessionId).catch((err) => {
-      console.error("Failed to export session:", err);
-    });
+  const handleExport = (sessionId: string, format: SessionExportFormat) => {
+    void downloadSessionExport(sessionId, format, locale, notificationsContext?.notify);
   };
 
   const filterLabel = selectedAgentId
@@ -261,18 +267,11 @@ export default function SessionsPageClient() {
           <DialogHeader>
             <DialogTitle>New Session</DialogTitle>
             <DialogDescription>
-              Select a harness and optionally an agent to start a new conversation.
+              Pick an agent to run on its harness, or choose a harness directly for a no-agent
+              session.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
-            <div className="space-y-2">
-              <Label>Harness (required)</Label>
-              <HarnessSelect
-                value={newSessionHarnessId}
-                onValueChange={setNewSessionHarnessId}
-                placeholder="Select a harness"
-              />
-            </div>
             <div className="space-y-2">
               <Label>Agent (optional)</Label>
               <AgentSelect
@@ -283,6 +282,16 @@ export default function SessionsPageClient() {
                 allLabel="No agent"
               />
             </div>
+            {!newSessionAgentId && (
+              <div className="space-y-2">
+                <Label>Harness (required)</Label>
+                <HarnessSelect
+                  value={newSessionHarnessId}
+                  onValueChange={setNewSessionHarnessId}
+                  placeholder="Select a harness"
+                />
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Agent identity (background runs)</Label>
               <AgentIdentitySelect
@@ -297,7 +306,7 @@ export default function SessionsPageClient() {
             </Button>
             <Button
               onClick={handleCreateSession}
-              disabled={!newSessionHarnessId || createSession.isPending}
+              disabled={(!newSessionAgentId && !newSessionHarnessId) || createSession.isPending}
             >
               {createSession.isPending ? "Creating..." : "Create Session"}
             </Button>

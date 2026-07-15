@@ -15,7 +15,7 @@ Verify that `message_task` can send a follow-up message to a subagent's task cha
 |-------|-------|
 | Agent Name | Messenger Orchestrator |
 | Capabilities | `subagents`, `session_tasks` |
-| System Prompt | You are an orchestrator. Spawn subagents and message them as instructed. Use message_task with the task_id from spawn_subagent to send follow-up messages. |
+| System Prompt | You are an orchestrator. Spawn subagents and message them as instructed. Use message_task with the task_id from spawn_agent to send follow-up messages. |
 | First Message | Spawn a subagent named "Helper" with task "Introduce yourself briefly." Record the task_id. |
 | Second Message | Now send a message to Helper's task saying "What is 2 + 2?" using message_task with Helper's task_id. |
 
@@ -27,7 +27,7 @@ Verify that `message_task` can send a follow-up message to a subagent's task cha
      -H "Content-Type: application/json" \
      -d '{
        "name": "Messenger Orchestrator",
-       "system_prompt": "You are an orchestrator. Spawn subagents and message them as instructed. Use message_task with the task_id from spawn_subagent to send follow-up messages.",
+       "system_prompt": "You are an orchestrator. Spawn subagents and message them as instructed. Use message_task with the task_id from spawn_agent to send follow-up messages.",
        "capabilities": ["subagents", "session_tasks"]
      }'
    ```
@@ -80,8 +80,8 @@ Verify that `message_task` can send a follow-up message to a subagent's task cha
 
 | Check | Expected |
 |-------|----------|
-| spawn_subagent called | `tool.called` event with `tool_name: "spawn_subagent"` and `arguments.name: "Helper"` |
-| Spawn completed | `tool.completed` for `spawn_subagent` with `task_id` in result |
+| spawn_agent called | `tool.called` event with `tool_name: "spawn_agent"` and `arguments.name: "Helper"` |
+| Spawn completed | `tool.completed` for `spawn_agent` with `task_id` in result |
 
 ### Message Phase Assertions
 
@@ -94,8 +94,8 @@ Verify that `message_task` can send a follow-up message to a subagent's task cha
 ## Validation Commands
 
 ```bash
-# Assert: spawn_subagent was called
-curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "spawn_subagent")] | length > 0'
+# Assert: spawn_agent was called
+curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "spawn_agent")] | length > 0'
 
 # Assert: message_task was called
 curl -s ".../events" | jq '[.data[] | select(.type == "tool.called" and .data.tool_name == "message_task")] | length > 0'
