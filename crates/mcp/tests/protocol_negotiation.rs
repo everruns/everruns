@@ -15,7 +15,7 @@ use everruns_core::{
     EgressRequest, EgressResponse, EgressResult, EgressService, EgressStreamResponse,
     McpProtocolMode,
 };
-use everruns_mcp::{McpClient, McpConnection, NoAuthProvider};
+use everruns_mcp::{McpClient, McpConnection, NoAuthProvider, StaticAuthProvider};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -28,6 +28,8 @@ struct Recorded {
     has_meta: bool,
     protocol_header: Option<String>,
     method_header: Option<String>,
+    authorization: Option<String>,
+    session_id: Option<String>,
 }
 
 /// Whether the scripted server behaves statelessly (RC) or demands a handshake.
@@ -80,7 +82,8 @@ impl EgressService for ScriptedEgress {
             .and_then(|m| m.as_str())
             .unwrap_or("")
             .to_string();
-        let has_session = Self::header(&request.headers, "Mcp-Session-Id").is_some();
+        let session_id = Self::header(&request.headers, "Mcp-Session-Id").cloned();
+        let has_session = session_id.is_some();
         let has_meta = parsed
             .get("params")
             .and_then(|p| p.get("_meta"))
@@ -93,6 +96,8 @@ impl EgressService for ScriptedEgress {
             has_meta,
             protocol_header: Self::header(&request.headers, "MCP-Protocol-Version").cloned(),
             method_header: Self::header(&request.headers, "Mcp-Method").cloned(),
+            authorization: Self::header(&request.headers, "Authorization").cloned(),
+            session_id,
         });
 
         let tools = json!({
@@ -222,6 +227,40 @@ async fn auto_caches_negotiation_so_call_after_list_reuses_session() {
     // The cached session must reach the tools/call.
     let call = log.iter().rev().find(|r| r.method == "tools/call").unwrap();
     assert!(call.has_session, "cached session id must reach tools/call");
+}
+
+#[tokio::test]
+async fn negotiation_cache_is_scoped_by_auth_and_protocol_mode() {
+    let (egress, log) = ScriptedEgress::new(ServerKind::Stateful {
+        version: "2025-06-18",
+    });
+    let auth = StaticAuthProvider::new()
+        .with_bearer("alice", "alice-token")
+        .with_bearer("bob", "bob-token");
+    let c = McpClient::new(egress, Arc::new(auth));
+
+    c.discover(&McpConnection::http("alice", URL))
+        .await
+        .unwrap();
+    c.discover(&McpConnection::http("bob", URL)).await.unwrap();
+
+    let log = log.lock().unwrap();
+    let initialize_count = log.iter().filter(|r| r.method == "initialize").count();
+    assert_eq!(
+        initialize_count, 2,
+        "same-URL connections with different credentials must not share sessions"
+    );
+
+    let bob_initialize = log
+        .iter()
+        .find(|r| {
+            r.method == "initialize" && r.authorization.as_deref() == Some("Bearer bob-token")
+        })
+        .expect("bob must negotiate his own session");
+    assert!(
+        bob_initialize.session_id.is_none(),
+        "bob's initialize must not inherit alice's session id"
+    );
 }
 
 #[tokio::test]
