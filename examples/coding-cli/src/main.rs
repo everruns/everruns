@@ -399,6 +399,15 @@ fn print_transcript_line(line: &app::ChatLine, color: bool) {
         app::Author::Assistant => {
             println!("{} {}", paint(color, "90", "•"), line.text);
         }
+        app::Author::Reasoning => {
+            // Reasoning summary: dimmed secondary detail on its own channel.
+            println!(
+                "{} {} {}",
+                paint(color, "90", "◦"),
+                paint(color, "90", line.author.label()),
+                paint(color, "90", &line.text)
+            );
+        }
         app::Author::Tool => {
             println!(
                 "{} {} {}",
