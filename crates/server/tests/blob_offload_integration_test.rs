@@ -149,6 +149,8 @@ async fn create_test_session(backend: &StorageBackend) -> everruns_core::Session
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id,
             resolved_owner_user_id: None,
