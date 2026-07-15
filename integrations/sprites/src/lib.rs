@@ -198,7 +198,10 @@ mod tests {
             everruns_core::SessionId::new(),
         );
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
-        assert!(prompt.len() <= 1200, "prompt is {} bytes", prompt.len());
+        // Bumped 1200 → 1400: EVE-778 grew the shared EXEC_OUTPUT_HINT with the
+        // single-read/contextual-search policy (+438 bytes), taking this
+        // contribution to 1361 bytes.
+        assert!(prompt.len() <= 1400, "prompt is {} bytes", prompt.len());
     }
 
     #[test]
