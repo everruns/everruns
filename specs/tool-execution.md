@@ -175,6 +175,8 @@ Default is `auto`. In `auto` mode, the resolved budget depends on the process ex
 
 Budgets apply to stdout; stderr is capped at `min(budget, 4096)` to keep error output proportional. Tools that set the `persist_output` hint persist non-empty full output to `/outputs/` via `tool_output_persistence` — stdout to `/outputs/{tool_call_id}.stdout`, stderr to `/outputs/{tool_call_id}.stderr` — and the files are readable with `read_file`. The persisted files are the source of truth for full logs; the inline payload is sized for next-step reasoning. See `crates/core/src/tool_output_sanitizer.rs` for budget constants, `output_verbosity_budget()`, and `resolve_auto_mode()`.
 
+The shared prompt hints (`EXEC_OUTPUT_HINT`, `READ_ECONOMY_HINT` in `tool_output_sanitizer.rs`) also carry a single-read/contextual-search policy for persisted output (EVE-778): pre-filter in the originating command when the filter is known, read a small persisted log (≤200 lines or ≤64 KiB) once with an ample `limit`, search larger ones with one contextual `grep_files` call, never reconstruct a file through sequential or overlapping read windows, and stop once diagnostic evidence suffices. Both constants are appended by every harness surface that exposes output persistence and filesystem tools (bashkit, sandbox integrations, the FileSystem capability).
+
 This is the tool's responsibility — each tool calls the helpers before constructing `ToolExecutionResult`. See `crates/core/src/tool_output_sanitizer.rs` for the primitives.
 
 ### Structured Exec Result Contract
