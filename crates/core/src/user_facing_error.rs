@@ -13,6 +13,13 @@ pub mod codes {
     pub const MODEL_UNAVAILABLE: &str = "model_unavailable";
     pub const REQUEST_TOO_LARGE: &str = "request_too_large";
     pub const PROVIDER_RATE_LIMITED: &str = "provider_rate_limited";
+    /// Subscription/plan usage limit was reached (e.g. ChatGPT/Codex
+    /// `usage_limit_reached`). Distinct from `provider_rate_limited` (a short
+    /// transient throttle) because the reset is far in the future (hours) and
+    /// carries a concrete `resets_at` timestamp, and distinct from
+    /// `provider_quota_exhausted` (billing/credits) because it recovers on its
+    /// own at the reset time without operator action.
+    pub const PROVIDER_USAGE_LIMIT_REACHED: &str = "provider_usage_limit_reached";
     pub const PROVIDER_MISCONFIGURED: &str = "provider_misconfigured";
     /// Provider account is out of credits/quota (billing). Distinct from
     /// `provider_misconfigured` (bad/missing API key) so operators can tell
@@ -91,6 +98,37 @@ pub fn is_provider_quota_message(message: &str) -> bool {
         || lower.contains("insufficient quota")
         || lower.contains("exceeded your current quota")
         || lower.contains("credit balance is too low")
+}
+
+/// Subscription/plan usage-limit patterns shared by the string classifier and
+/// the transient-retry gate. These recover only at a future reset time (hours
+/// away), so unlike an ordinary 429 they must not be retried within the driver
+/// backoff window nor collapsed into the "wait a moment" rate-limit copy.
+///
+/// The canonical shape is the ChatGPT/Codex `429` body
+/// (`{"error":{"type":"usage_limit_reached", ...}}`), but the match is kept
+/// provider-agnostic so any driver surfacing the same wording is covered.
+pub fn is_usage_limit_message(message: &str) -> bool {
+    let lower = message.to_ascii_lowercase();
+    lower.contains("usage_limit_reached")
+        || lower.contains("usage limit reached")
+        || lower.contains("usage limit has been reached")
+}
+
+/// Extract the absolute reset time (`resets_at`, unix seconds) from a usage-limit
+/// error body when present. Prefers the absolute `resets_at` field over the
+/// relative `resets_in_seconds` because this classifier is clock-free and callers
+/// want a stable timestamp they can render in the viewer's timezone.
+pub fn parse_usage_limit_reset_at(message: &str) -> Option<i64> {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    let re = RE.get_or_init(|| {
+        Regex::new(r#""resets_at"\s*:\s*(?P<resets_at>\d{9,})"#).expect("valid resets_at regex")
+    });
+    re.captures(message)?
+        .name("resets_at")?
+        .as_str()
+        .parse::<i64>()
+        .ok()
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -245,6 +283,7 @@ impl UserFacingError {
             codes::PROVIDER_RATE_LIMITED => {
                 "Rate limited by the AI provider. Please wait a moment.".to_string()
             }
+            codes::PROVIDER_USAGE_LIMIT_REACHED => usage_limit_reached_message(&self.fields),
             codes::PROVIDER_MISCONFIGURED => {
                 "There is a misconfiguration with the AI provider. Please contact support."
                     .to_string()
@@ -330,6 +369,18 @@ pub fn classify_runtime_error_message(
             .with_optional_field("model_id", context.model_id.clone());
     }
 
+    // Subscription/plan usage limit (e.g. ChatGPT/Codex `usage_limit_reached`).
+    // Checked before the generic 429 branch below: the outer error text carries
+    // "429 Too Many Requests", which would otherwise route it to the transient
+    // "wait a moment" rate-limit copy. This condition instead recovers on its
+    // own at `resets_at`, so it gets its own code and carries the reset time.
+    if is_usage_limit_message(normalized) {
+        return UserFacingError::new(codes::PROVIDER_USAGE_LIMIT_REACHED)
+            .with_optional_field("provider", context.provider.clone())
+            .with_optional_field("model_id", context.model_id.clone())
+            .with_optional_field("resets_at", parse_usage_limit_reset_at(normalized));
+    }
+
     if lower.contains("(429)")
         || lower.contains("rate limit")
         || lower.contains("too many requests")
@@ -377,6 +428,30 @@ pub fn trim_error_chain_prefixes(error_chain: &str) -> &str {
         .trim_start_matches("InputAtom execution failed: ")
         .trim_start_matches("ReasonAtom execution failed: ")
         .trim_start_matches("ActAtom execution failed: ")
+}
+
+/// Render the copy for a subscription/plan usage-limit error. The `resets_at`
+/// field (unix seconds) is rendered as a UTC fallback; clients localize it into
+/// the viewer's timezone from the same raw field. When `auto_continue` is set —
+/// added by the emit site only when an auto-continue capability is active — the
+/// copy promises automatic resumption; otherwise it stays generic.
+fn usage_limit_reached_message(fields: &UserFacingErrorFields) -> String {
+    let mut message = String::from("You're out of LLM usage limits.");
+
+    if let Some(resets_at) = number_field(fields, "resets_at")
+        && let Some(reset) = chrono::DateTime::from_timestamp(resets_at as i64, 0)
+    {
+        message.push_str(&format!(
+            " Your usage limit resets at {}.",
+            reset.format("%H:%M UTC on %b %-d")
+        ));
+    }
+
+    if bool_field(fields, "auto_continue") {
+        message.push_str(" We'll continue work automatically once it resets.");
+    }
+
+    message
 }
 
 fn budget_exhausted_message(fields: &UserFacingErrorFields) -> String {
@@ -481,6 +556,10 @@ fn string_field<'a>(fields: &'a UserFacingErrorFields, key: &str) -> Option<&'a 
     fields.get(key)?.as_str()
 }
 
+fn bool_field(fields: &UserFacingErrorFields, key: &str) -> bool {
+    fields.get(key).and_then(Value::as_bool).unwrap_or(false)
+}
+
 fn truncate_chars(value: &str, max_chars: usize) -> String {
     if value.chars().count() <= max_chars {
         return value.to_string();
@@ -582,6 +661,73 @@ mod tests {
         );
 
         assert_eq!(error.code, codes::PROVIDER_QUOTA_EXHAUSTED);
+    }
+
+    #[test]
+    fn classify_codex_usage_limit_reached_as_usage_limit() {
+        // The Codex/ChatGPT 429 usage-limit body must route to its own code
+        // (recovers at `resets_at`) rather than the transient rate-limit copy,
+        // and must capture the absolute reset timestamp for clients to localize.
+        let error = classify_runtime_error_message(
+            "LLM error: Codex API error (429 Too Many Requests): {\"error\":{\"type\":\"usage_limit_reached\",\"message\":\"The usage limit has been reached\",\"plan_type\":\"pro\",\"resets_at\":1783767823,\"eligible_promo\":null,\"resets_in_seconds\":12337}}",
+            &UserFacingErrorContext::default()
+                .with_provider("openai-codex")
+                .with_model_id("gpt-5-codex"),
+        );
+
+        assert_eq!(error.code, codes::PROVIDER_USAGE_LIMIT_REACHED);
+        assert_eq!(
+            string_field(&error.fields, "provider"),
+            Some("openai-codex")
+        );
+        assert_eq!(number_field(&error.fields, "resets_at"), Some(1783767823.0));
+
+        // Base copy is human-readable and names the reset time; without the
+        // capability field it makes no automatic-continuation promise.
+        let message = error.fallback_message();
+        assert!(
+            message.starts_with("You're out of LLM usage limits."),
+            "unexpected copy: {message}"
+        );
+        assert!(
+            message.contains("resets at"),
+            "missing reset time: {message}"
+        );
+        assert!(
+            !message.contains("automatically"),
+            "unexpected promise: {message}"
+        );
+    }
+
+    #[test]
+    fn usage_limit_message_without_reset_time_stays_generic() {
+        let error = classify_runtime_error_message(
+            "Some Provider API error (429): usage limit reached",
+            &UserFacingErrorContext::default(),
+        );
+
+        assert_eq!(error.code, codes::PROVIDER_USAGE_LIMIT_REACHED);
+        assert_eq!(number_field(&error.fields, "resets_at"), None);
+        assert_eq!(error.fallback_message(), "You're out of LLM usage limits.");
+    }
+
+    #[test]
+    fn usage_limit_message_appends_auto_continue_suffix_when_flagged() {
+        // The emit site sets `auto_continue` only when an auto-continue
+        // capability is active; the copy then promises automatic resumption.
+        let error = UserFacingError::new(codes::PROVIDER_USAGE_LIMIT_REACHED)
+            .with_field("resets_at", 1783767823)
+            .with_field("auto_continue", true);
+
+        let message = error.fallback_message();
+        assert!(
+            message.contains("resets at"),
+            "missing reset time: {message}"
+        );
+        assert!(
+            message.contains("We'll continue work automatically once it resets."),
+            "missing auto-continue promise: {message}"
+        );
     }
 
     #[test]

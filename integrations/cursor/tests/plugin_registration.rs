@@ -75,7 +75,13 @@ fn cursor_narration_names_agent_work() {
     };
 
     let narration = cap
-        .narrate(None, &call, ToolNarrationPhase::Started, None)
+        .narrate(
+            None,
+            &call,
+            ToolNarrationPhase::Started,
+            None,
+            everruns_core::tool_narration::ToolNarrationContext::default(),
+        )
         .expect("narration");
     assert_eq!(narration, "Starting Cursor agent: Fix checkout bug");
 }

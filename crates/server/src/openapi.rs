@@ -22,11 +22,71 @@ use everruns_core::{
         TurnCompletedData, TurnFailedData, TurnSealedData, TurnStartedData,
     },
 };
-use utoipa::OpenApi;
+use serde_json::json;
+use utoipa::openapi::extensions::Extensions;
+use utoipa::openapi::{RefOr, Schema};
+use utoipa::{Modify, OpenApi};
+
+const SDK_RESPONSE_WRAPPERS: &[(&str, &str, &str)] = &[
+    ("WithUrls_Agent", "resource", "Agent"),
+    ("WithUrls_ResourceWithCounts_Agent", "resource", "Agent"),
+    ("WithUrls_Session", "resource", "Session"),
+    ("WithUrls_CapabilityInfo", "resource", "CapabilityInfo"),
+    (
+        "PaginatedResponse_WithUrls_ResourceWithCounts_Agent",
+        "list",
+        "Agent",
+    ),
+    ("PaginatedResponse_WithUrls_Session", "list", "Session"),
+    (
+        "PaginatedResponse_WithUrls_CapabilityInfo",
+        "list",
+        "CapabilityInfo",
+    ),
+];
+
+struct SdkMetadata;
+
+impl Modify for SdkMetadata {
+    fn modify(&self, openapi: &mut utoipa::openapi::OpenApi) {
+        let Some(components) = openapi.components.as_mut() else {
+            return;
+        };
+
+        for &(wrapper, kind, model) in SDK_RESPONSE_WRAPPERS {
+            let Some(RefOr::T(schema)) = components.schemas.get_mut(wrapper) else {
+                continue;
+            };
+            let Some(extensions) = schema_extensions_mut(schema) else {
+                continue;
+            };
+            let extensions = extensions.get_or_insert_with(Extensions::default);
+            extensions.insert(
+                "x-sdk-response-wrapper".to_string(),
+                json!({
+                    "kind": kind,
+                    "model": format!("#/components/schemas/{model}"),
+                }),
+            );
+        }
+    }
+}
+
+fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>> {
+    match schema {
+        Schema::Array(schema) => Some(&mut schema.extensions),
+        Schema::Object(schema) => Some(&mut schema.extensions),
+        Schema::OneOf(schema) => Some(&mut schema.extensions),
+        Schema::AllOf(schema) => Some(&mut schema.extensions),
+        Schema::AnyOf(schema) => Some(&mut schema.extensions),
+        _ => None,
+    }
+}
 
 /// OpenAPI documentation for the Everruns API
 #[derive(OpenApi)]
 #[openapi(
+    modifiers(&SdkMetadata),
     servers(
         (url = "https://app.everruns.com/api", description = "Production API"),
     ),
@@ -45,6 +105,9 @@ use utoipa::OpenApi;
         api::sessions::fork_session,
         api::sessions::list_sessions,
         api::sessions::get_session,
+        api::sessions::list_session_participants,
+        api::sessions::add_session_participant,
+        api::sessions::leave_session_participant,
         api::sessions::get_session_context_report,
         api::sessions::get_session_stats,
         api::sessions::update_session,
@@ -76,6 +139,13 @@ use utoipa::OpenApi;
         api::app_api::post_message,
         api::app_api::get_session,
         api::app_api::cancel_session,
+        // Agent triggers (EVE-757)
+        api::agent_triggers::list_agent_triggers,
+        api::agent_triggers::create_agent_trigger,
+        api::agent_triggers::get_agent_trigger,
+        api::agent_triggers::update_agent_trigger,
+        api::agent_triggers::delete_agent_trigger,
+        api::agent_triggers::trigger_agent_trigger,
         api::apps::create_app,
         api::apps::list_apps,
         api::apps::get_app,
@@ -127,6 +197,9 @@ use utoipa::OpenApi;
         api::session_tasks::get_task,
         api::session_tasks::post_task_message,
         api::session_tasks::cancel_task,
+        api::session_tasks::list_push_configs,
+        api::session_tasks::create_push_config,
+        api::session_tasks::delete_push_config,
         // Task webhooks
         api::task_webhooks::list_webhooks,
         api::task_webhooks::create_webhook,
@@ -403,6 +476,14 @@ use utoipa::OpenApi;
             domains::apps::RegenerateA2aApiKeyOutput,
             domains::apps::AddApiEndpointChannelOutput,
             domains::apps::RegenerateApiEndpointApiKeyOutput,
+            // Agent triggers (EVE-757)
+            everruns_core::AgentTrigger,
+            everruns_core::AgentTriggerType,
+            everruns_core::ScheduleTriggerConfig,
+            everruns_core::InvocationSessionMode,
+            domains::agent_triggers::types::CreateAgentTriggerRequest,
+            domains::agent_triggers::types::UpdateAgentTriggerRequest,
+            domains::agent_triggers::TriggerAgentTriggerOutput,
             api::app_api::MessageBody,
             api::app_api::SessionRef,
             api::app_api::SessionStatus,
@@ -524,6 +605,18 @@ use utoipa::OpenApi;
             api::memory_files::DeleteQuery,
             api::memory_files::MemoryFile,
             api::memory_files::MemoryFileInfo,
+            everruns_core::budget::Budget,
+            everruns_core::budget::BudgetStatus,
+            everruns_core::budget::BudgetSubjectType,
+            everruns_core::budget::BudgetPeriod,
+            everruns_core::budget::LedgerEntry,
+            everruns_core::budget::BudgetCheckResult,
+            api::budgets::CreateBudgetRequest,
+            api::budgets::UpdateBudgetRequest,
+            api::budgets::TopUpRequest,
+            domains::budgets::ResumeSessionBudgetsResult,
+            api::user_connections::ConnectionResponse,
+            api::user_connections::ApiKeyConnectionRequest,
             api::knowledge_bases::CreateKnowledgeBaseRequest,
             api::knowledge_bases::UpdateKnowledgeBaseRequest,
             api::knowledge_bases::ListKnowledgeBasesQuery,
@@ -581,6 +674,8 @@ use utoipa::OpenApi;
             api::task_webhooks::TaskWebhookResponse,
             api::task_webhooks::CreateTaskWebhookRequest,
             api::task_webhooks::UpdateTaskWebhookRequest,
+            api::session_tasks::CreatePushConfigBody,
+            domains::session_tasks::TaskPushConfig,
         )
     ),
     tags(
@@ -606,6 +701,7 @@ use utoipa::OpenApi;
         (name = "session-databases", description = "Session-scoped SQL database endpoints"),
         (name = "session-storage", description = "Session key-value storage endpoints"),
         (name = "harnesses", description = "Harness management endpoints"),
+        (name = "agent-triggers", description = "Agent-owned schedule trigger endpoints"),
         (name = "skills", description = "Skills registry endpoints"),
         (name = "payments", description = "Machine payment wallet, policy, and attempt endpoints"),
         (name = "reporting", description = "Org-scoped semantic reporting endpoints"),

@@ -316,25 +316,29 @@ impl InMemoryDatabase {
             .into());
         }
 
-        let mut cases: Vec<EvalCaseRow> = self
-            .eval_cases
-            .read()
+        let cases_guard = self.eval_cases.read();
+        let case_count = cases_guard
+            .values()
+            .filter(|c| c.eval_id == input.eval_id)
+            .count();
+        if case_count > max_cases_per_run {
+            return Err(CreateEvalRunError::TooManyCases {
+                cases: case_count,
+                limit: max_cases_per_run,
+            }
+            .into());
+        }
+        let mut cases: Vec<EvalCaseRow> = cases_guard
             .values()
             .filter(|c| c.eval_id == input.eval_id)
             .cloned()
             .collect();
+        drop(cases_guard);
         cases.sort_by(|a, b| {
             a.position
                 .cmp(&b.position)
                 .then(a.created_at.cmp(&b.created_at))
         });
-        if cases.len() > max_cases_per_run {
-            return Err(CreateEvalRunError::TooManyCases {
-                cases: cases.len(),
-                limit: max_cases_per_run,
-            }
-            .into());
-        }
 
         let now = Self::now();
         let id = Uuid::now_v7();

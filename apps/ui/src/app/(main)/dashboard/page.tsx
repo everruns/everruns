@@ -3,7 +3,6 @@
 import { useState } from "react";
 import {
   useAgents,
-  useHarnesses,
   useCapabilities,
   useSessions,
   useSessionStats,
@@ -29,7 +28,6 @@ import { AgentSelect } from "@/components/agent/agent-select";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Plus, LayoutDashboard } from "lucide-react";
-import { useOrganization } from "@/hooks/use-organizations";
 import { PageContainer, PageMasthead } from "@/components/layout";
 
 export default function DashboardPage() {
@@ -44,8 +42,6 @@ export default function DashboardPage() {
   const { data: sessionStats } = useSessionStats();
   const { data: models } = useModels();
   const createSession = useCreateSession();
-  const { data: organization } = useOrganization();
-  const { data: harnesses } = useHarnesses();
 
   const [newSessionDialogOpen, setNewSessionDialogOpen] = useState(false);
   const [newSessionAgentId, setNewSessionAgentId] = useState<string>("");
@@ -56,13 +52,12 @@ export default function DashboardPage() {
   };
 
   const handleCreateSession = async () => {
-    const harnessId = organization?.default_harness_id || harnesses?.[0]?.id;
-    if (!harnessId) return;
+    if (!newSessionAgentId) return;
     try {
+      // Agent-first: the server derives the harness from the selected agent.
       const session = await createSession.mutateAsync({
         request: {
-          harness_id: harnessId,
-          agent_id: newSessionAgentId || undefined,
+          agent_id: newSessionAgentId,
         },
       });
       setNewSessionDialogOpen(false);

@@ -253,10 +253,21 @@ impl DirectEgressService {
         }
     }
 
+    /// Construct the default direct transport for tenant/agent runtime egress.
+    ///
+    /// This honors `EVERRUNS_SYSTEM_ALLOWLIST_ENABLED` and is the right default
+    /// for capabilities, MCP, integrations, and runtime HTTP surfaces.
+    pub fn for_runtime_traffic_from_env() -> Self {
+        Self::from_env()
+    }
+
     /// Construct with the global system allowlist resolved from the environment.
     ///
     /// Enforcement is active only when `EVERRUNS_SYSTEM_ALLOWLIST_ENABLED` is
     /// set; otherwise this behaves exactly like [`DirectEgressService::new`].
+    /// Prefer [`DirectEgressService::for_runtime_traffic_from_env`] for new
+    /// runtime/agent call sites. Host-owned services should use direct provider
+    /// clients instead of `EgressService`.
     pub fn from_env() -> Self {
         Self::new().with_system_allowlist(SystemAllowlist::from_env())
     }
@@ -288,12 +299,9 @@ impl DirectEgressService {
                 url: request.url.clone(),
             });
         }
-        // Host-wide allowlist: when enabled, every outbound request must match
-        // one of the curated public resources, regardless of request kind or the
-        // per-request network access list. This is a separate, AND-ed gate — it
-        // is never merged into `request.network_access`, so harness/agent/session
-        // allowlists can only narrow within it and can never widen past it. The
-        // system allowlist is a hard ceiling with maximum priority.
+        // Host-wide allowlist: when enabled, every request routed through this
+        // runtime egress boundary must match one of the curated public
+        // resources. Host-owned services should not use `EgressService`.
         if let Some(allowlist) = &self.system_allowlist
             && !allowlist.is_url_allowed(&request.url)
         {
@@ -500,6 +508,13 @@ mod tests {
     #[tokio::test]
     async fn system_allowlist_blocks_unlisted_hosts() {
         use crate::system_allowlist::SystemAllowlist;
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/blocked"))
+            .respond_with(ResponseTemplate::new(200))
+            .expect(0)
+            .mount(&server)
+            .await;
         let allowlist = SystemAllowlist::from_toml(
             r#"
             [groups.test]
@@ -512,10 +527,8 @@ mod tests {
         let error = service
             .send(EgressRequest::new(
                 "GET",
-                "https://blocked.example.com/path",
-                // Even system-owned traffic (no per-request network_access) is
-                // subject to the host-wide allowlist.
-                EgressRequestKind::Provider,
+                format!("{}/blocked", server.uri()),
+                EgressRequestKind::Capability,
             ))
             .await
             .unwrap_err();
@@ -692,7 +705,7 @@ mod tests {
             .send_stream(EgressRequest::new(
                 "GET",
                 format!("{}/stream", server.uri()),
-                EgressRequestKind::Provider,
+                EgressRequestKind::Capability,
             ))
             .await
             .unwrap();

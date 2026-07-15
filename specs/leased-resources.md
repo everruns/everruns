@@ -11,7 +11,7 @@ Leased resources are the generic control-plane primitive for any provider-owned 
 
 ## Model
 
-See [`crates/core/src/leased_resource.rs`](/Users/mykhailochalyi/.codex/worktrees/baaf/everruns/crates/core/src/leased_resource.rs) for the public domain type and [`crates/server/migrations/010_v0.8.6.sql`](/Users/mykhailochalyi/.codex/worktrees/baaf/everruns/crates/server/migrations/010_v0.8.6.sql) for persistence details.
+See [`crates/core/src/leased_resource.rs`](crates/core/src/leased_resource.rs) for the public domain type and [`crates/server/migrations/007_v0.8.6.sql`](crates/server/migrations/007_v0.8.6.sql) for persistence details.
 
 Important constraints:
 
@@ -23,7 +23,7 @@ Important constraints:
 
 ## Lifecycle
 
-Tool-side integrations use the generic store in [`crates/core/src/traits.rs`](/Users/mykhailochalyi/.codex/worktrees/baaf/everruns/crates/core/src/traits.rs):
+Tool-side integrations use the generic store in [`crates/core/src/traits.rs`](crates/core/src/traits.rs):
 
 - `upsert_resource`: create or extend a lease after successful remote creation or use.
 - `release_resource`: fast-path explicit deletion/close operations.
@@ -39,7 +39,7 @@ Control-plane cleanup uses backend-only transitions:
 
 ## Scheduling And Observability
 
-Cleanup is driven by the durable scheduler, not session schedules. The bootstrap lives in [`crates/server/src/leased_resource_scheduler.rs`](/Users/mykhailochalyi/.codex/worktrees/baaf/everruns/crates/server/src/leased_resource_scheduler.rs) and creates a single activity schedule named `leased-resource-cleanup`.
+Cleanup is driven by the durable scheduler, not session schedules. The bootstrap lives in [`crates/server/src/leased_resource_scheduler.rs`](crates/server/src/leased_resource_scheduler.rs) and creates a single activity schedule named `leased-resource-cleanup`.
 
 Observability comes from three places:
 

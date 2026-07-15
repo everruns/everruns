@@ -21,6 +21,7 @@ const authState = {
     email: "test@example.com",
     name: "Test User",
     roles: ["user"],
+    email_verified: true,
   } as UserInfoResponse | null | undefined,
   userLoading: false,
   userError: null as Error | null,
@@ -106,6 +107,7 @@ describe("MainLayout auth availability", () => {
       email: "test@example.com",
       name: "Test User",
       roles: ["user"],
+      email_verified: true,
     };
     authState.userLoading = false;
     authState.userError = null;

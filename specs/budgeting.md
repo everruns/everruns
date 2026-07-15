@@ -20,7 +20,7 @@ See source files for full definitions:
 - Typed IDs: `crates/core/src/typed_id.rs` (`BudgetId`, `LedgerEntryId`)
 - Events: `crates/core/src/events.rs` (budget event constants and `BudgetEventData`)
 - Storage: `crates/server/src/storage/repositories/budgets.rs`, `crates/server/src/storage/memory/budgets.rs`
-- Service: `crates/server/src/services/budget.rs`
+- Service: `crates/server/src/domains/budgets/service.rs`
 - API: `crates/server/src/api/budgets.rs`
 - Capability: `crates/core/src/capabilities/budgeting.rs`
 - Migrations: `crates/server/migrations/010_v0.8.9.sql`, `crates/server/migrations/020_budget_journal_ledger.sql`
@@ -71,7 +71,7 @@ A spending cap bound to a **subject** (who) in a **currency** (what unit). Multi
 
 `app` and `app_channel` are **gated behind the experimental `app_budgets` feature flag** (`FEATURE_APP_BUDGETS`, auto-enabled in `DeploymentGrade::Dev`). Sessions opt into these levels via the standard tags emitted by the apps domain (`app:<app_id>`, `app_channel:<channel_id>`). The legacy `slack:app:<id>` tag is also recognised for backwards compatibility.
 
-**Currencies**: Strings (not enum) — new currencies added without migrations. Built-in: `usd` (via LlmModelProfile cost lookup), `tokens` (raw count), `credits` (1 credit = 1000 tokens).
+**Currencies**: Strings (not enum) — new currencies added without migrations. Built-in: `usd` (via ModelProfile cost lookup), `tokens` (raw count), `credits` (1 credit = 1000 tokens).
 
 **Balance**: `limit - SUM(debits) + SUM(credits)`. Denormalized on `budgets.balance`, updated atomically with each budget-scoped ledger insert (Postgres: transaction + `SELECT ... FOR UPDATE`; in-memory: lock + update).
 
@@ -106,14 +106,14 @@ INSERT usage_journal row
   │
   ▼
 Look up session → find active budgets in hierarchy
-  (session → agent → user → org)
+  (root session → app_channel → app → agent → user → org)
   │
   ▼ (for each matching budget)
 compute_debit(currency, tokens, cache tokens, model, provider, provider_cost_usd)
   │  "tokens" → raw count
   │  "usd"    → provider_cost_usd when the provider reports it
   │            (e.g. OpenRouter usage.cost), else the cache-aware
-  │            LlmModelProfile estimate (cached reads billed at the
+  │            ModelProfile estimate (cached reads billed at the
   │            cache_read rate, not the input rate), else raw count
   │  "credits" → tokens / 1000
   │
@@ -134,7 +134,23 @@ Execute action (set budget status)
 
 **Post-hoc enforcement**: Budget checks happen after each metered event, not before. This avoids blocking the LLM hot path. Minor overshoot on the last generation is acceptable and expected.
 
-**Worker integration**: The worker checks `BudgetCheckResult` between atoms via gRPC. When a budget is `paused` or `exhausted`, the turn loop stops scheduling the next atom. Current implementation resolves all four hierarchy levels (`session`, `agent`, `user`, `org`) from the session owner and org context before checking.
+For subagent delegation trees, the session budget layer resolves to the
+tree's `root_session_id`: a child or grandchild checks and debits the root
+session's budget pool, while usage journal and ledger rows still retain the
+actual child session id for attribution.
+
+**Detached peer spawns** (`spawn_agent(lifetime=detached)`) remain lifecycle-
+independent (`parent_session_id = NULL`) but explicitly inherit the origin
+session's org-validated `root_session_id` for budget attribution. Their LLM
+generations therefore debit the origin root pool, and detached chains stop when
+that pool is exhausted. The override is carried only on trusted worker/internal
+session-creation paths and is stripped at the public HTTP boundary. Storage
+canonicalizes the referenced session's root under the creating org, preventing
+cross-org linkage. Ordinary user forks carry lineage only and remain independent
+budget roots. Detached count caps (`max_active_detached_tasks` /
+`max_total_detached_tasks`) remain an independent admission bound (TM-DOS-030).
+
+**Worker integration**: The worker checks `BudgetCheckResult` between atoms via gRPC. When a budget is `paused` or `exhausted`, the turn loop stops scheduling the next atom. Current implementation resolves the full hierarchy (`root session`, `app_channel`, `app`, `agent`, `user`, `org`) from the session owner and org context before checking.
 
 ## Soft Enforcement: Pause
 
@@ -270,7 +286,7 @@ File: `crates/core/src/capabilities/self_budget.rs`.
 | Multiple budgets per subject | Allowed, most restrictive wins | User may want both cost and token limits |
 | Period handling | JSONB with type discriminator + `period_started_at` snapshot | `Duration { seconds }`, `Rolling { window }` (e.g. `5h`, `30d`), and `Calendar { unit }` (`hour | day | week | month | year`) cover sliding and calendar resets without bespoke columns. The service rolls the budget on every check by comparing `period_started_at` against the current clock. |
 | Headless enforcement | Hard stop at balance ≤ 0 | No human to interact with pause; hard stop is safer |
-| Cost lookup | `LlmModelProfile` from `llm_model_profiles.rs` | Already has per-model pricing from models.dev |
+| Cost lookup | `ModelProfile` from `model_profiles.rs` | Already has per-model pricing from models.dev |
 
 ## App / Channel Budgets
 

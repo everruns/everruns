@@ -16,8 +16,8 @@ use everruns_core::app::{App, AppChannel, ChannelType};
 use everruns_core::capability_dto::CapabilityInfo;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::harness::Harness;
-use everruns_core::platform_store::{PlatformMessage, PlatformStore};
-use everruns_core::session::Session;
+use everruns_core::platform_store::{PlatformCreateSessionRequest, PlatformMessage, PlatformStore};
+use everruns_core::session::{Session, SessionParticipant};
 use everruns_core::typed_id::{
     AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, SessionId,
 };
@@ -29,6 +29,16 @@ use std::sync::Arc;
 /// the seam that keeps the platform store honest without it owning the runtime.
 #[async_trait]
 pub trait LocalSessionRunner: Send + Sync {
+    /// Sessions this host can currently route messages to.
+    ///
+    /// `None` means every session in the organization is routable. Embedded
+    /// hosts with a narrower or dynamic route set must return `Some`, including
+    /// an empty vector when no session is active, so schedule claims stay scoped
+    /// to work the host can deliver.
+    async fn routable_session_ids(&self) -> Result<Option<Vec<SessionId>>> {
+        Ok(None)
+    }
+
     /// Create a child/local session and persist it in the session catalog.
     async fn create_session(
         &self,
@@ -38,6 +48,29 @@ pub trait LocalSessionRunner: Send + Sync {
         locale: Option<&str>,
         parent_session_id: Option<SessionId>,
     ) -> Result<Session>;
+
+    async fn create_session_with_options(
+        &self,
+        request: PlatformCreateSessionRequest,
+    ) -> Result<Session> {
+        if request.forked_from_session_id.is_some()
+            || request.budget_root_session_id.is_some()
+            || request.seed != everruns_core::session::SessionSeedMode::Fresh
+        {
+            return Err(unsupported("create_session(seed)"));
+        }
+        let mut session = self
+            .create_session(
+                request.harness_id,
+                request.agent_id,
+                request.title.as_deref(),
+                request.locale.as_deref(),
+                request.parent_session_id,
+            )
+            .await?;
+        session.goal = request.goal;
+        Ok(session)
+    }
 
     /// Deliver a user message and run a turn to completion.
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()>;
@@ -109,8 +142,26 @@ impl PlatformStore for LocalPlatformStore {
             .await
     }
 
+    async fn create_session_with_options(
+        &self,
+        request: PlatformCreateSessionRequest,
+    ) -> Result<Session> {
+        if request.blueprint_id.is_some() {
+            return Err(unsupported("create_session(blueprint)"));
+        }
+        self.runner.create_session_with_options(request).await
+    }
+
     async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>> {
         self.runner.get_session(id).await
+    }
+
+    async fn add_agent_session_participant(
+        &self,
+        _session_id: SessionId,
+        _agent_id: AgentId,
+    ) -> Result<SessionParticipant> {
+        Err(unsupported("add_agent_session_participant"))
     }
 
     async fn list_sessions(

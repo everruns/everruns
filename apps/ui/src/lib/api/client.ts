@@ -12,6 +12,10 @@ export class ApiError extends Error {
     public status: number,
     public statusText: string,
     message?: string,
+    // RFC 9457 `code` from the Problem Details body, when present. Lets callers
+    // branch on a stable machine string (e.g. `atif_export_too_large`) rather
+    // than parsing the human-facing message.
+    public code?: string,
   ) {
     super(message || `API Error: ${status} ${statusText}`);
     this.name = "ApiError";
@@ -118,6 +122,7 @@ export const api = {
  */
 export async function throwApiError(response: Response): Promise<never> {
   let errorMessage: string | undefined;
+  let errorCode: string | undefined;
   try {
     // Read body as text first to avoid consuming the stream with response.json()
     const text = await response.text();
@@ -132,6 +137,9 @@ export async function throwApiError(response: Response): Promise<never> {
           errorBody.error ||
           errorBody.message ||
           JSON.stringify(errorBody);
+        if (typeof errorBody.code === "string") {
+          errorCode = errorBody.code;
+        }
       } catch {
         // Not JSON — use the raw text as the error message
         errorMessage = text;
@@ -140,7 +148,7 @@ export async function throwApiError(response: Response): Promise<never> {
   } catch {
     // No body at all
   }
-  throw new ApiError(response.status, response.statusText, errorMessage);
+  throw new ApiError(response.status, response.statusText, errorMessage, errorCode);
 }
 
 export function getApiBaseUrl(): string {

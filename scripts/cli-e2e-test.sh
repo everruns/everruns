@@ -123,6 +123,32 @@ else
 fi
 
 # ========================================
+# Test: Harness seed readiness
+# ========================================
+
+log_test "get seed harness"
+HARNESSES_OUTPUT=""
+HARNESS_ID=""
+for _ in {1..30}; do
+  HARNESSES_OUTPUT=$(curl -s "$API_URL/v1/harnesses" -H "Authorization: ${EVERRUNS_API_KEY:-test}") || {
+    sleep 1
+    continue
+  }
+  HARNESS_ID=$(echo "$HARNESSES_OUTPUT" | jq -r '.data[0].id')
+  if [ -n "$HARNESS_ID" ] && [ "$HARNESS_ID" != "null" ]; then
+    break
+  fi
+  sleep 1
+done
+if [ -n "$HARNESS_ID" ] && [ "$HARNESS_ID" != "null" ]; then
+  log_pass "found seed harness: $HARNESS_ID"
+else
+  log_fail "no harness found (required for agent and session creation)"
+  echo "$HARNESSES_OUTPUT"
+  exit 1
+fi
+
+# ========================================
 # Test: Agents CRUD
 # ========================================
 
@@ -173,32 +199,6 @@ if [ "$AGENT_NAME" = "cli-test-agent" ]; then
 else
   log_fail "agents get did not return correct agent name"
   echo "$GET_OUTPUT"
-fi
-
-# ========================================
-# Test: Harness (get seed harness for session creation)
-# ========================================
-
-log_test "get seed harness"
-HARNESSES_OUTPUT=""
-HARNESS_ID=""
-for _ in {1..30}; do
-  HARNESSES_OUTPUT=$(curl -s "$API_URL/v1/harnesses" -H "Authorization: ${EVERRUNS_API_KEY:-test}") || {
-    sleep 1
-    continue
-  }
-  HARNESS_ID=$(echo "$HARNESSES_OUTPUT" | jq -r '.data[0].id')
-  if [ -n "$HARNESS_ID" ] && [ "$HARNESS_ID" != "null" ]; then
-    break
-  fi
-  sleep 1
-done
-if [ -n "$HARNESS_ID" ] && [ "$HARNESS_ID" != "null" ]; then
-  log_pass "found seed harness: $HARNESS_ID"
-else
-  log_fail "no harness found (required for session creation)"
-  echo "$HARNESSES_OUTPUT"
-  exit 1
 fi
 
 # ========================================

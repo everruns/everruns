@@ -116,6 +116,30 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    pub async fn get_harness_ancestry_by_ids(
+        &self,
+        org_id: i64,
+        ids: &[HarnessId],
+    ) -> Result<Vec<HarnessRow>> {
+        let harnesses = self.harnesses.read();
+        let mut rows = Vec::new();
+        let mut pending = ids.to_vec();
+        let mut visited = std::collections::HashSet::new();
+        while let Some(id) = pending.pop() {
+            if !visited.insert(id) {
+                continue;
+            }
+            let Some(row) = harnesses.get(&id).filter(|row| row.org_id == org_id) else {
+                continue;
+            };
+            if let Some(parent_id) = row.parent_harness_id {
+                pending.push(parent_id);
+            }
+            rows.push(row.clone());
+        }
+        Ok(rows)
+    }
+
     /// Look up the owning org for a harness by its prefixed public id.
     pub async fn get_harness_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
         let Ok(id) = public_id.parse::<HarnessId>() else {
@@ -307,6 +331,29 @@ impl InMemoryDatabase {
             .map(|(_, c)| c.clone())
             .collect();
         result.sort_by_key(|c| c.position);
+        Ok(result)
+    }
+
+    pub async fn get_harness_capabilities_by_harness_ids(
+        &self,
+        org_id: i64,
+        harness_ids: &[HarnessId],
+    ) -> Result<Vec<HarnessCapabilityRow>> {
+        let harnesses = self.harnesses.read();
+        let mut result: Vec<_> = self
+            .harness_capabilities
+            .read()
+            .values()
+            .filter(|row| {
+                let harness_id = row.harness_id;
+                harness_ids.contains(&harness_id)
+                    && harnesses
+                        .get(&harness_id)
+                        .is_some_and(|harness| harness.org_id == org_id)
+            })
+            .cloned()
+            .collect();
+        result.sort_by_key(|row| (row.harness_id.uuid(), row.position));
         Ok(result)
     }
 

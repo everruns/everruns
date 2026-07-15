@@ -2,13 +2,15 @@
 
 ## Intent
 
-Provide one host-owned boundary for outbound network traffic.
+Provide one host-owned boundary for tenant/agent-directed outbound network
+traffic.
 
-The egress service owns HTTP/API traffic that leaves an Everruns deployment:
-LLM provider calls, capability HTTP calls, toolkit integrations, system email,
-utility LLM calls, sandbox-provider APIs, and future outbound protocols that can
-be represented over HTTP. Workers and the control plane must not create direct
-external HTTP clients at runtime once a call path has been migrated.
+The egress service owns runtime HTTP/API traffic whose destination is selected
+by an agent, a user-authored configuration surface, a capability, MCP, plugin
+fetching, or similar tenant-controlled execution. Host-owned platform services
+such as LLM provider transports, utility LLM, system email, and sandbox provider
+APIs (for example Daytona lifecycle/toolbox APIs) use direct provider clients
+outside `EgressService`.
 
 ## Terminology
 
@@ -45,8 +47,9 @@ Reasoning:
 - `EgressResponse` is the provider-neutral response body, status, and headers.
 - `EgressStreamResponse` is the streaming response body used by LLM SSE and
   other long-lived HTTP responses.
-- `EgressRequestKind` labels traffic as `llm_provider`, `capability`,
-  `integration`, `system_email`, `utility_llm`, `mcp`, or `other`.
+- `EgressRequestKind` labels runtime egress traffic as `capability`,
+  `integration`, `mcp`, or `other`; legacy/system labels may exist in code for
+  compatibility but host-owned services must not use this boundary.
 - `EgressSigning` expresses whether signing is disabled, optional via platform
   default, or required.
 - `EgressError` separates invalid requests, network access denial, unavailable
@@ -60,19 +63,18 @@ hard airgap behavior before installing a remote gateway implementation.
 
 ## Required Usage
 
-New outbound runtime code must use `EgressService` instead of constructing
-`reqwest::Client`, provider SDK clients, or toolkit-specific HTTP transports
-directly.
+New tenant/agent runtime outbound code must use `EgressService` instead of
+constructing `reqwest::Client`, provider SDK clients, or toolkit-specific HTTP
+transports directly.
 
 This applies to:
 
-- LLM drivers and model discovery.
 - capability tools, including library-backed tools such as fetchkit and bashkit
-  HTTP support.
-- integration crates for external provider APIs.
-- internal system services such as email and utility LLM.
+  HTTP support, when they fetch agent/user-selected URLs.
+- integration crates for external APIs when the API target is tenant/agent
+  selected rather than a fixed host-owned service endpoint.
 - remote MCP servers (tool discovery and tool execution).
-- background tasks that call external APIs.
+- background tasks that call tenant/agent-selected external APIs.
 
 Exceptions:
 
@@ -81,6 +83,11 @@ Exceptions:
   inside tests.
 - database, NATS, Valkey, and control-plane worker gRPC links are internal
   infrastructure traffic, not internet egress.
+- host-owned platform services such as LLM provider drivers/model discovery,
+  utility LLM, system email, sandbox provider APIs (including Daytona), cloud
+  infrastructure APIs, and other fixed deployment-owned transports use direct
+  provider clients. Their credentials and endpoints are deployment/platform
+  configuration, not tenant/agent egress policy.
 
 ## Network Access
 
@@ -93,14 +100,15 @@ The egress service enforces the policy before making the request. Individual
 capabilities may still perform earlier validation when they need better
 user-facing errors, but the egress boundary is the final enforcement point.
 
-System-owned fixed endpoints, such as a configured email provider or model
-provider URL, do not use the agent/session network access list unless that
-endpoint is derived from agent/session/user input.
+System-owned fixed endpoints, such as configured email, LLM, Daytona, or cloud
+provider URLs, do not use `EgressService` unless that endpoint is derived from
+agent/session/user input.
 
 An optional deployment-wide allowlist (`specs/system-allowlist.md`) sits at the
-same boundary. When enabled, it constrains *all* egress — every request kind,
-independent of `network_access` — to a curated set of public resources. It is
-the in-process precursor to the future gateway's outbound allowlist.
+same boundary for tenant/agent-directed egress. When enabled, it constrains
+capabilities, MCP, integrations, and generic runtime HTTP to a curated set of
+public resources. Host-owned system transports stay outside that policy because
+they do not route through `EgressService`.
 
 ## Signing
 
@@ -117,8 +125,8 @@ capability-local signing path.
 
 ## Future Egress Gateway
 
-The remote implementation will replace direct internet egress in workers and
-control-plane processes:
+The remote implementation will replace direct tenant/agent internet egress in
+workers and control-plane processes:
 
 ```mermaid
 graph LR
@@ -131,26 +139,29 @@ graph LR
 
 Deployment properties:
 
-- CP and workers need only internal network access to the gateway.
-- The gateway owns outbound allowlists, signatures, proxy configuration, audit
-  logs, and provider-specific transport policy.
+- CP and workers need only internal network access to the gateway for
+  tenant/agent runtime egress paths.
+- The gateway owns runtime outbound allowlists, signatures, proxy
+  configuration, audit logs, and tenant/agent transport policy.
 - In airgapped deployments, the gateway can be disabled, replaced with an
   approved relay, or bound to a preapproved network route.
 
 ## Migration Order
 
 1. Introduce `EgressService` and platform/runtime threading.
-2. Move internal system services onto it. `EmailSender` is migrated first;
-   `UtilityLlmService` follows with provider-driver migration.
-3. Move fetchkit/web_fetch and any future bashkit HTTP hooks onto it.
+2. Move fetchkit/web_fetch and bashkit HTTP onto it.
    *Done for web_fetch*: runtime contexts route through
    `crates/core/src/capabilities/web_fetch/egress_transport.rs`; the fetchkit direct
    client remains only as the fallback for contexts without an egress service
    (see `specs/fetchkit.md`).
-4. Move LLM drivers and model discovery onto it.
-5. Move integration provider clients onto it.
-6. Add the remote Egress Gateway implementation and make worker/CP direct
-   internet egress removable by deployment policy.
+   *Done for bashkit*: curl/wget (opt-in via the `bashkit_shell` capability's
+   `enable_http` config) route through
+   `crates/core/src/capabilities/bashkit_shell/egress_transport.rs` with no
+   direct-client fallback — without an egress service the shell stays offline
+   (see `specs/network-access.md`).
+3. Move tenant/agent-selected integration clients onto it.
+4. Add the remote Egress Gateway implementation and make worker/CP direct
+   tenant/agent internet egress removable by deployment policy.
 
 Each migration should leave tests that prove the call path uses injected egress
 instead of a direct client.

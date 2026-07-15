@@ -298,8 +298,10 @@ async fn execute_case_inner(
                 harness_id: None, // Already resolved
                 harness_name: None,
                 agent_id: None,
+                agent_name: None,
                 agent_identity_id: None,
                 title: Some(format!("Eval: {}", case_row.name)),
+                goal: None,
                 locale: None,
                 tags: vec!["eval".to_string()],
                 model_id: model_id.and_then(|m| m.parse().ok()),
@@ -313,6 +315,9 @@ async fn execute_case_inner(
                 max_iterations,
                 parallel_tool_calls: None,
                 parent_session_id: None,
+                forked_from_session_id: None,
+                budget_root_session_id: None,
+                seed: everruns_core::SessionSeedMode::Fresh,
             },
         )
         .await?;
@@ -513,6 +518,7 @@ async fn send_message_and_wait(
             role: crate::api::messages::MessageRole::User,
             content: vec![everruns_core::InputContentPart::text(content)],
         },
+        addressed_participant_id: None,
         controls: None,
         metadata: None,
         tags: None,

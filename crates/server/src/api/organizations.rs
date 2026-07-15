@@ -9,7 +9,7 @@ use crate::auth::rate_limit::OrgRateLimiter;
 use crate::storage::{StorageBackend, models::UpdateOrganizationSettings};
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{ConnectInfo, Extension, Path, State},
     http::{HeaderMap, StatusCode},
     routing::get,
 };
@@ -24,6 +24,7 @@ use super::common::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
@@ -288,6 +289,7 @@ pub async fn list_organizations(
 pub async fn create_organization(
     State(state): State<AppState>,
     user: AuthUser,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     Json(req): Json<CreateOrganizationRequest>,
 ) -> Result<(StatusCode, Json<OrganizationResponse>), (StatusCode, Json<ErrorResponse>)> {
@@ -400,7 +402,7 @@ pub async fn create_organization(
     let mut builder = AuditEvent::management(ManagementAction::OrgCreated, org_id, Some(user.id))
         .target("org", &org_public_id)
         .detail("name", response.name.clone());
-    if let Some(ip) = audit::client_ip(&headers) {
+    if let Some(ip) = audit::client_ip_from_connect_info(connect_info, &headers) {
         builder = builder.ip(ip);
     }
     audit::emit_event(state.db.clone(), builder.build());
@@ -474,6 +476,7 @@ pub async fn get_organization(
 pub async fn update_organization(
     State(state): State<AppState>,
     user: AuthUser,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     Path(org_public_id): Path<String>,
     Json(req): Json<UpdateOrganizationRequest>,
@@ -651,7 +654,7 @@ pub async fn update_organization(
     let mut builder =
         AuditEvent::management(ManagementAction::OrgUpdated, org_row.org_id, Some(user.id))
             .target("org", &org_public_id);
-    if let Some(ip) = audit::client_ip(&headers) {
+    if let Some(ip) = audit::client_ip_from_connect_info(connect_info, &headers) {
         builder = builder.ip(ip);
     }
     audit::emit_event(state.db.clone(), builder.build());
@@ -862,6 +865,7 @@ pub async fn add_member(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
     user: AuthUser,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     Json(req): Json<AddMemberRequest>,
 ) -> Result<(StatusCode, Json<MemberResponse>), (StatusCode, Json<ErrorResponse>)> {
@@ -928,7 +932,7 @@ pub async fn add_member(
         AuditEvent::management(ManagementAction::MemberInvited, org.org_id, Some(user.id))
             .target("member", target_user_id.to_string())
             .detail("role", member_row.role.clone());
-    if let Some(ip) = audit::client_ip(&headers) {
+    if let Some(ip) = audit::client_ip_from_connect_info(connect_info, &headers) {
         builder = builder.ip(ip);
     }
     audit::emit_event(state.db.clone(), builder.build());
@@ -951,6 +955,7 @@ pub async fn update_member_role(
     State(state): State<AppState>,
     OrgAdmin(org): OrgAdmin,
     user: AuthUser,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     Path((_org_public_id, user_id_str)): Path<(String, String)>,
     Json(req): Json<UpdateMemberRoleRequest>,
@@ -1015,7 +1020,7 @@ pub async fn update_member_role(
     .target("member", target_user_id.to_string())
     .detail("old_role", current_role.as_str())
     .detail("new_role", updated.role.clone());
-    if let Some(ip) = audit::client_ip(&headers) {
+    if let Some(ip) = audit::client_ip_from_connect_info(connect_info, &headers) {
         builder = builder.ip(ip);
     }
     audit::emit_event(state.db.clone(), builder.build());
@@ -1035,6 +1040,7 @@ pub async fn remove_member(
     State(state): State<AppState>,
     org: OrgContext,
     user: AuthUser,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     Path((_org_public_id, user_id_str)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
@@ -1083,7 +1089,7 @@ pub async fn remove_member(
             AuditEvent::management(ManagementAction::MemberRemoved, org.org_id, Some(user.id))
                 .target("member", target_user_id.to_string())
                 .detail("removed_role", member.role.clone());
-        if let Some(ip) = audit::client_ip(&headers) {
+        if let Some(ip) = audit::client_ip_from_connect_info(connect_info, &headers) {
             builder = builder.ip(ip);
         }
         audit::emit_event(state.db.clone(), builder.build());
@@ -1149,6 +1155,7 @@ mod tests {
         fn auth_config_response(&self) -> AuthConfigResponse {
             AuthConfigResponse {
                 mode: "full".to_string(),
+                login_origin: None,
                 password_auth_enabled: false,
                 signup_enabled: false,
                 oauth_providers: vec![],

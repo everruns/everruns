@@ -357,34 +357,10 @@ Org-level databases would share the same crate, VFS, and query execution — onl
 
 ## Database Schema
 
-```sql
-CREATE TABLE session_databases (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-    name TEXT NOT NULL,
-    size_bytes BIGINT NOT NULL DEFAULT 0,
-    page_count INTEGER NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT session_databases_unique_name UNIQUE (session_id, name),
-    CONSTRAINT session_databases_name_check CHECK (name ~ '^[a-zA-Z_][a-zA-Z0-9_]{0,63}$')
-);
-
-CREATE INDEX idx_session_databases_session_id ON session_databases(session_id);
-
-CREATE TRIGGER update_session_databases_updated_at
-    BEFORE UPDATE ON session_databases
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TABLE session_database_pages (
-    database_id UUID NOT NULL REFERENCES session_databases(id) ON DELETE CASCADE,
-    page_number INTEGER NOT NULL,
-    data BYTEA NOT NULL,
-    PRIMARY KEY (database_id, page_number)
-);
-
-CREATE INDEX idx_session_database_pages_db ON session_database_pages(database_id);
-```
+The `session_databases` and `session_database_pages` tables — columns, constraints
+(unique name, name-format check), indexes, and the `updated_at` trigger — are
+defined in `crates/server/migrations/001_base_schema.sql`. `session_database_pages`
+holds the paged SQLite backing store keyed by `(database_id, page_number)`.
 
 ## Implementation Status
 

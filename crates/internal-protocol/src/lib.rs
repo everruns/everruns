@@ -448,6 +448,11 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
         .default_model_id
         .as_ref()
         .map(|u| prefixed_id("model", u));
+    let harness_id_str = value
+        .harness_id
+        .as_ref()
+        .map(|u| prefixed_id("harness", u))
+        .ok_or(ConversionError::MissingField("harness_id"))?;
 
     let json = serde_json::json!({
         "id": id_str,
@@ -456,6 +461,7 @@ pub fn proto_agent_to_schema(value: proto::Agent) -> Result<everruns_core::Agent
         "description": if value.description.is_empty() { None } else { Some(&value.description) },
         "system_prompt": value.system_prompt,
         "default_model_id": model_id_str,
+        "harness_id": harness_id_str,
         "tags": tags,
         "capabilities": capabilities,
         "status": value.status,
@@ -489,6 +495,7 @@ pub fn schema_agent_to_proto(value: &everruns_core::Agent) -> proto::Agent {
             .collect(),
         display_name: value.display_name.clone(),
         parallel_tool_calls: value.parallel_tool_calls,
+        harness_id: Some(uuid_to_proto_uuid(value.harness_id.uuid())),
     }
 }
 
@@ -666,6 +673,7 @@ pub fn proto_session_to_schema(
         "owner": Option::<serde_json::Value>::None,
         "effective_owner": Option::<serde_json::Value>::None,
         "title": if value.title.is_empty() { None } else { Some(&value.title) },
+        "goal": value.goal.clone(),
         "locale": if value.locale.is_empty() { None } else { Some(&value.locale) },
         "tags": tags,
         "model_id": model_id_str,
@@ -693,6 +701,7 @@ pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session
             .agent_version_id
             .map(|id| uuid_to_proto_uuid(id.uuid())),
         title: value.title.clone().unwrap_or_default(),
+        goal: value.goal.clone(),
         locale: value.locale.clone().unwrap_or_default(),
         status: value.status.to_string(),
         created_at: Some(datetime_to_proto_timestamp(value.created_at)),
@@ -1533,6 +1542,9 @@ pub fn proto_to_session_task(
     Ok(st::SessionTask {
         id: p.id,
         session_id: SessionId::from_uuid(parse_uuid_lenient(&session_uuid.value)),
+        // Storage-derived (EVE-680); surfaced on API storage reads via
+        // `SessionTaskRow::to_task`, not carried over the worker protocol.
+        root_session_id: None,
         kind: p.kind,
         display_name: p.display_name,
         spec: bytes_to_json_value(&p.spec_json),
@@ -1866,6 +1878,7 @@ mod tests {
             description: Some("Test description".to_string()),
             system_prompt: "You are a helpful assistant".to_string(),
             default_model_id: None,
+            harness_id: everruns_core::HarnessId::new(),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -1933,6 +1946,7 @@ mod tests {
             description: None,
             system_prompt: "You are a helpful assistant".to_string(),
             default_model_id: None,
+            harness_id: everruns_core::HarnessId::new(),
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -2136,6 +2150,7 @@ mod tests {
             owner: None,
             effective_owner: None,
             title: Some("Test Session".to_string()),
+            goal: None,
             locale: None,
             preview: None,
             output_preview: None,
@@ -2288,6 +2303,7 @@ mod tests {
             owner: None,
             effective_owner: None,
             title: None,
+            goal: None,
             locale: None,
             preview: None,
             output_preview: None,
@@ -2374,6 +2390,7 @@ mod tests {
         st::SessionTask {
             id: "task_abc123".to_string(),
             session_id: SessionId::new(),
+            root_session_id: None,
             kind: st::TASK_KIND_SUBAGENT.to_string(),
             display_name: "Investigate flake".to_string(),
             spec: serde_json::json!({

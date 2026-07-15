@@ -15,6 +15,76 @@
 /// It is purely a *view*; addressing is done by [`crate::mount_fs::MountFs`].
 pub const WORKSPACE_PREFIX: &str = "/workspace";
 
+/// Compiled filter for [`crate::traits::SessionFileSystem::grep_files`].
+///
+/// Patterns containing glob metacharacters use segment-aware glob semantics.
+/// A basename-only glob (for example `*.rs`) matches at any depth. Patterns
+/// without glob metacharacters retain the legacy substring behavior.
+#[derive(Debug, Clone)]
+pub struct GrepPathPattern {
+    matcher: GrepPathMatcher,
+}
+
+#[derive(Debug, Clone)]
+enum GrepPathMatcher {
+    All,
+    Substring(String),
+    Glob(globset::GlobMatcher),
+}
+
+impl GrepPathPattern {
+    pub fn new(pattern: &str) -> crate::error::Result<Self> {
+        let normalized = to_session_path(pattern);
+        let relative = normalized.trim_start_matches('/');
+        if relative.is_empty() {
+            return Ok(Self {
+                matcher: GrepPathMatcher::All,
+            });
+        }
+        if !relative
+            .chars()
+            .any(|ch| matches!(ch, '*' | '?' | '[' | '{'))
+        {
+            return Ok(Self {
+                matcher: GrepPathMatcher::Substring(relative.to_string()),
+            });
+        }
+
+        let glob = if relative.contains('/') {
+            relative.to_string()
+        } else {
+            format!("**/{relative}")
+        };
+        let matcher = globset::GlobBuilder::new(&glob)
+            .literal_separator(true)
+            .backslash_escape(false)
+            .build()
+            .map_err(|error| {
+                crate::error::AgentLoopError::tool(format!(
+                    "invalid grep path_pattern {pattern:?}: {error}"
+                ))
+            })?
+            .compile_matcher();
+        Ok(Self {
+            matcher: GrepPathMatcher::Glob(matcher),
+        })
+    }
+
+    pub fn is_match(&self, canonical_path: &str) -> bool {
+        let relative = to_session_path(canonical_path);
+        let relative = relative.trim_start_matches('/');
+        match &self.matcher {
+            GrepPathMatcher::All => true,
+            GrepPathMatcher::Substring(needle) => relative.contains(needle),
+            GrepPathMatcher::Glob(matcher) => matcher.is_match(relative),
+        }
+    }
+
+    pub fn is_glob(&self) -> bool {
+        matches!(&self.matcher, GrepPathMatcher::Glob(_))
+    }
+}
+
 /// Canonical leading-slash session path from any accepted spelling: collapses
 /// repeated slashes, strips the `/workspace` alias, ensures a single leading
 /// slash, and trims a trailing slash.
@@ -125,5 +195,30 @@ mod tests {
             to_display_path("/workspace/src/lib.rs"),
             "/workspace/src/lib.rs"
         );
+    }
+
+    #[test]
+    fn grep_path_patterns_support_globs_and_legacy_substrings() {
+        let cases = [
+            ("src/**/*.rs", "/src/lib.rs", true),
+            ("src/**/*.rs", "/src/nested/mod.rs", true),
+            ("src/**/*.rs", "/docs/lib.rs", false),
+            ("**/*", "/notes.txt", true),
+            ("**/*", "/src/lib.rs", true),
+            ("docs/*", "/docs/readme.md", true),
+            ("docs/*", "/docs/nested/guide.md", false),
+            ("*.txt", "/notes.txt", true),
+            ("*.txt", "/nested/notes.txt", true),
+            ("/workspace/src/**/*.rs", "/src/lib.rs", true),
+            ("docs", "/my-docs/readme.md", true),
+        ];
+        for (pattern, path, expected) in cases {
+            let matcher = GrepPathPattern::new(pattern).unwrap();
+            assert_eq!(
+                matcher.is_match(path),
+                expected,
+                "pattern={pattern} path={path}"
+            );
+        }
     }
 }
