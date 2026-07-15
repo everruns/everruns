@@ -10,17 +10,20 @@ impl Database {
         let row = sqlx::query_as::<_, MemoryRow>(
             r#"
             INSERT INTO memories (
-                org_id, public_id, name, description, source_type, source_config,
+                org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config,
                 is_readonly, sync_status, owner_principal_id, resolved_owner_user_id
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-            RETURNING id, org_id, public_id, name, description, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            RETURNING id, org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
         .bind(&input.public_id)
         .bind(&input.name)
         .bind(&input.description)
+        .bind(&input.scope)
+        .bind(input.owner_agent_id.map(|id| id.uuid()))
+        .bind(input.owner_user_id)
         .bind(&input.source_type)
         .bind(&input.source_config)
         .bind(input.is_readonly)
@@ -33,6 +36,34 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn get_memory_by_scope_owner(
+        &self,
+        org_id: i64,
+        scope: &str,
+        owner_agent_id: Option<everruns_core::AgentId>,
+        owner_user_id: Option<Uuid>,
+    ) -> Result<Option<MemoryRow>> {
+        let row = sqlx::query_as::<_, MemoryRow>(
+            r#"
+            SELECT id, org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            FROM memories
+            WHERE org_id = $1
+              AND scope = $2
+              AND (($3::uuid IS NULL AND owner_agent_id IS NULL) OR owner_agent_id = $3)
+              AND (($4::uuid IS NULL AND owner_user_id IS NULL) OR owner_user_id = $4)
+              AND status != 'deleted'
+            "#,
+        )
+        .bind(org_id)
+        .bind(scope)
+        .bind(owner_agent_id.map(|id| id.uuid()))
+        .bind(owner_user_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     pub async fn get_memory_by_public_id(
         &self,
         org_id: i64,
@@ -40,7 +71,7 @@ impl Database {
     ) -> Result<Option<MemoryRow>> {
         let row = sqlx::query_as::<_, MemoryRow>(
             r#"
-            SELECT id, org_id, public_id, name, description, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
             FROM memories
             WHERE org_id = $1 AND public_id = $2 AND status != 'deleted'
             "#,
@@ -56,7 +87,7 @@ impl Database {
     pub async fn get_memory_by_id(&self, org_id: i64, id: Uuid) -> Result<Option<MemoryRow>> {
         let row = sqlx::query_as::<_, MemoryRow>(
             r#"
-            SELECT id, org_id, public_id, name, description, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
             FROM memories
             WHERE org_id = $1 AND id = $2 AND status != 'deleted'
             "#,
@@ -100,9 +131,9 @@ impl Database {
         };
         let sql = format!(
             r#"
-            SELECT id, org_id, public_id, name, description, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
             FROM memories
-            WHERE org_id = $1{status_sql}{search_sql}
+            WHERE org_id = $1 AND scope = 'org'{status_sql}{search_sql}
             ORDER BY created_at DESC
             "#
         );
@@ -145,7 +176,7 @@ impl Database {
                 END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2 AND status != 'deleted'
-            RETURNING id, org_id, public_id, name, description, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -207,7 +238,7 @@ impl Database {
                 FOR UPDATE SKIP LOCKED
                 LIMIT 1
             )
-            RETURNING id, org_id, public_id, name, description, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .fetch_optional(&self.pool)
@@ -236,7 +267,7 @@ impl Database {
               AND sync_status = 'syncing'
               AND status = 'active'
               AND source_type != 'manual'
-            RETURNING id, org_id, public_id, name, description, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(memory_id)
@@ -293,7 +324,7 @@ impl Database {
               AND sync_status = 'syncing'
               AND status = 'active'
               AND source_type != 'manual'
-            RETURNING id, org_id, public_id, name, description, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, public_id, name, description, scope, owner_agent_id, owner_user_id, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(memory_id)

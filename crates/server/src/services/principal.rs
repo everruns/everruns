@@ -5,8 +5,8 @@
 
 use anyhow::{Result, anyhow};
 use everruns_core::{
-    ANONYMOUS_USER_ID, Caller, Principal, PrincipalId, PrincipalKind, PrincipalStatus,
-    PrincipalSummary, org_public_id_from_internal,
+    ANONYMOUS_USER_ID, Caller, ExternalActor, Principal, PrincipalId, PrincipalKind,
+    PrincipalStatus, PrincipalSummary, org_public_id_from_internal,
 };
 use everruns_durable::UpdateField;
 use serde_json::json;
@@ -71,6 +71,37 @@ impl PrincipalService {
                     "email": user.email,
                     "avatar_url": user.avatar_url,
                     "source": "user",
+                }),
+            })
+            .await
+    }
+
+    pub async fn ensure_external_actor_principal(
+        &self,
+        org_id: i64,
+        actor: &ExternalActor,
+    ) -> Result<PrincipalRow> {
+        let subject_key = format!("{}:{}", actor.source, actor.actor_id);
+        let subject_id = Uuid::new_v5(
+            &Uuid::NAMESPACE_URL,
+            format!("everruns:external_actor:{subject_key}").as_bytes(),
+        );
+
+        self.db
+            .create_principal(CreatePrincipalRow {
+                id: PrincipalId::new(),
+                org_id,
+                kind: "user".to_string(),
+                subject_id: Some(subject_id),
+                parent_principal_id: None,
+                resolved_user_id: None,
+                metadata: json!({
+                    "name": actor.display_label(),
+                    "source": "external_actor",
+                    "external_source": actor.source,
+                    "external_actor_id": actor.actor_id,
+                    "external_actor_name": actor.actor_name,
+                    "external_actor_metadata": actor.metadata,
                 }),
             })
             .await

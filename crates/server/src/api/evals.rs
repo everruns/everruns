@@ -25,8 +25,8 @@ use crate::domains::evals::{
     BulkUpdateEvalRunScores, CancelEvalRun, CreateEval, CreateEvalCase, CreateEvalRun,
     CreateEvalRunShare, DeleteEval, DeleteEvalCase, EvalImportPreflightCmd, ExportEvalRunArtifacts,
     ExportEvalRunDataset, GetEval, GetEvalCase, GetEvalRun, GetEvalRunDataset, GetEvalRunShare,
-    ImportEvalRun, ListEvalCases, ListEvalRuns, ListEvals, RevokeEvalRunShare, UpdateEval,
-    UpdateEvalCase, UpdateEvalResultScores,
+    ImportAtifTrajectories, ImportEvalRun, ListEvalCases, ListEvalRuns, ListEvals,
+    RevokeEvalRunShare, UpdateEval, UpdateEvalCase, UpdateEvalResultScores,
 };
 use crate::storage::StorageBackend;
 use everruns_core::Caller;
@@ -354,6 +354,18 @@ pub struct ImportScore {
     pub na: bool,
 }
 
+/// Result of an ATIF trajectory import (specs/atif-adoption.md): eval cases
+/// created/updated from imported trajectories, upserted by case name.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AtifImportReport {
+    /// Number of eval cases created.
+    pub created: u64,
+    /// Number of existing eval cases updated (matched by name).
+    pub updated: u64,
+    /// Public ids of the affected cases, in import order.
+    pub case_ids: Vec<String>,
+}
+
 /// Preflight capability report so optional-feature clients (e.g. Mira) can
 /// check before publishing instead of failing mid-import.
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -462,6 +474,8 @@ pub fn routes(state: AppState) -> Router {
             "/v1/evals/{eval_id}",
             get(get_eval).patch(update_eval).delete(delete_eval),
         )
+        // ATIF trajectory import → eval cases (specs/atif-adoption.md).
+        .route("/v1/evals/{eval_id}/atif_import", post(import_atif))
         // Cases
         .route(
             "/v1/evals/{eval_id}/cases",
@@ -581,6 +595,21 @@ async fn import_preflight(
     State(state): State<AppState>,
 ) -> ApiResult<EvalImportPreflight> {
     let report = EvalImportPreflightCmd {}.run(&state.ctx(&org)).await?;
+    Ok(Json(report))
+}
+
+/// Import ATIF trajectories as eval cases. Accepts NDJSON (one trajectory per
+/// line) or JSON (array, single object, or `{ "trajectories": [...] }`) as the
+/// raw body, so both content types work without a wrapper schema.
+async fn import_atif(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(eval_id): Path<String>,
+    body: String,
+) -> ApiResult<AtifImportReport> {
+    let report = ImportAtifTrajectories { eval_id, body }
+        .run(&state.ctx(&org))
+        .await?;
     Ok(Json(report))
 }
 

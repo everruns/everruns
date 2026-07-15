@@ -141,12 +141,15 @@ impl BudgetService {
 
     fn scope_from_session(
         session: &SessionRow,
-        session_subject_id: &str,
+        _session_subject_id: &str,
         agent_id_override: Option<&str>,
     ) -> BudgetScope {
         let (app_subject_id, app_channel_subject_id) = extract_app_subjects(&session.tags);
+        let root_session_id = session.root_session_id.unwrap_or(session.id);
         BudgetScope {
-            session_subject_id: session_subject_id.to_string(),
+            // Session-scoped budgets are owned by the root of a delegation
+            // tree, so descendants debit and check the same shared pool.
+            session_subject_id: root_session_id.to_string(),
             agent_subject_id: agent_id_override
                 .map(ToOwned::to_owned)
                 .or_else(|| session.agent_id.map(|id| id.to_string())),
@@ -292,7 +295,12 @@ impl BudgetService {
             return; // No budgets — nothing to track
         }
 
-        let total_tokens = input_tokens + output_tokens;
+        let total_tokens = Self::metered_total_tokens(
+            input_tokens,
+            output_tokens,
+            cache_read_tokens,
+            cache_creation_tokens,
+        );
         // Only persisted events have a sequence allocated by the events table.
         // Synthetic listener inputs preserve traceability via source_id but must
         // not write an FK to usage_journal.event_id.
@@ -440,6 +448,15 @@ impl BudgetService {
                 }
             }
         }
+    }
+
+    pub(crate) fn metered_total_tokens(
+        input_tokens: i64,
+        output_tokens: i64,
+        cache_read_tokens: i64,
+        cache_creation_tokens: i64,
+    ) -> i64 {
+        input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens
     }
 
     /// Compute the debit amount in the budget's currency.

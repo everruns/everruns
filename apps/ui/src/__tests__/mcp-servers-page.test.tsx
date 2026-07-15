@@ -1,4 +1,4 @@
-import { render, screen, within, fireEvent } from "@testing-library/react";
+import { render, screen, within, fireEvent, waitFor } from "@testing-library/react";
 import McpServersPage from "@/app/(main)/mcp-servers/page";
 
 const mockUseMcpServers = jest.fn();
@@ -50,7 +50,9 @@ describe("McpServersPage", () => {
 
     mockUseUpdateMcpServer.mockReturnValue({
       mutateAsync: jest.fn(),
+      reset: jest.fn(),
       isPending: false,
+      error: null,
     });
 
     mockUseDeleteMcpServer.mockReturnValue({
@@ -167,5 +169,94 @@ describe("McpServersPage", () => {
 
     expect(await screen.findByText("URL must be a valid absolute URL")).toBeInTheDocument();
     expect(mockMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("opens the edit dialog prefilled with the server's current values", () => {
+    render(<McpServersPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Edit MCP Server")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Name")).toHaveValue("microsoft_learn");
+    expect(within(dialog).getByLabelText("URL")).toHaveValue("https://learn.microsoft.com/api/mcp");
+    expect(within(dialog).getByLabelText("Description (optional)")).toHaveValue(
+      "Microsoft Learn documentation MCP server",
+    );
+  });
+
+  it("submits updated name, description, and URL through the update hook", async () => {
+    const mockMutateAsync = jest.fn().mockResolvedValue({});
+    mockUseUpdateMcpServer.mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      reset: jest.fn(),
+      isPending: false,
+      error: null,
+    });
+
+    render(<McpServersPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Name"), {
+      target: { value: "updated-mcp-server" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Description (optional)"), {
+      target: { value: "Updated description" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("URL"), {
+      target: { value: "https://new.mcp.com/v1/mcp" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        name: "updated-mcp-server",
+        description: "Updated description",
+        url: "https://new.mcp.com/v1/mcp",
+        protocol_mode: "auto",
+      }),
+    );
+  });
+
+  it("shows a validation error for invalid URLs when editing", async () => {
+    const mockMutateAsync = jest.fn();
+    mockUseUpdateMcpServer.mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      reset: jest.fn(),
+      isPending: false,
+      error: null,
+    });
+
+    render(<McpServersPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("URL"), { target: { value: "not-a-url" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText("URL must be a valid absolute URL")).toBeInTheDocument();
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("surfaces an update failure in the edit dialog", async () => {
+    const mockMutateAsync = jest.fn().mockRejectedValue(new Error("name already exists"));
+    mockUseUpdateMcpServer.mockReturnValue({
+      mutateAsync: mockMutateAsync,
+      reset: jest.fn(),
+      isPending: false,
+      error: new Error("name already exists"),
+    });
+
+    render(<McpServersPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    const dialog = screen.getByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(await within(dialog).findByText(/name already exists/)).toBeInTheDocument();
   });
 });

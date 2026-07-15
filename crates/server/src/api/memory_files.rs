@@ -115,12 +115,15 @@ pub struct UpdateMemoryFileRequest {
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct GrepRequest {
+    /// Regex pattern to search for.
     pub pattern: String,
+    /// Optional path glob (`**/*.rs`, `docs/*.md`).
     #[serde(default)]
     pub path_pattern: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(as = MemoryGrepResult)]
 pub struct GrepResultEntry {
     pub path: String,
     pub size_bytes: i64,

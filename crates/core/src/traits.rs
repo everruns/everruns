@@ -438,8 +438,9 @@ pub trait SessionFileSystem: Send + Sync {
 
     /// Convert a canonical session path into a human-facing path.
     ///
-    /// The default renders the `/workspace` alias; host-backed stores and
-    /// [`MountFs`](crate::mount_fs::MountFs) override it.
+    /// The default renders the `/workspace` alias. Host-backed stores override
+    /// it, and decorators such as [`MountFs`](crate::mount_fs::MountFs) must
+    /// preserve the primary backend's path identity.
     fn display_path(&self, path: &str) -> String {
         crate::session_path::to_display_path(path)
     }
@@ -449,14 +450,19 @@ pub trait SessionFileSystem: Send + Sync {
     /// against the filesystem's current directory.
     ///
     /// This is how a shell seeds its working directory: a resolver like
-    /// [`MountFs`] returns the virtual path (`/workspace/sub`), so the shell and
-    /// the file tools address one namespace without the shell re-implementing
-    /// any `/workspace` handling. The default is the flat VFS session form.
+    /// [`MountFs`] returns a path in the primary backend's visible namespace, so
+    /// the shell and file tools share the same identity. The default is the flat
+    /// VFS session form.
     ///
     /// [`MountFs`]: crate::mount_fs::MountFs
     fn resolve_path(&self, input: &str) -> String {
         crate::session_path::to_session_path(input)
     }
+
+    /// Whether this store is already a mount-based resolver ([`MountFs`]).
+    ///
+    /// Used to avoid re-wrapping nested mount tables when building tool context.
+    fn is_mount_resolver(&self) -> bool;
 
     /// Read a file by path
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>>;
@@ -511,7 +517,12 @@ pub trait SessionFileSystem: Send + Sync {
     /// Get file metadata
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>>;
 
-    /// Search files by pattern (grep)
+    /// Search file contents with Rust regex syntax, optionally filtering canonical paths by glob.
+    ///
+    /// Implementations compile the content pattern once before scanning and
+    /// return an error for invalid regex. Basename-only globs match at any
+    /// depth. Non-glob path filters retain legacy substring matching; see
+    /// `specs/file-store.md`.
     async fn grep_files(
         &self,
         session_id: SessionId,
@@ -638,6 +649,10 @@ impl SessionFileSystem for WorkspaceScopedFileSystem {
     fn resolve_path(&self, input: &str) -> String {
         self.inner.resolve_path(input)
     }
+
+    fn is_mount_resolver(&self) -> bool {
+        self.inner.is_mount_resolver()
+    }
 }
 
 #[async_trait]
@@ -652,6 +667,10 @@ impl<T: SessionFileSystem + ?Sized> SessionFileSystem for std::sync::Arc<T> {
 
     fn resolve_path(&self, input: &str) -> String {
         (**self).resolve_path(input)
+    }
+
+    fn is_mount_resolver(&self) -> bool {
+        (**self).is_mount_resolver()
     }
 
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
@@ -1085,6 +1104,130 @@ pub trait LeasedResourceStore: Send + Sync {
 // ToolContext - Runtime context for tool execution
 // ============================================================================
 
+/// Default maximum child depth for subagent delegation. Top-level sessions are
+/// depth 0, their children are depth 1, and grandchildren are depth 2.
+pub const DEFAULT_MAX_SUBAGENT_DEPTH: u32 = 2;
+pub const DEFAULT_MAX_ACTIVE_DESCENDANT_SUBAGENT_TASKS: u32 = 16;
+pub const DEFAULT_MAX_TOTAL_DESCENDANT_SUBAGENT_TASKS: u32 = 200;
+/// Governance for detached peer spawns (EVE-767): a detached spawn resets depth
+/// (it is a peer, not a lifecycle child) but is still counted against the origin
+/// subagent tree's root so a loop of `spawn_agent(lifetime=detached)` cannot run
+/// unbounded (TM-DOS). Detached peers are full independent sessions, so the
+/// default ceiling is tighter than the subagent descendant caps.
+pub const DEFAULT_MAX_ACTIVE_DETACHED_TASKS: u32 = 8;
+pub const DEFAULT_MAX_TOTAL_DETACHED_TASKS: u32 = 50;
+
+/// Resolved subagent spawn governance policy for a tool execution context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SubagentNestingPolicy {
+    pub platform_default: u32,
+    pub org_override: Option<u32>,
+    pub agent_override: Option<u32>,
+    pub platform_default_max_active_descendant_tasks: u32,
+    pub org_override_max_active_descendant_tasks: Option<u32>,
+    pub agent_override_max_active_descendant_tasks: Option<u32>,
+    pub platform_default_max_total_descendant_tasks: u32,
+    pub org_override_max_total_descendant_tasks: Option<u32>,
+    pub agent_override_max_total_descendant_tasks: Option<u32>,
+    pub platform_default_max_active_detached_tasks: u32,
+    pub org_override_max_active_detached_tasks: Option<u32>,
+    pub agent_override_max_active_detached_tasks: Option<u32>,
+    pub platform_default_max_total_detached_tasks: u32,
+    pub org_override_max_total_detached_tasks: Option<u32>,
+    pub agent_override_max_total_detached_tasks: Option<u32>,
+}
+
+impl Default for SubagentNestingPolicy {
+    fn default() -> Self {
+        Self {
+            platform_default: DEFAULT_MAX_SUBAGENT_DEPTH,
+            org_override: None,
+            agent_override: None,
+            platform_default_max_active_descendant_tasks:
+                DEFAULT_MAX_ACTIVE_DESCENDANT_SUBAGENT_TASKS,
+            org_override_max_active_descendant_tasks: None,
+            agent_override_max_active_descendant_tasks: None,
+            platform_default_max_total_descendant_tasks:
+                DEFAULT_MAX_TOTAL_DESCENDANT_SUBAGENT_TASKS,
+            org_override_max_total_descendant_tasks: None,
+            agent_override_max_total_descendant_tasks: None,
+            platform_default_max_active_detached_tasks: DEFAULT_MAX_ACTIVE_DETACHED_TASKS,
+            org_override_max_active_detached_tasks: None,
+            agent_override_max_active_detached_tasks: None,
+            platform_default_max_total_detached_tasks: DEFAULT_MAX_TOTAL_DETACHED_TASKS,
+            org_override_max_total_detached_tasks: None,
+            agent_override_max_total_detached_tasks: None,
+        }
+    }
+}
+
+impl SubagentNestingPolicy {
+    pub fn max_subagent_depth(self) -> u32 {
+        self.agent_override
+            .or(self.org_override)
+            .unwrap_or(self.platform_default)
+    }
+
+    pub fn max_active_descendant_tasks(self) -> u32 {
+        self.agent_override_max_active_descendant_tasks
+            .or(self.org_override_max_active_descendant_tasks)
+            .unwrap_or(self.platform_default_max_active_descendant_tasks)
+    }
+
+    pub fn max_total_descendant_tasks(self) -> u32 {
+        self.agent_override_max_total_descendant_tasks
+            .or(self.org_override_max_total_descendant_tasks)
+            .unwrap_or(self.platform_default_max_total_descendant_tasks)
+    }
+
+    pub fn max_active_detached_tasks(self) -> u32 {
+        self.agent_override_max_active_detached_tasks
+            .or(self.org_override_max_active_detached_tasks)
+            .unwrap_or(self.platform_default_max_active_detached_tasks)
+    }
+
+    pub fn max_total_detached_tasks(self) -> u32 {
+        self.agent_override_max_total_detached_tasks
+            .or(self.org_override_max_total_detached_tasks)
+            .unwrap_or(self.platform_default_max_total_detached_tasks)
+    }
+
+    pub fn with_platform_default(mut self, depth: u32) -> Self {
+        self.platform_default = depth;
+        self
+    }
+
+    pub fn with_org_override(mut self, depth: Option<u32>) -> Self {
+        self.org_override = depth;
+        self
+    }
+
+    pub fn with_agent_override(mut self, depth: Option<u32>) -> Self {
+        self.agent_override = depth;
+        self
+    }
+
+    pub fn with_agent_task_caps_override(
+        mut self,
+        max_active: Option<u32>,
+        max_total: Option<u32>,
+    ) -> Self {
+        self.agent_override_max_active_descendant_tasks = max_active;
+        self.agent_override_max_total_descendant_tasks = max_total;
+        self
+    }
+
+    pub fn with_agent_detached_task_caps_override(
+        mut self,
+        max_active: Option<u32>,
+        max_total: Option<u32>,
+    ) -> Self {
+        self.agent_override_max_active_detached_tasks = max_active;
+        self.agent_override_max_total_detached_tasks = max_total;
+        self
+    }
+}
+
 /// Type alias for the session SQL DB store trait object.
 pub type SessionSqlDbStoreRef = Arc<dyn crate::session_sqldb::SessionSqlDbStore>;
 
@@ -1167,6 +1310,23 @@ pub trait PaymentAuthority: Send + Sync {
         session_id: SessionId,
         request: crate::payment::MachinePaymentRequest,
     ) -> Result<crate::payment::MachinePaymentResponse>;
+}
+
+// ============================================================================
+// SessionCreationAuthority - For detached subagent session creation
+// ============================================================================
+
+/// Host-provided authority for creating detached peer sessions.
+///
+/// The host resolves the current session owner and evaluates session-management
+/// permission. Keeping this outside model-authored arguments prevents a tool
+/// call from choosing or forging its authorization identity.
+#[async_trait]
+pub trait SessionCreationAuthority: Send + Sync {
+    /// Authorize creation and return the org-validated budget root for the
+    /// current session. Returning the root from the authority keeps detached
+    /// chains linked without exposing internal root metadata to model input.
+    async fn authorize_session_creation(&self, session_id: SessionId) -> Result<SessionId>;
 }
 
 // OutboundToolRateLimiter - Per-org outbound tool-call rate limiting (TM-TOOL-009)
@@ -1517,10 +1677,16 @@ pub struct ToolContext {
     /// Optional internal payment authority for paid capability tools.
     pub payment_authority: Option<Arc<dyn PaymentAuthority>>,
 
+    /// Optional host authority for detached peer-session creation.
+    pub session_creation_authority: Option<Arc<dyn SessionCreationAuthority>>,
+
     /// Optional durable spawn handle store for subagent reattach (EVE-535).
-    /// When set, `spawn_subagent` uses claim/settle to prevent duplicate spawning
+    /// When set, subagent delegation uses claim/settle to prevent duplicate spawning
     /// on parent worker reclaim.
     pub subagent_spawn_store: Option<Arc<dyn SubagentSpawnStore>>,
+
+    /// Resolved subagent nesting policy for this turn.
+    pub subagent_nesting_policy: SubagentNestingPolicy,
 
     /// Optional live reasoning-effort handle (EVE-595). When set, a tool can
     /// change the reasoning effort mid-turn; subsequent LLM steps in the same
@@ -1579,7 +1745,9 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            session_creation_authority: None,
             subagent_spawn_store: None,
+            subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
         }
     }
@@ -1620,7 +1788,9 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            session_creation_authority: None,
             subagent_spawn_store: None,
+            subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
         }
     }
@@ -1664,7 +1834,9 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            session_creation_authority: None,
             subagent_spawn_store: None,
+            subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
         }
     }
@@ -1709,7 +1881,9 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            session_creation_authority: None,
             subagent_spawn_store: None,
+            subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
         }
     }
@@ -1800,7 +1974,9 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            session_creation_authority: None,
             subagent_spawn_store: None,
+            subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
         }
     }
@@ -1937,6 +2113,12 @@ impl ToolContext {
         self
     }
 
+    /// Set the resolved subagent nesting policy.
+    pub fn with_subagent_nesting_policy(mut self, policy: SubagentNestingPolicy) -> Self {
+        self.subagent_nesting_policy = policy;
+        self
+    }
+
     /// Emit a `tool.progress` event if an event emitter and context are available.
     ///
     /// This is a best-effort helper: failures are logged but not propagated,
@@ -2035,6 +2217,7 @@ impl std::fmt::Debug for ToolContext {
             .field("tool_registry", &self.tool_registry.is_some())
             .field("payment_authority", &self.payment_authority.is_some())
             .field("subagent_spawn_store", &self.subagent_spawn_store.is_some())
+            .field("subagent_nesting_policy", &self.subagent_nesting_policy)
             .field("org_id", &self.org_id)
             .finish()
     }

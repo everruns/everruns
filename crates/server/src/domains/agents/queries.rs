@@ -5,7 +5,7 @@
 use crate::domains::common::CommandError;
 use crate::max_iterations;
 use crate::storage::StorageBackend;
-use everruns_core::typed_id::{AgentId, AgentVersionId};
+use everruns_core::typed_id::{AgentId, AgentVersionId, HarnessId};
 use everruns_core::{
     Agent, AgentCapabilityConfig, AgentStatus, AgentVersion, AgentVersionChangeKind, InitialFile,
     TokenUsage, is_declarative_capability,
@@ -61,6 +61,7 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<AgentCapabilityConfig>) -> 
         description: row.description,
         system_prompt: row.system_prompt,
         default_model_id: row.default_model_id,
+        harness_id: row.harness_id,
         default_version_id: row.default_version_id,
         forked_from_agent_id: row.forked_from_agent_id,
         forked_from_version_id: row.forked_from_version_id,
@@ -119,6 +120,7 @@ pub fn authored_config(agent: &Agent) -> serde_json::Value {
         "description": agent.description,
         "system_prompt": agent.system_prompt,
         "default_model_id": agent.default_model_id.map(|id| id.to_string()),
+        "harness_id": agent.harness_id.to_string(),
         "tags": agent.tags,
         "capabilities": agent.capabilities,
         "initial_files": agent.initial_files,
@@ -158,6 +160,13 @@ pub fn version_to_agent(source: &Agent, version: &AgentVersion) -> Agent {
         .get("default_model_id")
         .and_then(|v| v.as_str())
         .and_then(|s| s.parse().ok());
+    if let Some(value) = cfg
+        .get("harness_id")
+        .and_then(|v| v.as_str())
+        .and_then(|s| s.parse::<HarnessId>().ok())
+    {
+        agent.harness_id = value;
+    }
     agent.tags = cfg
         .get("tags")
         .cloned()

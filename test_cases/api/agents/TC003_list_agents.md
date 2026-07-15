@@ -57,7 +57,7 @@ Verify that agents are listed correctly, with pagination, and that archived agen
 |-------|----------|
 | Step 2: both agents in list | `data` contains both agent IDs |
 | Step 2: name fields | Each agent has `name` (slug) and `display_name` |
-| Step 3: archive returns 200 | Agent status becomes `"archived"` |
+| Step 3: archive response | 204 with no response body |
 | Step 4: archived agent excluded | `data` does not contain agent-alpha |
 | Step 4: active agent included | `data` contains agent-beta |
 | Step 5: both agents in list | `data` contains both agents |

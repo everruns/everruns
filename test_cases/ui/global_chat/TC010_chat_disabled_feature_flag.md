@@ -26,7 +26,7 @@ None.
 | Check | Expected |
 |-------|----------|
 | Sidebar | "Chat" entry hidden or not present |
-| `/chat` page | Shows "Global Chat is not enabled" message |
+| `/chat` page | Shows "Platform Chat is not enabled" message |
 | Sub-message | Shows "This feature is currently disabled." |
 | No session created | No `POST /v1/sessions/chat` call made |
 | No errors | No console errors or unhandled exceptions |

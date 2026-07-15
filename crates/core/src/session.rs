@@ -14,7 +14,7 @@ use crate::principal::PrincipalSummary;
 use crate::tool_types::ToolDefinition;
 use crate::typed_id::{
     AgentId, AgentIdentityId, AgentVersionId, HarnessId, ModelId, PrincipalId, SessionId,
-    WorkspaceId,
+    SessionParticipantId, WorkspaceId,
 };
 
 #[cfg(feature = "openapi")]
@@ -116,6 +116,120 @@ impl From<&str> for SessionStatus {
     }
 }
 
+/// Kind of actor participating in a session.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SessionParticipantKind {
+    Agent,
+    User,
+}
+
+impl std::fmt::Display for SessionParticipantKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SessionParticipantKind::Agent => write!(f, "agent"),
+            SessionParticipantKind::User => write!(f, "user"),
+        }
+    }
+}
+
+impl From<&str> for SessionParticipantKind {
+    fn from(s: &str) -> Self {
+        match s {
+            "agent" => SessionParticipantKind::Agent,
+            "user" => SessionParticipantKind::User,
+            _ => SessionParticipantKind::User,
+        }
+    }
+}
+
+/// Role a participant has inside a session.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SessionParticipantRole {
+    Host,
+    Member,
+}
+
+impl std::fmt::Display for SessionParticipantRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SessionParticipantRole::Host => write!(f, "host"),
+            SessionParticipantRole::Member => write!(f, "member"),
+        }
+    }
+}
+
+impl From<&str> for SessionParticipantRole {
+    fn from(s: &str) -> Self {
+        match s {
+            "host" => SessionParticipantRole::Host,
+            "member" => SessionParticipantRole::Member,
+            _ => SessionParticipantRole::Member,
+        }
+    }
+}
+
+/// Session participant - an agent or user that has joined a session.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct SessionParticipant {
+    /// Unique identifier for the participant row (format: part_{32-hex}).
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            value_type = String,
+            example = "part_01933b5a00007000800000000000001"
+        )
+    )]
+    pub id: SessionParticipantId,
+    /// Session this participant belongs to.
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            value_type = String,
+            example = "session_01933b5a00007000800000000000001"
+        )
+    )]
+    pub session_id: SessionId,
+    pub kind: SessionParticipantKind,
+    /// Present for agent participants.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            value_type = Option<String>,
+            example = "agent_01933b5a00007000800000000000001"
+        )
+    )]
+    pub agent_id: Option<AgentId>,
+    /// Immutable agent version captured for an agent participant when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            value_type = Option<String>,
+            example = "agentver_01933b5a00007000800000000000001"
+        )
+    )]
+    pub agent_version_id: Option<AgentVersionId>,
+    /// Principal that joined the session.
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            value_type = String,
+            example = "principal_01933b5a000070008000000000000001"
+        )
+    )]
+    pub principal_id: PrincipalId,
+    pub role: SessionParticipantRole,
+    pub joined_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub left_at: Option<DateTime<Utc>>,
+}
+
 /// Session - instance of agentic loop execution.
 /// A session represents a single conversation with an agent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -167,6 +281,13 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(example = "Q3 marketing brief"))]
     pub title: Option<String>,
+    /// Session objective visible to the runtime agent at system-prompt level.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "Investigate the queue latency regression")
+    )]
+    pub goal: Option<String>,
     /// Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(example = "en-US"))]
@@ -280,7 +401,7 @@ pub struct Session {
 
     // -- Subagent nesting fields --
     /// Parent session that spawned this subagent. NULL for top-level sessions.
-    /// Used as the nesting guard in spawn_subagent.
+    /// Used to compute governed subagent delegation depth.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub parent_session_id: Option<SessionId>,
@@ -309,4 +430,28 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub blueprint_config: Option<serde_json::Value>,
+}
+
+/// Seed mode used when creating a peer session from an existing session.
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum SessionSeedMode {
+    /// Create an empty session and only record lineage when provided.
+    #[default]
+    Fresh,
+    /// Copy conversation events, workspace files, and durable session storage.
+    Fork,
+    /// Copy workspace files only.
+    Workspace,
+}
+
+impl SessionSeedMode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Fresh => "fresh",
+            Self::Fork => "fork",
+            Self::Workspace => "workspace",
+        }
+    }
 }

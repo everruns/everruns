@@ -3,7 +3,28 @@
 // `return_to` is the single public login-page contract for auth resume — see
 // specs/authentication.md. Paths must be relative to the frontend origin.
 
+/** Session storage key for preserving return_to across OAuth and signup flows. */
+export const RETURN_TO_STORAGE_KEY = "everruns_return_to";
+
 type SearchInput = URLSearchParams | string | null | undefined;
+
+function normalizeLoginOrigin(value: string | null | undefined): string {
+  if (!value) return "";
+  // THREAT[TM-WEB-008]: defense-in-depth for UI-only deployments. Callers may
+  // provide deployment config, never request/query input, and it must be an origin.
+  const parsed = new URL(value);
+  if (
+    !["http:", "https:"].includes(parsed.protocol) ||
+    parsed.username ||
+    parsed.password ||
+    parsed.pathname !== "/" ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new Error("Login origin must be an HTTP(S) origin");
+  }
+  return parsed.origin;
+}
 
 function getSearchString(search: SearchInput): string {
   if (search instanceof URLSearchParams) {
@@ -17,15 +38,37 @@ function getSearchString(search: SearchInput): string {
   return "";
 }
 
-export function getLoginRedirectPath(pathname: string, search: SearchInput): string {
+export function getLoginRedirectPath(
+  pathname: string,
+  search: SearchInput,
+  loginOrigin?: string | null,
+): string {
   const searchString = getSearchString(search);
   const currentUrl = pathname + (searchString ? `?${searchString}` : "");
+  const loginPath = `${normalizeLoginOrigin(loginOrigin)}/login`;
 
   if (currentUrl === "/dashboard") {
-    return "/login";
+    return loginPath;
   }
 
-  return `/login?return_to=${encodeURIComponent(currentUrl)}`;
+  return `${loginPath}?return_to=${encodeURIComponent(currentUrl)}`;
+}
+
+/** Configured absolute login URLs must leave the Next.js client router. */
+export function isFullPageLoginRedirect(path: string): boolean {
+  return /^https?:\/\//i.test(path);
+}
+
+export function navigateToLogin(
+  path: string,
+  routerReplace: (path: string) => void,
+  locationAssign: (path: string) => void = (target) => window.location.assign(target),
+): void {
+  if (isFullPageLoginRedirect(path)) {
+    locationAssign(path);
+  } else {
+    routerReplace(path);
+  }
 }
 
 /**
@@ -63,4 +106,53 @@ const BACKEND_PATH_PREFIXES = ["/oauth/", "/api/", "/v1/"] as const;
 
 export function isBackendNavigationPath(path: string): boolean {
   return BACKEND_PATH_PREFIXES.some((prefix) => path.startsWith(prefix));
+}
+
+function buildAuthPath(
+  basePath: "/login" | "/signup",
+  returnTo: string | null | undefined,
+  email?: string | null,
+): string {
+  const params = new URLSearchParams();
+  if (email) {
+    params.set("email", email);
+  }
+  const sanitized = sanitizeReturnTo(returnTo);
+  if (sanitized) {
+    params.set("return_to", sanitized);
+  }
+  const query = params.toString();
+  return query ? `${basePath}?${query}` : basePath;
+}
+
+/** Build a signup href that preserves a sanitized return_to and optional email. */
+export function buildSignupHref(
+  returnTo: string | null | undefined,
+  email?: string | null,
+): string {
+  return buildAuthPath("/signup", returnTo, email);
+}
+
+/** Build a login href that preserves a sanitized return_to and optional email. */
+export function buildLoginHref(returnTo: string | null | undefined, email?: string | null): string {
+  return buildAuthPath("/login", returnTo, email);
+}
+
+/** Persist a sanitized return_to in sessionStorage for post-auth resume. */
+export function persistReturnTo(value: string | null | undefined): void {
+  const sanitized = sanitizeReturnTo(value);
+  if (!sanitized || typeof sessionStorage === "undefined") {
+    return;
+  }
+  sessionStorage.setItem(RETURN_TO_STORAGE_KEY, sanitized);
+}
+
+/** Read and clear a stored return_to from sessionStorage. */
+export function consumeReturnTo(): string | null {
+  if (typeof sessionStorage === "undefined") {
+    return null;
+  }
+  const stored = sanitizeReturnTo(sessionStorage.getItem(RETURN_TO_STORAGE_KEY));
+  sessionStorage.removeItem(RETURN_TO_STORAGE_KEY);
+  return stored;
 }

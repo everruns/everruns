@@ -20,11 +20,14 @@ import { useAuthConfig, useLogin } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks";
 import { ApiError } from "@/lib/api/client";
 import { getOAuthUrl, login } from "@/lib/api/auth";
-import { isBackendNavigationPath, sanitizeReturnTo } from "@/lib/auth-redirect";
+import {
+  isBackendNavigationPath,
+  sanitizeReturnTo,
+  buildSignupHref,
+  RETURN_TO_STORAGE_KEY,
+  persistReturnTo,
+} from "@/lib/auth-redirect";
 import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
-
-// Session storage key for preserving return_to across OAuth redirects
-const RETURN_TO_KEY = "everruns_return_to";
 
 // OAuth provider display names (logos come from OAuthProviderIcon)
 const oauthProviders: Record<string, { name: string }> = {
@@ -45,6 +48,10 @@ const OAUTH_ERROR_COPY: Record<string, string> = {
   oauth_not_permitted:
     "That account can't be used to sign in here. Try a different account or continue with email.",
   oauth_failed: "Sign-in with the provider didn't complete. Try again or continue with email.",
+  // Permanent, not transient: the verified email already has an account bound to
+  // another sign-in method. Name the way through instead of "try again".
+  oauth_account_exists:
+    "This email already has an account. Sign in with the method you first used — your password below, or your original provider.",
 };
 
 export default function LoginPage() {
@@ -95,8 +102,8 @@ export default function LoginPage() {
   const getRedirectTarget = (): string => {
     // Check URL param first, then sessionStorage (for OAuth flow).
     // Both are sanitized so a poisoned sessionStorage can't redirect off-origin.
-    const stored = sanitizeReturnTo(sessionStorage.getItem(RETURN_TO_KEY));
-    sessionStorage.removeItem(RETURN_TO_KEY);
+    const stored = sanitizeReturnTo(sessionStorage.getItem(RETURN_TO_STORAGE_KEY));
+    sessionStorage.removeItem(RETURN_TO_STORAGE_KEY);
     return returnTo || stored || "/dashboard";
   };
 
@@ -166,9 +173,9 @@ export default function LoginPage() {
     if (oauthPending) return;
     setOauthPending(true);
     // Persist return_to in sessionStorage so it survives the OAuth redirect chain
-    const target = returnTo || sessionStorage.getItem(RETURN_TO_KEY);
+    const target = returnTo || sessionStorage.getItem(RETURN_TO_STORAGE_KEY);
     if (target) {
-      sessionStorage.setItem(RETURN_TO_KEY, target);
+      persistReturnTo(target);
     }
     window.location.assign(getOAuthUrl(provider));
   };
@@ -222,6 +229,24 @@ export default function LoginPage() {
                     reset your password
                   </Link>
                   .
+                  {/* Enumeration-safe pointer shown to everyone (reveals nothing
+                      about this email): an OAuth-only account has no password, so
+                      reset silently no-ops — without this line those users hit a
+                      dead end (auth-flow dead-end audit). */}
+                  {hasOAuthProviders && (
+                    <>
+                      {" "}
+                      Signed up with Google or GitHub?{" "}
+                      <button
+                        type="button"
+                        onClick={handleBack}
+                        className="font-medium underline underline-offset-2 hover:no-underline"
+                      >
+                        Go back
+                      </button>{" "}
+                      and use that instead.
+                    </>
+                  )}
                 </>
               )}
             </div>
@@ -262,6 +287,18 @@ export default function LoginPage() {
           </Button>
         </form>
 
+        {canSignup && (
+          <p className="mt-5 text-[13px] text-muted-foreground">
+            New to Everruns?{" "}
+            <Link
+              href={buildSignupHref(returnTo, email)}
+              className="font-medium text-primary hover:underline"
+            >
+              Create an account
+            </Link>
+          </p>
+        )}
+
         {hasOAuthProviders && (
           <p className="mt-5 border-t pt-5 text-[12.5px] leading-relaxed text-muted-foreground">
             Prefer Google or GitHub? Go back — it&apos;s one click and skips email verification.
@@ -281,7 +318,10 @@ export default function LoginPage() {
           <>
             {" "}
             New to Everruns?{" "}
-            <Link href="/signup" className="font-medium text-primary hover:underline">
+            <Link
+              href={buildSignupHref(returnTo)}
+              className="font-medium text-primary hover:underline"
+            >
               Create an account
             </Link>
           </>

@@ -18,6 +18,7 @@ pub mod encryption;
 pub mod harness_store;
 pub mod leased_resource_store;
 pub mod memory;
+mod message_history_timing;
 pub mod message_store;
 pub mod models;
 pub mod partial_stream;
