@@ -258,14 +258,21 @@ impl Tool for ReportResultTool {
 pub struct ReportTaskProgressTool {
     parent_session_id: SessionId,
     task_id: String,
+    task_attempt: i32,
     message_schema: Value,
 }
 
 impl ReportTaskProgressTool {
-    pub fn new(parent_session_id: SessionId, task_id: String, message_schema: Value) -> Self {
+    pub fn new(
+        parent_session_id: SessionId,
+        task_id: String,
+        task_attempt: i32,
+        message_schema: Value,
+    ) -> Self {
         Self {
             parent_session_id,
             task_id,
+            task_attempt,
             message_schema,
         }
     }
@@ -322,7 +329,7 @@ impl Tool for ReportTaskProgressTool {
                         data: arguments.clone(),
                     }],
                     in_reply_to: None,
-                    expected_attempt: None,
+                    expected_attempt: Some(self.task_attempt),
                 },
             )
             .await
@@ -374,12 +381,16 @@ pub async fn report_task_progress_tool_for_child_session(
     else {
         return Ok(None);
     };
+    if task.state.is_terminal() {
+        return Ok(None);
+    }
     let Some(schema) = declared_message_schema(&task).cloned() else {
         return Ok(None);
     };
     Ok(Some(ReportTaskProgressTool::new(
         task.session_id,
         task.id,
+        task.attempt,
         schema,
     )))
 }
