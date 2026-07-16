@@ -670,6 +670,7 @@ async fn process_slack_message(
                 parallel_tool_calls: None,
                 parent_session_id: None,
                 forked_from_session_id: None,
+                budget_root_session_id: None,
                 seed: everruns_core::SessionSeedMode::Fresh,
             };
             let internal_caller = Caller::internal(org_id);
@@ -2462,6 +2463,8 @@ mod tests {
             agent_id: Some(everruns_core::typed_id::AgentId::from_uuid(
                 uuid::Uuid::nil(),
             )),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -2481,6 +2484,7 @@ mod tests {
             blueprint_config: None,
             network_access: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         };
         let session = db.create_session(row).await.unwrap();
         session.id

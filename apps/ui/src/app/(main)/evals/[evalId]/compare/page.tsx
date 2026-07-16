@@ -6,19 +6,17 @@ import Link from "next/link";
 import { useEval, useEvalRunComparison, usePageTitle } from "@/hooks";
 import { RunComparison } from "@/components/evals/run-comparison";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { MAX_COMPARE_RUNS, parseCompareRunIds } from "@/lib/eval-run-comparison";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft } from "lucide-react";
 
 function CompareContent({ evalId }: { evalId: string }) {
   const searchParams = useSearchParams();
-  const runIds = (searchParams.get("runs") ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
+  const { runIds, ignoredCount, exceededLimit } = parseCompareRunIds(searchParams.get("runs"));
 
   const { data: ev } = useEval(evalId);
   usePageTitle("Compare runs", ev?.name ?? null, "Eval");
-  const { runs, isLoading } = useEvalRunComparison(evalId, runIds);
+  const { runs, isLoading, isError } = useEvalRunComparison(evalId, runIds);
 
   return (
     <div className="container mx-auto p-6">
@@ -37,12 +35,23 @@ function CompareContent({ evalId }: { evalId: string }) {
           <CardTitle>Per-case comparison</CardTitle>
         </CardHeader>
         <CardContent>
+          {ignoredCount > 0 ? (
+            <p className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              Ignored {ignoredCount} invalid, duplicate, or excess run{" "}
+              {ignoredCount === 1 ? "ID" : "IDs"}.
+              {exceededLimit ? ` Compare up to ${MAX_COMPARE_RUNS} runs at a time.` : null}
+            </p>
+          ) : null}
           {runIds.length < 2 ? (
             <p className="text-center py-8 text-muted-foreground">
               Select at least two runs from the eval&rsquo;s Runs tab to compare.
             </p>
           ) : isLoading ? (
             <Skeleton className="h-64 w-full" />
+          ) : isError ? (
+            <p className="text-center py-8 text-destructive">
+              Some runs could not be loaded. Check the selected runs and try again.
+            </p>
           ) : runs.length === 0 ? (
             <p className="text-center py-8 text-muted-foreground">No results to compare.</p>
           ) : (

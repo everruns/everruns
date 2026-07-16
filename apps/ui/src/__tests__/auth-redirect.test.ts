@@ -3,6 +3,9 @@ import {
   buildSignupHref,
   consumeReturnTo,
   getLoginRedirectPath,
+  getPostAuthTarget,
+  isFullPageLoginRedirect,
+  navigateToLogin,
   persistReturnTo,
   RETURN_TO_STORAGE_KEY,
   sanitizeReturnTo,
@@ -23,6 +26,54 @@ describe("getLoginRedirectPath", () => {
     expect(getLoginRedirectPath("/dashboard", new URLSearchParams("tab=recent"))).toBe(
       "/login?return_to=%2Fdashboard%3Ftab%3Drecent",
     );
+  });
+
+  it("uses the configured trusted login origin", () => {
+    expect(
+      getLoginRedirectPath(
+        "/settings/providers",
+        new URLSearchParams("tab=models"),
+        "https://id.example.com",
+      ),
+    ).toBe("https://id.example.com/login?return_to=%2Fsettings%2Fproviders%3Ftab%3Dmodels");
+  });
+
+  it("round-trips an OAuth authorize continuation through the configured origin", () => {
+    expect(
+      getLoginRedirectPath(
+        "/oauth/authorize",
+        new URLSearchParams("client_id=test&response_type=code"),
+        "https://id.example.com/",
+      ),
+    ).toBe(
+      "https://id.example.com/login?return_to=%2Foauth%2Fauthorize%3Fclient_id%3Dtest%26response_type%3Dcode",
+    );
+  });
+
+  it("rejects a configured destination that is not an origin", () => {
+    expect(() =>
+      getLoginRedirectPath("/settings", null, "https://id.example.com/login?next=evil"),
+    ).toThrow("Login origin must be an HTTP(S) origin");
+  });
+});
+
+describe("isFullPageLoginRedirect", () => {
+  it("uses client routing only for same-origin relative login paths", () => {
+    expect(isFullPageLoginRedirect("/login?return_to=%2Fsettings")).toBe(false);
+    expect(isFullPageLoginRedirect("https://id.example.com/login?return_to=%2Fsettings")).toBe(
+      true,
+    );
+  });
+
+  it("never sends an absolute login URL through the client router", () => {
+    const replace = jest.fn();
+    const assign = jest.fn();
+    const target = "https://id.example.com/login?return_to=%2Fsettings";
+
+    navigateToLogin(target, replace, assign);
+
+    expect(assign).toHaveBeenCalledWith(target);
+    expect(replace).not.toHaveBeenCalled();
   });
 });
 
@@ -102,5 +153,29 @@ describe("return_to session storage", () => {
     persistReturnTo("//evil.com");
     expect(sessionStorage.getItem(RETURN_TO_STORAGE_KEY)).toBeNull();
     expect(consumeReturnTo()).toBeNull();
+  });
+});
+
+describe("getPostAuthTarget", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it("uses the URL return_to and clears any stored one-shot redirect", () => {
+    persistReturnTo("/invite/token123");
+
+    expect(getPostAuthTarget("/invite/token123")).toBe("/invite/token123");
+    expect(sessionStorage.getItem(RETURN_TO_STORAGE_KEY)).toBeNull();
+  });
+
+  it("falls back to the stored return_to when the URL has none", () => {
+    persistReturnTo("/settings/providers");
+
+    expect(getPostAuthTarget(null)).toBe("/settings/providers");
+    expect(sessionStorage.getItem(RETURN_TO_STORAGE_KEY)).toBeNull();
+  });
+
+  it("falls back to dashboard when no safe target exists", () => {
+    expect(getPostAuthTarget("https://evil.com")).toBe("/dashboard");
   });
 });

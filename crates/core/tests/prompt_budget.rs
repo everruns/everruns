@@ -42,7 +42,13 @@ async fn stateless_todo_list_prompt_within_budget() {
 
 #[tokio::test]
 async fn file_system_prompt_within_budget() {
-    assert_contribution_under(&FileSystemCapability, 950).await;
+    // Bumped 950 → 1000: EVE-778 added the single-read/contextual-search
+    // policy for persisted output to READ_ECONOMY_HINT (read small files
+    // once, one contextual grep_files for large ones), taking the
+    // contribution to 961 bytes. The bullet exists to eliminate repeated
+    // overlapping reads of `/outputs/` logs, so it pays for itself in
+    // tool-result bytes; ratchet the cap up per this file's policy.
+    assert_contribution_under(&FileSystemCapability, 1000).await;
 }
 
 #[tokio::test]

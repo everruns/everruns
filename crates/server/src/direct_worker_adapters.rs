@@ -15,11 +15,13 @@ use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::message_retriever::MessageRetriever;
 use everruns_core::permissions::PermissionResolver;
-use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
+use everruns_core::session_file::{
+    FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
+};
 use everruns_core::traits::{
     BudgetChecker, CreateStoredImage, ImageArtifactStore, PaymentAuthority,
-    ProviderCredentialStore, ProviderCredentials, ResolvedImage, ResolvedModel, StoredImage,
-    StoredImageInfo,
+    ProviderCredentialStore, ProviderCredentials, ResolvedImage, ResolvedModel,
+    SessionCreationAuthority, StoredImage, StoredImageInfo,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
@@ -1212,19 +1214,23 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         let mut matches: Vec<GrepMatch> = results.into_iter().flat_map(|r| r.matches).collect();
 
-        // Also search virtual mounts (use regex path filtering to match DB semantics)
+        // Also search virtual mounts with the shared canonical-path glob semantics.
         if let Some(registry) = &self.virtual_registry
             && let Ok(regex) = regex::Regex::new(pattern)
         {
-            let path_regex = path_pattern
-                .map(regex::Regex::new)
+            let path_matcher = path_pattern
+                .map(everruns_core::session_path::GrepPathPattern::new)
                 .transpose()
                 .unwrap_or(None);
             let virtual_matches = registry.grep(&session_id, &regex, None, 512 * 1024);
             matches.extend(
                 virtual_matches
                     .into_iter()
-                    .filter(|vm| path_regex.as_ref().is_none_or(|re| re.is_match(&vm.path)))
+                    .filter(|vm| {
+                        path_matcher
+                            .as_ref()
+                            .is_none_or(|matcher| matcher.is_match(&vm.path))
+                    })
                     .map(|vm| GrepMatch {
                         path: vm.path,
                         line_number: vm.line_number,
@@ -1234,6 +1240,23 @@ impl WorkerAdapters for DirectWorkerAdapters {
         }
 
         Ok(matches)
+    }
+
+    async fn grep_files_with_options(
+        &self,
+        session_id: Uuid,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        crate::domains::session_files::service::grep_session_files_with_options(
+            &self.db,
+            self.virtual_registry.as_deref(),
+            session_id,
+            pattern,
+            options,
+        )
+        .await
+        .map_err(|error| store_error(format!("Failed to grep files: {error}")))
     }
 
     async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo> {
@@ -1603,6 +1626,27 @@ impl WorkerAdapters for DirectWorkerAdapters {
         ))
     }
 
+    fn session_creation_authority(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Option<Arc<dyn SessionCreationAuthority>> {
+        Some(Arc::new(DirectPlatformStore::new(
+            org_id,
+            session_id,
+            self.db.clone(),
+            DirectPlatformStoreDeps {
+                event_service: self.event_service.clone(),
+                runner: self.runner.clone(),
+                capability_registry: self.capability_registry.clone(),
+                encryption: self.encryption.clone(),
+                workflow_store: self.workflow_store.clone(),
+                permission_resolver: self.permission_resolver.clone(),
+                egress_service: self.egress_service.clone(),
+            },
+        )))
+    }
+
     fn outbound_tool_rate_limiter(
         &self,
         _org_id: i64,
@@ -1660,6 +1704,46 @@ impl WorkerAdapters for DirectWorkerAdapters {
         )
         .await
         .map_err(|error| store_error(format!("Failed to invoke scheduled app channel: {error}")))?;
+
+        Ok(serde_json::json!({
+            "session_id": result.session_id.to_string(),
+            "created_session": result.created_session,
+        }))
+    }
+
+    async fn invoke_agent_trigger(
+        &self,
+        org_id: i64,
+        agent_id: &str,
+        trigger_id: &str,
+    ) -> Result<serde_json::Value> {
+        let runner = self
+            .runner
+            .clone()
+            .ok_or_else(|| store_error("Agent runner not configured"))?;
+        let session_service = if let Some(registry) = self.virtual_registry.clone() {
+            SessionService::with_registry(self.db.clone(), self.capability_registry.clone())
+                .with_virtual_registry(registry)
+        } else {
+            SessionService::with_registry(self.db.clone(), self.capability_registry.clone())
+        };
+        let message_service = MessageService::new(
+            self.db.clone(),
+            runner,
+            false,
+            self.event_service.event_delivery().clone(),
+        );
+
+        let result = crate::domains::agent_triggers::invoke_agent_trigger(
+            &self.db,
+            &session_service,
+            &message_service,
+            org_id,
+            agent_id,
+            trigger_id,
+        )
+        .await
+        .map_err(|error| store_error(format!("Failed to invoke agent trigger: {error}")))?;
 
         Ok(serde_json::json!({
             "session_id": result.session_id.to_string(),
@@ -2635,6 +2719,31 @@ impl DirectPlatformStore {
 }
 
 #[async_trait]
+impl SessionCreationAuthority for DirectPlatformStore {
+    async fn authorize_session_creation(
+        &self,
+        session_id: SessionId,
+    ) -> everruns_core::error::Result<SessionId> {
+        if session_id != self.session_id {
+            return Err(AgentLoopError::tool(
+                "session-creation authority is scoped to the current session",
+            ));
+        }
+        let caller = self.resolve_caller().await?;
+        crate::domains::sessions::SESSION_MANAGE
+            .evaluate_with(self.permission_resolver.as_ref(), &caller)
+            .map_err(|error| AgentLoopError::tool(error.message))?;
+        let session = self
+            .db
+            .get_session(self.org_id, session_id)
+            .await
+            .map_err(|error| store_error(format!("Failed to load session budget root: {error}")))?
+            .ok_or_else(|| store_error("Session not found for session-creation authority"))?;
+        Ok(session.root_session_id.unwrap_or(session.id))
+    }
+}
+
+#[async_trait]
 impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     // =========================================================================
     // Harness Operations
@@ -3147,6 +3256,34 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         .await
     }
 
+    async fn create_session_with_options(
+        &self,
+        request: everruns_core::platform_store::PlatformCreateSessionRequest,
+    ) -> everruns_core::error::Result<Session> {
+        self.execute_domain_command(
+            "create_session",
+            serde_json::json!({
+                "harness_id": request.harness_id.to_string(),
+                "agent_id": request.agent_id.map(|id| id.to_string()),
+                "title": request.title,
+                "goal": request.goal,
+                "locale": request.locale,
+                "tags": ["managed"],
+                "capabilities": [],
+                "tools": [],
+                "mcp_servers": {},
+                "initial_files": [],
+                "blueprint_id": request.blueprint_id,
+                "blueprint_config": request.blueprint_config,
+                "parent_session_id": request.parent_session_id.map(|id| id.to_string()),
+                "forked_from_session_id": request.forked_from_session_id.map(|id| id.to_string()),
+                "budget_root_session_id": request.budget_root_session_id.map(|id| id.to_string()),
+                "seed": request.seed,
+            }),
+        )
+        .await
+    }
+
     async fn get_session_by_id(
         &self,
         id: SessionId,
@@ -3581,6 +3718,41 @@ mod tests {
         assert!(result.is_err());
     }
 
+    #[tokio::test]
+    async fn grep_files_returns_bounded_merged_context() {
+        let adapters = test_adapters();
+        let session_id = Uuid::new_v4();
+        seed_file(
+            &adapters.db,
+            session_id,
+            "/events.log",
+            "before\nError one\nbetween\nError two\nafter\n",
+        )
+        .await;
+
+        let result = adapters
+            .grep_files_with_options(
+                session_id,
+                "Error",
+                &GrepOptions {
+                    path_pattern: None,
+                    before_context: 1,
+                    after_context: 1,
+                    offset: 0,
+                    limit: 2,
+                    max_bytes: everruns_core::GREP_MAX_RETURN_BYTES,
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(result.total_matches, 2);
+        assert_eq!(result.returned_matches, 2);
+        assert_eq!(result.blocks.len(), 1);
+        assert_eq!(result.blocks[0].match_line_numbers, vec![2, 4]);
+        assert_eq!(result.blocks[0].lines.len(), 5);
+    }
+
     async fn seed_harness_for_platform_store(
         db: &StorageBackend,
         org_id: i64,
@@ -3623,6 +3795,8 @@ mod tests {
             app_id: None,
             harness_id: Some(harness_id),
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id,
@@ -3642,6 +3816,7 @@ mod tests {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .expect("seed session")
@@ -3810,6 +3985,81 @@ mod tests {
                 || err.to_string().contains("Permission denied"),
             "unexpected error: {err}"
         );
+    }
+
+    struct DenySessionManageResolver;
+
+    impl everruns_core::PermissionResolver for DenySessionManageResolver {
+        fn has_permission(
+            &self,
+            caller: &everruns_core::Caller,
+            permission: &everruns_core::Permission,
+        ) -> bool {
+            *permission != everruns_core::Permission::OrgSessionsManage
+                && everruns_core::DefaultPermissionResolver.has_permission(caller, permission)
+        }
+
+        fn caller_permissions(
+            &self,
+            caller: &everruns_core::Caller,
+        ) -> Vec<everruns_core::Permission> {
+            everruns_core::DefaultPermissionResolver
+                .caller_permissions(caller)
+                .into_iter()
+                .filter(|permission| *permission != everruns_core::Permission::OrgSessionsManage)
+                .collect()
+        }
+    }
+
+    #[tokio::test]
+    async fn session_creation_authority_uses_owner_permission_and_returns_root() {
+        let adapters = test_adapters();
+        let org_id = everruns_core::DEFAULT_ORG_ID;
+        let owner_id =
+            seed_platform_owner(&adapters.db, org_id, "detached-authority-owner@example.com").await;
+        let harness_id =
+            seed_harness_for_platform_store(&adapters.db, org_id, "authority-harness", false).await;
+        let root_id = seed_platform_session(&adapters.db, org_id, harness_id, Some(owner_id)).await;
+        let authority = adapters
+            .session_creation_authority(org_id, root_id)
+            .expect("direct authority");
+        assert_eq!(
+            authority
+                .authorize_session_creation(root_id)
+                .await
+                .expect("owner may create sessions"),
+            root_id
+        );
+
+        let denied_adapters =
+            test_adapters().with_permission_resolver(Arc::new(DenySessionManageResolver));
+        let denied_owner = seed_platform_owner(
+            &denied_adapters.db,
+            org_id,
+            "detached-authority-denied@example.com",
+        )
+        .await;
+        let denied_harness = seed_harness_for_platform_store(
+            &denied_adapters.db,
+            org_id,
+            "denied-authority-harness",
+            false,
+        )
+        .await;
+        let denied_session = seed_platform_session(
+            &denied_adapters.db,
+            org_id,
+            denied_harness,
+            Some(denied_owner),
+        )
+        .await;
+        let denied = denied_adapters
+            .session_creation_authority(org_id, denied_session)
+            .expect("direct authority")
+            .authorize_session_creation(denied_session)
+            .await
+            .expect_err("custom resolver denial must be honored");
+        assert!(denied.to_string().contains("Access denied"));
     }
 
     /// Regression: the direct platform store's command ctx must carry the
@@ -4473,6 +4723,8 @@ mod tests {
                 org_id: everruns_core::DEFAULT_ORG_ID,
                 app_id: None,
                 agent_id: Some(AgentId::from_uuid(agent_id)),
+                agent_version_id: None,
+                agent_config_hash: None,
                 agent_identity_id: None,
                 harness_id: Some(HarnessId::from_seed(1)),
                 owner_principal_id: everruns_core::PrincipalId::from_seed(1),
@@ -4493,6 +4745,7 @@ mod tests {
                 blueprint_config: None,
                 network_access: None,
                 parent_session_id: None,
+                budget_root_session_id: None,
             })
             .await
             .expect("create session");

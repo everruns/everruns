@@ -32,6 +32,7 @@ jest.mock("@/lib/api/auth", () => ({ getOAuthUrl: jest.fn(() => "/oauth") }));
 jest.mock("@/lib/auth-redirect", () => ({
   buildLoginHref: () => "/login",
   consumeReturnTo: () => null,
+  getPostAuthTarget: () => "/dashboard",
   isBackendNavigationPath: () => false,
   persistReturnTo: jest.fn(),
   sanitizeReturnTo: () => "",

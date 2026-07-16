@@ -376,6 +376,116 @@ fn proto_session_id(session: &proto::Session) -> everruns_core::SessionId {
     everruns_core::SessionId::from_uuid(id.value.parse().expect("uuid session id"))
 }
 
+struct DenyGrpcSessionManageResolver;
+
+impl everruns_core::PermissionResolver for DenyGrpcSessionManageResolver {
+    fn has_permission(
+        &self,
+        caller: &everruns_core::Caller,
+        permission: &everruns_core::Permission,
+    ) -> bool {
+        *permission != everruns_core::Permission::OrgSessionsManage
+            && everruns_core::DefaultPermissionResolver.has_permission(caller, permission)
+    }
+
+    fn caller_permissions(&self, caller: &everruns_core::Caller) -> Vec<everruns_core::Permission> {
+        everruns_core::DefaultPermissionResolver
+            .caller_permissions(caller)
+            .into_iter()
+            .filter(|permission| *permission != everruns_core::Permission::OrgSessionsManage)
+            .collect()
+    }
+}
+
+#[tokio::test]
+async fn authorize_session_creation_is_owner_scoped_and_returns_budget_root() {
+    use crate::storage::models::{CreateSessionRow, CreateUserRow};
+
+    let mut service = test_worker_service().await;
+    let user = service
+        .db
+        .create_user(CreateUserRow {
+            email: "grpc-session-authority@example.com".to_string(),
+            name: "gRPC Session Authority".to_string(),
+            avatar_url: None,
+            external_id: None,
+            roles: vec![],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: Some("test".to_string()),
+            auth_provider_id: None,
+        })
+        .await
+        .unwrap();
+    service
+        .db
+        .ensure_membership(user.id, everruns_core::DEFAULT_ORG_ID, "owner")
+        .await
+        .unwrap();
+    let session = service
+        .db
+        .create_session(CreateSessionRow {
+            workspace_id: None,
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            app_id: None,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            resolved_owner_user_id: Some(user.id),
+            title: Some("authority root".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
+        })
+        .await
+        .unwrap();
+
+    let response = service
+        .authorize_session_creation(Request::new(AuthorizeSessionCreationRequest {
+            org_id: session.org_id,
+            session_id: session.id.to_string(),
+        }))
+        .await
+        .expect("owner authority")
+        .into_inner();
+    assert_eq!(response.budget_root_session_id, session.id.to_string());
+
+    let foreign = service
+        .authorize_session_creation(Request::new(AuthorizeSessionCreationRequest {
+            org_id: session.org_id + 1,
+            session_id: session.id.to_string(),
+        }))
+        .await
+        .expect_err("cross-org authority lookup must fail");
+    assert_eq!(foreign.code(), tonic::Code::NotFound);
+
+    service.set_permission_resolver(Arc::new(DenyGrpcSessionManageResolver));
+    let denied = service
+        .authorize_session_creation(Request::new(AuthorizeSessionCreationRequest {
+            org_id: session.org_id,
+            session_id: session.id.to_string(),
+        }))
+        .await
+        .expect_err("active permission resolver must be honored");
+    assert_eq!(denied.code(), tonic::Code::PermissionDenied);
+}
+
 async fn start_grpc_test_server(
     service: WorkerServiceImpl,
 ) -> (
@@ -485,6 +595,13 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
     let mut context = everruns_core::traits::ToolContext::new(parent_id);
     context.platform_store = Some(adapter.clone());
     context.session_store = Some(adapter.clone());
+    context.session_creation_authority = Some(Arc::new(
+        everruns_worker::grpc_adapters::GrpcSessionCreationAuthority::new(
+            client.clone(),
+            everruns_core::DEFAULT_ORG_ID,
+            parent_id,
+        ),
+    ));
 
     let spawn_tool = everruns_core::capabilities::SpawnSubagentAsAgentTool;
     let spawn_result = spawn_tool
@@ -515,6 +632,34 @@ async fn test_subagent_and_handoff_tools_complete_over_grpc_platform_adapter() {
         .expect("spawned subagent exists");
     // parent_session_id is set on spawn for delegation tree tracking; name/status now live on the task record.
     assert_eq!(subagent.parent_session_id, Some(parent_id));
+
+    let detached_result = spawn_tool
+        .execute_with_context(
+            serde_json::json!({
+                "name": "gRPC Detached Peer",
+                "instructions": "Exercise authorized detached creation through the worker path",
+                "target": { "type": "subagent" },
+                "lifetime": "detached",
+                "mode": "foreground"
+            }),
+            &context,
+        )
+        .await;
+    let ToolExecutionResult::Success(detached_value) = detached_result else {
+        panic!("authorized detached spawn should succeed over grpc, got {detached_result:?}");
+    };
+    let detached_id: everruns_core::SessionId = detached_value["subagent_id"]
+        .as_str()
+        .expect("detached id")
+        .parse()
+        .expect("detached id parses");
+    let detached = adapter
+        .get_session_by_id(detached_id)
+        .await
+        .expect("get detached peer")
+        .expect("detached peer exists");
+    assert_eq!(detached.parent_session_id, None);
+    assert_eq!(detached.forked_from_session_id, Some(parent_id));
 
     let target_agent = adapter
         .create_agent(

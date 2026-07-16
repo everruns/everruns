@@ -1072,6 +1072,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             parallel_tool_calls: config
                 .resolved_parallel_tool_calls(self.supports_parallel_tool_calls(&config.model)),
             service_tier: config.speed.clone(),
+            text: config.verbosity.clone().map(|verbosity| ResponsesText {
+                verbosity: Some(verbosity),
+            }),
         };
 
         // Log request details for debugging LLM errors.
@@ -1216,11 +1219,15 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                     }
 
                                     Some("response.output_item.added") => {
-                                        // New output item added - may be function call
-                                        if let Some(item) = json.get("item")
-                                            && item.get("type").and_then(|t| t.as_str())
-                                                == Some("function_call")
-                                        {
+                                        // New output item added - may be a function
+                                        // call or an assistant message carrying a
+                                        // native phase.
+                                        let item_type = json
+                                            .get("item")
+                                            .and_then(|i| i.get("type"))
+                                            .and_then(|t| t.as_str());
+                                        if item_type == Some("function_call") {
+                                            let item = json.get("item").unwrap();
                                             let id = item
                                                 .get("id")
                                                 .and_then(|c| c.as_str())
@@ -1248,6 +1255,21 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                                     name,
                                                     arguments: String::new(),
                                                 });
+                                            }
+                                        } else if item_type == Some("message") {
+                                            // Surface the assistant item's native
+                                            // phase mid-stream as a best-effort hint
+                                            // (EVE-774); Done metadata stays
+                                            // authoritative.
+                                            if let Some(phase) = json
+                                                .get("item")
+                                                .and_then(|i| i.get("phase"))
+                                                .and_then(|p| p.as_str())
+                                                .and_then(
+                                                    crate::message::ExecutionPhase::from_provider_str,
+                                                )
+                                            {
+                                                return Ok(LlmStreamEvent::MessagePhase(phase));
                                             }
                                         }
                                         Ok(LlmStreamEvent::TextDelta(String::new()))
@@ -1408,12 +1430,14 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                             raw_error = %json.get("error").unwrap_or(&json),
                                             "OpenResponsesDriver: received streaming error event (fallback parser)"
                                         );
-                                        let formatted = if error_code != "unknown" {
-                                            format!("{}: {}", error_code, error_msg)
-                                        } else {
-                                            error_msg.to_string()
-                                        };
-                                        Ok(LlmStreamEvent::Error(formatted))
+                                        Ok(LlmStreamEvent::Error(
+                                            crate::driver_registry::LlmStreamError::provider(
+                                                (error_code != "unknown")
+                                                    .then_some(error_code.to_string()),
+                                                None,
+                                                error_msg,
+                                            ),
+                                        ))
                                     }
 
                                     _ => {
@@ -1422,13 +1446,14 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                     }
                                 }
                             }
-                            Err(e) => Ok(LlmStreamEvent::Error(format!(
-                                "Failed to parse event: {}",
-                                e
-                            ))),
+                            Err(e) => Ok(LlmStreamEvent::Error(
+                                format!("Failed to parse event: {}", e).into(),
+                            )),
                         }
                     }
-                    Err(e) => Ok(LlmStreamEvent::Error(format!("Stream error: {}", e))),
+                    Err(e) => Ok(LlmStreamEvent::Error(
+                        format!("Stream error: {}", e).into(),
+                    )),
                 }
             }
         }));
@@ -1526,24 +1551,38 @@ fn handle_streaming_event(
         }
 
         StreamingEvent::OutputItemAdded { item, .. } => {
-            if let Some(types::OutputItem::FunctionCall {
-                id, call_id, name, ..
-            }) = item
-            {
-                let mut acc = accumulated_tool_calls.lock().unwrap();
-                if let Some(tc) = acc.iter_mut().find(|t| t.id == id) {
-                    tc.name = name;
-                    tc.call_id = call_id;
-                } else {
-                    acc.push(ToolCallAccumulator {
-                        id,
-                        call_id,
-                        name,
-                        arguments: String::new(),
-                    });
+            match item {
+                Some(types::OutputItem::FunctionCall {
+                    id, call_id, name, ..
+                }) => {
+                    let mut acc = accumulated_tool_calls.lock().unwrap();
+                    if let Some(tc) = acc.iter_mut().find(|t| t.id == id) {
+                        tc.name = name;
+                        tc.call_id = call_id;
+                    } else {
+                        acc.push(ToolCallAccumulator {
+                            id,
+                            call_id,
+                            name,
+                            arguments: String::new(),
+                        });
+                    }
+                    LlmStreamEvent::TextDelta(String::new())
                 }
+                // OpenAI Responses stamps the assistant item's phase on
+                // `response.output_item.added`, i.e. before any text delta of
+                // that item. Surface it as a best-effort streamed hint (EVE-774)
+                // so consumers can classify commentary vs final answer while
+                // streaming; the terminal Done metadata stays authoritative.
+                Some(types::OutputItem::Message {
+                    phase: Some(phase_str),
+                    ..
+                }) => match crate::message::ExecutionPhase::from_provider_str(&phase_str) {
+                    Some(phase) => LlmStreamEvent::MessagePhase(phase),
+                    None => LlmStreamEvent::TextDelta(String::new()),
+                },
+                _ => LlmStreamEvent::TextDelta(String::new()),
             }
-            LlmStreamEvent::TextDelta(String::new())
         }
 
         StreamingEvent::OutputItemDone { item, .. } => {
@@ -1667,22 +1706,39 @@ fn handle_streaming_event(
         }
 
         StreamingEvent::Error { error, .. } => {
-            let msg = if let Some(code) = &error.code {
-                format!("{}: {}", code, error.message)
-            } else {
-                error.message.clone()
-            };
             tracing::warn!(
                 error_code = error.code.as_deref().unwrap_or("none"),
                 error_message = %error.message,
                 "OpenResponsesDriver: received streaming error event from provider"
             );
-            LlmStreamEvent::Error(msg)
+            LlmStreamEvent::Error(crate::driver_registry::LlmStreamError::provider(
+                error.code,
+                None,
+                error.message,
+            ))
+        }
+
+        StreamingEvent::ResponseFailed { response, .. } => {
+            let error = response.error.unwrap_or(types::Error {
+                code: "processing_error".to_string(),
+                message: "The provider failed while processing the response".to_string(),
+            });
+            tracing::warn!(
+                response_id = %response.id,
+                error_code = %error.code,
+                error_message = %error.message,
+                "OpenResponsesDriver: response failed in stream"
+            );
+            LlmStreamEvent::Error(crate::driver_registry::LlmStreamError::provider(
+                Some(error.code),
+                None,
+                error.message,
+            ))
         }
 
         StreamingEvent::RefusalDelta { delta, .. } => {
             // Treat refusal as an error message
-            LlmStreamEvent::Error(format!("Model refused: {}", delta))
+            LlmStreamEvent::Error(format!("Model refused: {}", delta).into())
         }
 
         // All other events: emit empty delta to maintain stream continuity
@@ -2037,6 +2093,18 @@ struct ResponsesRequest {
     /// Omitted when `None` so the provider keeps its default ("auto") routing.
     #[serde(skip_serializing_if = "Option::is_none")]
     service_tier: Option<String>,
+    /// Text output controls, currently just `verbosity`. Omitted when there is
+    /// nothing to configure so the provider keeps its default output length.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    text: Option<ResponsesText>,
+}
+
+/// `text` request block for the Responses API. Verbosity ("low"/"medium"/"high")
+/// controls output length independently of reasoning effort.
+#[derive(Debug, Serialize)]
+struct ResponsesText {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    verbosity: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -2171,6 +2239,7 @@ mod tests {
     #[test]
     fn test_request_serialization() {
         let request = ResponsesRequest {
+            text: None,
             service_tier: None,
             model: "gpt-4o".to_string(),
             input: vec![ResponsesInputItem::Message {
@@ -2201,6 +2270,7 @@ mod tests {
     #[test]
     fn test_request_with_reasoning() {
         let request = ResponsesRequest {
+            text: None,
             service_tier: None,
             model: "o3".to_string(),
             input: vec![ResponsesInputItem::Message {
@@ -2236,6 +2306,7 @@ mod tests {
         metadata.insert("agent_id".to_string(), "agent_xyz789".to_string());
 
         let request = ResponsesRequest {
+            text: None,
             service_tier: None,
             model: "gpt-4o".to_string(),
             input: vec![ResponsesInputItem::Message {
@@ -2266,6 +2337,7 @@ mod tests {
     #[test]
     fn test_request_serializes_parallel_tool_calls() {
         let make = |flag: Option<bool>| ResponsesRequest {
+            text: None,
             service_tier: None,
             model: "gpt-5.4".to_string(),
             input: vec![ResponsesInputItem::Message {
@@ -2322,6 +2394,7 @@ mod tests {
             metadata: None,
             prompt_cache_key: None,
             parallel_tool_calls: None,
+            text: None,
         };
 
         let json = serde_json::to_value(make(None)).unwrap();
@@ -2334,12 +2407,51 @@ mod tests {
         assert_eq!(json["service_tier"], "flex");
     }
 
+    /// Verbosity serializes as a nested `text.verbosity` object only when set,
+    /// preserving the provider's default output length when `None`.
+    #[test]
+    fn test_request_serializes_verbosity() {
+        let make = |verbosity: Option<&str>| ResponsesRequest {
+            service_tier: None,
+            text: verbosity.map(|v| ResponsesText {
+                verbosity: Some(v.to_string()),
+            }),
+            model: "gpt-5.6-sol".to_string(),
+            input: vec![ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("Hello".to_string()),
+                phase: None,
+            }],
+            instructions: None,
+            previous_response_id: None,
+            temperature: None,
+            max_output_tokens: None,
+            stream: true,
+            tools: None,
+            reasoning: None,
+            metadata: None,
+            prompt_cache_key: None,
+            parallel_tool_calls: None,
+        };
+
+        let json = serde_json::to_value(make(None)).unwrap();
+        assert!(json.get("text").is_none());
+
+        let json = serde_json::to_value(make(Some("low"))).unwrap();
+        assert_eq!(json["text"]["verbosity"], "low");
+
+        let json = serde_json::to_value(make(Some("high"))).unwrap();
+        assert_eq!(json["text"]["verbosity"], "high");
+    }
+
     #[test]
     fn test_build_prompt_cache_key_when_enabled() {
         let mut metadata = std::collections::HashMap::new();
         metadata.insert("session_id".to_string(), "session_abc123".to_string());
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,
@@ -2381,6 +2493,7 @@ mod tests {
         metadata.insert("session_id".to_string(), "session_abc123".to_string());
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,
@@ -2435,6 +2548,7 @@ mod tests {
         second_metadata.insert("session_id".to_string(), "session_xyz789".to_string());
         let make_config = |metadata| LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,
@@ -2479,6 +2593,7 @@ mod tests {
     fn test_build_prompt_cache_key_stays_within_openai_limit() {
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.5".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3355,6 +3470,7 @@ mod tests {
 
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "some/model".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3441,6 +3557,7 @@ mod tests {
 
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3502,6 +3619,7 @@ mod tests {
         metadata.insert("session_id".to_string(), "session_abc123".to_string());
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5-mini".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3568,6 +3686,7 @@ mod tests {
         let driver = OpenResponsesProtocolChatDriver::with_base_url("test-key", api_url);
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "openai/gpt-4o-mini".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3969,6 +4088,128 @@ mod tests {
     }
 
     #[test]
+    fn output_item_added_message_surfaces_native_phase_hint() {
+        use std::sync::Mutex;
+
+        // EVE-774: OpenAI Responses stamps the assistant item's phase on
+        // `response.output_item.added` (before any text delta). The driver must
+        // surface it as a mid-stream `MessagePhase` hint.
+        for (wire, expected) in [
+            ("commentary", crate::message::ExecutionPhase::Commentary),
+            ("final_answer", crate::message::ExecutionPhase::FinalAnswer),
+        ] {
+            let event: StreamingEvent = serde_json::from_value(serde_json::json!({
+                "type": "response.output_item.added",
+                "sequence_number": 1,
+                "output_index": 0,
+                "item": {
+                    "type": "message",
+                    "id": "msg_001",
+                    "status": "in_progress",
+                    "role": "assistant",
+                    "content": [],
+                    "phase": wire,
+                }
+            }))
+            .expect("output_item.added should deserialize");
+
+            let result = handle_streaming_event(
+                event,
+                &Mutex::new(0),
+                &Mutex::new(0),
+                &Mutex::new(None),
+                &Mutex::new(Vec::new()),
+                &Mutex::new(None),
+                "gpt-5".to_string(),
+                None,
+            );
+
+            match result {
+                LlmStreamEvent::MessagePhase(phase) => assert_eq!(phase, expected),
+                other => panic!("Expected MessagePhase({expected:?}), got {other:?}"),
+            }
+        }
+    }
+
+    #[test]
+    fn output_item_added_message_without_phase_is_noop() {
+        use std::sync::Mutex;
+
+        // A message item that carries no phase yields no hint (empty text delta),
+        // never a fabricated phase.
+        let event: StreamingEvent = serde_json::from_value(serde_json::json!({
+            "type": "response.output_item.added",
+            "sequence_number": 1,
+            "output_index": 0,
+            "item": {
+                "type": "message",
+                "id": "msg_002",
+                "status": "in_progress",
+                "role": "assistant",
+                "content": [],
+            }
+        }))
+        .expect("output_item.added should deserialize");
+
+        let result = handle_streaming_event(
+            event,
+            &Mutex::new(0),
+            &Mutex::new(0),
+            &Mutex::new(None),
+            &Mutex::new(Vec::new()),
+            &Mutex::new(None),
+            "gpt-5".to_string(),
+            None,
+        );
+
+        match result {
+            LlmStreamEvent::TextDelta(d) => assert!(d.is_empty()),
+            other => panic!("Expected empty TextDelta, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn response_failed_preserves_provider_error_code() {
+        use std::sync::Mutex;
+
+        let event: StreamingEvent = serde_json::from_value(serde_json::json!({
+            "type": "response.failed",
+            "sequence_number": 7,
+            "response": {
+                "id": "resp_failed",
+                "object": "response",
+                "created_at": 1,
+                "status": "failed",
+                "model": "gpt-5",
+                "output": [],
+                "tools": [],
+                "error": {
+                    "code": "processing_error",
+                    "message": "An error occurred while processing your request."
+                }
+            }
+        }))
+        .expect("response.failed should deserialize");
+
+        let result = handle_streaming_event(
+            event,
+            &Mutex::new(0),
+            &Mutex::new(0),
+            &Mutex::new(None),
+            &Mutex::new(Vec::new()),
+            &Mutex::new(None),
+            "gpt-5".to_string(),
+            None,
+        );
+
+        let LlmStreamEvent::Error(error) = result else {
+            panic!("expected structured stream error");
+        };
+        assert_eq!(error.code.as_deref(), Some("processing_error"));
+        assert!(crate::llm_retry::is_transient_stream_error(&error));
+    }
+
+    #[test]
     fn test_handle_streaming_event_reasoning_without_encrypted_content() {
         use std::sync::Mutex;
 
@@ -4162,6 +4403,7 @@ mod tests {
         // to avoid API errors on models that don't support reasoning params
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.2".to_string(),
             temperature: None,
             max_tokens: None,
@@ -4197,6 +4439,7 @@ mod tests {
         // When reasoning effort is "high", the reasoning field should be present
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.2".to_string(),
             temperature: None,
             max_tokens: None,
@@ -4781,6 +5024,7 @@ mod tests {
     fn auth_test_config() -> LlmCallConfig {
         LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,

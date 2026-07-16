@@ -41,7 +41,9 @@ use crate::events::{
     ReasonThinkingStartedData, RecoveryMode, TokenUsage, ToolDefinitionSummary,
     TranscriptRepairAction, TranscriptRepairedData,
 };
-use crate::llm_retry::is_transient_error_message;
+use crate::llm_retry::{
+    LlmRetryConfig, RetryMetadata, is_transient_error_message, is_transient_stream_error,
+};
 use crate::message::{Message, MessageRole};
 use crate::message_retriever::MessageRetriever;
 use crate::openresponses_protocol::{
@@ -349,10 +351,38 @@ fn stream_event_advances_stall_deadline(event: &LlmStreamEvent) -> bool {
                 || token_count.is_some_and(|count| count > 0)
         }
         LlmStreamEvent::ToolCalls(calls) => !calls.is_empty(),
-        LlmStreamEvent::ThinkingSignature(_)
+        // MessagePhase is a metadata hint, not assistant output progress.
+        LlmStreamEvent::MessagePhase(_)
+        | LlmStreamEvent::ThinkingSignature(_)
         | LlmStreamEvent::Done(_)
         | LlmStreamEvent::Error(_) => false,
     }
+}
+
+fn should_retry_stream_error(
+    error: &crate::driver_registry::LlmStreamError,
+    retry_attempts: u32,
+    max_retries: u32,
+    has_output: bool,
+) -> bool {
+    retry_attempts < max_retries && !has_output && is_transient_stream_error(error)
+}
+
+fn merge_retry_metadata(
+    existing: Option<RetryMetadata>,
+    additional: &RetryMetadata,
+) -> Option<RetryMetadata> {
+    if !additional.had_retries() {
+        return existing;
+    }
+
+    let mut merged = existing.unwrap_or_default();
+    merged.attempts += additional.attempts;
+    merged.total_retry_wait += additional.total_retry_wait;
+    if additional.last_rate_limit_info.is_some() {
+        merged.last_rate_limit_info = additional.last_rate_limit_info.clone();
+    }
+    Some(merged)
 }
 
 fn unix_now_secs() -> u64 {
@@ -382,6 +412,7 @@ fn is_error_placeholder_message(msg: &Message) -> bool {
                 | user_facing_error_codes::MODEL_UNAVAILABLE
                 | user_facing_error_codes::REQUEST_TOO_LARGE
                 | user_facing_error_codes::PROVIDER_RATE_LIMITED
+                | user_facing_error_codes::PROVIDER_USAGE_LIMIT_REACHED
                 | user_facing_error_codes::PROVIDER_MISCONFIGURED
                 | user_facing_error_codes::PROVIDER_QUOTA_EXHAUSTED
                 | user_facing_error_codes::PROVIDER_UNAVAILABLE
@@ -701,6 +732,12 @@ pub struct ReasonAtom {
     /// end-of-message output guardrails (e.g. moderation). When absent, those
     /// guardrails fail open and the seam is a no-op.
     utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
+    /// Optional session schedule store. Used by the `usage_limit_auto_continue`
+    /// capability to schedule a one-shot continuation after a provider usage
+    /// limit resets. When absent, the capability degrades to a no-op (no
+    /// continuation is scheduled and the error copy makes no auto-resume
+    /// promise).
+    schedule_store: Option<Arc<dyn crate::traits::SessionScheduleStore>>,
 }
 
 impl ReasonAtom {
@@ -733,7 +770,40 @@ impl ReasonAtom {
             partial_stream_store: None,
             reasoning_effort_handle: None,
             utility_llm_service: None,
+            schedule_store: None,
         }
+    }
+
+    /// Set the session schedule store used by `usage_limit_auto_continue` to
+    /// schedule a continuation after a provider usage limit resets.
+    pub fn with_schedule_store(
+        mut self,
+        store: Arc<dyn crate::traits::SessionScheduleStore>,
+    ) -> Self {
+        self.schedule_store = Some(store);
+        self
+    }
+
+    /// Collect the [`LlmErrorHook`]s contributed by the active capabilities,
+    /// paired with each capability's per-agent config. Hooks are invoked
+    /// generically on the terminal-error path; the reason atom has no knowledge
+    /// of any specific capability's behavior. Capabilities that contribute no
+    /// hook — the common case — are skipped at zero allocation cost.
+    fn collect_llm_error_hooks(
+        &self,
+        resolved_capability_configs: &[crate::AgentCapabilityConfig],
+    ) -> Vec<(
+        Arc<dyn crate::llm_error_hook::LlmErrorHook>,
+        serde_json::Value,
+    )> {
+        resolved_capability_configs
+            .iter()
+            .filter_map(|cfg| {
+                let cap = self.capability_registry.get(cfg.capability_ref.as_str())?;
+                let hook = cap.llm_error_hook()?;
+                Some((hook, cfg.config.clone()))
+            })
+            .collect()
     }
 
     /// Set the file store for capabilities that need filesystem access.
@@ -1004,12 +1074,17 @@ impl ReasonAtom {
             }
         };
 
-        let (error_disclosure, error_context, call_result) = match assembled {
+        let (error_disclosure, error_context, error_hooks, call_result) = match assembled {
             Ok(assembled) => {
                 let error_disclosure = crate::capabilities::resolve_error_disclosure(
                     &assembled.resolved_capability_configs,
                     error_disclosure_override(&assembled.messages).as_deref(),
                 );
+                // Collected before `assembled` is consumed by the LLM call so the
+                // terminal-error path below can run capability error hooks even
+                // though it no longer has the capability configs.
+                let error_hooks =
+                    self.collect_llm_error_hooks(&assembled.resolved_capability_configs);
                 let error_context = UserFacingErrorContext::default()
                     .with_provider(assembled.model_with_provider.provider_type.to_string())
                     .with_model_id(assembled.model_with_provider.model.clone());
@@ -1027,11 +1102,12 @@ impl ReasonAtom {
                         assembled,
                     )
                     .await;
-                (error_disclosure, error_context, call_result)
+                (error_disclosure, error_context, error_hooks, call_result)
             }
             Err(error) => (
                 ErrorDisclosure::default(),
                 UserFacingErrorContext::default(),
+                Vec::new(),
                 Err(error),
             ),
         };
@@ -1085,9 +1161,7 @@ impl ReasonAtom {
                 );
 
                 let error_msg = e.to_string();
-                let source_error = e.user_facing_error(error_context);
-                let user_error = source_error.apply_disclosure(error_disclosure, Some(&error_msg));
-                let user_error_text = user_error.fallback_message();
+                let mut source_error = e.user_facing_error(error_context);
 
                 // Only emit user-facing error events for non-transient errors.
                 // Transient errors (server errors, rate limits, timeouts) will be
@@ -1095,7 +1169,38 @@ impl ReasonAtom {
                 // retry attempt causes duplicate error messages in the UI.
                 // The durable worker emits a single error event when all retries
                 // are exhausted (DLQ).
-                let is_transient = is_transient_error_message(&error_msg);
+                let is_transient = e.is_transient_llm_error()
+                    || (e.llm_error_kind().is_none() && is_transient_error_message(&error_msg));
+
+                // Capability error-hook seam: on the terminal (non-retried)
+                // error path, let active capabilities react — perform a side
+                // effect and/or augment the user-facing error fields — before the
+                // message is built. The atom stays behavior-agnostic; each hook
+                // (e.g. `usage_limit_auto_continue`) owns its own logic.
+                if !is_transient && !error_hooks.is_empty() {
+                    let services = crate::llm_error_hook::LlmErrorHookServices {
+                        schedule_store: self.schedule_store.clone(),
+                    };
+                    for (hook, config) in &error_hooks {
+                        let outcome = {
+                            let ctx = crate::llm_error_hook::LlmErrorContext {
+                                session_id: context.session_id,
+                                error_code: &source_error.code,
+                                error_fields: &source_error.fields,
+                                config,
+                                services: &services,
+                            };
+                            hook.on_llm_error(&ctx).await
+                        };
+                        for (key, value) in outcome.extra_error_fields {
+                            source_error = source_error.with_field(key, value);
+                        }
+                    }
+                }
+
+                let user_error = source_error.apply_disclosure(error_disclosure, Some(&error_msg));
+                let user_error_text = user_error.fallback_message();
+
                 let mut output_message_id = None;
 
                 if !is_transient {
@@ -1329,10 +1434,9 @@ impl ReasonAtom {
         });
 
         // Resolve the speed (service tier) from the latest user message's
-        // `controls.speed`, gated the same way: a model whose profile has no
-        // speed config never gets a `service_tier` (sending flex/priority to
-        // an unsupported model is a 400). Unknown models pass through — let
-        // the API decide.
+        // `controls.speed`, gated against the selected model profile. Sending
+        // a tier outside a model's advertised set causes provider-side 400s.
+        // Unknown models pass through — let the API decide.
         let speed = messages
             .iter()
             .rev()
@@ -1344,12 +1448,56 @@ impl ReasonAtom {
                     &model_with_provider.provider_type,
                     &model_with_provider.model,
                 );
+                let Some(p) = profile else {
+                    return true;
+                };
+                let Some(speed_config) = p.speed else {
+                    tracing::warn!(
+                        model = %model_with_provider.model,
+                        speed = %speed,
+                        "Stripping speed: model does not support service tiers"
+                    );
+                    return false;
+                };
+                let supported = speed_config.values.iter().any(|value| {
+                    matches!(
+                        (&value.value, speed.as_str()),
+                        (crate::model::Speed::Flex, "flex")
+                            | (crate::model::Speed::Default, "default")
+                            | (crate::model::Speed::Priority, "priority")
+                    )
+                });
+                if !supported {
+                    tracing::warn!(
+                        model = %model_with_provider.model,
+                        speed = %speed,
+                        "Stripping speed: model does not support requested service tier"
+                    );
+                }
+                supported
+            });
+
+        // Resolve verbosity from the latest user message's `controls.verbosity`,
+        // gated the same way: a model whose profile has no verbosity config
+        // never gets a `verbosity` field (sending it to an unsupported model is
+        // a 400). Unknown models pass through — let the API decide.
+        let verbosity = messages
+            .iter()
+            .rev()
+            .find(|m| m.role == MessageRole::User)
+            .and_then(|m| m.controls.as_ref())
+            .and_then(|c| c.verbosity.clone())
+            .filter(|verbosity| {
+                let profile = crate::model_profiles::get_model_profile(
+                    &model_with_provider.provider_type,
+                    &model_with_provider.model,
+                );
                 match profile {
-                    Some(p) if p.speed.is_none() => {
+                    Some(p) if p.verbosity.is_none() => {
                         tracing::warn!(
                             model = %model_with_provider.model,
-                            speed = %speed,
-                            "Stripping speed: model does not support service tiers"
+                            verbosity = %verbosity,
+                            "Stripping verbosity: model does not support verbosity control"
                         );
                         false
                     }
@@ -1527,6 +1675,9 @@ impl ReasonAtom {
         if let Some(speed) = speed {
             llm_config_builder = llm_config_builder.speed(speed);
         }
+        if let Some(verbosity) = verbosity {
+            llm_config_builder = llm_config_builder.verbosity(verbosity);
+        }
 
         // Inject embedder metadata first; system keys added below take precedence
         for (k, v) in &embedder_metadata {
@@ -1609,6 +1760,9 @@ impl ReasonAtom {
                     turn_id: context.turn_id,
                     model: Some(runtime_agent.model.clone()),
                     iteration: Some(iteration),
+                    // Emitted before the LLM call — phase is not yet known, so the
+                    // streamed hint starts `None` (treat as assistant text).
+                    phase: None,
                 },
             ))
             .await
@@ -1804,6 +1958,13 @@ impl ReasonAtom {
         // 14. Process stream with batched output.message.delta emissions
         // Batch deltas every 100ms to reduce event volume while providing real-time feedback
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
+        let retry_config = LlmRetryConfig::default();
+        let mut stream_retry_metadata = RetryMetadata::default();
+        // Best-effort streamed phase hint (EVE-774). Starts `None` ("not yet
+        // classified — treat as assistant text") and is refined monotonically
+        // once a provider reveals a native phase mid-stream. Declared outside the
+        // retry loop so it is available to the post-loop guarded delta emission.
+        let mut streamed_phase: Option<crate::message::ExecutionPhase> = None;
         let (
             text,
             thinking,
@@ -1812,7 +1973,7 @@ impl ReasonAtom {
             completion_metadata,
             time_to_first_token_ms,
             pending_delta,
-        ) = {
+        ) = 'stream_attempt: loop {
             let mut stream = match chat_driver
                 .chat_completion_stream(llm_messages_for_call.clone(), &llm_config)
                 .await
@@ -2052,6 +2213,7 @@ impl ReasonAtom {
 
                             let summary_config = crate::driver_registry::LlmCallConfig {
                                 speed: None,
+                                verbosity: None,
                                 model: config
                                     .summarization
                                     .model
@@ -2189,6 +2351,7 @@ impl ReasonAtom {
             let mut thinking_signature: Option<String> = None;
             let mut tool_calls = Vec::new();
             let mut completion_metadata: Option<LlmCompletionMetadata> = None;
+            let mut stream_has_output = false;
             let mut pending_delta = String::new();
             let mut pending_thinking_delta = String::new();
             let mut last_delta_emit = Instant::now();
@@ -2254,6 +2417,7 @@ impl ReasonAtom {
                         if delta.is_empty() {
                             continue;
                         }
+                        stream_has_output = true;
                         // Track time-to-first-token on first non-empty delta
                         if time_to_first_token_ms.is_none() {
                             let ttft = llm_start.elapsed().as_millis() as u64;
@@ -2305,6 +2469,7 @@ impl ReasonAtom {
                                         turn_id: context.turn_id,
                                         delta: pending_delta.clone(),
                                         accumulated: text.clone(),
+                                        phase: streamed_phase,
                                     },
                                 ))
                                 .await
@@ -2323,6 +2488,7 @@ impl ReasonAtom {
                         if delta.is_empty() {
                             continue;
                         }
+                        stream_has_output = true;
                         if let Some(t) = append_guarded_thinking_delta(
                             &mut armed_guardrails,
                             &mut thinking,
@@ -2374,6 +2540,7 @@ impl ReasonAtom {
                         }
                     }
                     LlmStreamEvent::ThinkingSignature(signature) => {
+                        stream_has_output = true;
                         // Capture the cryptographic signature for thinking content (required to send it back)
                         tracing::debug!(
                             session_id = %session_id,
@@ -2390,6 +2557,7 @@ impl ReasonAtom {
                         summary,
                         token_count,
                     } => {
+                        stream_has_output = true;
                         // Preserve the opaque artifact as the assistant message's
                         // thinking_signature so the next request can replay
                         // reasoning context, and emit a durable reason.item event
@@ -2430,7 +2598,22 @@ impl ReasonAtom {
                         }
                     }
                     LlmStreamEvent::ToolCalls(calls) => {
+                        stream_has_output |= !calls.is_empty();
                         tool_calls = calls;
+                    }
+                    LlmStreamEvent::MessagePhase(phase) => {
+                        // Provider revealed a native phase for the current
+                        // assistant message mid-stream. Refine the streamed hint
+                        // monotonically (never flip-flop, never back to None);
+                        // subsequent output.message.delta events carry it. This is
+                        // a hint only — it is NOT a completion signal and does not
+                        // count as stream output. The completed Message.phase stays
+                        // authoritative, and the hint is deliberately not derived
+                        // from later tool-call presence (EVE-448 anti-pattern).
+                        streamed_phase = crate::message::ExecutionPhase::refine_streamed_hint(
+                            streamed_phase,
+                            phase,
+                        );
                     }
                     LlmStreamEvent::Done(metadata) => {
                         // Emit any remaining pending delta before completing,
@@ -2447,6 +2630,7 @@ impl ReasonAtom {
                                         turn_id: context.turn_id,
                                         delta: pending_delta.clone(),
                                         accumulated: text.clone(),
+                                        phase: streamed_phase,
                                     },
                                 ))
                                 .await
@@ -2524,6 +2708,30 @@ impl ReasonAtom {
                             break;
                         }
 
+                        if should_retry_stream_error(
+                            &err,
+                            stream_retry_metadata.attempts,
+                            retry_config.max_retries,
+                            stream_has_output,
+                        ) {
+                            let wait_duration =
+                                retry_config.calculate_backoff(stream_retry_metadata.attempts);
+                            tracing::warn!(
+                                session_id = %session_id,
+                                turn_id = %context.turn_id,
+                                attempt = stream_retry_metadata.attempts + 1,
+                                max_retries = retry_config.max_retries,
+                                wait_secs = wait_duration.as_secs_f64(),
+                                error_code = err.code.as_deref().unwrap_or("none"),
+                                error_status = err.status,
+                                error = %err,
+                                "ReasonAtom: transient stream error before output, retrying"
+                            );
+                            stream_retry_metadata.record_retry(wait_duration, None);
+                            tokio::time::sleep(wait_duration).await;
+                            continue 'stream_attempt;
+                        }
+
                         // No useful output collected — treat as a real failure.
                         let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
                         let event_context = EventContext::from_atom_context(context).with_span(
@@ -2538,7 +2746,7 @@ impl ReasonAtom {
                             tools_summary,
                             runtime_agent.model.clone(),
                             Some(model_with_provider.provider_type.to_string()),
-                            err.clone(),
+                            err.to_string(),
                             Some(llm_duration_ms),
                             time_to_first_token_ms,
                         );
@@ -2550,7 +2758,7 @@ impl ReasonAtom {
                                 generation_data,
                             ))
                             .await;
-                        return Err(AgentLoopError::llm(err));
+                        return Err(AgentLoopError::llm_kind(err.kind(), err.to_string()));
                     }
                 }
                 // Per-event heartbeat after processing the event, so accumulated_len
@@ -2566,7 +2774,12 @@ impl ReasonAtom {
                     last_stream_heartbeat = Instant::now();
                 }
             }
-            (
+            if let Some(metadata) = completion_metadata.as_mut() {
+                metadata.retry_metadata =
+                    merge_retry_metadata(metadata.retry_metadata.take(), &stream_retry_metadata);
+            }
+
+            break 'stream_attempt (
                 text,
                 thinking,
                 thinking_signature,
@@ -2574,7 +2787,7 @@ impl ReasonAtom {
                 completion_metadata,
                 time_to_first_token_ms,
                 pending_delta,
-            )
+            );
         };
         let (mut text, mut thinking, thinking_signature, mut tool_calls) =
             (text, thinking, thinking_signature, tool_calls);
@@ -2610,6 +2823,7 @@ impl ReasonAtom {
                         turn_id: context.turn_id,
                         delta: pending_delta.clone(),
                         accumulated: text.clone(),
+                        phase: streamed_phase,
                     },
                 ))
                 .await
@@ -2917,6 +3131,9 @@ impl ReasonAtom {
                     turn_id,
                     model: None,
                     iteration: Some(iteration),
+                    // Recovery/finalize path reconstructs the started signal only;
+                    // the streamed phase hint is unavailable here (None).
+                    phase: None,
                 },
             ))
             .await;
@@ -3634,6 +3851,7 @@ mod tests {
     fn test_build_request_options_for_openai_prompt_cache() {
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3669,6 +3887,7 @@ mod tests {
     fn test_build_request_options_for_gemini_explicit_cache() {
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gemini-2.5-pro".to_string(),
             temperature: None,
             max_tokens: None,
@@ -3704,6 +3923,7 @@ mod tests {
     fn test_build_request_options_omits_gemini_cache_flag_when_disabled() {
         let config = LlmCallConfig {
             speed: None,
+            verbosity: None,
             model: "gemini-2.5-pro".to_string(),
             temperature: None,
             max_tokens: None,

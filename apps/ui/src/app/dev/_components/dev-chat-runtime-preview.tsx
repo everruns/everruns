@@ -160,6 +160,8 @@ export function DevChatRuntimeScene({
     getReasoningEffortName: (value: string) =>
       value === "medium" ? "Medium" : value === "high" ? "High" : value === "low" ? "Low" : value,
     defaultEffortName: "Medium",
+    verbosity: "",
+    setVerbosity: () => {},
     isWaitingForResponse,
     setIsWaitingForResponse,
     isThinking: scenario === "chat-components",

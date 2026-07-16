@@ -21,7 +21,6 @@ pub mod memory;
 mod message_history_timing;
 pub mod message_store;
 pub mod models;
-pub mod org_feature_flags_cache;
 pub mod partial_stream;
 pub mod password;
 pub mod provider_store;

@@ -293,6 +293,7 @@ impl Tool for BashTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Bash");
         Some(crate::tool_narration::narrate_shell_exec(
@@ -1379,6 +1380,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for MockFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             session_id: SessionId,

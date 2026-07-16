@@ -270,6 +270,60 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/agents/{agent_id}/triggers": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** @description List an agent's triggers. Set include_archived=true to also return archived triggers. */
+    get: operations["list_agent_triggers"];
+    put?: never;
+    /** POST /v1/agents/{agent_id}/triggers */
+    post: operations["create_agent_trigger"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/triggers/{trigger_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/agents/{agent_id}/triggers/{trigger_id} */
+    get: operations["get_agent_trigger"];
+    put?: never;
+    post?: never;
+    /** DELETE /v1/agents/{agent_id}/triggers/{trigger_id} */
+    delete: operations["delete_agent_trigger"];
+    options?: never;
+    head?: never;
+    /** PATCH|PUT /v1/agents/{agent_id}/triggers/{trigger_id} */
+    patch: operations["update_agent_trigger"];
+    trace?: never;
+  };
+  "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** POST /v1/agents/{agent_id}/triggers/{trigger_id}/trigger */
+    post: operations["trigger_agent_trigger"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/versions": {
     parameters: {
       query?: never;
@@ -4114,6 +4168,51 @@ export interface components {
      * @enum {string}
      */
     AgentStatus: "active" | "archived" | "deleted";
+    /** @description AgentTrigger is a durable, agent-owned invocation trigger. */
+    AgentTrigger: {
+      /**
+       * @description Agent that owns this trigger.
+       * @example agent_01933b5a000070008000000000000001
+       */
+      agent_id: string;
+      /**
+       * Format: date-time
+       * @description Archive timestamp.
+       */
+      archived_at?: string | null;
+      /** @description Type-specific configuration (parsed via typed accessors). */
+      config: unknown;
+      /**
+       * Format: date-time
+       * @description Creation timestamp.
+       */
+      created_at: string;
+      /**
+       * Format: date-time
+       * @description Delete timestamp.
+       */
+      deleted_at?: string | null;
+      /** @description Whether the trigger is currently active. */
+      enabled: boolean;
+      /**
+       * @description External identifier (trg_<32-hex>). Shown as `id` in API.
+       * @example trg_01933b5a000070008000000000000001
+       */
+      id: string;
+      /** @description The kind of event that fires this trigger. */
+      trigger_type: components["schemas"]["AgentTriggerType"];
+      /**
+       * Format: date-time
+       * @description Last update timestamp.
+       */
+      updated_at: string;
+    };
+    /**
+     * @description The kind of event that fires an agent trigger. Only scheduled triggers exist
+     *     today; the enum leaves room for webhook/event triggers later.
+     * @enum {string}
+     */
+    AgentTriggerType: "schedule";
     /** @description Immutable snapshot of an Agent's authored and resolved runtime config. */
     AgentVersion: {
       /**
@@ -5252,6 +5351,12 @@ export interface components {
        *     speed config (OpenAI `service_tier`).
        */
       speed?: string | null;
+      /**
+       * @description Verbosity for this message turn: "low", "medium", or "high". Only sent
+       *     to providers whose model profile advertises a verbosity config (OpenAI
+       *     `verbosity`).
+       */
+      verbosity?: string | null;
     };
     /** @description Request to copy a file */
     CopyFileRequest: {
@@ -5412,6 +5517,29 @@ export interface components {
        *     ]
        */
       tools?: components["schemas"]["ToolDefinition"][];
+    };
+    /** @description Request to create a schedule trigger on an agent. */
+    CreateAgentTriggerRequest: {
+      /**
+       * @description Cron expression that drives the durable schedule. Accepts 5-field
+       *     (min hour day month weekday) or 7-field (sec … year) form.
+       * @example 0 9 * * *
+       */
+      cron_expression: string;
+      /** @description Whether the trigger is active on creation (default `true`). */
+      enabled?: boolean;
+      /**
+       * @description Message content or `{{template}}` sent when the schedule fires.
+       * @example Run the daily digest
+       */
+      message: string;
+      /** @description Whether invocations reuse a stable session or create a new one. */
+      session_mode?: components["schemas"]["InvocationSessionMode"];
+      /**
+       * @description IANA timezone identifier for cron evaluation (default `UTC`).
+       * @example UTC
+       */
+      timezone?: string;
     };
     /** @description Request body for the `create_agent_version` operation. */
     CreateAgentVersionRequest: {
@@ -7442,7 +7570,9 @@ export interface components {
       path: string;
     };
     GrepRequest: {
+      /** @description Optional path glob (`**\/*.rs`, `docs/*.md`). */
       path_pattern?: string | null;
+      /** @description Regex pattern to search for. */
       pattern: string;
     };
     /** @description Grep result for a file */
@@ -11162,6 +11292,7 @@ export interface components {
        *     token usage for large tool sets. Currently supported by GPT-5.4 and newer.
        */
       tool_search?: boolean;
+      verbosity?: null | components["schemas"]["VerbosityConfig"];
     };
     /**
      * @description How the model was added to the system
@@ -11402,6 +11533,7 @@ export interface components {
       accumulated: string;
       /** @description The new text chunk */
       delta: string;
+      phase?: null | components["schemas"]["ExecutionPhase"];
       /**
        * @description Turn ID this delta belongs to
        * @example turn_01933b5a00007000800000000000001
@@ -11452,6 +11584,7 @@ export interface components {
       iteration?: number | null;
       /** @description Optional model name being used */
       model?: string | null;
+      phase?: null | components["schemas"]["ExecutionPhase"];
       /**
        * @description Turn ID this output belongs to
        * @example turn_01933b5a00007000800000000000001
@@ -13682,6 +13815,22 @@ export interface components {
        */
       type: string;
     };
+    /**
+     * @description Typed configuration for a `Schedule` trigger.
+     *
+     *     `message` is also the template body. `{{path.to.value}}` placeholders are
+     *     expanded at invocation time. Mirrors `app::ScheduleChannelConfig`.
+     */
+    ScheduleTriggerConfig: {
+      /** @description Cron expression that drives the durable schedule. */
+      cron_expression: string;
+      /** @description Message content or template sent when the schedule fires. */
+      message: string;
+      /** @description Whether invocations reuse a stable session or create a new one. */
+      session_mode?: components["schemas"]["InvocationSessionMode"];
+      /** @description IANA timezone identifier for cron evaluation. */
+      timezone?: string;
+    };
     /** @description Schedules list response */
     SchedulesListResponse: {
       /** @description Page of items returned by this query. */
@@ -15036,6 +15185,11 @@ export interface components {
       /** @description The tool name, if known. */
       tool_name?: string | null;
     };
+    TriggerAgentTriggerOutput: {
+      created_session: boolean;
+      /** @description Session's prefixed public identifier. */
+      session_id: components["schemas"]["sessionId"];
+    };
     /** @description Manual trigger response */
     TriggerResponse: {
       /**
@@ -15271,6 +15425,17 @@ export interface components {
        *     ]
        */
       tools?: components["schemas"]["ToolDefinition"][] | null;
+    };
+    /**
+     * @description Request to update a schedule trigger. Only provided fields change; the rest
+     *     are preserved from the stored config.
+     */
+    UpdateAgentTriggerRequest: {
+      cron_expression?: string | null;
+      enabled?: boolean | null;
+      message?: string | null;
+      session_mode?: null | components["schemas"]["InvocationSessionMode"];
+      timezone?: string | null;
     };
     /** @description Request to update an app. Only provided fields will be updated. */
     UpdateAppRequest: {
@@ -15884,6 +16049,29 @@ export interface components {
        *     Use this when a customer asks for a refund within 30 days of purchase.
        */
       skill_md: string;
+    };
+    /**
+     * @description Verbosity level for models that support output-length control.
+     *     Wire values map 1:1 to the OpenAI `verbosity` request parameter:
+     *     `low` (terse), `medium` (balanced, provider default), `high`
+     *     (comprehensive). Independent of `ReasoningEffort`, which tunes the
+     *     amount of reasoning rather than the length of the final answer.
+     * @enum {string}
+     */
+    Verbosity: "low" | "medium" | "high";
+    /** @description Verbosity configuration for a model */
+    VerbosityConfig: {
+      /** @description Default verbosity for this model */
+      default: components["schemas"]["Verbosity"];
+      /** @description Available verbosity values for this model */
+      values: components["schemas"]["VerbosityValue"][];
+    };
+    /** @description Named verbosity value for UI display */
+    VerbosityValue: {
+      /** @description Display name (e.g., "Low", "High") */
+      name: string;
+      /** @description The API value (e.g., "low", "high") */
+      value: components["schemas"]["Verbosity"];
     };
     /** @description Request body for voice attach. */
     VoiceAttachRequest: components["schemas"]["VoiceSessionOptions"] & {
@@ -17895,6 +18083,11 @@ export interface components {
      * @example paypol_01933b5a00007000800000000000001
      */
     paypolId: string;
+    /**
+     * @description Prefixed identifier with 'session' prefix
+     * @example session_01933b5a00007000800000000000001
+     */
+    sessionId: string;
   };
   responses: never;
   parameters: never;
@@ -18654,6 +18847,233 @@ export interface operations {
       };
       /** @description Internal server error */
       500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_agent_triggers: {
+    parameters: {
+      query?: {
+        /** @description Include archived triggers (default false). */
+        include_archived?: boolean;
+      };
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Agent triggers */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentTrigger"][];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  create_agent_trigger: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateAgentTriggerRequest"];
+      };
+    };
+    responses: {
+      /** @description Trigger created */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentTrigger"];
+        };
+      };
+      /** @description Invalid request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Agent not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  get_agent_trigger: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+        /** @description Trigger ID (prefixed) */
+        trigger_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Trigger */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentTrigger"];
+        };
+      };
+      /** @description Trigger not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  delete_agent_trigger: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+        /** @description Trigger ID (prefixed) */
+        trigger_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Trigger archived */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Trigger not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  update_agent_trigger: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+        /** @description Trigger ID (prefixed) */
+        trigger_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UpdateAgentTriggerRequest"];
+      };
+    };
+    responses: {
+      /** @description Trigger updated */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentTrigger"];
+        };
+      };
+      /** @description Invalid request */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Trigger not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  trigger_agent_trigger: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+        /** @description Trigger ID (prefixed) */
+        trigger_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Trigger fired */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TriggerAgentTriggerOutput"];
+        };
+      };
+      /** @description Trigger not found */
+      404: {
         headers: {
           [name: string]: unknown;
         };

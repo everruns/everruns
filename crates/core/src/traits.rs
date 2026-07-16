@@ -8,7 +8,9 @@
 use crate::agent::Agent;
 use crate::harness::Harness;
 use crate::provider::DriverId;
-use crate::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
+use crate::session_file::{
+    FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
+};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::typed_id::{AgentId, HarnessId, ImageId, ModelId, SessionId, WorkspaceId};
 use async_trait::async_trait;
@@ -459,6 +461,11 @@ pub trait SessionFileSystem: Send + Sync {
         crate::session_path::to_session_path(input)
     }
 
+    /// Whether this store is already a mount-based resolver ([`MountFs`]).
+    ///
+    /// Used to avoid re-wrapping nested mount tables when building tool context.
+    fn is_mount_resolver(&self) -> bool;
+
     /// Read a file by path
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>>;
 
@@ -512,13 +519,40 @@ pub trait SessionFileSystem: Send + Sync {
     /// Get file metadata
     async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>>;
 
-    /// Search files by pattern (grep)
+    /// Search file contents with Rust regex syntax, optionally filtering canonical paths by glob.
+    ///
+    /// Implementations compile the content pattern once before scanning and
+    /// return an error for invalid regex. Basename-only globs match at any
+    /// depth. Non-glob path filters retain legacy substring matching; see
+    /// `specs/file-store.md`.
     async fn grep_files(
         &self,
         session_id: SessionId,
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>>;
+
+    /// Search with match pagination and bounded before/after context.
+    ///
+    /// Backends should override this to collect context during their content
+    /// scan. The default preserves compatibility for third-party stores that
+    /// only implement the original zero-context method.
+    async fn grep_files_with_options(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        if options.before_context != 0 || options.after_context != 0 {
+            return Err(crate::error::AgentLoopError::tool(
+                "this file store does not support grep context",
+            ));
+        }
+        let all = self
+            .grep_files(session_id, pattern, options.path_pattern.as_deref())
+            .await?;
+        Ok(crate::session_file::bound_grep_matches(all, options))
+    }
 
     /// Create a directory
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo>;
@@ -621,6 +655,16 @@ impl SessionFileSystem for WorkspaceScopedFileSystem {
     ) -> Result<Vec<GrepMatch>> {
         self.inner.grep_files(self.key, pattern, path_pattern).await
     }
+    async fn grep_files_with_options(
+        &self,
+        _session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        self.inner
+            .grep_files_with_options(self.key, pattern, options)
+            .await
+    }
     async fn create_directory(&self, _session_id: SessionId, path: &str) -> Result<FileInfo> {
         self.inner.create_directory(self.key, path).await
     }
@@ -639,6 +683,10 @@ impl SessionFileSystem for WorkspaceScopedFileSystem {
     fn resolve_path(&self, input: &str) -> String {
         self.inner.resolve_path(input)
     }
+
+    fn is_mount_resolver(&self) -> bool {
+        self.inner.is_mount_resolver()
+    }
 }
 
 #[async_trait]
@@ -653,6 +701,10 @@ impl<T: SessionFileSystem + ?Sized> SessionFileSystem for std::sync::Arc<T> {
 
     fn resolve_path(&self, input: &str) -> String {
         (**self).resolve_path(input)
+    }
+
+    fn is_mount_resolver(&self) -> bool {
+        (**self).is_mount_resolver()
     }
 
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
@@ -716,6 +768,17 @@ impl<T: SessionFileSystem + ?Sized> SessionFileSystem for std::sync::Arc<T> {
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
         (**self).grep_files(session_id, pattern, path_pattern).await
+    }
+
+    async fn grep_files_with_options(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        (**self)
+            .grep_files_with_options(session_id, pattern, options)
+            .await
     }
 
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
@@ -1091,6 +1154,13 @@ pub trait LeasedResourceStore: Send + Sync {
 pub const DEFAULT_MAX_SUBAGENT_DEPTH: u32 = 2;
 pub const DEFAULT_MAX_ACTIVE_DESCENDANT_SUBAGENT_TASKS: u32 = 16;
 pub const DEFAULT_MAX_TOTAL_DESCENDANT_SUBAGENT_TASKS: u32 = 200;
+/// Governance for detached peer spawns (EVE-767): a detached spawn resets depth
+/// (it is a peer, not a lifecycle child) but is still counted against the origin
+/// subagent tree's root so a loop of `spawn_agent(lifetime=detached)` cannot run
+/// unbounded (TM-DOS). Detached peers are full independent sessions, so the
+/// default ceiling is tighter than the subagent descendant caps.
+pub const DEFAULT_MAX_ACTIVE_DETACHED_TASKS: u32 = 8;
+pub const DEFAULT_MAX_TOTAL_DETACHED_TASKS: u32 = 50;
 
 /// Resolved subagent spawn governance policy for a tool execution context.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1104,6 +1174,12 @@ pub struct SubagentNestingPolicy {
     pub platform_default_max_total_descendant_tasks: u32,
     pub org_override_max_total_descendant_tasks: Option<u32>,
     pub agent_override_max_total_descendant_tasks: Option<u32>,
+    pub platform_default_max_active_detached_tasks: u32,
+    pub org_override_max_active_detached_tasks: Option<u32>,
+    pub agent_override_max_active_detached_tasks: Option<u32>,
+    pub platform_default_max_total_detached_tasks: u32,
+    pub org_override_max_total_detached_tasks: Option<u32>,
+    pub agent_override_max_total_detached_tasks: Option<u32>,
 }
 
 impl Default for SubagentNestingPolicy {
@@ -1120,6 +1196,12 @@ impl Default for SubagentNestingPolicy {
                 DEFAULT_MAX_TOTAL_DESCENDANT_SUBAGENT_TASKS,
             org_override_max_total_descendant_tasks: None,
             agent_override_max_total_descendant_tasks: None,
+            platform_default_max_active_detached_tasks: DEFAULT_MAX_ACTIVE_DETACHED_TASKS,
+            org_override_max_active_detached_tasks: None,
+            agent_override_max_active_detached_tasks: None,
+            platform_default_max_total_detached_tasks: DEFAULT_MAX_TOTAL_DETACHED_TASKS,
+            org_override_max_total_detached_tasks: None,
+            agent_override_max_total_detached_tasks: None,
         }
     }
 }
@@ -1141,6 +1223,18 @@ impl SubagentNestingPolicy {
         self.agent_override_max_total_descendant_tasks
             .or(self.org_override_max_total_descendant_tasks)
             .unwrap_or(self.platform_default_max_total_descendant_tasks)
+    }
+
+    pub fn max_active_detached_tasks(self) -> u32 {
+        self.agent_override_max_active_detached_tasks
+            .or(self.org_override_max_active_detached_tasks)
+            .unwrap_or(self.platform_default_max_active_detached_tasks)
+    }
+
+    pub fn max_total_detached_tasks(self) -> u32 {
+        self.agent_override_max_total_detached_tasks
+            .or(self.org_override_max_total_detached_tasks)
+            .unwrap_or(self.platform_default_max_total_detached_tasks)
     }
 
     pub fn with_platform_default(mut self, depth: u32) -> Self {
@@ -1165,6 +1259,16 @@ impl SubagentNestingPolicy {
     ) -> Self {
         self.agent_override_max_active_descendant_tasks = max_active;
         self.agent_override_max_total_descendant_tasks = max_total;
+        self
+    }
+
+    pub fn with_agent_detached_task_caps_override(
+        mut self,
+        max_active: Option<u32>,
+        max_total: Option<u32>,
+    ) -> Self {
+        self.agent_override_max_active_detached_tasks = max_active;
+        self.agent_override_max_total_detached_tasks = max_total;
         self
     }
 }
@@ -1251,6 +1355,23 @@ pub trait PaymentAuthority: Send + Sync {
         session_id: SessionId,
         request: crate::payment::MachinePaymentRequest,
     ) -> Result<crate::payment::MachinePaymentResponse>;
+}
+
+// ============================================================================
+// SessionCreationAuthority - For detached subagent session creation
+// ============================================================================
+
+/// Host-provided authority for creating detached peer sessions.
+///
+/// The host resolves the current session owner and evaluates session-management
+/// permission. Keeping this outside model-authored arguments prevents a tool
+/// call from choosing or forging its authorization identity.
+#[async_trait]
+pub trait SessionCreationAuthority: Send + Sync {
+    /// Authorize creation and return the org-validated budget root for the
+    /// current session. Returning the root from the authority keeps detached
+    /// chains linked without exposing internal root metadata to model input.
+    async fn authorize_session_creation(&self, session_id: SessionId) -> Result<SessionId>;
 }
 
 // OutboundToolRateLimiter - Per-org outbound tool-call rate limiting (TM-TOOL-009)
@@ -1601,6 +1722,9 @@ pub struct ToolContext {
     /// Optional internal payment authority for paid capability tools.
     pub payment_authority: Option<Arc<dyn PaymentAuthority>>,
 
+    /// Optional host authority for detached peer-session creation.
+    pub session_creation_authority: Option<Arc<dyn SessionCreationAuthority>>,
+
     /// Optional durable spawn handle store for subagent reattach (EVE-535).
     /// When set, subagent delegation uses claim/settle to prevent duplicate spawning
     /// on parent worker reclaim.
@@ -1666,6 +1790,7 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            session_creation_authority: None,
             subagent_spawn_store: None,
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
@@ -1708,6 +1833,7 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            session_creation_authority: None,
             subagent_spawn_store: None,
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
@@ -1753,6 +1879,7 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            session_creation_authority: None,
             subagent_spawn_store: None,
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
@@ -1799,6 +1926,7 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            session_creation_authority: None,
             subagent_spawn_store: None,
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
@@ -1891,6 +2019,7 @@ impl ToolContext {
             locale: None,
             budget_checker: None,
             payment_authority: None,
+            session_creation_authority: None,
             subagent_spawn_store: None,
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,

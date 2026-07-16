@@ -129,7 +129,7 @@ See [`specs/correlation-ids.md`](./correlation-ids.md) for the `X-Request-ID` co
 
 - **No sticky sessions, no shared session store.** There is no `Mcp-Session-Id` and no server-side per-connection state, so any MCP request can route to any backend instance. Plain round-robin behind any load balancer is sufficient; horizontal scaling is "add instances."
 - **All state is in PostgreSQL** (sessions, OAuth clients/tokens, MCP server configs). Instances share one source of truth, so there are no read-after-write affinity requirements at the proxy.
-- **Routing headers are honored, not required.** When clients send the `2026-07-28` `Mcp-Method` / `Mcp-Name` headers, gateways/load-balancers/rate-limiters may route and throttle on them without parsing the JSON-RPC body. The body stays authoritative; the server rejects a header that disagrees with the body. Proxies that forward these headers unchanged enable body-free routing but are not mandatory.
+- **Routing headers are honored, not required.** When clients send the `2026-07-28` `Mcp-Method` / `Mcp-Name` headers, gateways/load-balancers/rate-limiters may route and throttle on them without parsing the JSON-RPC body. The body stays authoritative; the server rejects duplicate routing-header values and any header that disagrees with the body. Proxies should reject or canonicalize duplicate `Mcp-Method` / `Mcp-Name` values before routing on them; forwarding singular headers unchanged enables body-free routing but is not mandatory.
 - **SSE buffering.** `tools/call` responses may carry SSE-framed results from remote MCP servers; keep proxy buffering disabled on the `/mcp` route as for `/api/*`.
 
 Canonical references:

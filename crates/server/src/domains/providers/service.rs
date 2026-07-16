@@ -66,6 +66,7 @@ impl ProviderService {
     pub async fn create(&self, caller: &Caller, req: CreateProviderRequest) -> Result<Provider> {
         validate_provider_type(&req.provider_type)?;
         validate_provider_base_url(req.provider_type.clone(), req.base_url.as_deref())?;
+        validate_trace_config(req.trace.as_ref())?;
 
         // Encrypt API key if provided
         let api_key_encrypted = if let Some(api_key) = &req.api_key {
@@ -152,6 +153,7 @@ impl ProviderService {
         validate_provider_type(&provider_type)?;
         let base_url = req.base_url.as_deref().or(existing.base_url.as_deref());
         validate_provider_base_url(provider_type, base_url)?;
+        validate_trace_config(req.trace.as_ref())?;
 
         // Encrypt API key if provided
         let api_key_encrypted = if let Some(api_key) = &req.api_key {
@@ -268,6 +270,72 @@ fn resolve_trace_config(
     })
 }
 
+fn validate_trace_config(trace: Option<&ProviderTraceConfig>) -> Result<()> {
+    let Some(trace) = trace else {
+        return Ok(());
+    };
+
+    validate_trace_template(trace.generation_url_template.as_deref())
+        .map_err(|e| anyhow!("Invalid generation trace URL template: {e}"))?;
+    validate_trace_template(trace.session_url_template.as_deref())
+        .map_err(|e| anyhow!("Invalid session trace URL template: {e}"))?;
+
+    Ok(())
+}
+
+fn validate_trace_template(template: Option<&str>) -> Result<()> {
+    let Some(template) = template else {
+        return Ok(());
+    };
+    let rendered = render_trace_template_for_validation(template)?;
+    let parsed = validate_safe_url(&rendered)?;
+    if parsed.scheme() != "https" {
+        return Err(BadRequestError::new("Trace URL templates must use HTTPS").into());
+    }
+    let host = parsed
+        .host_str()
+        .ok_or_else(|| BadRequestError::new("Trace URL templates must include a host"))?
+        .trim_end_matches('.')
+        .to_ascii_lowercase();
+    if host.ends_with(".local") || host.ends_with(".internal") {
+        return Err(BadRequestError::new("Trace URL template host is not allowed").into());
+    }
+    Ok(())
+}
+
+fn render_trace_template_for_validation(template: &str) -> Result<String> {
+    let mut rendered = String::with_capacity(template.len());
+    let mut rest = template;
+
+    while let Some(start) = rest.find('{') {
+        rendered.push_str(&rest[..start]);
+        rest = &rest[start + 1..];
+        let end = rest.find('}').ok_or_else(|| {
+            BadRequestError::new("Trace URL template contains an unclosed placeholder")
+        })?;
+        let placeholder = &rest[..end];
+        match placeholder {
+            "response_id" | "session_id" | "turn_id" | "model" => rendered.push_str("placeholder"),
+            _ => {
+                return Err(BadRequestError::new(format!(
+                    "Unsupported trace URL template placeholder: {{{placeholder}}}"
+                ))
+                .into());
+            }
+        }
+        rest = &rest[end + 1..];
+    }
+
+    if rest.contains('}') {
+        return Err(
+            BadRequestError::new("Trace URL template contains an unopened placeholder").into(),
+        );
+    }
+
+    rendered.push_str(rest);
+    Ok(rendered)
+}
+
 fn validate_provider_type(provider_type: &DriverId) -> Result<()> {
     let raw = provider_type.as_str();
     if raw.trim().is_empty() {
@@ -331,10 +399,13 @@ fn validate_azure_openai_base_url(url: &Url) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_trace_config, validate_provider_base_url, validate_provider_type};
+    use super::{
+        resolve_trace_config, validate_provider_base_url, validate_provider_type,
+        validate_trace_config,
+    };
     use crate::errors::BadRequestError;
-    use everruns_core::DriverId;
     use everruns_core::url_validation::validate_safe_url;
+    use everruns_core::{DriverId, ProviderTraceConfig};
 
     // ---- Trace config resolution (provider trace links) ----
 
@@ -391,6 +462,51 @@ mod tests {
     }
 
     // ---- SSRF prevention tests (EVE-69) ----
+
+    #[test]
+    fn trace_template_validation_accepts_https_public_templates() {
+        let trace = ProviderTraceConfig {
+            enabled: true,
+            generation_url_template: Some(
+                "https://openrouter.ai/logs?id={response_id}&model={model}".to_string(),
+            ),
+            session_url_template: Some("https://logs.example.com/s/{session_id}".to_string()),
+        };
+
+        assert!(validate_trace_config(Some(&trace)).is_ok());
+    }
+
+    #[test]
+    fn trace_template_validation_rejects_http() {
+        let trace = ProviderTraceConfig {
+            enabled: true,
+            generation_url_template: Some("http://logs.example.com/{response_id}".to_string()),
+            session_url_template: None,
+        };
+
+        let err = validate_trace_config(Some(&trace)).unwrap_err();
+        assert!(err.to_string().contains("must use HTTPS"));
+    }
+
+    #[test]
+    fn trace_template_validation_rejects_internal_hosts() {
+        for template in [
+            "https://127.0.0.1/{response_id}",
+            "https://10.0.0.1/{response_id}",
+            "https://169.254.169.254/{response_id}",
+            "https://router.local/{response_id}",
+        ] {
+            let trace = ProviderTraceConfig {
+                enabled: true,
+                generation_url_template: Some(template.to_string()),
+                session_url_template: None,
+            };
+            assert!(
+                validate_trace_config(Some(&trace)).is_err(),
+                "expected {template} to be rejected"
+            );
+        }
+    }
 
     #[test]
     fn provider_type_rejects_empty_external_id() {

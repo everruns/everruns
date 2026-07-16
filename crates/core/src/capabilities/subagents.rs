@@ -19,19 +19,24 @@
 // Subagent naming: human-readable ("Test Runner"), unique per parent, case-insensitive.
 // Spawn governance: child depth and root-tree task fan-out are bounded.
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus};
+use super::delegation_result::{
+    MESSAGE_SCHEMA_SPEC_KEY, RESULT_SCHEMA_SPEC_KEY, normalize_message_schema,
+    normalize_result_schema, required_result_is_missing, result_value_for_task, truncate_summary,
+};
+#[cfg(test)]
+use super::delegation_result::{ReportResultTool, ReportTaskProgressTool};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, SpawnMode};
 use crate::platform_store::{PlatformCreateSessionRequest, PlatformStore};
 use crate::session::SessionSeedMode;
 use crate::session_task::{
-    CreateSessionTask, NewTaskMessage, SessionTask, SessionTaskFilter, SessionTaskState,
-    SessionTaskUpdate, TASK_KIND_SESSION, TASK_KIND_SUBAGENT, TaskError, TaskExecutor,
-    TaskExecutorPlugin, TaskLinks, TaskMessage, TaskMessageDirection, TaskMessagePart,
-    TaskWakePolicy, task_message_text, task_result_path,
+    CreateSessionTask, SessionTask, SessionTaskFilter, SessionTaskState, SessionTaskUpdate,
+    TASK_KIND_SESSION, TASK_KIND_SUBAGENT, TaskError, TaskExecutor, TaskExecutorPlugin, TaskLinks,
+    TaskMessage, TaskWakePolicy, task_message_text,
 };
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{SessionFileSystem, SessionStore, SpawnClaimResult, ToolContext};
-use crate::typed_id::{SessionId, WorkspaceId};
+use crate::traits::{SessionStore, SpawnClaimResult, ToolContext};
+use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::collections::{HashSet, VecDeque};
@@ -116,6 +121,20 @@ impl Capability for SubagentCapability {
                     "maximum": 10000,
                     "default": crate::traits::DEFAULT_MAX_TOTAL_DESCENDANT_SUBAGENT_TASKS,
                     "description": "Maximum descendant subagent task records allowed under one root session before rejecting new spawns."
+                },
+                "max_active_detached_tasks": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 1024,
+                    "default": crate::traits::DEFAULT_MAX_ACTIVE_DETACHED_TASKS,
+                    "description": "Maximum non-terminal detached peer sessions allowed under one origin root session. Detached spawns reset depth but are still capped here so a loop cannot run unbounded (EVE-767)."
+                },
+                "max_total_detached_tasks": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 10000,
+                    "default": crate::traits::DEFAULT_MAX_TOTAL_DETACHED_TASKS,
+                    "description": "Maximum detached peer session task records allowed under one origin root session before rejecting new detached spawns."
                 }
             }
         }))
@@ -147,12 +166,23 @@ impl Capability for SubagentCapability {
                 return Err(format!("{key} must be <= 1024"));
             }
         }
-        if let Some(value) = config.get("max_total_descendant_tasks") {
+        for key in ["max_total_descendant_tasks", "max_total_detached_tasks"] {
+            let Some(value) = config.get(key) else {
+                continue;
+            };
             let Some(max_total) = value.as_u64() else {
-                return Err("max_total_descendant_tasks must be a non-negative integer".to_string());
+                return Err(format!("{key} must be a non-negative integer"));
             };
             if max_total > 10_000 {
-                return Err("max_total_descendant_tasks must be <= 10000".to_string());
+                return Err(format!("{key} must be <= 10000"));
+            }
+        }
+        if let Some(value) = config.get("max_active_detached_tasks") {
+            let Some(max_active) = value.as_u64() else {
+                return Err("max_active_detached_tasks must be a non-negative integer".to_string());
+            };
+            if max_active > 1024 {
+                return Err("max_active_detached_tasks must be <= 1024".to_string());
             }
         }
         Ok(())
@@ -168,33 +198,12 @@ impl Capability for SubagentCapability {
 }
 
 const SUBAGENT_SYSTEM_PROMPT: &str = "Spawn subagents for independent parallel work or separate context; avoid immediate sequential steps. Spawns are background by default: you get a task_id, keep working, and are notified on completion (monitor with get_task/wait_task). Use mode \"foreground\" only when blocked on the result. Nested subagents are allowed up to max_subagent_depth and root-tree task caps. Use blueprints for specialist tools/model.";
-const RESULT_SCHEMA_SPEC_KEY: &str = "result_schema";
-const MESSAGE_SCHEMA_SPEC_KEY: &str = "message_schema";
 /// Task spec key holding spawn-time per-task push configs (EVE-682). The
 /// webhook notifier reads this in addition to the DB-backed configs so
 /// spawn-time and endpoint-created configs share one delivery path.
 const PUSH_CONFIGS_SPEC_KEY: &str = "push_configs";
 /// Valid `event_filter` members for a per-task push config.
 const VALID_PUSH_EVENT_FILTERS: [&str; 3] = ["terminal", "awaiting_input", "message"];
-
-/// Execution mode for subagent delegation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum SpawnMode {
-    /// Return immediately; a detached watcher settles the task and the
-    /// OnTerminal wake policy notifies the parent when the child finishes.
-    Background,
-    /// Block until the child idles and return its result inline.
-    Foreground,
-}
-
-impl SpawnMode {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Background => "background",
-            Self::Foreground => "foreground",
-        }
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SpawnLifetime {
@@ -269,41 +278,6 @@ fn terminal_subagent_task_state(
         crate::session::SubagentStatus::Cancelled => SessionTaskState::Canceled,
         _ => SessionTaskState::Failed,
     }
-}
-
-fn declared_result_schema(task: &SessionTask) -> Option<&Value> {
-    task.spec
-        .get(RESULT_SCHEMA_SPEC_KEY)
-        .filter(|schema| schema.is_object())
-}
-
-fn declared_message_schema(task: &SessionTask) -> Option<&Value> {
-    task.spec
-        .get(MESSAGE_SCHEMA_SPEC_KEY)
-        .filter(|schema| schema.is_object())
-}
-
-fn normalize_optional_schema(
-    arguments: &Value,
-    key: &str,
-) -> Result<Option<Value>, ToolExecutionResult> {
-    let Some(schema) = arguments.get(key).filter(|v| !v.is_null()) else {
-        return Ok(None);
-    };
-    if !schema.is_object() {
-        return Err(ToolExecutionResult::tool_error(format!(
-            "{key} must be a JSON Schema object when provided.",
-        )));
-    }
-    Ok(Some(schema.clone()))
-}
-
-fn normalize_result_schema(arguments: &Value) -> Result<Option<Value>, ToolExecutionResult> {
-    normalize_optional_schema(arguments, RESULT_SCHEMA_SPEC_KEY)
-}
-
-fn normalize_message_schema(arguments: &Value) -> Result<Option<Value>, ToolExecutionResult> {
-    normalize_optional_schema(arguments, MESSAGE_SCHEMA_SPEC_KEY)
 }
 
 /// Parse + validate the optional `push_configs` spawn arg (EVE-682).
@@ -381,92 +355,6 @@ fn normalize_push_configs(arguments: &Value) -> Result<Option<Value>, ToolExecut
         normalized.push(Value::Object(obj));
     }
     Ok(Some(Value::Array(normalized)))
-}
-
-fn json_schema_type_matches(expected: &str, value: &Value) -> bool {
-    match expected {
-        "object" => value.is_object(),
-        "array" => value.is_array(),
-        "string" => value.is_string(),
-        "boolean" => value.is_boolean(),
-        "integer" => value.as_i64().is_some() || value.as_u64().is_some(),
-        "number" => value.is_number(),
-        "null" => value.is_null(),
-        _ => true,
-    }
-}
-
-fn validate_against_schema(schema: &Value, value: &Value, path: &str, errors: &mut Vec<String>) {
-    if let Some(enum_values) = schema.get("enum").and_then(Value::as_array)
-        && !enum_values.iter().any(|candidate| candidate == value)
-    {
-        errors.push(format!("{path} is not one of the allowed enum values"));
-    }
-
-    if let Some(const_value) = schema.get("const")
-        && const_value != value
-    {
-        errors.push(format!("{path} does not match the required const value"));
-    }
-
-    if let Some(type_value) = schema.get("type") {
-        let matches = match type_value {
-            Value::String(expected) => json_schema_type_matches(expected, value),
-            Value::Array(types) => types
-                .iter()
-                .filter_map(Value::as_str)
-                .any(|expected| json_schema_type_matches(expected, value)),
-            _ => true,
-        };
-        if !matches {
-            errors.push(format!("{path} has the wrong JSON type"));
-            return;
-        }
-    }
-
-    if let (Some(object), Some(properties)) = (
-        value.as_object(),
-        schema.get("properties").and_then(Value::as_object),
-    ) {
-        if let Some(required) = schema.get("required").and_then(Value::as_array) {
-            for key in required.iter().filter_map(Value::as_str) {
-                if !object.contains_key(key) {
-                    errors.push(format!("{path}.{key} is required"));
-                }
-            }
-        }
-
-        if schema.get("additionalProperties") == Some(&Value::Bool(false)) {
-            for key in object.keys() {
-                if !properties.contains_key(key) {
-                    errors.push(format!("{path}.{key} is not allowed"));
-                }
-            }
-        }
-
-        for (key, property_schema) in properties {
-            if let Some(property_value) = object.get(key) {
-                validate_against_schema(
-                    property_schema,
-                    property_value,
-                    &format!("{path}.{key}"),
-                    errors,
-                );
-            }
-        }
-    }
-
-    if let (Some(array), Some(item_schema)) = (value.as_array(), schema.get("items")) {
-        for (index, item) in array.iter().enumerate() {
-            validate_against_schema(item_schema, item, &format!("{path}[{index}]"), errors);
-        }
-    }
-}
-
-fn schema_validation_errors(schema: &Value, value: &Value) -> Vec<String> {
-    let mut errors = Vec::new();
-    validate_against_schema(schema, value, "$", &mut errors);
-    errors
 }
 
 // =============================================================================
@@ -630,6 +518,89 @@ async fn enforce_subagent_task_caps(
     Ok(())
 }
 
+/// Count detached peer tasks (`TASK_KIND_SESSION`) anywhere under the origin
+/// subagent tree root (EVE-767). Unlike `descendant_subagent_task_counts`, the
+/// BFS follows *every* task's `child_session_id` (subagent and detached alike)
+/// so detached spawns made deep in the tree — by subagents or by other detached
+/// peers — are all attributed to the origin root. Only `session`-kind tasks are
+/// counted; subagent accounting is untouched.
+async fn descendant_detached_task_counts(
+    registry: &dyn crate::session_task::SessionTaskRegistry,
+    root_session_id: SessionId,
+    max_active: u32,
+    max_total: u32,
+) -> Result<DescendantTaskCounts, ToolExecutionResult> {
+    let mut counts = DescendantTaskCounts::default();
+    let mut queue = VecDeque::from([root_session_id]);
+    let mut visited_sessions = HashSet::from([root_session_id]);
+
+    while let Some(session_id) = queue.pop_front() {
+        // No kind filter: traversal must cross both subagent and detached
+        // subtrees to find every detached spawn under the root.
+        let tasks = registry
+            .list(session_id, None)
+            .await
+            .map_err(ToolExecutionResult::internal_error)?;
+
+        for task in tasks {
+            if task.kind == TASK_KIND_SESSION {
+                counts.total = counts.total.saturating_add(1);
+                if !task.state.is_terminal() {
+                    counts.active = counts.active.saturating_add(1);
+                }
+            }
+
+            if let Some(child_session_id) = task.links.child_session_id
+                && visited_sessions.insert(child_session_id)
+            {
+                queue.push_back(child_session_id);
+            }
+
+            if counts.active >= max_active || counts.total >= max_total {
+                return Ok(counts);
+            }
+        }
+    }
+
+    Ok(counts)
+}
+
+/// Governance gate for a detached spawn (EVE-767). A detached peer resets depth
+/// but is priced against the origin tree root: a loop of detached spawns is
+/// bounded by the active/total detached caps, closing the uncapped-runaway side
+/// door (TM-DOS). Non-detached subagent caps are enforced separately and are
+/// unchanged.
+async fn enforce_detached_spawn_caps(
+    context: &ToolContext,
+    root_session_id: SessionId,
+) -> Result<(), ToolExecutionResult> {
+    let Some(registry) = context.session_task_registry.as_ref() else {
+        return Ok(());
+    };
+    let policy = context.subagent_nesting_policy;
+    let max_active = policy.max_active_detached_tasks();
+    let max_total = policy.max_total_detached_tasks();
+    let counts =
+        descendant_detached_task_counts(registry.as_ref(), root_session_id, max_active, max_total)
+            .await?;
+
+    if counts.active >= max_active {
+        let attempted = counts.active.saturating_add(1);
+        return Err(ToolExecutionResult::tool_error(format!(
+            "Detached spawn active cap exceeded: spawning this detached session would create {attempted} non-terminal detached peer tasks under origin root session {root_session_id}, but max_active_detached_tasks is {max_active}."
+        )));
+    }
+
+    if counts.total >= max_total {
+        let attempted = counts.total.saturating_add(1);
+        return Err(ToolExecutionResult::tool_error(format!(
+            "Detached spawn total cap exceeded: spawning this detached session would create {attempted} detached peer task records under origin root session {root_session_id}, but max_total_detached_tasks is {max_total}."
+        )));
+    }
+
+    Ok(())
+}
+
 async fn enforce_subagent_depth_cap(
     session_store: &dyn SessionStore,
     session: &crate::session::Session,
@@ -654,19 +625,6 @@ fn last_agent_message(messages: &[crate::platform_store::PlatformMessage]) -> Op
         .iter()
         .rfind(|m| m.role == "agent" || m.role == "assistant")
         .map(|m| m.content.clone())
-}
-
-/// Truncated human summary stored on the subagent's task record.
-const MAX_TASK_SUMMARY_CHARS: usize = 2_048;
-
-fn truncate_summary(text: &str) -> String {
-    let mut chars = text.chars();
-    let truncated: String = chars.by_ref().take(MAX_TASK_SUMMARY_CHARS).collect();
-    if chars.next().is_some() {
-        format!("{truncated}\n[truncated]")
-    } else {
-        truncated
-    }
 }
 
 /// Mirror a terminal outcome onto the subagent's session task (best-effort;
@@ -713,313 +671,6 @@ async fn find_subagent_task(context: &ToolContext, child_id: SessionId) -> Optio
         .find(|task| task.links.child_session_id == Some(child_id))
 }
 
-async fn get_subagent_task(context: &ToolContext, task_id: &str) -> Option<SessionTask> {
-    context
-        .session_task_registry
-        .as_ref()?
-        .get(context.session_id, task_id)
-        .await
-        .ok()
-        .flatten()
-}
-
-/// Context-bound tool injected into a child subagent when its parent task
-/// declares `result_schema`.
-pub struct ReportResultTool {
-    parent_session_id: SessionId,
-    parent_workspace_id: WorkspaceId,
-    task_id: String,
-    result_schema: Value,
-    file_store: Option<Arc<dyn SessionFileSystem>>,
-}
-
-impl ReportResultTool {
-    pub fn new(
-        parent_session_id: SessionId,
-        parent_workspace_id: WorkspaceId,
-        task_id: String,
-        result_schema: Value,
-    ) -> Self {
-        Self {
-            parent_session_id,
-            parent_workspace_id,
-            task_id,
-            result_schema,
-            file_store: None,
-        }
-    }
-
-    pub fn with_file_store(mut self, file_store: Arc<dyn SessionFileSystem>) -> Self {
-        self.file_store = Some(file_store);
-        self
-    }
-
-    fn result_path(&self) -> String {
-        task_result_path(&self.task_id)
-    }
-}
-
-#[async_trait]
-impl Tool for ReportResultTool {
-    fn name(&self) -> &str {
-        "report_result"
-    }
-
-    fn display_name(&self) -> Option<&str> {
-        Some("Report Result")
-    }
-
-    fn description(&self) -> &str {
-        "Submit the final structured result for this subagent task. The call arguments must match the declared result schema."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        self.result_schema.clone()
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error(
-            "report_result requires context. This tool must be executed with session context.",
-        )
-    }
-
-    async fn execute_with_context(
-        &self,
-        arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        let errors = schema_validation_errors(&self.result_schema, &arguments);
-        if !errors.is_empty() {
-            return ToolExecutionResult::tool_error(format!(
-                "report_result arguments do not match result_schema: {}",
-                errors.join("; ")
-            ));
-        }
-
-        let Some(registry) = context.session_task_registry.as_ref() else {
-            return ToolExecutionResult::tool_error(
-                "report_result requires session_task_registry context",
-            );
-        };
-        let Some(file_store) = self.file_store.as_ref().or(context.file_store.as_ref()) else {
-            return ToolExecutionResult::tool_error("report_result requires file_store context");
-        };
-
-        let path = self.result_path();
-        let content = match serde_json::to_string_pretty(&arguments) {
-            Ok(content) => content,
-            Err(error) => return ToolExecutionResult::internal_error(error),
-        };
-        let parent_workspace_key = SessionId::from_uuid(self.parent_workspace_id.uuid());
-        if let Err(error) = file_store
-            .write_file(parent_workspace_key, &path, &content, "utf-8")
-            .await
-        {
-            return ToolExecutionResult::internal_error(error);
-        }
-
-        if let Err(error) = registry
-            .update(
-                self.parent_session_id,
-                &self.task_id,
-                SessionTaskUpdate {
-                    result_path: Some(path.clone()),
-                    summary: Some(truncate_summary(&content)),
-                    ..Default::default()
-                },
-            )
-            .await
-        {
-            return ToolExecutionResult::internal_error(error);
-        }
-
-        ToolExecutionResult::success(json!({
-            "status": "recorded",
-            "task_id": self.task_id,
-            "result_path": path,
-        }))
-    }
-
-    fn requires_context(&self) -> bool {
-        true
-    }
-}
-
-/// Context-bound tool injected into a child subagent when its parent task
-/// declares `message_schema`.
-///
-/// Named `report_task_progress` on the wire to avoid colliding with the
-/// channel-facing `report_progress` tool (`progress_reporting::REPORT_PROGRESS_TOOL_NAME`),
-/// which has different semantics and input schema (EVE-727).
-pub struct ReportTaskProgressTool {
-    parent_session_id: SessionId,
-    task_id: String,
-    message_schema: Value,
-}
-
-impl ReportTaskProgressTool {
-    pub fn new(parent_session_id: SessionId, task_id: String, message_schema: Value) -> Self {
-        Self {
-            parent_session_id,
-            task_id,
-            message_schema,
-        }
-    }
-}
-
-#[async_trait]
-impl Tool for ReportTaskProgressTool {
-    fn name(&self) -> &str {
-        "report_task_progress"
-    }
-
-    fn display_name(&self) -> Option<&str> {
-        Some("Report Task Progress")
-    }
-
-    fn description(&self) -> &str {
-        "Post a structured progress message for this subagent task. The call arguments must match the declared message schema."
-    }
-
-    fn parameters_schema(&self) -> Value {
-        self.message_schema.clone()
-    }
-
-    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
-        ToolExecutionResult::tool_error(
-            "report_task_progress requires context. This tool must be executed with session context.",
-        )
-    }
-
-    async fn execute_with_context(
-        &self,
-        arguments: Value,
-        context: &ToolContext,
-    ) -> ToolExecutionResult {
-        let errors = schema_validation_errors(&self.message_schema, &arguments);
-        if !errors.is_empty() {
-            return ToolExecutionResult::tool_error(format!(
-                "report_task_progress arguments do not match message_schema: {}",
-                errors.join("; ")
-            ));
-        }
-
-        let Some(registry) = context.session_task_registry.as_ref() else {
-            return ToolExecutionResult::tool_error(
-                "report_task_progress requires session_task_registry context",
-            );
-        };
-
-        let message = NewTaskMessage {
-            direction: TaskMessageDirection::Outbound,
-            content: vec![TaskMessagePart::Data {
-                data: arguments.clone(),
-            }],
-            in_reply_to: None,
-            expected_attempt: None,
-        };
-        let stored = match registry
-            .record_message(self.parent_session_id, &self.task_id, message)
-            .await
-        {
-            Ok(stored) => stored,
-            Err(error) => return ToolExecutionResult::internal_error(error),
-        };
-
-        ToolExecutionResult::success(json!({
-            "status": "posted",
-            "task_id": self.task_id,
-            "message_id": stored.id,
-        }))
-    }
-
-    fn requires_context(&self) -> bool {
-        true
-    }
-}
-
-pub async fn report_result_tool_for_child_session(
-    child_session_id: SessionId,
-    session_store: &dyn SessionStore,
-    task_registry: &dyn crate::session_task::SessionTaskRegistry,
-) -> crate::error::Result<Option<ReportResultTool>> {
-    let Some(child) = session_store.get_session(child_session_id).await? else {
-        return Ok(None);
-    };
-    let Some(parent_session_id) = child.parent_session_id else {
-        return Ok(None);
-    };
-    let Some(parent) = session_store.get_session(parent_session_id).await? else {
-        return Ok(None);
-    };
-
-    let tasks = task_registry
-        .list(
-            parent_session_id,
-            Some(&SessionTaskFilter {
-                kind: Some(TASK_KIND_SUBAGENT.to_string()),
-                state: None,
-            }),
-        )
-        .await?;
-
-    let Some(task) = tasks
-        .into_iter()
-        .find(|task| task.links.child_session_id == Some(child_session_id))
-    else {
-        return Ok(None);
-    };
-    let Some(schema) = declared_result_schema(&task) else {
-        return Ok(None);
-    };
-
-    Ok(Some(ReportResultTool::new(
-        parent_session_id,
-        parent.workspace_id,
-        task.id.clone(),
-        schema.clone(),
-    )))
-}
-
-pub async fn report_task_progress_tool_for_child_session(
-    child_session_id: SessionId,
-    session_store: &dyn SessionStore,
-    task_registry: &dyn crate::session_task::SessionTaskRegistry,
-) -> crate::error::Result<Option<ReportTaskProgressTool>> {
-    let Some(child) = session_store.get_session(child_session_id).await? else {
-        return Ok(None);
-    };
-    let Some(parent_session_id) = child.parent_session_id else {
-        return Ok(None);
-    };
-
-    let tasks = task_registry
-        .list(
-            parent_session_id,
-            Some(&SessionTaskFilter {
-                kind: Some(TASK_KIND_SUBAGENT.to_string()),
-                state: None,
-            }),
-        )
-        .await?;
-
-    let Some(task) = tasks
-        .into_iter()
-        .find(|task| task.links.child_session_id == Some(child_session_id))
-    else {
-        return Ok(None);
-    };
-    let Some(schema) = declared_message_schema(&task) else {
-        return Ok(None);
-    };
-
-    Ok(Some(ReportTaskProgressTool::new(
-        parent_session_id,
-        task.id.clone(),
-        schema.clone(),
-    )))
-}
-
 // =============================================================================
 /// Unified delegation wrapper for the subagent target of `spawn_agent`.
 pub struct SpawnSubagentAsAgentTool;
@@ -1031,6 +682,7 @@ impl Tool for SpawnSubagentAsAgentTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_subagent_spawn(
             &tool_call.arguments,
@@ -1170,8 +822,7 @@ fn resolve_spawn_mode(
         .filter(|s| !s.is_empty())
     {
         None => None,
-        Some("background") => Some(SpawnMode::Background),
-        Some("foreground") => Some(SpawnMode::Foreground),
+        Some(value) if let Some(mode) = SpawnMode::parse(value) => Some(mode),
         Some(other) => {
             return Err(ToolExecutionResult::tool_error(format!(
                 "Invalid mode: \"{other}\". Valid modes: background, foreground."
@@ -1500,10 +1151,48 @@ async fn spawn_create_and_wait(
     let Some(session_store) = context.session_store.as_ref() else {
         return ToolExecutionResult::tool_error("Subagent spawn requires session_store context");
     };
-    if lifetime == SpawnLifetime::Linked
-        && let Err(error) =
+    // THREAT[TM-AUTHZ-014][TM-AGENT-028][TM-DOS-030]: Detached peers require
+    // explicit session-creation authority. The host
+    // returns the org-validated origin root so detached chains cannot reset
+    // either spend attribution or their count-cap scope.
+    let budget_root_session_id = if lifetime == SpawnLifetime::Detached {
+        let Some(authority) = context.session_creation_authority.as_ref() else {
+            return ToolExecutionResult::tool_error(
+                "Detached spawn requires session-creation authority.",
+            );
+        };
+        match authority
+            .authorize_session_creation(context.session_id)
+            .await
+        {
+            Ok(root_session_id) => Some(root_session_id),
+            Err(error) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Detached spawn is not authorized to create a session: {error}"
+                ));
+            }
+        }
+    } else {
+        None
+    };
+
+    // Governance gate before creating the child session. Linked subagents are
+    // bounded by the descendant task caps; detached peers reset depth but are
+    // bounded by the detached caps against the same origin root (EVE-767) so a
+    // loop of detached spawns cannot escape governance.
+    let caps_result = match lifetime {
+        SpawnLifetime::Linked => {
             enforce_subagent_task_caps(session_store.as_ref(), parent_session, context).await
-    {
+        }
+        SpawnLifetime::Detached => {
+            enforce_detached_spawn_caps(
+                context,
+                budget_root_session_id.expect("detached authority returned a root"),
+            )
+            .await
+        }
+    };
+    if let Err(error) = caps_result {
         return error;
     }
 
@@ -1525,6 +1214,7 @@ async fn spawn_create_and_wait(
             parent_session_id: (lifetime == SpawnLifetime::Linked).then_some(context.session_id),
             forked_from_session_id: (lifetime == SpawnLifetime::Detached)
                 .then_some(context.session_id),
+            budget_root_session_id,
             seed,
         })
         .await
@@ -1716,7 +1406,7 @@ async fn run_subagent_wait_and_settle(
         Ok(text) => text,
         Err(error) => return error,
     };
-    let result = foreground_result_value(context, task_id.as_deref())
+    let result = result_value_for_task(context, task_id.as_deref())
         .await
         .unwrap_or_else(|| json!(result_text));
 
@@ -1728,19 +1418,6 @@ async fn run_subagent_wait_and_settle(
         "task_id": task_id,
         "blueprint": blueprint_param,
     }))
-}
-
-async fn foreground_result_value(context: &ToolContext, task_id: Option<&str>) -> Option<Value> {
-    let task = get_subagent_task(context, task_id?).await?;
-    declared_result_schema(&task)?;
-    let result_path = task.result_path.as_deref()?;
-    let file_store = context.file_store.as_ref()?;
-    let file = file_store
-        .read_file(context.workspace_fs_key(), result_path)
-        .await
-        .ok()
-        .flatten()?;
-    serde_json::from_str(file.content.as_deref()?).ok()
 }
 
 /// Collect the child's final message and, when `status` is terminal, settle
@@ -1801,10 +1478,7 @@ async fn settle_subagent_outcome(
         };
         let mut summary = Some(truncate_summary(&result_text));
         if task_state == SessionTaskState::Succeeded
-            && let Some(task_id) = task_id
-            && let Some(task) = get_subagent_task(context, task_id).await
-            && declared_result_schema(&task).is_some()
-            && task.result_path.is_none()
+            && required_result_is_missing(context, task_id).await
         {
             task_state = SessionTaskState::Failed;
             task_error = Some(TaskError {
@@ -2124,8 +1798,12 @@ inventory::submit! {
     }
 }
 
-/// Control plane for detached peer-session tracking tasks. Cancellation only
-/// detaches the tracking chip; the peer session owns its own lifecycle.
+/// Control plane for detached peer-session tracking tasks. `cancel` means
+/// cancel everywhere (EVE-766): it cooperatively requests the peer session to
+/// stop via the standard session cancel path, then settles the tracking task
+/// `canceled`. The peer is a same-org session (inherited via fork lineage), so
+/// the cooperative-cancel message routes through the ordinary send path — the
+/// same mechanism linked subagents use.
 pub struct DetachedSessionTaskExecutor;
 
 #[async_trait]
@@ -2138,16 +1816,31 @@ impl TaskExecutor for DetachedSessionTaskExecutor {
         let Some(registry) = context.session_task_registry.as_ref() else {
             return Ok(());
         };
+        // Option A (EVE-766): cancel actually cancels. Deliver a cooperative
+        // stop to the peer session first; only settle the tracking task once
+        // the request is in flight, so a delivery failure surfaces to the
+        // caller instead of silently claiming the peer was canceled.
+        let summary = match (context.platform_store.as_ref(), task.links.child_session_id) {
+            (Some(store), Some(peer_id)) => {
+                store
+                    .send_message(
+                        peer_id,
+                        "Cancellation requested by the session that spawned you. Stop work, wind down, and end your run.",
+                    )
+                    .await?;
+                "Peer session cancellation requested; tracking settled canceled.".to_string()
+            }
+            // No peer link to signal (e.g. never wired): nothing to stop, just
+            // settle the tracking task so the intent is honored.
+            _ => "Detached session tracking canceled; no peer session link to signal.".to_string(),
+        };
         registry
             .update(
                 task.session_id,
                 &task.id,
                 SessionTaskUpdate {
                     state: Some(SessionTaskState::Canceled),
-                    summary: Some(
-                        "Detached session tracking canceled; peer session left running."
-                            .to_string(),
-                    ),
+                    summary: Some(summary),
                     ..Default::default()
                 },
             )
@@ -2166,6 +1859,7 @@ inventory::submit! {
 mod tests {
     use super::*;
     use crate::Tool;
+    use crate::session_task::{TaskMessageDirection, TaskMessagePart, task_result_path};
 
     // Metadata/tool-list constants covered by builtin_capabilities_satisfy_registry_invariants.
 
@@ -2330,6 +2024,27 @@ mod tests {
     /// SessionStore view over the mock platform store (depth-policy lookup).
     struct MockSessionStore(Arc<MockPlatformStore>);
 
+    struct MockSessionCreationAuthority {
+        root: crate::typed_id::SessionId,
+        allowed: bool,
+    }
+
+    #[async_trait]
+    impl crate::traits::SessionCreationAuthority for MockSessionCreationAuthority {
+        async fn authorize_session_creation(
+            &self,
+            _session_id: crate::typed_id::SessionId,
+        ) -> crate::error::Result<crate::typed_id::SessionId> {
+            if self.allowed {
+                Ok(self.root)
+            } else {
+                Err(crate::error::AgentLoopError::tool(
+                    "org:sessions:manage is required",
+                ))
+            }
+        }
+    }
+
     #[async_trait]
     impl crate::traits::SessionStore for MockSessionStore {
         async fn get_session(
@@ -2355,6 +2070,10 @@ mod tests {
         let mut context = ToolContext::new(session_id);
         context.platform_store = Some(store.clone());
         context.session_store = Some(Arc::new(MockSessionStore(store.clone())));
+        context.session_creation_authority = Some(Arc::new(MockSessionCreationAuthority {
+            root: store.session.id,
+            allowed: true,
+        }));
         if let Some(registry) = registry {
             context.session_task_registry = Some(registry);
         }
@@ -2402,6 +2121,10 @@ mod tests {
 
     #[async_trait]
     impl SessionFileSystem for MemoryFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             session_id: crate::typed_id::SessionId,
@@ -2627,6 +2350,14 @@ mod tests {
         assert_eq!(child.forked_from_session_id, Some(context.session_id));
         assert_eq!(child.title.as_deref(), Some("Research Peer"));
         assert_eq!(child.goal.as_deref(), Some("Investigate latency"));
+        assert_eq!(
+            store
+                .created_session_budget_roots
+                .lock()
+                .unwrap()
+                .as_slice(),
+            &[Some(store.session.id)]
+        );
 
         let task_id = value["task_id"].as_str().expect("task_id");
         let task = registry
@@ -2639,6 +2370,60 @@ mod tests {
         assert_eq!(task.links.child_session_id, Some(child_id));
         assert_eq!(task.spec["lifetime"], "detached");
         assert_eq!(task.spec["seed"], "workspace");
+    }
+
+    #[tokio::test]
+    async fn detached_spawn_requires_session_creation_authority_before_creation() {
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let mut context = spawn_context(&store, Some(registry));
+        context.session_creation_authority = None;
+
+        let result = spawn(
+            &context,
+            json!({"name": "Denied", "instructions": "go", "lifetime": "detached"}),
+        )
+        .await;
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("expected authority ToolError, got {result:?}");
+        };
+        assert!(message.contains("session-creation authority"));
+        assert!(
+            store
+                .created_session_budget_roots
+                .lock()
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn detached_spawn_reports_permission_denial_before_creation() {
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let mut context = spawn_context(&store, Some(registry));
+        context.session_creation_authority = Some(Arc::new(MockSessionCreationAuthority {
+            root: store.session.id,
+            allowed: false,
+        }));
+
+        let result = spawn(
+            &context,
+            json!({"name": "Denied", "instructions": "go", "lifetime": "detached"}),
+        )
+        .await;
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("expected permission ToolError, got {result:?}");
+        };
+        assert!(message.contains("not authorized"));
+        assert!(message.contains("org:sessions:manage"));
+        assert!(
+            store
+                .created_session_budget_roots
+                .lock()
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[tokio::test]
@@ -2672,8 +2457,165 @@ mod tests {
         );
     }
 
+    // EVE-767: detached spawns reset depth but are still capped against the
+    // origin root so a loop of detached spawns cannot run unbounded (TM-DOS).
+
+    fn session_task_under(
+        root: crate::typed_id::SessionId,
+        kind: &str,
+        state: SessionTaskState,
+    ) -> CreateSessionTask {
+        CreateSessionTask {
+            session_id: root,
+            id: None,
+            kind: kind.to_string(),
+            display_name: "t".to_string(),
+            spec: json!({}),
+            state,
+            links: TaskLinks {
+                child_session_id: Some(crate::typed_id::SessionId::new()),
+                ..Default::default()
+            },
+            wake_policy: TaskWakePolicy::Silent,
+        }
+    }
+
     #[tokio::test]
-    async fn detached_session_task_cancel_detaches_tracking_only() {
+    async fn detached_task_counts_ignore_subagent_and_terminal_active() {
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let root = store.session.id;
+
+        registry
+            .create(session_task_under(
+                root,
+                TASK_KIND_SESSION,
+                SessionTaskState::Running,
+            ))
+            .await
+            .unwrap();
+        registry
+            .create(session_task_under(
+                root,
+                TASK_KIND_SESSION,
+                SessionTaskState::Running,
+            ))
+            .await
+            .unwrap();
+        // Terminal detached task: counts toward total, not active.
+        registry
+            .create(session_task_under(
+                root,
+                TASK_KIND_SESSION,
+                SessionTaskState::Canceled,
+            ))
+            .await
+            .unwrap();
+        // Subagent task: must not count toward the detached budget at all.
+        registry
+            .create(session_task_under(
+                root,
+                TASK_KIND_SUBAGENT,
+                SessionTaskState::Running,
+            ))
+            .await
+            .unwrap();
+
+        let counts = descendant_detached_task_counts(registry.as_ref(), root, 100, 100)
+            .await
+            .unwrap();
+        assert_eq!(
+            counts.active, 2,
+            "only non-terminal session tasks are active"
+        );
+        assert_eq!(
+            counts.total, 3,
+            "terminal session task counts toward total; subagent task excluded"
+        );
+    }
+
+    #[tokio::test]
+    async fn detached_spawn_rejected_at_cap_and_allowed_under_cap() {
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let context = spawn_context(&store, Some(registry.clone())).with_subagent_nesting_policy(
+            crate::traits::SubagentNestingPolicy::default()
+                .with_agent_detached_task_caps_override(Some(1), Some(4)),
+        );
+
+        // Under the ceiling (0 existing): one authorized detached spawn succeeds.
+        let ok = spawn(
+            &context,
+            json!({"name": "D0", "instructions": "go", "mode": "background", "lifetime": "detached"}),
+        )
+        .await;
+        assert!(
+            matches!(ok, ToolExecutionResult::Success(_)),
+            "detached spawn under cap should succeed, got {ok:?}"
+        );
+
+        // The spawn created one active detached peer task under the root → at
+        // the active cap. The next detached spawn is refused with a clear error.
+        let refused = spawn(
+            &context,
+            json!({"name": "D1", "instructions": "go", "mode": "background", "lifetime": "detached"}),
+        )
+        .await;
+        let ToolExecutionResult::ToolError(msg) = refused else {
+            panic!("expected detached active cap ToolError, got {refused:?}");
+        };
+        assert!(
+            msg.contains("max_active_detached_tasks is 1"),
+            "cap error should name the limit, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn detached_cap_does_not_affect_linked_subagent_spawn() {
+        // A root already at the detached ceiling must still allow linked
+        // subagent spawns — the two budgets are independent (regression guard).
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let context = spawn_context(&store, Some(registry.clone())).with_subagent_nesting_policy(
+            crate::traits::SubagentNestingPolicy::default()
+                .with_agent_detached_task_caps_override(Some(1), Some(4)),
+        );
+        let root = store.session.id;
+
+        // Saturate the detached active cap.
+        registry
+            .create(session_task_under(
+                root,
+                TASK_KIND_SESSION,
+                SessionTaskState::Running,
+            ))
+            .await
+            .unwrap();
+
+        // A detached spawn is refused…
+        let refused = spawn(
+            &context,
+            json!({"name": "D", "instructions": "go", "mode": "background", "lifetime": "detached"}),
+        )
+        .await;
+        assert!(matches!(refused, ToolExecutionResult::ToolError(_)));
+
+        // …but a linked subagent spawn is unaffected by the detached cap.
+        let linked = spawn(
+            &context,
+            json!({"name": "L", "instructions": "go", "mode": "background"}),
+        )
+        .await;
+        assert!(
+            matches!(linked, ToolExecutionResult::Success(_)),
+            "linked subagent spawn must not be blocked by the detached cap, got {linked:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn detached_session_task_cancel_requests_peer_cancellation() {
+        // EVE-766: cancel_task on a detached-session task must cooperatively
+        // cancel the peer session, not just detach the tracking chip.
         let store = Arc::new(MockPlatformStore::new());
         let registry = Arc::new(InMemorySessionTaskRegistry::default());
         let context = spawn_context(&store, Some(registry.clone()));
@@ -2700,6 +2642,21 @@ mod tests {
             .await
             .unwrap();
 
+        // The peer session was signaled to stop via the standard send path.
+        let sent = store.sent_messages.lock().unwrap().clone();
+        assert_eq!(
+            sent.len(),
+            1,
+            "exactly one cooperative-cancel message expected, got {sent:?}"
+        );
+        assert_eq!(sent[0].0, child_id, "cancel must target the peer session");
+        assert!(
+            sent[0].1.contains("Cancellation requested"),
+            "cancel message should ask the peer to stop, got {:?}",
+            sent[0].1
+        );
+
+        // The tracking task settles canceled and keeps its peer link.
         let updated = registry
             .get(context.session_id, &task.id)
             .await
@@ -2709,7 +2666,46 @@ mod tests {
         assert_eq!(updated.links.child_session_id, Some(child_id));
         assert_eq!(
             updated.summary.as_deref(),
-            Some("Detached session tracking canceled; peer session left running.")
+            Some("Peer session cancellation requested; tracking settled canceled.")
+        );
+    }
+
+    #[tokio::test]
+    async fn detached_session_task_cancel_without_peer_link_still_settles() {
+        // Defensive: a session-kind task with no peer link has nothing to
+        // signal, but the cancel intent must still be honored.
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let context = spawn_context(&store, Some(registry.clone()));
+        let task = registry
+            .create(CreateSessionTask {
+                session_id: context.session_id,
+                id: None,
+                kind: TASK_KIND_SESSION.to_string(),
+                display_name: "Peer".to_string(),
+                spec: json!({}),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+
+        DetachedSessionTaskExecutor
+            .cancel(&task, &context)
+            .await
+            .unwrap();
+
+        assert!(store.sent_messages.lock().unwrap().is_empty());
+        let updated = registry
+            .get(context.session_id, &task.id)
+            .await
+            .unwrap()
+            .expect("task should remain present");
+        assert_eq!(updated.state, SessionTaskState::Canceled);
+        assert_eq!(
+            updated.summary.as_deref(),
+            Some("Detached session tracking canceled; no peer session link to signal.")
         );
     }
 
@@ -3072,8 +3068,15 @@ mod tests {
         let ToolExecutionResult::ToolError(message) = result else {
             panic!("expected validation error, got {result:?}");
         };
-        assert!(message.contains("$.answer is required"), "got: {message}");
-        assert!(message.contains("$.extra is not allowed"), "got: {message}");
+        assert!(
+            message.contains("answer") && message.contains("required"),
+            "got: {message}"
+        );
+        assert!(
+            message.contains("extra")
+                && (message.contains("additional") || message.contains("not allowed")),
+            "got: {message}"
+        );
     }
 
     #[tokio::test]
@@ -3190,10 +3193,14 @@ mod tests {
             panic!("expected validation error, got {result:?}");
         };
         assert!(
-            message.contains("$.step has the wrong JSON type"),
+            message.contains("step") && message.contains("string"),
             "got: {message}"
         );
-        assert!(message.contains("$.extra is not allowed"), "got: {message}");
+        assert!(
+            message.contains("extra")
+                && (message.contains("additional") || message.contains("not allowed")),
+            "got: {message}"
+        );
     }
 
     #[test]

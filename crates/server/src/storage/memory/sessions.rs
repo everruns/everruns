@@ -17,6 +17,29 @@ impl InMemoryDatabase {
         let now = Self::now();
         let id = SessionId::new();
 
+        // THREAT[TM-TENANT-014]: Resolve the explicit detached budget root
+        // under the creating org.
+        // Canonicalizing through the referenced row preserves the origin root
+        // across detached chains and rejects cross-org linkage.
+        let root_session_id = if let Some(budget_root) = input.budget_root_session_id {
+            let sessions = self.sessions.read();
+            let referenced = sessions
+                .get(&budget_root)
+                .filter(|row| row.org_id == input.org_id)
+                .ok_or_else(|| anyhow::anyhow!("budget root session not found in organization"))?;
+            referenced.root_session_id.unwrap_or(budget_root)
+        } else {
+            match input.parent_session_id {
+                Some(parent) => self
+                    .sessions
+                    .read()
+                    .get(&parent)
+                    .and_then(|p| p.root_session_id)
+                    .unwrap_or(parent),
+                None => id,
+            }
+        };
+
         // Attach to an existing workspace when requested (validated by the
         // service before reaching storage); otherwise auto-create a default
         // workspace whose UUID equals the session id — matches the Postgres
@@ -45,19 +68,6 @@ impl InMemoryDatabase {
                 },
             );
         }
-        // EVE-680: root of this session's delegation tree. A top-level session
-        // is its own root; a subagent child inherits its parent's root. Mirrors
-        // the Postgres path; the read guard is released before the insert below.
-        let root_session_id = match input.parent_session_id {
-            Some(parent) => self
-                .sessions
-                .read()
-                .get(&parent)
-                .and_then(|p| p.root_session_id)
-                .unwrap_or(parent),
-            None => id,
-        };
-
         let row = SessionRow {
             id,
             org_id: input.org_id,
@@ -65,8 +75,8 @@ impl InMemoryDatabase {
             app_id: input.app_id,
             harness_id: input.harness_id,
             agent_id: input.agent_id,
-            agent_version_id: None,
-            agent_config_hash: None,
+            agent_version_id: input.agent_version_id,
+            agent_config_hash: input.agent_config_hash,
             agent_identity_id: input.agent_identity_id,
             owner_principal_id: input.owner_principal_id,
             resolved_owner_user_id: input.resolved_owner_user_id,

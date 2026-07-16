@@ -458,7 +458,7 @@ impl Tool for CancelTaskTool {
     }
 
     fn description(&self) -> &str {
-        "Request cooperative cancellation of a task. The task winds down and may still end succeeded or failed."
+        "Request cooperative cancellation of a task. The task winds down and may still end succeeded or failed. For a detached `session` task this also cancels the peer session (not just the tracking chip)."
     }
 
     fn parameters_schema(&self) -> Value {

@@ -1086,6 +1086,7 @@ mod tests {
         fn auth_config_response(&self) -> AuthConfigResponse {
             AuthConfigResponse {
                 mode: "full".into(),
+                login_origin: None,
                 password_auth_enabled: false,
                 oauth_providers: vec![],
                 signup_enabled: false,
@@ -1216,6 +1217,7 @@ mod tests {
         fn auth_config_response(&self) -> AuthConfigResponse {
             AuthConfigResponse {
                 mode: "full".into(),
+                login_origin: None,
                 password_auth_enabled: false,
                 oauth_providers: vec![],
                 signup_enabled: false,
@@ -1434,6 +1436,7 @@ mod tests {
         fn auth_config_response(&self) -> AuthConfigResponse {
             AuthConfigResponse {
                 mode: "full".into(),
+                login_origin: None,
                 password_auth_enabled: false,
                 oauth_providers: vec![],
                 signup_enabled: false,

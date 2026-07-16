@@ -593,6 +593,8 @@ mod tests {
                 app_id: None,
                 harness_id: Some(harness_id),
                 agent_id: None,
+                agent_version_id: None,
+                agent_config_hash: None,
                 agent_identity_id: None,
                 owner_principal_id: everruns_core::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
@@ -612,6 +614,7 @@ mod tests {
                 blueprint_id: None,
                 blueprint_config: None,
                 parent_session_id: None,
+                budget_root_session_id: None,
             })
             .await
             .unwrap();
@@ -652,6 +655,8 @@ mod tests {
                 app_id: None,
                 harness_id: Some(harness_id),
                 agent_id: None,
+                agent_version_id: None,
+                agent_config_hash: None,
                 agent_identity_id: None,
                 owner_principal_id: everruns_core::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
@@ -671,6 +676,7 @@ mod tests {
                 blueprint_id: None,
                 blueprint_config: None,
                 parent_session_id: None,
+                budget_root_session_id: None,
             })
             .await
             .unwrap();
@@ -713,6 +719,8 @@ mod tests {
                 app_id: None,
                 harness_id: Some(harness_id),
                 agent_id: None,
+                agent_version_id: None,
+                agent_config_hash: None,
                 agent_identity_id: None,
                 owner_principal_id: everruns_core::PrincipalId::from_seed(1),
                 resolved_owner_user_id: None,
@@ -732,6 +740,7 @@ mod tests {
                 blueprint_id: None,
                 blueprint_config: None,
                 parent_session_id: None,
+                budget_root_session_id: None,
             })
             .await
             .unwrap();

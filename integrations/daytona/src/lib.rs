@@ -366,7 +366,10 @@ mod tests {
         let cap = DaytonaCapability;
         let ctx = SystemPromptContext::without_file_store(everruns_core::SessionId::new());
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
-        assert!(prompt.len() <= 1300, "prompt is {} bytes", prompt.len());
+        // Bumped 1300 → 1600: EVE-778 grew the shared EXEC_OUTPUT_HINT with the
+        // single-read/contextual-search policy (+438 bytes), taking this
+        // contribution to 1567 bytes.
+        assert!(prompt.len() <= 1600, "prompt is {} bytes", prompt.len());
     }
 
     #[test]

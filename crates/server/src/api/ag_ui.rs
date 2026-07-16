@@ -46,9 +46,9 @@ use axum::{
 };
 use axum_extra::extract::Multipart;
 use everruns_core::events::{
-    OutputMessageCompletedData, OutputMessageDeltaData, ReasonThinkingCompletedData,
-    ReasonThinkingDeltaData, ReasonThinkingStartedData, ToolCompletedData, ToolStartedData,
-    TurnFailedData,
+    OutputMessageCompletedData, OutputMessageDeltaData, ReasonItemData,
+    ReasonThinkingCompletedData, ReasonThinkingDeltaData, ReasonThinkingStartedData,
+    ToolCompletedData, ToolStartedData, TurnFailedData,
 };
 use everruns_core::message::ExecutionPhase;
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
@@ -814,6 +814,7 @@ async fn find_or_create_session(
                         parallel_tool_calls: None,
                         parent_session_id: None,
                         forked_from_session_id: None,
+                        budget_root_session_id: None,
                         seed: everruns_core::SessionSeedMode::Fresh,
                     },
                 )
@@ -978,20 +979,21 @@ fn is_terminal_public_output_message(
     assistant_emitted_delta || !public_content_parts_to_string(&message.content).is_empty()
 }
 
-fn ensure_assistant_message_id(
-    state: &mut AgUiStreamState,
-    event: &everruns_core::Event,
-) -> AgUiMessageId {
+/// Returns the AG-UI `messageId` for the assistant message currently being
+/// streamed, allocating a fresh id the first time a message scope opens.
+///
+/// The id is message-scoped, not turn-scoped: `close_assistant_text_without_finishing`
+/// clears the cached id at every non-terminal message boundary, so a commentary
+/// message and the final answer within one turn receive distinct ids. The id is a
+/// random public identifier and is never derived from `turn_id`, so the internal
+/// turn uuid is never exposed on the public AG-UI transport.
+///
+/// Once EVE-772 lands `message_id` on the streaming lifecycle events, this should
+/// key off the streamed `message_id` so the AG-UI id equals the stored `Message.id`.
+fn ensure_assistant_message_id(state: &mut AgUiStreamState) -> AgUiMessageId {
     state
         .assistant_message_id
-        .get_or_insert_with(|| {
-            event
-                .context
-                .turn_id
-                .as_ref()
-                .map(|id| AgUiMessageId::from(id.uuid()))
-                .unwrap_or_else(AgUiMessageId::random)
-        })
+        .get_or_insert_with(AgUiMessageId::random)
         .clone()
 }
 
@@ -1102,11 +1104,81 @@ fn push_public_tool_activity_end(state: &mut AgUiStreamState) {
     }
 }
 
+/// Project a provider `reason.item` summary onto the AG-UI reasoning (thinking)
+/// channel. Per the EVE-768 design note the provider-authored summary is a
+/// reasoning artifact: it must render on the reasoning channel and is never
+/// relabeled as an assistant answer. Only the curated `summary` segments are
+/// surfaced here — opaque/encrypted reasoning content is never emitted.
+///
+/// If a reasoning block is already open (an active `reason.thinking` stream),
+/// the summary is appended within it rather than opening a nested block;
+/// otherwise a self-contained `THINKING_*` block is emitted for the summary.
+fn push_reasoning_summary(state: &mut AgUiStreamState, summary: &[String]) {
+    let text = summary
+        .iter()
+        .map(|segment| segment.trim())
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if text.is_empty() {
+        return;
+    }
+
+    // Append to an already-open reasoning text message so the summary joins the
+    // active thinking stream instead of opening a nested/duplicate block.
+    if state.thinking_started && state.thinking_text_started {
+        state.queue.push_back(AgUiEvent::ThinkingTextMessageContent(
+            AgUiThinkingTextMessageContentEvent {
+                base: agui_base_event(),
+                delta: format!("\n{text}"),
+            },
+        ));
+        return;
+    }
+
+    // Otherwise emit a self-contained reasoning block. Only open a fresh
+    // `ThinkingStart` when no reasoning block (thinking or tool-activity) is
+    // currently open, and close only what we opened.
+    let thinking_block_open = state.thinking_started || state.public_tool_activity_opened_thinking;
+    let opened_thinking = !thinking_block_open;
+    if opened_thinking {
+        state
+            .queue
+            .push_back(AgUiEvent::ThinkingStart(AgUiThinkingStartEvent {
+                base: agui_base_event(),
+                title: None,
+            }));
+    }
+    state.queue.push_back(AgUiEvent::ThinkingTextMessageStart(
+        AgUiThinkingTextMessageStartEvent {
+            base: agui_base_event(),
+        },
+    ));
+    state.queue.push_back(AgUiEvent::ThinkingTextMessageContent(
+        AgUiThinkingTextMessageContentEvent {
+            base: agui_base_event(),
+            delta: text,
+        },
+    ));
+    state.queue.push_back(AgUiEvent::ThinkingTextMessageEnd(
+        AgUiThinkingTextMessageEndEvent {
+            base: agui_base_event(),
+        },
+    ));
+    if opened_thinking {
+        state
+            .queue
+            .push_back(AgUiEvent::ThinkingEnd(AgUiThinkingEndEvent {
+                base: agui_base_event(),
+            }));
+    }
+}
+
 fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
     match event.event_type.as_str() {
         "output.message.delta" => {
             if let Ok(data) = parse_event_data::<OutputMessageDeltaData>(event) {
-                let message_id = ensure_assistant_message_id(state, event);
+                let message_id = ensure_assistant_message_id(state);
                 if !state.assistant_content_started {
                     state
                         .queue
@@ -1131,7 +1203,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
                     close_assistant_text_without_finishing(state);
                     return;
                 }
-                let message_id = ensure_assistant_message_id(state, event);
+                let message_id = ensure_assistant_message_id(state);
                 if !state.assistant_content_started {
                     state
                         .queue
@@ -1219,8 +1291,18 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             state.thinking_text_started = false;
             state.public_tool_activity_opened_thinking = false;
         }
+        // EVE-775: a provider `reason.item` summary is a *reasoning artifact*
+        // (EVE-768 design note), so it renders on the AG-UI reasoning channel
+        // (`THINKING_*` / `REASONING_*`) — never on the assistant-text channel.
+        // Only the provider-curated `summary` segments are surfaced; the opaque
+        // `encrypted_content` reasoning context is never emitted to a consumer.
+        "reason.item" => {
+            if let Ok(data) = parse_event_data::<ReasonItemData>(event) {
+                push_reasoning_summary(state, &data.summary);
+            }
+        }
         "tool.started" if parse_event_data::<ToolStartedData>(event).is_ok() => {
-            ensure_assistant_message_id(state, event);
+            ensure_assistant_message_id(state);
             state.active_tool_activity_count += 1;
             match state.tool_visibility {
                 AgUiToolVisibility::None => {}
@@ -1236,7 +1318,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             }
         }
         "tool.completed" if parse_event_data::<ToolCompletedData>(event).is_ok() => {
-            ensure_assistant_message_id(state, event);
+            ensure_assistant_message_id(state);
             state.active_tool_activity_count = state.active_tool_activity_count.saturating_sub(1);
             push_public_tool_activity_end(state);
         }
@@ -1609,6 +1691,7 @@ mod tests {
                 turn_id,
                 delta: "Hello".to_string(),
                 accumulated: "Hello".to_string(),
+                phase: None,
             },
         );
         translate_event(&mut state, &delta_event);
@@ -1659,6 +1742,7 @@ mod tests {
                 turn_id,
                 delta: "Let me check that.".to_string(),
                 accumulated: "Let me check that.".to_string(),
+                phase: None,
             },
         );
         translate_event(&mut state, &delta_event);
@@ -1731,6 +1815,239 @@ mod tests {
             "The Base harness is the default execution wrapper."
         );
         assert!(state.finished);
+
+        // EVE-773: the commentary message and the final answer are distinct AG-UI
+        // messages, so they must carry distinct message-scoped ids, and neither may
+        // leak the raw turn uuid onto the public transport.
+        let start_ids: Vec<&AgUiMessageId> = state
+            .queue
+            .iter()
+            .filter_map(|event| match event {
+                AgUiEvent::TextMessageStart(event) => Some(&event.message_id),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(start_ids.len(), 2);
+        assert_ne!(
+            start_ids[0], start_ids[1],
+            "commentary and final answer must have distinct messageIds"
+        );
+        let turn_message_id = AgUiMessageId::from(turn_id.uuid());
+        assert_ne!(*start_ids[0], turn_message_id);
+        assert_ne!(*start_ids[1], turn_message_id);
+    }
+
+    // EVE-775: a provider `reason.item` summary is a reasoning artifact and must
+    // project onto the AG-UI reasoning channel (THINKING_*), never the
+    // assistant-text channel, and never leak opaque reasoning content.
+    #[tokio::test]
+    async fn test_reason_item_summary_projects_to_reasoning_channel() {
+        let mut state = test_stream_state().await;
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
+        let event = Event::new(
+            SessionId::from_uuid(state.session_id),
+            EventContext::turn(turn_id, input_message_id),
+            ReasonItemData {
+                turn_id,
+                provider: "openai".to_string(),
+                model: Some("gpt-5.5".to_string()),
+                item_id: "rs_1".to_string(),
+                encrypted_content: Some("OPAQUE-DO-NOT-LEAK".to_string()),
+                summary: vec!["Considered the file layout.".to_string()],
+                token_count: Some(42),
+            },
+        );
+
+        translate_event(&mut state, &event);
+
+        let event_types: Vec<AgUiEventType> =
+            state.queue.iter().map(AgUiEvent::event_type).collect();
+        assert_eq!(
+            event_types,
+            vec![
+                AgUiEventType::ThinkingStart,
+                AgUiEventType::ThinkingTextMessageStart,
+                AgUiEventType::ThinkingTextMessageContent,
+                AgUiEventType::ThinkingTextMessageEnd,
+                AgUiEventType::ThinkingEnd,
+            ]
+        );
+        // The reasoning summary must never appear on the assistant-text channel.
+        assert!(!state.queue.iter().any(|event| matches!(
+            event,
+            AgUiEvent::TextMessageStart(_)
+                | AgUiEvent::TextMessageContent(_)
+                | AgUiEvent::TextMessageEnd(_)
+        )));
+        match &state.queue[2] {
+            AgUiEvent::ThinkingTextMessageContent(event) => {
+                assert_eq!(event.delta, "Considered the file layout.");
+            }
+            other => panic!("expected thinking content, got {other:?}"),
+        }
+        // Hidden/opaque reasoning content is never exposed anywhere on the wire.
+        let serialized: String = state
+            .queue
+            .iter()
+            .map(|event| serde_json::to_string(event).unwrap())
+            .collect();
+        assert!(
+            !serialized.contains("OPAQUE-DO-NOT-LEAK"),
+            "opaque reasoning must never reach the AG-UI wire: {serialized}"
+        );
+        // A reasoning summary does not end the run — the final answer still follows.
+        assert!(!state.finished);
+    }
+
+    #[tokio::test]
+    async fn test_reason_item_empty_summary_emits_nothing() {
+        let mut state = test_stream_state().await;
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
+        let event = Event::new(
+            SessionId::from_uuid(state.session_id),
+            EventContext::turn(turn_id, input_message_id),
+            ReasonItemData {
+                turn_id,
+                provider: "openai".to_string(),
+                model: None,
+                item_id: "rs_empty".to_string(),
+                encrypted_content: Some("OPAQUE".to_string()),
+                summary: vec![String::new(), "   ".to_string()],
+                token_count: None,
+            },
+        );
+        translate_event(&mut state, &event);
+        assert!(state.queue.is_empty());
+    }
+
+    // EVE-768 AC#7: reasoning summary vs commentary channel separation. Commentary
+    // is deliberate user-facing assistant text; the provider reasoning summary is a
+    // reasoning artifact. They must land on different channels and never mix.
+    #[tokio::test]
+    async fn test_reason_summary_and_commentary_use_separate_channels() {
+        let mut state = test_stream_state().await;
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
+        let context = EventContext::turn(turn_id, input_message_id);
+        let session_id = SessionId::from_uuid(state.session_id);
+
+        let commentary_delta = Event::new(
+            session_id,
+            context.clone(),
+            OutputMessageDeltaData {
+                turn_id,
+                delta: "Let me look into that.".to_string(),
+                accumulated: "Let me look into that.".to_string(),
+                phase: None,
+            },
+        );
+        translate_event(&mut state, &commentary_delta);
+
+        let reason_item = Event::new(
+            session_id,
+            context,
+            ReasonItemData {
+                turn_id,
+                provider: "openai".to_string(),
+                model: None,
+                item_id: "rs_sep".to_string(),
+                encrypted_content: None,
+                summary: vec!["Summarized the plan.".to_string()],
+                token_count: None,
+            },
+        );
+        translate_event(&mut state, &reason_item);
+
+        // Assistant-text channel carries only the commentary.
+        let text_deltas: Vec<&str> = state
+            .queue
+            .iter()
+            .filter_map(|event| match event {
+                AgUiEvent::TextMessageContent(event) => Some(event.delta.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(text_deltas, vec!["Let me look into that."]);
+
+        // Reasoning channel carries only the summary.
+        let thinking_deltas: Vec<&str> = state
+            .queue
+            .iter()
+            .filter_map(|event| match event {
+                AgUiEvent::ThinkingTextMessageContent(event) => Some(event.delta.as_str()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(thinking_deltas, vec!["Summarized the plan."]);
+    }
+
+    #[tokio::test]
+    async fn test_reason_item_summary_appends_to_active_thinking_block() {
+        let mut state = test_stream_state().await;
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
+        let context = EventContext::turn(turn_id, input_message_id);
+        let session_id = SessionId::from_uuid(state.session_id);
+
+        let thinking_started = Event::new(
+            session_id,
+            context.clone(),
+            ReasonThinkingStartedData {
+                turn_id,
+                model: None,
+            },
+        );
+        translate_event(&mut state, &thinking_started);
+        let thinking_delta = Event::new(
+            session_id,
+            context.clone(),
+            ReasonThinkingDeltaData {
+                turn_id,
+                delta: "Reasoning...".to_string(),
+                accumulated: "Reasoning...".to_string(),
+            },
+        );
+        translate_event(&mut state, &thinking_delta);
+
+        let reason_item = Event::new(
+            session_id,
+            context,
+            ReasonItemData {
+                turn_id,
+                provider: "openai".to_string(),
+                model: None,
+                item_id: "rs_app".to_string(),
+                encrypted_content: None,
+                summary: vec!["Summary tail.".to_string()],
+                token_count: None,
+            },
+        );
+        translate_event(&mut state, &reason_item);
+
+        let event_types: Vec<AgUiEventType> =
+            state.queue.iter().map(AgUiEvent::event_type).collect();
+        // The summary appends into the open reasoning block — no duplicate start.
+        assert_eq!(
+            event_types
+                .iter()
+                .filter(|event_type| **event_type == AgUiEventType::ThinkingStart)
+                .count(),
+            1
+        );
+        assert!(
+            !state
+                .queue
+                .iter()
+                .any(|event| matches!(event, AgUiEvent::TextMessageContent(_)))
+        );
+        match state.queue.back().unwrap() {
+            AgUiEvent::ThinkingTextMessageContent(event) => {
+                assert_eq!(event.delta, "\nSummary tail.");
+            }
+            other => panic!("expected appended thinking content, got {other:?}"),
+        }
     }
 
     #[tokio::test]
@@ -1920,9 +2237,12 @@ mod tests {
         );
         translate_event(&mut state, &output_completed);
 
-        let expected_message_id = AgUiMessageId::from(turn_id.uuid());
+        // The public messageId is message-scoped and must never be the raw turn uuid.
+        let turn_message_id = AgUiMessageId::from(turn_id.uuid());
         match &state.queue[5] {
-            AgUiEvent::TextMessageStart(event) => assert_eq!(event.message_id, expected_message_id),
+            AgUiEvent::TextMessageStart(event) => {
+                assert_ne!(event.message_id, turn_message_id);
+            }
             _ => panic!("expected text start event"),
         }
     }

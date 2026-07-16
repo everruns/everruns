@@ -34,6 +34,7 @@ futures.workspace = true
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
+jsonschema = { version = "0.47.0", default-features = false }
 serde_yaml.workspace = true
 toml = "1.1"
 
@@ -64,8 +65,9 @@ base64.workspace = true
 sha2.workspace = true
 hex.workspace = true
 
-# Regex for argument substitution
+# Pattern matching
 regex.workspace = true
+globset.workspace = true
 
 # Text diff rendering for edit_file previews
 similar = "3"
@@ -76,7 +78,7 @@ url = "2"
 # Web fetching (optional; behind the `web-fetch` feature). fetchkit + the
 # ed25519 bot-auth key derivation pull a sizable HTTP/crypto subtree.
 bytes = "1"
-fetchkit = { version = "=0.4.1", features = ["bot-auth"], optional = true }
+fetchkit = { version = "=0.5.0", features = ["bot-auth", "render-rakers"], optional = true }
 
 # Ed25519 key derivation (bot-auth public key registration)
 ed25519-dalek = { version = "3", features = ["rand_core"], optional = true }
@@ -125,10 +127,10 @@ inventory.workspace = true
 llmsim = { version = "0.5.1", default-features = false, optional = true }
 
 # OpenUI component definitions and prompt generator
-everruns-openui = { path = "../openui", version = "0.17.7", optional = true }
+everruns-openui = { path = "../openui", version = "0.17.9", optional = true }
 
 # A2UI component catalog and prompt generator
-everruns-a2ui = { path = "../a2ui", version = "0.17.7", optional = true }
+everruns-a2ui = { path = "../a2ui", version = "0.17.9", optional = true }
 
 # A2A outbound agent delegation (optional; behind the `a2a` feature). Pulls the
 # tonic/prost gRPC stack and a second reqwest major, so it is the largest single

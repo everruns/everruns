@@ -4,7 +4,8 @@
 // Design decisions:
 // - Uses marker traits to differentiate ID types at compile time
 // - Stores IDs as prefixed strings (e.g., "agent_01933b5a...")
-// - Uses UUIDv7 for time-ordering benefits
+// - Uses UUIDv7 for DB-backed ids (time-ordering) and UUIDv4 for random-public
+//   ids (e.g. MessageId) — dispatched per class via IdMarker::generate_uuid()
 // - Supports serde, sqlx, and utoipa for full integration
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -45,6 +46,17 @@ impl std::error::Error for IdParseError {}
 pub trait IdMarker: Clone + Copy + Send + Sync + 'static {
     /// The prefix for this ID type (e.g., "agt" for agents)
     const PREFIX: &'static str;
+
+    /// Generate a fresh UUID for a new id of this class.
+    ///
+    /// Defaults to UUIDv7, whose time-ordering gives DB-backed keys B-tree
+    /// locality and sortability (events, sessions, agents, …). Id classes that
+    /// are purely *public/correlation* identifiers with no DB sort/index
+    /// dependency override this to a random UUIDv4 so no creation timestamp
+    /// leaks into a client-visible id. See `specs/id-schema.md`.
+    fn generate_uuid() -> Uuid {
+        Uuid::now_v7()
+    }
 }
 
 /// A type-safe identifier with a specific prefix
@@ -55,10 +67,24 @@ pub struct TypedId<T: IdMarker> {
 }
 
 impl<T: IdMarker> TypedId<T> {
-    /// Create a new ID with a random UUIDv7
+    /// Create a new ID using this id class's generation strategy
+    /// ([`IdMarker::generate_uuid`] — UUIDv7 by default, UUIDv4 for
+    /// random-public id classes such as [`MessageId`]).
     pub fn new() -> Self {
         Self {
-            uuid: Uuid::now_v7(),
+            uuid: T::generate_uuid(),
+            _marker: PhantomData,
+        }
+    }
+
+    /// Create a new ID with a random (non-time-ordered) UUIDv4.
+    ///
+    /// Use for public/correlation ids that must not embed a creation
+    /// timestamp. The wire format is unchanged (`prefix_{32-hex}`), so parsing,
+    /// validation, and persistence are identical to a UUIDv7-backed id.
+    pub fn new_random() -> Self {
+        Self {
+            uuid: Uuid::new_v4(),
             _marker: PhantomData,
         }
     }
@@ -322,6 +348,13 @@ impl IdMarker for AgentIdentityIdMarker {
     const PREFIX: &'static str = "identity";
 }
 
+/// Marker for agent trigger IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TriggerIdMarker;
+impl IdMarker for TriggerIdMarker {
+    const PREFIX: &'static str = "trg";
+}
+
 /// Marker for principal IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PrincipalIdMarker;
@@ -348,6 +381,16 @@ impl IdMarker for SessionParticipantIdMarker {
 pub struct MessageIdMarker;
 impl IdMarker for MessageIdMarker {
     const PREFIX: &'static str = "message";
+
+    // Messages are not DB entities — they live embedded in `events.data` JSONB
+    // with no table, FK, index, or sort dependency on their id, and the id is
+    // the *public* identifier serialized to clients (`output.message.completed`,
+    // `EventContext.input_message_id`). UUIDv7's time-ordering does no work here
+    // and would leak a creation timestamp into a client-visible id, so message
+    // ids are random UUIDv4. See EVE-771 and `specs/id-schema.md`.
+    fn generate_uuid() -> Uuid {
+        Uuid::new_v4()
+    }
 }
 
 /// Marker for Event IDs
@@ -624,6 +667,8 @@ pub type AgentVersionId = TypedId<AgentVersionIdMarker>;
 pub type HarnessId = TypedId<HarnessIdMarker>;
 /// Agent identity ID
 pub type AgentIdentityId = TypedId<AgentIdentityIdMarker>;
+/// Agent trigger ID
+pub type TriggerId = TypedId<TriggerIdMarker>;
 /// Principal ID
 pub type PrincipalId = TypedId<PrincipalIdMarker>;
 /// Session ID
@@ -824,5 +869,51 @@ mod tests {
         assert_eq!(set.len(), 2);
         set.insert(id1);
         assert_eq!(set.len(), 2); // No duplicate
+    }
+
+    #[test]
+    fn test_message_id_is_random_v4() {
+        // MessageId is a random-public id class: new() and new_random() must
+        // both yield UUIDv4, unlike the default UUIDv7 classes.
+        let id = MessageId::new();
+        assert_eq!(
+            id.uuid().get_version_num(),
+            4,
+            "MessageId::new() must be v4"
+        );
+        assert_eq!(
+            MessageId::new_random().uuid().get_version_num(),
+            4,
+            "MessageId::new_random() must be v4"
+        );
+        // Format is unchanged: message_ + 32 lowercase hex, still parseable.
+        let s = id.to_string();
+        assert!(s.starts_with("message_"));
+        assert_eq!(s.len(), "message_".len() + 32);
+        assert_eq!(MessageId::parse(&s).unwrap(), id);
+    }
+
+    #[test]
+    fn test_default_id_class_stays_v7() {
+        // DB-backed classes keep UUIDv7 for B-tree locality / sortability.
+        assert_eq!(AgentId::new().uuid().get_version_num(), 7);
+        assert_eq!(SessionId::new().uuid().get_version_num(), 7);
+        assert_eq!(EventId::new().uuid().get_version_num(), 7);
+        // TurnId decision (EVE-771): stays UUIDv7 — turn ordering is used by
+        // durable execution and its public AG-UI exposure is being removed by
+        // the streaming message_id work (EVE-773), so it is not changed here.
+        assert_eq!(TurnId::new().uuid().get_version_num(), 7);
+    }
+
+    #[test]
+    fn test_message_id_parse_compat_legacy_and_random() {
+        // Legacy message ids were UUIDv7; new ones are UUIDv4. Both must parse
+        // identically — the wire format did not change, so no migration.
+        let legacy_v7 = format!("message_{}", Uuid::now_v7().simple());
+        let new_v4 = format!("message_{}", Uuid::new_v4().simple());
+        for s in [legacy_v7, new_v4] {
+            let parsed = MessageId::parse(&s).expect("both id vintages must parse");
+            assert_eq!(parsed.to_string(), s);
+        }
     }
 }

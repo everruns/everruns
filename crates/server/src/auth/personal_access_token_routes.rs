@@ -5,12 +5,13 @@
 
 use axum::{
     Json, Router,
-    extract::{FromRef, Path, State},
+    extract::{ConnectInfo, Extension, FromRef, Path, State},
     http::{HeaderMap, StatusCode},
     routing::{delete, get},
 };
 use chrono::{Duration, Utc};
 use serde::{Deserialize, Serialize};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -164,10 +165,13 @@ fn normalize_pat_scopes(requested: &[String]) -> Result<Vec<String>, AuthError> 
 /// Cannot be called with personal access token authentication (must use session auth).
 async fn create_personal_access_token(
     State(state): State<PersonalAccessTokenState>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     user: AuthUser,
     Json(req): Json<CreatePersonalAccessTokenRequest>,
 ) -> Result<(StatusCode, Json<PersonalAccessTokenResponse>), AuthError> {
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
+
     // Cannot create a personal access token using personal access token auth
     if user.auth_method == AuthMethod::PersonalAccessToken {
         return Err(AuthError::forbidden(
@@ -258,7 +262,7 @@ async fn create_personal_access_token(
         audit_org_id,
         Some(user.id),
         "auth.personal_access_token.created",
-        audit::client_ip(&headers),
+        ip,
         serde_json::json!({"token_id": token_row.id.to_string(), "name": req.name}),
     );
 
@@ -279,10 +283,13 @@ async fn create_personal_access_token(
 /// DELETE /v1/auth/personal-access-tokens/:token_id - Delete a personal access token
 async fn delete_personal_access_token(
     State(state): State<PersonalAccessTokenState>,
+    connect_info: Option<Extension<ConnectInfo<SocketAddr>>>,
     headers: HeaderMap,
     user: AuthUser,
     Path(token_id): Path<Uuid>,
 ) -> Result<StatusCode, AuthError> {
+    let ip = audit::client_ip_from_connect_info(connect_info, &headers);
+
     let deleted = state
         .db
         .delete_personal_access_token(token_id, user.id)
@@ -306,7 +313,7 @@ async fn delete_personal_access_token(
             audit_org_id,
             Some(user.id),
             "auth.personal_access_token.deleted",
-            audit::client_ip(&headers),
+            ip,
             serde_json::json!({"token_id": token_id.to_string()}),
         );
         Ok(StatusCode::NO_CONTENT)

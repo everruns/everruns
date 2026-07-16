@@ -1066,38 +1066,73 @@ impl WorkerService for WorkerServiceImpl {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
 
-        // Grep via WorkspaceFileService
-        let grep_input = GrepInput {
-            pattern: req.pattern.clone(),
-            path_pattern: req.path_pattern.clone(),
+        let options = everruns_core::GrepOptions {
+            path_pattern: req.path_pattern,
+            before_context: req.before_context as usize,
+            after_context: req.after_context as usize,
+            offset: req.offset as usize,
+            limit: req.limit as usize,
+            max_bytes: req.max_bytes as usize,
         };
+        let grep_result = everruns_core::SessionFileSystem::grep_files_with_options(
+            &self.session_file_service,
+            everruns_core::SessionId::from_uuid(session_id),
+            &req.pattern,
+            &options,
+        )
+        .await
+        .map_err(|e| {
+            // Check if it's a regex error
+            if e.to_string().contains("regex") {
+                return Status::invalid_argument(format!("Invalid regex pattern: {}", e));
+            }
+            tracing::error!("Failed to grep files: {}", e);
+            Status::internal("Failed to grep files")
+        })?;
 
-        let grep_results = self
-            .session_file_service
-            .grep(session_id, grep_input)
-            .await
-            .map_err(|e| {
-                // Check if it's a regex error
-                if e.to_string().contains("regex") {
-                    return Status::invalid_argument(format!("Invalid regex pattern: {}", e));
-                }
-                tracing::error!("Failed to grep files: {}", e);
-                Status::internal("Failed to grep files")
-            })?;
-
-        // Convert GrepResult to proto GrepMatch (flatten)
-        let matches: Vec<proto::GrepMatch> = grep_results
+        let matches = grep_result
+            .matches
             .into_iter()
-            .flat_map(|result| {
-                result.matches.into_iter().map(|m| proto::GrepMatch {
-                    path: m.path,
-                    line_number: m.line_number as u64,
-                    line: m.line,
-                })
+            .map(|item| proto::GrepMatch {
+                path: item.path,
+                line_number: item.line_number as u64,
+                line: item.line,
+            })
+            .collect();
+        let blocks = grep_result
+            .blocks
+            .into_iter()
+            .map(|block| proto::GrepContextBlock {
+                path: block.path,
+                start_line: block.start_line as u64,
+                end_line: block.end_line as u64,
+                match_line_numbers: block
+                    .match_line_numbers
+                    .into_iter()
+                    .map(|line| line as u64)
+                    .collect(),
+                lines: block
+                    .lines
+                    .into_iter()
+                    .map(|line| proto::GrepContextLine {
+                        line_number: line.line_number as u64,
+                        line: line.line,
+                        is_match: line.is_match,
+                    })
+                    .collect(),
             })
             .collect();
 
-        Ok(Response::new(SessionGrepFilesResponse { matches }))
+        Ok(Response::new(SessionGrepFilesResponse {
+            matches,
+            blocks,
+            total_matches: grep_result.total_matches as u64,
+            returned_matches: grep_result.returned_matches as u64,
+            bytes_returned: grep_result.bytes_returned as u64,
+            bytes_total: grep_result.bytes_total as u64,
+            next_offset: grep_result.next_offset.map(|offset| offset as u64),
+            byte_truncated: grep_result.byte_truncated,
+        }))
     }
 
     async fn session_create_directory(
@@ -1577,13 +1612,17 @@ impl WorkerService for WorkerServiceImpl {
             .map_err(|e| Status::invalid_argument(format!("Invalid workflow_id: {}", e)))?;
 
         let store = self.durable_store()?;
-        let signals = store
-            .consume_pending_signals(workflow_id)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to consume pending signals: {}", e);
-                Status::internal("Failed to consume pending signals")
-            })?;
+        let signals = if req.signal_type.is_empty() {
+            store.consume_pending_signals(workflow_id).await
+        } else {
+            store
+                .consume_pending_signals_by_type(workflow_id, &req.signal_type)
+                .await
+        }
+        .map_err(|e| {
+            tracing::error!("Failed to consume pending signals: {}", e);
+            Status::internal("Failed to consume pending signals")
+        })?;
 
         let proto_signals = signals
             .into_iter()
@@ -3836,6 +3875,7 @@ impl WorkerService for WorkerServiceImpl {
             parallel_tool_calls: None,
             parent_session_id: None,
             forked_from_session_id: None,
+            budget_root_session_id: None,
             seed: everruns_core::SessionSeedMode::Fresh,
         };
 
@@ -3988,6 +4028,39 @@ impl WorkerService for WorkerServiceImpl {
         .map_err(command_error_to_status)?;
 
         Ok(Response::new(InvokeScheduledAppChannelResponse {
+            session_id: result.session_id.to_string(),
+            created_session: result.created_session,
+        }))
+    }
+
+    async fn invoke_agent_trigger(
+        &self,
+        request: Request<InvokeAgentTriggerRequest>,
+    ) -> Result<Response<InvokeAgentTriggerResponse>, Status> {
+        let req = request.into_inner();
+        let runner = self
+            .runner
+            .clone()
+            .ok_or_else(|| Status::unavailable("Agent runner not available"))?;
+        let message_service = crate::domains::messages::MessageService::new(
+            self.db.clone(),
+            runner,
+            false,
+            self.event_service.event_delivery().clone(),
+        );
+
+        let result = crate::domains::agent_triggers::invoke_agent_trigger(
+            &self.db,
+            &self.session_service,
+            &message_service,
+            req.org_id,
+            &req.agent_id,
+            &req.trigger_id,
+        )
+        .await
+        .map_err(command_error_to_status)?;
+
+        Ok(Response::new(InvokeAgentTriggerResponse {
             session_id: result.session_id.to_string(),
             created_session: result.created_session,
         }))
@@ -4335,6 +4408,43 @@ impl WorkerService for WorkerServiceImpl {
             receipt: Some(everruns_internal_protocol::json_to_proto_value(
                 &response.receipt,
             )),
+        }))
+    }
+
+    async fn authorize_session_creation(
+        &self,
+        request: Request<AuthorizeSessionCreationRequest>,
+    ) -> Result<Response<AuthorizeSessionCreationResponse>, Status> {
+        // THREAT[TM-AUTHZ-014]: Resolve the current session owner server-side;
+        // the worker cannot supply a user identity for this decision.
+        let req = request.into_inner();
+        let session_id = everruns_core::SessionId::parse(&req.session_id)
+            .or_else(|_| {
+                uuid::Uuid::parse_str(&req.session_id).map(everruns_core::SessionId::from_uuid)
+            })
+            .map_err(|error| Status::invalid_argument(format!("Invalid session_id: {error}")))?;
+        let session = self
+            .db
+            .get_session(req.org_id, session_id)
+            .await
+            .map_err(|error| Status::internal(format!("Failed to load session: {error}")))?
+            .ok_or_else(|| Status::not_found("Session not found"))?;
+        let user_id = session.resolved_owner_user_id.ok_or_else(|| {
+            Status::permission_denied(
+                "Detached session creation requires a user-owned session with a resolved owner",
+            )
+        })?;
+        let caller = crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user_id)
+            .await
+            .map_err(|error| {
+                Status::permission_denied(format!("Failed to resolve session owner: {error}"))
+            })?;
+        crate::domains::sessions::SESSION_MANAGE
+            .evaluate_with(self.permission_resolver.as_ref(), &caller)
+            .map_err(|error| Status::permission_denied(error.message))?;
+        let root_session_id = session.root_session_id.unwrap_or(session.id);
+        Ok(Response::new(AuthorizeSessionCreationResponse {
+            budget_root_session_id: root_session_id.to_string(),
         }))
     }
 }

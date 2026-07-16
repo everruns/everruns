@@ -48,7 +48,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.17.7"
+version = "0.17.9"
 edition = "2024"
 # Published crate MSRV: Rust 2024 plus current published dependency floors.
 rust-version = "1.94.0"
@@ -137,6 +137,7 @@ clap = { version = "4", features = ["derive", "env"] }
 serde_yaml = "0.9"
 eventsource-stream = "0.2"
 regex = "1.11"
+globset = "0.4"
 time = "0.3"
 parking_lot = "0.12"
 dialoguer = "0.12"
@@ -144,16 +145,16 @@ webbrowser = "1"
 dirs = "6"
 
 # WebSocket (CDP sessions)
-tokio-tungstenite = { version = "0.29", features = ["rustls-tls-native-roots"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3"
 
 # Everruns SDK
 everruns-sdk = "0.2.0"
-everruns-core = { path = "crates/core", version = "0.17.7" }
+everruns-core = { path = "crates/core", version = "0.17.9" }
 everruns-observability = { path = "crates/observability", version = "0.17.1" }
-everruns-mcp = { path = "crates/mcp", version = "0.17.7" }
+everruns-mcp = { path = "crates/mcp", version = "0.17.9" }
 everruns-openai = { path = "crates/openai", version = "0.17.0" }
-everruns-runtime = { path = "crates/runtime", version = "0.17.7" }
+everruns-runtime = { path = "crates/runtime", version = "0.17.9" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }

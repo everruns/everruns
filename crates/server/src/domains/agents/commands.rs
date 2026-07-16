@@ -1374,6 +1374,8 @@ impl Command for RollbackAgentVersion {
         }
         let restored = q::version_to_agent(&current, &version);
         check_high_risk_caps(ctx, &restored.capabilities).await?;
+        let restored_harness_id =
+            resolve_update_harness_id(ctx, Some(restored.harness_id), None).await?;
         let row = ctx
             .db
             .update_agent(
@@ -1385,6 +1387,7 @@ impl Command for RollbackAgentVersion {
                     description: restored.description.clone(),
                     system_prompt: Some(restored.system_prompt.clone()),
                     default_model_id: restored.default_model_id,
+                    harness_id: restored_harness_id,
                     tags: Some(restored.tags.clone()),
                     initial_files: Some(serde_json::to_value(&restored.initial_files).unwrap()),
                     tools: Some(serde_json::to_value(&restored.tools).unwrap()),
@@ -2497,6 +2500,54 @@ mod tests {
         .run(&admin_ctx)
         .await
         .expect("admin can activate high-risk version");
+    }
+
+    #[tokio::test]
+    async fn rollback_version_restores_versioned_harness() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+        let first_harness_id = create_test_harness(&db, "rollback-harness-one").await;
+        let second_harness_id = create_test_harness(&db, "rollback-harness-two").await;
+
+        let mut req = basic_agent_request("rollback-harness-agent");
+        req.harness_id = Some(first_harness_id);
+        let agent = CreateAgent(req).run(&ctx).await.expect("agent is created");
+        let version = CreateAgentVersionCmd {
+            agent_id: agent.public_id.to_string(),
+            req: CreateAgentVersionRequest {
+                summary: Some("save first harness".to_string()),
+                change_kind: None,
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect("version is created");
+
+        let changed = UpdateAgentCmd {
+            id: agent.public_id.to_string(),
+            req: UpdateAgentRequest {
+                harness_id: Some(second_harness_id),
+                ..update_prompt_request("switch to second harness")
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect("agent harness changes");
+        assert_eq!(changed.harness_id, second_harness_id);
+
+        let restored = RollbackAgentVersion {
+            agent_id: agent.public_id.to_string(),
+            version_id: version.public_id,
+            req: RollbackAgentVersionRequest {
+                save_version: false,
+                summary: None,
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect("rollback succeeds");
+
+        assert_eq!(restored.harness_id, first_harness_id);
     }
 
     #[tokio::test]

@@ -160,6 +160,7 @@ impl Capability for BrowserlessCapability {
         tool_call: &ToolCall,
         phase: ToolNarrationPhase,
         _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let url = tool_call
             .arguments
@@ -278,11 +279,23 @@ mod tests {
         };
         // Narration shows host+path only — no scheme, userinfo, or query.
         assert_eq!(
-            cap.narrate(None, &call, ToolNarrationPhase::Started, None),
+            cap.narrate(
+                None,
+                &call,
+                ToolNarrationPhase::Started,
+                None,
+                everruns_core::tool_narration::ToolNarrationContext::default()
+            ),
             Some("Navigating to example.com/page".to_string())
         );
         assert_eq!(
-            cap.narrate(None, &call, ToolNarrationPhase::Completed, None),
+            cap.narrate(
+                None,
+                &call,
+                ToolNarrationPhase::Completed,
+                None,
+                everruns_core::tool_narration::ToolNarrationContext::default()
+            ),
             Some("Navigated to example.com/page".to_string())
         );
 
@@ -292,7 +305,13 @@ mod tests {
             arguments: serde_json::json!({}),
         };
         assert_eq!(
-            cap.narrate(None, &screenshot, ToolNarrationPhase::Completed, None),
+            cap.narrate(
+                None,
+                &screenshot,
+                ToolNarrationPhase::Completed,
+                None,
+                everruns_core::tool_narration::ToolNarrationContext::default()
+            ),
             Some("Took screenshot".to_string())
         );
 
@@ -303,7 +322,13 @@ mod tests {
             arguments: serde_json::json!({}),
         };
         assert_eq!(
-            cap.narrate(None, &other, ToolNarrationPhase::Started, None),
+            cap.narrate(
+                None,
+                &other,
+                ToolNarrationPhase::Started,
+                None,
+                everruns_core::tool_narration::ToolNarrationContext::default()
+            ),
             None
         );
     }

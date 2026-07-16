@@ -4,8 +4,8 @@ use crate::api::common::Pagination;
 use chrono::Utc;
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::{
-    AgentId, DEFAULT_ORG_ID, HarnessId, PrincipalId, SessionId, SessionParticipantKind,
-    SessionParticipantRole,
+    AgentId, AgentVersionId, DEFAULT_ORG_ID, HarnessId, PrincipalId, SessionId,
+    SessionParticipantKind, SessionParticipantRole,
 };
 
 /// Default pagination for tests (large enough to not truncate).
@@ -24,6 +24,8 @@ fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
         app_id: None,
         harness_id: None,
         agent_id,
+        agent_version_id: None,
+        agent_config_hash: None,
         agent_identity_id: None,
         owner_principal_id: PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
@@ -43,6 +45,7 @@ fn test_session_input(agent_id: Option<AgentId>) -> CreateSessionRow {
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     }
 }
 
@@ -175,6 +178,8 @@ async fn test_create_and_list_sessions() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -194,6 +199,7 @@ async fn test_create_and_list_sessions() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -218,6 +224,8 @@ async fn test_set_session_fork_lineage_roundtrip() {
         app_id: None,
         harness_id: None,
         agent_id: None,
+        agent_version_id: None,
+        agent_config_hash: None,
         agent_identity_id: None,
         owner_principal_id: everruns_core::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
@@ -237,6 +245,7 @@ async fn test_set_session_fork_lineage_roundtrip() {
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     };
 
     let parent = db.create_session(new_session()).await.unwrap();
@@ -265,6 +274,49 @@ async fn test_set_session_fork_lineage_roundtrip() {
         .unwrap()
         .unwrap();
     assert_eq!(reloaded_parent.forked_from_session_id, None);
+}
+
+#[tokio::test]
+async fn detached_budget_root_override_is_canonical_and_org_scoped() {
+    let db = InMemoryDatabase::new();
+    let root = db
+        .create_session(test_session_input(None))
+        .await
+        .expect("root session");
+
+    let mut detached_input = test_session_input(None);
+    detached_input.budget_root_session_id = Some(root.id);
+    let detached = db
+        .create_session(detached_input)
+        .await
+        .expect("detached peer");
+    assert_eq!(detached.parent_session_id, None);
+    assert_eq!(detached.root_session_id, Some(root.id));
+
+    let mut chain_input = test_session_input(None);
+    chain_input.budget_root_session_id = Some(detached.id);
+    let chained = db
+        .create_session(chain_input)
+        .await
+        .expect("detached chain");
+    assert_eq!(chained.root_session_id, Some(root.id));
+
+    // A normal fork has lineage but no internal budget-root override, so its
+    // storage root remains independent.
+    let ordinary_fork = db
+        .create_session(test_session_input(None))
+        .await
+        .expect("ordinary fork storage row");
+    assert_eq!(ordinary_fork.root_session_id, Some(ordinary_fork.id));
+
+    let mut cross_org = test_session_input(None);
+    cross_org.org_id = DEFAULT_ORG_ID + 1;
+    cross_org.budget_root_session_id = Some(root.id);
+    let error = db
+        .create_session(cross_org)
+        .await
+        .expect_err("cross-org budget linkage must be rejected");
+    assert!(error.to_string().contains("not found in organization"));
 }
 
 #[tokio::test]
@@ -301,6 +353,31 @@ async fn test_create_session_seeds_agent_and_user_participants() {
     assert_eq!(user.role, SessionParticipantRole::Member);
     assert_eq!(user.agent_id, None);
     assert_eq!(user.principal_id, PrincipalId::from_seed(1));
+}
+
+#[tokio::test]
+async fn test_create_session_seeds_agent_participant_version() {
+    let db = InMemoryDatabase::new();
+    let agent_id = AgentId::new();
+    let agent_version_id = AgentVersionId::new();
+    let mut input = test_session_input(Some(agent_id));
+    input.agent_version_id = Some(agent_version_id);
+    input.agent_config_hash = Some("config-hash".to_string());
+
+    let session = db.create_session(input).await.unwrap();
+    let participants = db
+        .list_session_participants(DEFAULT_ORG_ID, session.id)
+        .await
+        .unwrap();
+
+    assert_eq!(session.agent_version_id, Some(agent_version_id));
+    let host = participants
+        .iter()
+        .map(SessionParticipantRow::to_core)
+        .find(|participant| participant.role == SessionParticipantRole::Host)
+        .unwrap();
+    assert_eq!(host.agent_id, Some(agent_id));
+    assert_eq!(host.agent_version_id, Some(agent_version_id));
 }
 
 #[tokio::test]
@@ -482,6 +559,8 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
             app_id: None,
             harness_id: Some(harness.id),
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -501,6 +580,7 @@ async fn test_session_aggregate_stats_by_agent_and_harness() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -584,6 +664,8 @@ async fn test_session_updated_at() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -603,6 +685,7 @@ async fn test_session_updated_at() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -668,6 +751,8 @@ async fn test_events_sequence() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -687,6 +772,7 @@ async fn test_events_sequence() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -753,6 +839,8 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -772,6 +860,7 @@ async fn test_list_message_events_filtered_keep_head_loads_head_and_tail() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -833,6 +922,8 @@ async fn test_list_message_events_filtered_caps_unbounded_history() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -852,6 +943,7 @@ async fn test_list_message_events_filtered_caps_unbounded_history() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -935,6 +1027,8 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(42),
             resolved_owner_user_id: Some(owner.id),
@@ -954,6 +1048,7 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -1083,6 +1178,8 @@ async fn test_unpin_session_is_scoped_by_org() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: Some(user_id),
@@ -1102,6 +1199,7 @@ async fn test_unpin_session_is_scoped_by_org() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -1162,6 +1260,8 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -1181,6 +1281,7 @@ async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -1876,6 +1977,8 @@ async fn test_list_events_empty_session_with_limit() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -1895,6 +1998,7 @@ async fn test_list_events_empty_session_with_limit() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -1943,6 +2047,8 @@ async fn test_sessions_pagination() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -1962,6 +2068,7 @@ async fn test_sessions_pagination() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -2049,6 +2156,8 @@ async fn test_sessions_pagination_ordering() {
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -2068,6 +2177,7 @@ async fn test_sessions_pagination_ordering() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -2784,6 +2894,8 @@ async fn test_search_sessions_by_title() {
         app_id: None,
         harness_id: None,
         agent_id: Some(agent.id),
+        agent_version_id: None,
+        agent_config_hash: None,
         agent_identity_id: None,
         owner_principal_id: everruns_core::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
@@ -2803,6 +2915,7 @@ async fn test_search_sessions_by_title() {
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     })
     .await
     .unwrap();
@@ -2813,6 +2926,8 @@ async fn test_search_sessions_by_title() {
         app_id: None,
         harness_id: None,
         agent_id: Some(agent.id),
+        agent_version_id: None,
+        agent_config_hash: None,
         agent_identity_id: None,
         owner_principal_id: everruns_core::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
@@ -2832,6 +2947,7 @@ async fn test_search_sessions_by_title() {
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     })
     .await
     .unwrap();
@@ -2858,6 +2974,8 @@ async fn test_search_sessions_with_agent_filter() {
         app_id: None,
         harness_id: None,
         agent_id: Some(agent1.id),
+        agent_version_id: None,
+        agent_config_hash: None,
         agent_identity_id: None,
         owner_principal_id: everruns_core::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
@@ -2877,6 +2995,7 @@ async fn test_search_sessions_with_agent_filter() {
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     })
     .await
     .unwrap();
@@ -2887,6 +3006,8 @@ async fn test_search_sessions_with_agent_filter() {
         app_id: None,
         harness_id: None,
         agent_id: Some(agent2.id),
+        agent_version_id: None,
+        agent_config_hash: None,
         agent_identity_id: None,
         owner_principal_id: everruns_core::PrincipalId::from_seed(1),
         resolved_owner_user_id: None,
@@ -2906,6 +3027,7 @@ async fn test_search_sessions_with_agent_filter() {
         blueprint_id: None,
         blueprint_config: None,
         parent_session_id: None,
+        budget_root_session_id: None,
     })
     .await
     .unwrap();
@@ -3120,6 +3242,8 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
             app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -3139,6 +3263,7 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -3313,6 +3438,8 @@ async fn test_list_sessions_waiting_tool_results_before() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -3332,6 +3459,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -3342,6 +3470,8 @@ async fn test_list_sessions_waiting_tool_results_before() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -3361,6 +3491,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -3371,6 +3502,8 @@ async fn test_list_sessions_waiting_tool_results_before() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -3390,6 +3523,7 @@ async fn test_list_sessions_waiting_tool_results_before() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -3466,6 +3600,8 @@ async fn test_session_system_prompt_and_initial_files_round_trip() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -3485,6 +3621,7 @@ async fn test_session_system_prompt_and_initial_files_round_trip() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -3519,6 +3656,8 @@ async fn test_session_system_prompt_defaults_to_none() {
             app_id: None,
             harness_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,
@@ -3538,6 +3677,7 @@ async fn test_session_system_prompt_defaults_to_none() {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap();
@@ -3861,4 +4001,198 @@ fn test_normalize_email_trims_and_lowercases() {
     assert_eq!(normalize_email("  Alice@Example.COM "), "alice@example.com");
     assert_eq!(normalize_email("alice@example.com"), "alice@example.com");
     assert_eq!(normalize_email("\tBob@X.io\n"), "bob@x.io");
+}
+
+// ============================================
+// Agent trigger round-trips (EVE-757)
+// ============================================
+
+fn schedule_trigger_input(agent_id: AgentId) -> CreateAgentTriggerRow {
+    CreateAgentTriggerRow {
+        org_id: DEFAULT_ORG_ID,
+        id: everruns_core::TriggerId::new(),
+        agent_id,
+        trigger_type: "schedule".to_string(),
+        config: serde_json::json!({
+            "cron_expression": "0 0 * * * *",
+            "timezone": "UTC",
+            "session_mode": "shared_session",
+            "message": "hello",
+        }),
+        enabled: true,
+        durable_schedule_id: None,
+    }
+}
+
+#[tokio::test]
+async fn test_agent_trigger_create_get_list_update_delete_round_trip() {
+    let db = InMemoryDatabase::new();
+    let agent_id = AgentId::new();
+
+    // Create
+    let created = db
+        .create_agent_trigger(schedule_trigger_input(agent_id))
+        .await
+        .unwrap();
+    assert_eq!(created.status, "active");
+    assert_eq!(created.trigger_type, "schedule");
+    assert!(created.enabled);
+    assert_eq!(created.agent_id, agent_id);
+
+    // Config round-trips into the typed core accessor.
+    let trigger = everruns_core::AgentTrigger {
+        id: created.id,
+        agent_id: created.agent_id,
+        trigger_type: created.trigger_type.as_str().into(),
+        config: created.config.clone(),
+        enabled: created.enabled,
+        created_at: created.created_at,
+        updated_at: created.updated_at,
+        archived_at: created.archived_at,
+        deleted_at: created.deleted_at,
+    };
+    let schedule = trigger.schedule_config().unwrap();
+    assert_eq!(schedule.cron_expression, "0 0 * * * *");
+    assert_eq!(schedule.message, "hello");
+
+    // Get
+    let fetched = db
+        .get_agent_trigger(DEFAULT_ORG_ID, created.id)
+        .await
+        .unwrap()
+        .expect("trigger exists");
+    assert_eq!(fetched.id, created.id);
+
+    // Cross-org isolation.
+    assert!(
+        db.get_agent_trigger(999, created.id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    // List
+    let listed = db
+        .list_agent_triggers(DEFAULT_ORG_ID, None, false)
+        .await
+        .unwrap();
+    assert_eq!(listed.len(), 1);
+
+    // Update
+    let updated = db
+        .update_agent_trigger(
+            DEFAULT_ORG_ID,
+            created.id,
+            UpdateAgentTrigger {
+                enabled: Some(false),
+                config: Some(serde_json::json!({
+                    "cron_expression": "0 5 * * * *",
+                    "message": "updated",
+                })),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+        .expect("update returns row");
+    assert!(!updated.enabled);
+    assert_eq!(updated.config["message"], serde_json::json!("updated"));
+
+    // Soft delete (archive)
+    assert!(
+        db.delete_agent_trigger(DEFAULT_ORG_ID, created.id)
+            .await
+            .unwrap()
+    );
+    let after_delete = db
+        .get_agent_trigger(DEFAULT_ORG_ID, created.id)
+        .await
+        .unwrap()
+        .expect("row still present after soft delete");
+    assert_eq!(after_delete.status, "archived");
+    assert!(after_delete.archived_at.is_some());
+
+    // Archived rows are excluded unless include_archived.
+    assert!(
+        db.list_agent_triggers(DEFAULT_ORG_ID, None, false)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    assert_eq!(
+        db.list_agent_triggers(DEFAULT_ORG_ID, None, true)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+
+    // Second delete is a no-op (already archived, not active).
+    assert!(
+        !db.delete_agent_trigger(DEFAULT_ORG_ID, created.id)
+            .await
+            .unwrap()
+    );
+}
+
+#[tokio::test]
+async fn test_agent_trigger_set_durable_schedule_id() {
+    let db = InMemoryDatabase::new();
+    let created = db
+        .create_agent_trigger(schedule_trigger_input(AgentId::new()))
+        .await
+        .unwrap();
+    assert!(created.durable_schedule_id.is_none());
+
+    let schedule_id = uuid::Uuid::now_v7();
+    let bound = db
+        .set_agent_trigger_durable_schedule_id(DEFAULT_ORG_ID, created.id, Some(schedule_id))
+        .await
+        .unwrap()
+        .expect("bind returns row");
+    assert_eq!(bound.durable_schedule_id, Some(schedule_id));
+
+    // Clearing the binding works too.
+    let cleared = db
+        .set_agent_trigger_durable_schedule_id(DEFAULT_ORG_ID, created.id, None)
+        .await
+        .unwrap()
+        .expect("clear returns row");
+    assert!(cleared.durable_schedule_id.is_none());
+}
+
+#[tokio::test]
+async fn test_agent_trigger_list_filters_by_agent() {
+    let db = InMemoryDatabase::new();
+    let agent_a = AgentId::new();
+    let agent_b = AgentId::new();
+
+    db.create_agent_trigger(schedule_trigger_input(agent_a))
+        .await
+        .unwrap();
+    db.create_agent_trigger(schedule_trigger_input(agent_a))
+        .await
+        .unwrap();
+    db.create_agent_trigger(schedule_trigger_input(agent_b))
+        .await
+        .unwrap();
+
+    let for_a = db
+        .list_agent_triggers(DEFAULT_ORG_ID, Some(agent_a), false)
+        .await
+        .unwrap();
+    assert_eq!(for_a.len(), 2);
+    assert!(for_a.iter().all(|t| t.agent_id == agent_a));
+
+    let for_b = db
+        .list_agent_triggers(DEFAULT_ORG_ID, Some(agent_b), false)
+        .await
+        .unwrap();
+    assert_eq!(for_b.len(), 1);
+
+    let all = db
+        .list_agent_triggers(DEFAULT_ORG_ID, None, false)
+        .await
+        .unwrap();
+    assert_eq!(all.len(), 3);
 }

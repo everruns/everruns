@@ -14,7 +14,10 @@ use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
-use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
+use everruns_core::session_file::{
+    FileInfo, FileStat, GrepContextBlock, GrepContextLine, GrepMatch, GrepOptions,
+    GrepSearchResult, SessionFile,
+};
 use everruns_core::traits::{
     AgentStore, CreateStoredImage, EventEmitter, HarnessStore, ImageArtifactStore,
     LeasedResourceStore, ProviderCredentialStore, ProviderCredentials, ProviderStore,
@@ -526,6 +529,29 @@ impl GrpcClient {
             "created_session": response.created_session,
         }))
     }
+
+    pub async fn invoke_agent_trigger(
+        &self,
+        org_id: i64,
+        agent_id: &str,
+        trigger_id: &str,
+    ) -> Result<serde_json::Value> {
+        let mut client = self.inner.lock().await;
+        let response = client
+            .invoke_agent_trigger(proto::InvokeAgentTriggerRequest {
+                org_id,
+                agent_id: agent_id.to_string(),
+                trigger_id: trigger_id.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+
+        let response = response.into_inner();
+        Ok(serde_json::json!({
+            "session_id": response.session_id,
+            "created_session": response.created_session,
+        }))
+    }
 }
 
 // ============================================================================
@@ -761,6 +787,13 @@ pub struct GrpcPaymentAuthority {
     agent_id: Option<String>,
 }
 
+/// Session-creation authority backed by the control-plane permission resolver.
+pub struct GrpcSessionCreationAuthority {
+    client: GrpcClient,
+    org_id: i64,
+    session_id: SessionId,
+}
+
 impl GrpcBudgetChecker {
     pub fn new(client: GrpcClient, org_id: i64) -> Self {
         Self {
@@ -788,6 +821,16 @@ impl GrpcPaymentAuthority {
     pub fn with_agent_id(mut self, agent_id: Option<String>) -> Self {
         self.agent_id = agent_id;
         self
+    }
+}
+
+impl GrpcSessionCreationAuthority {
+    pub fn new(client: GrpcClient, org_id: i64, session_id: SessionId) -> Self {
+        Self {
+            client,
+            org_id,
+            session_id,
+        }
     }
 }
 
@@ -1523,6 +1566,10 @@ fn proto_model_with_provider_to_model(proto: proto::ResolvedModel) -> Result<Res
 
 #[async_trait]
 impl SessionFileSystem for GrpcAdapter {
+    fn is_mount_resolver(&self) -> bool {
+        false
+    }
+
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let mut client = self.client.inner.lock().await;
 
@@ -1682,6 +1729,11 @@ impl SessionFileSystem for GrpcAdapter {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             pattern: pattern.to_string(),
             path_pattern: path_pattern.map(|s| s.to_string()),
+            before_context: 0,
+            after_context: 0,
+            offset: 0,
+            limit: u64::MAX,
+            max_bytes: u64::MAX,
         };
 
         let response = client
@@ -1699,6 +1751,69 @@ impl SessionFileSystem for GrpcAdapter {
                 line: m.line,
             })
             .collect())
+    }
+
+    async fn grep_files_with_options(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .session_grep_files(proto::SessionGrepFilesRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                pattern: pattern.to_string(),
+                path_pattern: options.path_pattern.clone(),
+                before_context: options.before_context as u64,
+                after_context: options.after_context as u64,
+                offset: options.offset as u64,
+                limit: options.limit as u64,
+                max_bytes: options.max_bytes as u64,
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+        Ok(GrepSearchResult {
+            matches: response
+                .matches
+                .into_iter()
+                .map(|item| GrepMatch {
+                    path: item.path,
+                    line_number: item.line_number as usize,
+                    line: item.line,
+                })
+                .collect(),
+            blocks: response
+                .blocks
+                .into_iter()
+                .map(|block| GrepContextBlock {
+                    path: block.path,
+                    start_line: block.start_line as usize,
+                    end_line: block.end_line as usize,
+                    match_line_numbers: block
+                        .match_line_numbers
+                        .into_iter()
+                        .map(|line| line as usize)
+                        .collect(),
+                    lines: block
+                        .lines
+                        .into_iter()
+                        .map(|line| GrepContextLine {
+                            line_number: line.line_number as usize,
+                            line: line.line,
+                            is_match: line.is_match,
+                        })
+                        .collect(),
+                })
+                .collect(),
+            total_matches: response.total_matches as usize,
+            returned_matches: response.returned_matches as usize,
+            bytes_returned: response.bytes_returned as usize,
+            bytes_total: response.bytes_total as usize,
+            next_offset: response.next_offset.map(|offset| offset as usize),
+            byte_truncated: response.byte_truncated,
+        })
     }
 
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
@@ -3276,6 +3391,7 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
                 "blueprint_config": request.blueprint_config,
                 "parent_session_id": request.parent_session_id.map(|id| id.to_string()),
                 "forked_from_session_id": request.forked_from_session_id.map(|id| id.to_string()),
+                "budget_root_session_id": request.budget_root_session_id.map(|id| id.to_string()),
                 "seed": request.seed,
             }),
         )
@@ -3846,6 +3962,32 @@ impl everruns_core::traits::PaymentAuthority for GrpcPaymentAuthority {
             rail,
             response: body,
             receipt,
+        })
+    }
+}
+
+#[async_trait]
+impl everruns_core::traits::SessionCreationAuthority for GrpcSessionCreationAuthority {
+    async fn authorize_session_creation(
+        &self,
+        session_id: SessionId,
+    ) -> everruns_core::error::Result<SessionId> {
+        if session_id != self.session_id {
+            return Err(AgentLoopError::tool(
+                "session-creation authority is scoped to the current session",
+            ));
+        }
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .authorize_session_creation(proto::AuthorizeSessionCreationRequest {
+                org_id: self.org_id,
+                session_id: session_id.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+        SessionId::parse(&response.budget_root_session_id).map_err(|error| {
+            AgentLoopError::store(format!("Invalid budget root session id: {error}"))
         })
     }
 }

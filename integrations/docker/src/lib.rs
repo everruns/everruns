@@ -379,6 +379,7 @@ impl Tool for DockerExecTool {
         tool_call: &everruns_core::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         let fallback = self.display_name().unwrap_or("Docker");
         Some(everruns_core::tool_narration::narrate_shell_exec(
@@ -1125,7 +1126,10 @@ mod tests {
             everruns_core::SessionId::new(),
         );
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
-        assert!(prompt.len() <= 1150, "prompt is {} bytes", prompt.len());
+        // Bumped 1150 → 1500: EVE-778 grew the shared EXEC_OUTPUT_HINT with the
+        // single-read/contextual-search policy (+438 bytes), taking this
+        // contribution to 1324 bytes.
+        assert!(prompt.len() <= 1500, "prompt is {} bytes", prompt.len());
     }
 
     #[test]

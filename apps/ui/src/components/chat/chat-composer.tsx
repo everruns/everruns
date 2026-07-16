@@ -18,7 +18,13 @@ import {
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { cn } from "@/lib/utils";
 import { ALLOWED_IMAGE_TYPES } from "@/lib/api/types";
-import type { CommandDescriptor, Controls, Model, ReasoningEffortConfig } from "@/lib/api/types";
+import type {
+  CommandDescriptor,
+  Controls,
+  Model,
+  ReasoningEffortConfig,
+  VerbosityConfig,
+} from "@/lib/api/types";
 import type { PendingImage } from "@/lib/api/images";
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/providers/locale-provider";
@@ -48,6 +54,12 @@ export function ChatComposer({
   defaultEffortName,
   getReasoningEffortName,
   onReasoningEffortChange,
+  supportsVerbosity,
+  verbosity,
+  verbosityConfig,
+  defaultVerbosityName,
+  getVerbosityName,
+  onVerbosityChange,
   isActive,
   cancelCurrentTurn,
   canSubmit,
@@ -83,6 +95,12 @@ export function ChatComposer({
   defaultEffortName: string;
   getReasoningEffortName: (value: string) => string;
   onReasoningEffortChange: (value: string) => void;
+  supportsVerbosity: boolean;
+  verbosity: string;
+  verbosityConfig?: VerbosityConfig;
+  defaultVerbosityName: string;
+  getVerbosityName: (value: string) => string;
+  onVerbosityChange: (value: string) => void;
   isActive: boolean;
   cancelCurrentTurn: { mutate: () => void; isPending?: boolean };
   canSubmit: boolean;
@@ -107,11 +125,12 @@ export function ChatComposer({
   }, [hasCommands, showCommands]);
 
   const buildControls = (): Controls | undefined =>
-    selectedModelId || reasoningEffort
+    selectedModelId || reasoningEffort || verbosity
       ? {
           ...(selectedModelId && { model_id: selectedModelId }),
           locale: backendLocale,
           ...(reasoningEffort && supportsReasoning && { reasoning: { effort: reasoningEffort } }),
+          ...(verbosity && supportsVerbosity && { verbosity }),
         }
       : { locale: backendLocale };
 
@@ -212,6 +231,12 @@ export function ChatComposer({
               defaultEffortName={defaultEffortName}
               getReasoningEffortName={getReasoningEffortName}
               onReasoningEffortChange={onReasoningEffortChange}
+              supportsVerbosity={supportsVerbosity}
+              verbosity={verbosity}
+              verbosityConfig={verbosityConfig}
+              defaultVerbosityName={defaultVerbosityName}
+              getVerbosityName={getVerbosityName}
+              onVerbosityChange={onVerbosityChange}
             />
           </div>
 

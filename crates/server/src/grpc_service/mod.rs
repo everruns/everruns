@@ -13,7 +13,7 @@ mod tests;
 
 use crate::domains::mcp_servers::McpServerService;
 use crate::domains::session_files::{
-    CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput, WorkspaceFileService,
+    CreateDirectoryInput, CreateFileInput, UpdateFileInput, WorkspaceFileService,
 };
 use crate::domains::sessions::SessionService;
 use crate::services::{CapabilityService, EventService, ProviderResolverService};
@@ -33,6 +33,8 @@ use everruns_internal_protocol::proto::{
     self,
     AddMessageRequest,
     AddMessageResponse,
+    AuthorizeSessionCreationRequest,
+    AuthorizeSessionCreationResponse,
     BudgetSummaryProto,
     // Session schedule operations
     CancelSessionScheduleRequest,
@@ -124,6 +126,8 @@ use everruns_internal_protocol::proto::{
     HeartbeatDurableTaskResponse,
     HeartbeatDurableWorkerRequest,
     HeartbeatDurableWorkerResponse,
+    InvokeAgentTriggerRequest,
+    InvokeAgentTriggerResponse,
     InvokeScheduledAppChannelRequest,
     InvokeScheduledAppChannelResponse,
     ListCommandsRequest,

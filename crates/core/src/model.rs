@@ -155,9 +155,9 @@ pub struct ModelCost {
     /// Cached read cost per million tokens (USD), if supported
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_read: Option<f64>,
-    /// Tiered pricing that applies above certain context thresholds.
-    /// When present, the base cost fields apply up to the tier threshold,
-    /// and each tier's costs apply for tokens beyond that threshold.
+    /// Tiered pricing that applies when prompt tokens exceed context thresholds.
+    /// When present, the highest matching tier replaces the base rates for the
+    /// whole request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cost_tiers: Vec<CostTier>,
 }
@@ -283,6 +283,40 @@ pub struct SpeedConfig {
     pub default: Speed,
 }
 
+/// Verbosity level for models that support output-length control.
+/// Wire values map 1:1 to the OpenAI `verbosity` request parameter:
+/// `low` (terse), `medium` (balanced, provider default), `high`
+/// (comprehensive). Independent of `ReasoningEffort`, which tunes the
+/// amount of reasoning rather than the length of the final answer.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum Verbosity {
+    Low,
+    Medium,
+    High,
+}
+
+/// Named verbosity value for UI display
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct VerbosityValue {
+    /// The API value (e.g., "low", "high")
+    pub value: Verbosity,
+    /// Display name (e.g., "Low", "High")
+    pub name: String,
+}
+
+/// Verbosity configuration for a model
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct VerbosityConfig {
+    /// Available verbosity values for this model
+    pub values: Vec<VerbosityValue>,
+    /// Default verbosity for this model
+    pub default: Verbosity,
+}
+
 /// Vendor / brand that authored a model. Independent of the provider type
 /// that serves it (the same model may be offered by several providers or
 /// gateways). Primarily drives UI iconography.
@@ -377,6 +411,10 @@ pub struct ModelProfile {
     /// selectable latency/price tiers (OpenAI `service_tier`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub speed: Option<SpeedConfig>,
+    /// Verbosity configuration, for models that expose output-length
+    /// control (OpenAI `verbosity`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verbosity: Option<VerbosityConfig>,
     /// Whether the model supports tool_search (deferred tool loading).
     /// When true, the driver can use namespaces and defer_loading to reduce
     /// token usage for large tool sets. Currently supported by GPT-5.4 and newer.

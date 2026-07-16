@@ -115,7 +115,9 @@ pub struct UpdateMemoryFileRequest {
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct GrepRequest {
+    /// Regex pattern to search for.
     pub pattern: String,
+    /// Optional path glob (`**/*.rs`, `docs/*.md`).
     #[serde(default)]
     pub path_pattern: Option<String>,
 }

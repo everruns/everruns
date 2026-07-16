@@ -9,8 +9,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use everruns_core::ToolHints;
 use everruns_core::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_bytes_read_file_result, clean_exec_output,
-    output_verbosity_budget, parse_read_file_window_args, priority_aware_truncate,
-    resolve_auto_mode,
+    output_verbosity_budget, parse_read_file_window_args, resolve_auto_mode,
 };
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
@@ -292,7 +291,11 @@ impl Tool for SandboxExecTool {
         let effective_mode = resolve_auto_mode(output_mode, success_sentinel);
         let clean_output = clean_exec_output(&result.output);
         let output = if let Some(budget) = output_verbosity_budget(effective_mode) {
-            priority_aware_truncate(&clean_output, budget)
+            everruns_core::tool_output_sanitizer::truncate_exec_stream(
+                &clean_output,
+                budget,
+                success_sentinel,
+            )
         } else {
             clean_output.clone()
         };

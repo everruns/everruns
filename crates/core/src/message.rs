@@ -67,6 +67,19 @@ impl ExecutionPhase {
             Self::FinalAnswer => "final_answer",
         }
     }
+
+    /// Monotonic refinement for the streamed phase *hint* on
+    /// `output.message.started` / `output.message.delta`.
+    ///
+    /// The hint may advance `None -> Commentary | FinalAnswer` exactly once and
+    /// then never changes: it never flip-flops between variants and never
+    /// reverts to `None`. Once a message has been classified mid-stream that
+    /// classification stays put; the authoritative value remains the completed
+    /// `Message.phase`. Returns the (possibly unchanged) refined hint.
+    pub fn refine_streamed_hint(current: Option<Self>, incoming: Self) -> Option<Self> {
+        // First classification wins; a later hint cannot overwrite it.
+        Some(current.unwrap_or(incoming))
+    }
 }
 
 impl std::fmt::Display for ExecutionPhase {
@@ -208,6 +221,12 @@ pub struct Controls {
     /// speed config (OpenAI `service_tier`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub speed: Option<String>,
+
+    /// Verbosity for this message turn: "low", "medium", or "high". Only sent
+    /// to providers whose model profile advertises a verbosity config (OpenAI
+    /// `verbosity`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verbosity: Option<String>,
 
     /// Error disclosure override for this turn: "generic", "standard", or
     /// "detailed". Clamped to at most the mode allowed by the agent's
@@ -1378,6 +1397,35 @@ mod tests {
         assert_eq!(
             ExecutionPhase::from_has_tool_calls(false),
             ExecutionPhase::FinalAnswer
+        );
+    }
+
+    #[test]
+    fn test_execution_phase_refine_streamed_hint_monotonic() {
+        use ExecutionPhase::{Commentary, FinalAnswer};
+        // None advances to the first observed value.
+        assert_eq!(
+            ExecutionPhase::refine_streamed_hint(None, Commentary),
+            Some(Commentary)
+        );
+        assert_eq!(
+            ExecutionPhase::refine_streamed_hint(None, FinalAnswer),
+            Some(FinalAnswer)
+        );
+        // First classification wins: a later hint never flips it...
+        assert_eq!(
+            ExecutionPhase::refine_streamed_hint(Some(Commentary), FinalAnswer),
+            Some(Commentary)
+        );
+        assert_eq!(
+            ExecutionPhase::refine_streamed_hint(Some(FinalAnswer), Commentary),
+            Some(FinalAnswer)
+        );
+        // ...and never reverts to None (the input is never None-valued, but a
+        // repeated identical hint is a no-op).
+        assert_eq!(
+            ExecutionPhase::refine_streamed_hint(Some(Commentary), Commentary),
+            Some(Commentary)
         );
     }
 
