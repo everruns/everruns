@@ -131,14 +131,14 @@ export function useSyncProviderModels() {
 }
 
 // Model hooks
-export function useModels() {
+export function useModels(options: { enabled?: boolean } = {}) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
     queryKey: [...queryKeys.models.list(), org],
     queryFn: () => getModels(),
-    enabled: !!org,
+    enabled: !!org && (options.enabled ?? true),
     staleTime: 30000,
   });
 

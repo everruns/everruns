@@ -18,11 +18,13 @@ interface AgentListWidgetProps {
   allCapabilities?: Capability[];
 }
 
-const MAX_DISPLAYED = 5;
+// Number of active agents rendered in the widget. Exported so the dashboard can
+// gate the capability-catalog fetch on exactly the agents it will display.
+export const MAX_DISPLAYED_AGENTS = 5;
 
 export function AgentListWidget({ agents, allCapabilities }: AgentListWidgetProps) {
   const { locale } = useLocale();
-  const activeAgents = agents.filter((a) => a.status === "active").slice(0, MAX_DISPLAYED);
+  const activeAgents = agents.filter((a) => a.status === "active").slice(0, MAX_DISPLAYED_AGENTS);
 
   const getCapabilityInfo = (capabilityId: CapabilityId): Capability | undefined =>
     allCapabilities?.find((c) => c.id === capabilityId);
