@@ -196,6 +196,7 @@ impl Capability for WebFetchCapability {
         Some(
             fetchkit::Tool::builder()
                 .enable_save_to_file(true)
+                .enable_render_rakers(true)
                 .build()
                 .llmtxt(),
         )
@@ -428,7 +429,12 @@ pub struct WebFetchTool {
 impl WebFetchTool {
     /// Create a new WebFetchTool with file download and optional bot-auth signing.
     pub fn new(enable_save_to_file: bool, bot_auth: Option<BotAuthConfig>) -> Self {
-        let mut builder = fetchkit::Tool::builder().enable_save_to_file(enable_save_to_file);
+        // THREAT[TM-TOOL-024]: Rendering stays request-opt-in; FetchKit runs
+        // inline scripts with a timeout, denies renderer subresource traffic,
+        // and caps rendered output before conversion.
+        let mut builder = fetchkit::Tool::builder()
+            .enable_save_to_file(enable_save_to_file)
+            .enable_render_rakers(true);
         if let Some(config) = bot_auth {
             builder = builder.bot_auth(config);
         }
@@ -468,8 +474,8 @@ impl Default for WebFetchTool {
 impl WebFetchTool {
     /// Build a FetchRequest from JSON arguments.
     fn parse_request(arguments: &Value) -> Result<FetchRequest, ToolExecutionResult> {
-        let url = match arguments.get("url").and_then(|v| v.as_str()) {
-            Some(u) => u.to_string(),
+        let url = match arguments.get("url").and_then(Value::as_str) {
+            Some(url) => url.to_string(),
             None => {
                 return Err(ToolExecutionResult::tool_error(
                     "Missing required parameter: url",
@@ -496,35 +502,31 @@ impl WebFetchTool {
             }
         };
 
-        let as_markdown = arguments
-            .get("as_markdown")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
+        // Deserialize the upstream request contract so newly adopted FetchKit
+        // fields are forwarded instead of silently discarded by this adapter.
+        // Preserve the wrapper's case-insensitive method handling and trim file
+        // destinations for callers that bypass JSON Schema validation.
+        let mut normalized_arguments = arguments.clone();
+        let object = normalized_arguments
+            .as_object_mut()
+            .ok_or_else(|| ToolExecutionResult::tool_error("Arguments must be a JSON object"))?;
+        object.remove("method");
+        if let Some(path) = object.get("save_to_file").and_then(Value::as_str) {
+            let path = path.trim();
+            if path.is_empty() {
+                object.remove("save_to_file");
+            } else {
+                object.insert("save_to_file".to_string(), Value::String(path.to_string()));
+            }
+        }
 
-        let as_text = arguments
-            .get("as_text")
-            .and_then(|v| v.as_bool())
-            .unwrap_or(false);
-
-        // Revisit after fetchkit publishes a nonblank save_to_file schema:
-        // retain boundary normalization for callers that bypass schema validation.
-        let save_to_file = arguments
-            .get("save_to_file")
-            .and_then(|v| v.as_str())
-            .map(str::trim)
-            .filter(|path| !path.is_empty())
-            .map(str::to_string);
-
-        Ok(FetchRequest {
-            url,
-            method: Some(method),
-            as_markdown: if as_markdown { Some(true) } else { None },
-            as_text: if as_text { Some(true) } else { None },
-            save_to_file,
-            content_focus: None,
-            if_none_match: None,
-            if_modified_since: None,
-        })
+        let mut request: FetchRequest =
+            serde_json::from_value(normalized_arguments).map_err(|error| {
+                ToolExecutionResult::tool_error(format!("Invalid arguments: {error}"))
+            })?;
+        request.url = url;
+        request.method = Some(method);
+        Ok(request)
     }
 
     /// Map a fetchkit error to a ToolExecutionResult.
@@ -545,6 +547,7 @@ impl WebFetchTool {
             FetchError::FetcherError(msg) => format!("Fetch error: {msg}"),
             FetchError::SaveError(msg) => format!("Failed to save file: {msg}"),
             FetchError::SaverNotAvailable => "File saving not available".to_string(),
+            FetchError::RenderNotAvailable => "Rendered fetch backend not available".to_string(),
         };
         ToolExecutionResult::tool_error(error_message)
     }
@@ -734,6 +737,7 @@ mod tests {
     fn tool_for_wiremock() -> WebFetchTool {
         let builder = fetchkit::Tool::builder()
             .enable_save_to_file(true)
+            .enable_render_rakers(true)
             .block_private_ips(false);
         let fetchkit_tool = builder.build();
         let description = fetchkit_tool.description().to_string();
@@ -839,6 +843,10 @@ mod tests {
         assert!(schema["properties"]["method"].is_object());
         assert!(schema["properties"]["as_markdown"].is_object());
         assert!(schema["properties"]["as_text"].is_object());
+        assert!(schema["properties"]["content_focus"].is_object());
+        assert!(schema["properties"]["crawl"].is_object());
+        assert!(schema["properties"]["max_pages"].is_object());
+        assert!(schema["properties"]["render"].is_object());
         assert_eq!(schema["required"], serde_json::json!(["url"]));
     }
 
@@ -1231,6 +1239,41 @@ mod tests {
             assert!(format == "markdown" || format == "raw");
         } else {
             panic!("Expected successful response");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_web_fetch_renders_inline_javascript_when_requested() {
+        let mock_server = MockServer::start().await;
+        let html = r#"<!doctype html>
+            <html><body>
+                <div id="app">Loading</div>
+                <script>
+                    document.body.innerHTML = '<main><h1>Rendered Inline</h1><p>Ready</p></main>';
+                </script>
+            </body></html>"#;
+
+        Mock::given(method("GET"))
+            .and(path("/spa"))
+            .respond_with(ResponseTemplate::new(200).set_body_raw(html, "text/html"))
+            .mount(&mock_server)
+            .await;
+
+        let result = tool_for_wiremock()
+            .execute(serde_json::json!({
+                "url": format!("{}/spa", mock_server.uri()),
+                "render": "rakers"
+            }))
+            .await;
+
+        if let ToolExecutionResult::Success(value) = result {
+            assert_eq!(value["rendered_by"], "rakers");
+            let content = value["content"].as_str().unwrap();
+            assert!(content.contains("Rendered Inline"));
+            assert!(content.contains("Ready"));
+            assert!(!content.contains("Loading"));
+        } else {
+            panic!("Expected rendered response, got: {result:?}");
         }
     }
 
@@ -1990,6 +2033,31 @@ mod tests {
         }))
         .unwrap();
         assert_eq!(path.save_to_file.as_deref(), Some("/downloads/file.txt"));
+    }
+
+    #[test]
+    fn test_fetchkit_request_fields_are_forwarded() {
+        let request = WebFetchTool::parse_request(&serde_json::json!({
+            "url": "https://example.com/docs",
+            "method": "get",
+            "content_focus": "agent",
+            "crawl": true,
+            "max_pages": 3,
+            "if_none_match": "\"abc123\"",
+            "if_modified_since": "Wed, 15 Jul 2026 12:00:00 GMT",
+            "render": "rakers"
+        }))
+        .unwrap();
+
+        assert_eq!(request.content_focus.as_deref(), Some("agent"));
+        assert_eq!(request.crawl, Some(true));
+        assert_eq!(request.max_pages, Some(3));
+        assert_eq!(request.if_none_match.as_deref(), Some("\"abc123\""));
+        assert_eq!(
+            request.if_modified_since.as_deref(),
+            Some("Wed, 15 Jul 2026 12:00:00 GMT")
+        );
+        assert_eq!(serde_json::to_value(request).unwrap()["render"], "rakers");
     }
 
     #[tokio::test]
