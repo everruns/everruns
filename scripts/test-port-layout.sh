@@ -70,6 +70,7 @@ check_example_ports() {
   rg -q 'PORT: "9305"' "$compose_file"
   rg -q 'reverse_proxy server:9000' "$compose_file"
   rg -q 'reverse_proxy ui:9305' "$compose_file"
+  rg -q 'encode zstd gzip' "$compose_file"
   rg -q '\$\{EXAMPLE_PROXY_PORT:-9300\}:9300' "$compose_file"
 }
 

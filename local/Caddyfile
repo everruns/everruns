@@ -26,6 +26,25 @@
 #   - SDK reconnects transparently on disconnecting events (no retry budget cost)
 :{$PROXY_PORT:9300} {
 	handle /api/* {
+		# Compress only buffered, text-based responses. The explicit allowlist keeps
+		# text/event-stream out of the encoder so SSE events flush immediately.
+		encode zstd gzip {
+			minimum_length 1024
+			match {
+				header Content-Type application/json*
+				header Content-Type application/*+json
+				header Content-Type text/plain*
+				header Content-Type text/html*
+				header Content-Type text/css*
+				header Content-Type text/csv*
+				header Content-Type text/javascript*
+				header Content-Type text/markdown*
+				header Content-Type application/javascript*
+				header Content-Type application/xml*
+				header Content-Type application/*+xml
+				header Content-Type image/svg+xml*
+			}
+		}
 		reverse_proxy localhost:{$API_PORT:9301} {
 			# Disable response buffering for SSE streaming
 			flush_interval -1
