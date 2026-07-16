@@ -7,6 +7,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { FeatureFlags } from "@/lib/api/types";
@@ -25,6 +26,7 @@ function NavLink({
   pathname: string;
   featureFlags: FeatureFlags;
 }) {
+  const router = useRouter();
   if (item.flag && !featureFlags[item.flag]) return null;
 
   const activePath = item.activePrefix ?? item.href;
@@ -35,7 +37,9 @@ function NavLink({
   return (
     <Link
       href={item.href}
-      prefetch={item.prefetch}
+      prefetch={false}
+      onMouseEnter={item.prefetch === false ? undefined : () => router.prefetch(item.href)}
+      onFocus={item.prefetch === false ? undefined : () => router.prefetch(item.href)}
       className={cn(
         "flex items-center gap-2.5 border-l-2 px-3 py-1.5 text-[13px] font-semibold leading-5 transition-colors",
         isActive

@@ -62,7 +62,33 @@ function isSettingsRscRequest(request: Request) {
   return request.headers().rsc === "1" && url.pathname.startsWith("/settings");
 }
 
-test.describe("Settings navigation prefetch", () => {
+function isRscRequest(request: Request) {
+  return request.headers().rsc === "1";
+}
+
+const DASHBOARD_API_ALLOWLIST = new Set([
+  "/api/v1/auth/config",
+  "/api/v1/auth/me",
+  "/api/v1/agents",
+  "/api/v1/capabilities",
+  "/api/v1/models",
+  "/api/v1/providers",
+  "/api/v1/sessions",
+  "/api/v1/sessions/stats",
+  "/api/v1/feature-flags",
+  "/api/v1/users/me/switch-org",
+  "/api/v1/user/preferences/ui.early_access_banner.dismissed",
+  "/api/v1/durable/config",
+]);
+
+function isDashboardApi(pathname: string) {
+  return (
+    DASHBOARD_API_ALLOWLIST.has(pathname) ||
+    /^\/api\/v1\/orgs\/[^/]+(?:\/feature-flags)?$/.test(pathname)
+  );
+}
+
+test.describe("Sidebar navigation prefetch", () => {
   test.use({ viewport: { width: 1440, height: 2000 } });
 
   test.beforeEach(async ({ context, page, baseURL }) => {
@@ -78,7 +104,35 @@ test.describe("Settings navigation prefetch", () => {
     await mockAppApi(page);
   });
 
-  test("normal pages and Settings navigation avoid Settings route fan-out", async ({ page }) => {
+  test("Dashboard startup does not prefetch unrelated sidebar routes or APIs", async ({ page }) => {
+    const requests: Request[] = [];
+    page.on("request", (request) => requests.push(request));
+
+    await page.goto("/dashboard");
+    await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+
+    const unrelatedRscRequests = requests.filter((request) => {
+      const pathname = new URL(request.url()).pathname;
+      return isRscRequest(request) && pathname !== "/dashboard";
+    });
+    expect(unrelatedRscRequests).toHaveLength(0);
+
+    const unrelatedApiRequests = requests.filter((request) => {
+      const pathname = new URL(request.url()).pathname;
+      return pathname.startsWith("/api/v1/") && !isDashboardApi(pathname);
+    });
+    expect(unrelatedApiRequests.map((request) => new URL(request.url()).pathname)).toEqual([]);
+  });
+
+  test("sidebar click navigation works without broad route prefetch", async ({ page }) => {
+    await page.goto("/dashboard");
+    await expect(page.getByRole("link", { name: "Sessions" })).toBeVisible();
+    await page.getByRole("link", { name: "Sessions" }).click();
+    await expect(page).toHaveURL(/\/sessions$/);
+  });
+
+  test("Settings navigation avoids child route fan-out", async ({ page }) => {
     const settingsRequests: Request[] = [];
     page.on("request", (request) => {
       if (isSettingsRscRequest(request)) settingsRequests.push(request);
@@ -87,8 +141,6 @@ test.describe("Settings navigation prefetch", () => {
     await page.goto("/dashboard");
     await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
     await page.waitForLoadState("networkidle");
-
-    expect(settingsRequests).toHaveLength(0);
 
     settingsRequests.length = 0;
     await page.getByRole("link", { name: "Settings" }).click();
