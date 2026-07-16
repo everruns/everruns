@@ -12,7 +12,7 @@ import {
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import { StatsCards } from "@/components/dashboard/stats-cards";
-import { AgentListWidget } from "@/components/dashboard/agent-list-widget";
+import { AgentListWidget, MAX_DISPLAYED_AGENTS } from "@/components/dashboard/agent-list-widget";
 import { RecentSessions } from "@/components/dashboard/recent-sessions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -35,12 +35,26 @@ export default function DashboardPage() {
   const router = useRouter();
   const { data: agents = [], isLoading: agentsLoading } = useAgents();
   const { data: agentsForReferences = [] } = useAgents({ includeArchived: true });
-  const { data: allCapabilities } = useCapabilities();
   const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(undefined, {
     limit: 5,
   });
   const { data: sessionStats } = useSessionStats();
-  const { data: models } = useModels();
+
+  const sessions = sessionsResponse?.data ?? [];
+
+  // Defer the catalog fetches until the rendered dashboard state actually needs
+  // them. On an empty org there are no capability-bearing agents and no
+  // model-bearing sessions, so both large catalogs (~228 KB + ~78 KB) are pure
+  // overfetch. The `enabled` gates flip on once the agent/session lists load
+  // with content that references those catalogs. See EVE-783.
+  const needsCapabilities = agents
+    .filter((a) => a.status === "active")
+    .slice(0, MAX_DISPLAYED_AGENTS)
+    .some((a) => (a.capabilities?.length ?? 0) > 0);
+  const needsModels = sessions.some((s) => !!s.model_id);
+
+  const { data: allCapabilities } = useCapabilities({ enabled: needsCapabilities });
+  const { data: models } = useModels({ enabled: needsModels });
   const createSession = useCreateSession();
 
   const [newSessionDialogOpen, setNewSessionDialogOpen] = useState(false);
@@ -101,8 +115,6 @@ export default function DashboardPage() {
       </PageContainer>
     );
   }
-
-  const sessions = sessionsResponse?.data ?? [];
 
   return (
     <>
