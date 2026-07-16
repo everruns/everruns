@@ -11,7 +11,8 @@ use serde_json::Value;
 /// Expected path identity for a filesystem backend.
 #[derive(Debug, Clone)]
 pub struct PathIdentityExpectations {
-    /// Canonical model-visible root (`/workspace` for VFS, host path for real disk).
+    /// Canonical visible root (`/workspace` for mounted agent contexts, host path
+    /// for direct real-disk integrations).
     pub expected_root: String,
     /// Prefixes that must not appear in model-visible absolute paths.
     pub forbidden_prefixes: Vec<String>,
@@ -40,8 +41,8 @@ impl PathIdentityExpectations {
         }
     }
 
-    /// Host-backed sessions expose the real root and must not leak `/workspace`
-    /// except under explicit secondary-mount namespaces.
+    /// Direct host-backed integrations expose the real root and must not emit
+    /// `/workspace` except under explicit secondary-mount namespaces.
     pub fn host_backed(root: &str) -> Self {
         Self {
             expected_root: root.to_string(),

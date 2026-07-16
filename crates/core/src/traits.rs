@@ -430,19 +430,18 @@ impl ToolExecutor for std::sync::Arc<dyn ToolExecutor> {
 pub trait SessionFileSystem: Send + Sync {
     /// Human-facing root path for this filesystem.
     ///
-    /// `/workspace` is the stable agent namespace and the default. Embedded
-    /// runtimes backed by a host directory override this to expose the real
-    /// root, so shared capabilities avoid misleading users about where files
-    /// live.
+    /// `/workspace` is the stable agent namespace and the default. Direct
+    /// host-backed stores may override this for host-side integrations, while
+    /// [`MountFs`](crate::mount_fs::MountFs) restores the agent-facing root.
     fn display_root(&self) -> String {
         crate::session_path::WORKSPACE_PREFIX.to_string()
     }
 
     /// Convert a canonical session path into a human-facing path.
     ///
-    /// The default renders the `/workspace` alias. Host-backed stores override
-    /// it, and decorators such as [`MountFs`](crate::mount_fs::MountFs) must
-    /// preserve the primary backend's path identity.
+    /// The default renders the `/workspace` alias. Direct host-backed stores may
+    /// override it, while [`MountFs`](crate::mount_fs::MountFs) presents primary
+    /// workspace paths through the stable agent-facing namespace.
     fn display_path(&self, path: &str) -> String {
         crate::session_path::to_display_path(path)
     }
@@ -451,10 +450,9 @@ pub trait SessionFileSystem: Send + Sync {
     /// absolute path within this filesystem's namespace. Relative inputs resolve
     /// against the filesystem's current directory.
     ///
-    /// This is how a shell seeds its working directory: a resolver like
-    /// [`MountFs`] returns a path in the primary backend's visible namespace, so
-    /// the shell and file tools share the same identity. The default is the flat
-    /// VFS session form.
+    /// This is how a shell seeds its working directory: [`MountFs`] returns a
+    /// path in its stable agent-facing namespace, so the shell and file tools
+    /// share the same identity. The default is the flat VFS session form.
     ///
     /// [`MountFs`]: crate::mount_fs::MountFs
     fn resolve_path(&self, input: &str) -> String {

@@ -2624,9 +2624,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn read_file_uses_store_display_path() {
-        // The file tool renders via the store's `display_path`; MountFs preserves
-        // the primary backend's visible identity (EVE-660).
+    async fn read_file_uses_mountfs_workspace_display_path() {
+        // File tools run behind MountFs in production; mounted real-disk stores
+        // must not leak host-absolute roots to model-visible output.
         let store = Arc::new(MockFileStore::with_display_root("/host/repo"));
         store.add_text_file("/notes.txt", "hello");
         let context = make_context(store);
@@ -2636,7 +2636,7 @@ mod tests {
             .await;
         let value = expect_success(result);
 
-        assert_eq!(value["path"], "/host/repo/notes.txt");
+        assert_eq!(value["path"], "/workspace/notes.txt");
     }
 
     #[test]
@@ -2796,20 +2796,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn system_prompt_uses_store_display_root() {
+    async fn system_prompt_uses_mounted_workspace_display_root() {
         let cap = FileSystemCapability;
         let store = Arc::new(MockFileStore::with_display_root("/host/repo"));
+        let mounted = crate::mount_fs::MountFs::wrap(store);
         let ctx = SystemPromptContext {
             session_id: SessionId::new(),
             locale: None,
-            file_store: Some(store),
+            file_store: Some(mounted),
             model: None,
         };
 
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
 
-        assert!(prompt.contains("Workspace root: `/host/repo`"));
-        assert!(!prompt.contains("/workspace"));
+        assert!(prompt.contains("Workspace root: `/workspace`"));
+        assert!(!prompt.contains("/host/repo"));
     }
 
     #[tokio::test]
@@ -3897,7 +3898,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_directory_without_path_uses_host_display_root() {
+    async fn list_directory_without_path_uses_workspace_display_root() {
+        // File tools run behind MountFs; the mounted primary presents the stable
+        // host-agnostic /workspace root rather than the backend's host path.
         let store = Arc::new(MockFileStore::with_display_root("/repo"));
         store.add_text_file("/notes.txt", "hello");
         let context = make_context(store);
@@ -3907,6 +3910,6 @@ mod tests {
             .await;
         let value = expect_success(result);
 
-        assert_eq!(value["path"], "/repo");
+        assert_eq!(value["path"], "/workspace");
     }
 }

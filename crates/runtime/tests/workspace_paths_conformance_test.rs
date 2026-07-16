@@ -144,7 +144,7 @@ async fn assert_distillation_pointer_follows_store(store: Arc<dyn SessionFileSys
 }
 
 #[tokio::test]
-async fn persisted_output_paths_follow_real_disk_mount_and_vfs_identity() {
+async fn persisted_output_paths_follow_store_display_identity() {
     let direct_root = TempDir::new().unwrap();
     let direct: Arc<dyn SessionFileSystem> =
         Arc::new(RealDiskFileStore::new(direct_root.path()).unwrap());
@@ -221,17 +221,18 @@ async fn all_surfaces_agree_on_root_across_worktree_switch() {
         "ALPHA"
     );
 
-    // Mount routing does not replace the real-disk store's host path identity.
-    assert_eq!(store.display_root(), root_a.display().to_string());
+    // MountFs keeps agent-visible presentation in the stable /workspace
+    // namespace; host paths remain available through the real-disk backend for
+    // host-side integrations.
+    assert_eq!(store.display_root(), "/workspace");
+    assert_eq!(store.display_path("/marker.txt"), "/workspace/marker.txt");
+    assert_eq!(store.resolve_path("marker.txt"), "/workspace/marker.txt");
+    assert_eq!(backend.display_root(), root_a.display().to_string());
     assert_eq!(
-        store.display_path("/marker.txt"),
+        backend.display_path("/marker.txt"),
         root_a.join("marker.txt").display().to_string()
     );
-    assert_eq!(
-        store.resolve_path("marker.txt"),
-        root_a.join("marker.txt").display().to_string()
-    );
-    assert_eq!(bash_pwd(&ctx).await, root_a.display().to_string());
+    assert_eq!(bash_pwd(&ctx).await, "/workspace");
 
     // --- Switch to Worktree B (the embedder moved worktrees) ---
     let worktree_b = TempDir::new().unwrap();
@@ -268,13 +269,12 @@ async fn all_surfaces_agree_on_root_across_worktree_switch() {
         "worktree A is untouched by writes after the switch"
     );
 
-    // The visible namespace follows the backing store after the switch.
-    assert_eq!(store.display_root(), root_b.display().to_string());
-    assert_eq!(
-        store.display_path("/marker.txt"),
-        root_b.join("marker.txt").display().to_string()
-    );
-    assert_eq!(bash_pwd(&ctx).await, root_b.display().to_string());
+    // The host-backed contents follow the worktree switch, while the
+    // agent-visible namespace remains stable and host-agnostic.
+    assert_eq!(store.display_root(), "/workspace");
+    assert_eq!(store.display_path("/marker.txt"), "/workspace/marker.txt");
+    assert_eq!(backend.display_root(), root_b.display().to_string());
+    assert_eq!(bash_pwd(&ctx).await, "/workspace");
 }
 
 #[tokio::test]
@@ -290,18 +290,8 @@ async fn multi_root_display_and_containment_contract() {
     .unwrap();
     let store = multi_root_file_system(&roots).unwrap();
 
-    assert_eq!(
-        store.display_root(),
-        roots.primary_host_root().display().to_string()
-    );
-    assert_eq!(
-        store.display_path("/src/lib.rs"),
-        roots
-            .primary_host_root()
-            .join("src/lib.rs")
-            .display()
-            .to_string()
-    );
+    assert_eq!(store.display_root(), "/workspace");
+    assert_eq!(store.display_path("/src/lib.rs"), "/workspace/src/lib.rs");
 
     let primary_file = store
         .write_file(session, "src/lib.rs", "primary", "text")

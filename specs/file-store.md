@@ -85,8 +85,9 @@ paths such as `/AGENTS.md`, `/outputs/…`, `/.agents/skills/…`) and the
 `/workspace` view of the same backend; `/workspace` wins by longest-prefix, so
 `/workspace/foo` ≡ `/foo`. Splitting `/outputs`, `/.agents/skills`, or volumes
 onto *different* backends later is `MountFs::with_mount(...)` — the resolver does
-not change. Routing and presentation are separate: the primary backend owns its
-visible path identity even when wrapped in `MountFs`.
+not change. Routing and presentation are separate: direct backends retain their
+own display identity for host-side integrations, while `MountFs` owns the stable
+agent-facing identity.
 
 For host-filesystem sessions with multiple registered workspace roots, the
 primary root keeps the same layout and relative-path behavior:
@@ -160,8 +161,8 @@ store, so that logic is private to `everruns_runtime::RealDiskFileStore`
   under the root as aliases for the same file, rejects `..`/symlink escapes, and
   re-checks containment.
 - The root is shared behind a handle, so an embedder's worktree switch via
-  `RealDiskFileStore::set_host_root` is seen by every clone of the store at once
-  and the visible absolute root updates with it.
+  `RealDiskFileStore::set_host_root` is seen by every clone of the real-disk
+  store at once. Mounted agent-facing presentation stays at `/workspace`.
 - `WorkspaceRootSet::set_primary_host_root` and `RealDiskFileStore::set_host_root`
   repoint only the primary root. Additional roots are fixed for the session
   lifetime.
@@ -176,26 +177,28 @@ Each backend owns its `display_path`/`display_root`:
   paths under that root as aliases — so embedders can show
   `/Users/alex/project/src/lib.rs` while `/workspace/src/lib.rs` stays a valid
   input.
-- `MountFs` preserves the primary backend's display root and paths. A real-disk
-  primary rooted at `/repo` therefore displays `/repo` and `/repo/file.rs` both
-  directly and through `MountFs`; an in-memory primary continues to display
-  `/workspace` because that is its own identity.
+- `MountFs` is the agent-facing presentation boundary and displays the stable
+  `/workspace` namespace for primary workspace paths. A real-disk primary rooted
+  at `/repo` can still display `/repo` and `/repo/file.rs` when used directly by
+  host-side integrations, but through `MountFs` model/tool/bash-visible paths are
+  `/workspace` and `/workspace/file.rs` to avoid exposing host checkout details.
 - For additional mounted roots, returned file paths include the stable mounted
   prefix, e.g. `/workspace/roots/backend/Cargo.toml`.
 
 ### Model-facing path guidance (EVE-748)
 
-The active primary `SessionFileSystem` owns the model-visible path identity in
+The agent-facing `SessionFileSystem` owns the model-visible path identity in
 capability system prompts and file-tool parameter schemas:
 
-- Host-backed primaries teach their canonical `display_root()` (for example
-  `/repo`).
-- VFS/in-memory primaries teach `/workspace`.
+- `MountFs` teaches `/workspace` for both storage-backed and real-disk primary
+  workspaces.
+- Direct real-disk backends retain their canonical host display root for
+  host-side integrations, not model-facing contexts.
 - Named secondary mounts remain discoverable through their mounted namespace.
 
-Legacy `/workspace` input aliases may remain accepted internally for host-backed
-stores, but host-backed model context must not advertise them. Storage keys and
-routing paths stay internal and must not leak into prompt text or schemas.
+Host-absolute input aliases may remain accepted internally by real-disk stores,
+but mounted model context must not advertise them. Storage keys, backing roots,
+and routing paths stay internal and must not leak into prompt text or schemas.
 `FileSystemCapability` applies this through a `FilePathPresentation` hook at
 tool-definition assembly time.
 
@@ -211,19 +214,17 @@ display identity owned by the active `SessionFileSystem`:
 
 **Invariants**
 
-- Host-backed primary rooted at `/repo`: every model-visible project path is
-  `/repo` or starts with `/repo/`. No prompt, schema default, result, error, or
-  persisted pointer may advertise `/workspace` as the active namespace.
-- VFS/in-memory primary: the established virtual identity remains `/workspace`
-  across prompt guidance, tool results, and persisted references.
+- Mounted primary: the model-visible identity is `/workspace` across prompt
+  guidance, tool results, and persisted references, regardless of whether the
+  backing store is virtual or rooted at a real host directory.
 - Named secondary mounts: paths use the configured mounted virtual namespace
   (e.g. `/workspace/roots/backend/...`) and do not leak backing-store locations.
 
 **Compatibility inputs vs presentation**
 
-Legacy `/workspace/...` input may remain accepted for routing on host-backed
-stores, but accepted aliases must be canonicalized before any path is returned,
-narrated, or persisted. Input compatibility is not model-visible identity.
+Host-absolute paths under registered roots may remain accepted as compatibility
+inputs, but they must be canonicalized before any path is returned, narrated, or
+persisted. Input compatibility is not model-visible identity.
 
 **Conformance**
 

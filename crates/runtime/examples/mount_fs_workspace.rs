@@ -4,7 +4,7 @@
 // mount point and the default current working directory — not a magic prefix
 // re-implemented in every store. The same resolver works over the in-memory VFS
 // and over a real host directory, and a worktree switch repoints every surface
-// at once while preserving the backing filesystem's visible path identity.
+// at once while preserving a stable agent-facing display identity.
 //
 // Run it:
 //   cargo run -p everruns-runtime --example mount_fs_workspace
@@ -77,10 +77,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("  /workspace/notes.md -> on disk: {on_disk_b:?}");
     assert_eq!(on_disk_b, "from worktree B");
 
-    // The visible root follows the real-disk backend.
-    assert_eq!(host_fs.display_root(), disk.root().display().to_string());
+    // MountFs hides the backing root from the agent-facing namespace, while the
+    // direct backend remains available to host-side integrations.
+    assert_eq!(host_fs.display_root(), "/workspace");
+    assert_eq!(disk.display_root(), disk.root().display().to_string());
     println!(
-        "\nmodel-facing root follows the backing store: `{}` ✓",
+        "\nmodel-facing root remains host-agnostic: `{}` ✓",
         host_fs.display_root()
     );
 

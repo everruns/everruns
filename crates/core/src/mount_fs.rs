@@ -68,7 +68,7 @@ pub struct MountFs {
     /// Sorted by mount-point length descending so the first match is the
     /// longest (most specific) mount.
     mounts: Vec<Mount>,
-    /// The workspace backend — used for grep, display, and host mapping.
+    /// The workspace backend — used as the unreachable resolution fallback.
     primary: Arc<dyn SessionFileSystem>,
     /// Current working directory (a normalized virtual path). Relative inputs
     /// resolve against it; defaults to [`WORKSPACE_MOUNT`]. Fixed at
@@ -333,7 +333,7 @@ fn join_backend_path(backend_root: &str, rest: &str) -> String {
 #[async_trait]
 impl SessionFileSystem for MountFs {
     fn display_root(&self) -> String {
-        self.primary.display_root()
+        WORKSPACE_MOUNT.to_string()
     }
 
     fn is_mount_resolver(&self) -> bool {
@@ -341,24 +341,17 @@ impl SessionFileSystem for MountFs {
     }
 
     fn resolve_path(&self, input: &str) -> String {
-        // The absolute virtual path: relative inputs resolve against cwd,
-        // `.`/`..` collapse, leading `..` clamps at root. This is the namespace
-        // the shell sees — `/workspace` is just the default cwd, and any path
-        // is reachable from the root mount.
-        let virtual_path = normalize_virtual(input, &self.cwd());
-        match self.resolve(&virtual_path) {
-            Ok(resolved) if resolved.primary_workspace => {
-                resolved.backend.display_path(&resolved.backend_path)
-            }
-            _ => virtual_path,
-        }
+        // Keep the model-facing namespace stable and host-agnostic. Real-disk
+        // backends may expose host paths directly, but MountFs is the boundary
+        // used by agent-visible file tools and bash.
+        self.display_path(input)
     }
 
     fn display_path(&self, path: &str) -> String {
-        let virtual_path = normalize_virtual(path, "/");
+        let virtual_path = normalize_virtual(path, &self.cwd());
         match self.resolve(&virtual_path) {
             Ok(resolved) if resolved.primary_workspace => {
-                resolved.backend.display_path(&resolved.backend_path)
+                crate::session_path::to_display_path(&resolved.backend_path)
             }
             _ => virtual_path,
         }
@@ -784,7 +777,7 @@ mod tests {
     }
 
     #[test]
-    fn display_uses_the_primary_backends_identity() {
+    fn display_uses_workspace_alias_for_primary() {
         let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
         let fs = MountFs::new(backend);
         assert_eq!(fs.display_root(), "/workspace");
