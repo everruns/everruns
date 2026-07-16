@@ -275,6 +275,7 @@ service WorkerService {
     rpc PlatformSendMessage(PlatformSendMessageRequest) returns (PlatformSendMessageResponse);
     rpc PlatformGetMessages(PlatformGetMessagesRequest) returns (PlatformGetMessagesResponse);
     rpc InvokeScheduledAppChannel(InvokeScheduledAppChannelRequest) returns (InvokeScheduledAppChannelResponse);
+    rpc InvokeAgentTrigger(InvokeAgentTriggerRequest) returns (InvokeAgentTriggerResponse);
 
     // Turn management
     rpc PlatformWaitForIdle(PlatformWaitForIdleRequest) returns (PlatformWaitForIdleResponse);
@@ -295,6 +296,9 @@ service WorkerService {
     // === Machine payment operations ===
     // Execute a paid capability request through the control-plane payment authority.
     rpc ExecuteMachinePayment(ExecuteMachinePaymentRequest) returns (ExecuteMachinePaymentResponse);
+
+    // Authorize detached peer-session creation as the current session owner.
+    rpc AuthorizeSessionCreation(AuthorizeSessionCreationRequest) returns (AuthorizeSessionCreationResponse);
 }
 
 // ============================================================================
@@ -364,6 +368,7 @@ message Agent {
     repeated string capability_ids = 11;
     optional string display_name = 12;
     optional bool parallel_tool_calls = 13;
+    optional Uuid harness_id = 14;
 }
 
 message GetAgentRequest {
@@ -439,11 +444,12 @@ message Session {
     optional Uuid resolved_owner_user_id = 17;
     // Captured immutable agent version for runtime provenance
     optional Uuid agent_version_id = 18;
-    // Parent session ID for subagent and agent handoff sessions (nesting guard).
+    // Parent session ID for subagent and agent handoff sessions (depth tracking).
     optional Uuid parent_session_id = 19;
     optional string blueprint_id = 23;
     optional string blueprint_config_json = 24;
     optional bool parallel_tool_calls = 25;
+    optional string goal = 26;
 }
 
 message GetSessionRequest {
@@ -665,6 +671,20 @@ message GrepMatch {
     string line = 3;
 }
 
+message GrepContextLine {
+    uint64 line_number = 1;
+    string line = 2;
+    bool is_match = 3;
+}
+
+message GrepContextBlock {
+    string path = 1;
+    uint64 start_line = 2;
+    uint64 end_line = 3;
+    repeated uint64 match_line_numbers = 4;
+    repeated GrepContextLine lines = 5;
+}
+
 message SessionReadFileRequest {
     Uuid session_id = 1;
     string path = 2;
@@ -730,10 +750,22 @@ message SessionGrepFilesRequest {
     Uuid session_id = 1;
     string pattern = 2;
     optional string path_pattern = 3;
+    uint64 before_context = 4;
+    uint64 after_context = 5;
+    uint64 offset = 6;
+    uint64 limit = 7;
+    uint64 max_bytes = 8;
 }
 
 message SessionGrepFilesResponse {
     repeated GrepMatch matches = 1;
+    repeated GrepContextBlock blocks = 2;
+    uint64 total_matches = 3;
+    uint64 returned_matches = 4;
+    uint64 bytes_returned = 5;
+    uint64 bytes_total = 6;
+    optional uint64 next_offset = 7;
+    bool byte_truncated = 8;
 }
 
 message SessionCreateDirectoryRequest {
@@ -919,6 +951,7 @@ message SendDurableWorkflowSignalResponse {}
 
 message GetAndConsumeDurableWorkflowSignalsRequest {
     string workflow_id = 1;
+    string signal_type = 2;
 }
 
 message GetAndConsumeDurableWorkflowSignalsResponse {
@@ -1796,6 +1829,17 @@ message InvokeScheduledAppChannelResponse {
     bool created_session = 2;
 }
 
+message InvokeAgentTriggerRequest {
+    int64 org_id = 1;
+    string agent_id = 2;
+    string trigger_id = 3;
+}
+
+message InvokeAgentTriggerResponse {
+    string session_id = 1;
+    bool created_session = 2;
+}
+
 // === Turn management ===
 
 message PlatformWaitForIdleRequest {
@@ -1895,6 +1939,15 @@ message ExecuteMachinePaymentResponse {
     optional string rail = 3;
     google.protobuf.Value response = 4;
     google.protobuf.Value receipt = 5;
+}
+
+message AuthorizeSessionCreationRequest {
+    int64 org_id = 1;
+    string session_id = 2;
+}
+
+message AuthorizeSessionCreationResponse {
+    string budget_root_session_id = 1;
 }
 
 // ============================================

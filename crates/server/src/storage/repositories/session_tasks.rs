@@ -4,16 +4,22 @@
 // `everruns_core::session_task::apply_task_update` inside a transaction with
 // `SELECT ... FOR UPDATE` so concurrent updates serialize per task.
 
-use super::super::models::{NewSessionTaskMessageRow, SessionTaskMessageRow, SessionTaskRow};
+use super::super::models::{
+    CreateSessionTaskPushConfig, NewSessionTaskMessageRow, SessionTaskMessageRow,
+    SessionTaskPushConfigRow, SessionTaskRow,
+};
 use super::Database;
 use anyhow::Result;
 use everruns_core::SessionId;
 use everruns_core::session_task::{SessionTask, SessionTaskUpdate, apply_task_update};
 
-const TASK_COLUMNS: &str = "id, session_id, kind, display_name, spec, state, state_detail, \
-     progress, input_request, cancel_requested_at, summary, result_path, artifacts, error, \
-     attempt, worker_id, heartbeat_at, links, wake_policy, created_at, started_at, finished_at, \
-     updated_at";
+const PUSH_CONFIG_COLUMNS: &str =
+    "id, public_id, session_id, task_id, url, secret, event_filter, created_at, updated_at";
+
+const TASK_COLUMNS: &str = "id, session_id, root_session_id, kind, display_name, spec, state, \
+     state_detail, progress, input_request, cancel_requested_at, summary, result_path, artifacts, \
+     error, attempt, worker_id, heartbeat_at, links, wake_policy, created_at, started_at, \
+     finished_at, updated_at";
 
 const MESSAGE_COLUMNS: &str =
     "id, task_id, session_id, direction, content, in_reply_to, created_at";
@@ -29,10 +35,14 @@ impl Database {
                 id, session_id, kind, display_name, spec, state, state_detail,
                 progress, input_request, cancel_requested_at, summary, result_path,
                 artifacts, error, attempt, worker_id, heartbeat_at, links,
-                wake_policy, created_at, started_at, finished_at, updated_at
+                wake_policy, created_at, started_at, finished_at, updated_at,
+                root_session_id
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-                    $15, $16, $17, $18, $19, $20, $21, $22, $23)
+                    $15, $16, $17, $18, $19, $20, $21, $22, $23,
+                    -- EVE-680: denormalize the owning session's tree root so the
+                    -- org task list can filter a whole tree by a local column.
+                    (SELECT root_session_id FROM sessions WHERE id = $2))
             ON CONFLICT (id) DO NOTHING
             RETURNING {TASK_COLUMNS}
             "#
@@ -128,12 +138,14 @@ impl Database {
     /// optional kind/state/age filters and a bounded limit. The org boundary is
     /// a semijoin on `sessions.org_id` — the authoritative multitenancy scope —
     /// so a task only appears when its owning session belongs to the org.
+    #[allow(clippy::too_many_arguments)]
     pub async fn list_org_session_tasks(
         &self,
         org_id: i64,
         kind: Option<&str>,
         state: Option<&str>,
         created_after: Option<chrono::DateTime<chrono::Utc>>,
+        root_session_id: Option<SessionId>,
         limit: i64,
     ) -> Result<Vec<SessionTaskRow>> {
         let rows = sqlx::query_as::<_, SessionTaskRow>(sqlx::AssertSqlSafe(format!(
@@ -144,14 +156,16 @@ impl Database {
               AND ($2::text IS NULL OR kind = $2)
               AND ($3::text IS NULL OR state = $3)
               AND ($4::timestamptz IS NULL OR created_at >= $4)
+              AND ($5::uuid IS NULL OR root_session_id = $5)
             ORDER BY created_at DESC, id DESC
-            LIMIT $5
+            LIMIT $6
             "#
         )))
         .bind(org_id)
         .bind(kind)
         .bind(state)
         .bind(created_after)
+        .bind(root_session_id.map(|id| id.uuid()))
         .bind(limit)
         .fetch_all(&self.pool)
         .await?;
@@ -251,6 +265,77 @@ impl Database {
             .map(|row| (row, false)))
     }
 
+    // ============================================
+    // Per-task push-notification configs (EVE-682)
+    // ============================================
+
+    /// Create a per-task push config. Authorization is the caller's concern:
+    /// this method trusts `session_id`/`task_id` were resolved against the
+    /// caller's org before insert.
+    pub async fn create_task_push_config(
+        &self,
+        input: CreateSessionTaskPushConfig,
+    ) -> Result<SessionTaskPushConfigRow> {
+        let row = sqlx::query_as::<_, SessionTaskPushConfigRow>(sqlx::AssertSqlSafe(format!(
+            r#"
+            INSERT INTO session_task_push_configs
+                (public_id, session_id, task_id, url, secret, event_filter)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING {PUSH_CONFIG_COLUMNS}
+            "#
+        )))
+        .bind(&input.public_id)
+        .bind(input.session_id)
+        .bind(&input.task_id)
+        .bind(&input.url)
+        .bind(&input.secret)
+        .bind(&input.event_filter)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// List push configs for one task, oldest-first.
+    pub async fn list_task_push_configs(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> Result<Vec<SessionTaskPushConfigRow>> {
+        let rows = sqlx::query_as::<_, SessionTaskPushConfigRow>(sqlx::AssertSqlSafe(format!(
+            r#"
+            SELECT {PUSH_CONFIG_COLUMNS}
+            FROM session_task_push_configs
+            WHERE session_id = $1 AND task_id = $2
+            ORDER BY created_at ASC, id ASC
+            "#
+        )))
+        .bind(session_id)
+        .bind(task_id)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows)
+    }
+
+    /// Delete one push config by its public id, scoped to the owning task.
+    /// Returns whether a row was removed.
+    pub async fn delete_task_push_config(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        public_id: &str,
+    ) -> Result<bool> {
+        let result = sqlx::query(
+            "DELETE FROM session_task_push_configs \
+             WHERE session_id = $1 AND task_id = $2 AND public_id = $3",
+        )
+        .bind(session_id)
+        .bind(task_id)
+        .bind(public_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn insert_session_task_message(
         &self,
         input: NewSessionTaskMessageRow,
@@ -277,10 +362,10 @@ impl Database {
     /// Return (session_id, task_id, schedule_id) triples for running monitor
     /// tasks whose linked schedule is inactive.
     ///
-    /// "Inactive" = the schedule row does not exist, OR it is a disabled
-    /// recurring schedule. Disabled one-shot schedules are excluded because
-    /// `mark_triggered` disables them before the firing path can complete the
-    /// linked monitor.
+    /// "Inactive" = the schedule row does not exist, OR it is disabled and
+    /// either recurring or a never-triggered one-shot. Fired one-shots are
+    /// excluded because `mark_triggered` disables them before the firing path
+    /// can complete the linked monitor.
     ///
     /// Plain snapshot read — safe for concurrent sweepers because transitions
     /// are applied through `apply_task_update` where terminal states are final.
@@ -304,7 +389,16 @@ impl Database {
             WHERE st.kind = 'monitor'
               AND st.state = 'running'
               AND st.spec->>'schedule_id' ~ '^sched_[0-9a-f]{32}$'
-              AND (ss.id IS NULL OR (ss.enabled = false AND ss.cron_expression IS NOT NULL))
+              AND (
+                  ss.id IS NULL
+                  OR (
+                      ss.enabled = false
+                      AND (
+                          ss.cron_expression IS NOT NULL
+                          OR (ss.last_triggered_at IS NULL AND ss.trigger_count = 0)
+                      )
+                  )
+              )
             ORDER BY st.id
             LIMIT $1
             "#,

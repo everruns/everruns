@@ -9,7 +9,7 @@
 
 #![cfg(feature = "postgres-tests")]
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use chrono::Utc;
 use serde_json::json;
@@ -33,6 +33,11 @@ fn get_database_url() -> String {
 }
 
 async fn reset_durable_tables(pool: &PgPool) {
+    let mut tx = pool
+        .begin()
+        .await
+        .expect("Failed to begin durable test table reset");
+
     // Integration tests assume a clean durable schema. Truncate explicitly so
     // other integration binaries using the same test database cannot leak state.
     sqlx::query(
@@ -51,10 +56,13 @@ async fn reset_durable_tables(pool: &PgPool) {
         RESTART IDENTITY CASCADE
         "#,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await
     .expect("Failed to reset durable test tables");
 
+    // Keep this in the same transaction as TRUNCATE so PostgreSQL holds the
+    // table locks until commit; otherwise a concurrent test can insert rows after
+    // TRUNCATE commits and have its trigger increment overwritten back to zero.
     // TRUNCATE bypasses the row-level triggers that maintain `durable_stat_counters`
     // (migration 082), so the cumulative health counters would otherwise stay
     // non-zero while the tables they track are now empty. That stale drift made
@@ -62,9 +70,13 @@ async fn reset_durable_tables(pool: &PgPool) {
     // binary ran first against the shared DB. The triggers UPDATE pre-seeded rows,
     // so the rows must remain — zero the values in place instead of truncating.
     sqlx::query("UPDATE durable_stat_counters SET value = 0")
-        .execute(pool)
+        .execute(&mut *tx)
         .await
         .expect("Failed to reset durable stat counters");
+
+    tx.commit()
+        .await
+        .expect("Failed to commit durable test table reset");
 }
 
 /// Create a test store with a fresh database connection
@@ -468,6 +480,72 @@ async fn test_start_workflow_with_task_writes_initial_state_in_one_step() {
     let task = store.get_task(task_id).await.unwrap();
     assert_eq!(task.status, TaskStatus::Pending);
     assert_eq!(task.activity_type, "process_input");
+
+    cleanup_workflow(&store, workflow_id).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn test_start_workflow_with_task_is_idempotent_for_concurrent_same_workflow() {
+    let store = create_test_store().await;
+    let workflow_id = Uuid::now_v7();
+    let barrier = Arc::new(tokio::sync::Barrier::new(8));
+
+    let mut handles = Vec::new();
+    for attempt in 0..8 {
+        let store = store.clone();
+        let barrier = Arc::clone(&barrier);
+        handles.push(tokio::spawn(async move {
+            barrier.wait().await;
+            store
+                .start_workflow_with_task(
+                    workflow_id,
+                    "turn_workflow",
+                    json!({"session_id": "session_race"}),
+                    TaskDefinition {
+                        workflow_id: Some(workflow_id),
+                        activity_id: format!("input-{attempt}"),
+                        activity_type: "process_input".to_string(),
+                        input: json!({"session_id": "session_race", "attempt": attempt}),
+                        options: ActivityOptions::default(),
+                    },
+                )
+                .await
+        }));
+    }
+
+    let mut task_ids = Vec::new();
+    for handle in handles {
+        task_ids.push(handle.await.unwrap().unwrap());
+    }
+    task_ids.sort();
+    task_ids.dedup();
+    assert_eq!(
+        task_ids.len(),
+        1,
+        "concurrent duplicate starts must reuse the first queued task"
+    );
+
+    let workflow = store.get_workflow_info(workflow_id).await.unwrap();
+    assert_eq!(workflow.status, WorkflowStatus::Running);
+
+    let events = store.load_events(workflow_id).await.unwrap();
+    assert_eq!(events.len(), 2);
+    assert!(matches!(
+        &events[0].1,
+        WorkflowEvent::WorkflowStarted { .. }
+    ));
+    assert!(matches!(
+        &events[1].1,
+        WorkflowEvent::ActivityScheduled { .. }
+    ));
+
+    let task_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM durable_task_queue WHERE workflow_id = $1")
+            .bind(workflow_id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(task_count, 1);
 
     cleanup_workflow(&store, workflow_id).await;
 }

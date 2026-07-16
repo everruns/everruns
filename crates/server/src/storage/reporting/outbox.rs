@@ -1,8 +1,10 @@
 use anyhow::{Context, Result};
 use sqlx::{PgPool, Postgres, pool::PoolConnection};
+use std::time::Instant;
 use uuid::Uuid;
 
 use super::models::ReportingOutboxRow;
+use super::projection_timing::{FACT_SESSION_UPSERT, maybe_warn_slow_projection};
 use crate::domains::reporting::types::{ProjectorRunResult, ReportingBackfillResult};
 
 const STALE_PROCESSING_MINUTES: i32 = 15;
@@ -184,6 +186,183 @@ impl PostgresReportingProjector {
         Ok(acquired.then_some(connection))
     }
 
+    /// Verify one indexed event slice and transactionally advance the global cursor.
+    ///
+    /// A completed outbox row is reset only when one of its exact projected fact
+    /// keys is absent. Events whose best-effort outbox enqueue never succeeded
+    /// are inserted. The cursor wraps after reaching the current tail, so old
+    /// projections are still rechecked without a hot full-table scan.
+    pub async fn repair_missing_event_projections(&self, limit: i64) -> Result<i64> {
+        let Some(mut lock) = self.try_acquire_global_backfill_lock().await? else {
+            return Ok(0);
+        };
+        let (last_event_created_at, last_event_id) =
+            sqlx::query_as::<_, (Option<chrono::DateTime<chrono::Utc>>, Option<Uuid>)>(
+                r#"
+            SELECT last_event_created_at, last_event_id
+              FROM reporting_event_repair_cursor
+             WHERE singleton
+            "#,
+            )
+            .fetch_one(&mut *lock)
+            .await?;
+        let result = sqlx::query_scalar::<_, i64>(
+            r#"
+            WITH candidates AS MATERIALIZED (
+                SELECT sliced.*
+                  FROM (
+                      (
+                          SELECT e.id, e.session_id, e.event_type, e.data, e.created_at
+                            FROM events e
+                           WHERE $2::TIMESTAMPTZ IS NULL
+                             AND e.event_type IN (
+                                 'tool.completed',
+                                 'capability.usage',
+                                 'output.message.replaced',
+                                 'turn.completed',
+                                 'turn.failed',
+                                 'turn.cancelled'
+                             )
+                           ORDER BY e.created_at, e.id
+                           LIMIT $1
+                      )
+                      UNION ALL
+                      (
+                          SELECT e.id, e.session_id, e.event_type, e.data, e.created_at
+                            FROM events e
+                           WHERE $2::TIMESTAMPTZ IS NOT NULL
+                             AND (e.created_at, e.id) > ($2::TIMESTAMPTZ, $3::UUID)
+                             AND e.event_type IN (
+                                 'tool.completed',
+                                 'capability.usage',
+                                 'output.message.replaced',
+                                 'turn.completed',
+                                 'turn.failed',
+                                 'turn.cancelled'
+                             )
+                           ORDER BY e.created_at, e.id
+                           LIMIT $1
+                      )
+                  ) sliced
+                 LIMIT $1
+            ),
+            scoped AS MATERIALIZED (
+                SELECT s.org_id, candidates.*
+                  FROM candidates
+                  JOIN sessions s ON s.id = candidates.session_id
+            ),
+            missing AS MATERIALIZED (
+                SELECT scoped.org_id, scoped.id
+                  FROM scoped
+                 WHERE CASE
+                       WHEN scoped.event_type = 'tool.completed' THEN
+                           NOT EXISTS (
+                               SELECT 1
+                                 FROM fact_tool_call fact
+                                WHERE fact.org_id = scoped.org_id
+                                  AND fact.source_key = 'event:' || scoped.id::TEXT
+                           )
+                           OR (
+                               scoped.data ? 'capability_id'
+                               AND NOT EXISTS (
+                                   SELECT 1
+                                     FROM fact_capability_usage fact
+                                    WHERE fact.org_id = scoped.org_id
+                                      AND fact.source_key = 'event:' || scoped.id::TEXT || ':invoked'
+                               )
+                           )
+                       WHEN scoped.event_type = 'capability.usage' THEN EXISTS (
+                           SELECT 1
+                             FROM jsonb_array_elements(
+                                  CASE
+                                      WHEN jsonb_typeof(scoped.data->'records') = 'array'
+                                          THEN scoped.data->'records'
+                                      ELSE '[]'::jsonb
+                                  END
+                             ) WITH ORDINALITY AS usage(record, ordinality)
+                            WHERE usage.record ? 'capability_id'
+                              AND usage.record ? 'usage_kind'
+                              AND NOT EXISTS (
+                                  SELECT 1
+                                    FROM fact_capability_usage fact
+                                   WHERE fact.org_id = scoped.org_id
+                                     AND fact.source_key =
+                                         'event:' || scoped.id::TEXT
+                                         || ':capability_usage:' || usage.ordinality::TEXT
+                              )
+                       )
+                       WHEN scoped.event_type = 'output.message.replaced' THEN
+                           scoped.data ? 'guardrail_capability_id'
+                           AND NOT EXISTS (
+                               SELECT 1
+                                 FROM fact_capability_usage fact
+                                WHERE fact.org_id = scoped.org_id
+                                  AND fact.source_key = 'event:' || scoped.id::TEXT || ':effect_ran'
+                           )
+                       ELSE NOT EXISTS (
+                           SELECT 1
+                             FROM fact_turn fact
+                            WHERE fact.org_id = scoped.org_id
+                              AND fact.source_key = 'event:' || scoped.id::TEXT
+                       )
+                   END
+            ),
+            enqueued AS (
+                INSERT INTO reporting_outbox (
+                    org_id, source_type, source_id, source_version,
+                    reason, status, next_attempt_at
+                )
+                SELECT org_id, 'event', id::TEXT, id::TEXT,
+                       'event_projection', 'pending', NOW()
+                  FROM missing
+                ON CONFLICT (org_id, source_type, source_id, source_version, reason)
+                DO UPDATE SET
+                    status = 'pending',
+                    next_attempt_at = NOW(),
+                    updated_at = NOW()
+                WHERE reporting_outbox.status = 'completed'
+                RETURNING 1
+            ),
+            advanced AS (
+                UPDATE reporting_event_repair_cursor repair_cursor
+                   SET last_event_created_at = tail.created_at,
+                       last_event_id = tail.id,
+                       updated_at = NOW()
+                  FROM (
+                      SELECT created_at, id
+                        FROM candidates
+                       ORDER BY created_at DESC, id DESC
+                       LIMIT 1
+                  ) tail
+                 WHERE repair_cursor.singleton
+                RETURNING 1
+            ),
+            reset AS (
+                UPDATE reporting_event_repair_cursor repair_cursor
+                   SET last_event_created_at = NULL,
+                       last_event_id = NULL,
+                       updated_at = NOW()
+                 WHERE repair_cursor.singleton
+                   AND NOT EXISTS (SELECT 1 FROM candidates)
+                RETURNING 1
+            )
+            SELECT COUNT(*)::BIGINT FROM enqueued
+            "#,
+        )
+        .bind(limit.clamp(1, 10_000))
+        .bind(last_event_created_at)
+        .bind(last_event_id)
+        .fetch_one(&mut *lock)
+        .await;
+
+        sqlx::query("SELECT pg_advisory_unlock($1)")
+            .bind(GLOBAL_BACKFILL_LOCK_KEY)
+            .execute(&mut *lock)
+            .await?;
+
+        result.map_err(Into::into)
+    }
+
     async fn backfill_events(&self, org_id: Option<i64>, limit: i64) -> Result<i64> {
         if limit == 0 {
             return Ok(0);
@@ -203,21 +382,46 @@ impl PostgresReportingProjector {
                        'turn.cancelled'
                  )
                    AND CASE
-                       WHEN e.event_type = 'tool.completed' THEN NOT EXISTS (
-                           SELECT 1 FROM fact_tool_call fact
-                            WHERE fact.org_id = s.org_id
-                              AND fact.source_key = 'event:' || e.id::TEXT
+                       WHEN e.event_type = 'tool.completed' THEN
+                           NOT EXISTS (
+                               SELECT 1 FROM fact_tool_call fact
+                                WHERE fact.org_id = s.org_id
+                                  AND fact.source_key = 'event:' || e.id::TEXT
+                           )
+                           OR (
+                               e.data ? 'capability_id'
+                               AND NOT EXISTS (
+                                   SELECT 1 FROM fact_capability_usage fact
+                                    WHERE fact.org_id = s.org_id
+                                      AND fact.source_key = 'event:' || e.id::TEXT || ':invoked'
+                               )
+                           )
+                       WHEN e.event_type = 'capability.usage' THEN EXISTS (
+                           SELECT 1
+                             FROM jsonb_array_elements(
+                                  CASE
+                                      WHEN jsonb_typeof(e.data->'records') = 'array'
+                                          THEN e.data->'records'
+                                      ELSE '[]'::jsonb
+                                  END
+                             ) WITH ORDINALITY AS usage(record, ordinality)
+                            WHERE usage.record ? 'capability_id'
+                              AND usage.record ? 'usage_kind'
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM fact_capability_usage fact
+                                   WHERE fact.org_id = s.org_id
+                                     AND fact.source_key =
+                                         'event:' || e.id::TEXT
+                                         || ':capability_usage:' || usage.ordinality::TEXT
+                              )
                        )
-                       WHEN e.event_type = 'capability.usage' THEN NOT EXISTS (
-                           SELECT 1 FROM fact_capability_usage fact
-                            WHERE fact.org_id = s.org_id
-                              AND fact.source_key LIKE ('event:' || e.id::TEXT || ':capability_usage:%')
-                       )
-                       WHEN e.event_type = 'output.message.replaced' THEN NOT EXISTS (
-                           SELECT 1 FROM fact_capability_usage fact
-                            WHERE fact.org_id = s.org_id
-                              AND fact.source_key = 'event:' || e.id::TEXT || ':effect_ran'
-                       )
+                       WHEN e.event_type = 'output.message.replaced' THEN
+                           e.data ? 'guardrail_capability_id'
+                           AND NOT EXISTS (
+                               SELECT 1 FROM fact_capability_usage fact
+                                WHERE fact.org_id = s.org_id
+                                  AND fact.source_key = 'event:' || e.id::TEXT || ':effect_ran'
+                           )
                        ELSE NOT EXISTS (
                            SELECT 1 FROM fact_turn fact
                             WHERE fact.org_id = s.org_id
@@ -766,8 +970,13 @@ impl PostgresReportingProjector {
             JOIN sessions s ON s.id = e.session_id
             LEFT JOIN agents a ON a.id = s.agent_id AND a.org_id = s.org_id
             LEFT JOIN harnesses h ON h.id = s.harness_id AND h.org_id = s.org_id
-            CROSS JOIN LATERAL jsonb_array_elements(COALESCE(e.data->'records', '[]'::jsonb))
-                WITH ORDINALITY AS usage(record, ordinality)
+            CROSS JOIN LATERAL jsonb_array_elements(
+                CASE
+                    WHEN jsonb_typeof(e.data->'records') = 'array'
+                        THEN e.data->'records'
+                    ELSE '[]'::jsonb
+                END
+            ) WITH ORDINALITY AS usage(record, ordinality)
             WHERE e.id = $1
               AND s.org_id = $2
               AND usage.record ? 'capability_id'
@@ -978,7 +1187,8 @@ impl PostgresReportingProjector {
 
     async fn project_session(&self, org_id: i64, source_id: &str) -> Result<()> {
         let id = Uuid::parse_str(source_id).context("invalid session source id")?;
-        sqlx::query(
+        let started = Instant::now();
+        let result = sqlx::query(
             r#"
             INSERT INTO fact_session (
                 org_id, source_key, session_id, user_id, principal_id, agent_id,
@@ -1012,24 +1222,14 @@ impl PostgresReportingProjector {
                     THEN GREATEST(EXTRACT(EPOCH FROM (s.finished_at - s.started_at)) * 1000, 0)::BIGINT
                     ELSE 0
                 END,
-                (
-                    SELECT COUNT(*)
-                    FROM events e
-                    WHERE e.session_id = s.id
-                      AND e.event_type IN ('turn.completed', 'turn.failed', 'turn.cancelled')
-                ),
+                s.turn_count,
                 s.total_input_tokens,
                 s.total_output_tokens,
                 s.total_cache_read_tokens,
                 s.total_cache_creation_tokens,
                 s.total_input_tokens + s.total_output_tokens
                     + s.total_cache_read_tokens + s.total_cache_creation_tokens,
-                (
-                    SELECT COUNT(*)
-                    FROM events e
-                    WHERE e.session_id = s.id
-                      AND e.event_type = 'tool.completed'
-                ),
+                s.tool_call_count,
                 NOW()
             FROM sessions s
             LEFT JOIN agents a ON a.id = s.agent_id AND a.org_id = s.org_id
@@ -1063,6 +1263,14 @@ impl PostgresReportingProjector {
         .bind(org_id)
         .execute(&self.pool)
         .await?;
+        maybe_warn_slow_projection(
+            FACT_SESSION_UPSERT,
+            started.elapsed(),
+            result.rows_affected(),
+            "session",
+            Some("session_snapshot"),
+            org_id,
+        );
         self.project_configured_capabilities(org_id, id).await?;
         Ok(())
     }

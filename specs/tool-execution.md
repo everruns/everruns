@@ -107,11 +107,17 @@ See [`crates/core/src/truncation_info.rs`](../crates/core/src/truncation_info.rs
 |------|--------------|-------------------|
 | `read_file` (session VFS + sandbox) | `line_cap` (with resume), `size_cap` (without resume) | Line cap only — `next_offset` = line number |
 | `list_directory` (session VFS) | `item_cap` | Yes — `next_offset` = item offset |
-| `grep_files` (session VFS) | `line_cap` | Yes — `next_offset` = match offset |
+| `grep_files` (session VFS) | `line_cap`, `size_cap` | Match-cap cuts resume at the next match offset; an oversized individual context block may require narrower context |
 | `sql_query` | `row_cap` | No — narrow `WHERE`/`LIMIT` |
 | `browserless_content` / interaction DOM content | `size_cap` | No — narrow via `browserless_scrape` selectors or shrink the source page |
 
 `next_offset` units are tool-specific — `read_file` uses a line number, `list_directory` uses an item offset, and `grep_files` uses a match offset. Each tool documents its own unit via `resume_hint`.
+
+`grep_files` accepts `before_context` and `after_context` from 0 through 20.
+The default zero values retain flat matches. Non-zero values return numbered,
+merged context blocks with `is_match` markers. Match pagination is applied
+before context expansion, and the primary returned text remains under a 64 KiB
+budget.
 
 Platform-management `session_read_messages` is not a filesystem reader, but it follows the same token-economy principle: returned message count and per-message content are bounded by defaults, with explicit caps for larger reads.
 
@@ -150,7 +156,7 @@ Exec tools (bash, daytona_exec, e2b_exec, deno_exec, sprites_exec, docker_exec) 
 The pipeline:
 1. **Strip ANSI** — remove SGR, CSI, OSC escape sequences
 2. **Collapse CR lines** — `\r`-overwritten lines (progress bars) reduced to final content
-3. **Truncate** — priority-aware truncation at the budget determined by the `output` verbosity parameter
+3. **Truncate** — apply the budget determined by the `output` verbosity parameter. Failed commands prioritize diagnostic regions; successful commands preserve a predictable head/tail window so source or search output containing words such as `error` does not displace leading evidence.
 
 ### Output Verbosity (EVE-236, EVE-489)
 
@@ -165,9 +171,11 @@ All exec tools accept an `output` parameter controlling how much output is retur
 | `verbose` | ~16 KiB | Test failures, error investigation |
 | `full` | unlimited | Raw output, no truncation — when the LLM needs every line |
 
-Default is `auto`. In `auto` mode, the resolved budget depends on the process exit code: successful runs (`exit_code == 0`) collapse to `AUTO_SUCCESS_BUDGET` so the model relies on the persisted log; non-zero exits resolve to `normal` (~8 KiB) so failures stay debuggable in-loop. `AUTO_SUCCESS_BUDGET` is intentionally sized so the inline `stdout` field — including the `[full output saved to /workspace/outputs/... — use read_file ...]` pointer that `PersistOutputHook` appends — stays around 512 bytes total. `raw_output` always carries the full cleaned output for persistence hooks, regardless of mode. Explicit `silent`/`concise`/`normal`/`verbose`/`full` are opt-ins for a fixed inline window and continue to behave exactly as before — they ignore exit code.
+Default is `auto`. In `auto` mode, the resolved budget depends on the process exit code: successful runs (`exit_code == 0`) collapse to `AUTO_SUCCESS_BUDGET` so the model relies on the persisted log; non-zero exits resolve to `normal` (~8 KiB) so failures stay debuggable in-loop. `AUTO_SUCCESS_BUDGET` is intentionally sized so the inline `stdout` field — including the `[full output saved to ... — use read_file ...]` pointer that `PersistOutputHook` appends — stays around 512 bytes total. The pointer uses the session filesystem's display identity. `raw_output` always carries the full cleaned output for persistence hooks, regardless of mode. The persistence hook reads the original tool-call argument and does not re-resolve explicit `silent`/`concise`/`normal`/`verbose`/`full` modes to `auto`; those modes retain their fixed inline window and ignore exit code.
 
 Budgets apply to stdout; stderr is capped at `min(budget, 4096)` to keep error output proportional. Tools that set the `persist_output` hint persist non-empty full output to `/outputs/` via `tool_output_persistence` — stdout to `/outputs/{tool_call_id}.stdout`, stderr to `/outputs/{tool_call_id}.stderr` — and the files are readable with `read_file`. The persisted files are the source of truth for full logs; the inline payload is sized for next-step reasoning. See `crates/core/src/tool_output_sanitizer.rs` for budget constants, `output_verbosity_budget()`, and `resolve_auto_mode()`.
+
+The shared prompt hints (`EXEC_OUTPUT_HINT`, `READ_ECONOMY_HINT` in `tool_output_sanitizer.rs`) also carry a single-read/contextual-search policy for persisted output (EVE-778): pre-filter in the originating command when the filter is known, read a small persisted log (≤200 lines or ≤64 KiB) once with an ample `limit`, search larger ones with one contextual `grep_files` call, never reconstruct a file through sequential or overlapping read windows, and stop once diagnostic evidence suffices. Both constants are appended by every harness surface that exposes output persistence and filesystem tools (bashkit, sandbox integrations, the FileSystem capability).
 
 This is the tool's responsibility — each tool calls the helpers before constructing `ToolExecutionResult`. See `crates/core/src/tool_output_sanitizer.rs` for the primitives.
 
@@ -192,8 +200,8 @@ Human-facing exec tools should return a structured result instead of a single co
 | `hint` | string | Short diagnostic hint for signal exits or common recovery advice |
 | `truncated` | boolean | Whether stdout or stderr was truncated for the inline result |
 | `total_lines` | integer | Total stdout line count before truncation |
-| `output_files` | string[] | Session VFS files containing full persisted output |
-| `full_output` | string | Canonical stdout path in session VFS when persisted |
+| `output_files` | string[] | Model-visible, file-tool-readable paths containing full persisted output |
+| `full_output` | string | Model-visible, file-tool-readable stdout path when persisted |
 
 **Legacy compatibility:** Tools may continue to carry a combined pre-truncation string in `ToolResult.raw_output` for persistence hooks and logging, but the user-visible JSON contract should use `stdout`/`stderr`.
 

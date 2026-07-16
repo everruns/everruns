@@ -42,6 +42,10 @@ impl MockFs {
 
 #[async_trait]
 impl SessionFileSystem for MockFs {
+    fn is_mount_resolver(&self) -> bool {
+        false
+    }
+
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let files = self.files.lock().unwrap();
         Ok(files
@@ -380,6 +384,33 @@ async fn activate_skill_not_found() {
         .await;
     match result {
         ToolExecutionResult::ToolError(msg) => assert!(msg.contains("not found")),
+        other => panic!("expected error, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn activate_skill_missing_name_returns_actionable_error() {
+    let fs = Arc::new(MockFs::new());
+    let sid = SessionId::new();
+    let cap = ScopedSkillsCapability::new(SkillsConfig::default());
+    let activate = &cap.tools()[1];
+    let result = activate
+        .execute_with_context(json!({}), &ctx(fs, sid))
+        .await;
+    match result {
+        ToolExecutionResult::ToolError(msg) => {
+            // Names the missing field, shows an example JSON shape, and points
+            // at list_skills so a malformed call can self-repair.
+            assert!(msg.contains("name"), "should name the missing field: {msg}");
+            assert!(
+                msg.contains("{\"name\":\"ship\"}"),
+                "should include an example JSON shape: {msg}"
+            );
+            assert!(
+                msg.contains("list_skills"),
+                "should mention list_skills: {msg}"
+            );
+        }
         other => panic!("expected error, got {other:?}"),
     }
 }

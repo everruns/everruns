@@ -21,6 +21,7 @@ use everruns_core::events::{
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_worker::AgentRunner;
+use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -168,7 +169,8 @@ impl MessageService {
                 };
                 execution_metadata::interactive_user_metadata(Some(user_id), principal_id)
             } else {
-                None
+                self.session_owner_message_metadata(ctx.org_id, session_id_typed)
+                    .await
             };
             let mut event_request = EventRequest::new(
                 session_id_typed,
@@ -272,6 +274,33 @@ impl MessageService {
     /// need to emit lifecycle events outside of `MessageService::create`.
     pub fn event_service(&self) -> &EventService {
         &self.event_service
+    }
+
+    async fn session_owner_message_metadata(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Option<serde_json::Value> {
+        let session = match self.db.get_session_unscoped(session_id).await {
+            Ok(Some(session)) if session.org_id == org_id => session,
+            Ok(_) => return None,
+            Err(err) => {
+                tracing::warn!(
+                    org_id,
+                    session_id = %session_id,
+                    error = %err,
+                    "Failed to resolve session owner for message metadata"
+                );
+                return None;
+            }
+        };
+
+        Some(json!({
+            "initiator": { "type": "api_key" },
+            "acting_principal": { "type": "api_key" },
+            "initiator_principal_id": session.owner_principal_id,
+            "acting_principal_id": session.owner_principal_id,
+        }))
     }
 
     pub async fn list(&self, session_id: Uuid) -> Result<Vec<Message>> {
@@ -472,6 +501,8 @@ mod tests {
             harness_id: None,
             app_id: None,
             agent_id: None,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(org_id as u128),
             resolved_owner_user_id: None,
@@ -491,6 +522,7 @@ mod tests {
             blueprint_id: None,
             blueprint_config: None,
             parent_session_id: None,
+            budget_root_session_id: None,
         })
         .await
         .unwrap()
@@ -542,6 +574,70 @@ mod tests {
         assert!(
             err.to_string().contains("Too many active turns"),
             "got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_message_without_user_id_uses_session_owner_participant_metadata() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
+        let delivery = crate::event_delivery::EventDelivery::in_memory();
+
+        let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
+            max_concurrent_sessions: 10_000,
+            max_active_turns: 10_000,
+        });
+
+        let session = create_test_session(&db, 1).await;
+        let owner_participant = db
+            .list_session_participants(1, session.id)
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|row| {
+                row.kind == "user"
+                    && row.principal_id == session.owner_principal_id
+                    && row.left_at.is_none()
+            })
+            .expect("session owner user participant");
+
+        let message = svc
+            .create(
+                CreateMessageContext {
+                    org_id: 1,
+                    user_id: None,
+                    harness_id: session.id.uuid(),
+                    agent_id: None,
+                    session_id: session.id.uuid(),
+                    event_metadata: None,
+                    request_id: None,
+                },
+                CreateMessageRequest::user("owner provenance"),
+            )
+            .await
+            .unwrap();
+        assert_eq!(message.session_id, session.id);
+
+        let events = db
+            .list_message_events_limited(session.id, None)
+            .await
+            .unwrap();
+        let input = events
+            .into_iter()
+            .find(|row| row.event_type == "input.message")
+            .expect("input message event");
+        let metadata = input.metadata.expect("input message metadata");
+        assert_eq!(
+            metadata
+                .get("initiator_principal_id")
+                .and_then(|value| value.as_str()),
+            Some(session.owner_principal_id.to_string().as_str())
+        );
+        assert_eq!(
+            metadata
+                .get("participant_id")
+                .and_then(|value| value.as_str()),
+            Some(owner_participant.id.to_string().as_str())
         );
     }
 

@@ -229,7 +229,39 @@ pub fn normalize_controls_locale(
         return Ok(None);
     };
     controls.locale = normalize_locale(controls.locale)?;
+    validate_controls_speed(controls.speed.as_deref())?;
+    validate_controls_verbosity(controls.verbosity.as_deref())?;
     Ok(Some(controls))
+}
+
+/// Validate a speed (service tier) override inside message controls.
+///
+/// THREAT[TM-API-002]: `controls.speed` is client input that is persisted and
+/// forwarded verbatim to the provider as `service_tier`; reject anything
+/// outside the closed value set at the trust boundary.
+pub fn validate_controls_speed(speed: Option<&str>) -> Result<(), ValidationError> {
+    match speed {
+        None | Some("flex") | Some("default") | Some("priority") => Ok(()),
+        Some(other) => {
+            tracing::warn!("Invalid controls.speed value: {:?}", other);
+            Err(ValidationError)
+        }
+    }
+}
+
+/// Validate a verbosity override inside message controls.
+///
+/// THREAT[TM-API-002]: `controls.verbosity` is client input that is persisted
+/// and forwarded verbatim to the provider as `verbosity`; reject anything
+/// outside the closed value set at the trust boundary.
+pub fn validate_controls_verbosity(verbosity: Option<&str>) -> Result<(), ValidationError> {
+    match verbosity {
+        None | Some("low") | Some("medium") | Some("high") => Ok(()),
+        Some(other) => {
+            tracing::warn!("Invalid controls.verbosity value: {:?}", other);
+            Err(ValidationError)
+        }
+    }
 }
 
 /// Validate starter files collection and per-file shape.
@@ -436,12 +468,57 @@ mod tests {
             model_id: None,
             locale: Some("uk_UA".to_string()),
             reasoning: None,
+            speed: None,
+            verbosity: None,
             error_disclosure: None,
             hints: None,
         };
 
         let normalized = normalize_controls_locale(Some(controls)).unwrap().unwrap();
         assert_eq!(normalized.locale.as_deref(), Some("uk-UA"));
+    }
+
+    #[test]
+    fn test_controls_speed_accepts_known_tiers_and_rejects_others() {
+        assert!(validate_controls_speed(None).is_ok());
+        for tier in ["flex", "default", "priority"] {
+            assert!(validate_controls_speed(Some(tier)).is_ok(), "{tier}");
+        }
+        for bad in [
+            "fast",
+            "auto",
+            "scale",
+            "PRIORITY",
+            "",
+            "x".repeat(64).as_str(),
+        ] {
+            assert!(validate_controls_speed(Some(bad)).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn test_controls_verbosity_accepts_known_levels_and_rejects_others() {
+        assert!(validate_controls_verbosity(None).is_ok());
+        for level in ["low", "medium", "high"] {
+            assert!(validate_controls_verbosity(Some(level)).is_ok(), "{level}");
+        }
+        for bad in ["verbose", "none", "HIGH", "", "x".repeat(64).as_str()] {
+            assert!(validate_controls_verbosity(Some(bad)).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn test_normalize_controls_rejects_invalid_speed() {
+        let controls = everruns_core::Controls {
+            model_id: None,
+            locale: None,
+            reasoning: None,
+            speed: Some("fast".to_string()),
+            verbosity: None,
+            error_disclosure: None,
+            hints: None,
+        };
+        assert!(normalize_controls_locale(Some(controls)).is_err());
     }
 
     #[test]

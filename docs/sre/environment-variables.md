@@ -114,6 +114,29 @@ PUBLIC_APP_URL=https://everruns.example.com
 - Set `FRONTEND_URL` only when browser redirects must land on a different origin
 - Set `AUTH_BASE_URL` only when OAuth callbacks use a different public API base
 
+## AUTH_LOGIN_ORIGIN
+
+Trusted browser origin that hosts the login page. Set this when an OSS-UI-based
+app delegates `/login` to a central identity origin.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | Not set (same-origin relative `/login`) |
+
+**Example:**
+
+```bash
+AUTH_LOGIN_ORIGIN=https://id.example.com
+```
+
+**Notes:**
+- Supply only an HTTP(S) origin, with no credentials, path, query, or fragment
+- Set the same value in the server and UI runtime environments
+- The value is trusted deployment configuration; request/query input cannot override it
+- `return_to` remains a relative path and is still sanitized against open redirects
+- Configured absolute login redirects use full-page navigation
+
 ## CORS_ALLOWED_ORIGINS
 
 Comma-separated list of allowed origins for cross-origin requests. Only needed when the UI is served from a different domain than the API.

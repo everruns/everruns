@@ -291,6 +291,8 @@ Emitted when the LLM starts generating a response. UI can show a "thinking" indi
 
 **`iteration`** (optional, u32): 1-based iteration number within the current turn. Lets the UI show which iteration the agent is on during multi-step tool-calling flows. Only displayed when > 1.
 
+**`phase`** (optional, string — `"commentary"` | `"final_answer"`): best-effort streamed phase hint (EVE-774). This event is emitted *before* the LLM call, so `phase` is generally absent here. When absent it means **"not yet classified — treat as ordinary assistant text"**, NEVER "thinking". See the shared hint semantics under `output.message.delta`.
+
 #### `output.message.delta`
 
 Streaming text update during LLM generation. Events are batched (~100ms) to reduce volume while providing real-time feedback. UI should accumulate deltas or use the `accumulated` field until `output.message.completed` arrives with the final text.
@@ -308,10 +310,18 @@ Streaming text update during LLM generation. Events are batched (~100ms) to redu
   "data": {
     "turn_id": "...",
     "delta": "Hello, ",
-    "accumulated": "Hello, "
+    "accumulated": "Hello, ",
+    "phase": "commentary"
   }
 }
 ```
+
+**`phase`** (optional, string — `"commentary"` | `"final_answer"`): best-effort streamed phase hint (EVE-774) letting consumers classify streamed assistant text as commentary vs final answer *before* `output.message.completed` arrives.
+
+- **Absent = "not yet classified — treat as ordinary assistant text", NEVER "thinking".** A missing/unknown phase must fall back to the assistant-text channel, never the reasoning/thinking channel (the EVE-448 class of bug).
+- **Monotonic refinement only.** Within a single message the hint advances `absent → "commentary" | "final_answer"` at most once and then never changes: it never flip-flops between the two values and never reverts to absent (`ExecutionPhase::refine_streamed_hint` enforces this).
+- **Best-effort, not authoritative.** Only providers whose stream carries a native phase populate it mid-stream — OpenAI Responses exposes it on `response.output_item.added` and the driver surfaces it as a mid-stream stream event. Other providers (Anthropic, Gemini, …) leave it absent until completion. The authoritative classification is always the completed `output.message.completed` `Message.phase`; a consumer that needs certainty waits for that event (unchanged behavior) but may now render optimistically meanwhile.
+- **Not derived from later tool calls.** The streamed hint is never inferred from the subsequent presence of tool calls (the EVE-448 anti-pattern); `ExecutionPhase::from_has_tool_calls` stays a completion-time fallback only.
 
 #### `output.message.replaced`
 
@@ -1191,6 +1201,7 @@ Durable record of an opaque assistant reasoning response item, distinct from `re
 - `summary` carries only provider-curated summary text (e.g., OpenAI `summary_text` parts). Other content variants are dropped.
 - `encrypted_content` and `token_count` are optional; not every provider supplies them.
 - User-visible thinking streams continue to flow through `reason.thinking.*`; `reason.item` is the durable record for opaque artifacts that cannot be safely streamed as plaintext.
+- **Projection:** the curated `summary` is a reasoning artifact and projects onto the reasoning channel (AG-UI `REASONING_*`/`THINKING_*`, ACP `agent_thought_chunk`) — visible by default, never the assistant-text channel. `encrypted_content` is never surfaced to a consumer. See the Channel Projection Matrix below.
 
 **Extended Thinking Timeline Example:**
 
@@ -1223,6 +1234,69 @@ output.message.delta  output.message.delta  ← UI shows streaming text
   │ output.message.completed │  ← UI shows final message
   └──────────────────────────┘
 ```
+
+### Channel Projection Matrix (commentary vs. reasoning vs. tool)
+
+Downstream transports (AG-UI, ACP, the terminal example) render the runtime
+event stream onto a small set of **channels**. The load-bearing rule — the one
+that fixes the EVE-448 class of bug where deliberate progress was labeled
+"Thinking" — is that each runtime concept maps to exactly one channel, and a
+projection must never move an item across channels to fake a phase. See
+`proposals/commentary-in-runtime-event-model.md` (EVE-768) for the full design
+rationale and the non-overlapping definitions.
+
+**Definitions (non-overlapping):**
+
+- **Commentary** — deliberate, user-visible assistant *text* produced as
+  progress/preamble before or between tool calls; does not end the turn
+  (`Message.phase = commentary`).
+- **Final answer** — the durable, turn-ending assistant *text*
+  (`Message.phase = final_answer`).
+- **Thinking** — model reasoning the provider *explicitly exposes* as
+  displayable reasoning, streamed via `reason.thinking.*`. Never inferred; raw
+  hidden chain-of-thought is never persisted or exposed.
+- **Reasoning summary** — the provider-curated safe summary carried on
+  `reason.item` (`summary`), alongside opaque/encrypted continuation state. The
+  summary is a *reasoning artifact*, surfaced on the reasoning channel by
+  default — never relabeled as an assistant answer. The opaque
+  `encrypted_content` is never surfaced to a consumer.
+- **Tool activity** — narration/progress/output scoped to a `tool_call` id; its
+  own channel, never merged into the assistant-message channel.
+
+**Projection + fallback matrix:**
+
+| Runtime concept | Source event(s) | Assistant-text channel | Reasoning channel | Tool channel |
+|---|---|---|---|---|
+| Commentary | `output.message.delta` / `output.message.completed` (`phase = commentary`) | AG-UI `TEXT_MESSAGE_*`; ACP `agent_message_chunk` | — | — |
+| Final answer | `output.message.completed` (`phase = final_answer`) | AG-UI `TEXT_MESSAGE_*`; ACP `agent_message_chunk` | — | — |
+| Thinking | `reason.thinking.*` | — | AG-UI `REASONING_*` / `THINKING_*`; ACP `agent_thought_chunk` | — |
+| Reasoning summary | `reason.item` (`summary`) | — | AG-UI `REASONING_*` / `THINKING_*` (visible by default; policy may omit); ACP `agent_thought_chunk` | — |
+| Tool narration/progress/output | `tool.started` / `tool.completed` | — | — | AG-UI `TOOL_CALL_*`; ACP `tool_call` / `tool_call_update` |
+
+**HARD fallback rule:** when a message's phase is missing or unknown (e.g. a
+stream that died before `output.message.completed`, or a transport with no phase
+concept), it falls back to the **assistant-text** channel — shown in order as
+ordinary assistant text. A missing/unknown phase must **NEVER** fall back to the
+thinking/reasoning channel. Only `reason.thinking.*` and the `reason.item`
+`summary` are ever routed to the reasoning channel; assistant messages never are,
+regardless of phase.
+
+**ACP mapping (spec-level contract).** No ACP adapter exists in-tree yet; when
+one lands it must honor this contract: commentary and final answer map to
+`session/update → agent_message_chunk` (role assistant); thinking and reasoning
+summaries map to `agent_thought_chunk`. Routing commentary to
+`agent_thought_chunk` is exactly the mis-projection that makes clients label
+progress "Thinking" and is prohibited.
+
+**Graceful degradation.** AG-UI and ACP have no native commentary/final `phase`,
+so commentary and final answer both render on the assistant-text channel and are
+simply shown in order — the transcript stays correct; only the "this was a
+preamble" affordance is lost. Replay reconstructs boundaries from the durable
+`output.message.*` lifecycle and classification from the authoritative
+`output.message.completed` `Message.phase`; a reasoning summary replayed from
+`reason.item` stays on the reasoning channel and is never reclassified as an
+assistant answer. AG-UI projection lives in `crates/server/src/api/ag_ui.rs`;
+the terminal example is `examples/coding-cli`.
 
 **Real-time Usage Tracking Pattern:**
 

@@ -18,6 +18,26 @@ impl InMemoryDatabase {
         }) {
             bail!("memory name already exists");
         }
+        if input.scope == "agent"
+            && memories.values().any(|memory| {
+                memory.org_id == org_id
+                    && memory.status != "deleted"
+                    && memory.scope == "agent"
+                    && memory.owner_agent_id == input.owner_agent_id
+            })
+        {
+            bail!("agent memory already exists");
+        }
+        if input.scope == "user"
+            && memories.values().any(|memory| {
+                memory.org_id == org_id
+                    && memory.status != "deleted"
+                    && memory.scope == "user"
+                    && memory.owner_user_id == input.owner_user_id
+            })
+        {
+            bail!("user memory already exists");
+        }
 
         let id = Uuid::now_v7();
         let row = MemoryRow {
@@ -26,6 +46,9 @@ impl InMemoryDatabase {
             public_id: input.public_id,
             name: input.name,
             description: input.description,
+            scope: input.scope,
+            owner_agent_id: input.owner_agent_id,
+            owner_user_id: input.owner_user_id,
             source_type: input.source_type,
             source_config: input.source_config,
             is_readonly: input.is_readonly,
@@ -101,6 +124,7 @@ impl InMemoryDatabase {
                     } else {
                         memory.status == "active"
                     }
+                    && memory.scope == "org"
             })
             .filter(|memory| {
                 matches_search_tokens(
@@ -112,6 +136,27 @@ impl InMemoryDatabase {
             .collect();
         result.sort_by_key(|memory| std::cmp::Reverse(memory.created_at));
         Ok(result)
+    }
+
+    pub async fn get_memory_by_scope_owner(
+        &self,
+        org_id: i64,
+        scope: &str,
+        owner_agent_id: Option<everruns_core::AgentId>,
+        owner_user_id: Option<Uuid>,
+    ) -> Result<Option<MemoryRow>> {
+        Ok(self
+            .memories
+            .read()
+            .values()
+            .find(|memory| {
+                memory.org_id == org_id
+                    && memory.status != "deleted"
+                    && memory.scope == scope
+                    && memory.owner_agent_id == owner_agent_id
+                    && memory.owner_user_id == owner_user_id
+            })
+            .cloned())
     }
 
     pub async fn update_memory(
@@ -443,8 +488,8 @@ impl InMemoryDatabase {
         path_pattern: Option<&str>,
         max_file_bytes: i64,
     ) -> Result<Vec<MemoryFileInfoRow>> {
-        // Use regex for both the content pattern and the optional path filter
-        // so dev/in-memory behavior matches the Postgres `~` semantics.
+        // Content uses regex. Path filtering is applied by the service with the
+        // shared glob matcher, so repositories receive `None` for path_pattern.
         let content_re =
             regex::Regex::new(pattern).map_err(|e| anyhow::anyhow!("invalid pattern: {e}"))?;
         let path_re = path_pattern

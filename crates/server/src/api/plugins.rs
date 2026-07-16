@@ -66,7 +66,7 @@ impl AppState {
             db,
             capability_service,
             auth,
-            egress_service: Arc::new(DirectEgressService::from_env()),
+            egress_service: Arc::new(DirectEgressService::for_runtime_traffic_from_env()),
         }
     }
 

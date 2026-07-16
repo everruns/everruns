@@ -10,7 +10,7 @@ use everruns_core::message_filter::MessageQuery;
 use everruns_core::typed_id::{
     AgentId, AgentIdentityId, EventId, HarnessId, KnowledgeBaseId, KnowledgeEntryId,
     KnowledgeIndexId, LeasedResourceId, MemoryId, MessageId, NotificationId, PrincipalId,
-    ScheduleId, SessionId, WorkspaceId,
+    ScheduleId, SessionId, SessionParticipantId, TriggerId, WorkspaceId,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -26,6 +26,11 @@ use crate::api::common::Pagination;
 /// caller input so a misconfigured limit can never request an unbounded or
 /// oversized delete; large backlogs drain over successive reaper ticks.
 const MAX_RETENTION_PRUNE_LIMIT: i64 = 1000;
+
+/// Hard cap for participant history returned in one session response.
+/// Storage queries fetch one extra row so callers can reject oversized histories
+/// instead of allocating or serializing unbounded attacker-created rows.
+pub const MAX_SESSION_PARTICIPANT_HISTORY: usize = 512;
 
 const TASK_ARTIFACT_ROOTS: &[&str] = &["/.tasks", "/.background", "/.agent-runs"];
 
@@ -88,6 +93,39 @@ pub enum StorageBackend {
 }
 
 impl StorageBackend {
+    #[cfg(test)]
+    async fn record_session_list_lookup(&self) {
+        if let Self::InMemory(db) = self {
+            db.record_session_list_lookup();
+            let delay_ms = db.session_list_lookup_delay_ms();
+            if delay_ms > 0 {
+                tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reset_session_list_lookup_count(&self) {
+        if let Self::InMemory(db) = self {
+            db.reset_session_list_lookup_count();
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn session_list_lookup_count(&self) -> usize {
+        match self {
+            Self::InMemory(db) => db.session_list_lookup_count(),
+            Self::Postgres(_) => 0,
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_session_list_lookup_delay_ms(&self, delay_ms: u64) {
+        if let Self::InMemory(db) = self {
+            db.set_session_list_lookup_delay_ms(delay_ms);
+        }
+    }
+
     /// Create a PostgreSQL storage backend from a database URL
     pub async fn postgres(database_url: &str) -> Result<Self> {
         let db = Database::from_url(database_url).await?;
@@ -220,6 +258,8 @@ impl StorageBackend {
         org_id: i64,
         id: PrincipalId,
     ) -> Result<Option<PrincipalRow>> {
+        #[cfg(test)]
+        self.record_session_list_lookup().await;
         dispatch!(self, get_principal, org_id, id)
     }
 
@@ -229,7 +269,26 @@ impl StorageBackend {
         kind: &str,
         subject_id: Uuid,
     ) -> Result<Option<PrincipalRow>> {
+        #[cfg(test)]
+        self.record_session_list_lookup().await;
         dispatch!(self, get_principal_by_subject, org_id, kind, subject_id)
+    }
+
+    pub async fn get_principals_for_session_list(
+        &self,
+        org_id: i64,
+        principal_ids: &[PrincipalId],
+        resolved_user_ids: &[Uuid],
+    ) -> Result<Vec<PrincipalRow>> {
+        #[cfg(test)]
+        self.record_session_list_lookup().await;
+        dispatch!(
+            self,
+            get_principals_for_session_list,
+            org_id,
+            principal_ids,
+            resolved_user_ids
+        )
     }
 
     pub async fn list_principals_by_resolved_user(
@@ -500,7 +559,15 @@ impl StorageBackend {
     }
 
     pub async fn get_agent(&self, org_id: i64, id: AgentId) -> Result<Option<AgentRow>> {
+        #[cfg(test)]
+        self.record_session_list_lookup().await;
         dispatch!(self, get_agent, org_id, id)
+    }
+
+    pub async fn get_agents_by_ids(&self, org_id: i64, ids: &[AgentId]) -> Result<Vec<AgentRow>> {
+        #[cfg(test)]
+        self.record_session_list_lookup().await;
+        dispatch!(self, get_agents_by_ids, org_id, ids)
     }
 
     pub async fn get_agent_by_public_id(
@@ -570,6 +637,8 @@ impl StorageBackend {
     }
 
     pub async fn get_agent_public_id(&self, org_id: i64, id: AgentId) -> Result<Option<String>> {
+        #[cfg(test)]
+        self.record_session_list_lookup().await;
         dispatch!(self, get_agent_public_id, org_id, id)
     }
 
@@ -639,7 +708,19 @@ impl StorageBackend {
     }
 
     pub async fn get_harness(&self, org_id: i64, id: HarnessId) -> Result<Option<HarnessRow>> {
+        #[cfg(test)]
+        self.record_session_list_lookup().await;
         dispatch!(self, get_harness, org_id, id)
+    }
+
+    pub async fn get_harness_ancestry_by_ids(
+        &self,
+        org_id: i64,
+        ids: &[HarnessId],
+    ) -> Result<Vec<HarnessRow>> {
+        #[cfg(test)]
+        self.record_session_list_lookup().await;
+        dispatch!(self, get_harness_ancestry_by_ids, org_id, ids)
     }
 
     pub async fn get_harness_by_name(&self, org_id: i64, name: &str) -> Result<Option<HarnessRow>> {
@@ -760,11 +841,110 @@ impl StorageBackend {
     }
 
     // ============================================
+    // Agent triggers
+    // ============================================
+
+    pub async fn create_agent_trigger(
+        &self,
+        input: CreateAgentTriggerRow,
+    ) -> Result<AgentTriggerRow> {
+        dispatch!(self, create_agent_trigger, input)
+    }
+
+    pub async fn get_agent_trigger(
+        &self,
+        org_id: i64,
+        id: TriggerId,
+    ) -> Result<Option<AgentTriggerRow>> {
+        dispatch!(self, get_agent_trigger, org_id, id)
+    }
+
+    pub async fn list_agent_triggers(
+        &self,
+        org_id: i64,
+        agent_id: Option<AgentId>,
+        include_archived: bool,
+    ) -> Result<Vec<AgentTriggerRow>> {
+        dispatch!(
+            self,
+            list_agent_triggers,
+            org_id,
+            agent_id,
+            include_archived
+        )
+    }
+
+    pub async fn update_agent_trigger(
+        &self,
+        org_id: i64,
+        id: TriggerId,
+        input: UpdateAgentTrigger,
+    ) -> Result<Option<AgentTriggerRow>> {
+        dispatch!(self, update_agent_trigger, org_id, id, input)
+    }
+
+    pub async fn set_agent_trigger_durable_schedule_id(
+        &self,
+        org_id: i64,
+        id: TriggerId,
+        durable_schedule_id: Option<Uuid>,
+    ) -> Result<Option<AgentTriggerRow>> {
+        dispatch!(
+            self,
+            set_agent_trigger_durable_schedule_id,
+            org_id,
+            id,
+            durable_schedule_id
+        )
+    }
+
+    pub async fn delete_agent_trigger(&self, org_id: i64, id: TriggerId) -> Result<bool> {
+        dispatch!(self, delete_agent_trigger, org_id, id)
+    }
+
+    // ============================================
     // Sessions
     // ============================================
 
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
         dispatch!(self, create_session, input)
+    }
+
+    pub async fn create_session_participant(
+        &self,
+        input: CreateSessionParticipantRow,
+    ) -> Result<SessionParticipantRow> {
+        dispatch!(self, create_session_participant, input)
+    }
+
+    pub async fn ensure_active_user_session_participant(
+        &self,
+        input: CreateSessionParticipantRow,
+    ) -> Result<SessionParticipantRow> {
+        dispatch!(self, ensure_active_user_session_participant, input)
+    }
+
+    pub async fn list_session_participants(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Result<Vec<SessionParticipantRow>> {
+        dispatch!(self, list_session_participants, org_id, session_id)
+    }
+
+    pub async fn leave_session_participant(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        participant_id: SessionParticipantId,
+    ) -> Result<Option<SessionParticipantRow>> {
+        dispatch!(
+            self,
+            leave_session_participant,
+            org_id,
+            session_id,
+            participant_id
+        )
     }
 
     pub async fn list_reporting_outbox(
@@ -819,6 +999,8 @@ impl StorageBackend {
         search: Option<&str>,
         pagination: Pagination,
     ) -> Result<(Vec<SessionRow>, u32)> {
+        #[cfg(test)]
+        self.record_session_list_lookup().await;
         dispatch!(self, list_sessions, org_id, agent_id, search, pagination)
     }
 
@@ -1040,6 +1222,23 @@ impl StorageBackend {
 
     pub async fn get_memory_by_id(&self, org_id: i64, id: Uuid) -> Result<Option<MemoryRow>> {
         dispatch!(self, get_memory_by_id, org_id, id)
+    }
+
+    pub async fn get_memory_by_scope_owner(
+        &self,
+        org_id: i64,
+        scope: &str,
+        owner_agent_id: Option<AgentId>,
+        owner_user_id: Option<Uuid>,
+    ) -> Result<Option<MemoryRow>> {
+        dispatch!(
+            self,
+            get_memory_by_scope_owner,
+            org_id,
+            scope,
+            owner_agent_id,
+            owner_user_id
+        )
     }
 
     pub async fn list_memories(
@@ -1442,6 +1641,8 @@ impl StorageBackend {
         user_id: Uuid,
         org_id: i64,
     ) -> Result<Vec<SessionId>> {
+        #[cfg(test)]
+        self.record_session_list_lookup().await;
         dispatch!(self, list_pinned_session_ids, user_id, org_id)
     }
 
@@ -1650,6 +1851,8 @@ impl StorageBackend {
         &self,
         session_ids: &[Uuid],
     ) -> Result<std::collections::HashMap<Uuid, String>> {
+        #[cfg(test)]
+        self.record_session_list_lookup().await;
         dispatch!(self, get_session_previews, session_ids)
     }
 
@@ -1658,6 +1861,8 @@ impl StorageBackend {
         &self,
         session_ids: &[Uuid],
     ) -> Result<std::collections::HashMap<Uuid, String>> {
+        #[cfg(test)]
+        self.record_session_list_lookup().await;
         dispatch!(self, get_session_output_previews, session_ids)
     }
 
@@ -1845,7 +2050,19 @@ impl StorageBackend {
     // ============================================
 
     pub async fn get_agent_capabilities(&self, agent_id: Uuid) -> Result<Vec<AgentCapabilityRow>> {
+        #[cfg(test)]
+        self.record_session_list_lookup().await;
         dispatch!(self, get_agent_capabilities, agent_id)
+    }
+
+    pub async fn get_agent_capabilities_by_agent_ids(
+        &self,
+        org_id: i64,
+        agent_ids: &[AgentId],
+    ) -> Result<Vec<AgentCapabilityRow>> {
+        #[cfg(test)]
+        self.record_session_list_lookup().await;
+        dispatch!(self, get_agent_capabilities_by_agent_ids, org_id, agent_ids)
     }
 
     pub async fn set_agent_capabilities(
@@ -1879,7 +2096,24 @@ impl StorageBackend {
         &self,
         harness_id: Uuid,
     ) -> Result<Vec<HarnessCapabilityRow>> {
+        #[cfg(test)]
+        self.record_session_list_lookup().await;
         dispatch!(self, get_harness_capabilities, harness_id)
+    }
+
+    pub async fn get_harness_capabilities_by_harness_ids(
+        &self,
+        org_id: i64,
+        harness_ids: &[HarnessId],
+    ) -> Result<Vec<HarnessCapabilityRow>> {
+        #[cfg(test)]
+        self.record_session_list_lookup().await;
+        dispatch!(
+            self,
+            get_harness_capabilities_by_harness_ids,
+            org_id,
+            harness_ids
+        )
     }
 
     pub async fn set_harness_capabilities(
@@ -2909,6 +3143,13 @@ impl StorageBackend {
         dispatch!(self, list_session_keys, session_id)
     }
 
+    pub async fn upsert_session_key_value(
+        &self,
+        input: UpsertSessionKeyValue,
+    ) -> Result<SessionKeyValueRow> {
+        dispatch!(self, upsert_session_key_value, input)
+    }
+
     pub async fn get_session_key_value(
         &self,
         session_id: Uuid,
@@ -2922,6 +3163,14 @@ impl StorageBackend {
         session_id: Uuid,
     ) -> Result<Vec<SessionSecretInfoRow>> {
         dispatch!(self, list_session_secrets, session_id)
+    }
+
+    pub async fn get_session_secret(
+        &self,
+        session_id: Uuid,
+        name: &str,
+    ) -> Result<Option<SessionSecretRow>> {
+        dispatch!(self, get_session_secret, session_id, name)
     }
 
     pub async fn upsert_session_secret(
@@ -3352,12 +3601,14 @@ impl StorageBackend {
     /// optional kind/state/age filters and a bounded limit. Org scoping is the
     /// authoritative multitenancy boundary (a semijoin on `sessions.org_id`):
     /// a task is only returned when its owning session belongs to the org.
+    #[allow(clippy::too_many_arguments)]
     pub async fn list_org_session_tasks(
         &self,
         org_id: i64,
         kind: Option<&str>,
         state: Option<&str>,
         created_after: Option<DateTime<Utc>>,
+        root_session_id: Option<SessionId>,
         limit: i64,
     ) -> Result<Vec<SessionTaskRow>> {
         dispatch!(
@@ -3367,6 +3618,7 @@ impl StorageBackend {
             kind,
             state,
             created_after,
+            root_session_id,
             limit
         )
     }
@@ -3393,6 +3645,38 @@ impl StorageBackend {
         input: NewSessionTaskMessageRow,
     ) -> Result<SessionTaskMessageRow> {
         dispatch!(self, insert_session_task_message, input)
+    }
+
+    // Per-task push-notification configs (EVE-682).
+
+    pub async fn create_task_push_config(
+        &self,
+        input: crate::storage::models::CreateSessionTaskPushConfig,
+    ) -> Result<crate::storage::models::SessionTaskPushConfigRow> {
+        dispatch!(self, create_task_push_config, input)
+    }
+
+    pub async fn list_task_push_configs(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+    ) -> Result<Vec<crate::storage::models::SessionTaskPushConfigRow>> {
+        dispatch!(self, list_task_push_configs, session_id, task_id)
+    }
+
+    pub async fn delete_task_push_config(
+        &self,
+        session_id: SessionId,
+        task_id: &str,
+        public_id: &str,
+    ) -> Result<bool> {
+        dispatch!(
+            self,
+            delete_task_push_config,
+            session_id,
+            task_id,
+            public_id
+        )
     }
 
     pub async fn list_session_task_messages(

@@ -29,6 +29,9 @@ use tokio::sync::{mpsc, oneshot};
 pub enum Author {
     User,
     Assistant,
+    // EVE-775: provider reasoning-summary artifacts render on their own
+    // dimmed reasoning channel — a secondary detail, never the assistant answer.
+    Reasoning,
     Tool,
     ToolDetail,
     Diff,
@@ -40,6 +43,7 @@ impl Author {
         match self {
             Author::User => "you",
             Author::Assistant => "agent",
+            Author::Reasoning => "reasoning",
             Author::Tool => "tool",
             Author::ToolDetail => "",
             Author::Diff => "diff",
@@ -50,6 +54,7 @@ impl Author {
         match self {
             Author::User => ACCENT_BLUE,
             Author::Assistant => ACCENT_GOLD,
+            Author::Reasoning => TEXT_DIM,
             Author::Tool => TEXT_MUTED,
             Author::ToolDetail => TEXT_MUTED,
             Author::Diff => ACCENT_BLUE,
@@ -774,13 +779,17 @@ pub fn lines_for_event(event: &RuntimeEvent) -> Vec<ChatLine> {
                 Vec::new()
             }
         }
+        // EVE-775: a `reason.item` summary is a reasoning artifact (EVE-768
+        // design note), so it renders on the dimmed reasoning channel as a
+        // secondary detail — never as an assistant answer. Only the curated
+        // `summary` segments are shown; opaque `encrypted_content` is not.
         EventData::ReasonItem(data) => data
             .summary
             .iter()
             .filter_map(|segment| {
                 let trimmed = segment.trim();
                 (!trimmed.is_empty()).then(|| ChatLine {
-                    author: Author::Assistant,
+                    author: Author::Reasoning,
                     text: trimmed.to_string(),
                 })
             })
@@ -1993,9 +2002,40 @@ mod tests {
         let lines = lines_for_event(&event);
 
         assert_eq!(lines.len(), 2, "blank summary segments are dropped");
-        assert!(matches!(lines[0].author, Author::Assistant));
+        // EVE-775: reasoning summaries render on the reasoning channel, never as
+        // an assistant answer, and never expose opaque `encrypted_content`.
+        assert!(matches!(lines[0].author, Author::Reasoning));
+        assert!(matches!(lines[1].author, Author::Reasoning));
         assert_eq!(lines[0].text, "Considering file layout");
         assert_eq!(lines[1].text, "Plan the read order");
+        assert!(lines.iter().all(|line| !line.text.contains("opaque")));
+    }
+
+    // EVE-768 AC#7: replay reconstruction keeps a reasoning summary on the
+    // reasoning channel, never reclassifying it as an assistant answer.
+    #[test]
+    fn lines_for_replayed_event_keeps_reason_summary_on_reasoning_channel() {
+        use everruns_core::events::ReasonItemData;
+
+        let event = RuntimeEvent::new(
+            SessionId::new(),
+            EventContext::empty(),
+            ReasonItemData {
+                turn_id: TurnId::new(),
+                provider: "openai".to_string(),
+                model: None,
+                item_id: "rs_replay".to_string(),
+                encrypted_content: Some("opaque".to_string()),
+                summary: vec!["Summarized the change".to_string()],
+                token_count: None,
+            },
+        );
+
+        let lines = lines_for_replayed_event(&event);
+
+        assert_eq!(lines.len(), 1);
+        assert!(matches!(lines[0].author, Author::Reasoning));
+        assert_eq!(lines[0].text, "Summarized the change");
     }
 
     #[test]
@@ -2031,6 +2071,7 @@ mod tests {
                 turn_id: TurnId::new(),
                 model: None,
                 iteration: Some(3),
+                phase: None,
             },
         );
 

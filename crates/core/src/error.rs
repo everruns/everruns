@@ -38,6 +38,29 @@ pub enum LlmErrorKind {
 }
 
 impl LlmErrorKind {
+    /// Classify a provider's stable machine-readable error code.
+    pub fn from_provider_code(code: &str) -> Option<Self> {
+        let code = code.trim().to_ascii_lowercase();
+        match code.as_str() {
+            "insufficient_quota" | "billing_hard_limit_reached" | "credit_balance_too_low" => {
+                Some(Self::QuotaExhausted)
+            }
+            "authentication_error" | "invalid_api_key" | "permission_denied" => {
+                Some(Self::Authentication)
+            }
+            "rate_limit_exceeded" | "rate_limit_error" | "overloaded_error" => {
+                Some(Self::RateLimited)
+            }
+            "server_error"
+            | "internal_error"
+            | "processing_error"
+            | "service_unavailable"
+            | "timeout" => Some(Self::Unavailable),
+            "invalid_request_error" | "model_not_found" => Some(Self::InvalidRequest),
+            _ => None,
+        }
+    }
+
     /// Classify a provider HTTP error from status code + response body.
     ///
     /// Quota/billing patterns are checked before the status code because
@@ -51,7 +74,9 @@ impl LlmErrorKind {
         match status {
             401 | 403 => LlmErrorKind::Authentication,
             429 => LlmErrorKind::RateLimited,
-            408 | 500..=599 => LlmErrorKind::Unavailable,
+            408 | 409 => LlmErrorKind::Unavailable,
+            501 => LlmErrorKind::Other,
+            500..=599 => LlmErrorKind::Unavailable,
             400..=499 => LlmErrorKind::InvalidRequest,
             _ => LlmErrorKind::Other,
         }
@@ -311,6 +336,23 @@ impl AgentLoopError {
                         || msg.contains("(529)")
                 }
                 _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    /// Check whether an LLM failure is safe to retry.
+    ///
+    /// Semantic driver classification is authoritative. Untyped legacy errors
+    /// retain the message-based fallback until all drivers preserve structure.
+    pub fn is_transient_llm_error(&self) -> bool {
+        match self {
+            AgentLoopError::Llm(err) => match err.kind {
+                LlmErrorKind::RateLimited | LlmErrorKind::Unavailable => true,
+                LlmErrorKind::Authentication
+                | LlmErrorKind::QuotaExhausted
+                | LlmErrorKind::InvalidRequest => false,
+                LlmErrorKind::Other => crate::llm_retry::is_transient_error_message(&err.message),
             },
             _ => false,
         }

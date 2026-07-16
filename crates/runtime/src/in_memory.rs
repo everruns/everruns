@@ -6,12 +6,16 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::session::Session;
-use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
+use everruns_core::session_file::{
+    FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
+    build_grep_search_result,
+};
 use everruns_core::traits::{
     KeyInfo, SecretInfo, SessionFileSystem, SessionFileSystemFactory,
     SessionFileSystemFactoryContext, SessionMutator, SessionStorageStore, SessionStore,
 };
 use everruns_core::typed_id::SessionId;
+use regex::Regex;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -364,6 +368,11 @@ impl SessionFileSystem for InMemorySessionFileStore {
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
+        let regex = Regex::new(pattern)
+            .map_err(|error| AgentLoopError::tool(format!("Invalid regex pattern: {error}")))?;
+        let path_pattern = path_pattern
+            .map(everruns_core::session_path::GrepPathPattern::new)
+            .transpose()?;
         let files = self.files.read().await;
         let mut matches = Vec::new();
 
@@ -371,8 +380,8 @@ impl SessionFileSystem for InMemorySessionFileStore {
             if *sid != session_id || entry.file.is_directory || entry.file.encoding != "text" {
                 continue;
             }
-            if let Some(path_pattern) = path_pattern
-                && !path.contains(path_pattern)
+            if let Some(path_pattern) = &path_pattern
+                && !path_pattern.is_match(path)
             {
                 continue;
             }
@@ -382,7 +391,7 @@ impl SessionFileSystem for InMemorySessionFileStore {
             };
 
             for (idx, line) in content.lines().enumerate() {
-                if line.contains(pattern) {
+                if regex.is_match(line) {
                     matches.push(GrepMatch {
                         path: path.clone(),
                         line_number: idx + 1,
@@ -393,6 +402,41 @@ impl SessionFileSystem for InMemorySessionFileStore {
         }
 
         Ok(matches)
+    }
+
+    async fn grep_files_with_options(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        let regex = Regex::new(pattern)
+            .map_err(|error| AgentLoopError::tool(format!("Invalid regex pattern: {error}")))?;
+        let path_pattern = options
+            .path_pattern
+            .as_deref()
+            .map(everruns_core::session_path::GrepPathPattern::new)
+            .transpose()?;
+        let files = self.files.read().await;
+        let text_files = files
+            .iter()
+            .filter(|((sid, path), entry)| {
+                *sid == session_id
+                    && !entry.file.is_directory
+                    && entry.file.encoding == "text"
+                    && path_pattern
+                        .as_ref()
+                        .is_none_or(|matcher| matcher.is_match(path))
+            })
+            .filter_map(|((_, path), entry)| {
+                entry
+                    .file
+                    .content
+                    .as_ref()
+                    .map(|content| (path.clone(), content.clone()))
+            })
+            .collect();
+        Ok(build_grep_search_result(text_files, &regex, options))
     }
 
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
@@ -406,6 +450,10 @@ impl SessionFileSystem for InMemorySessionFileStore {
             .await?
             .ok_or_else(|| AgentLoopError::store(format!("directory not found: {normalized}")))?;
         Ok(file_info(&file))
+    }
+
+    fn is_mount_resolver(&self) -> bool {
+        false
     }
 }
 
@@ -575,5 +623,46 @@ fn file_info(file: &SessionFile) -> FileInfo {
         size_bytes: file.size_bytes,
         created_at: file.created_at,
         updated_at: file.updated_at,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn grep_path_pattern_supports_globs_and_substring_compatibility() {
+        let store = InMemorySessionFileStore::new();
+        let session = SessionId::from_seed(1);
+        for path in [
+            "/src/lib.rs",
+            "/src/nested/mod.rs",
+            "/docs/readme.md",
+            "/notes.txt",
+        ] {
+            store
+                .write_file(session, path, "needle", "text")
+                .await
+                .unwrap();
+        }
+
+        let mut glob_paths: Vec<_> = store
+            .grep_files(session, "needle", Some("src/**/*.rs"))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|hit| hit.path)
+            .collect();
+        glob_paths.sort();
+        assert_eq!(glob_paths, vec!["/src/lib.rs", "/src/nested/mod.rs"]);
+
+        let substring_paths: Vec<_> = store
+            .grep_files(session, "needle", Some("docs"))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|hit| hit.path)
+            .collect();
+        assert_eq!(substring_paths, vec!["/docs/readme.md"]);
     }
 }

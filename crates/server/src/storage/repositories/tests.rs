@@ -1,5 +1,12 @@
 use super::*;
 
+/// `database_pool_config_*` tests mutate process-global `DATABASE_POOL_*` env
+/// vars. `cargo test` runs a binary's tests multi-threaded, so without a shared
+/// lock they race — one test's `set_var`/`remove_var` is observed by another
+/// mid-read (e.g. the invalid-value test's `"not_a_number"` leaking into the
+/// from-env test as a fallback-to-default 50 instead of 100). Serialize them.
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn database_pool_config_defaults() {
     let config = DatabasePoolConfig::default();
@@ -11,7 +18,8 @@ fn database_pool_config_defaults() {
 
 #[test]
 fn database_pool_config_from_env() {
-    // SAFETY: test is run single-threaded (--test-threads=1)
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    // SAFETY: env access is serialized by ENV_LOCK for the critical section.
     unsafe {
         std::env::set_var("DATABASE_POOL_MAX", "100");
         std::env::set_var("DATABASE_POOL_MIN", "10");
@@ -35,7 +43,8 @@ fn database_pool_config_from_env() {
 
 #[test]
 fn database_pool_config_invalid_values_use_defaults() {
-    // SAFETY: test is run single-threaded (--test-threads=1)
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    // SAFETY: env access is serialized by ENV_LOCK for the critical section.
     unsafe {
         std::env::set_var("DATABASE_POOL_MAX", "not_a_number");
     }

@@ -12,13 +12,17 @@
 use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
 use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
+use everruns_core::session_file::{
+    FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
+    build_grep_search_result,
+};
 use everruns_core::traits::{
     SessionFileSystem, SessionFileSystemFactory, SessionFileSystemFactoryContext,
 };
 use everruns_core::typed_id::SessionId;
 use everruns_core::{MountFs, WorkspaceRootSet};
 use ignore::WalkBuilder;
+use regex::Regex;
 use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -197,7 +201,7 @@ impl RealDiskFileStore {
 #[async_trait]
 impl SessionFileSystem for RealDiskFileStore {
     /// A real-disk store shows where files actually live: the host-absolute root.
-    /// (Behind `MountFs` the model still sees a stable `/workspace`.)
+    /// Filesystem decorators preserve this identity.
     fn display_root(&self) -> String {
         self.paths.display_root()
     }
@@ -207,6 +211,10 @@ impl SessionFileSystem for RealDiskFileStore {
             Ok(rel) => self.paths.to_display(&rel),
             Err(_) => path.to_string(),
         }
+    }
+
+    fn is_mount_resolver(&self) -> bool {
+        false
     }
 
     async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
@@ -507,9 +515,12 @@ impl SessionFileSystem for RealDiskFileStore {
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
         let root = self.root();
-        let pattern = pattern.to_string();
+        let regex = Regex::new(pattern)
+            .map_err(|error| AgentLoopError::tool(format!("Invalid regex pattern: {error}")))?;
         let path_pattern = match path_pattern {
-            Some(path) => Some(self.paths.parse_input(path)?.as_relative().to_string()),
+            Some(path) => Some(everruns_core::session_path::GrepPathPattern::new(
+                self.paths.parse_input(path)?.as_relative(),
+            )?),
             None => None,
         };
 
@@ -565,7 +576,7 @@ impl SessionFileSystem for RealDiskFileStore {
                     continue;
                 }
                 if let Some(filter) = &path_pattern
-                    && !rel_str.contains(filter.as_str())
+                    && !filter.is_match(&rel_str)
                 {
                     continue;
                 }
@@ -582,7 +593,7 @@ impl SessionFileSystem for RealDiskFileStore {
                 };
                 let canonical_path = format!("/{rel_str}");
                 for (idx, line) in text.lines().enumerate() {
-                    if line.contains(&pattern) {
+                    if regex.is_match(line) {
                         out.push(GrepMatch {
                             path: canonical_path.clone(),
                             line_number: idx + 1,
@@ -595,6 +606,65 @@ impl SessionFileSystem for RealDiskFileStore {
         })
         .await
         .map_err(|e| AgentLoopError::tool(format!("grep walk join failed: {e}")))?
+    }
+
+    async fn grep_files_with_options(
+        &self,
+        _session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        let root = self.root();
+        let regex = Regex::new(pattern)
+            .map_err(|error| AgentLoopError::tool(format!("Invalid regex pattern: {error}")))?;
+        let path_pattern = match options.path_pattern.as_deref() {
+            Some(path) => Some(everruns_core::session_path::GrepPathPattern::new(
+                self.paths.parse_input(path)?.as_relative(),
+            )?),
+            None => None,
+        };
+        let options = options.clone();
+
+        tokio::task::spawn_blocking(move || -> Result<GrepSearchResult> {
+            let mut text_files = Vec::new();
+            let walker = WalkBuilder::new(&root)
+                .hidden(false)
+                .git_ignore(true)
+                .git_global(false)
+                .git_exclude(true)
+                .build();
+            for entry in walker.filter_map(std::result::Result::ok) {
+                if !entry.file_type().is_some_and(|kind| kind.is_file()) {
+                    continue;
+                }
+                let Ok(relative) = entry.path().strip_prefix(&root) else {
+                    continue;
+                };
+                let Some(rel_str) = relative.to_str() else {
+                    continue;
+                };
+                let rel_str = rel_str.replace(std::path::MAIN_SEPARATOR, "/");
+                if path_pattern
+                    .as_ref()
+                    .is_some_and(|matcher| !matcher.is_match(&rel_str))
+                {
+                    continue;
+                }
+                let Ok(bytes) = std::fs::read(entry.path()) else {
+                    continue;
+                };
+                if !SessionFile::is_text_content(&bytes) {
+                    continue;
+                }
+                let Ok(text) = String::from_utf8(bytes) else {
+                    continue;
+                };
+                text_files.push((format!("/{rel_str}"), text));
+            }
+            Ok(build_grep_search_result(text_files, &regex, &options))
+        })
+        .await
+        .map_err(|error| AgentLoopError::tool(format!("grep walk join failed: {error}")))?
     }
 
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
@@ -1171,6 +1241,72 @@ mod tests {
 
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].path, "/src/lib.rs");
+    }
+
+    #[tokio::test]
+    async fn grep_path_pattern_supports_globs() {
+        let (store, _dir) = make_store();
+        let session = sid();
+        for path in [
+            "/src/lib.rs",
+            "/src/nested/mod.rs",
+            "/docs/readme.md",
+            "/docs/nested/guide.md",
+            "/notes.txt",
+            "/nested/notes.txt",
+        ] {
+            store
+                .write_file(session, path, "needle", "text")
+                .await
+                .expect("write fixture");
+        }
+
+        let cases = [
+            ("src/**/*.rs", vec!["/src/lib.rs", "/src/nested/mod.rs"]),
+            (
+                "**/*",
+                vec![
+                    "/docs/nested/guide.md",
+                    "/docs/readme.md",
+                    "/nested/notes.txt",
+                    "/notes.txt",
+                    "/src/lib.rs",
+                    "/src/nested/mod.rs",
+                ],
+            ),
+            ("docs/*", vec!["/docs/readme.md"]),
+            ("*.txt", vec!["/nested/notes.txt", "/notes.txt"]),
+            (
+                "/workspace/src/**/*.rs",
+                vec!["/src/lib.rs", "/src/nested/mod.rs"],
+            ),
+        ];
+
+        for (path_pattern, expected) in cases {
+            let mut paths: Vec<_> = store
+                .grep_files(session, "needle", Some(path_pattern))
+                .await
+                .expect("grep")
+                .into_iter()
+                .map(|hit| hit.path)
+                .collect();
+            paths.sort();
+            assert_eq!(paths, expected, "path_pattern={path_pattern}");
+        }
+
+        let host_pattern = Path::new(&store.display_root())
+            .join("src/**/*.rs")
+            .display()
+            .to_string();
+        let mut paths: Vec<_> = store
+            .grep_files(session, "needle", Some(&host_pattern))
+            .await
+            .expect("host-absolute glob")
+            .into_iter()
+            .map(|hit| hit.path)
+            .collect();
+        paths.sort();
+        assert_eq!(paths, vec!["/src/lib.rs", "/src/nested/mod.rs"]);
     }
 
     #[tokio::test]

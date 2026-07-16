@@ -34,7 +34,7 @@ The endpoint is stateless request/response per JSON-RPC call — no `Mcp-Session
 
 - **`initialize` is optional.** `2026-07-28` removed the `initialize`/`initialized` handshake (SEP-2575). Everruns still accepts `initialize` for older clients because it creates no server state either way, and never requires a prior `initialize` for any method.
 - **Client info rides in `_meta`.** Per-request client identity is read from `params._meta["io.modelcontextprotocol/clientInfo"]` (`{name, version}`) and used for telemetry only; nothing is stored.
-- **Routing headers.** `2026-07-28` Streamable HTTP adds optional `Mcp-Method` and `Mcp-Name` request headers so gateways/load-balancers/rate-limiters can route on the operation without parsing the body. They are optional and the body stays authoritative; when present they must agree with the body (`Mcp-Method` vs the JSON-RPC `method`, and `Mcp-Name` vs `params.name` on `tools/call`), otherwise the request is rejected `400 Bad Request`. See [`specs/production-deployment.md`](production-deployment.md#mcp-endpoint-scaling) for the proxy contract.
+- **Routing headers.** `2026-07-28` Streamable HTTP adds optional `Mcp-Method` and `Mcp-Name` request headers so gateways/load-balancers/rate-limiters can route on the operation without parsing the body. They are optional and the body stays authoritative; when present they must be singular and agree with the body (`Mcp-Method` vs the JSON-RPC `method`, and `Mcp-Name` vs `params.name` on `tools/call`), otherwise the request is rejected `400 Bad Request`. See [`specs/production-deployment.md`](production-deployment.md#mcp-endpoint-scaling) for the proxy contract.
 - **The richer tool shape** (`title`, `outputSchema`, `structuredContent`, entity-card tools) introduced in `2025-06-18` applies to `2025-06-18` and every later version, including `2026-07-28`; only the `2025-03-26` fallback omits it.
 
 The Tasks extension (server-directed long-running `tools/call` driven by `tasks/get`/`tasks/update`/`tasks/cancel`) is implemented as optional, additive interop alignment for the existing `agent_run` → `session_get_status` poll pattern. See [Tasks extension (2026-07-28)](#tasks-extension-2026-07-28) below.
@@ -91,7 +91,9 @@ alignment. It is not new capability: Everruns already runs long agent turns as
 the poll pattern (`agent_run` returns a session id + hint, clients poll
 `session_get_status`), all state Postgres-backed with no server-side session
 memory. Tasks is the standardized vocabulary for that same pattern, so a
-**task handle is a session id**.
+**task handle is a session id**. Field names follow final SEP-2663 and the
+official Tasks extension overview: task handles use `ttlMs` and
+`pollIntervalMs`.
 
 The whole surface is gated: it activates only when the negotiated protocol is
 `2026-07-28` **and** the client advertised the extension. `2025-*` clients (and
@@ -144,15 +146,17 @@ into the tools/call `result`; the existing `content` / `structuredContent` are
 untouched. `tasks/get` returns a `Task` object (`taskId`, `status`, `ttlMs`,
 `pollIntervalMs`) with the full `session_get_status` payload under `result`.
 
-> **RC schema note.** The Tasks extension is still an experimental RC and its
-> authoritative sources disagree on the duration field spelling: the
-> [overview docs](https://modelcontextprotocol.io/extensions/tasks/overview)
-> use `ttlMs` / `pollIntervalMs` (with concrete JSON), while the
-> [SEP-2663 PR](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2663)
-> summary uses `ttlSeconds` / `pollIntervalMilliseconds`. Everruns emits
-> `ttlMs` / `pollIntervalMs` and centralizes the field names in
-> `api/mcp_endpoint/tasks.rs` so a single edit reconciles the wire shape once
-> the spec freezes.
+**Structured result.** When the task's session reported a deterministic,
+schema-bound result (`result.json`, produced by a task declared with a
+`result_schema` — see [`specs/subagents.md`](subagents.md) and
+[`specs/session-tasks.md`](session-tasks.md)), `tasks/get` adds that JSON under
+`result.structured_result`, so Tasks clients get the machine result instead of
+re-parsing last-message text. It is additive: the existing status snapshot
+(session status, latest output, events) is unchanged, and a plain agent turn
+that reported no structured result omits the field. Retrieval is scoped by the
+same org `session_get_status` already validated, so tenant isolation is
+preserved; when a session reported more than one structured result the most
+recently updated one wins.
 
 Implementation: `crates/server/src/api/mcp_endpoint/tasks.rs` (mapping helpers,
 capability gating, task-handle shapes) and `mod.rs` (`handle_tasks_method` and

@@ -27,6 +27,7 @@ use everruns_core::typed_id::{
 use everruns_core::{Caller, Permission, Policy, Rule};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
+use url::Url;
 use uuid::Uuid;
 
 /// Policy: View evals (read-only).
@@ -764,11 +765,12 @@ impl EvalService {
         if req.source.run_id.trim().is_empty() {
             return Err(BadRequestError::new("source.run_id is required").into());
         }
+        let source_url = validate_import_source_url(req.source.url)?;
 
         let attribution = serde_json::json!({
             "system": req.source.system,
             "version": req.source.version,
-            "url": req.source.url,
+            "url": source_url,
             "run_id": req.source.run_id,
             "metadata": req.source.metadata,
         });
@@ -862,6 +864,88 @@ impl EvalService {
         }
 
         Ok(runs)
+    }
+
+    // ============================================
+    // Import (ATIF trajectories → eval cases)
+    // ============================================
+
+    /// Create/update eval cases from ATIF trajectories (specs/atif-adoption.md).
+    ///
+    /// Idempotent: the case `name` (derived from the trajectory's
+    /// `extra.case_name`/`source_key`/ids) is the natural key — re-importing
+    /// the same trajectories converges instead of duplicating. Org-scoped via
+    /// the eval lookup inside `create_case`/`update_case`.
+    pub async fn import_atif_cases(
+        &self,
+        caller: &Caller,
+        eval_public_id: &str,
+        drafts: Vec<crate::atif::AtifCaseDraft>,
+    ) -> Result<crate::api::evals::AtifImportReport> {
+        // Existing case names within the target eval (also 404s cross-org ids).
+        let mut by_name: HashMap<String, String> = self
+            .list_cases(caller, eval_public_id)
+            .await?
+            .into_iter()
+            .map(|c| (c.name.clone(), c.public_id.to_string()))
+            .collect();
+
+        let mut created = 0u64;
+        let mut updated = 0u64;
+        let mut case_ids = Vec::with_capacity(drafts.len());
+        for draft in drafts {
+            if let Some(case_id) = by_name.get(&draft.name).cloned() {
+                let req = UpdateEvalCaseRequest {
+                    name: None,
+                    description: Some(draft.description),
+                    target: None,
+                    tags: None,
+                    conversation: Some(draft.conversation),
+                    post: None,
+                    artifacts: None,
+                    scorers: None,
+                    max_turns: None,
+                    timeout_seconds: None,
+                    position: None,
+                };
+                let case = self
+                    .update_case(caller, eval_public_id, &case_id, req)
+                    .await?
+                    .ok_or_else(|| ResourceNotFoundError::new("EvalCase"))?;
+                updated += 1;
+                case_ids.push(case.public_id.to_string());
+            } else {
+                let name = draft.name.clone();
+                let req = CreateEvalCaseRequest {
+                    name: draft.name,
+                    description: Some(draft.description),
+                    target: None,
+                    tags: Some(vec!["atif-import".to_string()]),
+                    conversation: draft.conversation,
+                    post: None,
+                    artifacts: None,
+                    // ATIF carries no assertion semantics; imported cases start
+                    // unscored and users attach scorers afterwards.
+                    scorers: vec![],
+                    max_turns: None,
+                    timeout_seconds: None,
+                    position: None,
+                };
+                let case = self.create_case(caller, eval_public_id, req).await?;
+                created += 1;
+                let case_id = case.public_id.to_string();
+                // Track the new name so duplicate names within one import
+                // batch update instead of creating twins.
+                by_name.insert(name, case_id.clone());
+                case_ids.push(case_id);
+            }
+        }
+
+        Ok(crate::api::evals::AtifImportReport {
+            created,
+            updated,
+            case_ids,
+        })
     }
 
     // ============================================
@@ -1261,6 +1345,18 @@ fn sanitize_attribution(v: serde_json::Value) -> Option<PublicAttribution> {
         None
     } else {
         Some(att)
+    }
+}
+
+fn validate_import_source_url(url: Option<String>) -> Result<Option<String>> {
+    let Some(url) = url else {
+        return Ok(None);
+    };
+    let parsed = Url::parse(&url)
+        .map_err(|_| BadRequestError::new("source.url must be an absolute http(s) URL"))?;
+    match parsed.scheme() {
+        "http" | "https" => Ok(Some(url)),
+        _ => Err(BadRequestError::new("source.url must use http or https").into()),
     }
 }
 
@@ -1678,6 +1774,21 @@ mod tests {
                 .unwrap(),
             2
         );
+    }
+
+    #[test]
+    fn validate_import_source_url_allows_only_http_urls() {
+        assert_eq!(
+            validate_import_source_url(Some("https://mira.example/runs/1".into())).unwrap(),
+            Some("https://mira.example/runs/1".into())
+        );
+        assert_eq!(
+            validate_import_source_url(Some("http://mira.example/runs/1".into())).unwrap(),
+            Some("http://mira.example/runs/1".into())
+        );
+        assert!(validate_import_source_url(None).unwrap().is_none());
+        assert!(validate_import_source_url(Some("javascript:alert(1)".into())).is_err());
+        assert!(validate_import_source_url(Some("/runs/1".into())).is_err());
     }
 
     fn import_request(run_id: &str, failed_value: f64) -> ImportEvalRunRequest {

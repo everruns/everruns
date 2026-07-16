@@ -92,6 +92,30 @@ impl PostgresWorkflowEventStore {
         &self.pool
     }
 
+    async fn existing_initial_task_id(&self, workflow_id: Uuid) -> Result<Uuid, StoreError> {
+        sqlx::query_scalar(
+            r#"
+            SELECT id
+            FROM durable_task_queue
+            WHERE workflow_id = $1
+            ORDER BY created_at ASC, id ASC
+            LIMIT 1
+            "#,
+        )
+        .bind(workflow_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to load existing workflow task: {}", e);
+            StoreError::Database(e.to_string())
+        })?
+        .ok_or_else(|| {
+            StoreError::Database(format!(
+                "workflow {workflow_id} already exists without an initial task"
+            ))
+        })
+    }
+
     /// Create a workflow, write its initial events, and enqueue the first task in
     /// one transaction. This is the hot path for a new session turn.
     pub async fn start_workflow_with_task(
@@ -130,23 +154,36 @@ impl PostgresWorkflowEventStore {
             .await
             .map_err(|e| StoreError::Database(e.to_string()))?;
 
-        sqlx::query(
+        let inserted_workflow_id = sqlx::query_scalar::<_, Uuid>(
             r#"
             INSERT INTO durable_workflow_instances (
                 id, workflow_type, status, input, started_at
             )
             VALUES ($1, $2, 'running', $3, NOW())
+            ON CONFLICT (id) DO NOTHING
+            RETURNING id
             "#,
         )
         .bind(workflow_id)
         .bind(workflow_type)
         .bind(&workflow_input)
-        .execute(&mut *tx)
+        .fetch_optional(&mut *tx)
         .await
         .map_err(|e| {
             error!("Failed to create started workflow: {}", e);
             StoreError::Database(e.to_string())
         })?;
+
+        if inserted_workflow_id.is_none() {
+            tx.rollback().await.ok();
+            let existing_task_id = self.existing_initial_task_id(workflow_id).await?;
+            debug!(
+                %workflow_id,
+                %existing_task_id,
+                "reused existing initial workflow task after duplicate start"
+            );
+            return Ok(existing_task_id);
+        }
 
         sqlx::query(
             r#"
@@ -1731,6 +1768,47 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             .collect::<Vec<_>>();
 
         debug!(%workflow_id, count = signals.len(), "consumed pending signals atomically");
+        Ok(signals)
+    }
+
+    #[instrument(skip(self))]
+    async fn consume_pending_signals_by_type(
+        &self,
+        workflow_id: Uuid,
+        signal_type: &str,
+    ) -> Result<Vec<WorkflowSignal>, StoreError> {
+        let rows = sqlx::query(
+            r#"
+            UPDATE durable_signals
+            SET processed_at = NOW()
+            WHERE id IN (
+                SELECT id FROM durable_signals
+                WHERE workflow_id = $1 AND processed_at IS NULL AND signal_type = $2
+                ORDER BY sequence_num
+                FOR UPDATE
+            )
+            RETURNING signal_type, payload, sent_at
+            "#,
+        )
+        .bind(workflow_id)
+        .bind(signal_type)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to consume pending signals by type: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        let signals = rows
+            .into_iter()
+            .map(|row| WorkflowSignal {
+                signal_type: row.get("signal_type"),
+                payload: row.get("payload"),
+                sent_at: row.get("sent_at"),
+            })
+            .collect::<Vec<_>>();
+
+        debug!(%workflow_id, count = signals.len(), %signal_type, "consumed pending signals by type atomically");
         Ok(signals)
     }
 

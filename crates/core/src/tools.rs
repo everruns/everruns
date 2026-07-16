@@ -553,6 +553,7 @@ pub trait Tool: Send + Sync {
         _tool_call: &crate::tool_types::ToolCall,
         _phase: crate::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         None
     }
@@ -688,6 +689,28 @@ impl ToolRegistry {
         let builder = builder.tool(crate::capabilities::WebFetchTool::default());
 
         builder.build()
+    }
+
+    /// Create a tool registry for autonomous scheduled monitor probes.
+    ///
+    /// Probe execution currently uses a scheduler-local [`ToolContext`] instead
+    /// of the fully populated worker/API executor context. Keep this registry to
+    /// context-free tools so scheduled probes cannot bypass session-scoped
+    /// controls such as network ACLs, egress routing, storage, or filesystem
+    /// mediation.
+    pub fn with_monitor_probe_defaults() -> Self {
+        use crate::capabilities::{
+            AddTool, DivideTool, GetCurrentTimeTool, MultiplyTool, SubtractTool,
+        };
+
+        ToolRegistry::builder()
+            .tool(GetCurrentTimeTool)
+            .tool(EchoTool)
+            .tool(AddTool)
+            .tool(SubtractTool)
+            .tool(MultiplyTool)
+            .tool(DivideTool)
+            .build()
     }
 
     /// Register a tool with the registry.
@@ -2293,6 +2316,10 @@ mod tests {
 
     #[async_trait]
     impl crate::traits::SessionFileSystem for TestFileStore {
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             _session_id: SessionId,
@@ -2573,6 +2600,13 @@ mod tests {
         }
         async fn get_session_by_id(&self, _id: SessionId) -> crate::Result<Option<crate::Session>> {
             Ok(None)
+        }
+        async fn add_agent_session_participant(
+            &self,
+            _session_id: SessionId,
+            _agent_id: AgentId,
+        ) -> crate::Result<crate::SessionParticipant> {
+            unreachable!()
         }
         async fn get_session_context_report(
             &self,
@@ -3874,6 +3908,7 @@ mod tests {
         crate::session_task::SessionTask {
             id: "t-reattach".to_string(),
             session_id: SessionId::new(),
+            root_session_id: None,
             kind: crate::session_task::TASK_KIND_BACKGROUND_TOOL.to_string(),
             display_name: "Reattach test".to_string(),
             spec,

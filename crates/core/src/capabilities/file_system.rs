@@ -12,11 +12,13 @@
 //! - `delete_file`: Delete a file or directory
 //! - `stat_file`: Get file metadata
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};
+use super::{
+    Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext, ToolDefinitionHook,
+};
 use crate::error::{FileSystemErrorClass, classify_fs_error};
 use crate::session_file::SessionFile;
 use crate::tool_output_sanitizer::build_binary_read_file_result;
-use crate::tool_types::ToolHints;
+use crate::tool_types::{ToolDefinition, ToolHints};
 use crate::tools::{Tool, ToolExecutionResult, ToolResultImage};
 use crate::traits::{SessionFileSystem, ToolContext};
 use crate::truncation_info::{TruncationInfo, TruncationReason};
@@ -24,6 +26,7 @@ use async_trait::async_trait;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use similar::TextDiff;
+use std::sync::Arc;
 
 /// Image MIME types recognized by LLM vision APIs (OpenAI, Anthropic)
 const IMAGE_EXTENSIONS: &[(&str, &str)] = &[
@@ -45,6 +48,15 @@ fn image_media_type(path: &str) -> Option<&'static str> {
 
 /// Workspace prefix used in file paths
 const WORKSPACE_PREFIX: &str = "/workspace";
+const SESSION_FILE_SYSTEM_TOOL_NAMES: &[&str] = &[
+    "read_file",
+    "write_file",
+    "edit_file",
+    "list_directory",
+    "grep_files",
+    "delete_file",
+    "stat_file",
+];
 const MAX_EDIT_DIFF_CHARS: usize = 16_000;
 const LIST_DIRECTORY_DEFAULT_LIMIT: usize = 200;
 const LIST_DIRECTORY_MAX_LIMIT: usize = 1_000;
@@ -56,6 +68,372 @@ fn escape_xml_text(content: &str) -> String {
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+}
+
+/// Model-visible path identity derived from the active primary `SessionFileSystem`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FilePathPresentation {
+    root: String,
+}
+
+impl FilePathPresentation {
+    fn vfs() -> Self {
+        Self {
+            root: WORKSPACE_PREFIX.to_string(),
+        }
+    }
+
+    fn from_context(ctx: &SystemPromptContext) -> Self {
+        Self::from_file_store(
+            ctx.file_store
+                .as_ref()
+                .map(|store| store.as_ref() as &dyn SessionFileSystem),
+        )
+    }
+
+    fn from_file_store(store: Option<&dyn SessionFileSystem>) -> Self {
+        let root = store
+            .map(SessionFileSystem::display_root)
+            .unwrap_or_else(|| WORKSPACE_PREFIX.to_string());
+        Self { root }
+    }
+
+    fn uses_vfs_namespace(&self) -> bool {
+        self.root == WORKSPACE_PREFIX
+    }
+
+    fn root_guidance(&self) -> String {
+        if self.uses_vfs_namespace() {
+            format!(
+                "Workspace root: `{WORKSPACE_PREFIX}`. All file paths must start with `{WORKSPACE_PREFIX}`. "
+            )
+        } else {
+            let escaped_root = escape_xml_text(&self.root);
+            format!(
+                "Workspace root: `{escaped_root}`. Paths may be relative to this root or absolute under it. "
+            )
+        }
+    }
+
+    fn system_prompt_preview(&self) -> String {
+        if self.uses_vfs_namespace() {
+            format!(
+                "Workspace root: `{WORKSPACE_PREFIX}`. All file paths must start with `{WORKSPACE_PREFIX}`."
+            )
+        } else {
+            format!(
+                "Workspace root: `{}`. Paths may be relative to this root or absolute under it.",
+                self.root
+            )
+        }
+    }
+
+    fn path_param_description(&self, example: &str) -> String {
+        if self.uses_vfs_namespace() {
+            format!(
+                "Workspace-relative path (e.g., '{example}'). A leading '/' or '{WORKSPACE_PREFIX}/' prefix is also accepted."
+            )
+        } else {
+            format!(
+                "Path relative to `{}` (e.g., '{example}') or an absolute path under `{}`.",
+                self.root, self.root
+            )
+        }
+    }
+
+    fn generic_path_param_description(&self) -> String {
+        if self.uses_vfs_namespace() {
+            "Path to the file or directory. A leading '/' or '/workspace/' prefix is also accepted."
+                .to_string()
+        } else {
+            format!(
+                "Path relative to `{}` or an absolute path under `{}`.",
+                self.root, self.root
+            )
+        }
+    }
+
+    fn list_directory_path_description(&self) -> String {
+        if self.uses_vfs_namespace() {
+            format!(
+                "Workspace-relative directory path to list (e.g., 'src'). Defaults to the workspace root; a leading '/' or '{WORKSPACE_PREFIX}/' prefix is also accepted."
+            )
+        } else {
+            format!(
+                "Directory path relative to `{}` (e.g., 'src'). Defaults to `{}` when omitted.",
+                self.root, self.root
+            )
+        }
+    }
+
+    fn parameters_schema_for_tool(&self, tool_name: &str) -> Option<Value> {
+        match tool_name {
+            "read_file" => Some(read_file_parameters_schema(self)),
+            "write_file" => Some(write_file_parameters_schema(self)),
+            "edit_file" => Some(edit_file_parameters_schema(self)),
+            "list_directory" => Some(list_directory_parameters_schema(self)),
+            "grep_files" => Some(grep_files_parameters_schema()),
+            "delete_file" => Some(delete_file_parameters_schema(self)),
+            "stat_file" => Some(stat_file_parameters_schema(self)),
+            _ => None,
+        }
+    }
+}
+
+struct FilePathPresentationHook {
+    presentation: FilePathPresentation,
+}
+
+impl ToolDefinitionHook for FilePathPresentationHook {
+    fn transform(&self, tools: Vec<ToolDefinition>) -> Vec<ToolDefinition> {
+        tools
+            .into_iter()
+            .map(|tool| {
+                if !SESSION_FILE_SYSTEM_TOOL_NAMES.contains(&tool.name()) {
+                    return tool;
+                }
+                let Some(schema) = self.presentation.parameters_schema_for_tool(tool.name()) else {
+                    return tool;
+                };
+                match tool {
+                    ToolDefinition::Builtin(mut builtin) => {
+                        builtin.parameters = schema.clone();
+                        if let Some(full) = builtin.full_parameters.as_mut() {
+                            *full = schema;
+                        }
+                        ToolDefinition::Builtin(builtin)
+                    }
+                    ToolDefinition::ClientSide(mut client) => {
+                        client.parameters = schema.clone();
+                        if let Some(full) = client.full_parameters.as_mut() {
+                            *full = schema;
+                        }
+                        ToolDefinition::ClientSide(client)
+                    }
+                }
+            })
+            .collect()
+    }
+}
+
+fn read_file_parameters_schema(presentation: &FilePathPresentation) -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": presentation.path_param_description("docs/readme.txt")
+            },
+            "offset": {
+                "type": "integer",
+                "description": "Starting line number (0-indexed). Default: 0",
+                "default": 0,
+                "minimum": 0
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Max lines to return. Default varies by file type: 2000 (source/text), 500 (logs, tail-biased), 100 (CSV/TSV with header). Explicit value always wins.",
+                "default": 2000,
+                "minimum": 1
+            }
+        },
+        "required": ["path"],
+        "additionalProperties": false
+    })
+}
+
+fn write_file_parameters_schema(presentation: &FilePathPresentation) -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": presentation.path_param_description("docs/notes.txt")
+            },
+            "content": {
+                "type": "string",
+                "description": "Content to write to the file"
+            },
+            "encoding": {
+                "type": "string",
+                "enum": ["text", "base64"],
+                "default": "text",
+                "description": "Content encoding: 'text' for plain text, 'base64' for binary data"
+            }
+        },
+        "required": ["path", "content"],
+        "additionalProperties": false
+    })
+}
+
+fn edit_file_parameters_schema(presentation: &FilePathPresentation) -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": presentation.path_param_description("src/main.rs")
+            },
+            "expected_hash": {
+                "type": "string",
+                "description": "Current content hash from read_file or write_file (format: 'sha256:...')"
+            },
+            "edits": {
+                "type": "array",
+                "description": "One or more replacements to apply, each matched against the original file content. Use a single-element array for one replacement.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "old_text": {
+                            "type": "string",
+                            "description": "Exact text to replace"
+                        },
+                        "new_text": {
+                            "type": "string",
+                            "description": "Replacement text"
+                        }
+                    },
+                    "required": ["old_text", "new_text"],
+                    "additionalProperties": false
+                },
+                "minItems": 1
+            }
+        },
+        "required": ["path", "expected_hash", "edits"],
+        "additionalProperties": false
+    })
+}
+
+fn list_directory_parameters_schema(presentation: &FilePathPresentation) -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "default": presentation.root,
+                "description": presentation.list_directory_path_description()
+            },
+            "offset": {
+                "type": "integer",
+                "description": "Starting item offset for large directories. Default: 0",
+                "default": 0,
+                "minimum": 0
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Max directory entries to return. Default: 200, maximum: 1000",
+                "default": LIST_DIRECTORY_DEFAULT_LIMIT,
+                "minimum": 1,
+                "maximum": LIST_DIRECTORY_MAX_LIMIT
+            }
+        },
+        "additionalProperties": false
+    })
+}
+
+fn grep_files_parameters_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "pattern": {
+                "type": "string",
+                "description": "Regex pattern to search for"
+            },
+            "path_pattern": {
+                "type": "string",
+                "description": "Optional glob filtering canonical paths (e.g., '*.txt', 'docs/*', 'src/**/*.rs'). Basename-only globs match at any depth; non-glob values use legacy substring matching"
+            },
+            "before_context": {
+                "type": "integer",
+                "description": "Number of lines before each match. Default: 0, maximum: 20. Overlapping ranges are merged",
+                "default": 0,
+                "minimum": 0,
+                "maximum": crate::GREP_MAX_CONTEXT_LINES
+            },
+            "after_context": {
+                "type": "integer",
+                "description": "Number of lines after each match. Default: 0, maximum: 20. Overlapping ranges are merged",
+                "default": 0,
+                "minimum": 0,
+                "maximum": crate::GREP_MAX_CONTEXT_LINES
+            },
+            "offset": {
+                "type": "integer",
+                "description": "Starting match offset. Default: 0",
+                "default": 0,
+                "minimum": 0
+            },
+            "limit": {
+                "type": "integer",
+                "description": "Max matches to return. Default: 200, maximum: 1000",
+                "default": GREP_FILES_DEFAULT_LIMIT,
+                "minimum": 1,
+                "maximum": GREP_FILES_MAX_LIMIT
+            }
+        },
+        "required": ["pattern"],
+        "additionalProperties": false
+    })
+}
+
+fn delete_file_parameters_schema(presentation: &FilePathPresentation) -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": presentation.generic_path_param_description()
+            },
+            "recursive": {
+                "type": "boolean",
+                "default": false,
+                "description": "If true, delete directories and all contents recursively"
+            }
+        },
+        "required": ["path"],
+        "additionalProperties": false
+    })
+}
+
+fn stat_file_parameters_schema(presentation: &FilePathPresentation) -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "path": {
+                "type": "string",
+                "description": presentation.generic_path_param_description()
+            }
+        },
+        "required": ["path"],
+        "additionalProperties": false
+    })
+}
+
+#[cfg(test)]
+fn schema_contains_workspace(value: &Value) -> bool {
+    fn walk(value: &Value) -> bool {
+        match value {
+            Value::String(text) => text.contains(WORKSPACE_PREFIX),
+            Value::Array(items) => items.iter().any(walk),
+            Value::Object(fields) => fields.values().any(walk),
+            _ => false,
+        }
+    }
+    walk(value)
+}
+
+#[cfg(test)]
+fn filesystem_tool_schemas_with_presentation(
+    presentation: &FilePathPresentation,
+) -> Vec<(String, Value)> {
+    SESSION_FILE_SYSTEM_TOOL_NAMES
+        .iter()
+        .filter_map(|name| {
+            presentation
+                .parameters_schema_for_tool(name)
+                .map(|schema| ((*name).to_string(), schema))
+        })
+        .collect()
 }
 
 // ============================================================================
@@ -277,11 +655,18 @@ fn coerce_top_level_edit(arguments: &Value) -> std::result::Result<Option<TextEd
         return Ok(None);
     }
 
-    let old_text = old_text_arg.and_then(Value::as_str).unwrap_or_default();
-    let new_text = new_text_arg.and_then(Value::as_str).unwrap_or_default();
+    let old_text = old_text_arg
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Legacy top-level old_text must be a string".to_string())?;
+    let new_text = new_text_arg
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Legacy top-level new_text must be a string".to_string())?;
 
-    // Empty old_text carries no replacement target: treat as a placeholder stub.
+    // Empty legacy placeholders carry no replacement target.
     if old_text.is_empty() {
+        if !new_text.is_empty() {
+            return Err("Legacy top-level old_text cannot be empty".to_string());
+        }
         return Ok(None);
     }
 
@@ -431,7 +816,7 @@ impl Capability for FileSystemCapability {
         r#"Tools to access and manipulate files in the session workspace - read, write, list, grep, and more.
 
 > [!NOTE]
-> Each session has its own isolated workspace at `/workspace`. Files persist for the session duration.
+> Each session has its own isolated workspace. Files persist for the session duration.
 
 > [!TIP]
 > Use `list_directory` to explore the workspace structure before reading or writing files."#
@@ -444,7 +829,7 @@ impl Capability for FileSystemCapability {
             r#"Інструменти для доступу до файлів у робочому просторі сесії та роботи з ними — читання, запис, перегляд, пошук grep тощо.
 
 > [!NOTE]
-> Кожна сесія має власний ізольований робочий простір у `/workspace`. Файли зберігаються протягом усієї сесії.
+> Кожна сесія має власний ізольований робочий простір. Файли зберігаються протягом усієї сесії.
 
 > [!TIP]
 > Використовуйте `list_directory`, щоб дослідити структуру робочого простору перед читанням або записом файлів."#,
@@ -465,33 +850,27 @@ impl Capability for FileSystemCapability {
 
     async fn system_prompt_contribution(&self, ctx: &SystemPromptContext) -> Option<String> {
         use crate::tool_output_sanitizer::READ_ECONOMY_HINT;
-        let root = ctx
-            .file_store
-            .as_ref()
-            .map(|store| store.display_root())
-            .unwrap_or_else(|| WORKSPACE_PREFIX.to_string());
-        let root_guidance = if root == WORKSPACE_PREFIX {
-            format!(
-                "Workspace root: `{WORKSPACE_PREFIX}`. All file paths must start with `{WORKSPACE_PREFIX}`. "
-            )
-        } else {
-            let escaped_root = escape_xml_text(&root);
-            format!(
-                "Workspace root: `{escaped_root}`. `{WORKSPACE_PREFIX}` is also accepted as an alias for this root. "
-            )
-        };
+        let presentation = FilePathPresentation::from_context(ctx);
         Some(format!(
             "<capability id=\"{}\">\n{}Directories are created on write. Read files before claiming what they contain — never speculate about code you have not opened.{}\n</capability>",
             self.id(),
-            root_guidance,
+            presentation.root_guidance(),
             READ_ECONOMY_HINT
         ))
     }
 
     fn system_prompt_preview(&self) -> Option<String> {
-        Some(format!(
-            "Workspace root: `{WORKSPACE_PREFIX}`. All file paths must start with `{WORKSPACE_PREFIX}`."
-        ))
+        Some(FilePathPresentation::vfs().system_prompt_preview())
+    }
+
+    fn tool_definition_hooks_with_context(
+        &self,
+        ctx: &SystemPromptContext,
+        _config: &serde_json::Value,
+    ) -> Vec<Arc<dyn ToolDefinitionHook>> {
+        vec![Arc::new(FilePathPresentationHook {
+            presentation: FilePathPresentation::from_context(ctx),
+        })]
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -525,6 +904,7 @@ impl Tool for ReadFileTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_read_file(
             &tool_call.arguments,
@@ -546,29 +926,7 @@ impl Tool for ReadFileTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Workspace-relative path to the file (e.g., 'docs/readme.txt'). A leading '/' or '/workspace/' prefix is also accepted."
-                },
-                "offset": {
-                    "type": "integer",
-                    "description": "Starting line number (0-indexed). Default: 0",
-                    "default": 0,
-                    "minimum": 0
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Max lines to return. Default varies by file type: 2000 (source/text), 500 (logs, tail-biased), 100 (CSV/TSV with header). Explicit value always wins.",
-                    "default": 2000,
-                    "minimum": 1
-                }
-            },
-            "required": ["path"],
-            "additionalProperties": false
-        })
+        read_file_parameters_schema(&FilePathPresentation::vfs())
     }
 
     fn hints(&self) -> ToolHints {
@@ -843,6 +1201,7 @@ impl Tool for WriteFileTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_write_file(
             &tool_call.arguments,
@@ -864,27 +1223,7 @@ impl Tool for WriteFileTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Workspace-relative path for the file (e.g., 'docs/notes.txt'). A leading '/' or '/workspace/' prefix is also accepted."
-                },
-                "content": {
-                    "type": "string",
-                    "description": "Content to write to the file"
-                },
-                "encoding": {
-                    "type": "string",
-                    "enum": ["text", "base64"],
-                    "default": "text",
-                    "description": "Content encoding: 'text' for plain text, 'base64' for binary data"
-                }
-            },
-            "required": ["path", "content"],
-            "additionalProperties": false
-        })
+        write_file_parameters_schema(&FilePathPresentation::vfs())
     }
 
     fn hints(&self) -> ToolHints {
@@ -991,6 +1330,7 @@ impl Tool for EditFileTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_edit_file(
             &tool_call.arguments,
@@ -1012,41 +1352,7 @@ impl Tool for EditFileTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Workspace-relative path to the existing text file (e.g., 'src/main.rs'). A leading '/' or '/workspace/' prefix is also accepted."
-                },
-                "expected_hash": {
-                    "type": "string",
-                    "description": "Current content hash from read_file or write_file (format: 'sha256:...')"
-                },
-                "edits": {
-                    "type": "array",
-                    "description": "One or more replacements to apply, each matched against the original file content. Use a single-element array for one replacement.",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "old_text": {
-                                "type": "string",
-                                "description": "Exact text to replace"
-                            },
-                            "new_text": {
-                                "type": "string",
-                                "description": "Replacement text"
-                            }
-                        },
-                        "required": ["old_text", "new_text"],
-                        "additionalProperties": false
-                    },
-                    "minItems": 1
-                }
-            },
-            "required": ["path", "expected_hash", "edits"],
-            "additionalProperties": false
-        })
+        edit_file_parameters_schema(&FilePathPresentation::vfs())
     }
 
     fn hints(&self) -> ToolHints {
@@ -1242,11 +1548,13 @@ impl Tool for ListDirectoryTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_list_directory(
             &tool_call.arguments,
             phase,
             locale,
+            ctx,
         ))
     }
 
@@ -1263,30 +1571,7 @@ impl Tool for ListDirectoryTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "default": "/workspace",
-                    "description": "Workspace-relative directory path to list (e.g., 'src'). Defaults to the workspace root; a leading '/' or '/workspace/' prefix is also accepted."
-                },
-                "offset": {
-                    "type": "integer",
-                    "description": "Starting item offset for large directories. Default: 0",
-                    "default": 0,
-                    "minimum": 0
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Max directory entries to return. Default: 200, maximum: 1000",
-                    "default": LIST_DIRECTORY_DEFAULT_LIMIT,
-                    "minimum": 1,
-                    "maximum": LIST_DIRECTORY_MAX_LIMIT
-                }
-            },
-            "additionalProperties": false
-        })
+        list_directory_parameters_schema(&FilePathPresentation::vfs())
     }
 
     fn hints(&self) -> ToolHints {
@@ -1306,10 +1591,6 @@ impl Tool for ListDirectoryTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        let path = arguments
-            .get("path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("/workspace");
         let offset = arguments
             .get("offset")
             .and_then(|v| v.as_u64())
@@ -1328,6 +1609,12 @@ impl Tool for ListDirectoryTool {
                 );
             }
         };
+
+        let path = arguments
+            .get("path")
+            .and_then(|v| v.as_str())
+            .map(str::to_string)
+            .unwrap_or_else(|| "/".to_string());
 
         // Normalize path to strip /workspace prefix for storage
         // The store (MountFs in production) is the sole resolver: hand it the
@@ -1416,6 +1703,7 @@ impl Tool for GrepFilesTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_grep_files(
             &tool_call.arguments,
@@ -1433,38 +1721,11 @@ impl Tool for GrepFilesTool {
     }
 
     fn description(&self) -> &str {
-        "Search file contents using a regex pattern. Returns matching lines with file paths and line numbers."
+        "Search file contents using a Rust regex. Optionally returns bounded before/after context as merged blocks with numbered lines and explicit match markers. Offset and limit paginate matches, not context lines; output is capped at 64 KiB with resume metadata."
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "pattern": {
-                    "type": "string",
-                    "description": "Regex pattern to search for"
-                },
-                "path_pattern": {
-                    "type": "string",
-                    "description": "Optional path pattern to filter files (e.g., '*.txt', 'docs/*')"
-                },
-                "offset": {
-                    "type": "integer",
-                    "description": "Starting match offset. Default: 0",
-                    "default": 0,
-                    "minimum": 0
-                },
-                "limit": {
-                    "type": "integer",
-                    "description": "Max matches to return. Default: 200, maximum: 1000",
-                    "default": GREP_FILES_DEFAULT_LIMIT,
-                    "minimum": 1,
-                    "maximum": GREP_FILES_MAX_LIMIT
-                }
-            },
-            "required": ["pattern"],
-            "additionalProperties": false
-        })
+        grep_files_parameters_schema()
     }
 
     fn hints(&self) -> ToolHints {
@@ -1490,6 +1751,33 @@ impl Tool for GrepFilesTool {
         };
 
         let path_pattern = arguments.get("path_pattern").and_then(|v| v.as_str());
+        let parse_context = |name: &str| -> Result<usize, String> {
+            let Some(value) = arguments.get(name) else {
+                return Ok(0);
+            };
+            let Some(value) = value.as_i64() else {
+                return Err(format!("{name} must be a non-negative integer"));
+            };
+            if value < 0 {
+                return Err(format!("{name} must be a non-negative integer"));
+            }
+            let value = value as usize;
+            if value > crate::GREP_MAX_CONTEXT_LINES {
+                return Err(format!(
+                    "{name} must not exceed {}",
+                    crate::GREP_MAX_CONTEXT_LINES
+                ));
+            }
+            Ok(value)
+        };
+        let before_context = match parse_context("before_context") {
+            Ok(value) => value,
+            Err(error) => return ToolExecutionResult::tool_error(error),
+        };
+        let after_context = match parse_context("after_context") {
+            Ok(value) => value,
+            Err(error) => return ToolExecutionResult::tool_error(error),
+        };
         let offset = arguments
             .get("offset")
             .and_then(|v| v.as_u64())
@@ -1510,15 +1798,24 @@ impl Tool for GrepFilesTool {
         };
 
         match file_store
-            .grep_files(context.session_id, pattern, path_pattern)
+            .grep_files_with_options(
+                context.session_id,
+                pattern,
+                &crate::GrepOptions {
+                    path_pattern: path_pattern.map(ToString::to_string),
+                    before_context,
+                    after_context,
+                    offset,
+                    limit,
+                    max_bytes: crate::GREP_MAX_RETURN_BYTES,
+                },
+            )
             .await
         {
-            Ok(matches) => {
-                let total_matches = matches.len();
-                let results: Vec<Value> = matches
+            Ok(search) => {
+                let results: Vec<Value> = search
+                    .matches
                     .iter()
-                    .skip(offset)
-                    .take(limit)
                     .map(|m| {
                         json!({
                             "path": fs_display_path(file_store.as_ref(), &m.path),
@@ -1527,33 +1824,56 @@ impl Tool for GrepFilesTool {
                         })
                     })
                     .collect();
+                let blocks: Vec<Value> = search
+                    .blocks
+                    .iter()
+                    .map(|block| {
+                        json!({
+                            "path": fs_display_path(file_store.as_ref(), &block.path),
+                            "start_line": block.start_line,
+                            "end_line": block.end_line,
+                            "match_line_numbers": block.match_line_numbers,
+                            "lines": block.lines
+                        })
+                    })
+                    .collect();
 
                 let mut result = json!({
                     "pattern": pattern,
-                    "matches": results,
-                    "match_count": results.len(),
-                    "total_matches": total_matches,
+                    "match_count": search.returned_matches,
+                    "total_matches": search.total_matches,
                     "offset": offset,
                     "limit": limit
                 });
-                let bytes_returned = serde_json::to_string(&results)
-                    .expect("grep_files matches always serialize")
-                    .len();
-                let next_offset = offset.saturating_add(results.len());
-                let truncation = if next_offset < total_matches {
+                if before_context == 0 && after_context == 0 {
+                    result["matches"] = Value::Array(results);
+                } else {
+                    result["blocks"] = Value::Array(blocks);
+                }
+                let truncation = if let Some(next_offset) = search.next_offset {
                     TruncationInfo::with_resume(
-                        bytes_returned,
-                        None,
+                        search.bytes_returned,
+                        Some(search.bytes_total),
                         next_offset as u64,
                         format!(
                             "call grep_files with offset={} to resume from match {}",
                             next_offset,
                             next_offset + 1
                         ),
-                        TruncationReason::LineCap,
+                        if search.byte_truncated {
+                            TruncationReason::SizeCap
+                        } else {
+                            TruncationReason::LineCap
+                        },
+                    )
+                } else if search.byte_truncated {
+                    TruncationInfo::without_resume(
+                        search.bytes_returned,
+                        Some(search.bytes_total),
+                        TruncationReason::SizeCap,
                     )
                 } else {
-                    TruncationInfo::not_truncated(bytes_returned)
+                    TruncationInfo::not_truncated(search.bytes_returned)
                 };
                 truncation.attach(&mut result);
                 ToolExecutionResult::success(result)
@@ -1588,6 +1908,7 @@ impl Tool for DeleteFileTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_delete_file(
             &tool_call.arguments,
@@ -1609,22 +1930,7 @@ impl Tool for DeleteFileTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Path to the file or directory to delete"
-                },
-                "recursive": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "If true, delete directories and all contents recursively"
-                }
-            },
-            "required": ["path"],
-            "additionalProperties": false
-        })
+        delete_file_parameters_schema(&FilePathPresentation::vfs())
     }
 
     fn hints(&self) -> ToolHints {
@@ -1717,6 +2023,7 @@ impl Tool for StatFileTool {
         tool_call: &crate::tool_types::ToolCall,
         phase: crate::tool_narration::ToolNarrationPhase,
         locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
         Some(crate::tool_narration::narrate_stat_file(
             &tool_call.arguments,
@@ -1738,17 +2045,7 @@ impl Tool for StatFileTool {
     }
 
     fn parameters_schema(&self) -> Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "Path to the file or directory"
-                }
-            },
-            "required": ["path"],
-            "additionalProperties": false
-        })
+        stat_file_parameters_schema(&FilePathPresentation::vfs())
     }
 
     fn hints(&self) -> ToolHints {
@@ -1818,7 +2115,7 @@ impl Tool for StatFileTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tool_narration::ToolNarrationPhase;
+    use crate::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
     use crate::tool_types::ToolCall;
 
     #[test]
@@ -1830,7 +2127,13 @@ mod tests {
             arguments: serde_json::json!({ "path": "/workspace/AGENTS.md" }),
         };
         assert_eq!(
-            cap.narrate(None, &read, ToolNarrationPhase::Completed, None),
+            cap.narrate(
+                None,
+                &read,
+                ToolNarrationPhase::Completed,
+                None,
+                ToolNarrationContext::default()
+            ),
             Some("Read AGENTS.md".to_string())
         );
         // A tool this capability does not own returns None for its owner to handle.
@@ -1840,7 +2143,13 @@ mod tests {
             arguments: serde_json::json!({ "command": "ls" }),
         };
         assert_eq!(
-            cap.narrate(None, &bash, ToolNarrationPhase::Started, None),
+            cap.narrate(
+                None,
+                &bash,
+                ToolNarrationPhase::Started,
+                None,
+                ToolNarrationContext::default()
+            ),
             None
         );
     }
@@ -2006,6 +2315,10 @@ mod tests {
             }
         }
 
+        fn is_mount_resolver(&self) -> bool {
+            false
+        }
+
         async fn read_file(
             &self,
             _session_id: SessionId,
@@ -2151,6 +2464,44 @@ mod tests {
             Ok(matches)
         }
 
+        async fn grep_files_with_options(
+            &self,
+            _session_id: SessionId,
+            pattern: &str,
+            options: &crate::GrepOptions,
+        ) -> Result<crate::GrepSearchResult> {
+            let regex = regex::Regex::new(pattern).map_err(|error| {
+                crate::AgentLoopError::tool(format!("Invalid regex pattern: {error}"))
+            })?;
+            let path_matcher = options
+                .path_pattern
+                .as_deref()
+                .map(crate::session_path::GrepPathPattern::new)
+                .transpose()?;
+            let files = self
+                .files
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(path, entry)| {
+                    !entry.is_directory
+                        && entry.encoding == "text"
+                        && path_matcher
+                            .as_ref()
+                            .is_none_or(|matcher| matcher.is_match(path))
+                })
+                .filter_map(|(path, entry)| {
+                    entry
+                        .content
+                        .as_ref()
+                        .map(|content| (path.clone(), content.clone()))
+                })
+                .collect();
+            Ok(crate::session_file::build_grep_search_result(
+                files, &regex, options,
+            ))
+        }
+
         async fn create_directory(&self, _session_id: SessionId, path: &str) -> Result<FileInfo> {
             self.add_directory(path);
             Ok(FileInfo {
@@ -2274,10 +2625,8 @@ mod tests {
 
     #[tokio::test]
     async fn read_file_uses_store_display_path() {
-        // The file tool renders via the store's `display_path`. In production the
-        // store is `MountFs`, which presents the stable `/workspace` view even
-        // over a host-display backend (EVE-660) — so the host root never leaks
-        // into model-facing output.
+        // The file tool renders via the store's `display_path`; MountFs preserves
+        // the primary backend's visible identity (EVE-660).
         let store = Arc::new(MockFileStore::with_display_root("/host/repo"));
         store.add_text_file("/notes.txt", "hello");
         let context = make_context(store);
@@ -2287,7 +2636,7 @@ mod tests {
             .await;
         let value = expect_success(result);
 
-        assert_eq!(value["path"], "/workspace/notes.txt");
+        assert_eq!(value["path"], "/host/repo/notes.txt");
     }
 
     #[test]
@@ -2338,6 +2687,42 @@ mod tests {
         assert_eq!(edits.len(), 1);
         assert_eq!(edits[0].old_text, "hello");
         assert_eq!(edits[0].new_text, "world");
+    }
+
+    #[test]
+    fn test_parse_text_edits_allows_legacy_top_level_deletion() {
+        // Backward-compat: an explicit empty-string replacement is still a valid
+        // deletion edit when both legacy scalar fields are well-formed strings.
+        let edits = parse_text_edits(&json!({
+            "old_text": "remove me",
+            "new_text": ""
+        }))
+        .expect("explicit legacy deletion edit should be accepted");
+        assert_eq!(edits.len(), 1);
+        assert_eq!(edits[0].old_text, "remove me");
+        assert_eq!(edits[0].new_text, "");
+    }
+
+    #[test]
+    fn test_parse_text_edits_rejects_malformed_legacy_top_level_new_text() {
+        let missing_err = parse_text_edits(&json!({
+            "old_text": "remove me"
+        }))
+        .unwrap_err();
+        assert!(
+            missing_err.contains("new_text"),
+            "error should mention new_text: {missing_err}"
+        );
+
+        let non_string_err = parse_text_edits(&json!({
+            "old_text": "remove me",
+            "new_text": null
+        }))
+        .unwrap_err();
+        assert!(
+            non_string_err.contains("new_text"),
+            "error should mention new_text: {non_string_err}"
+        );
     }
 
     #[test]
@@ -2424,7 +2809,7 @@ mod tests {
         let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
 
         assert!(prompt.contains("Workspace root: `/host/repo`"));
-        assert!(prompt.contains("`/workspace` is also accepted"));
+        assert!(!prompt.contains("/workspace"));
     }
 
     #[tokio::test]
@@ -2756,6 +3141,63 @@ mod tests {
         assert_eq!(value["truncation"]["truncated"], true);
         assert_eq!(value["truncation"]["reason"], "line_cap");
         assert_eq!(value["truncation"]["next_offset"], 2);
+    }
+
+    #[tokio::test]
+    async fn test_grep_files_returns_merged_numbered_context() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/notes.txt", "before\nmatch one\nbetween\nmatch two\nafter");
+        let context = make_context(store);
+
+        let value = expect_success(
+            GrepFilesTool
+                .execute_with_context(
+                    json!({"pattern": "match", "before_context": 1, "after_context": 1}),
+                    &context,
+                )
+                .await,
+        );
+
+        assert!(value.get("matches").is_none());
+        assert_eq!(value["blocks"].as_array().unwrap().len(), 1);
+        assert_eq!(value["blocks"][0]["start_line"], 1);
+        assert_eq!(value["blocks"][0]["end_line"], 5);
+        assert_eq!(value["blocks"][0]["match_line_numbers"], json!([2, 4]));
+        assert_eq!(value["blocks"][0]["lines"].as_array().unwrap().len(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_grep_files_rejects_invalid_context_values() {
+        let context = make_context(Arc::new(MockFileStore::default()));
+        for arguments in [
+            json!({"pattern": "x", "before_context": -1}),
+            json!({"pattern": "x", "after_context": 21}),
+            json!({"pattern": "x", "before_context": 1.5}),
+        ] {
+            let result = GrepFilesTool
+                .execute_with_context(arguments, &context)
+                .await;
+            assert!(matches!(result, ToolExecutionResult::ToolError(_)));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_grep_files_enforces_total_byte_budget() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/large.txt", &format!("match {}", "x".repeat(70_000)));
+        let context = make_context(store);
+        let value = expect_success(
+            GrepFilesTool
+                .execute_with_context(json!({"pattern": "match"}), &context)
+                .await,
+        );
+
+        assert!(
+            value["matches"][0]["line"].as_str().unwrap().len() <= crate::GREP_MAX_RETURN_BYTES
+        );
+        assert_eq!(value["truncation"]["truncated"], true);
+        assert_eq!(value["truncation"]["reason"], "size_cap");
+        assert!(value["truncation"]["bytes_total"].as_u64().unwrap() > 64 * 1024);
     }
 
     #[tokio::test]
@@ -3329,5 +3771,142 @@ mod tests {
     fn localized_name_differs_from_default() {
         let cap = FileSystemCapability;
         assert_ne!(cap.localized_name(Some("uk")), cap.name());
+    }
+
+    #[test]
+    fn host_backed_tool_schemas_contain_no_workspace_guidance() {
+        let presentation = FilePathPresentation::from_file_store(Some(
+            &MockFileStore::with_display_root("/repo") as &dyn SessionFileSystem,
+        ));
+        for (tool_name, schema) in filesystem_tool_schemas_with_presentation(&presentation) {
+            assert!(
+                !schema_contains_workspace(&schema),
+                "tool '{tool_name}' schema must not advertise /workspace for host-backed roots"
+            );
+            if tool_name == "list_directory" {
+                assert_eq!(schema["properties"]["path"]["default"], "/repo");
+            }
+        }
+    }
+
+    #[test]
+    fn vfs_tool_schemas_advertise_workspace_identity() {
+        let presentation = FilePathPresentation::vfs();
+        let schemas = filesystem_tool_schemas_with_presentation(&presentation);
+        let path_tools = ["read_file", "write_file", "edit_file", "list_directory"];
+        for tool_name in path_tools {
+            let schema = schemas
+                .iter()
+                .find(|(name, _)| name == tool_name)
+                .map(|(_, schema)| schema)
+                .expect("schema present");
+            assert!(
+                schema_contains_workspace(schema),
+                "tool '{tool_name}' schema should mention /workspace for VFS sessions"
+            );
+        }
+        assert_eq!(
+            schemas
+                .iter()
+                .find(|(name, _)| name == "list_directory")
+                .unwrap()
+                .1["properties"]["path"]["default"],
+            "/workspace"
+        );
+    }
+
+    #[tokio::test]
+    async fn assembled_prompt_uses_host_root_without_workspace_guidance() {
+        use crate::AgentCapabilityConfig;
+        use crate::capabilities::{CapabilityRegistry, collect_capabilities_with_configs};
+
+        let store = Arc::new(MockFileStore::with_display_root("/repo"));
+        let ctx = SystemPromptContext {
+            session_id: SessionId::new(),
+            locale: None,
+            file_store: Some(store),
+            model: None,
+        };
+        let registry = CapabilityRegistry::with_builtins();
+        let collected = collect_capabilities_with_configs(
+            &[AgentCapabilityConfig::new(
+                SESSION_FILE_SYSTEM_CAPABILITY_ID,
+            )],
+            &registry,
+            &ctx,
+        )
+        .await;
+
+        let prompt = collected.system_prompt_prefix().expect("system prompt");
+        assert!(prompt.contains("Workspace root: `/repo`"));
+        assert!(!prompt.contains("/workspace"));
+    }
+
+    #[tokio::test]
+    async fn tool_definition_hook_applies_host_root_to_eager_and_deferred_schemas() {
+        use crate::capabilities::tool_search::ToolSearchCapability;
+        use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition};
+
+        let store = Arc::new(MockFileStore::with_display_root("/repo"));
+        let ctx = SystemPromptContext {
+            session_id: SessionId::new(),
+            locale: None,
+            file_store: Some(store),
+            model: None,
+        };
+        let cap = FileSystemCapability;
+        let hooks = cap.tool_definition_hooks_with_context(&ctx, &json!({}));
+        assert_eq!(hooks.len(), 1);
+
+        let read_file = ToolDefinition::Builtin(BuiltinTool {
+            name: "read_file".to_string(),
+            display_name: None,
+            description: "Read file".to_string(),
+            parameters: ReadFileTool.parameters_schema(),
+            policy: Default::default(),
+            category: None,
+            deferrable: DeferrablePolicy::Automatic,
+            hints: Default::default(),
+            full_parameters: None,
+        });
+        let eager = hooks[0].transform(vec![read_file.clone()]);
+        assert!(!schema_contains_workspace(eager[0].full_parameters()));
+
+        let defer_cap = ToolSearchCapability::with_threshold(1);
+        let defer_hooks =
+            defer_cap.tool_definition_hooks_with_context(&ctx, &json!({ "threshold": 1 }));
+        let deferred = defer_hooks[0].transform(hooks[0].transform(vec![
+            read_file,
+            ToolDefinition::Builtin(BuiltinTool {
+                name: "other_tool".to_string(),
+                display_name: None,
+                description: "Other".to_string(),
+                parameters: json!({"type": "object"}),
+                policy: Default::default(),
+                category: None,
+                deferrable: DeferrablePolicy::Automatic,
+                hints: Default::default(),
+                full_parameters: None,
+            }),
+        ]));
+        let read = deferred
+            .iter()
+            .find(|tool| tool.name() == "read_file")
+            .expect("read_file present");
+        assert!(!schema_contains_workspace(read.full_parameters()));
+    }
+
+    #[tokio::test]
+    async fn list_directory_without_path_uses_host_display_root() {
+        let store = Arc::new(MockFileStore::with_display_root("/repo"));
+        store.add_text_file("/notes.txt", "hello");
+        let context = make_context(store);
+
+        let result = ListDirectoryTool
+            .execute_with_context(json!({}), &context)
+            .await;
+        let value = expect_success(result);
+
+        assert_eq!(value["path"], "/repo");
     }
 }

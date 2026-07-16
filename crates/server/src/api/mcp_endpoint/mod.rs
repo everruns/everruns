@@ -248,22 +248,33 @@ fn client_info_from_params(params: &Value) -> Option<(String, String)> {
 /// the operation without parsing the JSON-RPC body. They are optional and the
 /// body stays authoritative, but when a client sends them they MUST agree with
 /// the body — a disagreement is a request-smuggling signal, so we reject it.
-fn validate_routing_headers(headers: &HeaderMap, req: &JsonRpcRequest) -> Result<(), String> {
-    if let Some(value) = headers.get("Mcp-Method") {
-        let header_method = value
-            .to_str()
-            .map_err(|_| "Invalid Mcp-Method header".to_string())?;
-        if header_method != req.method {
-            return Err(format!(
-                "Mcp-Method header ({header_method}) does not match request method ({})",
-                req.method
-            ));
-        }
+fn single_routing_header<'a>(
+    headers: &'a HeaderMap,
+    name: &str,
+) -> Result<Option<&'a str>, String> {
+    let mut values = headers.get_all(name).iter();
+    let Some(value) = values.next() else {
+        return Ok(None);
+    };
+    if values.next().is_some() {
+        return Err(format!("Duplicate {name} header"));
     }
-    if let Some(value) = headers.get("Mcp-Name") {
-        let header_name = value
-            .to_str()
-            .map_err(|_| "Invalid Mcp-Name header".to_string())?;
+    value
+        .to_str()
+        .map(Some)
+        .map_err(|_| format!("Invalid {name} header"))
+}
+
+fn validate_routing_headers(headers: &HeaderMap, req: &JsonRpcRequest) -> Result<(), String> {
+    if let Some(header_method) = single_routing_header(headers, "Mcp-Method")?
+        && header_method != req.method
+    {
+        return Err(format!(
+            "Mcp-Method header ({header_method}) does not match request method ({})",
+            req.method
+        ));
+    }
+    if let Some(header_name) = single_routing_header(headers, "Mcp-Name")? {
         // `Mcp-Name` identifies the specific tool/resource/prompt. We can only
         // cross-check it on `tools/call`, where the body carries `params.name`.
         if req.method == "tools/call"
@@ -1095,12 +1106,30 @@ async fn handle_tasks_get(
 
     match tool_session_get_status(&args, org, state).await {
         Ok(status_json) => {
-            let status_value: Value = serde_json::from_str(&status_json).unwrap_or(Value::Null);
+            let mut status_value: Value = serde_json::from_str(&status_json).unwrap_or(Value::Null);
             let session_status = status_value
                 .get("status")
                 .and_then(Value::as_str)
                 .unwrap_or("");
             let task_status = tasks::task_status_from_session_status(session_status);
+
+            // EVE-728: when the task reported a deterministic structured result
+            // (result.json via a `result_schema`, EVE-678), surface it under
+            // `result.structured_result` so Tasks clients get the machine result
+            // instead of only last-message / status text. The read is org-scoped
+            // (same org `tool_session_get_status` already validated), preserving
+            // tenant isolation. Parse failures / absent results are silently
+            // skipped — the status payload is still returned.
+            if let Ok(session_id) = task_id.parse::<everruns_core::typed_id::SessionId>()
+                && let Ok(Some(structured)) =
+                    crate::domains::session_tasks::read_structured_task_result(
+                        &state.db, org.org_id, session_id,
+                    )
+                    .await
+                && let Some(obj) = status_value.as_object_mut()
+            {
+                obj.insert("structured_result".to_string(), structured);
+            }
 
             let mut task = tasks::task_handle(task_id, task_status);
             // The full session_get_status payload is the task's result view. For
@@ -2374,6 +2403,28 @@ mod protocol_version_tests {
         headers.insert("Mcp-Name", "agent_run".parse().unwrap());
         let request = req("tools/call", json!({ "name": "agent_run" }));
         assert!(validate_routing_headers(&headers, &request).is_ok());
+    }
+
+    #[test]
+    fn duplicate_routing_header_method_is_rejected() {
+        let mut headers = HeaderMap::new();
+        headers.append("Mcp-Method", "tools/call".parse().unwrap());
+        headers.append("Mcp-Method", "tools/list".parse().unwrap());
+        let request = req("tools/call", json!({ "name": "agent_run" }));
+        let err = validate_routing_headers(&headers, &request)
+            .expect_err("duplicate method header must reject");
+        assert!(err.contains("Duplicate Mcp-Method"));
+    }
+
+    #[test]
+    fn duplicate_routing_header_name_is_rejected() {
+        let mut headers = HeaderMap::new();
+        headers.append("Mcp-Name", "agent_run".parse().unwrap());
+        headers.append("Mcp-Name", "session_get_status".parse().unwrap());
+        let request = req("tools/call", json!({ "name": "agent_run" }));
+        let err = validate_routing_headers(&headers, &request)
+            .expect_err("duplicate name header must reject");
+        assert!(err.contains("Duplicate Mcp-Name"));
     }
 
     #[test]

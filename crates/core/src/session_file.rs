@@ -6,7 +6,13 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
+
+/// Maximum number of context lines accepted on either side of a grep match.
+pub const GREP_MAX_CONTEXT_LINES: usize = 20;
+/// Maximum text bytes returned by one contextual grep request.
+pub const GREP_MAX_RETURN_BYTES: usize = 64 * 1024;
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -179,6 +185,332 @@ pub struct GrepMatch {
     pub line: String,
 }
 
+/// Options for a bounded grep scan.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GrepOptions {
+    pub path_pattern: Option<String>,
+    pub before_context: usize,
+    pub after_context: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub max_bytes: usize,
+}
+
+impl Default for GrepOptions {
+    fn default() -> Self {
+        Self {
+            path_pattern: None,
+            before_context: 0,
+            after_context: 0,
+            offset: 0,
+            limit: usize::MAX,
+            max_bytes: GREP_MAX_RETURN_BYTES,
+        }
+    }
+}
+
+/// One numbered line in a contextual grep block.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct GrepContextLine {
+    pub line_number: usize,
+    pub line: String,
+    pub is_match: bool,
+}
+
+/// A contiguous contextual range. Overlapping match windows are merged.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct GrepContextBlock {
+    pub path: String,
+    pub start_line: usize,
+    pub end_line: usize,
+    pub match_line_numbers: Vec<usize>,
+    pub lines: Vec<GrepContextLine>,
+}
+
+/// Backend result for a bounded grep scan.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct GrepSearchResult {
+    /// Flat matches are populated when both context values are zero.
+    pub matches: Vec<GrepMatch>,
+    /// Context blocks are populated when either context value is non-zero.
+    pub blocks: Vec<GrepContextBlock>,
+    pub total_matches: usize,
+    pub returned_matches: usize,
+    pub bytes_returned: usize,
+    pub bytes_total: usize,
+    pub next_offset: Option<usize>,
+    pub byte_truncated: bool,
+}
+
+/// Build a bounded result from text files already loaded by a backend scan.
+/// Paths are sorted so match offsets are stable across backend implementations.
+pub fn build_grep_search_result(
+    mut files: Vec<(String, String)>,
+    regex: &regex::Regex,
+    options: &GrepOptions,
+) -> GrepSearchResult {
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let mut total_matches = 0usize;
+    let mut remaining_offset = options.offset;
+    let mut remaining_limit = options.limit;
+    let mut flat = Vec::new();
+    let mut blocks = Vec::new();
+
+    for (path, text) in files {
+        let lines: Vec<&str> = text.lines().collect();
+        let file_matches: Vec<usize> = lines
+            .iter()
+            .enumerate()
+            .filter_map(|(index, line)| regex.is_match(line).then_some(index))
+            .collect();
+        total_matches = total_matches.saturating_add(file_matches.len());
+
+        let skip = remaining_offset.min(file_matches.len());
+        remaining_offset -= skip;
+        let selected: Vec<usize> = file_matches
+            .into_iter()
+            .skip(skip)
+            .take(remaining_limit)
+            .collect();
+        remaining_limit = remaining_limit.saturating_sub(selected.len());
+
+        if options.before_context == 0 && options.after_context == 0 {
+            flat.extend(selected.into_iter().map(|index| GrepMatch {
+                path: path.clone(),
+                line_number: index + 1,
+                line: lines[index].to_string(),
+            }));
+            continue;
+        }
+
+        let mut ranges: Vec<(usize, usize, Vec<usize>)> = Vec::new();
+        for index in selected {
+            let start = index.saturating_sub(options.before_context);
+            let end = index
+                .saturating_add(options.after_context)
+                .min(lines.len().saturating_sub(1));
+            if let Some((_, previous_end, match_indexes)) = ranges.last_mut()
+                && start <= previous_end.saturating_add(1)
+            {
+                *previous_end = (*previous_end).max(end);
+                match_indexes.push(index);
+            } else {
+                ranges.push((start, end, vec![index]));
+            }
+        }
+
+        for (start, end, match_indexes) in ranges {
+            let context_lines = (start..=end)
+                .map(|index| GrepContextLine {
+                    line_number: index + 1,
+                    line: lines[index].to_string(),
+                    is_match: match_indexes.binary_search(&index).is_ok(),
+                })
+                .collect();
+            blocks.push(GrepContextBlock {
+                path: path.clone(),
+                start_line: start + 1,
+                end_line: end + 1,
+                match_line_numbers: match_indexes.into_iter().map(|index| index + 1).collect(),
+                lines: context_lines,
+            });
+        }
+    }
+
+    apply_grep_byte_budget(flat, blocks, total_matches, options)
+}
+
+/// Apply stable match pagination and the response byte budget to flat matches.
+pub fn bound_grep_matches(mut matches: Vec<GrepMatch>, options: &GrepOptions) -> GrepSearchResult {
+    matches.sort_by(|a, b| {
+        a.path
+            .cmp(&b.path)
+            .then(a.line_number.cmp(&b.line_number))
+            .then(a.line.cmp(&b.line))
+    });
+    let total_matches = matches.len();
+    let selected = matches
+        .into_iter()
+        .skip(options.offset)
+        .take(options.limit)
+        .collect();
+    apply_grep_byte_budget(selected, Vec::new(), total_matches, options)
+}
+
+/// Merge results from distinct mounts, then apply one global match window.
+pub fn merge_grep_search_results(
+    results: Vec<GrepSearchResult>,
+    options: &GrepOptions,
+) -> GrepSearchResult {
+    if options.before_context == 0 && options.after_context == 0 {
+        return bound_grep_matches(
+            results
+                .into_iter()
+                .flat_map(|result| result.matches)
+                .collect(),
+            options,
+        );
+    }
+
+    let mut lines_by_path: BTreeMap<String, BTreeMap<usize, String>> = BTreeMap::new();
+    let mut matches_by_path: BTreeMap<String, BTreeSet<usize>> = BTreeMap::new();
+    for result in results {
+        for block in result.blocks {
+            let path_lines = lines_by_path.entry(block.path.clone()).or_default();
+            for line in block.lines {
+                path_lines.entry(line.line_number).or_insert(line.line);
+            }
+            matches_by_path
+                .entry(block.path)
+                .or_default()
+                .extend(block.match_line_numbers);
+        }
+    }
+
+    let total_matches = matches_by_path.values().map(BTreeSet::len).sum();
+    let selected: Vec<(String, usize)> = matches_by_path
+        .iter()
+        .flat_map(|(path, lines)| lines.iter().map(move |line| (path.clone(), *line)))
+        .skip(options.offset)
+        .take(options.limit)
+        .collect();
+    let mut selected_by_path: BTreeMap<String, Vec<usize>> = BTreeMap::new();
+    for (path, line) in selected {
+        selected_by_path.entry(path).or_default().push(line);
+    }
+
+    let mut blocks = Vec::new();
+    for (path, match_lines) in selected_by_path {
+        let available = &lines_by_path[&path];
+        let mut ranges: Vec<(usize, usize, Vec<usize>)> = Vec::new();
+        for line in match_lines {
+            let start = line.saturating_sub(options.before_context).max(1);
+            let end = line.saturating_add(options.after_context);
+            if let Some((_, previous_end, matches)) = ranges.last_mut()
+                && start <= previous_end.saturating_add(1)
+            {
+                *previous_end = (*previous_end).max(end);
+                matches.push(line);
+            } else {
+                ranges.push((start, end, vec![line]));
+            }
+        }
+        for (start, end, match_line_numbers) in ranges {
+            let selected_set: BTreeSet<_> = match_line_numbers.iter().copied().collect();
+            let lines: Vec<_> = available
+                .range(start..=end)
+                .map(|(line_number, line)| GrepContextLine {
+                    line_number: *line_number,
+                    line: line.clone(),
+                    is_match: selected_set.contains(line_number),
+                })
+                .collect();
+            if let (Some(first), Some(last)) = (lines.first(), lines.last()) {
+                blocks.push(GrepContextBlock {
+                    path: path.clone(),
+                    start_line: first.line_number,
+                    end_line: last.line_number,
+                    match_line_numbers,
+                    lines,
+                });
+            }
+        }
+    }
+    apply_grep_byte_budget(Vec::new(), blocks, total_matches, options)
+}
+
+fn apply_grep_byte_budget(
+    flat: Vec<GrepMatch>,
+    blocks: Vec<GrepContextBlock>,
+    total_matches: usize,
+    options: &GrepOptions,
+) -> GrepSearchResult {
+    let bytes_total = flat.iter().map(|item| item.line.len()).sum::<usize>()
+        + blocks
+            .iter()
+            .flat_map(|block| &block.lines)
+            .map(|item| item.line.len())
+            .sum::<usize>();
+    let mut bytes_returned = 0usize;
+    let mut returned_matches = 0usize;
+    let mut byte_truncated = false;
+    let mut returned_flat = Vec::new();
+    let mut returned_blocks = Vec::new();
+
+    for mut item in flat {
+        let remaining = options.max_bytes.saturating_sub(bytes_returned);
+        if item.line.len() > remaining {
+            if !returned_flat.is_empty() || remaining == 0 {
+                byte_truncated = true;
+                break;
+            }
+            item.line = truncate_utf8(&item.line, remaining).to_string();
+            byte_truncated = true;
+        }
+        bytes_returned += item.line.len();
+        returned_matches += 1;
+        returned_flat.push(item);
+        if byte_truncated {
+            break;
+        }
+    }
+
+    for mut block in blocks {
+        let block_bytes: usize = block.lines.iter().map(|item| item.line.len()).sum();
+        let remaining = options.max_bytes.saturating_sub(bytes_returned);
+        if block_bytes > remaining {
+            if !returned_blocks.is_empty() || remaining == 0 {
+                byte_truncated = true;
+                break;
+            }
+            let mut left = remaining;
+            for line in &mut block.lines {
+                if line.line.len() > left {
+                    line.line = truncate_utf8(&line.line, left).to_string();
+                    left = 0;
+                } else {
+                    left -= line.line.len();
+                }
+            }
+            byte_truncated = true;
+        }
+        bytes_returned += block
+            .lines
+            .iter()
+            .map(|item| item.line.len())
+            .sum::<usize>();
+        returned_matches += block.match_line_numbers.len();
+        returned_blocks.push(block);
+        if byte_truncated {
+            break;
+        }
+    }
+
+    let next = options.offset.saturating_add(returned_matches);
+    GrepSearchResult {
+        matches: returned_flat,
+        blocks: returned_blocks,
+        total_matches,
+        returned_matches,
+        bytes_returned,
+        bytes_total,
+        next_offset: (next < total_matches).then_some(next),
+        byte_truncated,
+    }
+}
+
+fn truncate_utf8(value: &str, max_bytes: usize) -> &str {
+    let mut end = max_bytes.min(value.len());
+    while end > 0 && !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    &value[..end]
+}
+
 /// Grep result for a file
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -286,5 +618,62 @@ mod tests {
         let json = serde_json::to_string(&result).unwrap();
         assert!(json.contains("\"line_number\":1"));
         assert!(json.contains("\"line\":\"hello world\""));
+    }
+
+    #[test]
+    fn merge_context_results_applies_one_match_window_without_duplicate_lines() {
+        let block = |path: &str, start: usize, matches: &[usize]| GrepContextBlock {
+            path: path.to_string(),
+            start_line: start,
+            end_line: start + 2,
+            match_line_numbers: matches.to_vec(),
+            lines: (start..=start + 2)
+                .map(|line_number| GrepContextLine {
+                    line_number,
+                    line: format!("line {line_number}"),
+                    is_match: matches.contains(&line_number),
+                })
+                .collect(),
+        };
+        let result = |blocks| GrepSearchResult {
+            matches: Vec::new(),
+            blocks,
+            total_matches: 0,
+            returned_matches: 0,
+            bytes_returned: 0,
+            bytes_total: 0,
+            next_offset: None,
+            byte_truncated: false,
+        };
+        let options = GrepOptions {
+            before_context: 1,
+            after_context: 1,
+            offset: 1,
+            limit: 2,
+            ..GrepOptions::default()
+        };
+
+        let merged = merge_grep_search_results(
+            vec![
+                result(vec![block("/a.txt", 1, &[2]), block("/a.txt", 3, &[4])]),
+                result(vec![block("/b.txt", 4, &[5])]),
+            ],
+            &options,
+        );
+
+        assert_eq!(merged.total_matches, 3);
+        assert_eq!(merged.returned_matches, 2);
+        assert_eq!(merged.next_offset, None);
+        assert_eq!(merged.blocks.len(), 2);
+        assert_eq!(merged.blocks[0].match_line_numbers, vec![4]);
+        assert_eq!(merged.blocks[1].match_line_numbers, vec![5]);
+        assert_eq!(
+            merged.blocks[0]
+                .lines
+                .iter()
+                .map(|line| line.line_number)
+                .collect::<Vec<_>>(),
+            vec![3, 4, 5]
+        );
     }
 }

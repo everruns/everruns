@@ -9,17 +9,7 @@ const mockExecuteSessionCommand = jest.fn();
 const mockUseFeatureFlag = jest.fn((..._args: unknown[]) => false);
 const mockStartSessionVoice = jest.fn();
 const mockEndSessionVoice = jest.fn();
-const mockSelectTrigger = jest.fn(
-  ({
-    children,
-    nativeButton: _nativeButton,
-    render: _render,
-  }: {
-    children?: React.ReactNode;
-    nativeButton?: boolean;
-    render?: React.ReactElement;
-  }) => <div>{children}</div>,
-);
+const mockModelEffortMenu = jest.fn((_props: Record<string, unknown>) => null);
 
 const mockSessionContext = {
   agentId: "agent-1",
@@ -34,6 +24,8 @@ const mockSessionContext = {
   isActive: false,
   reasoningEffort: "",
   setReasoningEffort: jest.fn(),
+  verbosity: "",
+  setVerbosity: jest.fn(),
   setIsWaitingForResponse: jest.fn(),
   isThinking: false,
   streamingText: "",
@@ -60,9 +52,17 @@ jest.mock("@/components/session/session-task-chips", () => ({
   SessionTaskChips: () => null,
 }));
 
+// The participants rail pulls in org context + participant queries; this suite
+// tests chat behavior, not the rail.
+jest.mock("@/components/session/session-participants-rail", () => ({
+  SessionParticipantsRail: () => null,
+}));
+
 jest.mock("@/hooks", () => ({
   useModels: () => ({ data: [] }),
   useProviders: () => ({ data: [] }),
+  useAgents: () => ({ data: [] }),
+  useSessionParticipants: () => ({ data: [] }),
   useImageAttachments: () => ({
     pendingImages: [],
     allUploaded: true,
@@ -146,16 +146,8 @@ jest.mock("@/components/ui/textarea", () => ({
   }),
 }));
 
-jest.mock("@/components/ui/select", () => ({
-  Select: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectItem: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
-  SelectTrigger: (props: {
-    children?: React.ReactNode;
-    nativeButton?: boolean;
-    render?: React.ReactElement;
-  }) => mockSelectTrigger(props),
-  SelectValue: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+jest.mock("@/components/chat/model-effort-menu", () => ({
+  ModelEffortMenu: (props: Record<string, unknown>) => mockModelEffortMenu(props),
 }));
 
 jest.mock("@/components/ui/dialog", () => ({
@@ -228,7 +220,7 @@ beforeEach(() => {
 describe("ChatPanel compaction divider", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockSelectTrigger.mockClear();
+    mockModelEffortMenu.mockClear();
     mockExecuteSessionCommand.mockReset();
     mockSessionContext.chatEvents = [];
     mockSessionContext.llmModel = null;
@@ -373,7 +365,7 @@ describe("ChatPanel placeholder", () => {
     expect(composerShell).not.toHaveClass("border-t");
   });
 
-  it("renders inline composer selects with non-native triggers to avoid nested picker chrome", () => {
+  it("drives one combined model/effort menu with reasoning support from the active model", () => {
     mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
     mockSessionContext.llmModel = {
       id: "model-1",
@@ -406,13 +398,11 @@ describe("ChatPanel placeholder", () => {
 
     render(<ChatPanel />);
 
-    expect(mockSelectTrigger).toHaveBeenCalledTimes(2);
-
-    for (const [triggerProps] of mockSelectTrigger.mock.calls) {
-      expect(triggerProps?.nativeButton).toBe(false);
-      expect(React.isValidElement(triggerProps?.render)).toBe(true);
-      expect(triggerProps?.render?.type).toBe("div");
-    }
+    expect(mockModelEffortMenu).toHaveBeenCalled();
+    const props = mockModelEffortMenu.mock.calls.at(-1)?.[0];
+    expect(props?.supportsReasoning).toBe(true);
+    expect(props?.modelTriggerLabel).toBe("Default");
+    expect(Array.isArray(props?.recentModels)).toBe(true);
   });
 
   it("executes /btw without sending a chat message and shows the overlay answer", async () => {

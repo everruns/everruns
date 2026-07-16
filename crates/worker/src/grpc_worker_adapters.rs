@@ -8,7 +8,9 @@ use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
-use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
+use everruns_core::session_file::{
+    FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
+};
 use everruns_core::traits::{
     AgentStore, ImageArtifactStore, ProviderCredentialStore, ResolvedImage, ResolvedModel,
 };
@@ -27,8 +29,8 @@ use crate::grpc_adapters::{
     GrpcAgentStore, GrpcBudgetChecker, GrpcClient, GrpcEventEmitter, GrpcHarnessStore,
     GrpcImageArtifactStore, GrpcImageResolver, GrpcLeasedResourceStore, GrpcMessageRetriever,
     GrpcOutboundToolRateLimiter, GrpcPaymentAuthority, GrpcProviderCredentialStore,
-    GrpcProviderStore, GrpcSessionFileStore, GrpcSessionSqlDbStore, GrpcSessionStorageStore,
-    GrpcSessionStore,
+    GrpcProviderStore, GrpcSessionCreationAuthority, GrpcSessionFileStore, GrpcSessionSqlDbStore,
+    GrpcSessionStorageStore, GrpcSessionStore,
 };
 use crate::mcp_executor::McpServerInfo;
 use crate::worker_adapters::{TurnContext, WorkerAdapters};
@@ -329,6 +331,22 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         .await
     }
 
+    async fn grep_files_with_options(
+        &self,
+        session_id: Uuid,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        let store = GrpcSessionFileStore::new(self.client.clone());
+        everruns_core::traits::SessionFileSystem::grep_files_with_options(
+            &store,
+            SessionId::from_uuid(session_id),
+            pattern,
+            options,
+        )
+        .await
+    }
+
     async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo> {
         let store = GrpcSessionFileStore::new(self.client.clone());
         everruns_core::traits::SessionFileSystem::create_directory(
@@ -482,6 +500,18 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         ))
     }
 
+    fn session_creation_authority(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Option<Arc<dyn everruns_core::traits::SessionCreationAuthority>> {
+        Some(Arc::new(GrpcSessionCreationAuthority::new(
+            self.client.clone(),
+            org_id,
+            session_id,
+        )))
+    }
+
     fn outbound_tool_rate_limiter(
         &self,
         _org_id: i64,
@@ -503,6 +533,17 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     ) -> Result<serde_json::Value> {
         self.client
             .invoke_scheduled_app_channel(org_id, app_id, channel_id)
+            .await
+    }
+
+    async fn invoke_agent_trigger(
+        &self,
+        org_id: i64,
+        agent_id: &str,
+        trigger_id: &str,
+    ) -> Result<serde_json::Value> {
+        self.client
+            .invoke_agent_trigger(org_id, agent_id, trigger_id)
             .await
     }
 

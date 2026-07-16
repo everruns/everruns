@@ -93,7 +93,7 @@ Daytona is the first implementation and lives in:
 
 Server-side orchestration lives in:
 
-`crates/server/src/services/session_sandbox.rs`
+`crates/server/src/domains/session_sandbox/service.rs`
 
 Responsibilities:
 

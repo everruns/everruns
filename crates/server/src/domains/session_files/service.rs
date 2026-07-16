@@ -6,6 +6,7 @@
 // method recursively creates files and directories from mount point definitions.
 
 use crate::domains::session_files::limits::{QuotaLimits, check_write_quota as quota_check};
+use crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry;
 use crate::storage::{
     StorageBackend,
     models::{CreateSessionFileRow, SessionFileInfoRow, SessionFileRow, UpdateSessionFile},
@@ -13,9 +14,10 @@ use crate::storage::{
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use everruns_core::{
-    AgentLoopError, FileInfo, FileStat, GrepMatch, GrepResult, MountAccess, MountEntry, MountPoint,
-    MountSource, SessionFile, SessionFileSystem, SessionFileSystemFactory,
-    SessionFileSystemFactoryContext, SessionId,
+    AgentLoopError, FileInfo, FileStat, GrepMatch, GrepOptions, GrepResult, GrepSearchResult,
+    MountAccess, MountEntry, MountPoint, MountSource, SessionFile, SessionFileSystem,
+    SessionFileSystemFactory, SessionFileSystemFactoryContext, SessionId,
+    session_file::build_grep_search_result,
 };
 use regex::{Regex, RegexBuilder};
 use std::sync::Arc;
@@ -752,18 +754,19 @@ impl WorkspaceFileService {
         // Also search virtual mounts (same per-file and NFA caps, TM-DOS-008)
         if let Some(registry) = &self.virtual_registry {
             let regex = build_grep_regex(&req.pattern)?;
-            let path_regex = req
+            let path_matcher = req
                 .path_pattern
                 .as_deref()
-                .map(build_grep_regex)
+                .map(everruns_core::session_path::GrepPathPattern::new)
                 .transpose()?;
-            // Pass None for path filter — we apply regex filtering below to match DB semantics
+            // Apply the shared path matcher after reading virtual entries.
             let virtual_matches =
                 registry.grep(&session_id, &regex, None, MAX_GREP_FILE_BYTES as usize);
-            for vm in virtual_matches
-                .into_iter()
-                .filter(|vm| path_regex.as_ref().is_none_or(|re| re.is_match(&vm.path)))
-            {
+            for vm in virtual_matches.into_iter().filter(|vm| {
+                path_matcher
+                    .as_ref()
+                    .is_none_or(|matcher| matcher.is_match(&vm.path))
+            }) {
                 // Group by file path into GrepResult entries
                 if let Some(existing) = results.iter_mut().find(|r| r.path == vm.path) {
                     existing.matches.push(GrepMatch {
@@ -1091,6 +1094,10 @@ fn file_system_display_error(error: impl std::fmt::Display) -> AgentLoopError {
 
 #[async_trait]
 impl SessionFileSystem for WorkspaceFileService {
+    fn is_mount_resolver(&self) -> bool {
+        false
+    }
+
     async fn seed_initial_file(
         &self,
         session_id: SessionId,
@@ -1290,6 +1297,23 @@ impl SessionFileSystem for WorkspaceFileService {
             .collect())
     }
 
+    async fn grep_files_with_options(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> everruns_core::Result<GrepSearchResult> {
+        grep_session_files_with_options(
+            &self.db,
+            self.virtual_registry.as_deref(),
+            session_id.uuid(),
+            pattern,
+            options,
+        )
+        .await
+        .map_err(file_system_error)
+    }
+
     async fn create_directory(
         &self,
         session_id: SessionId,
@@ -1339,7 +1363,7 @@ pub async fn grep_session_files(
     pattern: &str,
     path_pattern: Option<&str>,
 ) -> Result<Vec<GrepResult>> {
-    // TM-DOS-008: cap pattern and path_pattern length, then cap compiled NFA size.
+    // TM-DOS-008: cap content/path pattern lengths, then cap content-regex NFA size.
     anyhow::ensure!(
         pattern.len() <= MAX_GREP_PATTERN_LEN,
         "Regex pattern too long (max {} characters)",
@@ -1354,11 +1378,16 @@ pub async fn grep_session_files(
     }
 
     let regex = build_grep_regex(pattern)?;
+    let path_matcher = path_pattern
+        .map(everruns_core::session_path::GrepPathPattern::new)
+        .transpose()?;
 
     // Get matching files from database. MAX_GREP_FILE_BYTES is passed so the
     // storage backend never loads content from files that exceed the per-file cap.
+    // Path glob semantics are shared with the runtime backends and applied below;
+    // the repository receives no backend-specific regex filter.
     let files = db
-        .grep_session_files(session_id, pattern, path_pattern, MAX_GREP_FILE_BYTES)
+        .grep_session_files(session_id, pattern, None, MAX_GREP_FILE_BYTES)
         .await?;
 
     let mut results = Vec::new();
@@ -1366,6 +1395,12 @@ pub async fn grep_session_files(
 
     // For each matching file, find the actual line matches
     for file_info in files {
+        if path_matcher
+            .as_ref()
+            .is_some_and(|matcher| !matcher.is_match(&file_info.path))
+        {
+            continue;
+        }
         // Defense-in-depth: skip oversized files even if the storage filter missed them.
         if file_info.size_bytes > MAX_GREP_FILE_BYTES {
             continue;
@@ -1407,6 +1442,86 @@ pub async fn grep_session_files(
     }
 
     Ok(results)
+}
+
+pub(crate) async fn grep_session_files_with_options(
+    db: &StorageBackend,
+    virtual_registry: Option<&VirtualMountRegistry>,
+    session_id: Uuid,
+    pattern: &str,
+    options: &GrepOptions,
+) -> Result<GrepSearchResult> {
+    anyhow::ensure!(
+        pattern.len() <= MAX_GREP_PATTERN_LEN,
+        "Regex pattern too long (max {} characters)",
+        MAX_GREP_PATTERN_LEN
+    );
+    if let Some(path_pattern) = options.path_pattern.as_deref() {
+        anyhow::ensure!(
+            path_pattern.len() <= MAX_GREP_PATTERN_LEN,
+            "Path pattern too long (max {} characters)",
+            MAX_GREP_PATTERN_LEN
+        );
+    }
+    anyhow::ensure!(
+        options.before_context <= everruns_core::GREP_MAX_CONTEXT_LINES,
+        "before_context exceeds maximum of {}",
+        everruns_core::GREP_MAX_CONTEXT_LINES
+    );
+    anyhow::ensure!(
+        options.after_context <= everruns_core::GREP_MAX_CONTEXT_LINES,
+        "after_context exceeds maximum of {}",
+        everruns_core::GREP_MAX_CONTEXT_LINES
+    );
+    let regex = build_grep_regex(pattern)?;
+    let path_matcher = options
+        .path_pattern
+        .as_deref()
+        .map(everruns_core::session_path::GrepPathPattern::new)
+        .transpose()?;
+    let rows = db
+        .grep_session_files(session_id, pattern, None, MAX_GREP_FILE_BYTES)
+        .await?;
+    let mut text_files = Vec::new();
+    let mut total_scanned = 0usize;
+    for row in rows {
+        if path_matcher
+            .as_ref()
+            .is_some_and(|matcher| !matcher.is_match(&row.path))
+            || row.size_bytes > MAX_GREP_FILE_BYTES
+        {
+            continue;
+        }
+        total_scanned = total_scanned.saturating_add(row.size_bytes.max(0) as usize);
+        anyhow::ensure!(
+            total_scanned <= MAX_GREP_TOTAL_SCAN_BYTES,
+            "Grep request exceeds maximum scan size ({} bytes); narrow the path filter or pattern",
+            MAX_GREP_TOTAL_SCAN_BYTES
+        );
+        if let Some(file) = db.get_session_file(session_id, &row.path).await?
+            && let Some(content) = file.content
+            && let Ok(text) = String::from_utf8(content)
+        {
+            text_files.push((row.path, text));
+        }
+    }
+    if let Some(registry) = virtual_registry {
+        for (path, text) in registry.grep_text_files(&session_id, MAX_GREP_FILE_BYTES as usize) {
+            if path_matcher
+                .as_ref()
+                .is_none_or(|matcher| matcher.is_match(&path))
+            {
+                total_scanned = total_scanned.saturating_add(text.len());
+                anyhow::ensure!(
+                    total_scanned <= MAX_GREP_TOTAL_SCAN_BYTES,
+                    "Grep request exceeds maximum scan size ({} bytes); narrow the path filter or pattern",
+                    MAX_GREP_TOTAL_SCAN_BYTES
+                );
+                text_files.push((path, text));
+            }
+        }
+    }
+    Ok(build_grep_search_result(text_files, &regex, options))
 }
 
 /// Result of applying capability mounts to a session.
@@ -1479,6 +1594,23 @@ mod tests {
         assert_eq!(results[0].matches.len(), 1);
         assert_eq!(results[0].matches[0].line_number, 2);
         assert!(results[0].matches[0].line.contains("hello"));
+    }
+
+    #[tokio::test]
+    async fn grep_session_files_filters_paths_with_globs() {
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        seed_file(&db, sid, "/src/main.rs", "needle").await;
+        seed_file(&db, sid, "/src/nested/lib.rs", "needle").await;
+        seed_file(&db, sid, "/docs/readme.md", "needle").await;
+
+        let results = grep_session_files(&db, sid, "needle", Some("src/**/*.rs"))
+            .await
+            .unwrap();
+        let mut paths: Vec<_> = results.into_iter().map(|result| result.path).collect();
+        paths.sort();
+
+        assert_eq!(paths, vec!["/src/main.rs", "/src/nested/lib.rs"]);
     }
 
     #[tokio::test]

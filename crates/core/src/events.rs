@@ -507,7 +507,7 @@ impl Event {
 // Input/Output Event Data Types
 // ============================================================================
 
-use crate::message::{ContentPart, Message};
+use crate::message::{ContentPart, ExecutionPhase, Message};
 use crate::tool_narration::{
     ToolNarrationPhase, render_group_headline_with_locale, render_tool_narration_with_locale,
 };
@@ -657,6 +657,11 @@ impl TokenUsage {
 
     /// Add another TokenUsage to this one (for aggregation)
     pub fn add(&mut self, other: &TokenUsage) {
+        // Capture the accumulator's effective cost BEFORE mutating the
+        // actual/estimated slots below: `effective_cost_usd()` falls back to
+        // those slots when no explicit total is set, so reading it afterward
+        // would fold in `other`'s just-added actual/estimated and double-count.
+        let current_cost = self.effective_cost_usd();
         self.input_tokens += other.input_tokens;
         self.output_tokens += other.output_tokens;
         if let Some(cache) = other.cache_read_tokens {
@@ -672,7 +677,9 @@ impl TokenUsage {
             *self.estimated_cost_usd.get_or_insert(0.0) += cost;
         }
         if let Some(cost) = other.effective_cost_usd() {
-            *self.effective_cost_usd.get_or_insert(0.0) += cost;
+            *self
+                .effective_cost_usd
+                .get_or_insert(current_cost.unwrap_or(0.0)) += cost;
         }
     }
 }
@@ -697,6 +704,33 @@ mod token_usage_tests {
         let generation = TokenUsage::new(10, 5).with_cost(Some(1.0), Some(2.0));
 
         assert_eq!(generation.effective_cost_usd(), Some(1.0));
+    }
+
+    #[test]
+    fn add_seeds_effective_cost_from_accumulator_implicit_cost() {
+        let mut aggregate = TokenUsage::new(10, 5).with_cost(Some(1.0), Some(10.0));
+        let generation = TokenUsage::new(20, 10).with_cost(None, Some(2.0));
+
+        aggregate.add(&generation);
+
+        assert_eq!(aggregate.actual_cost_usd, Some(1.0));
+        assert_eq!(aggregate.estimated_cost_usd, Some(12.0));
+        assert_eq!(aggregate.effective_cost_usd(), Some(3.0));
+    }
+
+    #[test]
+    fn add_effective_cost_does_not_double_count_when_actual_is_mutated() {
+        // Neither side carries an explicit effective total, so each side's
+        // effective cost falls back to `actual`. Adding must sum the two
+        // actuals once (1.0 + 3.0), not fold the accumulator's post-add actual
+        // back into the effective total.
+        let mut aggregate = TokenUsage::new(10, 5).with_cost(Some(1.0), None);
+        let generation = TokenUsage::new(20, 10).with_cost(Some(3.0), None);
+
+        aggregate.add(&generation);
+
+        assert_eq!(aggregate.actual_cost_usd, Some(4.0));
+        assert_eq!(aggregate.effective_cost_usd(), Some(4.0));
     }
 }
 
@@ -737,6 +771,18 @@ pub struct OutputMessageStartedData {
     /// Useful for UI to show progress during multi-step tool-calling flows.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub iteration: Option<u32>,
+
+    /// Best-effort streamed phase hint (EVE-774).
+    ///
+    /// `None` means "not yet classified — treat as ordinary assistant text",
+    /// NEVER "thinking". A missing/unknown phase must fall back to the
+    /// assistant-text channel, never the reasoning channel. Only populated when
+    /// the provider stream reveals a native phase before this event is emitted;
+    /// today `output.message.started` is emitted before the LLM call, so this is
+    /// generally `None` at start. The authoritative classification remains the
+    /// completed `Message.phase`. See `specs/events.md`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<ExecutionPhase>,
 }
 
 /// Data for output.message.delta event
@@ -755,6 +801,19 @@ pub struct OutputMessageDeltaData {
 
     /// Accumulated text so far
     pub accumulated: String,
+
+    /// Best-effort streamed phase hint (EVE-774).
+    ///
+    /// `None` means "not yet classified — treat as ordinary assistant text",
+    /// NEVER "thinking". Refinement is monotonic: once a stream reveals a native
+    /// phase (`Commentary` or `FinalAnswer`) it stays fixed for the rest of the
+    /// message — it never flip-flops and never reverts to `None`
+    /// (see `ExecutionPhase::refine_streamed_hint`). Providers without native
+    /// mid-stream phase (Anthropic, Gemini, …) leave this `None` until
+    /// completion. The authoritative classification remains the completed
+    /// `Message.phase`. See `specs/events.md`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<ExecutionPhase>,
 }
 
 /// Data for output.message.completed event
@@ -3230,6 +3289,7 @@ mod tests {
                 turn_id,
                 delta: "hel".to_string(),
                 accumulated: "hel".to_string(),
+                phase: None,
             },
         );
         assert!(output_delta.is_ephemeral());
@@ -3320,6 +3380,7 @@ mod tests {
             turn_id,
             model: Some("claude-4-opus".to_string()),
             iteration: None,
+            phase: None,
         };
 
         let event_data: EventData = data.into();
@@ -3338,6 +3399,7 @@ mod tests {
             turn_id,
             model: None,
             iteration: None,
+            phase: None,
         };
 
         // Model should be skipped when None
@@ -3405,6 +3467,7 @@ mod tests {
             turn_id,
             delta: "Hello".to_string(),
             accumulated: "Hello".to_string(),
+            phase: None,
         };
 
         let event_data: EventData = data.into();
@@ -3418,6 +3481,50 @@ mod tests {
     }
 
     #[test]
+    fn test_output_message_phase_hint_serde() {
+        // EVE-774: the streamed phase hint is skipped when None (so existing
+        // consumers see no new field) and serialized as the provider wire value
+        // when present, on both started and delta events.
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
+
+        let started_none = OutputMessageStartedData {
+            turn_id,
+            model: None,
+            iteration: None,
+            phase: None,
+        };
+        assert!(
+            !serde_json::to_string(&started_none)
+                .unwrap()
+                .contains("phase")
+        );
+
+        let delta_commentary = OutputMessageDeltaData {
+            turn_id,
+            delta: "one moment".to_string(),
+            accumulated: "one moment".to_string(),
+            phase: Some(crate::message::ExecutionPhase::Commentary),
+        };
+        let json = serde_json::to_value(&delta_commentary).unwrap();
+        assert_eq!(json["phase"], "commentary");
+
+        // Round-trips back to the same phase.
+        let back: OutputMessageDeltaData = serde_json::from_value(json).unwrap();
+        assert_eq!(back.phase, Some(crate::message::ExecutionPhase::Commentary));
+
+        let delta_final = OutputMessageDeltaData {
+            turn_id,
+            delta: "done".to_string(),
+            accumulated: "done".to_string(),
+            phase: Some(crate::message::ExecutionPhase::FinalAnswer),
+        };
+        assert_eq!(
+            serde_json::to_value(&delta_final).unwrap()["phase"],
+            "final_answer"
+        );
+    }
+
+    #[test]
     fn test_output_message_delta_deserialization_preserves_fields() {
         // Verify OutputMessageDelta decodes with all fields preserved through the
         // type-driven dispatcher (regression guard for field-dropping decode bugs).
@@ -3426,6 +3533,7 @@ mod tests {
             turn_id,
             delta: "Hello world".to_string(),
             accumulated: "Hello world".to_string(),
+            phase: None,
         };
 
         // Serialize to JSON
@@ -3452,6 +3560,7 @@ mod tests {
             turn_id,
             model: Some("claude-3".to_string()),
             iteration: None,
+            phase: None,
         };
 
         // Serialize to JSON
@@ -3853,6 +3962,7 @@ mod contract_tests {
             turn_id: test_turn_id(),
             model: Some("gpt-4o".to_string()),
             iteration: None,
+            phase: None,
         };
         with_settings!({
             sort_maps => true,
@@ -3867,6 +3977,7 @@ mod contract_tests {
             turn_id: test_turn_id(),
             delta: "Hello".to_string(),
             accumulated: "Hello".to_string(),
+            phase: None,
         };
         with_settings!({
             sort_maps => true,
@@ -4409,6 +4520,7 @@ mod contract_tests {
                     turn_id: test_turn_id(),
                     model: None,
                     iteration: None,
+                    phase: None,
                 }
                 .into(),
             ),
@@ -4418,6 +4530,7 @@ mod contract_tests {
                     turn_id: test_turn_id(),
                     delta: "x".to_string(),
                     accumulated: "x".to_string(),
+                    phase: None,
                 }
                 .into(),
             ),

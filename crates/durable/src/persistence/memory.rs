@@ -908,6 +908,28 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         Ok(signals)
     }
 
+    async fn consume_pending_signals_by_type(
+        &self,
+        workflow_id: Uuid,
+        signal_type: &str,
+    ) -> Result<Vec<WorkflowSignal>, StoreError> {
+        let mut workflows = self.workflows.write();
+        let workflow = workflows
+            .get_mut(&workflow_id)
+            .ok_or(StoreError::WorkflowNotFound(workflow_id))?;
+
+        let mut consumed = Vec::new();
+        workflow.signals.retain(|signal| {
+            if signal.signal_type == signal_type {
+                consumed.push(signal.clone());
+                false
+            } else {
+                true
+            }
+        });
+        Ok(consumed)
+    }
+
     async fn move_to_dlq(
         &self,
         task_id: Uuid,
