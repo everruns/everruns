@@ -3163,6 +3163,7 @@ mod tests {
         let tool = ReportTaskProgressTool::new(
             parent_session_id,
             task.id.clone(),
+            task.attempt,
             task.spec["message_schema"].clone(),
         );
         assert_eq!(tool.name(), "report_task_progress");
@@ -3192,10 +3193,68 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn report_task_progress_rejects_stale_task_attempt() {
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let parent_session_id = crate::typed_id::SessionId::new();
+        let task = registry
+            .create(CreateSessionTask {
+                session_id: parent_session_id,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: "Runner".to_string(),
+                spec: json!({"message_schema": {"type": "object"}}),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::OnActivity,
+            })
+            .await
+            .unwrap();
+        let tool = ReportTaskProgressTool::new(
+            parent_session_id,
+            task.id.clone(),
+            task.attempt,
+            task.spec["message_schema"].clone(),
+        );
+
+        // Supersede the attempt the tool captured at construction.
+        registry
+            .update(
+                parent_session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Failed),
+                    increment_attempt: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        let mut context = ToolContext::new(crate::typed_id::SessionId::new());
+        context.session_task_registry = Some(registry.clone());
+        let result = tool
+            .execute_with_context(json!({"step": "late"}), &context)
+            .await;
+        assert!(
+            matches!(result, ToolExecutionResult::InternalError(_)),
+            "stale progress must be rejected, got {result:?}"
+        );
+        let messages = registry
+            .list_messages(parent_session_id, &task.id, None, None)
+            .await
+            .unwrap();
+        assert!(
+            messages.is_empty(),
+            "stale progress must not append messages"
+        );
+    }
+
+    #[tokio::test]
     async fn report_task_progress_rejects_invalid_message_schema_payload() {
         let tool = ReportTaskProgressTool::new(
             crate::typed_id::SessionId::new(),
             "task_test".to_string(),
+            1,
             json!({
                 "type": "object",
                 "properties": {"step": {"type": "string"}},
@@ -3237,6 +3296,7 @@ mod tests {
         let subagent = ReportTaskProgressTool::new(
             crate::typed_id::SessionId::new(),
             "task_test".to_string(),
+            1,
             json!({"type": "object"}),
         );
         assert_eq!(subagent.name(), "report_task_progress");
