@@ -25,7 +25,7 @@ use super::delegation_result::{
 };
 #[cfg(test)]
 use super::delegation_result::{ReportResultTool, ReportTaskProgressTool};
-use super::{Capability, CapabilityLocalization, CapabilityStatus, SpawnMode};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SpawnMode};
 use crate::platform_store::{PlatformCreateSessionRequest, PlatformStore};
 use crate::session::SessionSeedMode;
 use crate::session_task::{
@@ -34,10 +34,14 @@ use crate::session_task::{
     TaskMessage, TaskWakePolicy, task_message_text,
 };
 use crate::tool_types::ToolHints;
-use crate::tools::{Tool, ToolExecutionResult};
+use crate::tools::{
+    BackgroundRunPermit, Tool, ToolExecutionResult, try_acquire_background_run_permit,
+};
 use crate::traits::{SessionStore, SpawnClaimResult, ToolContext};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
+
+pub(crate) const SPAWN_AGENT_CONCURRENCY_CLASS: &str = "spawn_agent";
 use serde_json::{Value, json};
 use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
@@ -78,6 +82,12 @@ impl Capability for SubagentCapability {
 
     fn category(&self) -> Option<&str> {
         Some("Core")
+    }
+
+    fn risk_level(&self) -> RiskLevel {
+        // Subagent recursion controls bound org cost/DoS exposure; keep
+        // caller-supplied session capability overrides behind the admin gate.
+        RiskLevel::High
     }
 
     fn features(&self) -> Vec<&'static str> {
@@ -775,7 +785,9 @@ impl Tool for SpawnSubagentAsAgentTool {
     }
 
     fn hints(&self) -> ToolHints {
-        ToolHints::default().with_long_running(true)
+        ToolHints::default()
+            .with_long_running(true)
+            .with_concurrency_class(SPAWN_AGENT_CONCURRENCY_CLASS)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -1017,6 +1029,13 @@ async fn spawn_agent_subagent_impl(
                         .await);
                     }
                     SpawnMode::Background => {
+                        let background_run_permit =
+                            match try_acquire_background_run_permit(context.session_id) {
+                                Ok(permit) => permit,
+                                Err(message) => {
+                                    return Ok(ToolExecutionResult::tool_error(message));
+                                }
+                            };
                         // Re-arm the detached watcher so the task still settles;
                         // the instructions were already sent on the first claim.
                         spawn_background_watcher(
@@ -1027,6 +1046,7 @@ async fn spawn_agent_subagent_impl(
                             task_id.clone(),
                             task_attempt,
                             Some(stored_claim_token),
+                            background_run_permit,
                         );
                         return Ok(background_running_result(
                             child_session_id,
@@ -1148,6 +1168,15 @@ async fn spawn_create_and_wait(
         uuid::Uuid,
     )>,
 ) -> ToolExecutionResult {
+    let background_run_permit = if mode == SpawnMode::Background {
+        match try_acquire_background_run_permit(context.session_id) {
+            Ok(permit) => Some(permit),
+            Err(message) => return ToolExecutionResult::tool_error(message),
+        }
+    } else {
+        None
+    };
+
     let Some(session_store) = context.session_store.as_ref() else {
         return ToolExecutionResult::tool_error("Subagent spawn requires session_store context");
     };
@@ -1321,6 +1350,7 @@ async fn spawn_create_and_wait(
             task_id.clone(),
             task_attempt,
             wait_settle_ctx.map(|(_, _, claim_token)| claim_token),
+            background_run_permit.expect("background permit acquired for background mode"),
         );
         return background_running_result(child_session.id, name, &task_id, blueprint_param);
     }
@@ -1500,6 +1530,7 @@ async fn settle_subagent_outcome(
 /// reaper can detect worker loss, wait for the child's terminal turn status,
 /// then settle the task and spawn handle. The task's OnTerminal wake policy
 /// notifies the parent session at the registry level.
+#[allow(clippy::too_many_arguments)]
 fn spawn_background_watcher(
     context: &ToolContext,
     child_id: crate::typed_id::SessionId,
@@ -1508,10 +1539,12 @@ fn spawn_background_watcher(
     task_id: Option<String>,
     task_attempt: i32,
     claim_token: Option<uuid::Uuid>,
+    background_run_permit: BackgroundRunPermit,
 ) {
     let context = context.clone();
     let name = name.to_string();
     tokio::spawn(async move {
+        let _background_run_permit = background_run_permit;
         let Some(store) = context.platform_store.clone() else {
             // Callers only enter background mode with a platform store wired.
             return;
@@ -1924,6 +1957,11 @@ mod tests {
     }
 
     #[test]
+    fn subagent_capability_is_high_risk() {
+        assert_eq!(SubagentCapability.risk_level(), RiskLevel::High);
+    }
+
+    #[test]
     fn spawn_agent_subagent_schema_advertises_only_subagent_target() {
         let tool = SpawnSubagentAsAgentTool;
         let schema = tool.parameters_schema();
@@ -1945,6 +1983,11 @@ mod tests {
         assert_eq!(
             schema["properties"]["mode"]["enum"],
             json!(["background", "foreground"])
+        );
+        assert_eq!(
+            tool.hints().concurrency_class.as_deref(),
+            Some(SPAWN_AGENT_CONCURRENCY_CLASS),
+            "spawn_agent calls share one scheduler class so cap admission is serialized"
         );
     }
 
@@ -2990,6 +3033,7 @@ mod tests {
         let file_store = Arc::new(MemoryFileStore::default());
         let parent_session_id = crate::typed_id::SessionId::new();
         let parent_workspace_id = crate::typed_id::WorkspaceId::from_uuid(parent_session_id.uuid());
+        let child_session_id = crate::typed_id::SessionId::new();
         let task = registry
             .create(CreateSessionTask {
                 session_id: parent_session_id,
@@ -3005,7 +3049,10 @@ mod tests {
                     }
                 }),
                 state: SessionTaskState::Running,
-                links: TaskLinks::default(),
+                links: TaskLinks {
+                    child_session_id: Some(child_session_id),
+                    ..Default::default()
+                },
                 wake_policy: TaskWakePolicy::Silent,
             })
             .await
@@ -3014,11 +3061,12 @@ mod tests {
         let tool = ReportResultTool::new(
             parent_session_id,
             parent_workspace_id,
+            child_session_id,
             task.id.clone(),
             task.spec["result_schema"].clone(),
         )
         .with_file_store(file_store.clone());
-        let mut context = ToolContext::new(crate::typed_id::SessionId::new());
+        let mut context = ToolContext::new(child_session_id);
         context.session_task_registry = Some(registry.clone());
 
         let result = tool
@@ -3050,10 +3098,97 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn report_result_rejects_terminal_task_without_overwriting_result() {
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let file_store = Arc::new(MemoryFileStore::default());
+        let parent_session_id = crate::typed_id::SessionId::new();
+        let parent_workspace_id = crate::typed_id::WorkspaceId::from_uuid(parent_session_id.uuid());
+        let child_session_id = crate::typed_id::SessionId::new();
+        let task = registry
+            .create(CreateSessionTask {
+                session_id: parent_session_id,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: "Runner".to_string(),
+                spec: json!({
+                    "result_schema": {
+                        "type": "object",
+                        "properties": {"answer": {"type": "string"}},
+                        "required": ["answer"],
+                        "additionalProperties": false
+                    }
+                }),
+                state: SessionTaskState::Succeeded,
+                links: TaskLinks {
+                    child_session_id: Some(child_session_id),
+                    ..Default::default()
+                },
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+        let existing_path = task_result_path(&task.id);
+        registry
+            .update(
+                parent_session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    result_path: Some(existing_path.clone()),
+                    summary: Some("original".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        file_store
+            .write_file(
+                SessionId::from_uuid(parent_workspace_id.uuid()),
+                &existing_path,
+                "{\n  \"answer\": \"original\"\n}",
+                "utf-8",
+            )
+            .await
+            .unwrap();
+
+        let tool = ReportResultTool::new(
+            parent_session_id,
+            parent_workspace_id,
+            child_session_id,
+            task.id.clone(),
+            task.spec["result_schema"].clone(),
+        )
+        .with_file_store(file_store.clone());
+        let mut context = ToolContext::new(child_session_id);
+        context.session_task_registry = Some(registry.clone());
+
+        let result = tool
+            .execute_with_context(json!({"answer": "tampered"}), &context)
+            .await;
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("expected terminal rejection, got {result:?}");
+        };
+        assert!(message.contains("terminal"), "got: {message}");
+
+        let file = file_store
+            .read_file(
+                SessionId::from_uuid(parent_workspace_id.uuid()),
+                &existing_path,
+            )
+            .await
+            .unwrap()
+            .expect("result file");
+        assert!(
+            file.content.as_deref().unwrap().contains("original"),
+            "file was overwritten: {file:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn report_result_rejects_invalid_result_schema_payload() {
         let tool = ReportResultTool::new(
             crate::typed_id::SessionId::new(),
             crate::typed_id::WorkspaceId::from_uuid(uuid::Uuid::new_v4()),
+            crate::typed_id::SessionId::new(),
             "task_test".to_string(),
             json!({
                 "type": "object",
@@ -3143,6 +3278,7 @@ mod tests {
         let tool = ReportTaskProgressTool::new(
             parent_session_id,
             task.id.clone(),
+            task.attempt,
             task.spec["message_schema"].clone(),
         );
         assert_eq!(tool.name(), "report_task_progress");
@@ -3172,10 +3308,68 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn report_task_progress_rejects_stale_task_attempt() {
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let parent_session_id = crate::typed_id::SessionId::new();
+        let task = registry
+            .create(CreateSessionTask {
+                session_id: parent_session_id,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: "Runner".to_string(),
+                spec: json!({"message_schema": {"type": "object"}}),
+                state: SessionTaskState::Running,
+                links: TaskLinks::default(),
+                wake_policy: TaskWakePolicy::OnActivity,
+            })
+            .await
+            .unwrap();
+        let tool = ReportTaskProgressTool::new(
+            parent_session_id,
+            task.id.clone(),
+            task.attempt,
+            task.spec["message_schema"].clone(),
+        );
+
+        // Supersede the attempt the tool captured at construction.
+        registry
+            .update(
+                parent_session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    state: Some(SessionTaskState::Failed),
+                    increment_attempt: true,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        let mut context = ToolContext::new(crate::typed_id::SessionId::new());
+        context.session_task_registry = Some(registry.clone());
+        let result = tool
+            .execute_with_context(json!({"step": "late"}), &context)
+            .await;
+        assert!(
+            matches!(result, ToolExecutionResult::InternalError(_)),
+            "stale progress must be rejected, got {result:?}"
+        );
+        let messages = registry
+            .list_messages(parent_session_id, &task.id, None, None)
+            .await
+            .unwrap();
+        assert!(
+            messages.is_empty(),
+            "stale progress must not append messages"
+        );
+    }
+
+    #[tokio::test]
     async fn report_task_progress_rejects_invalid_message_schema_payload() {
         let tool = ReportTaskProgressTool::new(
             crate::typed_id::SessionId::new(),
             "task_test".to_string(),
+            1,
             json!({
                 "type": "object",
                 "properties": {"step": {"type": "string"}},
@@ -3217,6 +3411,7 @@ mod tests {
         let subagent = ReportTaskProgressTool::new(
             crate::typed_id::SessionId::new(),
             "task_test".to_string(),
+            1,
             json!({"type": "object"}),
         );
         assert_eq!(subagent.name(), "report_task_progress");
@@ -3294,6 +3489,42 @@ mod tests {
         assert_eq!(task.spec["mode"], "background");
         // Summary carries the child's last agent message.
         assert_eq!(task.summary.as_deref(), Some("Hi!"));
+    }
+
+    #[tokio::test]
+    async fn background_spawn_rejects_when_session_active_run_limit_reached() {
+        let store = Arc::new(MockPlatformStore::new());
+        *store.wait_for_idle_status.lock().unwrap() = "paused".to_string();
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let context = spawn_context(&store, Some(registry));
+
+        for index in 0..crate::tools::MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION {
+            let result = spawn(
+                &context,
+                json!({
+                    "name": format!("Runner {index}"),
+                    "instructions": "go",
+                }),
+            )
+            .await;
+            let ToolExecutionResult::Success(value) = result else {
+                panic!("background spawn below the session limit should start: {result:?}");
+            };
+            assert_eq!(value["status"], "running");
+        }
+
+        let result = spawn(
+            &context,
+            json!({
+                "name": "Runner over limit",
+                "instructions": "go",
+            }),
+        )
+        .await;
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("background spawn should reject once the session limit is reached: {result:?}");
+        };
+        assert!(message.contains("active background runs per session"));
     }
 
     #[tokio::test]

@@ -225,21 +225,48 @@ pub(crate) fn normalize_cron_expression(cron_expression: &str) -> Result<String,
     Ok(normalized)
 }
 
-/// Returns the minimum interval in seconds between consecutive triggers over a
-/// full leap-year-sized horizon. Cron expressions are periodic over this window
-/// for supported fields, so this catches non-uniform bursts that a small sample
-/// from the current wall clock could miss. Returns None when fewer than 2
-/// upcoming times exist in the horizon.
+/// Returns the minimum interval in seconds between consecutive triggers.
+///
+/// Cron expressions without a year constraint are periodic over a full
+/// leap-year-sized horizon, so scan that bounded window to catch non-uniform
+/// bursts. If the horizon has too few occurrences, keep sampling upcoming
+/// triggers without the horizon so future-dated bursts cannot bypass the limit.
 pub(crate) fn cron_min_interval_seconds(
     schedule: &cron::Schedule,
     reject_below_seconds: i64,
 ) -> Option<i64> {
+    const FALLBACK_OCCURRENCE_LIMIT: usize = 3;
+
     let start = Utc::now();
     let end = start + Duration::days(366);
     let mut previous: Option<DateTime<Utc>> = None;
     let mut min_interval: Option<i64> = None;
+    let mut occurrences = 0;
 
     for next in schedule.after(&start).take_while(|next| *next <= end) {
+        occurrences += 1;
+        if let Some(previous) = previous {
+            let interval = (next - previous).num_seconds();
+            min_interval =
+                Some(min_interval.map_or(interval, |current: i64| current.min(interval)));
+            if interval < reject_below_seconds {
+                return min_interval;
+            }
+        }
+        previous = Some(next);
+    }
+
+    if occurrences >= 2 {
+        return min_interval;
+    }
+
+    // Horizon had fewer than two occurrences (a future-dated or very sparse
+    // schedule). Reset `previous` so the fallback measures intervals purely
+    // among the sampled occurrences: otherwise the single horizon occurrence
+    // would be compared against itself (the fallback restarts from `start`),
+    // yielding a spurious 0-second interval that rejects a valid schedule.
+    previous = None;
+    for next in schedule.after(&start).take(FALLBACK_OCCURRENCE_LIMIT) {
         if let Some(previous) = previous {
             let interval = (next - previous).num_seconds();
             min_interval =
@@ -4148,6 +4175,28 @@ mod tests {
     }
 
     #[test]
+    fn cron_min_interval_detects_future_year_burst() {
+        let schedule = cron::Schedule::from_str("* * * 1 1 * 2029").expect("valid cron");
+        let interval = cron_min_interval_seconds(&schedule, 300).expect("interval exists");
+        assert_eq!(interval, 1);
+    }
+
+    #[test]
+    fn cron_min_interval_handles_single_horizon_occurrence() {
+        // A once-yearly schedule has exactly one occurrence inside the 366-day
+        // horizon, so it takes the fallback path. The fallback must measure the
+        // ~1-year cadence across the sampled occurrences, not compare the single
+        // horizon occurrence against itself (which would yield a spurious 0 and
+        // falsely reject a valid sparse schedule).
+        let schedule = cron::Schedule::from_str("0 0 0 1 7 * *").expect("valid cron");
+        let interval = cron_min_interval_seconds(&schedule, 300).expect("interval exists");
+        assert!(
+            interval > 300,
+            "a once-yearly schedule must not report a sub-limit burst, got {interval}"
+        );
+    }
+
+    #[test]
     fn schedule_channel_rejects_too_frequent_cron() {
         // "0 * * * * *" = every minute (60 s) < 300 s default limit.
         let config = json!({
@@ -4156,6 +4205,17 @@ mod tests {
         });
         let err = normalize_and_validate_channel_config(ChannelType::Schedule, config)
             .expect_err("should reject sub-5-min cron");
+        assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
+    }
+
+    #[test]
+    fn schedule_channel_rejects_future_year_burst() {
+        let config = json!({
+            "cron_expression": "* * * 1 1 * 2029",
+            "message": "future burst"
+        });
+        let err = normalize_and_validate_channel_config(ChannelType::Schedule, config)
+            .expect_err("should reject future burst below interval limit");
         assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
     }
 

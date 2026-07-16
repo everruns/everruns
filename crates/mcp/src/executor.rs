@@ -87,6 +87,24 @@ impl McpExecutor {
             .await?
             .ok_or_else(|| anyhow!("MCP server not found for prefix: {server_prefix}"))?;
 
+        // The server requires an OAuth connection the user has not made yet.
+        // Return a connection_required result (the host renders an inline
+        // connect prompt) instead of letting the call fail with a 401.
+        if let Some(provider) = &connection.pending_oauth_provider {
+            return Ok(ToolResult {
+                tool_call_id: tool_call.id.clone(),
+                result: None,
+                images: None,
+                error: Some(format!(
+                    "MCP server '{}' requires an OAuth connection. \
+                     Ask the user to connect provider '{provider}'.",
+                    connection.name
+                )),
+                connection_required: Some(provider.clone()),
+                raw_output: None,
+            });
+        }
+
         self.client
             .call_as_tool_result(
                 &connection,

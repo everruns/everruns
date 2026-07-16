@@ -63,6 +63,7 @@ export type NavigationItem = {
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   activePrefix?: string;
+  /** Set false to disable the shared hover/focus prefetch in addition to automatic prefetch. */
   prefetch?: boolean;
   flag?: keyof FeatureFlags;
   exact?: boolean;
@@ -197,7 +198,7 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
   return (
     <div className="flex h-full w-60 flex-col border-r border-border/70 bg-background">
       <div className="flex h-14 items-center justify-between border-b border-border/70 bg-card px-4">
-        <Link href="/dashboard" className="flex items-center gap-2">
+        <Link href="/dashboard" prefetch={false} className="flex items-center gap-2">
           <Image src="/logo.svg" alt="Everruns" width={28} height={28} />
           <span className="text-base font-semibold tracking-[-0.02em]">Everruns</span>
         </Link>

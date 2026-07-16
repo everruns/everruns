@@ -35,14 +35,18 @@ import { useResourceOrgFallback } from "./use-resource-org-fallback";
  * Optionally filter by agentId.
  * Returns { data, total, offset, limit } for pagination controls.
  */
-export function useSessions(agentId?: string, params?: PaginationParams) {
+export function useSessions(
+  agentId?: string,
+  params?: PaginationParams,
+  options: { enabled?: boolean } = {},
+) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
     queryKey: queryKeys.sessions.list(org, agentId, params?.offset ?? 0, params?.limit ?? 20),
     queryFn: () => listSessions({ ...params, agentId }),
-    enabled: !!org,
+    enabled: !!org && (options.enabled ?? true),
   });
 
   // Include org loading state so pages show skeleton while org initializes

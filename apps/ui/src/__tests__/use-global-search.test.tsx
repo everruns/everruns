@@ -2,8 +2,9 @@ import { act, renderHook } from "@testing-library/react";
 import { useGlobalSearch } from "@/hooks/use-global-search";
 import type { OrganizationMembership } from "@/lib/api/types";
 
+const mockUseAgents = jest.fn((_options?: { enabled?: boolean }) => ({ data: [] }));
 jest.mock("@/hooks/use-agents", () => ({
-  useAgents: () => ({ data: [] }),
+  useAgents: (options?: { enabled?: boolean }) => mockUseAgents(options),
 }));
 jest.mock("@/hooks/use-sessions", () => ({
   useSessions: () => ({ data: { data: [] } }),
@@ -31,9 +32,67 @@ jest.mock("@/hooks/use-apps", () => ({
 jest.mock("@/hooks/use-agent-identities", () => ({
   useAgentIdentities: () => ({ data: [] }),
 }));
-let mockEvalsFlag = false;
+jest.mock("@/hooks/use-memory", () => ({
+  useMemories: () => ({
+    data: [
+      {
+        id: "mem_product",
+        name: "Product Notes",
+        description: "Product decisions",
+      },
+    ],
+  }),
+}));
+jest.mock("@/hooks/use-knowledge-indexes", () => ({
+  useKnowledgeIndexes: () => ({
+    data: [
+      {
+        id: "kidx_docs",
+        name: "Documentation Index",
+        description: "Published documentation",
+      },
+    ],
+  }),
+}));
+jest.mock("@/hooks/use-plugins", () => ({
+  useInstalledPlugins: () => ({
+    data: [
+      {
+        id: "plugin_email",
+        name: "email-service",
+        display_name: "Email Service",
+        description: "Transactional email",
+      },
+    ],
+  }),
+}));
+jest.mock("@/hooks/use-observers", () => ({
+  useObservers: () => ({
+    data: [
+      {
+        id: "observer_quality",
+        name: "Answer Quality",
+        description: "Scores production answers",
+      },
+    ],
+  }),
+}));
+const mockUseSavedReports = jest.fn((_enabled?: boolean) => ({
+  data: [
+    {
+      id: "report_weekly",
+      name: "Weekly Usage",
+      description: "Usage by week",
+    },
+  ],
+}));
+jest.mock("@/hooks/use-reporting", () => ({
+  useSavedReports: (enabled?: boolean) => mockUseSavedReports(enabled),
+}));
+
+const mockFeatureFlags = { evals: false, observers: true };
 jest.mock("@/providers/feature-flags-provider", () => ({
-  useFeatureFlag: () => mockEvalsFlag,
+  useFeatureFlag: (flag: keyof typeof mockFeatureFlags) => mockFeatureFlags[flag],
 }));
 
 const mockSetCurrentOrg = jest.fn();
@@ -61,8 +120,11 @@ jest.mock("@/providers/org-provider", () => ({
 describe("useGlobalSearch", () => {
   beforeEach(() => {
     mockSetCurrentOrg.mockClear();
+    mockUseAgents.mockClear();
     mockUseEvals.mockClear();
-    mockEvalsFlag = false;
+    mockUseSavedReports.mockClear();
+    mockFeatureFlags.evals = false;
+    mockFeatureFlags.observers = true;
   });
 
   it("defers the evals fetch when the feature flag is off", () => {
@@ -71,9 +133,16 @@ describe("useGlobalSearch", () => {
   });
 
   it("enables the evals fetch when the feature flag is on", () => {
-    mockEvalsFlag = true;
-    renderHook(() => useGlobalSearch(""));
+    mockFeatureFlags.evals = true;
+    renderHook(() => useGlobalSearch("eval"));
     expect(mockUseEvals).toHaveBeenCalledWith({ enabled: true });
+  });
+
+  it("does not enable entity fetches before the user enters a query", () => {
+    renderHook(() => useGlobalSearch(""));
+
+    expect(mockUseAgents).toHaveBeenCalledWith({ enabled: false });
+    expect(mockUseSavedReports).toHaveBeenCalledWith(false);
   });
 
   it("finds organizations and switches to the selected organization", () => {
@@ -112,5 +181,33 @@ describe("useGlobalSearch", () => {
       subtitle: "Current organization > org_current",
     });
     expect(orgResult?.onSelect).toBeUndefined();
+  });
+
+  it.each([
+    ["reports", "/reports"],
+    ["work", "/work"],
+    ["knowledge indexes", "/knowledge-indexes"],
+    ["plugins", "/plugins"],
+    ["observers", "/observers"],
+    ["payments", "/settings/payments"],
+    ["circuit breakers", "/durable/circuit-breakers"],
+  ])("finds the %s navigation page", (query, href) => {
+    const { result } = renderHook(() => useGlobalSearch(query));
+
+    expect(result.current).toContainEqual(
+      expect.objectContaining({ category: "navigation", href }),
+    );
+  });
+
+  it.each([
+    ["product notes", "memory:mem_product", "/memory/mem_product"],
+    ["documentation index", "knowledge-index:kidx_docs", "/knowledge-indexes/kidx_docs"],
+    ["email service", "plugin:plugin_email", "/plugins"],
+    ["answer quality", "observer:observer_quality", "/observers/observer_quality"],
+    ["weekly usage", "report:report_weekly", "/reports"],
+  ])("finds the %s entity", (query, id, href) => {
+    const { result } = renderHook(() => useGlobalSearch(query));
+
+    expect(result.current).toContainEqual(expect.objectContaining({ id, href }));
   });
 });

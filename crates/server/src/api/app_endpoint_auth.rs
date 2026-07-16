@@ -63,26 +63,46 @@ impl AppEndpointAuthVerifier {
         headers: &HeaderMap,
         legacy: LegacyEndpointAuth<'_>,
     ) -> Result<(), AppEndpointAuthError> {
+        self.verify_principal(auth, headers, legacy)
+            .await
+            .map(|_| ())
+    }
+
+    pub async fn verify_principal(
+        &self,
+        auth: &AppEndpointAuthConfig,
+        headers: &HeaderMap,
+        legacy: LegacyEndpointAuth<'_>,
+    ) -> Result<Option<AppEndpointAuthPrincipal>, AppEndpointAuthError> {
         match auth.mode {
-            AppEndpointAuthMode::Anonymous => Ok(()),
+            AppEndpointAuthMode::Anonymous => Ok(None),
             AppEndpointAuthMode::SharedSecret => {
                 let expected = legacy
                     .shared_secret
                     .ok_or(AppEndpointAuthError::Misconfigured)?;
-                verify_shared_secret(headers, expected)
+                verify_shared_secret(headers, expected)?;
+                Ok(None)
             }
             AppEndpointAuthMode::ApiKey => {
                 let api_key = legacy.api_key.ok_or(AppEndpointAuthError::Misconfigured)?;
-                verify_shared_secret(headers, api_key)
+                verify_shared_secret(headers, api_key)?;
+                Ok(None)
             }
-            AppEndpointAuthMode::HttpBasic => self.verify_basic(auth, headers),
+            AppEndpointAuthMode::HttpBasic => {
+                self.verify_basic(auth, headers)?;
+                Ok(None)
+            }
             AppEndpointAuthMode::GoogleOidc | AppEndpointAuthMode::Oidc => {
-                self.verify_oidc(auth, headers).await
+                self.verify_oidc(auth, headers).await.map(Some)
             }
-            AppEndpointAuthMode::OAuth2Introspection => {
-                self.verify_oauth2_introspection(auth, headers).await
+            AppEndpointAuthMode::OAuth2Introspection => self
+                .verify_oauth2_introspection(auth, headers)
+                .await
+                .map(Some),
+            AppEndpointAuthMode::Mtls => {
+                self.verify_mtls(auth, headers)?;
+                Ok(None)
             }
-            AppEndpointAuthMode::Mtls => self.verify_mtls(auth, headers),
         }
     }
 
@@ -121,7 +141,7 @@ impl AppEndpointAuthVerifier {
         &self,
         auth: &AppEndpointAuthConfig,
         headers: &HeaderMap,
-    ) -> Result<(), AppEndpointAuthError> {
+    ) -> Result<AppEndpointAuthPrincipal, AppEndpointAuthError> {
         let token = extract_bearer(headers).ok_or(AppEndpointAuthError::Unauthorized)?;
         let (issuer, jwks_url, requirements) = match auth.provider.as_ref() {
             Some(AppEndpointAuthProviderConfig::GoogleOidc {
@@ -179,14 +199,14 @@ impl AppEndpointAuthVerifier {
             .map_err(|_| AppEndpointAuthError::Unauthorized)?
             .claims;
         validate_claim_requirements(&claims, &requirements)?;
-        Ok(())
+        principal_from_claims(&claims)
     }
 
     async fn verify_oauth2_introspection(
         &self,
         auth: &AppEndpointAuthConfig,
         headers: &HeaderMap,
-    ) -> Result<(), AppEndpointAuthError> {
+    ) -> Result<AppEndpointAuthPrincipal, AppEndpointAuthError> {
         let token = extract_bearer(headers).ok_or(AppEndpointAuthError::Unauthorized)?;
         let Some(AppEndpointAuthProviderConfig::OAuth2Introspection {
             introspection_url,
@@ -226,7 +246,7 @@ impl AppEndpointAuthVerifier {
         }
         let requirements = auth.requirements.clone();
         validate_claim_requirements(&claims, &requirements)?;
-        Ok(())
+        principal_from_claims(&claims)
     }
 
     fn verify_mtls(
@@ -330,6 +350,12 @@ impl AppEndpointAuthVerifier {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AppEndpointAuthPrincipal {
+    pub issuer: String,
+    pub subject: String,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct LegacyEndpointAuth<'a> {
     pub shared_secret: Option<&'a str>,
@@ -346,6 +372,23 @@ pub enum AppEndpointAuthError {
 #[derive(Debug, Clone, Deserialize)]
 struct OidcDiscovery {
     jwks_uri: String,
+}
+
+fn principal_from_claims(claims: &Value) -> Result<AppEndpointAuthPrincipal, AppEndpointAuthError> {
+    let issuer = claims
+        .get("iss")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or(AppEndpointAuthError::Unauthorized)?;
+    let subject = claims
+        .get("sub")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .ok_or(AppEndpointAuthError::Unauthorized)?;
+    Ok(AppEndpointAuthPrincipal {
+        issuer: normalize_issuer(issuer),
+        subject: subject.to_string(),
+    })
 }
 
 fn normalize_issuer(issuer: &str) -> String {

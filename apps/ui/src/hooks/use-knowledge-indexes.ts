@@ -40,13 +40,16 @@ function invalidateIndexQueries(queryClient: QueryClient, indexId?: string) {
   }
 }
 
-export function useKnowledgeIndexes(options: ListKnowledgeIndexesParams = {}) {
+export function useKnowledgeIndexes(
+  options: ListKnowledgeIndexesParams & { enabled?: boolean } = {},
+) {
   const includeArchived = options.includeArchived ?? false;
   const search = options.search?.trim() ?? "";
 
   return useOrgScopedQuery({
     queryKey: queryKeys.knowledgeIndexes.list(includeArchived, search),
     queryFn: () => listKnowledgeIndexes({ includeArchived, search }),
+    enabled: options.enabled ?? true,
   });
 }
 

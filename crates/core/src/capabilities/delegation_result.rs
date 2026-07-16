@@ -111,6 +111,7 @@ pub(crate) async fn task_for_child_session(
 pub struct ReportResultTool {
     parent_session_id: SessionId,
     parent_workspace_id: WorkspaceId,
+    child_session_id: SessionId,
     task_id: String,
     result_schema: Value,
     file_store: Option<Arc<dyn SessionFileSystem>>,
@@ -120,12 +121,14 @@ impl ReportResultTool {
     pub fn new(
         parent_session_id: SessionId,
         parent_workspace_id: WorkspaceId,
+        child_session_id: SessionId,
         task_id: String,
         result_schema: Value,
     ) -> Self {
         Self {
             parent_session_id,
             parent_workspace_id,
+            child_session_id,
             task_id,
             result_schema,
             file_store: None,
@@ -182,6 +185,33 @@ impl Tool for ReportResultTool {
         let Some(file_store) = self.file_store.as_ref().or(context.file_store.as_ref()) else {
             return ToolExecutionResult::tool_error("report_result requires file_store context");
         };
+
+        if context.session_id != self.child_session_id {
+            return ToolExecutionResult::tool_error(
+                "report_result can only be called from the linked child session",
+            );
+        }
+        let task = match registry.get(self.parent_session_id, &self.task_id).await {
+            Ok(Some(task)) => task,
+            Ok(None) => return ToolExecutionResult::tool_error("report_result task was not found"),
+            Err(error) => return ToolExecutionResult::internal_error(error),
+        };
+        if task.links.child_session_id != Some(self.child_session_id) {
+            return ToolExecutionResult::tool_error(
+                "report_result child session is no longer linked to this task",
+            );
+        }
+        if task.state.is_terminal() {
+            return ToolExecutionResult::tool_error(
+                "report_result is closed because the subagent task is terminal",
+            );
+        }
+        if task.result_path.is_some() {
+            return ToolExecutionResult::tool_error(
+                "report_result was already recorded for this subagent task",
+            );
+        }
+
         let path = task_result_path(&self.task_id);
         let content = match serde_json::to_string_pretty(&arguments) {
             Ok(content) => content,
@@ -199,6 +229,11 @@ impl Tool for ReportResultTool {
                 self.parent_session_id,
                 &self.task_id,
                 SessionTaskUpdate {
+                    // Fence result writes to the active attempt and repeat the
+                    // observed non-terminal state so a task that finalized after
+                    // our read rejects this stale content mutation too.
+                    expected_attempt: Some(task.attempt),
+                    state: Some(task.state),
                     result_path: Some(path.clone()),
                     summary: Some(truncate_summary(&content)),
                     ..Default::default()
@@ -223,14 +258,21 @@ impl Tool for ReportResultTool {
 pub struct ReportTaskProgressTool {
     parent_session_id: SessionId,
     task_id: String,
+    task_attempt: i32,
     message_schema: Value,
 }
 
 impl ReportTaskProgressTool {
-    pub fn new(parent_session_id: SessionId, task_id: String, message_schema: Value) -> Self {
+    pub fn new(
+        parent_session_id: SessionId,
+        task_id: String,
+        task_attempt: i32,
+        message_schema: Value,
+    ) -> Self {
         Self {
             parent_session_id,
             task_id,
+            task_attempt,
             message_schema,
         }
     }
@@ -287,7 +329,7 @@ impl Tool for ReportTaskProgressTool {
                         data: arguments.clone(),
                     }],
                     in_reply_to: None,
-                    expected_attempt: None,
+                    expected_attempt: Some(self.task_attempt),
                 },
             )
             .await
@@ -323,6 +365,7 @@ pub async fn report_result_tool_for_child_session(
     Ok(Some(ReportResultTool::new(
         task.session_id,
         parent_workspace_id,
+        child_session_id,
         task.id,
         schema,
     )))
@@ -338,12 +381,16 @@ pub async fn report_task_progress_tool_for_child_session(
     else {
         return Ok(None);
     };
+    if task.state.is_terminal() {
+        return Ok(None);
+    }
     let Some(schema) = declared_message_schema(&task).cloned() else {
         return Ok(None);
     };
     Ok(Some(ReportTaskProgressTool::new(
         task.session_id,
         task.id,
+        task.attempt,
         schema,
     )))
 }

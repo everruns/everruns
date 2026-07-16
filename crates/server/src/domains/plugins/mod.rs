@@ -5,6 +5,7 @@ use everruns_core::{Permission, Policy, Rule};
 
 pub mod commands;
 pub mod fetcher;
+pub mod oauth_anchor;
 pub mod queries;
 pub mod types;
 

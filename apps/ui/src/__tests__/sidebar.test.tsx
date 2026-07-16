@@ -20,10 +20,12 @@ jest.mock("next/link", () => ({
 // Mock next/navigation
 const mockPathname = jest.fn();
 const mockPush = jest.fn();
+const mockPrefetch = jest.fn();
 jest.mock("next/navigation", () => ({
   usePathname: () => mockPathname(),
   useRouter: () => ({
     push: mockPush,
+    prefetch: mockPrefetch,
     replace: jest.fn(),
     back: jest.fn(),
   }),
@@ -111,6 +113,7 @@ describe("Sidebar", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/dashboard");
     mockPush.mockClear();
+    mockPrefetch.mockClear();
     mockUsePolicies.mockReturnValue({
       data: { policies: { "durable.view": true } },
       can: (policyId: string) => policyId === "durable.view",
@@ -224,19 +227,37 @@ describe("Sidebar", () => {
     expect(settingsLink).toHaveAttribute("href", "/settings/organization");
   });
 
-  it("disables prefetch only for the top-level Settings link", () => {
+  it("disables automatic viewport prefetch for every sidebar navigation link", () => {
     render(<Sidebar />);
 
+    expect(screen.getByAltText("Everruns").closest("a")).toHaveAttribute("data-prefetch", "false");
     const navigation = screen.getByRole("navigation");
     const links = within(navigation).getAllByRole("link");
-    const settingsLink = within(navigation).getByRole("link", { name: "Settings" });
-
-    expect(settingsLink).toHaveAttribute("data-prefetch", "false");
     for (const link of links) {
-      if (link !== settingsLink) {
-        expect(link).not.toHaveAttribute("data-prefetch");
-      }
+      expect(link).toHaveAttribute("data-prefetch", "false");
     }
+  });
+
+  it("prefetches only the intended link on hover or keyboard focus", () => {
+    render(<Sidebar />);
+
+    fireEvent.mouseEnter(screen.getByRole("link", { name: "Sessions" }));
+    expect(mockPrefetch).toHaveBeenCalledTimes(1);
+    expect(mockPrefetch).toHaveBeenLastCalledWith("/sessions");
+
+    fireEvent.focus(screen.getByRole("link", { name: "Agents" }));
+    expect(mockPrefetch).toHaveBeenCalledTimes(2);
+    expect(mockPrefetch).toHaveBeenLastCalledWith("/agents");
+  });
+
+  it("preserves Settings no-prefetch behavior on hover and focus", () => {
+    render(<Sidebar />);
+
+    const settingsLink = screen.getByRole("link", { name: "Settings" });
+    fireEvent.mouseEnter(settingsLink);
+    fireEvent.focus(settingsLink);
+
+    expect(mockPrefetch).not.toHaveBeenCalled();
   });
 
   it("does not render legacy navigation items", () => {
@@ -375,6 +396,10 @@ describe("Sidebar with config", () => {
     // Default items should not appear
     expect(screen.queryByText("Building Blocks")).not.toBeInTheDocument();
     expect(screen.queryByText("Durable Execution")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Custom Page" })).toHaveAttribute(
+      "data-prefetch",
+      "false",
+    );
   });
 
   it("appends extraSections after default navigation", () => {

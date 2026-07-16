@@ -247,8 +247,10 @@ When the cap is exceeded, the tool returns a `ToolError` naming the attempted de
 
 Subagent spawning also counts existing descendant subagent tasks by walking the
 root session's task tree (`TASK_KIND_SUBAGENT` records and their
-`links.child_session_id`). A new spawn is rejected before child creation when
-it would exceed either:
+`links.child_session_id`). The model-facing `spawn_agent` tool is serialized by
+the act scheduler, so same-batch spawn calls cannot all pass cap admission using
+the same stale count. A new spawn is rejected before child creation when it
+would exceed either:
 
 - `max_active_descendant_tasks` (default 16): non-terminal descendant tasks
   under the root session, including `queued`, `running`, and `awaiting_input`
