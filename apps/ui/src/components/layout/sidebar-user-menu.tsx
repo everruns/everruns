@@ -107,9 +107,7 @@ export function SidebarUserMenu({
                 <Key className="icon-sharp mr-2 h-4 w-4" />
                 Personal access tokens
               </DropdownMenuItem>
-              {mcpEndpointEnabled && (
-                <McpConnectMenuItem onSelect={() => setMcpDialogOpen(true)} />
-              )}
+              {mcpEndpointEnabled && <McpConnectMenuItem onSelect={() => setMcpDialogOpen(true)} />}
               {renderExtraItems?.({ user, navigate })}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
