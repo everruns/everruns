@@ -87,9 +87,8 @@ fn execution_limits() -> ExecutionLimits {
 /// authority: `working_dir` is resolved through it to an absolute path in the
 /// same namespace the file tools use, so a model that learns a path from
 /// `read_file` can pass it straight to `cd`. With no `working_dir`, the shell
-/// starts at the store's display root (`/workspace` for VFS stores, the host
-/// root for real-disk stores). The tuple is
-/// `(cwd, workspace_env)`.
+/// starts at the store's display root (`/workspace` for the mounted stores used
+/// by agent execution). The tuple is `(cwd, workspace_env)`.
 fn resolve_shell_workspace(
     store: &dyn SessionFileSystem,
     working_dir_arg: Option<&str>,

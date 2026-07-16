@@ -1,7 +1,7 @@
 // EVE-750: end-to-end conformance for model-visible filesystem path identity.
 //
 // Exercises tool results, system prompts, persistence hooks, and the recursive
-// path scanner across in-memory, real-disk, and MountFs backends.
+// path scanner across in-memory and mounted real-disk backends.
 
 use everruns_core::atoms::PostToolExecHook;
 use everruns_core::capabilities::{
@@ -335,11 +335,18 @@ async fn in_memory_vfs_path_identity_conformance() {
 #[tokio::test]
 async fn real_disk_path_identity_conformance() {
     let root = TempDir::new().unwrap();
-    let store: Arc<dyn SessionFileSystem> = Arc::new(RealDiskFileStore::new(root.path()).unwrap());
-    run_backend_suite(store.clone(), true).await;
+    let canonical_root = root.path().canonicalize().unwrap();
+    let backend: Arc<dyn SessionFileSystem> =
+        Arc::new(RealDiskFileStore::new(root.path()).unwrap());
+    assert_eq!(backend.display_root(), canonical_root.display().to_string());
+    assert_eq!(
+        backend.display_path("/src/lib.rs"),
+        canonical_root.join("src/lib.rs").display().to_string()
+    );
 
-    let mounted = MountFs::wrap(store);
-    run_backend_suite(Arc::new(mounted), false).await;
+    let mounted = MountFs::wrap(backend);
+    assert_eq!(mounted.display_root(), WORKSPACE_PREFIX);
+    run_backend_suite(mounted, false).await;
 }
 
 #[tokio::test]

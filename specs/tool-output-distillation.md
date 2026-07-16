@@ -59,7 +59,7 @@ Constants (no per-agent config in v1): `MIN_DISTILL_BYTES = 8 KiB`, `MAX_FIELD_B
 
 ## Recovery Contract
 
-The full original is written to `/outputs/{tool_call_id}.stdout` in the session VFS (same convention and helper as `tool_output_persistence`). Model-visible `output_files`, `full_output`, and `distill_note` pointers are rendered through `SessionFileSystem::display_path`, so VFS stores expose `/workspace/...` while real-disk stores expose their host-absolute root. Every emitted pointer is accepted directly by `read_file`. This is the reversibility headroom builds via a separate CCR store; Everruns reuses the session VFS it already has.
+The full original is written to `/outputs/{tool_call_id}.stdout` in the session VFS (same convention and helper as `tool_output_persistence`). Model-visible `output_files`, `full_output`, and `distill_note` pointers are rendered through `SessionFileSystem::display_path`, so mounted agent contexts expose `/workspace/...` without revealing a real-disk backing root. Every emitted pointer is accepted directly by `read_file`. This is the reversibility headroom builds via a separate CCR store; Everruns reuses the session VFS it already has.
 
 ## Configuration
 

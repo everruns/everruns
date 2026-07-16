@@ -68,7 +68,7 @@ pub struct MountFs {
     /// Sorted by mount-point length descending so the first match is the
     /// longest (most specific) mount.
     mounts: Vec<Mount>,
-    /// The workspace backend — used for grep, display, and host mapping.
+    /// The workspace backend — used as the unreachable resolution fallback.
     primary: Arc<dyn SessionFileSystem>,
     /// Current working directory (a normalized virtual path). Relative inputs
     /// resolve against it; defaults to [`WORKSPACE_MOUNT`]. Fixed at

@@ -362,11 +362,11 @@ fn host_with_store(file_store: Arc<dyn SessionFileSystem>) -> NarrationTestHost 
 }
 
 #[tokio::test]
-async fn real_disk_list_directory_narration_uses_host_paths() {
+async fn mounted_real_disk_list_directory_narration_uses_workspace_paths() {
     let workspace = TempDir::new().unwrap();
     std::fs::create_dir_all(workspace.path().join("crates")).unwrap();
     let store = Arc::new(RealDiskFileStore::new(workspace.path()).expect("store"));
-    let expected = store.display_path("/workspace/crates");
+    let host_root = workspace.path().display().to_string();
 
     let host = host_with_store(store);
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
@@ -379,19 +379,12 @@ async fn real_disk_list_directory_narration_uses_host_paths() {
     let events =
         run_list_directory_act(&host, session_id, harness_id, json!("/workspace/crates")).await;
 
-    assert!(
-        !events.started.contains("/workspace/crates"),
-        "started narration leaked alias: {}",
-        events.started
-    );
-    assert!(
-        !events.completed.contains("/workspace/crates"),
-        "completed narration leaked alias: {}",
-        events.completed
-    );
-    assert_eq!(events.started, format!("Listing files in {expected}"));
-    assert_eq!(events.completed, format!("Listed files in {expected}"));
-    assert_eq!(events.result_path, expected);
+    assert_eq!(events.started, "Listing files in /workspace/crates");
+    assert_eq!(events.completed, "Listed files in /workspace/crates");
+    assert_eq!(events.result_path, "/workspace/crates");
+    assert!(!events.started.contains(&host_root));
+    assert!(!events.completed.contains(&host_root));
+    assert!(!events.result_path.contains(&host_root));
 }
 
 #[tokio::test]
@@ -497,7 +490,7 @@ async fn named_mount_narration_preserves_mount_path() {
 async fn list_directory_root_inputs_narrate_display_root() {
     let workspace = TempDir::new().unwrap();
     let store = Arc::new(RealDiskFileStore::new(workspace.path()).expect("store"));
-    let expected_root = store.display_root();
+    let host_root = workspace.path().display().to_string();
 
     let host = host_with_store(store);
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
@@ -509,7 +502,9 @@ async fn list_directory_root_inputs_narrate_display_root() {
 
     for path in [json!("/workspace"), json!("."), json!("/")] {
         let events = run_list_directory_act(&host, session_id, harness_id, path).await;
-        assert_eq!(events.completed, format!("Listed files in {expected_root}"));
-        assert_eq!(events.result_path, expected_root);
+        assert_eq!(events.completed, "Listed files in /workspace");
+        assert_eq!(events.result_path, "/workspace");
+        assert!(!events.completed.contains(&host_root));
+        assert!(!events.result_path.contains(&host_root));
     }
 }

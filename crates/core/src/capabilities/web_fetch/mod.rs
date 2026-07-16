@@ -332,7 +332,7 @@ impl SessionFileSaver {
         }
 
         // SessionFileSystem is the path authority: this preserves mount routing,
-        // host-backed display identity, and backend containment policy.
+        // agent-facing display identity, and backend containment policy.
         let resolved = self.file_store.resolve_path(path);
         let root = self.file_store.resolve_path("");
         if resolved == root || resolved == "/" {
