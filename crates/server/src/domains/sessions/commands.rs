@@ -111,7 +111,15 @@ impl Command for CreateSession {
         // Resolve the agent first (by id or name) so its harness can seed the
         // session harness when no explicit harness is supplied (agent-first
         // creation). The agent's harness is a default, not an override: an
-        // explicit request harness still wins (D4).
+        // explicit request harness still wins (D4). Selecting an agent also
+        // exposes and executes agent configuration, so SESSION_MANAGE alone is
+        // not enough for deployments that split session and agent permissions.
+        if req.agent_id.is_some() || req.agent_name.is_some() {
+            crate::domains::agents::AGENT_VIEW
+                .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+                .map_err(|e| CommandError::forbidden(e.to_string()))?;
+        }
+
         let (agent_internal_id, agent_public_id, agent_harness_id) =
             if let Some(agent_id) = req.agent_id {
                 let row = ctx
