@@ -3033,6 +3033,7 @@ mod tests {
         let file_store = Arc::new(MemoryFileStore::default());
         let parent_session_id = crate::typed_id::SessionId::new();
         let parent_workspace_id = crate::typed_id::WorkspaceId::from_uuid(parent_session_id.uuid());
+        let child_session_id = crate::typed_id::SessionId::new();
         let task = registry
             .create(CreateSessionTask {
                 session_id: parent_session_id,
@@ -3048,7 +3049,10 @@ mod tests {
                     }
                 }),
                 state: SessionTaskState::Running,
-                links: TaskLinks::default(),
+                links: TaskLinks {
+                    child_session_id: Some(child_session_id),
+                    ..Default::default()
+                },
                 wake_policy: TaskWakePolicy::Silent,
             })
             .await
@@ -3057,11 +3061,12 @@ mod tests {
         let tool = ReportResultTool::new(
             parent_session_id,
             parent_workspace_id,
+            child_session_id,
             task.id.clone(),
             task.spec["result_schema"].clone(),
         )
         .with_file_store(file_store.clone());
-        let mut context = ToolContext::new(crate::typed_id::SessionId::new());
+        let mut context = ToolContext::new(child_session_id);
         context.session_task_registry = Some(registry.clone());
 
         let result = tool
@@ -3093,10 +3098,97 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn report_result_rejects_terminal_task_without_overwriting_result() {
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let file_store = Arc::new(MemoryFileStore::default());
+        let parent_session_id = crate::typed_id::SessionId::new();
+        let parent_workspace_id = crate::typed_id::WorkspaceId::from_uuid(parent_session_id.uuid());
+        let child_session_id = crate::typed_id::SessionId::new();
+        let task = registry
+            .create(CreateSessionTask {
+                session_id: parent_session_id,
+                id: None,
+                kind: TASK_KIND_SUBAGENT.to_string(),
+                display_name: "Runner".to_string(),
+                spec: json!({
+                    "result_schema": {
+                        "type": "object",
+                        "properties": {"answer": {"type": "string"}},
+                        "required": ["answer"],
+                        "additionalProperties": false
+                    }
+                }),
+                state: SessionTaskState::Succeeded,
+                links: TaskLinks {
+                    child_session_id: Some(child_session_id),
+                    ..Default::default()
+                },
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+        let existing_path = task_result_path(&task.id);
+        registry
+            .update(
+                parent_session_id,
+                &task.id,
+                SessionTaskUpdate {
+                    result_path: Some(existing_path.clone()),
+                    summary: Some("original".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        file_store
+            .write_file(
+                SessionId::from_uuid(parent_workspace_id.uuid()),
+                &existing_path,
+                "{\n  \"answer\": \"original\"\n}",
+                "utf-8",
+            )
+            .await
+            .unwrap();
+
+        let tool = ReportResultTool::new(
+            parent_session_id,
+            parent_workspace_id,
+            child_session_id,
+            task.id.clone(),
+            task.spec["result_schema"].clone(),
+        )
+        .with_file_store(file_store.clone());
+        let mut context = ToolContext::new(child_session_id);
+        context.session_task_registry = Some(registry.clone());
+
+        let result = tool
+            .execute_with_context(json!({"answer": "tampered"}), &context)
+            .await;
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("expected terminal rejection, got {result:?}");
+        };
+        assert!(message.contains("terminal"), "got: {message}");
+
+        let file = file_store
+            .read_file(
+                SessionId::from_uuid(parent_workspace_id.uuid()),
+                &existing_path,
+            )
+            .await
+            .unwrap()
+            .expect("result file");
+        assert!(
+            file.content.as_deref().unwrap().contains("original"),
+            "file was overwritten: {file:?}"
+        );
+    }
+
+    #[tokio::test]
     async fn report_result_rejects_invalid_result_schema_payload() {
         let tool = ReportResultTool::new(
             crate::typed_id::SessionId::new(),
             crate::typed_id::WorkspaceId::from_uuid(uuid::Uuid::new_v4()),
+            crate::typed_id::SessionId::new(),
             "task_test".to_string(),
             json!({
                 "type": "object",
