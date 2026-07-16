@@ -237,7 +237,6 @@ pub(crate) fn cron_min_interval_seconds(
 ) -> Option<i64> {
     const FALLBACK_OCCURRENCE_LIMIT: usize = 3;
 
-
     let start = Utc::now();
     let end = start + Duration::days(366);
     let mut previous: Option<DateTime<Utc>> = None;
@@ -261,6 +260,12 @@ pub(crate) fn cron_min_interval_seconds(
         return min_interval;
     }
 
+    // Horizon had fewer than two occurrences (a future-dated or very sparse
+    // schedule). Reset `previous` so the fallback measures intervals purely
+    // among the sampled occurrences: otherwise the single horizon occurrence
+    // would be compared against itself (the fallback restarts from `start`),
+    // yielding a spurious 0-second interval that rejects a valid schedule.
+    previous = None;
     for next in schedule.after(&start).take(FALLBACK_OCCURRENCE_LIMIT) {
         if let Some(previous) = previous {
             let interval = (next - previous).num_seconds();
@@ -4174,6 +4179,21 @@ mod tests {
         let schedule = cron::Schedule::from_str("* * * 1 1 * 2029").expect("valid cron");
         let interval = cron_min_interval_seconds(&schedule, 300).expect("interval exists");
         assert_eq!(interval, 1);
+    }
+
+    #[test]
+    fn cron_min_interval_handles_single_horizon_occurrence() {
+        // A once-yearly schedule has exactly one occurrence inside the 366-day
+        // horizon, so it takes the fallback path. The fallback must measure the
+        // ~1-year cadence across the sampled occurrences, not compare the single
+        // horizon occurrence against itself (which would yield a spurious 0 and
+        // falsely reject a valid sparse schedule).
+        let schedule = cron::Schedule::from_str("0 0 0 1 7 * *").expect("valid cron");
+        let interval = cron_min_interval_seconds(&schedule, 300).expect("interval exists");
+        assert!(
+            interval > 300,
+            "a once-yearly schedule must not report a sub-limit burst, got {interval}"
+        );
     }
 
     #[test]
