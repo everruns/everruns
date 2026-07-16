@@ -25,7 +25,7 @@ use super::delegation_result::{
 };
 #[cfg(test)]
 use super::delegation_result::{ReportResultTool, ReportTaskProgressTool};
-use super::{Capability, CapabilityLocalization, CapabilityStatus, SpawnMode};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel, SpawnMode};
 use crate::platform_store::{PlatformCreateSessionRequest, PlatformStore};
 use crate::session::SessionSeedMode;
 use crate::session_task::{
@@ -78,6 +78,12 @@ impl Capability for SubagentCapability {
 
     fn category(&self) -> Option<&str> {
         Some("Core")
+    }
+
+    fn risk_level(&self) -> RiskLevel {
+        // Subagent recursion controls bound org cost/DoS exposure; keep
+        // caller-supplied session capability overrides behind the admin gate.
+        RiskLevel::High
     }
 
     fn features(&self) -> Vec<&'static str> {
@@ -1921,6 +1927,11 @@ mod tests {
 
         let agent = org.with_agent_override(Some(1));
         assert_eq!(agent.max_subagent_depth(), 1);
+    }
+
+    #[test]
+    fn subagent_capability_is_high_risk() {
+        assert_eq!(SubagentCapability.risk_level(), RiskLevel::High);
     }
 
     #[test]
