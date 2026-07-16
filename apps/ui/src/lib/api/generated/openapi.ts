@@ -11177,9 +11177,9 @@ export interface components {
        */
       cache_read?: number | null;
       /**
-       * @description Tiered pricing that applies above certain context thresholds.
-       *     When present, the base cost fields apply up to the tier threshold,
-       *     and each tier's costs apply for tokens beyond that threshold.
+       * @description Tiered pricing that applies when prompt tokens exceed context thresholds.
+       *     When present, the highest matching tier replaces the base rates for the
+       *     whole request.
        */
       cost_tiers?: components["schemas"]["CostTier"][];
       /**
