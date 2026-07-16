@@ -18,7 +18,7 @@ name = "generic_evals"
 path = "src/main.rs"
 
 [dependencies]
-mira-eval = "0.3"
+mira-eval = "0.4"
 everruns-core = { path = "../../crates/core" }
 everruns-runtime = { path = "../../crates/runtime" }
 everruns-anthropic = { path = "../../crates/anthropic" }
