@@ -34,7 +34,9 @@ use crate::session_task::{
     TaskMessage, TaskWakePolicy, task_message_text,
 };
 use crate::tool_types::ToolHints;
-use crate::tools::{Tool, ToolExecutionResult};
+use crate::tools::{
+    BackgroundRunPermit, Tool, ToolExecutionResult, try_acquire_background_run_permit,
+};
 use crate::traits::{SessionStore, SpawnClaimResult, ToolContext};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
@@ -1027,6 +1029,13 @@ async fn spawn_agent_subagent_impl(
                         .await);
                     }
                     SpawnMode::Background => {
+                        let background_run_permit =
+                            match try_acquire_background_run_permit(context.session_id) {
+                                Ok(permit) => permit,
+                                Err(message) => {
+                                    return Ok(ToolExecutionResult::tool_error(message));
+                                }
+                            };
                         // Re-arm the detached watcher so the task still settles;
                         // the instructions were already sent on the first claim.
                         spawn_background_watcher(
@@ -1037,6 +1046,7 @@ async fn spawn_agent_subagent_impl(
                             task_id.clone(),
                             task_attempt,
                             Some(stored_claim_token),
+                            background_run_permit,
                         );
                         return Ok(background_running_result(
                             child_session_id,
@@ -1158,6 +1168,15 @@ async fn spawn_create_and_wait(
         uuid::Uuid,
     )>,
 ) -> ToolExecutionResult {
+    let background_run_permit = if mode == SpawnMode::Background {
+        match try_acquire_background_run_permit(context.session_id) {
+            Ok(permit) => Some(permit),
+            Err(message) => return ToolExecutionResult::tool_error(message),
+        }
+    } else {
+        None
+    };
+
     let Some(session_store) = context.session_store.as_ref() else {
         return ToolExecutionResult::tool_error("Subagent spawn requires session_store context");
     };
@@ -1331,6 +1350,7 @@ async fn spawn_create_and_wait(
             task_id.clone(),
             task_attempt,
             wait_settle_ctx.map(|(_, _, claim_token)| claim_token),
+            background_run_permit.expect("background permit acquired for background mode"),
         );
         return background_running_result(child_session.id, name, &task_id, blueprint_param);
     }
@@ -1518,10 +1538,12 @@ fn spawn_background_watcher(
     task_id: Option<String>,
     task_attempt: i32,
     claim_token: Option<uuid::Uuid>,
+    background_run_permit: BackgroundRunPermit,
 ) {
     let context = context.clone();
     let name = name.to_string();
     tokio::spawn(async move {
+        let _background_run_permit = background_run_permit;
         let Some(store) = context.platform_store.clone() else {
             // Callers only enter background mode with a platform store wired.
             return;
@@ -3314,6 +3336,42 @@ mod tests {
         assert_eq!(task.spec["mode"], "background");
         // Summary carries the child's last agent message.
         assert_eq!(task.summary.as_deref(), Some("Hi!"));
+    }
+
+    #[tokio::test]
+    async fn background_spawn_rejects_when_session_active_run_limit_reached() {
+        let store = Arc::new(MockPlatformStore::new());
+        *store.wait_for_idle_status.lock().unwrap() = "paused".to_string();
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let context = spawn_context(&store, Some(registry));
+
+        for index in 0..crate::tools::MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION {
+            let result = spawn(
+                &context,
+                json!({
+                    "name": format!("Runner {index}"),
+                    "instructions": "go",
+                }),
+            )
+            .await;
+            let ToolExecutionResult::Success(value) = result else {
+                panic!("background spawn below the session limit should start: {result:?}");
+            };
+            assert_eq!(value["status"], "running");
+        }
+
+        let result = spawn(
+            &context,
+            json!({
+                "name": "Runner over limit",
+                "instructions": "go",
+            }),
+        )
+        .await;
+        let ToolExecutionResult::ToolError(message) = result else {
+            panic!("background spawn should reject once the session limit is reached: {result:?}");
+        };
+        assert!(message.contains("active background runs per session"));
     }
 
     #[tokio::test]
