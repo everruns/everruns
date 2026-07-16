@@ -324,7 +324,13 @@ fn classify_runtime_error(message: &str) -> ErrorKind {
         "budget",
         "billing",
         "out of credit",
+        "more credits",
+        "credit balance",
+        "payment required",
+        "402",
         "insufficient funds",
+        "insufficient_quota",
+        "quota",
         "service unavailable",
         "503",
         "502",
@@ -394,6 +400,24 @@ mod tests {
     fn unsupported_provider_is_rejected() {
         let err = resolved_model(&Target::new("x", "acme", "m")).unwrap_err();
         assert!(err.contains("unsupported provider"));
+    }
+
+    #[test]
+    fn billing_and_quota_errors_are_infra() {
+        // Observed verbatim from providers mid-run; billing is never the
+        // model's fault, so these must score N/A (and retry), not fail.
+        for msg in [
+            "OpenAI Responses API error (402 Payment Required): {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens.\"}}",
+            "insufficient_quota: You exceeded your current quota, please check your plan and billing details.",
+            "Anthropic API error (400 Bad Request): Your credit balance is too low to access the Anthropic API.",
+        ] {
+            assert_eq!(classify_runtime_error(msg), ErrorKind::Infra, "{msg}");
+        }
+        // A genuine capability gap stays a real, scoreable failure.
+        assert_eq!(
+            classify_runtime_error("404 Not Found: No endpoints found that support image input"),
+            ErrorKind::Subject
+        );
     }
 
     #[test]
