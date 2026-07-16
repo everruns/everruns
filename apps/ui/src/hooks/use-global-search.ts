@@ -14,6 +14,7 @@
  * 10. Evals (client-side filter over cached list)
  * 11. Apps (client-side filter over cached list)
  * 12. Agent Identities (client-side filter over cached list)
+ * 13. Memories, knowledge indexes, plugins, observers, and saved reports
  *
  * All entity searches are client-side over already-fetched React Query data.
  * Backend search endpoints are available for server-side filtering when needed.
@@ -41,6 +42,12 @@ import {
   Cpu,
   HardDrive,
   Building2,
+  ChartColumn,
+  Waypoints,
+  Library,
+  Telescope,
+  WalletCards,
+  CircuitBoard,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
@@ -52,6 +59,11 @@ import { useCapabilities, useDeclarativeCapabilities } from "@/hooks/use-capabil
 import { useEvals } from "@/hooks/use-evals";
 import { useApps } from "@/hooks/use-apps";
 import { useAgentIdentities } from "@/hooks/use-agent-identities";
+import { useMemories } from "@/hooks/use-memory";
+import { useKnowledgeIndexes } from "@/hooks/use-knowledge-indexes";
+import { useInstalledPlugins } from "@/hooks/use-plugins";
+import { useObservers } from "@/hooks/use-observers";
+import { useSavedReports } from "@/hooks/use-reporting";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import { localizedCapabilityName } from "@/lib/capability-localization";
 import { useLocale } from "@/providers/locale-provider";
@@ -69,6 +81,11 @@ export type SearchResultCategory =
   | "capability"
   | "app"
   | "eval"
+  | "memory"
+  | "knowledge_index"
+  | "plugin"
+  | "observer"
+  | "report"
   | "organization"
   | "id";
 
@@ -102,6 +119,18 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     href: "/sessions",
     icon: MessageSquare,
     keywords: ["chat", "conversation"],
+  },
+  {
+    title: "Reports",
+    href: "/reports",
+    icon: ChartColumn,
+    keywords: ["analytics", "saved report"],
+  },
+  {
+    title: "Work",
+    href: "/work",
+    icon: Waypoints,
+    keywords: ["tasks", "delegation"],
   },
   {
     title: "Chat",
@@ -140,12 +169,24 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     keywords: ["workspace", "files", "storage"],
   },
   {
+    title: "Knowledge Indexes",
+    href: "/knowledge-indexes",
+    icon: Library,
+    keywords: ["knowledge", "index", "search", "retrieval"],
+  },
+  {
     title: "Models",
     href: "/models",
     icon: Cpu,
     keywords: ["llm", "openai", "anthropic", "default model"],
   },
   { title: "Capabilities", href: "/capabilities", icon: Puzzle },
+  {
+    title: "Plugins",
+    href: "/plugins",
+    icon: Puzzle,
+    keywords: ["marketplace", "extension", "integration"],
+  },
   {
     title: "Apps",
     href: "/apps",
@@ -157,6 +198,12 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     href: "/evals",
     icon: FlaskConical,
     keywords: ["evaluation", "test", "benchmark", "score"],
+  },
+  {
+    title: "Observers",
+    href: "/observers",
+    icon: Telescope,
+    keywords: ["monitor", "score", "production eval"],
   },
   {
     title: "MCP Servers",
@@ -221,6 +268,12 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     keywords: ["feature", "flags", "experimental", "opt-in", "beta"],
   },
   {
+    title: "Settings > Payments",
+    href: "/settings/payments",
+    icon: WalletCards,
+    keywords: ["wallet", "spend", "billing"],
+  },
+  {
     title: "Durable Execution",
     href: "/durable",
     icon: Cog,
@@ -230,23 +283,42 @@ const NAVIGATION_PAGES: NavigationPage[] = [
   { title: "Durable > Workflows", href: "/durable/workflows", icon: Workflow },
   { title: "Durable > Queues", href: "/durable/queues", icon: ListTodo },
   { title: "Durable > Schedules", href: "/durable/schedules", icon: Calendar },
+  {
+    title: "Durable > Circuit Breakers",
+    href: "/durable/circuit-breakers",
+    icon: CircuitBoard,
+    keywords: ["failure", "resilience"],
+  },
   { title: "Dev Tools", href: "/dev", icon: FlaskConical },
 ];
 
 /** Known ID prefixes and where they resolve. */
 const ID_PREFIX_MAP: Record<
   string,
-  { category: SearchResultCategory; label: string; path: string }
+  { category: SearchResultCategory; label: string; path: string; listOnly?: boolean }
 > = {
   agent_: { category: "agent", label: "Agent", path: "/agents" },
   session_: { category: "session", label: "Session", path: "/sessions" },
   harness_: { category: "harness", label: "Harness", path: "/harnesses" },
   skill_: { category: "skill", label: "Skill", path: "/skills" },
-  mcp_: { category: "mcp_server", label: "MCP Server", path: "/mcp-servers" },
-  cap_: { category: "capability", label: "Declarative Capability", path: "/capabilities" },
+  mcp_: {
+    category: "mcp_server",
+    label: "MCP Server",
+    path: "/mcp-servers",
+    listOnly: true,
+  },
+  cap_: {
+    category: "capability",
+    label: "Declarative Capability",
+    path: "/capabilities",
+    listOnly: true,
+  },
   eval_: { category: "eval", label: "Eval", path: "/evals" },
   app_: { category: "app", label: "App", path: "/apps" },
   mem_: { category: "id", label: "Memory", path: "/memory" },
+  kidx_: { category: "knowledge_index", label: "Knowledge Index", path: "/knowledge-indexes" },
+  plugin_: { category: "plugin", label: "Plugin", path: "/plugins", listOnly: true },
+  observer_: { category: "observer", label: "Observer", path: "/observers" },
   identity_: {
     category: "agent_identity",
     label: "Agent Identity",
@@ -273,19 +345,34 @@ const EMPTY_ARRAY: never[] = [];
 export function useGlobalSearch(query: string) {
   const { locale } = useLocale();
   const { currentOrg, organizations, setCurrentOrg } = useOrg();
-  const { data: agentsData } = useAgents();
-  const { data: sessionsData } = useSessions(undefined, { limit: 100 });
-  const { data: harnessesData } = useHarnesses();
-  const { data: skillsData } = useSkills();
-  const { data: mcpServersData } = useMcpServers();
-  const { data: capabilitiesData } = useCapabilities();
-  const { data: declarativeCapabilitiesData } = useDeclarativeCapabilities();
+  const entitySearchEnabled = query.trim().length > 0;
+  const { data: agentsData } = useAgents({ enabled: entitySearchEnabled });
+  const { data: sessionsData } = useSessions(
+    undefined,
+    { limit: 100 },
+    { enabled: entitySearchEnabled },
+  );
+  const { data: harnessesData } = useHarnesses({ enabled: entitySearchEnabled });
+  const { data: skillsData } = useSkills({ enabled: entitySearchEnabled });
+  const { data: mcpServersData } = useMcpServers({ enabled: entitySearchEnabled });
+  const { data: capabilitiesData } = useCapabilities({ enabled: entitySearchEnabled });
+  const { data: declarativeCapabilitiesData } = useDeclarativeCapabilities({
+    enabled: entitySearchEnabled,
+  });
   // Evals is an experimental, flag-gated feature; only fetch when enabled to
   // avoid a 404 on every palette open for orgs without the flag.
   const evalsEnabled = useFeatureFlag("evals");
-  const { data: evalsData } = useEvals({ enabled: evalsEnabled });
-  const { data: appsData } = useApps();
-  const { data: agentIdentitiesData } = useAgentIdentities();
+  const { data: evalsData } = useEvals({ enabled: evalsEnabled && entitySearchEnabled });
+  const { data: appsData } = useApps({ enabled: entitySearchEnabled });
+  const { data: agentIdentitiesData } = useAgentIdentities({ enabled: entitySearchEnabled });
+  const { data: memoriesData } = useMemories({ enabled: entitySearchEnabled });
+  const { data: knowledgeIndexesData } = useKnowledgeIndexes({ enabled: entitySearchEnabled });
+  const { data: installedPluginsData } = useInstalledPlugins({ enabled: entitySearchEnabled });
+  const observersEnabled = useFeatureFlag("observers");
+  const { data: observersData } = useObservers({
+    enabled: observersEnabled && entitySearchEnabled,
+  });
+  const { data: savedReportsData } = useSavedReports(entitySearchEnabled);
 
   const agents = agentsData ?? EMPTY_ARRAY;
   const sessions = sessionsData?.data ?? EMPTY_ARRAY;
@@ -297,6 +384,11 @@ export function useGlobalSearch(query: string) {
   const evals = evalsData ?? EMPTY_ARRAY;
   const apps = appsData ?? EMPTY_ARRAY;
   const agentIdentities = agentIdentitiesData ?? EMPTY_ARRAY;
+  const memories = memoriesData ?? EMPTY_ARRAY;
+  const knowledgeIndexes = knowledgeIndexesData ?? EMPTY_ARRAY;
+  const installedPlugins = installedPluginsData ?? EMPTY_ARRAY;
+  const observers = observersData ?? EMPTY_ARRAY;
+  const savedReports = savedReportsData ?? EMPTY_ARRAY;
 
   return useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -346,6 +438,15 @@ export function useGlobalSearch(query: string) {
           resolvedName = apps.find((a) => a.id === idValue)?.name;
         } else if (prefix === "identity_") {
           resolvedName = agentIdentities.find((ai) => ai.id === idValue)?.name;
+        } else if (prefix === "mem_") {
+          resolvedName = memories.find((memory) => memory.id === idValue)?.name;
+        } else if (prefix === "kidx_") {
+          resolvedName = knowledgeIndexes.find((index) => index.id === idValue)?.name;
+        } else if (prefix === "plugin_") {
+          const plugin = installedPlugins.find((candidate) => candidate.id === idValue);
+          resolvedName = plugin?.display_name ?? plugin?.name;
+        } else if (prefix === "observer_") {
+          resolvedName = observers.find((observer) => observer.id === idValue)?.name;
         }
 
         results.push({
@@ -354,7 +455,7 @@ export function useGlobalSearch(query: string) {
           icon: Boxes,
           title: resolvedName ? `${meta.label}: ${resolvedName}` : `Go to ${meta.label}`,
           subtitle: idValue,
-          href: prefix === "cap_" ? meta.path : `${meta.path}/${idValue}`,
+          href: meta.listOnly ? meta.path : `${meta.path}/${idValue}`,
         });
       }
     }
@@ -617,6 +718,94 @@ export function useGlobalSearch(query: string) {
       }
     }
 
+    // 13. Memories
+    let memoryCount = 0;
+    for (const memory of memories) {
+      if (memoryCount >= MAX_PER_CATEGORY) break;
+      if (matchesTokens(tokens, memory.name, memory.description, memory.id, "memory")) {
+        results.push({
+          id: `memory:${memory.id}`,
+          category: "memory",
+          icon: HardDrive,
+          title: memory.name,
+          subtitle: `Memory > ${memory.name}`,
+          href: `/memory/${memory.id}`,
+        });
+        memoryCount++;
+      }
+    }
+
+    // 14. Knowledge indexes
+    let knowledgeIndexCount = 0;
+    for (const index of knowledgeIndexes) {
+      if (knowledgeIndexCount >= MAX_PER_CATEGORY) break;
+      if (
+        matchesTokens(tokens, index.name, index.description, index.id, "knowledge index retrieval")
+      ) {
+        results.push({
+          id: `knowledge-index:${index.id}`,
+          category: "knowledge_index",
+          icon: Library,
+          title: index.name,
+          subtitle: `Knowledge Indexes > ${index.name}`,
+          href: `/knowledge-indexes/${index.id}`,
+        });
+        knowledgeIndexCount++;
+      }
+    }
+
+    // 15. Installed plugins
+    let pluginCount = 0;
+    for (const plugin of installedPlugins) {
+      if (pluginCount >= MAX_PER_CATEGORY) break;
+      const title = plugin.display_name ?? plugin.name;
+      if (matchesTokens(tokens, plugin.name, title, plugin.description, plugin.id, "plugin")) {
+        results.push({
+          id: `plugin:${plugin.id}`,
+          category: "plugin",
+          icon: Puzzle,
+          title,
+          subtitle: `Plugins > ${title}`,
+          href: "/plugins",
+        });
+        pluginCount++;
+      }
+    }
+
+    // 16. Observers
+    let observerCount = 0;
+    for (const observer of observers) {
+      if (observerCount >= MAX_PER_CATEGORY) break;
+      if (matchesTokens(tokens, observer.name, observer.description, observer.id, "observer")) {
+        results.push({
+          id: `observer:${observer.id}`,
+          category: "observer",
+          icon: Telescope,
+          title: observer.name,
+          subtitle: `Observers > ${observer.name}`,
+          href: `/observers/${observer.id}`,
+        });
+        observerCount++;
+      }
+    }
+
+    // 17. Saved reports
+    let reportCount = 0;
+    for (const report of savedReports) {
+      if (reportCount >= MAX_PER_CATEGORY) break;
+      if (matchesTokens(tokens, report.name, report.description, report.id, "saved report")) {
+        results.push({
+          id: `report:${report.id}`,
+          category: "report",
+          icon: ChartColumn,
+          title: report.name,
+          subtitle: `Reports > ${report.name}`,
+          href: "/reports",
+        });
+        reportCount++;
+      }
+    }
+
     return results;
   }, [
     query,
@@ -634,5 +823,10 @@ export function useGlobalSearch(query: string) {
     evals,
     apps,
     agentIdentities,
+    memories,
+    knowledgeIndexes,
+    installedPlugins,
+    observers,
+    savedReports,
   ]);
 }

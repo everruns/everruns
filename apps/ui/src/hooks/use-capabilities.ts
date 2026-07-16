@@ -23,14 +23,14 @@ import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
 import { useResourceOrgFallback } from "./use-resource-org-fallback";
 
-export function useCapabilities() {
+export function useCapabilities(options: { enabled?: boolean } = {}) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
     queryKey: ["capabilities", org],
     queryFn: () => listCapabilities(),
-    enabled: !!org,
+    enabled: !!org && (options.enabled ?? true),
   });
 
   // Include org loading state so pages show skeleton while org initializes
@@ -63,14 +63,14 @@ export function useCapability(capabilityId: CapabilityId | undefined) {
   };
 }
 
-export function useDeclarativeCapabilities() {
+export function useDeclarativeCapabilities(options: { enabled?: boolean } = {}) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
     queryKey: [...queryKeys.declarativeCapabilities.list(), org],
     queryFn: () => listDeclarativeCapabilities(),
-    enabled: !!org,
+    enabled: !!org && (options.enabled ?? true),
   });
 
   return {
