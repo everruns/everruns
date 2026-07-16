@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { NewAgentLink } from "@/components/dashboard/new-agent-link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EntityCard } from "@/components/ui/entity-card";
 import { Badge } from "@/components/ui/badge";
@@ -33,21 +34,21 @@ export function AgentListWidget({ agents, allCapabilities }: AgentListWidgetProp
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <CardTitle>Active Agents</CardTitle>
-        <Link href="/agents/new">
+        <NewAgentLink>
           <Button variant="accent" size="sm">
             <Plus className="icon-sharp mr-1 h-4 w-4" />
             New Agent
           </Button>
-        </Link>
+        </NewAgentLink>
       </CardHeader>
       <CardContent>
         {activeAgents.length === 0 ? (
           <div className="text-center py-8">
             <Boxes className="icon-sharp mx-auto mb-2 h-12 w-12 text-muted-foreground" />
             <p className="text-muted-foreground">No agents yet.</p>
-            <Link href="/agents/new">
+            <NewAgentLink>
               <Button variant="link">Create your first agent</Button>
-            </Link>
+            </NewAgentLink>
           </div>
         ) : (
           <div className="space-y-3">

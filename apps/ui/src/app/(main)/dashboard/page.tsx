@@ -25,7 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { AgentSelect } from "@/components/agent/agent-select";
-import Link from "next/link";
+import { NewAgentLink } from "@/components/dashboard/new-agent-link";
 import { Button } from "@/components/ui/button";
 import { Plus, LayoutDashboard } from "lucide-react";
 import { PageContainer, PageMasthead } from "@/components/layout";
@@ -139,12 +139,12 @@ export default function DashboardPage() {
                   New Session
                 </Button>
               )}
-              <Link href="/agents/new" className="block">
+              <NewAgentLink className="block">
                 <Button variant="outline" className="w-full justify-start">
                   <Plus className="h-4 w-4 mr-2" />
                   New Agent
                 </Button>
-              </Link>
+              </NewAgentLink>
             </CardContent>
           </Card>
         </div>
