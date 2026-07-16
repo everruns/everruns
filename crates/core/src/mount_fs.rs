@@ -330,6 +330,18 @@ fn join_backend_path(backend_root: &str, rest: &str) -> String {
     format!("{backend_root}{rest}")
 }
 
+/// Render a canonical backend key literally under that backend's display root.
+fn display_backend_path(display_root: &str, path: &str) -> String {
+    let normalized = normalize_virtual(path, "/");
+    if normalized == "/" {
+        display_root.to_string()
+    } else if display_root == "/" {
+        normalized
+    } else {
+        format!("{}{normalized}", display_root.trim_end_matches('/'))
+    }
+}
+
 #[async_trait]
 impl SessionFileSystem for MountFs {
     fn display_root(&self) -> String {
@@ -341,19 +353,34 @@ impl SessionFileSystem for MountFs {
     }
 
     fn resolve_path(&self, input: &str) -> String {
-        // Keep the model-facing namespace stable and host-agnostic. Real-disk
-        // backends may expose host paths directly, but MountFs is the boundary
-        // used by agent-visible file tools and bash.
-        self.display_path(input)
+        // Resolve the raw input through the mount table, then render the
+        // resolved backend key literally under the host-agnostic /workspace
+        // namespace. Prefixing the backend key (instead of re-stripping the
+        // mount) keeps a literal `workspace/…` backend segment distinct from
+        // the `/workspace` mount alias, so a displayed path round-trips to the
+        // same backend key. Using WORKSPACE_MOUNT — not a backend-derived
+        // display root — keeps this independent of real-disk host paths (#2776).
+        let virtual_path = normalize_virtual(input, &self.cwd());
+        match self.resolve(&virtual_path) {
+            Ok(resolved) if resolved.primary_workspace => {
+                display_backend_path(WORKSPACE_MOUNT, &resolved.backend_path)
+            }
+            _ => virtual_path,
+        }
     }
 
     fn display_path(&self, path: &str) -> String {
-        let virtual_path = normalize_virtual(path, &self.cwd());
+        // `path` here is an already-canonical virtual output path (a resolved
+        // `file.path`, i.e. a backend key in the primary namespace, or a named
+        // mount's virtual path). Normalize at root — NOT cwd — so we treat it as
+        // a canonical key and don't inject the `/workspace` cwd alias. Then:
+        //  - named mounts: return as-is (already in their mounted namespace),
+        //  - primary: prefix literally under /workspace so a literal `workspace/…`
+        //    backend segment stays distinct from the mount alias and round-trips.
+        let virtual_path = normalize_virtual(path, "/");
         match self.resolve(&virtual_path) {
-            Ok(resolved) if resolved.primary_workspace => {
-                crate::session_path::to_display_path(&resolved.backend_path)
-            }
-            _ => virtual_path,
+            Ok(resolved) if !resolved.primary_workspace => virtual_path,
+            _ => display_backend_path(WORKSPACE_MOUNT, &virtual_path),
         }
     }
 
@@ -784,6 +811,31 @@ mod tests {
         assert_eq!(fs.display_path("/src/lib.rs"), "/workspace/src/lib.rs");
         assert_eq!(fs.display_path("/"), "/workspace");
         assert_eq!(fs.resolve_path("src/lib.rs"), "/workspace/src/lib.rs");
+    }
+
+    #[tokio::test]
+    async fn display_preserves_literal_backend_workspace_segment() {
+        let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore::default());
+        backend
+            .write_file(sid(), "/workspace/collide.txt", "literal", "text")
+            .await
+            .unwrap();
+        backend
+            .write_file(sid(), "/collide.txt", "alias", "text")
+            .await
+            .unwrap();
+        let fs = MountFs::new(backend);
+
+        let literal = fs
+            .read_file(sid(), "workspace/collide.txt")
+            .await
+            .unwrap()
+            .unwrap();
+        let display_path = fs.display_path(&literal.path);
+        assert_eq!(display_path, "/workspace/workspace/collide.txt");
+
+        let round_trip = fs.read_file(sid(), &display_path).await.unwrap().unwrap();
+        assert_eq!(round_trip.content.as_deref(), Some("literal"));
     }
 
     #[tokio::test]

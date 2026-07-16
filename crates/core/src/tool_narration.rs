@@ -32,8 +32,8 @@ pub enum ToolNarrationPhase {
 
 /// Optional execution context for path-bearing tool narration.
 ///
-/// When a [`SessionFileSystem`] is present, path-bearing helpers render through
-/// its `display_path` contract so narration matches tool results.
+/// When a [`SessionFileSystem`] is present, path-bearing helpers resolve input
+/// through its path contract so narration matches tool results.
 #[derive(Clone, Copy, Default)]
 pub struct ToolNarrationContext<'a> {
     pub file_store: Option<&'a dyn SessionFileSystem>,
@@ -236,7 +236,11 @@ pub fn present_filesystem_path(
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .unwrap_or(WORKSPACE_PREFIX);
-        return store.display_path(raw);
+        return if store.is_mount_resolver() {
+            store.resolve_path(raw)
+        } else {
+            store.display_path(raw)
+        };
     }
     location_phrase_from_raw(input, locale)
 }
