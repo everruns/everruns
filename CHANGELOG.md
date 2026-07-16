@@ -9,6 +9,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.17.10] - 2026-07-16
+
+### Highlights
+
+- **Expanded global search** — Global search now covers more of the workspace, so results surface across more session and content types ([#2810](https://github.com/everruns/everruns/pull/2810)).
+- **Resend email plugin & plugin MCP OAuth** — New Resend OAuth email plugin, plus OAuth support for plugin-provided MCP servers ([#2808](https://github.com/everruns/everruns/pull/2808)).
+- **Web fetch on fetchkit 0.5** — The web-fetch tool adopts fetchkit 0.5 capabilities ([#2807](https://github.com/everruns/everruns/pull/2807)).
+- **Live reasoning stream** — Streamed phase hints on message start/delta and projected `reason.item` summaries into the reasoning channel make in-progress model reasoning more visible ([#2804](https://github.com/everruns/everruns/pull/2804), [#2803](https://github.com/everruns/everruns/pull/2803)).
+
+### What's Changed
+
+- feat(ui): expand global search coverage ([#2810](https://github.com/everruns/everruns/pull/2810)) by [@chaliy](https://github.com/chaliy)
+- feat(plugins): Resend OAuth email plugin + plugin MCP OAuth support ([#2808](https://github.com/everruns/everruns/pull/2808)) by [@chaliy](https://github.com/chaliy)
+- feat(web-fetch): adopt fetchkit 0.5 features ([#2807](https://github.com/everruns/everruns/pull/2807)) by [@chaliy](https://github.com/chaliy)
+- feat(core): streamed phase hint on output.message started/delta ([#2804](https://github.com/everruns/everruns/pull/2804)) by [@chaliy](https://github.com/chaliy)
+- feat(server): project reason.item summaries to reasoning channel ([#2803](https://github.com/everruns/everruns/pull/2803)) by [@chaliy](https://github.com/chaliy)
+- feat(filesystem): return bounded grep context by [@chaliy](https://github.com/chaliy)
+- perf(api): compress non-streaming responses ([#2811](https://github.com/everruns/everruns/pull/2811)) by [@chaliy](https://github.com/chaliy)
+- perf(ui): scope sidebar prefetch to intent ([#2809](https://github.com/everruns/everruns/pull/2809)) by [@chaliy](https://github.com/chaliy)
+- perf(agent): teach shared hints single-read/contextual-search policy ([#2805](https://github.com/everruns/everruns/pull/2805)) by [@chaliy](https://github.com/chaliy)
+- fix(session-files): keep grep available by redacting private memory ([#2801](https://github.com/everruns/everruns/pull/2801)) by [@chaliy](https://github.com/chaliy)
+- fix(runtime): honor grep files regex contract ([#2800](https://github.com/everruns/everruns/pull/2800)) by [@chaliy](https://github.com/chaliy)
+- fix(agents): restore harness on version rollback ([#2797](https://github.com/everruns/everruns/pull/2797)) by [@chaliy](https://github.com/chaliy)
+- fix(subagents): guard report_result task finalization ([#2796](https://github.com/everruns/everruns/pull/2796)) by [@chaliy](https://github.com/chaliy)
+- fix(providers): validate KB embedding provider service ([#2795](https://github.com/everruns/everruns/pull/2795)) by [@chaliy](https://github.com/chaliy)
+- fix(session-tasks): restrict scheduled probe tools ([#2794](https://github.com/everruns/everruns/pull/2794)) by [@chaliy](https://github.com/chaliy)
+- fix(harnesses): bound embedder metadata ([#2793](https://github.com/everruns/everruns/pull/2793)) by [@chaliy](https://github.com/chaliy)
+- fix(core): reject malformed legacy edit scalars ([#2792](https://github.com/everruns/everruns/pull/2792)) by [@chaliy](https://github.com/chaliy)
+- fix(core): preserve accumulator effective cost ([#2791](https://github.com/everruns/everruns/pull/2791)) by [@chaliy](https://github.com/chaliy)
+- fix(server): reconcile canceled one-shot monitors ([#2790](https://github.com/everruns/everruns/pull/2790)) by [@chaliy](https://github.com/chaliy)
+- test(durable): make counter reset atomic ([#2789](https://github.com/everruns/everruns/pull/2789)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): require tasks opt-in for task methods ([#2788](https://github.com/everruns/everruns/pull/2788)) by [@chaliy](https://github.com/chaliy)
+- fix(core): require spawn_agent target fields ([#2787](https://github.com/everruns/everruns/pull/2787)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): seed participant agent versions ([#2786](https://github.com/everruns/everruns/pull/2786)) by [@chaliy](https://github.com/chaliy)
+- fix(reporting): guard malformed usage records ([#2785](https://github.com/everruns/everruns/pull/2785)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): clear signup return_to after instant auth ([#2784](https://github.com/everruns/everruns/pull/2784)) by [@chaliy](https://github.com/chaliy)
+- fix(llm): enforce model speed tier support ([#2783](https://github.com/everruns/everruns/pull/2783)) by [@chaliy](https://github.com/chaliy)
+- fix(worker): preserve non-wake durable signals ([#2782](https://github.com/everruns/everruns/pull/2782)) by [@chaliy](https://github.com/chaliy)
+- fix(core): accept legacy A2A wait run records ([#2781](https://github.com/everruns/everruns/pull/2781)) by [@chaliy](https://github.com/chaliy)
+- fix(server): remove org feature flag read cache ([#2780](https://github.com/everruns/everruns/pull/2780)) by [@chaliy](https://github.com/chaliy)
+- fix(evals): validate imported attribution urls ([#2777](https://github.com/everruns/everruns/pull/2777)) by [@chaliy](https://github.com/chaliy)
+- fix(fs): keep mounted display paths host-agnostic ([#2776](https://github.com/everruns/everruns/pull/2776)) by [@chaliy](https://github.com/chaliy)
+- fix(providers): block unsafe trace links ([#2775](https://github.com/everruns/everruns/pull/2775)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): restore endpoint feature gate ([#2774](https://github.com/everruns/everruns/pull/2774)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): pin design lint dependency ([#2773](https://github.com/everruns/everruns/pull/2773)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): reject duplicate routing headers ([#2772](https://github.com/everruns/everruns/pull/2772)) by [@chaliy](https://github.com/chaliy)
+- fix(storage): avoid deleting reusable file blob keys ([#2771](https://github.com/everruns/everruns/pull/2771)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): scope HTTP negotiation cache ([#2770](https://github.com/everruns/everruns/pull/2770)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): bound eval run comparison inputs ([#2768](https://github.com/everruns/everruns/pull/2768)) by [@chaliy](https://github.com/chaliy)
+- fix(core): prevent host-scope symlink escapes ([#2767](https://github.com/everruns/everruns/pull/2767)) by [@chaliy](https://github.com/chaliy)
+- fix(public-chat): bind sessions to visitor identity ([#2766](https://github.com/everruns/everruns/pull/2766)) by [@chaliy](https://github.com/chaliy)
+- fix(subagents): cap background watcher concurrency ([#2765](https://github.com/everruns/everruns/pull/2765)) by [@chaliy](https://github.com/chaliy)
+- fix(apps): reject future cron bursts ([#2764](https://github.com/everruns/everruns/pull/2764)) by [@chaliy](https://github.com/chaliy)
+- fix(bashkit): stream capped HTTP responses ([#2763](https://github.com/everruns/everruns/pull/2763)) by [@chaliy](https://github.com/chaliy)
+- fix(drivers): bound streaming reconnect first item wait ([#2762](https://github.com/everruns/everruns/pull/2762)) by [@chaliy](https://github.com/chaliy)
+- fix(core): fence subagent progress attempts ([#2761](https://github.com/everruns/everruns/pull/2761)) by [@chaliy](https://github.com/chaliy)
+- fix(subagents): gate session overrides as high risk ([#2760](https://github.com/everruns/everruns/pull/2760)) by [@chaliy](https://github.com/chaliy)
+- fix(subagents): serialize spawn admission ([#2759](https://github.com/everruns/everruns/pull/2759)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): require agent permission for agent sessions ([#2757](https://github.com/everruns/everruns/pull/2757)) by [@chaliy](https://github.com/chaliy)
+- fix(models): apply tiered cost estimates ([#2755](https://github.com/everruns/everruns/pull/2755)) by [@chaliy](https://github.com/chaliy)
+- fix(core): keep spawn_agent schema free of top-level oneOf ([#2806](https://github.com/everruns/everruns/pull/2806)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.9] - 2026-07-14
 
 ### Highlights
