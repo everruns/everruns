@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use everruns_core::traits::SessionFileSystem;
 use everruns_core::typed_id::SessionId;
+use everruns_core::{GREP_MAX_RETURN_BYTES, GrepOptions};
 use everruns_runtime::{InMemorySessionFileStore, RealDiskFileStore};
 use tempfile::TempDir;
 
@@ -72,6 +73,64 @@ async fn assert_regex_contract(store: Arc<dyn SessionFileSystem>) {
     assert_eq!(literal.len(), 1);
     assert_eq!(literal[0].path, "/src/app.log");
     assert_eq!(literal[0].line_number, 2);
+
+    let contextual = store
+        .grep_files_with_options(
+            session,
+            "Error|timeout",
+            &GrepOptions {
+                path_pattern: Some("src/app.log".to_string()),
+                before_context: 1,
+                after_context: 1,
+                offset: 0,
+                limit: 2,
+                max_bytes: GREP_MAX_RETURN_BYTES,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(contextual.total_matches, 2);
+    assert_eq!(contextual.returned_matches, 2);
+    assert_eq!(contextual.blocks.len(), 1);
+    let block = &contextual.blocks[0];
+    assert_eq!(block.start_line, 1);
+    assert_eq!(block.end_line, 3);
+    assert_eq!(block.match_line_numbers, vec![1, 3]);
+    assert_eq!(
+        block
+            .lines
+            .iter()
+            .map(|line| (line.line_number, line.is_match))
+            .collect::<Vec<_>>(),
+        vec![(1, true), (2, false), (3, true)]
+    );
+
+    let paged = store
+        .grep_files_with_options(
+            session,
+            "Error|failed|timeout",
+            &GrepOptions {
+                path_pattern: None,
+                before_context: 1,
+                after_context: 1,
+                offset: 1,
+                limit: 1,
+                max_bytes: GREP_MAX_RETURN_BYTES,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(paged.returned_matches, 1);
+    assert_eq!(paged.next_offset, Some(2));
+    assert_eq!(
+        paged
+            .blocks
+            .iter()
+            .flat_map(|block| &block.match_line_numbers)
+            .copied()
+            .collect::<Vec<_>>(),
+        vec![1]
+    );
 }
 
 #[tokio::test]

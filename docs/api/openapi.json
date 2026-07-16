@@ -28357,7 +28357,7 @@
             "items": {
               "$ref": "#/components/schemas/CostTier"
             },
-            "description": "Tiered pricing that applies above certain context thresholds.\nWhen present, the base cost fields apply up to the tier threshold,\nand each tier's costs apply for tokens beyond that threshold."
+            "description": "Tiered pricing that applies when prompt tokens exceed context thresholds.\nWhen present, the highest matching tier replaces the base rates for the\nwhole request."
           },
           "input": {
             "type": "number",
@@ -29059,6 +29059,17 @@
             "type": "string",
             "description": "The new text chunk"
           },
+          "phase": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutionPhase",
+                "description": "Best-effort streamed phase hint (EVE-774).\n\n`None` means \"not yet classified — treat as ordinary assistant text\",\nNEVER \"thinking\". Refinement is monotonic: once a stream reveals a native\nphase (`Commentary` or `FinalAnswer`) it stays fixed for the rest of the\nmessage — it never flip-flops and never reverts to `None`\n(see `ExecutionPhase::refine_streamed_hint`). Providers without native\nmid-stream phase (Anthropic, Gemini, …) leave this `None` until\ncompletion. The authoritative classification remains the completed\n`Message.phase`. See `specs/events.md`."
+              }
+            ]
+          },
           "turn_id": {
             "type": "string",
             "description": "Turn ID this delta belongs to",
@@ -29122,6 +29133,17 @@
               "null"
             ],
             "description": "Optional model name being used"
+          },
+          "phase": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ExecutionPhase",
+                "description": "Best-effort streamed phase hint (EVE-774).\n\n`None` means \"not yet classified — treat as ordinary assistant text\",\nNEVER \"thinking\". A missing/unknown phase must fall back to the\nassistant-text channel, never the reasoning channel. Only populated when\nthe provider stream reveals a native phase before this event is emitted;\ntoday `output.message.started` is emitted before the LLM call, so this is\ngenerally `None` at start. The authoritative classification remains the\ncompleted `Message.phase`. See `specs/events.md`."
+              }
+            ]
           },
           "turn_id": {
             "type": "string",

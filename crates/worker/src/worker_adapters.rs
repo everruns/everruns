@@ -13,7 +13,9 @@ use everruns_core::capabilities::CapabilityRegistry;
 use everruns_core::error::Result;
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::LeasedResource;
-use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
+use everruns_core::session_file::{
+    FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, SessionFile,
+};
 use everruns_core::traits::{
     BudgetChecker, ImageArtifactStore, ImageResolver, LeasedResourceStore, PaymentAuthority,
     ProviderCredentialStore, ResolvedImage, ResolvedModel, SessionCreationAuthority,
@@ -181,6 +183,25 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>>;
+
+    async fn grep_files_with_options(
+        &self,
+        session_id: Uuid,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        if options.before_context != 0 || options.after_context != 0 {
+            return Err(everruns_core::AgentLoopError::tool(
+                "this worker adapter does not support grep context",
+            ));
+        }
+        let matches = self
+            .grep_files(session_id, pattern, options.path_pattern.as_deref())
+            .await?;
+        Ok(everruns_core::session_file::bound_grep_matches(
+            matches, options,
+        ))
+    }
 
     /// Create a directory
     async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo>;
@@ -685,6 +706,17 @@ impl<A: WorkerAdapters> everruns_core::traits::SessionFileSystem for SessionAdap
     ) -> Result<Vec<GrepMatch>> {
         self.adapters
             .grep_files(session_id.uuid(), pattern, path_pattern)
+            .await
+    }
+
+    async fn grep_files_with_options(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        self.adapters
+            .grep_files_with_options(session_id.uuid(), pattern, options)
             .await
     }
 

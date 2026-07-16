@@ -13,7 +13,7 @@ mod tests;
 
 use crate::domains::mcp_servers::McpServerService;
 use crate::domains::session_files::{
-    CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput, WorkspaceFileService,
+    CreateDirectoryInput, CreateFileInput, UpdateFileInput, WorkspaceFileService,
 };
 use crate::domains::sessions::SessionService;
 use crate::services::{CapabilityService, EventService, ProviderResolverService};

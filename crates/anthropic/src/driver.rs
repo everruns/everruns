@@ -561,6 +561,26 @@ impl AnthropicChatDriver {
         (system_prompt, converted)
     }
 
+    /// Anthropic rejects `oneOf`, `allOf`, and `anyOf` at the top level of a
+    /// tool `input_schema` (nested composition is accepted). Tool schemas can
+    /// be caller-supplied JSON Schema (e.g. a spawn_agent `result_schema`
+    /// becomes the child's `report_result` schema verbatim), so drop the
+    /// keywords here instead of failing the whole request with a 400. This
+    /// only loosens what the model sees; execute-time validation still
+    /// enforces the full schema and rejects non-conforming calls.
+    fn sanitize_input_schema(mut schema: Value) -> Value {
+        if let Value::Object(obj) = &mut schema {
+            let mut had_composition = false;
+            for key in ["oneOf", "allOf", "anyOf"] {
+                had_composition |= obj.remove(key).is_some();
+            }
+            if had_composition && !obj.contains_key("type") {
+                obj.insert("type".to_string(), Value::String("object".to_string()));
+            }
+        }
+        schema
+    }
+
     fn convert_tools(
         tools: &[ToolDefinition],
         prompt_cache_enabled: bool,
@@ -573,7 +593,7 @@ impl AnthropicChatDriver {
                 AnthropicToolEntry::Function(AnthropicTool {
                     name: tool.name().to_string(),
                     description: tool.description().to_string(),
-                    input_schema: tool.parameters().clone(),
+                    input_schema: Self::sanitize_input_schema(tool.parameters().clone()),
                     cache_control: (prompt_cache_enabled && index == last_index)
                         .then(AnthropicCacheControl::ephemeral),
                     defer_loading: None,
@@ -631,7 +651,7 @@ impl AnthropicChatDriver {
             entries.push(AnthropicToolEntry::Function(AnthropicTool {
                 name: tool.name().to_string(),
                 description: tool.description().to_string(),
-                input_schema: tool.parameters().clone(),
+                input_schema: Self::sanitize_input_schema(tool.parameters().clone()),
                 cache_control: None,
                 defer_loading: should_defer.then_some(true),
             }));
@@ -2187,6 +2207,62 @@ mod tests {
         assert!(json[0].get("cache_control").is_none());
         assert!(json[1].get("cache_control").is_none());
         assert_eq!(json[2]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_convert_tools_strips_top_level_composition_keywords() {
+        let make_tool = |name: &str, parameters: Value| {
+            ToolDefinition::Builtin(BuiltinTool {
+                name: name.to_string(),
+                display_name: None,
+                description: "test tool".to_string(),
+                parameters,
+                policy: ToolPolicy::Auto,
+                category: None,
+                deferrable: DeferrablePolicy::default(),
+                hints: ToolHints::default(),
+                full_parameters: None,
+            })
+        };
+        let tools = vec![
+            make_tool(
+                "top_level_one_of",
+                json!({
+                    "type": "object",
+                    "properties": {
+                        "target": {
+                            "type": "object",
+                            // Nested composition is accepted by Anthropic and
+                            // must survive.
+                            "oneOf": [{"required": ["id"]}]
+                        }
+                    },
+                    "required": ["target"],
+                    "oneOf": [{"required": ["name"]}],
+                    "anyOf": [{"required": ["name"]}],
+                    "allOf": [{"required": ["name"]}]
+                }),
+            ),
+            // Degenerate caller-supplied schema: nothing but composition.
+            make_tool("bare_any_of", json!({"anyOf": [{"type": "object"}]})),
+        ];
+
+        let converted = AnthropicChatDriver::convert_tools(&tools, false);
+        let json = serde_json::to_value(&converted).unwrap();
+
+        let schema = &json[0]["input_schema"];
+        assert!(schema.get("oneOf").is_none());
+        assert!(schema.get("anyOf").is_none());
+        assert!(schema.get("allOf").is_none());
+        assert_eq!(schema["required"], json!(["target"]));
+        assert_eq!(
+            schema["properties"]["target"]["oneOf"],
+            json!([{"required": ["id"]}])
+        );
+
+        let bare = &json[1]["input_schema"];
+        assert!(bare.get("anyOf").is_none());
+        assert_eq!(bare["type"], "object");
     }
 
     #[test]

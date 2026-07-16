@@ -12,7 +12,10 @@
 use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
 use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
+use everruns_core::session_file::{
+    FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
+    build_grep_search_result,
+};
 use everruns_core::traits::{
     SessionFileSystem, SessionFileSystemFactory, SessionFileSystemFactoryContext,
 };
@@ -603,6 +606,65 @@ impl SessionFileSystem for RealDiskFileStore {
         })
         .await
         .map_err(|e| AgentLoopError::tool(format!("grep walk join failed: {e}")))?
+    }
+
+    async fn grep_files_with_options(
+        &self,
+        _session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        let root = self.root();
+        let regex = Regex::new(pattern)
+            .map_err(|error| AgentLoopError::tool(format!("Invalid regex pattern: {error}")))?;
+        let path_pattern = match options.path_pattern.as_deref() {
+            Some(path) => Some(everruns_core::session_path::GrepPathPattern::new(
+                self.paths.parse_input(path)?.as_relative(),
+            )?),
+            None => None,
+        };
+        let options = options.clone();
+
+        tokio::task::spawn_blocking(move || -> Result<GrepSearchResult> {
+            let mut text_files = Vec::new();
+            let walker = WalkBuilder::new(&root)
+                .hidden(false)
+                .git_ignore(true)
+                .git_global(false)
+                .git_exclude(true)
+                .build();
+            for entry in walker.filter_map(std::result::Result::ok) {
+                if !entry.file_type().is_some_and(|kind| kind.is_file()) {
+                    continue;
+                }
+                let Ok(relative) = entry.path().strip_prefix(&root) else {
+                    continue;
+                };
+                let Some(rel_str) = relative.to_str() else {
+                    continue;
+                };
+                let rel_str = rel_str.replace(std::path::MAIN_SEPARATOR, "/");
+                if path_pattern
+                    .as_ref()
+                    .is_some_and(|matcher| !matcher.is_match(&rel_str))
+                {
+                    continue;
+                }
+                let Ok(bytes) = std::fs::read(entry.path()) else {
+                    continue;
+                };
+                if !SessionFile::is_text_content(&bytes) {
+                    continue;
+                }
+                let Ok(text) = String::from_utf8(bytes) else {
+                    continue;
+                };
+                text_files.push((format!("/{rel_str}"), text));
+            }
+            Ok(build_grep_search_result(text_files, &regex, &options))
+        })
+        .await
+        .map_err(|error| AgentLoopError::tool(format!("grep walk join failed: {error}")))?
     }
 
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {

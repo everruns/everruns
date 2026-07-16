@@ -92,21 +92,27 @@ pub fn output_verbosity_schema() -> serde_json::Value {
     })
 }
 
-/// System prompt hint for exec tool capabilities (EVE-223, EVE-236, EVE-489).
+/// System prompt hint for exec tool capabilities (EVE-223, EVE-236, EVE-489, EVE-778).
 /// Appended to each sandbox capability's `system_prompt_addition()` to guide
-/// the LLM toward less verbose command usage.
+/// the LLM toward less verbose command usage and a single-read/contextual-search
+/// policy for persisted output.
 pub const EXEC_OUTPUT_HINT: &str = "\n\n**Output economy:** The `output` parameter shapes command output (default: `auto` — compact summary on success, ~8 KiB diagnostic window on failure). \
 Persistence-enabled tools save full output to `/outputs/{tool_call_id}.stdout`/`.stderr`; oversized results include an `output_files` array of paths to `read_file` with offset/limit.\n\
 Modes: `auto` (default), `silent` (~200B), `concise` (~2KiB), `normal` (~8KiB), `verbose` (~16KiB), `full` (unlimited).\n\
-`auto` is usually sufficient — check `exit_code` first; use `verbose` or read the persisted files when more detail is needed.";
+`auto` is usually sufficient — check `exit_code` first; use `verbose` or read the persisted files when more detail is needed.\n\
+When the needed filter is known before running a command, apply it in the command itself (e.g. pipe through `grep`) instead of post-filtering persisted output. \
+Read a persisted log at most once: ≤200 lines or ≤64 KiB fits one `read_file` with an ample `limit`; anything larger is one `grep_files` search with context. \
+Never reconstruct a file through sequential or overlapping reads — stop once you have enough diagnostic evidence.";
 
-/// System prompt hint for file reading economy (EVE-244).
+/// System prompt hint for file reading economy (EVE-244, EVE-778).
 /// Appended to the FileSystem capability's `system_prompt_addition()` to guide
-/// the LLM toward efficient file reading with offset/limit pagination.
+/// the LLM toward efficient file reading with offset/limit pagination and a
+/// single complete read for small files.
 pub const READ_ECONOMY_HINT: &str = "\n\n**File reading economy:** `read_file` returns at most 2000 lines by default.\n\
 - Locate the relevant region first with `grep_files`, then read that section with `read_file` using `offset` and `limit`.\n\
 - Use `list_directory` to understand file structure before reading.\n\
-- When a read is truncated, check `total_lines` to see how much remains and continue from `lines_shown.end` on the next call.";
+- When a read is truncated, check `total_lines` to see how much remains and continue from `lines_shown.end` on the next call.\n\
+- Read small files (≤200 lines or ≤64 KiB — most persisted `/outputs/` logs) once with an ample `limit`; search larger ones with a single contextual `grep_files` (`before_context`/`after_context`). Never rebuild a file from sequential or overlapping windows — stop once you have the evidence you need.";
 
 /// Strip ANSI escape sequences from text.
 ///
@@ -1351,6 +1357,49 @@ mod tests {
             output_verbosity_budget("auto"),
             Some(AUTO_SUCCESS_BUDGET),
             "bare `auto` should resolve to the tight success budget, not silently widen to concise"
+        );
+    }
+
+    // ====================================================================
+    // Shared prompt hints (EVE-223, EVE-244, EVE-778)
+    // ====================================================================
+
+    #[test]
+    fn test_exec_output_hint_single_read_policy() {
+        // EVE-778: pre-filter at the source, read persisted output at most
+        // once, never reconstruct via repeated windows, stop on evidence.
+        assert!(EXEC_OUTPUT_HINT.contains("apply it in the command itself"));
+        assert!(EXEC_OUTPUT_HINT.contains("at most once"));
+        assert!(EXEC_OUTPUT_HINT.contains("≤200 lines or ≤64 KiB"));
+        assert!(EXEC_OUTPUT_HINT.contains("`grep_files` search with context"));
+        assert!(EXEC_OUTPUT_HINT.contains("sequential or overlapping reads"));
+        assert!(EXEC_OUTPUT_HINT.contains("stop once you have enough diagnostic evidence"));
+    }
+
+    #[test]
+    fn test_read_economy_hint_single_read_policy() {
+        // EVE-778: one complete read for small files, one contextual grep
+        // for large ones, no window-by-window reconstruction.
+        assert!(READ_ECONOMY_HINT.contains("≤200 lines or ≤64 KiB"));
+        assert!(READ_ECONOMY_HINT.contains("once with an ample `limit`"));
+        assert!(READ_ECONOMY_HINT.contains("`before_context`/`after_context`"));
+        assert!(READ_ECONOMY_HINT.contains("sequential or overlapping windows"));
+    }
+
+    #[test]
+    fn test_prompt_hints_stay_concise() {
+        // The hints ride along in every harness prompt that exposes exec or
+        // filesystem tools; keep them bounded. Ratchet deliberately, in the
+        // same PR that grows them.
+        assert!(
+            EXEC_OUTPUT_HINT.len() <= 1100,
+            "EXEC_OUTPUT_HINT is {} bytes",
+            EXEC_OUTPUT_HINT.len()
+        );
+        assert!(
+            READ_ECONOMY_HINT.len() <= 750,
+            "READ_ECONOMY_HINT is {} bytes",
+            READ_ECONOMY_HINT.len()
         );
     }
 

@@ -291,6 +291,8 @@ Emitted when the LLM starts generating a response. UI can show a "thinking" indi
 
 **`iteration`** (optional, u32): 1-based iteration number within the current turn. Lets the UI show which iteration the agent is on during multi-step tool-calling flows. Only displayed when > 1.
 
+**`phase`** (optional, string — `"commentary"` | `"final_answer"`): best-effort streamed phase hint (EVE-774). This event is emitted *before* the LLM call, so `phase` is generally absent here. When absent it means **"not yet classified — treat as ordinary assistant text"**, NEVER "thinking". See the shared hint semantics under `output.message.delta`.
+
 #### `output.message.delta`
 
 Streaming text update during LLM generation. Events are batched (~100ms) to reduce volume while providing real-time feedback. UI should accumulate deltas or use the `accumulated` field until `output.message.completed` arrives with the final text.
@@ -308,10 +310,18 @@ Streaming text update during LLM generation. Events are batched (~100ms) to redu
   "data": {
     "turn_id": "...",
     "delta": "Hello, ",
-    "accumulated": "Hello, "
+    "accumulated": "Hello, ",
+    "phase": "commentary"
   }
 }
 ```
+
+**`phase`** (optional, string — `"commentary"` | `"final_answer"`): best-effort streamed phase hint (EVE-774) letting consumers classify streamed assistant text as commentary vs final answer *before* `output.message.completed` arrives.
+
+- **Absent = "not yet classified — treat as ordinary assistant text", NEVER "thinking".** A missing/unknown phase must fall back to the assistant-text channel, never the reasoning/thinking channel (the EVE-448 class of bug).
+- **Monotonic refinement only.** Within a single message the hint advances `absent → "commentary" | "final_answer"` at most once and then never changes: it never flip-flops between the two values and never reverts to absent (`ExecutionPhase::refine_streamed_hint` enforces this).
+- **Best-effort, not authoritative.** Only providers whose stream carries a native phase populate it mid-stream — OpenAI Responses exposes it on `response.output_item.added` and the driver surfaces it as a mid-stream stream event. Other providers (Anthropic, Gemini, …) leave it absent until completion. The authoritative classification is always the completed `output.message.completed` `Message.phase`; a consumer that needs certainty waits for that event (unchanged behavior) but may now render optimistically meanwhile.
+- **Not derived from later tool calls.** The streamed hint is never inferred from the subsequent presence of tool calls (the EVE-448 anti-pattern); `ExecutionPhase::from_has_tool_calls` stays a completion-time fallback only.
 
 #### `output.message.replaced`
 

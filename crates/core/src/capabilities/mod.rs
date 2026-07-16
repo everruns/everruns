@@ -1837,48 +1837,48 @@ impl UnifiedSpawnAgentTool {
             .collect()
     }
 
-    fn target_requirement_branches(&self) -> Vec<serde_json::Value> {
+    /// Per-`target.type` constraint branches, nested inside the `target`
+    /// property. Anthropic rejects `oneOf`/`allOf`/`anyOf` at the top level
+    /// of a tool `input_schema`, so provider-specific requirements must live
+    /// below the root (nested composition is accepted).
+    fn target_constraint_branches(&self) -> Vec<serde_json::Value> {
         self.target_types()
             .into_iter()
             .filter_map(|target_type| match target_type {
                 "subagent" => Some(serde_json::json!({
                     "properties": {
-                        "target": {
-                            "properties": {
-                                "type": {"const": "subagent"}
-                            }
-                        }
-                    },
-                    "required": ["name"]
+                        "type": {"const": "subagent"}
+                    }
                 })),
                 "agent" => Some(serde_json::json!({
                     "properties": {
-                        "target": {
-                            "properties": {
-                                "type": {"const": "agent"}
-                            },
-                            "required": ["type", "id"]
-                        }
+                        "type": {"const": "agent"}
                     },
-                    "required": ["name"]
+                    "required": ["type", "id"]
                 })),
                 "external_a2a" => Some(serde_json::json!({
                     "properties": {
-                        "target": {
-                            "properties": {
-                                "type": {"const": "external_a2a"}
-                            },
-                            "anyOf": [
-                                {"required": ["id"]},
-                                {"required": ["external_agent_id"]}
-                            ]
-                        }
-                    }
+                        "type": {"const": "external_a2a"}
+                    },
+                    "anyOf": [
+                        {"required": ["id"]},
+                        {"required": ["external_agent_id"]}
+                    ]
                 })),
                 _ => None,
             })
             .collect()
     }
+
+    // NOTE: subagent and agent providers require `name` at execution
+    // (`require_str`), while external_a2a ignores it. A schema that required
+    // `name` only for the local targets would need a top-level
+    // `oneOf`/`if`/`allOf`, which Anthropic rejects in a tool `input_schema`.
+    // `name` is therefore required at the root unconditionally: requiring a
+    // field external_a2a merely ignores is safe (the schema never permits a
+    // call execution would reject), whereas omitting it would let a
+    // `name`-less subagent call pass validation and then fail at dispatch —
+    // exactly the mismatch #2787 set out to close.
 }
 
 #[async_trait]
@@ -1917,7 +1917,7 @@ impl Tool for UnifiedSpawnAgentTool {
             "properties": {
                 "name": {
                     "type": "string",
-                    "description": "Human-readable name for local subagent or first-party handoff runs. Optional for external A2A targets."
+                    "description": "Human-readable name for the delegated run (subagent, first-party handoff, or external delegation). Used as the task label."
                 },
                 "instructions": {
                     "type": "string",
@@ -1957,6 +1957,7 @@ impl Tool for UnifiedSpawnAgentTool {
                         }
                     },
                     "required": ["type"],
+                    "oneOf": self.target_constraint_branches(),
                     "additionalProperties": false
                 },
                 "mode": {
@@ -1995,8 +1996,7 @@ impl Tool for UnifiedSpawnAgentTool {
                     "description": "External-A2A-only control for background completion wake-ups."
                 }
             },
-            "required": ["instructions", "target"],
-            "oneOf": self.target_requirement_branches(),
+            "required": ["name", "instructions", "target"],
             "additionalProperties": false
         })
     }
@@ -5306,25 +5306,24 @@ mod tests {
             schema["properties"]["target"]["properties"]["type"]["enum"],
             serde_json::json!(["subagent", "agent"])
         );
+        // Anthropic rejects top-level oneOf/allOf/anyOf in input_schema, so
+        // the per-target constraints must live inside the target property.
+        assert!(schema.get("oneOf").is_none());
+        assert!(schema.get("anyOf").is_none());
+        assert!(schema.get("allOf").is_none());
         assert_eq!(
-            schema["oneOf"],
+            schema["required"],
+            serde_json::json!(["name", "instructions", "target"])
+        );
+        assert_eq!(
+            schema["properties"]["target"]["oneOf"],
             serde_json::json!([
                 {
-                    "properties": {
-                        "target": {
-                            "properties": {"type": {"const": "subagent"}}
-                        }
-                    },
-                    "required": ["name"]
+                    "properties": {"type": {"const": "subagent"}}
                 },
                 {
-                    "properties": {
-                        "target": {
-                            "properties": {"type": {"const": "agent"}},
-                            "required": ["type", "id"]
-                        }
-                    },
-                    "required": ["name"]
+                    "properties": {"type": {"const": "agent"}},
+                    "required": ["type", "id"]
                 }
             ])
         );
@@ -5376,27 +5375,27 @@ mod tests {
                 .expect("mode description")
                 .contains("wait")
         );
+        let schema = spawn_agent_defs[0].parameters();
+        assert!(schema.get("oneOf").is_none());
+        // name is required at the root even with external_a2a present: the
+        // local providers demand it and requiring a field external_a2a ignores
+        // is safe, whereas top-level conditional requirements are rejected.
         assert_eq!(
-            spawn_agent_defs[0].parameters()["oneOf"],
+            schema["required"],
+            serde_json::json!(["name", "instructions", "target"])
+        );
+        assert_eq!(
+            schema["properties"]["target"]["oneOf"],
             serde_json::json!([
                 {
-                    "properties": {
-                        "target": {
-                            "properties": {"type": {"const": "subagent"}}
-                        }
-                    },
-                    "required": ["name"]
+                    "properties": {"type": {"const": "subagent"}}
                 },
                 {
-                    "properties": {
-                        "target": {
-                            "properties": {"type": {"const": "external_a2a"}},
-                            "anyOf": [
-                                {"required": ["id"]},
-                                {"required": ["external_agent_id"]}
-                            ]
-                        }
-                    }
+                    "properties": {"type": {"const": "external_a2a"}},
+                    "anyOf": [
+                        {"required": ["id"]},
+                        {"required": ["external_agent_id"]}
+                    ]
                 }
             ])
         );

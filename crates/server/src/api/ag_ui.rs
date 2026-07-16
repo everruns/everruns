@@ -1691,6 +1691,7 @@ mod tests {
                 turn_id,
                 delta: "Hello".to_string(),
                 accumulated: "Hello".to_string(),
+                phase: None,
             },
         );
         translate_event(&mut state, &delta_event);
@@ -1741,6 +1742,7 @@ mod tests {
                 turn_id,
                 delta: "Let me check that.".to_string(),
                 accumulated: "Let me check that.".to_string(),
+                phase: None,
             },
         );
         translate_event(&mut state, &delta_event);
@@ -1938,6 +1940,7 @@ mod tests {
                 turn_id,
                 delta: "Let me look into that.".to_string(),
                 accumulated: "Let me look into that.".to_string(),
+                phase: None,
             },
         );
         translate_event(&mut state, &commentary_delta);

@@ -351,7 +351,9 @@ fn stream_event_advances_stall_deadline(event: &LlmStreamEvent) -> bool {
                 || token_count.is_some_and(|count| count > 0)
         }
         LlmStreamEvent::ToolCalls(calls) => !calls.is_empty(),
-        LlmStreamEvent::ThinkingSignature(_)
+        // MessagePhase is a metadata hint, not assistant output progress.
+        LlmStreamEvent::MessagePhase(_)
+        | LlmStreamEvent::ThinkingSignature(_)
         | LlmStreamEvent::Done(_)
         | LlmStreamEvent::Error(_) => false,
     }
@@ -1758,6 +1760,9 @@ impl ReasonAtom {
                     turn_id: context.turn_id,
                     model: Some(runtime_agent.model.clone()),
                     iteration: Some(iteration),
+                    // Emitted before the LLM call — phase is not yet known, so the
+                    // streamed hint starts `None` (treat as assistant text).
+                    phase: None,
                 },
             ))
             .await
@@ -1955,6 +1960,11 @@ impl ReasonAtom {
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
         let retry_config = LlmRetryConfig::default();
         let mut stream_retry_metadata = RetryMetadata::default();
+        // Best-effort streamed phase hint (EVE-774). Starts `None` ("not yet
+        // classified — treat as assistant text") and is refined monotonically
+        // once a provider reveals a native phase mid-stream. Declared outside the
+        // retry loop so it is available to the post-loop guarded delta emission.
+        let mut streamed_phase: Option<crate::message::ExecutionPhase> = None;
         let (
             text,
             thinking,
@@ -2459,6 +2469,7 @@ impl ReasonAtom {
                                         turn_id: context.turn_id,
                                         delta: pending_delta.clone(),
                                         accumulated: text.clone(),
+                                        phase: streamed_phase,
                                     },
                                 ))
                                 .await
@@ -2590,6 +2601,20 @@ impl ReasonAtom {
                         stream_has_output |= !calls.is_empty();
                         tool_calls = calls;
                     }
+                    LlmStreamEvent::MessagePhase(phase) => {
+                        // Provider revealed a native phase for the current
+                        // assistant message mid-stream. Refine the streamed hint
+                        // monotonically (never flip-flop, never back to None);
+                        // subsequent output.message.delta events carry it. This is
+                        // a hint only — it is NOT a completion signal and does not
+                        // count as stream output. The completed Message.phase stays
+                        // authoritative, and the hint is deliberately not derived
+                        // from later tool-call presence (EVE-448 anti-pattern).
+                        streamed_phase = crate::message::ExecutionPhase::refine_streamed_hint(
+                            streamed_phase,
+                            phase,
+                        );
+                    }
                     LlmStreamEvent::Done(metadata) => {
                         // Emit any remaining pending delta before completing,
                         // unless a post-generation guardrail must first inspect
@@ -2605,6 +2630,7 @@ impl ReasonAtom {
                                         turn_id: context.turn_id,
                                         delta: pending_delta.clone(),
                                         accumulated: text.clone(),
+                                        phase: streamed_phase,
                                     },
                                 ))
                                 .await
@@ -2797,6 +2823,7 @@ impl ReasonAtom {
                         turn_id: context.turn_id,
                         delta: pending_delta.clone(),
                         accumulated: text.clone(),
+                        phase: streamed_phase,
                     },
                 ))
                 .await
@@ -3104,6 +3131,9 @@ impl ReasonAtom {
                     turn_id,
                     model: None,
                     iteration: Some(iteration),
+                    // Recovery/finalize path reconstructs the started signal only;
+                    // the streamed phase hint is unavailable here (None).
+                    phase: None,
                 },
             ))
             .await;

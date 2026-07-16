@@ -155,9 +155,9 @@ pub struct ModelCost {
     /// Cached read cost per million tokens (USD), if supported
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_read: Option<f64>,
-    /// Tiered pricing that applies above certain context thresholds.
-    /// When present, the base cost fields apply up to the tier threshold,
-    /// and each tier's costs apply for tokens beyond that threshold.
+    /// Tiered pricing that applies when prompt tokens exceed context thresholds.
+    /// When present, the highest matching tier replaces the base rates for the
+    /// whole request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cost_tiers: Vec<CostTier>,
 }
