@@ -22,6 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useFeatureFlag } from "@/providers/feature-flags-provider";
 
 export type SidebarUserMenuUser = {
   name?: string | null;
@@ -62,6 +63,7 @@ export function SidebarUserMenu({
 }) {
   const router = useRouter();
   const [mcpDialogOpen, setMcpDialogOpen] = useState(false);
+  const mcpEndpointEnabled = useFeatureFlag("mcp_endpoint");
   const navigate = (href: string) => router.push(href);
 
   const handleLogout = async () => {
@@ -105,7 +107,7 @@ export function SidebarUserMenu({
                 <Key className="icon-sharp mr-2 h-4 w-4" />
                 Personal access tokens
               </DropdownMenuItem>
-              <McpConnectMenuItem onSelect={() => setMcpDialogOpen(true)} />
+              {mcpEndpointEnabled && <McpConnectMenuItem onSelect={() => setMcpDialogOpen(true)} />}
               {renderExtraItems?.({ user, navigate })}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
@@ -116,7 +118,9 @@ export function SidebarUserMenu({
           </DropdownMenuContent>
         </DropdownMenuPositioner>
       </DropdownMenu>
-      <McpConnectDialog open={mcpDialogOpen} onOpenChange={setMcpDialogOpen} />
+      {mcpEndpointEnabled && (
+        <McpConnectDialog open={mcpDialogOpen} onOpenChange={setMcpDialogOpen} />
+      )}
     </>
   );
 }

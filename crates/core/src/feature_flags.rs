@@ -53,6 +53,10 @@ pub struct FeatureFlags {
     /// channel). Experimental. Gates the public endpoints, channel creation,
     /// the builder UI, and the public web route. See `specs/public-chat.md`.
     pub public_chat: bool,
+    /// First-party MCP server endpoint (`POST /mcp`) and OAuth-minted MCP tokens.
+    /// Experimental remote-control surface; requires both deployment enablement
+    /// and per-org opt-in.
+    pub mcp_endpoint: bool,
 }
 
 /// Untyped API representation of feature flags: a generic `{ "<flag>": bool }` map.
@@ -156,6 +160,14 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
         description: "Isolated, public-facing chat web app and the public_chat channel.",
         experimental: true,
     },
+    FeatureFlagDefinition {
+        name: "mcp_endpoint",
+        label: "MCP endpoint",
+        description: "Exposes the first-party MCP server at POST /mcp for authenticated MCP \
+             clients. This remote-control surface can list and invoke MCP tools, including \
+             side-effecting operations within the caller's permissions.",
+        experimental: true,
+    },
 ];
 
 impl FeatureFlags {
@@ -177,6 +189,7 @@ impl FeatureFlags {
             agent_delegation: opt_in("agent_delegation", system.agent_delegation),
             observers: opt_in("observers", system.observers),
             public_chat: opt_in("public_chat", system.public_chat),
+            mcp_endpoint: opt_in("mcp_endpoint", system.mcp_endpoint),
         }
     }
 
@@ -192,6 +205,7 @@ impl FeatureFlags {
             agent_delegation: experimental_flag("FEATURE_AGENT_DELEGATION", grade),
             observers: experimental_flag("FEATURE_OBSERVERS", grade),
             public_chat: experimental_flag("FEATURE_PUBLIC_CHAT", grade),
+            mcp_endpoint: experimental_flag("FEATURE_MCP_ENDPOINT", grade),
         }
     }
 
@@ -218,6 +232,7 @@ impl FeatureFlags {
             ("agent_delegation".to_string(), self.agent_delegation),
             ("observers".to_string(), self.observers),
             ("public_chat".to_string(), self.public_chat),
+            ("mcp_endpoint".to_string(), self.mcp_endpoint),
         ]))
     }
 
@@ -233,6 +248,7 @@ impl FeatureFlags {
             "agent_delegation" => self.agent_delegation,
             "observers" => self.observers,
             "public_chat" => self.public_chat,
+            "mcp_endpoint" => self.mcp_endpoint,
             _ => false,
         }
     }
@@ -250,6 +266,7 @@ impl FeatureFlags {
             agent_delegation: true,
             observers: true,
             public_chat: true,
+            mcp_endpoint: true,
         }
     }
 }
@@ -407,6 +424,7 @@ mod tests {
             agent_delegation: true,
             observers: true,
             public_chat: true,
+            mcp_endpoint: true,
         };
         assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("notifications"));
@@ -417,6 +435,7 @@ mod tests {
         assert!(flags.is_enabled("agent_delegation"));
         assert!(flags.is_enabled("observers"));
         assert!(flags.is_enabled("public_chat"));
+        assert!(flags.is_enabled("mcp_endpoint"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
@@ -432,6 +451,7 @@ mod tests {
             agent_delegation: true,
             observers: true,
             public_chat: true,
+            mcp_endpoint: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"global_chat\":true"));
