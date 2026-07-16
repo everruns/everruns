@@ -21,6 +21,7 @@
 
 use std::future::Future;
 use std::pin::Pin;
+use std::time::Duration;
 
 use bytes::Bytes;
 use eventsource_stream::{Event, EventStreamError, Eventsource};
@@ -41,6 +42,12 @@ pub type SseStream = Pin<Box<dyn Stream<Item = SseItem> + Send>>;
 /// A `'static` raw byte stream, for drivers that parse SSE by hand over
 /// `reqwest::Response::bytes_stream()` (e.g. Gemini).
 pub type ByteStream = Pin<Box<dyn Stream<Item = reqwest::Result<Bytes>> + Send>>;
+
+/// Upper bound for the setup-time peek that enables safe pre-first-item
+/// reconnects. The Reason atom starts its provider stall timer only after
+/// `chat_completion_stream()` returns, so this setup wait must not inherit the
+/// longer transport read timeout.
+const FIRST_STREAM_ITEM_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Classify a raw `reqwest` stream error as a transient transport failure that
 /// is safe to reconnect: a body/decode error ("error decoding response body",
@@ -83,13 +90,32 @@ pub fn is_reconnectable_stream_error(err: &EventStreamError<reqwest::Error>) -> 
 /// `chat_completion_stream()` now resolves at first-token time rather than
 /// lazily. End-to-end latency is unchanged (the caller immediately polls the
 /// stream) and connection failures surface at a single, well-defined point. A
-/// provider that returns 200 but then sends no first frame is bounded by the
-/// streaming client's read timeout (`HTTP_STREAM_READ_TIMEOUT`), which then
-/// classifies as a reconnectable timeout.
+/// provider that returns 200 but then sends no first frame is bounded by
+/// `FIRST_STREAM_ITEM_TIMEOUT`, matching the Reason atom's default provider
+/// stall timeout instead of the longer transport read timeout.
 pub async fn connect_sse_with_reconnect<C, Fut>(
     retry_config: &LlmRetryConfig,
     driver_name: &str,
     mut connect: C,
+) -> Result<(SseStream, RetryMetadata), AgentLoopError>
+where
+    C: FnMut(u32) -> Fut,
+    Fut: Future<Output = Result<(reqwest::Response, RetryMetadata), AgentLoopError>>,
+{
+    connect_sse_with_reconnect_timeout(
+        retry_config,
+        driver_name,
+        &mut connect,
+        FIRST_STREAM_ITEM_TIMEOUT,
+    )
+    .await
+}
+
+async fn connect_sse_with_reconnect_timeout<C, Fut>(
+    retry_config: &LlmRetryConfig,
+    driver_name: &str,
+    connect: &mut C,
+    first_item_timeout: Duration,
 ) -> Result<(SseStream, RetryMetadata), AgentLoopError>
 where
     C: FnMut(u32) -> Fut,
@@ -101,8 +127,17 @@ where
         let events = Box::pin(response.bytes_stream().eventsource());
 
         // Peek the first item: an immediate transport failure at stream open
-        // (the observed "error decoding response body") lands here.
-        let (first, rest) = events.into_future().await;
+        // (the observed "error decoding response body") lands here. Bound this
+        // setup wait so a silent 200 response cannot sit outside the Reason
+        // atom's provider stall timeout for the longer HTTP read timeout.
+        let (first, rest) = tokio::time::timeout(first_item_timeout, events.into_future())
+            .await
+            .map_err(|_| {
+                AgentLoopError::llm(format!(
+                    "provider stream stall: no first event for {}s",
+                    first_item_timeout.as_secs()
+                ))
+            })?;
 
         let reconnectable = matches!(&first, Some(Err(e)) if is_reconnectable_stream_error(e));
         if reconnectable && attempt < retry_config.max_retries {
@@ -140,7 +175,7 @@ where
 ///
 /// Reconnects when the *first* byte chunk is a reconnectable transport error and
 /// attempts remain. Once any chunk has been forwarded the stream is committed
-/// and errors pass through. Semantics, safety, and the first-token latency note
+/// and errors pass through. Semantics, safety, and the first-item timeout note
 /// match [`connect_sse_with_reconnect`].
 pub async fn connect_bytes_with_reconnect<C, Fut>(
     retry_config: &LlmRetryConfig,
@@ -151,11 +186,37 @@ where
     C: FnMut(u32) -> Fut,
     Fut: Future<Output = Result<(reqwest::Response, RetryMetadata), AgentLoopError>>,
 {
+    connect_bytes_with_reconnect_timeout(
+        retry_config,
+        driver_name,
+        &mut connect,
+        FIRST_STREAM_ITEM_TIMEOUT,
+    )
+    .await
+}
+
+async fn connect_bytes_with_reconnect_timeout<C, Fut>(
+    retry_config: &LlmRetryConfig,
+    driver_name: &str,
+    connect: &mut C,
+    first_item_timeout: Duration,
+) -> Result<(ByteStream, RetryMetadata), AgentLoopError>
+where
+    C: FnMut(u32) -> Fut,
+    Fut: Future<Output = Result<(reqwest::Response, RetryMetadata), AgentLoopError>>,
+{
     let mut attempt: u32 = 0;
     loop {
         let (response, metadata) = connect(attempt).await?;
         let bytes = Box::pin(response.bytes_stream());
-        let (first, rest) = bytes.into_future().await;
+        let (first, rest) = tokio::time::timeout(first_item_timeout, bytes.into_future())
+            .await
+            .map_err(|_| {
+                AgentLoopError::llm(format!(
+                    "provider stream stall: no first chunk for {}s",
+                    first_item_timeout.as_secs()
+                ))
+            })?;
 
         let reconnectable = matches!(&first, Some(Err(e)) if is_reconnectable_reqwest_error(e));
         if reconnectable && attempt < retry_config.max_retries {
@@ -207,6 +268,8 @@ mod tests {
         EventThenTruncate,
         /// 200 + a complete SSE stream (one content delta + `[DONE]`).
         FullSse,
+        /// 200 + chunked headers, then no body bytes and no close.
+        Silent,
     }
 
     const CONTENT_EVENT: &str = "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n";
@@ -256,6 +319,10 @@ mod tests {
                         let _ = socket.write_all(chunk(DONE_EVENT).as_bytes()).await;
                         let _ = socket.write_all(b"0\r\n\r\n").await;
                     }
+                    Behavior::Silent => {
+                        let _ = socket.flush().await;
+                        std::future::pending::<()>().await;
+                    }
                 }
                 let _ = socket.flush().await;
                 // Drop `socket` to close the connection.
@@ -277,7 +344,7 @@ mod tests {
     }
 
     async fn collect_via_reconnect(base: &str, config: &LlmRetryConfig) -> Vec<SseItem> {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
         let (stream, _meta) = connect_sse_with_reconnect(config, "test", |_attempt| {
             let client = client.clone();
             let base = base.to_string();
@@ -293,6 +360,32 @@ mod tests {
         .await
         .expect("connect should not terminally fail");
         stream.collect().await
+    }
+
+    async fn connect_via_reconnect_with_timeout(
+        base: &str,
+        config: &LlmRetryConfig,
+        first_item_timeout: Duration,
+    ) -> Result<(SseStream, RetryMetadata), AgentLoopError> {
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+        connect_sse_with_reconnect_timeout(
+            config,
+            "test",
+            &mut |_attempt| {
+                let client = client.clone();
+                let base = base.to_string();
+                async move {
+                    let resp = client
+                        .get(&base)
+                        .send()
+                        .await
+                        .map_err(|e| AgentLoopError::llm(e.to_string()))?;
+                    Ok((resp, RetryMetadata::default()))
+                }
+            },
+            first_item_timeout,
+        )
+        .await
     }
 
     #[tokio::test]
@@ -352,6 +445,71 @@ mod tests {
         );
         assert!(items.iter().all(|i| i.is_ok()));
         assert!(items.iter().filter_map(|i| i.as_ref().ok()).count() >= 1);
+    }
+
+    #[tokio::test]
+    async fn silent_first_event_is_bounded_without_reconnect() {
+        let (base, count) = spawn_scripted_sse_server(vec![Behavior::Silent]).await;
+
+        let err = match connect_via_reconnect_with_timeout(
+            &base,
+            &fast_config(2),
+            Duration::from_millis(20),
+        )
+        .await
+        {
+            Ok(_) => panic!("silent first event should fail at the setup-time bound"),
+            Err(err) => err,
+        };
+
+        assert_eq!(
+            count.load(Ordering::SeqCst),
+            1,
+            "setup-time stall must not retry up to the transport read timeout"
+        );
+        assert!(
+            err.to_string().contains("no first event"),
+            "expected first-event stall error, got {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn silent_first_chunk_is_bounded_without_reconnect() {
+        let (base, count) = spawn_scripted_sse_server(vec![Behavior::Silent]).await;
+        let client = reqwest::Client::builder().no_proxy().build().unwrap();
+
+        let err = match connect_bytes_with_reconnect_timeout(
+            &fast_config(2),
+            "test",
+            &mut |_attempt| {
+                let client = client.clone();
+                let base = base.to_string();
+                async move {
+                    let resp = client
+                        .get(&base)
+                        .send()
+                        .await
+                        .map_err(|e| AgentLoopError::llm(e.to_string()))?;
+                    Ok((resp, RetryMetadata::default()))
+                }
+            },
+            Duration::from_millis(20),
+        )
+        .await
+        {
+            Ok(_) => panic!("silent first chunk should fail at the setup-time bound"),
+            Err(err) => err,
+        };
+
+        assert_eq!(
+            count.load(Ordering::SeqCst),
+            1,
+            "setup-time stall must not retry up to the transport read timeout"
+        );
+        assert!(
+            err.to_string().contains("no first chunk"),
+            "expected first-chunk stall error, got {err}"
+        );
     }
 
     #[tokio::test]
