@@ -1530,6 +1530,7 @@ async fn settle_subagent_outcome(
 /// reaper can detect worker loss, wait for the child's terminal turn status,
 /// then settle the task and spawn handle. The task's OnTerminal wake policy
 /// notifies the parent session at the registry level.
+#[allow(clippy::too_many_arguments)]
 fn spawn_background_watcher(
     context: &ToolContext,
     child_id: crate::typed_id::SessionId,
