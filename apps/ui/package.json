@@ -22,7 +22,7 @@
     "api-types:generate": "node scripts/generate-api-types.mjs",
     "api-types:check": "node scripts/generate-api-types.mjs --check",
     "typecheck": "tsgo --noEmit",
-    "design:lint": "npx --yes @google/design.md@latest lint DESIGN.md",
+    "design:lint": "pnpm exec design.md lint DESIGN.md",
     "test": "jest",
     "test:watch": "jest --watch",
     "e2e": "playwright test",
@@ -57,6 +57,7 @@
   },
   "devDependencies": {
     "@ag-ui/core": "^0.0.53",
+    "@google/design.md": "0.3.0",
     "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4.3.2",
     "@testing-library/jest-dom": "^6.9.1",
