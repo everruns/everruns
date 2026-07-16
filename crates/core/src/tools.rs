@@ -58,6 +58,15 @@ struct SessionBackgroundPermit {
     permit: Option<OwnedSemaphorePermit>,
 }
 
+/// Active background run permit held for the lifetime of detached work.
+///
+/// This combines the worker-wide guard with the per-session guard so all
+/// background execution paths share the same admission control.
+pub(crate) struct BackgroundRunPermit {
+    _worker: tokio::sync::SemaphorePermit<'static>,
+    _session: SessionBackgroundPermit,
+}
+
 impl Drop for SessionBackgroundPermit {
     fn drop(&mut self) {
         drop(self.permit.take());
@@ -92,6 +101,31 @@ fn try_acquire_session_background_permit(
         session_id,
         semaphore,
         permit: Some(permit),
+    })
+}
+
+pub(crate) fn try_acquire_background_run_permit(
+    session_id: SessionId,
+) -> std::result::Result<BackgroundRunPermit, String> {
+    let worker = ACTIVE_BACKGROUND_RUNS_PER_WORKER.try_acquire().map_err(|_| {
+        format!(
+            "Worker is already running the maximum {MAX_ACTIVE_BACKGROUND_RUNS_PER_WORKER} active background runs. Try again after an existing run finishes."
+        )
+    })?;
+
+    let session = match try_acquire_session_background_permit(session_id) {
+        Ok(permit) => permit,
+        Err(_) => {
+            drop(worker);
+            return Err(format!(
+                "Maximum {MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION} active background runs per session. Wait for an existing run to finish before starting another."
+            ));
+        }
+    };
+
+    Ok(BackgroundRunPermit {
+        _worker: worker,
+        _session: session,
     })
 }
 
@@ -1258,22 +1292,9 @@ impl Tool for SpawnBackgroundTool {
             );
         }
 
-        let background_run_permit = match ACTIVE_BACKGROUND_RUNS_PER_WORKER.try_acquire() {
+        let background_run_permit = match try_acquire_background_run_permit(context.session_id) {
             Ok(permit) => permit,
-            Err(_) => {
-                return ToolExecutionResult::tool_error(format!(
-                    "Worker is already running the maximum {MAX_ACTIVE_BACKGROUND_RUNS_PER_WORKER} active background runs. Try again after an existing run finishes."
-                ));
-            }
-        };
-
-        let session_run_permit = match try_acquire_session_background_permit(context.session_id) {
-            Ok(permit) => permit,
-            Err(_) => {
-                return ToolExecutionResult::tool_error(format!(
-                    "Maximum {MAX_ACTIVE_BACKGROUND_RUNS_PER_SESSION} active background runs per session. Wait for an existing run to finish before starting another."
-                ));
-            }
+            Err(message) => return ToolExecutionResult::tool_error(message),
         };
 
         let run_id = format!("bg_{}", uuid::Uuid::now_v7().simple());
@@ -1337,7 +1358,6 @@ impl Tool for SpawnBackgroundTool {
 
         tokio::spawn(async move {
             let _background_run_permit = background_run_permit;
-            let _session_run_permit = session_run_permit;
             let _ = sink.status("Starting").await;
 
             // Run the tool future inside a select! against a cancel-watch loop
@@ -1841,19 +1861,8 @@ pub(crate) async fn reattach_background_run(
 
     // Enforce the same concurrency caps as spawn_background so many concurrent
     // re-attaches cannot exhaust worker or session limits.
-    let background_run_permit = ACTIVE_BACKGROUND_RUNS_PER_WORKER
-        .try_acquire()
-        .map_err(|_| {
-            crate::error::AgentLoopError::tool(
-                "worker background run limit reached; re-attach deferred",
-            )
-        })?;
-    let session_run_permit =
-        try_acquire_session_background_permit(task.session_id).map_err(|_| {
-            crate::error::AgentLoopError::tool(
-                "session background run limit reached; re-attach deferred",
-            )
-        })?;
+    let background_run_permit = try_acquire_background_run_permit(task.session_id)
+        .map_err(crate::error::AgentLoopError::tool)?;
 
     // Restore original signaling behavior; default true for tasks created before
     // this field was persisted.
@@ -1890,7 +1899,6 @@ pub(crate) async fn reattach_background_run(
     tokio::spawn(async move {
         // Hold permits for the duration of the re-attached run.
         let _background_run_permit = background_run_permit;
-        let _session_run_permit = session_run_permit;
         let _ = sink.status("Re-attaching").await;
 
         let outcome: std::result::Result<BackgroundOutcome, ToolExecutionResult> =
