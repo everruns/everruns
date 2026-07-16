@@ -109,7 +109,11 @@ Do not rewrite `/mcp` under `/api`. Do not rewrite `/.well-known/*` under `/api`
 ### Transport Requirements
 
 - TLS/HTTPS required for public traffic
+- Compress eligible non-streaming API responses with content negotiation and a
+  minimum-size threshold; do not recompress already encoded payloads
 - Disable proxy buffering for SSE responses under `/api/*`
+- Exclude `text/event-stream` from response compression so events remain
+  observable before stream completion
 - Preserve Host and standard forwarding headers, including `X-Request-ID` (pass through unchanged)
 - Keep gRPC worker traffic off the public ingress path
 
