@@ -160,8 +160,8 @@ store, so that logic is private to `everruns_runtime::RealDiskFileStore`
   under the root as aliases for the same file, rejects `..`/symlink escapes, and
   re-checks containment.
 - The root is shared behind a handle, so an embedder's worktree switch via
-  `RealDiskFileStore::set_host_root` is seen by every clone of the store at once
-  and the visible absolute root updates with it.
+  `RealDiskFileStore::set_host_root` is seen by every clone of the real-disk
+  store at once. Mounted agent-facing presentation stays at `/workspace`.
 - `WorkspaceRootSet::set_primary_host_root` and `RealDiskFileStore::set_host_root`
   repoint only the primary root. Additional roots are fixed for the session
   lifetime.
@@ -176,10 +176,11 @@ Each backend owns its `display_path`/`display_root`:
   paths under that root as aliases — so embedders can show
   `/Users/alex/project/src/lib.rs` while `/workspace/src/lib.rs` stays a valid
   input.
-- `MountFs` preserves the primary backend's display root and paths. A real-disk
-  primary rooted at `/repo` therefore displays `/repo` and `/repo/file.rs` both
-  directly and through `MountFs`; an in-memory primary continues to display
-  `/workspace` because that is its own identity.
+- `MountFs` is the agent-facing presentation boundary and displays the stable
+  `/workspace` namespace for primary workspace paths. A real-disk primary rooted
+  at `/repo` can still display `/repo` and `/repo/file.rs` when used directly by
+  host-side integrations, but through `MountFs` model/tool/bash-visible paths are
+  `/workspace` and `/workspace/file.rs` to avoid exposing host checkout details.
 - For additional mounted roots, returned file paths include the stable mounted
   prefix, e.g. `/workspace/roots/backend/Cargo.toml`.
 
