@@ -1,0 +1,9 @@
+{
+  "name": "oauth-mail",
+  "displayName": "OAuth Mail",
+  "version": "0.1.0",
+  "description": "Fixture plugin whose MCP server requires OAuth. Exercises the plugin OAuth-anchor install path. Does not point at a live server.",
+  "author": { "name": "Everruns" },
+  "license": "MIT",
+  "mcpServers": "./.mcp.json"
+}

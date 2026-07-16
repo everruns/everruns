@@ -1022,11 +1022,24 @@ impl Command for InstallPluginCmd {
             .map_err(|e| CommandError::bad_request(format!("Plugin compilation failed: {e}")))?;
         validate_compiled_mcp_servers(&compiled.definition)?;
 
+        // OAuth MCP servers get an anchor row and a host-assigned provider id
+        // (see oauth_anchor.rs).
+        let mut definition = compiled.definition.clone();
+        let plugin_name = definition.name.clone();
+        super::oauth_anchor::sync_plugin_oauth_anchors(
+            &ctx.db,
+            ctx.org_id(),
+            &plugin_name,
+            &mut definition,
+        )
+        .await
+        .map_err(CommandError::internal)?;
+
         // Persist.
         let manifest_json = serde_json::to_value(&compiled.manifest)
             .map_err(|e| CommandError::internal(e.into()))?;
-        let definition_json = serde_json::to_value(&compiled.definition)
-            .map_err(|e| CommandError::internal(e.into()))?;
+        let definition_json =
+            serde_json::to_value(&definition).map_err(|e| CommandError::internal(e.into()))?;
         let warnings_json = serde_json::to_value(&compiled.warnings)
             .map_err(|e| CommandError::internal(e.into()))?;
         let version = compiled.manifest.version.clone();
@@ -1180,6 +1193,9 @@ impl Command for UninstallPlugin {
             .await
             .map_err(classify_anyhow)?;
         if deleted {
+            super::oauth_anchor::delete_plugin_oauth_anchors(&ctx.db, ctx.org_id(), &existing.name)
+                .await
+                .map_err(CommandError::internal)?;
             Ok(serde_json::json!({ "deleted": true }))
         } else {
             Err(CommandError::not_found("Installed plugin"))
@@ -1304,10 +1320,23 @@ impl Command for UpdatePlugin {
             .map_err(|e| CommandError::bad_request(format!("Plugin compilation failed: {e}")))?;
         validate_compiled_mcp_servers(&compiled.definition)?;
 
+        // Re-sync OAuth anchors: reuse existing anchors (provider ids and
+        // user connections survive updates), drop anchors for removed servers.
+        let mut definition = compiled.definition.clone();
+        let plugin_name = definition.name.clone();
+        super::oauth_anchor::sync_plugin_oauth_anchors(
+            &ctx.db,
+            ctx.org_id(),
+            &plugin_name,
+            &mut definition,
+        )
+        .await
+        .map_err(CommandError::internal)?;
+
         let manifest_json = serde_json::to_value(&compiled.manifest)
             .map_err(|e| CommandError::internal(e.into()))?;
-        let definition_json = serde_json::to_value(&compiled.definition)
-            .map_err(|e| CommandError::internal(e.into()))?;
+        let definition_json =
+            serde_json::to_value(&definition).map_err(|e| CommandError::internal(e.into()))?;
         let warnings_json = serde_json::to_value(&compiled.warnings)
             .map_err(|e| CommandError::internal(e.into()))?;
         let version = compiled.manifest.version.clone();

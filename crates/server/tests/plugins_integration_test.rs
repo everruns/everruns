@@ -326,6 +326,120 @@ async fn test_install_plugin_and_capability_listing() {
 }
 
 // ============================================================
+// OAuth MCP plugin: anchor + provider wiring (specs/plugins.md)
+// ============================================================
+
+/// Collect the set of `mcp_oauth_*` provider ids from the connections API.
+async fn mcp_oauth_providers(server: &TestServer) -> std::collections::BTreeSet<String> {
+    server
+        .get("/v1/user/connections/providers")
+        .await
+        .assert_success()
+        .json_value()
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|p| p["connection_type"].as_str() == Some("oauth"))
+        .filter_map(|p| p["provider_id"].as_str())
+        .filter(|id| id.starts_with("mcp_oauth_"))
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// Installing a plugin whose `.mcp.json` marks a server `auth: oauth` must
+/// create a disabled anchor `mcp_servers` row that surfaces a new
+/// `mcp_oauth_*` provider in the connections API, and remove it on uninstall.
+#[tokio::test]
+async fn test_install_oauth_plugin_creates_connection_provider() {
+    let server = dev_server().await;
+    let path = testdata_plugins_path();
+
+    let marketplace_id = server
+        .post(
+            "/v1/plugin_marketplaces",
+            json!({ "name": "oauth-mkt", "source_type": "local_path", "source": path }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value()["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    server
+        .post(
+            &format!("/v1/plugin_marketplaces/{marketplace_id}/sync"),
+            json!({}),
+        )
+        .await
+        .assert_success();
+
+    let before = mcp_oauth_providers(&server).await;
+
+    let install = server
+        .post(
+            "/v1/plugins",
+            json!({ "marketplace_id": marketplace_id, "plugin_name": "oauth-mail" }),
+        )
+        .await;
+    assert_eq!(
+        install.status(),
+        StatusCode::CREATED,
+        "install failed: {}",
+        install.text()
+    );
+    let plugin_id = install.json_value()["id"].as_str().unwrap().to_string();
+
+    // Exactly one new OAuth provider (the anchor) must appear.
+    let after = mcp_oauth_providers(&server).await;
+    let new_providers: Vec<&String> = after.difference(&before).collect();
+    assert_eq!(
+        new_providers.len(),
+        1,
+        "expected one new mcp_oauth provider; before={before:?} after={after:?}"
+    );
+    // The anchor's runtime MCP capability id is mcp:{uuid} for the same uuid.
+    let anchor_uuid = new_providers[0]
+        .strip_prefix("mcp_oauth_")
+        .unwrap()
+        .to_string();
+    let anchor_cap_id = format!("mcp:{anchor_uuid}");
+
+    // The disabled anchor must NOT surface as a runtime MCP capability, and
+    // the plugin capability itself must be present.
+    let caps = server
+        .get("/v1/capabilities")
+        .await
+        .assert_success()
+        .json_value();
+    let cap_ids: Vec<&str> = caps["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|c| c["id"].as_str())
+        .collect();
+    assert!(
+        !cap_ids.contains(&anchor_cap_id.as_str()),
+        "disabled anchor {anchor_cap_id} must not be a runtime MCP capability; got {cap_ids:?}"
+    );
+    assert!(
+        cap_ids.contains(&"plugin:oauth-mail"),
+        "plugin:oauth-mail capability should be listed; got {cap_ids:?}"
+    );
+
+    // Uninstall removes the anchor → provider set returns to baseline.
+    server
+        .delete(&format!("/v1/plugins/{plugin_id}"))
+        .await
+        .assert_success();
+    let after_uninstall = mcp_oauth_providers(&server).await;
+    assert_eq!(
+        after_uninstall, before,
+        "OAuth provider must be gone after uninstall"
+    );
+}
+
+// ============================================================
 // Plugin lifecycle: disable / re-enable / uninstall
 // ============================================================
 

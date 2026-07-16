@@ -59,7 +59,7 @@ capability contributions:
 | `agents/*.md`                     | system prompt contribution: each agent file rendered as a named persona/instructions section |
 | `skills/<name>/SKILL.md` + files  | skill packages (same shape as `DeclarativeCapabilitySkill`)   |
 | `commands/*.md`                   | user-invocable skills (`user_invocable: true`); frontmatter `name`/`description` carried over |
-| `.mcp.json` / `mcpServers`        | scoped MCP servers; HTTP transport only, SSRF-validated like all scoped MCP config |
+| `.mcp.json` / `mcpServers`        | scoped MCP servers; HTTP transport only, SSRF-validated like all scoped MCP config. A server may set `"auth": "oauth"` to require an OAuth connection (see [OAuth-authenticated MCP servers](#oauth-authenticated-mcp-servers)) |
 | `userConfig`                      | *(phase 2)* capability `config_schema`                        |
 | `hooks`, `lspServers`, `monitors`, `themes`, `outputStyles` | ignored; surfaced as install warnings |
 
@@ -81,6 +81,51 @@ Notes:
   the `plugin:` prefix. Names are unique per organization across installed
   plugins; the `plugin:` namespace keeps them from colliding with
   `declarative:{name}` refs.
+
+## OAuth-authenticated MCP servers
+
+A plugin's `.mcp.json` server may declare `"auth": "oauth"` (alias
+`"auth_mode": "oauth"`) to require a user-scoped OAuth connection — the pattern
+used by remote MCP servers like Resend (`https://mcp.resend.com/mcp`). The
+compiler maps this to `auth_mode = oauth` on the compiled scoped server. Two
+fields plugin content can **not** set are enforced at compile time (dropped
+with a warning): `oauth_provider_id` (the host assigns it) and any `api_key`
+(a package cannot carry key material). Only `"none"` and `"oauth"` are accepted
+auth modes; anything else warns and degrades to `none`. Literal `headers` are
+preserved and only ever sent to the plugin's own server URL.
+
+**Install-time anchoring.** An OAuth MCP server needs a stable per-org provider
+id and somewhere to persist discovered authorization-server metadata plus the
+dynamically registered OAuth client. Rather than a parallel store, install
+creates one linked org `mcp_servers` row per OAuth server — the *anchor* — held
+in `status = disabled` so it never becomes a runtime capability and never
+resolves by tool prefix. The compiled definition's `oauth_provider_id` is set
+to the anchor's `mcp_oauth_{uuid}`. This reuses the existing MCP-OAuth
+machinery unchanged:
+
+- The anchor surfaces in `GET /v1/user/connections/providers` as an OAuth
+  provider, so the standard authorize/callback flow
+  (`/v1/user/connections/{provider}/authorize`), dynamic client registration,
+  and encrypted token storage all work against it.
+- At execution, the worker resolves the session's connection token for the
+  server's `oauth_provider_id` and injects it as a `Bearer` header. When no
+  token is connected, the MCP executor returns a `connection_required` tool
+  result, rendering the inline "connect" prompt instead of a raw 401.
+
+Anchors are reused across plugin **updates** (provider id and user connections
+survive; a changed server URL resets only the cached OAuth discovery metadata),
+removed when a server is dropped from the plugin, and deleted on **uninstall**.
+Because the provider id is always assigned server-side from a host-created row,
+plugin content can never bind to another provider (e.g. `github`) and read
+tokens connected for it (`TM-PLUGIN-004`).
+
+**Token refresh (limitation).** Short-lived OAuth access tokens (Resend's are
+~15 min) are not yet auto-refreshed: the connection resolver returns the stored
+access token without exchanging the refresh token. This is a pre-existing
+limitation of the MCP-OAuth connection path (it applies to org-managed OAuth
+MCP servers too); until refresh lands, a user reconnects when the token
+expires. Refresh-token rotation in the connection resolver is the tracked
+follow-up.
 
 ## Marketplaces
 
@@ -191,6 +236,11 @@ tests:
   public MCP server (`https://learn.microsoft.com/api/mcp`). It exercises
   every v1 mapping: manifest metadata, `skills/`, `commands/`, `agents/`,
   and `.mcp.json`, plus an `interface` block that v1 ignores with a warning.
+- `testdata/plugins/oauth-mail/` — minimal fixture whose `.mcp.json` sets
+  `"auth": "oauth"`. It exercises the OAuth-anchor install path: install
+  creates a disabled anchor row, assigns a host-owned `mcp_oauth_*` provider,
+  and lists it in the connections API; uninstall removes it. The URL is a
+  non-routable `.test` host and is never contacted.
 
 Tests cover: marketplace sync from a local path, install/compile of the
 fixture, the compiled capability's prompt/skill/MCP contributions, and
