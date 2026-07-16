@@ -616,10 +616,13 @@ async fn handle_mcp(
         // MCP 2026-07-28 Tasks extension (SEP-2663). Task handles map to
         // sessions; these methods delegate to the same session logic the
         // agent_run/session_get_status/session_send_message tools use. Gated to
-        // the negotiated 2026-07-28 protocol; 2025-* clients that somehow send
-        // these get method_not_found, matching "the method does not exist here".
+        // both the negotiated 2026-07-28 protocol and per-request client
+        // capability opt-in; clients outside the extension contract get
+        // method_not_found, matching "the method does not exist here".
         "tasks/get" | "tasks/cancel" | "tasks/update"
-            if protocol_version == Some(MCP_PROTOCOL_VERSION_LATEST) =>
+            if protocol_version
+                .map(|version| tasks::tasks_enabled(version, &req.params))
+                .unwrap_or(false) =>
         {
             handle_tasks_method(
                 req.method.as_str(),
