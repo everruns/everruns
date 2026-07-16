@@ -1,12 +1,15 @@
 # fetchkit
 
-External library ([github.com/everruns/fetchkit](https://github.com/everruns/fetchkit)) powering the `web_fetch` capability. Provides HTTP fetching, HTML-to-markdown conversion, SSRF protection, and file download.
+External library ([github.com/everruns/fetchkit](https://github.com/everruns/fetchkit)) powering the `web_fetch` capability. Provides HTTP fetching, focused content extraction, bounded crawl discovery, HTML-to-markdown conversion, SSRF protection, file download, and opt-in lightweight rendering.
 
 ## Integration
 
 - `WebFetchCapability` uses `fetchkit::ToolBuilder` to configure the tool
 - `WebFetchTool` wraps `fetchkit::Tool` — delegates schema, description, llmtxt, and execution
 - All metadata (description, system prompt, input schema) comes from `fetchkit::ToolBuilder`, not constants
+- The wrapper deserializes FetchKit's request contract so content focus,
+  conditional fetch, bounded crawl, and rendering inputs reach the library
+  without a second field-by-field contract that can drift.
 - **Egress path (default in the runtime)**: when `ToolContext.egress_service`
   is present, fetchkit's `HttpTransport` (fetchkit >= 0.4) is injected via
   `ToolBuilder::transport` with `EgressHttpTransport`
@@ -22,6 +25,33 @@ External library ([github.com/everruns/fetchkit](https://github.com/everruns/fet
 - The system allowlist and network access list are pre-checked on the initial
   URL in the tool for clear user-facing errors on both paths.
 - See `crates/core/src/capabilities/web_fetch/mod.rs`
+
+## Agent-oriented fetching
+
+FetchKit owns the structured fetchers, focused extraction, page quality signals,
+and crawl result model. Everruns exposes those inputs and returns the upstream
+response unchanged:
+
+- `content_focus: "agent"` selects FetchKit's best low-noise extraction strategy.
+- `crawl: true` discovers a bounded, same-origin page set; `max_pages` is bounded
+  by FetchKit's schema and implementation.
+- Conditional request inputs and response metadata allow callers to avoid
+  refetching unchanged content.
+- Specialized fetchers return compact structured content for supported source
+  types; unsupported URLs continue through the default fetcher.
+
+## Rendered fetch
+
+The `render-rakers` Cargo feature is compiled in and the backend is enabled on
+the tool, but each request must explicitly pass `render: "rakers"`. This is
+lightweight JavaScript/DOM execution for pages whose useful content is produced
+inline; it is not a full browser.
+
+Rendered fetch preserves the normal initial-request URL, DNS, egress, timeout,
+and body-size policy. FetchKit denies renderer-initiated subresource requests,
+caps rendered output before conversion, and applies a per-script execution
+timeout. This prevents rendered HTML from creating a second path around the
+host egress boundary.
 
 ## File download (`FileSaver`)
 

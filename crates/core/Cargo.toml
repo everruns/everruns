@@ -78,7 +78,7 @@ url = "2"
 # Web fetching (optional; behind the `web-fetch` feature). fetchkit + the
 # ed25519 bot-auth key derivation pull a sizable HTTP/crypto subtree.
 bytes = "1"
-fetchkit = { version = "=0.4.1", features = ["bot-auth"], optional = true }
+fetchkit = { version = "=0.5.0", features = ["bot-auth", "render-rakers"], optional = true }
 
 # Ed25519 key derivation (bot-auth public key registration)
 ed25519-dalek = { version = "3", features = ["rand_core"], optional = true }
