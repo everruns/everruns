@@ -3898,7 +3898,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn list_directory_without_path_uses_host_display_root() {
+    async fn list_directory_without_path_uses_workspace_display_root() {
+        // File tools run behind MountFs; the mounted primary presents the stable
+        // host-agnostic /workspace root rather than the backend's host path.
         let store = Arc::new(MockFileStore::with_display_root("/repo"));
         store.add_text_file("/notes.txt", "hello");
         let context = make_context(store);
@@ -3908,6 +3910,6 @@ mod tests {
             .await;
         let value = expect_success(result);
 
-        assert_eq!(value["path"], "/repo");
+        assert_eq!(value["path"], "/workspace");
     }
 }
