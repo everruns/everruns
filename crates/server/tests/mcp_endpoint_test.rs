@@ -98,6 +98,20 @@ async fn mcp_request_raw(
         .await
 }
 
+#[tokio::test]
+async fn test_mcp_returns_404_when_org_not_opted_in() {
+    let server = TestServer::in_memory().await;
+    let disabled_flags = std::collections::HashMap::from([("mcp_endpoint".to_string(), false)]);
+    server
+        .db
+        .replace_org_feature_flags(everruns_core::DEFAULT_ORG_ID, &disabled_flags)
+        .await
+        .expect("disable MCP endpoint flag");
+
+    let resp = mcp_request_raw(&server, "initialize", json!({}), vec![]).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
 /// Call tools/call with a given tool name and arguments.
 async fn mcp_tool_call(server: &TestServer, tool: &str, arguments: Value) -> Value {
     mcp_call(

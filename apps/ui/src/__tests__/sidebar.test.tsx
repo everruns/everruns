@@ -85,7 +85,15 @@ jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlags: () => ({
     global_chat: true,
     notifications: true,
+    evals: true,
+    app_budgets: true,
+    agent_versions: true,
+    voice: true,
+    agent_delegation: true,
+    observers: true,
+    mcp_endpoint: true,
   }),
+  useFeatureFlag: (flag: string) => flag === "mcp_endpoint" || flag === "notifications",
 }));
 
 /// Mock LLM providers hook (default: providers configured, no warning)
