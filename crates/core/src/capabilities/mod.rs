@@ -329,6 +329,7 @@ pub use skills_scoped::{
 pub use stateless_todo_list::{
     STATELESS_TODO_LIST_CAPABILITY_ID, StatelessTodoListCapability, WriteTodosTool,
 };
+pub(crate) use subagents::SPAWN_AGENT_CONCURRENCY_CLASS;
 pub use subagents::{SUBAGENTS_CAPABILITY_ID, SpawnSubagentAsAgentTool, SubagentCapability};
 pub use usage_limit_auto_continue::{
     AutoContinueConfig, USAGE_LIMIT_AUTO_CONTINUE_CAPABILITY_ID, UsageLimitAutoContinueCapability,
@@ -2002,7 +2003,9 @@ impl Tool for UnifiedSpawnAgentTool {
     }
 
     fn hints(&self) -> crate::tool_types::ToolHints {
-        let mut hints = crate::tool_types::ToolHints::default().with_long_running(true);
+        let mut hints = crate::tool_types::ToolHints::default()
+            .with_long_running(true)
+            .with_concurrency_class(SPAWN_AGENT_CONCURRENCY_CLASS);
         if self.provider_for("external_a2a").is_some() {
             hints = hints.with_open_world(true);
         }
@@ -5227,6 +5230,11 @@ mod tests {
         assert_eq!(
             spawn_agent.parameters()["properties"]["target"]["properties"]["type"]["enum"],
             serde_json::json!(["subagent"])
+        );
+        assert_eq!(
+            spawn_agent.concurrency_class(),
+            Some(SPAWN_AGENT_CONCURRENCY_CLASS),
+            "unified spawn_agent must serialize same-batch spawns before cap checks"
         );
     }
 

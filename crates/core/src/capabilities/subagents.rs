@@ -38,6 +38,8 @@ use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionStore, SpawnClaimResult, ToolContext};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
+
+pub(crate) const SPAWN_AGENT_CONCURRENCY_CLASS: &str = "spawn_agent";
 use serde_json::{Value, json};
 use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
@@ -781,7 +783,9 @@ impl Tool for SpawnSubagentAsAgentTool {
     }
 
     fn hints(&self) -> ToolHints {
-        ToolHints::default().with_long_running(true)
+        ToolHints::default()
+            .with_long_running(true)
+            .with_concurrency_class(SPAWN_AGENT_CONCURRENCY_CLASS)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -1956,6 +1960,11 @@ mod tests {
         assert_eq!(
             schema["properties"]["mode"]["enum"],
             json!(["background", "foreground"])
+        );
+        assert_eq!(
+            tool.hints().concurrency_class.as_deref(),
+            Some(SPAWN_AGENT_CONCURRENCY_CLASS),
+            "spawn_agent calls share one scheduler class so cap admission is serialized"
         );
     }
 
