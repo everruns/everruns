@@ -42,11 +42,20 @@ export function useOrgScopedQuery<TData>({
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
+  // Only include `staleTime` when the caller specified one. React Query's
+  // `defaultQueryOptions` merges options over the client defaults by object
+  // spread, so an explicit `staleTime: undefined` key OVERWRITES the client
+  // default (`staleTime: 60_000`) with `undefined` (→ 0), marking the query
+  // immediately stale. With `refetchOnWindowFocus: true`, the first focus or
+  // visibilitychange after a cold load (fired by tab focus, or by CDP/DevTools
+  // attaching ~18 ms in) then refetches every org-scoped query, producing the
+  // duplicate dashboard agent-list request pair reported in EVE-784. Omitting
+  // the key lets the intended 60s client default apply. (EVE-784)
   const query = useQuery({
     queryKey: [...queryKey, org],
     queryFn,
     enabled: enabled && !!org,
-    staleTime,
+    ...(staleTime !== undefined ? { staleTime } : {}),
   });
 
   return {
