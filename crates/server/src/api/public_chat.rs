@@ -11,27 +11,29 @@
 // session is created or any turn runs. Visitors authenticated via the channel's
 // `auth` config (e.g. Google sign-in) bypass the challenge.
 
-use std::convert::Infallible;
 use std::sync::LazyLock;
 
 use axum::{
     Extension, Json, Router,
     extract::{ConnectInfo, Path, Request, State},
-    http::{HeaderMap, StatusCode, header::AUTHORIZATION},
-    response::{
-        IntoResponse, Response,
-        sse::{Event as SseEvent, Sse},
+    http::{
+        HeaderMap, HeaderValue, StatusCode,
+        header::{AUTHORIZATION, COOKIE, SET_COOKIE},
     },
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use everruns_core::{
     App, AppEndpointAuthMode, AppEndpointAuthProviderConfig, AppStatus, PublicChatChannelConfig,
 };
-use futures::stream::Stream;
 use serde::Serialize;
+use sha2::{Digest, Sha256};
+use uuid::Uuid;
 
 use crate::api::ag_ui::{AgUiState, run_app_agent_stream};
-use crate::api::app_endpoint_auth::{AppEndpointAuthError, LegacyEndpointAuth};
+use crate::api::app_endpoint_auth::{
+    AppEndpointAuthError, AppEndpointAuthPrincipal, LegacyEndpointAuth,
+};
 use crate::api::common::ErrorResponse;
 use crate::api::turnstile::{TurnstileOutcome, TurnstileVerifier};
 use crate::auth::rate_limit::extract_client_ip_from_parts;
@@ -41,6 +43,7 @@ use crate::middleware::RequestId;
 const TURNSTILE_TOKEN_HEADERS: [&str; 2] = ["cf-turnstile-response", "x-everruns-turnstile-token"];
 const PUBLIC_CHAT_TOKEN_HEADER: &str = "x-everruns-public-chat-token";
 const ROUTING_TAG_PREFIX: &str = "public_chat";
+const VISITOR_COOKIE: &str = "everruns_public_chat_visitor";
 
 /// Deployment-level gate for the Public Chat feature. When the deployment flag
 /// is off, every public endpoint behaves as if no chat exists (sanitized 404),
@@ -155,7 +158,7 @@ async fn run_public_chat(
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
     request: Request,
-) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, Response> {
+) -> Result<Response, Response> {
     let request_id = req_id.map(|Extension(r)| r.0);
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
     let (app, config) = resolve_published_channel(&state, &app_id).await?;
@@ -170,10 +173,10 @@ async fn run_public_chat(
         .auth
         .as_ref()
         .filter(|auth| auth.mode != AppEndpointAuthMode::Anonymous);
-    let authenticated = if let Some(auth) = real_auth {
-        state
+    let (authenticated, visitor_binding, set_visitor_cookie) = if let Some(auth) = real_auth {
+        let principal = state
             .auth_verifier
-            .verify(
+            .verify_principal(
                 auth,
                 &headers,
                 LegacyEndpointAuth {
@@ -183,7 +186,8 @@ async fn run_public_chat(
             )
             .await
             .map_err(auth_error_response)?;
-        true
+        let principal = principal.ok_or_else(unauthorized)?;
+        (true, signed_in_visitor_tag(&principal), None)
     } else {
         if !config.anonymous {
             return Err(forbidden("Anonymous access is disabled for this chat"));
@@ -196,7 +200,8 @@ async fn run_public_chat(
                 return Err(unauthorized());
             }
         }
-        false
+        let (visitor_id, set_cookie) = anonymous_visitor_id(&headers);
+        (false, anonymous_visitor_tag(&visitor_id), set_cookie)
     };
 
     // 2. Bot mitigation. Enforced only for anonymous (not-signed-in) visitors
@@ -222,15 +227,72 @@ async fn run_public_chat(
 
     // 4. Delegate to the shared AG-UI streaming core with a public_chat-scoped
     //    routing-tag prefix so sessions stay isolated from other channels.
-    run_app_agent_stream(
+    let sse = run_app_agent_stream(
         state,
         app,
         config.ag_ui_stream_config(),
         ROUTING_TAG_PREFIX,
+        vec![visitor_binding],
         request,
         request_id,
     )
-    .await
+    .await?;
+    let mut response = sse.into_response();
+    if let Some(cookie) = set_visitor_cookie {
+        response.headers_mut().append(SET_COOKIE, cookie);
+    }
+    Ok(response)
+}
+
+fn signed_in_visitor_tag(principal: &AppEndpointAuthPrincipal) -> String {
+    visitor_tag(
+        "signed",
+        &[principal.issuer.as_str(), principal.subject.as_str()],
+    )
+}
+
+fn anonymous_visitor_id(headers: &HeaderMap) -> (String, Option<HeaderValue>) {
+    if let Some(existing) = cookie_value(headers, VISITOR_COOKIE).filter(is_valid_visitor_id) {
+        return (existing.to_string(), None);
+    }
+
+    let visitor_id = Uuid::new_v4().to_string();
+    let cookie = format!(
+        "{VISITOR_COOKIE}={visitor_id}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=31536000"
+    );
+    let header = HeaderValue::from_str(&cookie).ok();
+    (visitor_id, header)
+}
+
+fn anonymous_visitor_tag(visitor_id: &str) -> String {
+    visitor_tag("anonymous", &[visitor_id])
+}
+
+fn visitor_tag(kind: &str, parts: &[&str]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(kind.as_bytes());
+    for part in parts {
+        hasher.update([0]);
+        hasher.update(part.as_bytes());
+    }
+    format!(
+        "{ROUTING_TAG_PREFIX}:visitor:{kind}:{}",
+        hex::encode(hasher.finalize())
+    )
+}
+
+fn cookie_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+    headers
+        .get(COOKIE)?
+        .to_str()
+        .ok()?
+        .split(';')
+        .filter_map(|part| part.trim().split_once('='))
+        .find_map(|(cookie_name, value)| (cookie_name == name).then_some(value))
+}
+
+fn is_valid_visitor_id(value: &&str) -> bool {
+    Uuid::parse_str(value).is_ok()
 }
 
 /// Verify the Turnstile challenge for an anonymous request. Maps the outcome to
@@ -450,5 +512,48 @@ mod tests {
             "google_oidc"
         );
         assert_eq!(auth_mode_str(&AppEndpointAuthMode::Anonymous), "anonymous");
+    }
+
+    #[test]
+    fn signed_in_visitor_tags_are_stable_and_subject_scoped() {
+        let alice = AppEndpointAuthPrincipal {
+            issuer: "https://accounts.google.com".to_string(),
+            subject: "alice".to_string(),
+        };
+        let alice_again = AppEndpointAuthPrincipal {
+            issuer: "https://accounts.google.com".to_string(),
+            subject: "alice".to_string(),
+        };
+        let bob = AppEndpointAuthPrincipal {
+            issuer: "https://accounts.google.com".to_string(),
+            subject: "bob".to_string(),
+        };
+
+        assert_eq!(
+            signed_in_visitor_tag(&alice),
+            signed_in_visitor_tag(&alice_again)
+        );
+        assert_ne!(signed_in_visitor_tag(&alice), signed_in_visitor_tag(&bob));
+        assert!(signed_in_visitor_tag(&alice).starts_with("public_chat:visitor:signed:"));
+        assert!(!signed_in_visitor_tag(&alice).contains("alice"));
+    }
+
+    #[test]
+    fn anonymous_visitor_uses_existing_cookie_or_sets_http_only_cookie() {
+        let visitor_id = Uuid::new_v4().to_string();
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            COOKIE,
+            HeaderValue::from_str(&format!("other=1; {VISITOR_COOKIE}={visitor_id}")).unwrap(),
+        );
+
+        assert_eq!(anonymous_visitor_id(&headers), (visitor_id.clone(), None));
+
+        let (new_id, set_cookie) = anonymous_visitor_id(&HeaderMap::new());
+        assert!(Uuid::parse_str(&new_id).is_ok());
+        let set_cookie = set_cookie.unwrap().to_str().unwrap().to_string();
+        assert!(set_cookie.starts_with(&format!("{VISITOR_COOKIE}={new_id};")));
+        assert!(set_cookie.contains("HttpOnly"));
+        assert!(set_cookie.contains("SameSite=Lax"));
     }
 }
