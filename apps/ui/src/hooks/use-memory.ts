@@ -38,13 +38,14 @@ function invalidateMemoryQueries(queryClient: QueryClient, memoryId?: string) {
   }
 }
 
-export function useMemories(options: ListMemoriesParams = {}) {
+export function useMemories(options: ListMemoriesParams & { enabled?: boolean } = {}) {
   const includeArchived = options.includeArchived ?? false;
   const search = options.search?.trim() ?? "";
 
   return useOrgScopedQuery({
     queryKey: queryKeys.memory.list(includeArchived, search),
     queryFn: () => listMemories({ includeArchived, search }),
+    enabled: options.enabled ?? true,
   });
 }
 

@@ -40,14 +40,14 @@ export function useReportQuery(query: ReportQuery | undefined) {
   });
 }
 
-export function useSavedReports() {
+export function useSavedReports(enabled = true) {
   const { currentOrg } = useOrg();
   const org = currentOrg?.public_id;
 
   return useQuery({
     queryKey: queryKeys.reporting.saved(org),
     queryFn: listSavedReports,
-    enabled: !!org,
+    enabled: !!org && enabled,
   });
 }
 

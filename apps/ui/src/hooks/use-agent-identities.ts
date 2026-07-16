@@ -19,14 +19,14 @@ const agentIdentityKeys = {
   detail: (id: string) => ["agent-identities", "detail", id] as const,
 };
 
-export function useAgentIdentities(options: { includeArchived?: boolean } = {}) {
+export function useAgentIdentities(options: { includeArchived?: boolean; enabled?: boolean } = {}) {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const includeArchived = options.includeArchived ?? false;
   const org = currentOrg?.public_id;
   const query = useQuery({
     queryKey: [...agentIdentityKeys.list(includeArchived), org],
     queryFn: () => listAgentIdentities(includeArchived),
-    enabled: !!org,
+    enabled: !!org && (options.enabled ?? true),
   });
   return { ...query, isLoading: orgLoading || query.isLoading };
 }

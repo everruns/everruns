@@ -30,6 +30,11 @@ const CATEGORY_LABELS: Record<SearchResultCategory, string> = {
   mcp_server: "MCP Servers",
   app: "Apps",
   eval: "Evals",
+  memory: "Memory",
+  knowledge_index: "Knowledge Indexes",
+  plugin: "Plugins",
+  observer: "Observers",
+  report: "Reports",
   organization: "Organizations",
   id: "Go to",
 };
@@ -47,6 +52,11 @@ const CATEGORY_ORDER: SearchResultCategory[] = [
   "mcp_server",
   "app",
   "eval",
+  "memory",
+  "knowledge_index",
+  "plugin",
+  "observer",
+  "report",
 ];
 
 function groupResults(
