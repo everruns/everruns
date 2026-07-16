@@ -177,13 +177,44 @@ Each backend owns its `display_path`/`display_root`:
   paths under that root as aliases — so embedders can show
   `/Users/alex/project/src/lib.rs` while `/workspace/src/lib.rs` stays a valid
   input.
-- `MountFs` is the agent-facing presentation boundary and displays the stable
-  `/workspace` namespace for primary workspace paths. A real-disk primary rooted
-  at `/repo` can still display `/repo` and `/repo/file.rs` when used directly by
-  host-side integrations, but through `MountFs` model/tool/bash-visible paths are
-  `/workspace` and `/workspace/file.rs` to avoid exposing host checkout details.
+- `MountFs` is the agent-facing presentation boundary. **By default** it displays
+  the stable `/workspace` namespace for primary workspace paths, so a real-disk
+  primary rooted at `/repo` shows `/workspace/file.rs` to the model even though
+  the backend can still display `/repo/file.rs` when used directly by host-side
+  integrations. Embedders can override this per the display policy below.
 - For additional mounted roots, returned file paths include the stable mounted
   prefix, e.g. `/workspace/roots/backend/Cargo.toml`.
+
+#### Display policy: routing is not presentation (`DisplayPolicy`)
+
+`/workspace` plays two independent roles in `MountFs`, and they are kept
+separate on purpose:
+
+1. **Routing / cwd** — the model addresses files at `/workspace/...` and relative
+   paths resolve there. This is a runtime mechanism, identical for every embedder,
+   so it stays hardcoded.
+2. **Presentation** — the path string shown to the model, emitted in narration,
+   and persisted in output pointers. This is *policy*, selected by
+   `everruns_core::DisplayPolicy` on `MountFs`:
+   - `WorkspaceAlias` (**default**) — present primary paths under the
+     host-agnostic `/workspace` alias regardless of the backend. Required for
+     multi-tenant/server hosts: a mounted real-disk session must not leak the host
+     checkout path (`/private/var/.../checkout/...`) into model-visible or
+     persisted output (threat model TM-FS). This is what PR #2776 established.
+   - `BackendNative` (`MountFs::with_backend_display()`) — delegate primary-path
+     presentation to the backend's own `display_path`/`display_root`, exposing
+     real host paths. For local, single-user embedders (e.g. the `yolop` coding
+     CLI, originally PR #258) where the host *is* the user's machine, so real,
+     clickable paths that match `bash pwd` are the intended output. Such embedders
+     still need `MountFs` for routing (relative resolution, default cwd, extra
+     mounts), so they cannot drop it — hence presentation is a seam, not a fork.
+
+Rationale for the seam: #2776 correctly hid host paths for the server but baked
+that policy into the shared `MountFs` mechanism, which reverted #258 for local
+embedders. Keeping `WorkspaceAlias` as the default preserves the server's
+security property with no server changes, while `BackendNative` lets a local
+embedder opt back in. The runtime therefore *defaults* presentation rather than
+*hardcoding* it.
 
 ### Model-facing path guidance (EVE-748)
 

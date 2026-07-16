@@ -36,6 +36,60 @@ use crate::typed_id::SessionId;
 /// display alias) — kept as one source of truth.
 pub const WORKSPACE_MOUNT: &str = crate::session_path::WORKSPACE_PREFIX;
 
+/// How `MountFs` presents primary-workspace paths to the model, narration,
+/// prompts, and persisted output pointers.
+///
+/// # Why this is a policy seam and not a hardcoded rule
+///
+/// `/workspace` plays **two independent roles** in `MountFs`, and they must not
+/// be conflated:
+///
+///  1. **Routing / cwd** — the model addresses files at `/workspace/...` and
+///     relative paths resolve there. This is a *runtime mechanism*: it is the
+///     same for every embedder (models are trained on cloud-agent layouts), so
+///     it stays hardcoded as [`WORKSPACE_MOUNT`].
+///  2. **Display presentation** — the path string shown to the model, emitted
+///     in tool narration, and persisted in output pointers. This is *policy*,
+///     and it legitimately differs per embedder. That is what this enum selects.
+///
+/// # History (do not re-collapse these two roles)
+///
+///  - PR #2776 made `MountFs` present `/workspace` unconditionally, deleting the
+///    old delegation to `backend.display_path(...)`. The motivation was real: a
+///    mounted **real-disk server** session leaked the host checkout path
+///    (`/private/var/.../checkout/src/lib.rs`) to the model and into persisted,
+///    agent-visible output — a host-disclosure issue (threat model TM-FS). In a
+///    multi-tenant server the host is infrastructure the model must not see, so
+///    `WorkspaceAlias` is the correct, safe **default**.
+///  - But #2776 baked that *policy* into the *mechanism*, in shared
+///    `everruns-core`. That broke local single-user embedders (e.g. the `yolop`
+///    coding CLI, PR #258 "expose real workspace paths"), where the "host" *is*
+///    the user's own machine. There, showing `/Users/me/proj/src/lib.rs` is not
+///    a disclosure — it is the desired behavior: paths are clickable and match
+///    what `bash pwd` prints. Such embedders still need `MountFs` for routing
+///    (relative resolution, the default cwd, extra mounts), so they cannot
+///    simply drop it; they need presentation to be overridable.
+///
+/// The resolution: keep the safe alias as the default so no server code changes
+/// and #2776's security property is preserved, but expose `BackendNative` so a
+/// local embedder can opt back into its backend's real identity. The runtime no
+/// longer *hardcodes* presentation — it *defaults* it, and lets the embedder
+/// decide. See `specs/file-store.md` (EVE-660, "Display policy").
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum DisplayPolicy {
+    /// Present primary paths under the stable, host-agnostic `/workspace`
+    /// namespace, regardless of what the backend physically is. The default;
+    /// required for multi-tenant/server hosts so host paths never reach the
+    /// model or persisted output.
+    #[default]
+    WorkspaceAlias,
+    /// Delegate presentation of primary paths to the backend, exposing its
+    /// native identity (real host paths for a real-disk store). For local,
+    /// single-user embedders where the host is the user's own machine and real
+    /// paths are the intended, useful output.
+    BackendNative,
+}
+
 /// A single entry in the mount table.
 #[derive(Clone)]
 struct Mount {
@@ -74,6 +128,10 @@ pub struct MountFs {
     /// resolve against it; defaults to [`WORKSPACE_MOUNT`]. Fixed at
     /// construction — persistent `cd` across tool calls is not a feature yet.
     cwd: String,
+    /// How primary-workspace paths are presented to the model/narration.
+    /// Defaults to the host-agnostic alias; embedders opt into backend-native
+    /// presentation via [`MountFs::with_backend_display`]. See [`DisplayPolicy`].
+    display_policy: DisplayPolicy,
 }
 
 impl MountFs {
@@ -101,9 +159,42 @@ impl MountFs {
             mounts,
             primary: workspace,
             cwd: WORKSPACE_MOUNT.to_string(),
+            display_policy: DisplayPolicy::default(),
         };
         fs.sort_mounts();
         fs
+    }
+
+    /// Select how primary-workspace paths are presented. See [`DisplayPolicy`]
+    /// for the rationale behind keeping presentation separate from routing.
+    pub fn with_display_policy(mut self, policy: DisplayPolicy) -> Self {
+        self.display_policy = policy;
+        self
+    }
+
+    /// Opt into backend-native presentation: primary paths are rendered by the
+    /// backend's own `display_path`/`display_root` (real host paths for a
+    /// real-disk store), instead of the host-agnostic `/workspace` alias.
+    ///
+    /// For local, single-user embedders (e.g. a coding CLI) where exposing the
+    /// real host path is the intended, useful behavior. Routing is unchanged —
+    /// only presentation. Do **not** use this on multi-tenant/server hosts; the
+    /// default [`DisplayPolicy::WorkspaceAlias`] keeps host paths out of
+    /// model-visible and persisted output (threat model TM-FS, PR #2776).
+    pub fn with_backend_display(self) -> Self {
+        self.with_display_policy(DisplayPolicy::BackendNative)
+    }
+
+    /// Present a resolved primary-workspace backend key to the model, honoring
+    /// the configured [`DisplayPolicy`]. Named (non-primary) mounts do not go
+    /// through here — they always report their own virtual path.
+    fn present_primary_key(&self, canonical_key: &str) -> String {
+        match self.display_policy {
+            // Host-agnostic: render the backend key literally under /workspace.
+            DisplayPolicy::WorkspaceAlias => display_backend_path(WORKSPACE_MOUNT, canonical_key),
+            // Backend-native: let the backend expose its own identity (host path).
+            DisplayPolicy::BackendNative => self.primary.display_path(canonical_key),
+        }
     }
 
     /// Build a resolver and return it as a trait object.
@@ -345,7 +436,14 @@ fn display_backend_path(display_root: &str, path: &str) -> String {
 #[async_trait]
 impl SessionFileSystem for MountFs {
     fn display_root(&self) -> String {
-        WORKSPACE_MOUNT.to_string()
+        // Routing always defaults cwd to /workspace, but the *displayed* root is
+        // policy: the alias for host-agnostic presentation, or the backend's own
+        // root (a real host directory) when the embedder opts in. See
+        // [`DisplayPolicy`].
+        match self.display_policy {
+            DisplayPolicy::WorkspaceAlias => WORKSPACE_MOUNT.to_string(),
+            DisplayPolicy::BackendNative => self.primary.display_root(),
+        }
     }
 
     fn is_mount_resolver(&self) -> bool {
@@ -353,17 +451,17 @@ impl SessionFileSystem for MountFs {
     }
 
     fn resolve_path(&self, input: &str) -> String {
-        // Resolve the raw input through the mount table, then render the
-        // resolved backend key literally under the host-agnostic /workspace
-        // namespace. Prefixing the backend key (instead of re-stripping the
-        // mount) keeps a literal `workspace/…` backend segment distinct from
-        // the `/workspace` mount alias, so a displayed path round-trips to the
-        // same backend key. Using WORKSPACE_MOUNT — not a backend-derived
-        // display root — keeps this independent of real-disk host paths (#2776).
+        // Resolve the raw input through the mount table, then present the
+        // resolved backend key per the display policy. Presenting the resolved
+        // backend key (instead of re-stripping the mount) keeps a literal
+        // `workspace/…` backend segment distinct from the `/workspace` mount
+        // alias, so a displayed path round-trips to the same backend key.
+        // Presentation itself (alias vs. backend-native host path) is decided by
+        // [`present_primary_key`] — kept out of routing on purpose (#2776/#258).
         let virtual_path = normalize_virtual(input, &self.cwd());
         match self.resolve(&virtual_path) {
             Ok(resolved) if resolved.primary_workspace => {
-                display_backend_path(WORKSPACE_MOUNT, &resolved.backend_path)
+                self.present_primary_key(&resolved.backend_path)
             }
             _ => virtual_path,
         }
@@ -375,12 +473,13 @@ impl SessionFileSystem for MountFs {
         // mount's virtual path). Normalize at root — NOT cwd — so we treat it as
         // a canonical key and don't inject the `/workspace` cwd alias. Then:
         //  - named mounts: return as-is (already in their mounted namespace),
-        //  - primary: prefix literally under /workspace so a literal `workspace/…`
-        //    backend segment stays distinct from the mount alias and round-trips.
+        //  - primary: present via the display policy so a literal `workspace/…`
+        //    backend segment stays distinct from the mount alias and round-trips
+        //    (alias mode), or renders as the backend's host path (native mode).
         let virtual_path = normalize_virtual(path, "/");
         match self.resolve(&virtual_path) {
             Ok(resolved) if !resolved.primary_workspace => virtual_path,
-            _ => display_backend_path(WORKSPACE_MOUNT, &virtual_path),
+            _ => self.present_primary_key(&virtual_path),
         }
     }
 
@@ -636,12 +735,37 @@ mod tests {
     #[derive(Default)]
     struct FlatStore {
         files: std::sync::Mutex<std::collections::HashMap<String, String>>,
+        /// When set, the store presents host-style paths like a real-disk
+        /// backend, so `DisplayPolicy::BackendNative` has a host identity to
+        /// delegate to. `None` keeps the trait-default `/workspace` alias.
+        host_root: Option<String>,
     }
 
     #[async_trait]
     impl SessionFileSystem for FlatStore {
         fn is_mount_resolver(&self) -> bool {
             false
+        }
+
+        fn display_root(&self) -> String {
+            match &self.host_root {
+                Some(root) => root.clone(),
+                None => crate::session_path::WORKSPACE_PREFIX.to_string(),
+            }
+        }
+
+        fn display_path(&self, path: &str) -> String {
+            match &self.host_root {
+                Some(root) => {
+                    let normalized = normalize_virtual(path, "/");
+                    if normalized == "/" {
+                        root.clone()
+                    } else {
+                        format!("{root}{normalized}")
+                    }
+                }
+                None => crate::session_path::to_display_path(path),
+            }
         }
 
         async fn read_file(&self, sid: SessionId, path: &str) -> Result<Option<SessionFile>> {
@@ -811,6 +935,43 @@ mod tests {
         assert_eq!(fs.display_path("/src/lib.rs"), "/workspace/src/lib.rs");
         assert_eq!(fs.display_path("/"), "/workspace");
         assert_eq!(fs.resolve_path("src/lib.rs"), "/workspace/src/lib.rs");
+    }
+
+    #[test]
+    fn workspace_alias_is_the_default_even_over_a_host_backend() {
+        // The server-safe default: a real-disk-style backend's host identity is
+        // hidden behind /workspace unless the embedder opts in (#2776, TM-FS).
+        let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore {
+            host_root: Some("/host/root".to_string()),
+            ..Default::default()
+        });
+        let fs = MountFs::new(backend);
+        assert_eq!(fs.display_root(), "/workspace");
+        assert_eq!(fs.display_path("/src/lib.rs"), "/workspace/src/lib.rs");
+        assert_eq!(fs.resolve_path("src/lib.rs"), "/workspace/src/lib.rs");
+    }
+
+    #[test]
+    fn backend_display_exposes_host_paths_while_routing_is_unchanged() {
+        // The local-embedder opt-in (yolop / #258): presentation delegates to the
+        // backend's real host path, but routing still treats /workspace as cwd and
+        // resolves to the same backend key.
+        let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore {
+            host_root: Some("/host/root".to_string()),
+            ..Default::default()
+        });
+        let fs = MountFs::new(backend).with_backend_display();
+
+        assert_eq!(fs.display_root(), "/host/root");
+        assert_eq!(fs.display_path("/src/lib.rs"), "/host/root/src/lib.rs");
+        assert_eq!(fs.display_path("/"), "/host/root");
+        // Both the relative and the /workspace-addressed spellings present the
+        // same host path — routing is independent of presentation.
+        assert_eq!(fs.resolve_path("src/lib.rs"), "/host/root/src/lib.rs");
+        assert_eq!(
+            fs.resolve_path("/workspace/src/lib.rs"),
+            "/host/root/src/lib.rs"
+        );
     }
 
     #[tokio::test]
