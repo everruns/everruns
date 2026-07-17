@@ -49,7 +49,9 @@ use crate::message_retriever::MessageRetriever;
 use crate::openresponses_protocol::{
     CompactInputItem, CompactRequest, compact_output_to_messages, messages_to_compact_input,
 };
-use crate::annotation_hook::{AnnotationProvider, collect_annotations};
+use crate::annotation_hook::{
+    AnnotationProvider, VerifierProvider, collect_annotations, verify_annotations,
+};
 use crate::output_guardrail::{
     ArmedGuardrail, OutputGuardrailContext, PostGenerationOutputContext, PostGenerationProvider,
     TrippedGuardrail, evaluate_guardrails, evaluate_post_generation_guardrails,
@@ -1409,6 +1411,22 @@ impl ReasonAtom {
                 )
             })
             .flatten()
+            .collect();
+
+        // Citation verifiers (see specs/citations.md). Decoupled from the feeds:
+        // run once over the collected annotations to stamp faithfulness verdicts.
+        // Empty unless the citation_verification capability is configured.
+        let citation_verifiers: Vec<VerifierProvider> = resolved_capability_configs
+            .iter()
+            .filter_map(|cfg| {
+                let cap_id = cfg.capability_ref.as_str();
+                let cap = self.capability_registry.get(cap_id)?;
+                let verifier = cap.citation_verifier_with_config(&cfg.config)?;
+                Some(VerifierProvider {
+                    capability_id: cap_id.to_string(),
+                    provider: verifier,
+                })
+            })
             .collect();
 
         // 7. Create LLM driver using factory
@@ -2891,6 +2909,18 @@ impl ReasonAtom {
             .await;
             text = collected.text;
             citation_annotations = collected.annotations;
+
+            // Verification pass: stamp faithfulness verdicts on the collected
+            // citations (no-op when no citation_verification capability is on).
+            if !citation_annotations.is_empty() && !citation_verifiers.is_empty() {
+                citation_annotations = verify_annotations(
+                    &citation_verifiers,
+                    &text,
+                    self.utility_llm_service.as_ref(),
+                    citation_annotations,
+                )
+                .await;
+            }
         }
 
         // Release buffered text only after post-generation guardrails allow it.

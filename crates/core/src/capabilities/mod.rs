@@ -95,6 +95,7 @@ mod bashkit_shell;
 mod btw;
 mod budgeting;
 mod citation_retrieval;
+mod citation_verification;
 mod claude_tool_search;
 pub mod compaction;
 mod current_time;
@@ -189,6 +190,10 @@ pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
 pub use budgeting::{BUDGETING_CAPABILITY_ID, BudgetingCapability};
 pub use citation_retrieval::{
     CITATION_RETRIEVAL_CAPABILITY_ID, CitationRetrievalCapability, CitationRetrievalConfig,
+};
+pub use citation_verification::{
+    CITATION_VERIFICATION_CAPABILITY_ID, CitationVerificationCapability,
+    CitationVerificationConfig, VerificationMode,
 };
 pub use claude_tool_search::{CLAUDE_TOOL_SEARCH_CAPABILITY_ID, ClaudeToolSearchCapability};
 pub use compaction::{
@@ -1138,6 +1143,22 @@ pub trait Capability: Send + Sync {
     ) -> Vec<Arc<dyn crate::annotation_hook::PostGenerationAnnotationHook>> {
         vec![]
     }
+
+    /// Returns a citation verifier contributed by this capability, if any.
+    ///
+    /// Runs once after all citation feeds have attached annotations, over the
+    /// collected set, stamping a [`crate::message::VerificationVerdict`] on each
+    /// citation. Decoupled from the feeds so any feed can be paired with any
+    /// verifier. The `citation_verification` capability implements this. See
+    /// [`crate::annotation_hook::CitationVerifier`] and `specs/citations.md`.
+    ///
+    /// Default: no verifier.
+    fn citation_verifier_with_config(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Option<Arc<dyn crate::annotation_hook::CitationVerifier>> {
+        None
+    }
 }
 
 pub trait ToolDefinitionHook: Send + Sync {
@@ -1500,6 +1521,9 @@ impl CapabilityRegistry {
 
         // Retrieval citations (claim-level provenance from search results — see specs/citations.md)
         registry.register(CitationRetrievalCapability);
+
+        // Citation verification (stamps faithfulness verdicts — see specs/citations.md)
+        registry.register(CitationVerificationCapability);
 
         // Fake demo capabilities (all environments)
         registry.register(FakeWarehouseCapability);

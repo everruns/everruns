@@ -19,7 +19,10 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::annotation_hook::{AnnotationContext, AnnotationResult, PostGenerationAnnotationHook};
+use crate::annotation_hook::{
+    AnnotationContext, AnnotationResult, PostGenerationAnnotationHook, citation_tokens,
+    token_overlap_ratio,
+};
 use crate::capabilities::Capability;
 use crate::capability_types::CapabilityStatus;
 use crate::message::{AnnotationSource, ContentPart, Message, TextAnnotation};
@@ -261,18 +264,18 @@ fn align_citations(
     }
     let sentence_tokens: Vec<Vec<String>> = sentences
         .iter()
-        .map(|s| tokenize(&s.text))
+        .map(|s| citation_tokens(&s.text))
         .collect();
 
     let mut annotations = Vec::new();
     for citation in citations {
-        let needle = tokenize(&citation.snippet);
+        let needle = citation_tokens(&citation.snippet);
         if needle.is_empty() {
             continue;
         }
         let mut best: Option<(usize, f32)> = None;
         for (idx, tokens) in sentence_tokens.iter().enumerate() {
-            let ratio = overlap_ratio(&needle, tokens);
+            let ratio = token_overlap_ratio(&needle, tokens);
             if best.map(|(_, b)| ratio > b).unwrap_or(true) {
                 best = Some((idx, ratio));
             }
@@ -334,36 +337,6 @@ fn split_sentences(text: &str) -> Vec<Sentence> {
         i += 1;
     }
     out
-}
-
-/// Lowercase word tokens of length ≥ 3, dropping a small stopword set so
-/// overlap reflects distinctive content rather than filler.
-fn tokenize(text: &str) -> Vec<String> {
-    text.split(|c: char| !c.is_alphanumeric())
-        .filter(|w| w.len() >= 3)
-        .map(|w| w.to_lowercase())
-        .filter(|w| !is_stopword(w))
-        .collect()
-}
-
-fn is_stopword(word: &str) -> bool {
-    const STOPWORDS: &[&str] = &[
-        "the", "and", "for", "are", "was", "were", "this", "that", "with", "from", "have", "has",
-        "not", "but", "you", "your", "its", "their", "they", "them", "then", "than", "which",
-        "into", "onto", "over", "under", "about", "there", "here", "what", "when", "where",
-    ];
-    STOPWORDS.contains(&word)
-}
-
-/// Fraction of the needle's distinct tokens that appear in `haystack`.
-fn overlap_ratio(needle: &[String], haystack: &[String]) -> f32 {
-    if needle.is_empty() {
-        return 0.0;
-    }
-    let hay: std::collections::HashSet<&String> = haystack.iter().collect();
-    let distinct: std::collections::HashSet<&String> = needle.iter().collect();
-    let shared = distinct.iter().filter(|t| hay.contains(**t)).count();
-    shared as f32 / distinct.len() as f32
 }
 
 #[cfg(test)]

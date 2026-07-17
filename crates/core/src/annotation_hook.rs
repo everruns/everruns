@@ -128,6 +128,109 @@ pub async fn collect_annotations(
     CollectedAnnotations { text, annotations }
 }
 
+// ---------------------------------------------------------------------------
+// Citation verification seam
+// ---------------------------------------------------------------------------
+
+/// Async verifier that stamps `verified` verdicts onto citations produced by
+/// any feed.
+///
+/// Contributed by the `citation_verification` capability via
+/// `Capability::citation_verifier_with_config`. Runs once after all annotation
+/// feeds, over the collected annotations — decoupled from the feeds so any feed
+/// can be paired with any verifier (see `specs/citations.md`).
+///
+/// Contract: **fail open** — on any error, return the annotations unchanged
+/// (unverified) rather than dropping them. Implementations must preserve order
+/// and count.
+#[async_trait]
+pub trait CitationVerifier: Send + Sync {
+    /// Stable identifier, usually the contributing capability id.
+    fn id(&self) -> &str;
+
+    /// Return `annotations` with `verified` stamped where a verdict could be
+    /// produced.
+    async fn verify(
+        &self,
+        ctx: &VerificationContext<'_>,
+        annotations: Vec<TextAnnotation>,
+    ) -> Vec<TextAnnotation>;
+}
+
+/// Runtime context handed to a [`CitationVerifier`].
+pub struct VerificationContext<'a> {
+    /// The finalized assistant message text; annotation spans index into it.
+    pub message_text: &'a str,
+    /// Utility LLM service for model-backed verification. `None` when the
+    /// deployment has no utility model configured.
+    pub utility_llm_service: Option<&'a Arc<dyn crate::UtilityLlmService>>,
+}
+
+/// A verifier paired with its contributing capability id.
+pub struct VerifierProvider {
+    pub capability_id: String,
+    pub provider: Arc<dyn CitationVerifier>,
+}
+
+/// Run the configured verifiers, in registration order, over the annotations.
+/// Typically zero or one verifier is active. Pure orchestration; each verifier
+/// owns its fail-open behavior.
+pub async fn verify_annotations(
+    verifiers: &[VerifierProvider],
+    message_text: &str,
+    utility_llm_service: Option<&Arc<dyn crate::UtilityLlmService>>,
+    mut annotations: Vec<TextAnnotation>,
+) -> Vec<TextAnnotation> {
+    for v in verifiers {
+        let ctx = VerificationContext {
+            message_text,
+            utility_llm_service,
+        };
+        annotations = v.provider.verify(&ctx, annotations).await;
+    }
+    annotations
+}
+
+// ---------------------------------------------------------------------------
+// Shared citation text helpers (used by feeds and verifiers)
+// ---------------------------------------------------------------------------
+
+/// Lowercase word tokens of length ≥ 3, dropping a small stopword set so
+/// lexical overlap reflects distinctive content rather than filler.
+pub fn citation_tokens(text: &str) -> Vec<String> {
+    text.split(|c: char| !c.is_alphanumeric())
+        .filter(|w| w.len() >= 3)
+        .map(|w| w.to_lowercase())
+        .filter(|w| !is_stopword(w))
+        .collect()
+}
+
+fn is_stopword(word: &str) -> bool {
+    const STOPWORDS: &[&str] = &[
+        "the", "and", "for", "are", "was", "were", "this", "that", "with", "from", "have", "has",
+        "not", "but", "you", "your", "its", "their", "they", "them", "then", "than", "which",
+        "into", "onto", "over", "under", "about", "there", "here", "what", "when", "where",
+    ];
+    STOPWORDS.contains(&word)
+}
+
+/// Fraction of `needle`'s distinct tokens that also appear in `haystack`.
+/// Returns 0.0 when `needle` is empty.
+pub fn token_overlap_ratio(needle: &[String], haystack: &[String]) -> f32 {
+    if needle.is_empty() {
+        return 0.0;
+    }
+    let hay: std::collections::HashSet<&String> = haystack.iter().collect();
+    let distinct: std::collections::HashSet<&String> = needle.iter().collect();
+    let shared = distinct.iter().filter(|t| hay.contains(**t)).count();
+    shared as f32 / distinct.len() as f32
+}
+
+/// The substring of `text` covered by a char span `[start, end)`.
+pub fn span_text(text: &str, start: usize, end: usize) -> String {
+    text.chars().skip(start).take(end.saturating_sub(start)).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
