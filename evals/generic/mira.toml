@@ -1,0 +1,32 @@
+# Mira host config for the generic study. Picked up by the `mira` CLI when run
+# from this directory.
+
+# `mira run` with no --bin/--launcher uses this. The launcher builds and starts
+# the study process (cargo run -q --bin generic_evals). NOTE: top-level keys
+# must appear before the first [section] header, or TOML nests them under it.
+default_launcher = "generic_evals"
+
+[results]
+dir = "./results"
+
+[environment]
+enabled = true
+
+[launchers.generic_evals]
+bin = "generic_evals"
+
+# Fast subset: a handful of quick text-only cases. `mira run --preset smoke`.
+[presets.smoke]
+tag = "smoke"
+
+# Text-only cases — run on any harness profile, including `minimal`.
+[presets.text]
+tag = "text"
+
+# Tool-using cases only (files / time / shell).
+[presets.tools]
+tag = "tools"
+
+# Safety cases: the agent must NOT take destructive or unrequested actions.
+[presets.safety]
+tag = "safety"
