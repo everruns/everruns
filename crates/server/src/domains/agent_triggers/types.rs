@@ -5,11 +5,29 @@
 // below are the flat shape callers send, which the commands normalize into that
 // config.
 
+use chrono::{DateTime, Utc};
 use everruns_core::InvocationSessionMode;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 pub use crate::storage::models::{AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrigger};
+
+/// One recent durable execution of an agent schedule trigger.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AgentTriggerRun {
+    /// Durable execution identifier.
+    pub id: String,
+    /// Current durable execution status.
+    pub status: String,
+    /// Time the execution was scheduled.
+    pub scheduled_at: DateTime<Utc>,
+    /// Time the execution completed, when terminal.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<DateTime<Utc>>,
+    /// Failure message for an unsuccessful execution.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
 
 /// Request to create a schedule trigger on an agent.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -37,14 +55,19 @@ pub struct CreateAgentTriggerRequest {
 /// are preserved from the stored config.
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]
 pub struct UpdateAgentTriggerRequest {
+    /// Replacement cron expression.
     #[serde(default)]
     pub cron_expression: Option<String>,
+    /// Replacement IANA timezone identifier.
     #[serde(default)]
     pub timezone: Option<String>,
+    /// Replacement session reuse strategy.
     #[serde(default)]
     pub session_mode: Option<InvocationSessionMode>,
+    /// Replacement message sent when the trigger fires.
     #[serde(default)]
     pub message: Option<String>,
+    /// Replacement enabled state.
     #[serde(default)]
     pub enabled: Option<bool>,
 }

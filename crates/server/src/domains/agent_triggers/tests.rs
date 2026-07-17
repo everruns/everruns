@@ -228,6 +228,50 @@ async fn binding_created_on_enabled_create() {
 }
 
 #[tokio::test]
+async fn recent_runs_use_the_trigger_schedule_execution_history() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let store = Arc::new(InMemoryWorkflowEventStore::new());
+    let ctx = test_ctx(db.clone(), store.clone());
+    let (agent_id, _) = seed_agent(&db).await;
+
+    let trigger = CreateAgentTrigger {
+        agent_id: agent_id.clone(),
+        req: create_req("0 9 * * *", "hello", true),
+    }
+    .execute(&ctx)
+    .await
+    .expect("create trigger");
+    let schedule_id = db
+        .get_agent_trigger(DEFAULT_ORG_ID, trigger.id)
+        .await
+        .unwrap()
+        .unwrap()
+        .durable_schedule_id
+        .expect("schedule bound");
+    let execution_id = store
+        .create_schedule_execution(schedule_id, Utc::now())
+        .await
+        .expect("create execution");
+    store
+        .complete_schedule_execution(execution_id, Uuid::now_v7(), false)
+        .await
+        .expect("complete execution");
+
+    let runs = ListAgentTriggerRuns {
+        agent_id,
+        trigger_id: trigger.id.to_string(),
+    }
+    .execute(&ctx)
+    .await
+    .expect("list recent runs");
+
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].id, execution_id.to_string());
+    assert_eq!(runs[0].status, "completed");
+    assert!(runs[0].completed_at.is_some());
+}
+
+#[tokio::test]
 async fn binding_absent_on_disabled_create() {
     let db = Arc::new(StorageBackend::in_memory());
     let store = Arc::new(InMemoryWorkflowEventStore::new());

@@ -1250,6 +1250,60 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/triggers/{trigger_id}/runs": {
+      "get": {
+        "tags": [
+          "agent-triggers"
+        ],
+        "description": "List the ten most recent durable execution outcomes for an agent trigger.",
+        "operationId": "list_agent_trigger_runs",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "trigger_id",
+            "in": "path",
+            "description": "Trigger ID (prefixed)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recent trigger outcomes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentTriggerRun"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Trigger not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger": {
       "post": {
         "tags": [
@@ -15840,6 +15894,45 @@
           }
         }
       },
+      "AgentTriggerRun": {
+        "type": "object",
+        "description": "One recent durable execution of an agent schedule trigger.",
+        "required": [
+          "id",
+          "status",
+          "scheduled_at"
+        ],
+        "properties": {
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Time the execution completed, when terminal."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Failure message for an unsuccessful execution."
+          },
+          "id": {
+            "type": "string",
+            "description": "Durable execution identifier."
+          },
+          "scheduled_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Time the execution was scheduled."
+          },
+          "status": {
+            "type": "string",
+            "description": "Current durable execution status."
+          }
+        }
+      },
       "AgentTriggerType": {
         "type": "string",
         "description": "The kind of event that fires an agent trigger. Only scheduled triggers exist\ntoday; the enum leaves room for webhook/event triggers later.",
@@ -18315,7 +18408,7 @@
               "string",
               "null"
             ],
-            "description": "Optional ID of the agent to use.",
+            "description": "ID of the agent to use. The command validation requires this field even\nthough it remains optional in the wire shape for a clear domain error.",
             "example": "agent_01933b5a00007000800000000000001"
           },
           "agent_identity_id": {
@@ -18342,7 +18435,7 @@
               "object",
               "null"
             ],
-            "description": "Initial channel configuration. Shape depends on `channel_type`. Examples:\n`{\"token\": \"whk_redacted\", \"message\": \"Run support triage\"}` for `webhook`,\n`{\"cron_expression\": \"0 9 * * *\", \"message\": \"Daily standup\"}` for `schedule`."
+            "description": "Initial channel configuration. Shape depends on `channel_type`, for\nexample `{\"token\": \"whk_redacted\", \"message\": \"Run support triage\"}`\nfor `webhook`. New schedule channels are rejected; use agent triggers."
           },
           "channel_type": {
             "oneOf": [
@@ -35732,19 +35825,22 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Replacement cron expression."
           },
           "enabled": {
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Replacement enabled state."
           },
           "message": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Replacement message sent when the trigger fires."
           },
           "session_mode": {
             "oneOf": [
@@ -35752,7 +35848,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/InvocationSessionMode"
+                "$ref": "#/components/schemas/InvocationSessionMode",
+                "description": "Replacement session reuse strategy."
               }
             ]
           },
@@ -35760,7 +35857,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Replacement IANA timezone identifier."
           }
         }
       },

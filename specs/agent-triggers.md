@@ -94,9 +94,12 @@ identity principal — so each agent acts as itself — is P5
 
 ## Relationship to App schedule channels
 
-Agent triggers and the App `schedule` channel are the same scheduled-invocation
-machinery. P4 introduces agent triggers as the owned-by-the-agent home for
-proactivity; the App `schedule` channel deprecation and migration onto agent
-triggers is a follow-up (see `specs/apps.md` / `specs/app-invocation-channels.md`
-when that lands). `SessionSchedule` ("continue this conversation later") and App
+Agent triggers are now the only home for proactive cron execution. Migration
+`106_migrate_app_schedules_to_agent_triggers.sql` converts legacy App schedule
+channels 1:1, retaining active durable schedule identities and execution history
+while retargeting them to `invoke_agent_trigger`. New App schedule channels are
+rejected. `SessionSchedule` ("continue this conversation later") and App
 **webhook** channels are orthogonal and unchanged.
+
+The Agent detail Triggers UI supports list/create/edit, enable/disable, delete,
+manual run, human-readable cron/timezone display, and recent durable execution outcomes.

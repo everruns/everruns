@@ -20,6 +20,19 @@ async fn create_app(
     channel_type: &str,
     channel_config: Value,
 ) -> Value {
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": format!("{name}-agent"),
+                "display_name": format!("{name} agent"),
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
     server
         .post(
             "/v1/apps",
@@ -27,6 +40,7 @@ async fn create_app(
                 "name": name,
                 "description": "test app",
                 "harness_id": server.seed_generic_harness_id.clone(),
+                "agent_id": agent["id"],
                 "channel_type": channel_type,
                 "channel_config": channel_config,
             }),
@@ -190,6 +204,53 @@ async fn app_run_history_paginates_audit_log_fallback() {
 }
 
 #[tokio::test]
+async fn schedule_channel_creation_is_rejected_with_agent_trigger_guidance() {
+    let server = TestServer::in_memory().await;
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "deprecated-schedule-agent",
+                "display_name": "Deprecated Schedule Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let response: Value = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "deprecated-schedule-app",
+                "description": "test app",
+                "harness_id": server.seed_generic_harness_id.clone(),
+                "agent_id": agent["id"],
+                "channel_type": "schedule",
+                "channel_config": {
+                    "cron_expression": "0 * * * *",
+                    "timezone": "UTC",
+                    "session_mode": "shared_session",
+                    "message": "scheduled"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST)
+        .json();
+
+    assert!(
+        response["detail"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("schedule trigger on the app's agent"),
+        "unexpected response: {response:?}"
+    );
+}
+
+#[tokio::test]
+#[ignore = "legacy schedule behavior requires a pre-migration fixture"]
 async fn schedule_channel_binds_to_durable_schedule_and_invokes_shared_session() {
     let server = TestServer::in_memory().await;
     let app = create_app(
@@ -567,6 +628,7 @@ async fn webhook_channel_per_invocation_rejects_bad_token_and_creates_new_sessio
 }
 
 #[tokio::test]
+#[ignore = "legacy schedule behavior requires a pre-migration fixture"]
 async fn schedule_channel_per_invocation_tracks_publish_and_enable_state() {
     let server = TestServer::in_memory().await;
     let app = create_app(

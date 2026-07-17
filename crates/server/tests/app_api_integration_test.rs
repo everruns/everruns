@@ -12,12 +12,26 @@ use tokio::time::{Duration, sleep};
 
 /// Create an app with an api_endpoint channel; returns (app_json_after, api_key).
 async fn create_app_with_api_endpoint(server: &TestServer, name: &str) -> (Value, String) {
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": format!("{name}-agent"),
+                "display_name": format!("{name} agent"),
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
     let app: Value = server
         .post(
             "/v1/apps",
             json!({
                 "name": name,
                 "harness_id": server.seed_generic_harness_id.clone(),
+                "agent_id": agent["id"],
             }),
         )
         .await

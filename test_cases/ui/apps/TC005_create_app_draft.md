@@ -32,4 +32,4 @@ Verify that an App draft can be created before channel configuration and opens i
 - A draft App is created and its detail route remains valid after reload.
 - The detail header identifies the selected agent and harness.
 - The App has no channels until one is explicitly added.
-- Add channel opens `/apps/{appId}/channels/new` with Schedule, Webhook, AG-UI, FCP, and Slack choices.
+- Add channel opens `/apps/{appId}/channels/new` with Webhook, AG-UI, FCP, and Slack choices; Schedule is absent.

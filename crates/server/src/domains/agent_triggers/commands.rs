@@ -7,7 +7,7 @@
 // trigger's `enabled` flag and its `schedule` config.
 
 use super::queries as q;
-use super::types::{CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
+use super::types::{AgentTriggerRun, CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
 use crate::auth::audit;
@@ -32,8 +32,8 @@ use everruns_core::{
     ScheduleTriggerConfig,
 };
 use everruns_durable::{
-    CreateScheduleRow, ScheduleTargetType, StoreError, UpdateField, UpdateSchedule,
-    WorkflowEventStore,
+    CreateScheduleRow, Pagination as DurablePagination, ScheduleExecutionFilter,
+    ScheduleTargetType, StoreError, UpdateField, UpdateSchedule, WorkflowEventStore,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -509,6 +509,66 @@ impl Command for GetAgentTrigger {
 inventory::submit! { CommandDescriptor::of::<GetAgentTrigger>() }
 
 // ============================================================================
+// ListAgentTriggerRuns
+// ============================================================================
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ListAgentTriggerRuns {
+    pub agent_id: String,
+    pub trigger_id: String,
+}
+
+impl Command for ListAgentTriggerRuns {
+    type Output = Vec<AgentTriggerRun>;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "list_agent_trigger_runs",
+            category: "agent_triggers",
+            description: "List recent execution outcomes for an agent trigger.",
+            method: "GET",
+            path: "/v1/agents/{agent_id}/triggers/{trigger_id}/runs",
+        }
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&AGENT_VIEW)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Vec<AgentTriggerRun>, CommandError> {
+        let (_, trigger) = resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id).await?;
+        let Some(schedule_id) = trigger.durable_schedule_id else {
+            return Ok(Vec::new());
+        };
+        let executions = durable_store(ctx)?
+            .list_schedule_executions(
+                ScheduleExecutionFilter {
+                    schedule_id: Some(schedule_id),
+                    status: None,
+                },
+                DurablePagination {
+                    offset: 0,
+                    limit: 10,
+                },
+            )
+            .await
+            .map_err(|err| classify_anyhow(err.into()))?;
+        Ok(executions
+            .into_iter()
+            .map(|execution| AgentTriggerRun {
+                id: execution.id.to_string(),
+                status: execution.status.to_string(),
+                scheduled_at: execution.scheduled_at,
+                completed_at: execution.completed_at,
+                error: execution.error,
+            })
+            .collect())
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ListAgentTriggerRuns>() }
+
+// ============================================================================
 // UpdateAgentTrigger
 // ============================================================================
 
@@ -686,7 +746,8 @@ impl Command for TriggerAgentTriggerNow {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<TriggerAgentTriggerOutput, CommandError> {
-        let (agent, _) = resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id).await?;
+        let (agent, trigger) =
+            resolve_trigger_for_agent(ctx, &self.agent_id, &self.trigger_id).await?;
         let session_service = ctx.session_service.as_ref().ok_or_else(|| {
             CommandError::internal(anyhow::anyhow!("Session service not available"))
         })?;
@@ -694,6 +755,16 @@ impl Command for TriggerAgentTriggerNow {
             CommandError::internal(anyhow::anyhow!("Message service not available"))
         })?;
         let trigger_id = parse_trigger_id(&self.trigger_id)?;
+        let execution_id = if let Some(schedule_id) = trigger.durable_schedule_id {
+            Some(
+                durable_store(ctx)?
+                    .create_schedule_execution(schedule_id, Utc::now())
+                    .await
+                    .map_err(|err| classify_anyhow(err.into()))?,
+            )
+        } else {
+            None
+        };
         let result = invoke_agent_trigger(
             &ctx.db,
             session_service,
@@ -702,7 +773,27 @@ impl Command for TriggerAgentTriggerNow {
             &agent.public_id,
             &trigger_id.to_string(),
         )
-        .await?;
+        .await;
+        let result = match result {
+            Ok(result) => {
+                if let Some(execution_id) = execution_id {
+                    durable_store(ctx)?
+                        .complete_schedule_execution(execution_id, result.session_id.uuid(), false)
+                        .await
+                        .map_err(|err| classify_anyhow(err.into()))?;
+                }
+                result
+            }
+            Err(err) => {
+                if let Some(execution_id) = execution_id {
+                    durable_store(ctx)?
+                        .fail_schedule_execution(execution_id, &err.to_string())
+                        .await
+                        .map_err(|store_err| classify_anyhow(store_err.into()))?;
+                }
+                return Err(err);
+            }
+        };
         Ok(TriggerAgentTriggerOutput {
             session_id: result.session_id,
             created_session: result.created_session,

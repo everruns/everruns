@@ -7,10 +7,12 @@
 // agents router (whose state lacks those).
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::agent_triggers::types::{CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
+use crate::domains::agent_triggers::types::{
+    AgentTriggerRun, CreateAgentTriggerRequest, UpdateAgentTriggerRequest,
+};
 use crate::domains::agent_triggers::{
-    CreateAgentTrigger, DeleteAgentTrigger, GetAgentTrigger, ListAgentTriggers,
-    TriggerAgentTriggerNow, TriggerAgentTriggerOutput, UpdateAgentTriggerCmd,
+    CreateAgentTrigger, DeleteAgentTrigger, GetAgentTrigger, ListAgentTriggerRuns,
+    ListAgentTriggers, TriggerAgentTriggerNow, TriggerAgentTriggerOutput, UpdateAgentTriggerCmd,
 };
 use crate::domains::common::Command;
 use crate::domains::messages::MessageService;
@@ -100,6 +102,10 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger",
             post(trigger_agent_trigger),
+        )
+        .route(
+            "/v1/agents/{agent_id}/triggers/{trigger_id}/runs",
+            get(list_agent_trigger_runs),
         )
         .with_state(state)
 }
@@ -192,6 +198,34 @@ pub async fn get_agent_trigger(
     .run(&state.ctx(&org))
     .await?;
     Ok(Json(trigger))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/agents/{agent_id}/triggers/{trigger_id}/runs",
+    description = "List the ten most recent durable execution outcomes for an agent trigger.",
+    params(
+        ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
+        ("trigger_id" = String, Path, description = "Trigger ID (prefixed)")
+    ),
+    responses(
+        (status = 200, description = "Recent trigger outcomes", body = Vec<AgentTriggerRun>),
+        (status = 404, description = "Trigger not found", body = ErrorResponse)
+    ),
+    tag = "agent-triggers"
+)]
+pub async fn list_agent_trigger_runs(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((agent_id, trigger_id)): Path<(String, String)>,
+) -> ApiResult<Vec<AgentTriggerRun>> {
+    let runs = ListAgentTriggerRuns {
+        agent_id,
+        trigger_id,
+    }
+    .run(&state.ctx(&org))
+    .await?;
+    Ok(Json(runs))
 }
 
 /// PATCH|PUT /v1/agents/{agent_id}/triggers/{trigger_id}

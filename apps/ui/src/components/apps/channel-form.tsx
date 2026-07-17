@@ -56,7 +56,6 @@ import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { cn } from "@/lib/utils";
 
 export const CHANNEL_FORM_KINDS: ChannelType[] = [
-  "schedule",
   "webhook",
   "ag_ui",
   "public_chat",

@@ -89,7 +89,7 @@ export default function AppsPage() {
             {counts.all}
           </Badge>
         }
-        description="Deploy agents to channels — Slack, AG-UI, webhooks, and schedules."
+        description="Deploy agents to channels — Slack, AG-UI, webhooks, and more."
         meta={
           <>
             <span>{counts.active} active</span>
@@ -137,7 +137,7 @@ export default function AppsPage() {
                 }
                 description={
                   !search && statusTab === "active"
-                    ? "Apps deploy your agents to channels like Slack and AG-UI. Create an app to connect an agent to the interface you need, or trigger it from schedules and authenticated webhooks."
+                    ? "Apps deploy your agents to channels like Slack and AG-UI. Create an app to connect an agent to the interface you need, or invoke it through authenticated webhooks. Configure schedules from the agent's Triggers tab."
                     : undefined
                 }
                 action={
