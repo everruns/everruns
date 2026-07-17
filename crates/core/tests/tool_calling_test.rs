@@ -636,7 +636,6 @@ async fn test_tool_result_with_images_message() {
 
 #[tokio::test]
 async fn test_tool_result_with_images_llm_conversion() {
-    use everruns_core::driver_registry::LlmMessage;
     use std::collections::HashMap;
 
     let images = vec![

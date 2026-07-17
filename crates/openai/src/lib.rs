@@ -14,7 +14,7 @@
 //! # Registering the Driver
 //!
 //! ```
-//! use everruns_core::DriverRegistry;
+//! use everruns_provider::DriverRegistry;
 //! use everruns_openai::register_driver;
 //!
 //! let mut registry = DriverRegistry::new();
@@ -24,7 +24,7 @@
 //! # Embedded Agent Example
 //!
 //! ```ignore
-//! use everruns_core::{
+//! use everruns_provider::{
 //!     CapabilityRegistry, CredentialProvider, DriverRegistry, DriverId, EnvCredentialProvider,
 //!     ResolvedModel, PlatformDefinition,
 //! };
@@ -75,4 +75,4 @@ pub use types::{
 };
 
 // Re-export core types for convenience
-pub use everruns_core::driver_registry::{ChatDriver, DriverRegistry};
+pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};

@@ -28,8 +28,8 @@ use uuid::Uuid;
 use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::driver_registry::{
-    DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmStreamEvent, ProviderConfig,
+    DriverRegistry, LlmCompletionMetadata, LlmMessage, LlmMessageContent, LlmMessageRole,
+    LlmStreamEvent,
 };
 use crate::error::{AgentLoopError, Result};
 use crate::events::{

@@ -11,7 +11,6 @@ use everruns_core::MessageRetriever;
 use everruns_core::agent::{Agent, AgentStatus};
 use everruns_core::atoms::{Atom, AtomContext, ReasonAtom, ReasonInput};
 use everruns_core::capabilities::CapabilityRegistry;
-use everruns_core::driver_registry::LlmCallConfigBuilder;
 use everruns_core::driver_registry::{DriverId, DriverRegistry};
 use everruns_core::harness::{Harness, HarnessStatus};
 use everruns_core::in_memory::{

@@ -432,7 +432,7 @@ pub struct ToolHints {
     /// Set this on tools that mutate shared session state so that, e.g., two
     /// file writes or two SQL mutations in one batch do not race. Read-only
     /// tools should leave this `None` so they always parallelize. See
-    /// the act scheduler (`tool_scheduler` in everruns-core) for how the act scheduler consumes it.
+    /// `crate::atoms::tool_scheduler` for how the act scheduler consumes it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub concurrency_class: Option<String>,
 

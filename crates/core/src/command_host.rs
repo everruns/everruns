@@ -14,8 +14,8 @@
 use crate::capabilities::CapabilityRegistry;
 use crate::command::CommandResult;
 use crate::driver_registry::{
-    BoxedChatDriver, DriverRegistry, LlmCallConfig, LlmCallConfigBuilder, LlmMessage,
-    LlmMessageRole, LlmResponseStream, ProviderConfig, ToolSearchConfig,
+    BoxedChatDriver, DriverRegistry, LlmCallConfig, LlmMessage, LlmMessageRole, LlmResponseStream,
+    ToolSearchConfig,
 };
 use crate::error::{AgentLoopError, Result};
 use crate::message::{Controls, Message, MessageRole, patch_dangling_tool_calls};

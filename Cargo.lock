@@ -2561,6 +2561,7 @@ dependencies = [
  "chrono",
  "eventsource-stream",
  "everruns-core",
+ "everruns-provider",
  "futures",
  "reqwest 0.13.4",
  "serde",
@@ -2595,7 +2596,7 @@ dependencies = [
  "aws-sdk-bedrockruntime",
  "aws-smithy-types",
  "base64 0.22.1",
- "everruns-core",
+ "everruns-provider",
  "futures",
  "serde",
  "serde_json",
@@ -2771,6 +2772,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
+ "everruns-provider",
  "futures",
  "reqwest 0.13.4",
  "serde",
@@ -2785,6 +2787,7 @@ version = "0.17.12"
 dependencies = [
  "async-trait",
  "everruns-core",
+ "everruns-provider",
  "futures",
  "reqwest 0.13.4",
  "serde",
@@ -2962,7 +2965,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-openai-image"
-version = "0.17.11"
+version = "0.17.12"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3080,6 +3083,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
+ "everruns-provider",
  "futures",
  "reqwest 0.13.4",
  "serde",
@@ -3128,6 +3132,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
+ "everruns-provider",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -3143,6 +3148,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
+ "everruns-provider",
  "futures",
  "reqwest 0.13.4",
  "serde",
@@ -3157,7 +3163,7 @@ version = "0.17.12"
 
 [[package]]
 name = "everruns-provider"
-version = "0.17.11"
+version = "0.17.12"
 dependencies = [
  "anyhow",
  "async-trait",

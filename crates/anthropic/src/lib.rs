@@ -12,7 +12,7 @@
 //!
 //! ```
 //! use everruns_anthropic::{AnthropicChatDriver, register_driver};
-//! use everruns_core::DriverRegistry;
+//! use everruns_provider::DriverRegistry;
 //!
 //! let driver = AnthropicChatDriver::new("your-api-key");
 //!
@@ -30,4 +30,4 @@ mod tests;
 pub use driver::{AnthropicChatDriver, register_driver};
 
 // Re-export core types for convenience
-pub use everruns_core::driver_registry::{ChatDriver, DriverRegistry};
+pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};

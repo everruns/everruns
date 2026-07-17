@@ -18,10 +18,10 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
-use everruns_core::driver_registry::DriverConfig;
-use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::openai_protocol::AuthHeaderProvider;
-use everruns_core::validate_safe_url;
+use everruns_provider::driver_registry::DriverConfig;
+use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::openai_protocol::AuthHeaderProvider;
+use everruns_provider::validate_safe_url;
 use serde::Deserialize;
 use tokio::sync::Mutex;
 
@@ -383,7 +383,7 @@ impl AuthHeaderProvider for EntraOAuthProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::driver_registry::{DriverId, ProviderMetadata};
+    use everruns_provider::driver_registry::{DriverId, ProviderMetadata};
 
     /// Build a config the way the server does: the stored credential document
     /// (`api_key`) is parsed into the typed credential map, mirroring
@@ -391,7 +391,7 @@ mod tests {
     fn driver_config(api_key: Option<&str>, extra: Option<serde_json::Value>) -> DriverConfig {
         DriverConfig {
             provider_type: DriverId::Mai,
-            credentials: everruns_core::credential_schema::parse_credential_document(api_key),
+            credentials: everruns_provider::credential_schema::parse_credential_document(api_key),
             api_key: api_key.map(str::to_string),
             base_url: Some("https://example.services.ai.azure.com".to_string()),
             metadata: ProviderMetadata {

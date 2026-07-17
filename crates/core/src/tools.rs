@@ -11,7 +11,6 @@
 // - Internal errors are logged but not exposed to the LLM (security)
 
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
