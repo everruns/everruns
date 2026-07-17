@@ -3763,6 +3763,19 @@ async fn test_delete_agent_referenced_by_app_returns_conflict() {
 async fn test_delete_harness_referenced_by_app_returns_conflict() {
     let server = TestServer::in_memory().await;
 
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "delete-harness-app-agent",
+                "display_name": "Delete Harness App Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
     let harness: Harness = server
         .post(
             "/v1/harnesses",
@@ -3781,7 +3794,8 @@ async fn test_delete_harness_referenced_by_app_returns_conflict() {
             "/v1/apps",
             json!({
                 "name": "Harness Delete Blocker",
-                "harness_id": harness.id
+                "harness_id": harness.id,
+                "agent_id": agent["id"]
             }),
         )
         .await
@@ -3796,6 +3810,19 @@ async fn test_delete_harness_referenced_by_app_returns_conflict() {
 #[tokio::test]
 async fn test_delete_agent_identity_referenced_by_app_returns_conflict() {
     let server = TestServer::in_memory().await;
+
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "delete-identity-app-agent",
+                "display_name": "Delete Identity App Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
 
     let identity: Value = server
         .post(
@@ -3812,6 +3839,7 @@ async fn test_delete_agent_identity_referenced_by_app_returns_conflict() {
             json!({
                 "name": "Identity Delete Blocker",
                 "harness_id": server.seed_generic_harness_id,
+                "agent_id": agent["id"],
                 "agent_identity_id": identity["id"]
             }),
         )
@@ -4016,7 +4044,7 @@ async fn test_create_app_missing_agent_returns_not_found() {
 }
 
 #[tokio::test]
-async fn test_create_app_schedule_and_webhook_channels_persist_in_postgres() {
+async fn test_app_schedule_rejected_and_webhook_persists_in_postgres() {
     let server = TestServer::new().await;
 
     let agent: Value = server
@@ -4032,7 +4060,7 @@ async fn test_create_app_schedule_and_webhook_channels_persist_in_postgres() {
         .assert_status(StatusCode::CREATED)
         .json();
 
-    let schedule_app: Value = server
+    let schedule_response: Value = server
         .post(
             "/v1/apps",
             json!({
@@ -4049,34 +4077,15 @@ async fn test_create_app_schedule_and_webhook_channels_persist_in_postgres() {
             }),
         )
         .await
-        .assert_status(StatusCode::CREATED)
+        .assert_status(StatusCode::BAD_REQUEST)
         .json();
 
-    let stored_schedule_app: Value = server
-        .get(&format!(
-            "/v1/apps/{}",
-            schedule_app["id"].as_str().unwrap()
-        ))
-        .await
-        .assert_status(StatusCode::OK)
-        .json();
-
-    assert_eq!(stored_schedule_app["channels"].as_array().unwrap().len(), 1);
-    assert_eq!(
-        stored_schedule_app["channels"][0]["channel_type"],
-        "schedule"
-    );
-    assert_eq!(
-        stored_schedule_app["channels"][0]["channel_config"]["cron_expression"],
-        "0 15 * * * * *"
-    );
-    assert_eq!(
-        stored_schedule_app["channels"][0]["channel_config"]["session_mode"],
-        "shared_session"
-    );
-    assert_eq!(
-        stored_schedule_app["channels"][0]["channel_config"]["message"],
-        "check repo"
+    assert!(
+        schedule_response["detail"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("schedule trigger on the app's agent"),
+        "unexpected response: {schedule_response:?}"
     );
 
     let webhook_app: Value = server
@@ -4128,12 +4137,26 @@ async fn test_create_app_schedule_and_webhook_channels_persist_in_postgres() {
 async fn test_publish_app_without_channels_returns_bad_request() {
     let server = TestServer::new().await;
 
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "channel-less-app-agent",
+                "display_name": "Channel-less App Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
     let app: Value = server
         .post(
             "/v1/apps",
             json!({
                 "name": "Channel-less App",
-                "harness_id": server.seed_generic_harness_id
+                "harness_id": server.seed_generic_harness_id,
+                "agent_id": agent["id"]
             }),
         )
         .await
@@ -4162,12 +4185,26 @@ async fn test_publish_app_without_channels_returns_bad_request() {
 async fn test_update_app_to_published_returns_bad_request() {
     let server = TestServer::new().await;
 
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "patch-published-app-agent",
+                "display_name": "Patch Published App Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
     let app: Value = server
         .post(
             "/v1/apps",
             json!({
                 "name": "Patch Published App",
-                "harness_id": server.seed_generic_harness_id
+                "harness_id": server.seed_generic_harness_id,
+                "agent_id": agent["id"]
             }),
         )
         .await
@@ -4196,12 +4233,26 @@ async fn test_update_app_to_published_returns_bad_request() {
 async fn test_publish_archived_app_returns_bad_request() {
     let server = TestServer::new().await;
 
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "archived-publish-app-agent",
+                "display_name": "Archived Publish App Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
     let app: Value = server
         .post(
             "/v1/apps",
             json!({
                 "name": "Archived Publish App",
                 "harness_id": server.seed_generic_harness_id,
+                "agent_id": agent["id"],
                 "channel_type": "webhook",
                 "channel_config": {
                     "token": "secret-token",
