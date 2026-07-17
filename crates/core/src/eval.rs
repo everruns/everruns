@@ -318,6 +318,24 @@ pub enum Scorer {
         #[serde(default = "default_weight")]
         weight: f64,
     },
+    /// Citation faithfulness: the answer's citations (see `specs/citations.md`)
+    /// must cover the claim and be verified as supported. Scored from the
+    /// `TextAnnotation`s on the final message — pair with the
+    /// `citation_verification` capability so verdicts are present.
+    CitationFaithful {
+        /// Minimum number of citations the answer must carry.
+        #[serde(default)]
+        min_citations: u32,
+        /// Minimum fraction of citations verified `entailed` to pass.
+        #[serde(default = "default_pass_threshold")]
+        pass_threshold: f64,
+        #[serde(default = "default_weight")]
+        weight: f64,
+    },
+}
+
+fn default_pass_threshold() -> f64 {
+    0.8
 }
 
 impl Scorer {
@@ -338,6 +356,7 @@ impl Scorer {
             Scorer::TurnsWithin { .. } => "turns_within",
             Scorer::FileContains { .. } => "file_contains",
             Scorer::JsonSchema { .. } => "json_schema",
+            Scorer::CitationFaithful { .. } => "citation_faithful",
         }
     }
 }

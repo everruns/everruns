@@ -116,6 +116,9 @@ pub fn score_rule(
             }
         }
         Scorer::FileContains { .. } => return None,
+        // Needs the message's citation annotations, not just trace text; graded
+        // in the eval runner's async path.
+        Scorer::CitationFaithful { .. } => return None,
     };
     Some(score)
 }
