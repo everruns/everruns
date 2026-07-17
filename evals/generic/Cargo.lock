@@ -1091,7 +1091,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-anthropic"
-version = "0.17.10"
+version = "0.17.11"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1107,7 +1107,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.17.10"
+version = "0.17.11"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -1167,7 +1167,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-mcp"
-version = "0.17.10"
+version = "0.17.11"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1180,7 +1180,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openai"
-version = "0.17.10"
+version = "0.17.11"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -1199,7 +1199,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openrouter"
-version = "0.17.10"
+version = "0.17.11"
 dependencies = [
  "async-trait",
  "chrono",
@@ -1211,7 +1211,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-runtime"
-version = "0.17.10"
+version = "0.17.11"
 dependencies = [
  "async-trait",
  "chrono",
