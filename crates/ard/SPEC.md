@@ -168,9 +168,9 @@ token.
 
 ## CI
 
-- `unit-test` job runs `cargo test -p everruns-integrations-ard`.
-- `ard: integrations/ard/**` path filter in the `changes` job.
-- Dedicated `.github/workflows/ard-integration.yml` (change-scoped unit + live).
+- `unit-test` job runs `cargo test -p everruns-ard`.
+- `ard: crates/ard/**` path filter in the `changes` job.
+- Dedicated `.github/workflows/ard.yml` (change-scoped unit + live).
 - Included in `.github/workflows/integration-live-sweep.yml`.
 
 ## Example / Seed Agent

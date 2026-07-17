@@ -5,7 +5,7 @@ use everruns_core::connector::ConnectorPlugin;
 use everruns_core::deployment::DeploymentGrade;
 
 // Force linker to include the integration crate's inventory submissions.
-use everruns_integrations_ard as _;
+use everruns_ard as _;
 
 #[test]
 fn capability_plugin_is_submitted() {

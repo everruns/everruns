@@ -16,8 +16,8 @@ use tokio::sync::Mutex;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-use everruns_integrations_ard::config::ArdConfig;
-use everruns_integrations_ard::tools::{AttachResourceTool, DiscoverResourcesTool};
+use everruns_ard::config::ArdConfig;
+use everruns_ard::tools::{AttachResourceTool, DiscoverResourcesTool};
 
 // --- in-memory SessionStorageStore mock ---------------------------------------
 

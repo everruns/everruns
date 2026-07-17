@@ -1,6 +1,6 @@
 //! Runtime ARD (Agentic Resource Discovery) attachments.
 //!
-//! The `resource_discovery` capability (see `integrations/ard`) lets a running
+//! The `resource_discovery` capability (see `crates/ard`) lets a running
 //! agent discover external capabilities through an ARD registry and attach them
 //! mid-session. Attachments are persisted as session KV entries (key prefix
 //! [`ARD_ATTACHMENT_KV_PREFIX`]) written from the tool side, then folded into

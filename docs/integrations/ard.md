@@ -102,5 +102,5 @@ From a session, ask for something the agent can't yet do. It will:
 - **Untrusted data** — all registry-returned text is treated as untrusted
   external input.
 
-See the co-located [`SPEC.md`](https://github.com/everruns/everruns/blob/main/integrations/ard/SPEC.md)
+See the co-located [`SPEC.md`](https://github.com/everruns/everruns/blob/main/crates/ard/SPEC.md)
 for architecture and the full security review.

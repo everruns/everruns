@@ -89,6 +89,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/mcp.md` - MCP server endpoint, OAuth 2.1 authentication, protocol, security
 - `specs/mcp-servers.md` - MCP client remote server registration, CRUD API, tool naming, execution
 - `specs/runtime-mcp.md` - MCP client in the in-process runtime: shared `everruns-mcp` crate, transport abstraction (HTTP + optional stdio), pluggable auth
+- `crates/ard/SPEC.md` - Agentic Resource Discovery (`resource_discovery`) client capability: discover and attach external MCP servers / A2A agents at runtime (`everruns-ard`, a platform capability like MCP/A2A)
 - `specs/integrations.md` - Integration specs index
 - `specs/apps.md` - Apps system
 - `specs/public-chat.md` - Public Chat (hosted, isolated chat app) — product spec/proposal

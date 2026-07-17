@@ -2571,6 +2571,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-ard"
+version = "0.17.12"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-core",
+ "inventory",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "url",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-bedrock"
 version = "0.17.12"
 dependencies = [
@@ -2773,23 +2790,6 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
- "wiremock",
-]
-
-[[package]]
-name = "everruns-integrations-ard"
-version = "0.17.12"
-dependencies = [
- "async-trait",
- "chrono",
- "everruns-core",
- "inventory",
- "reqwest 0.13.4",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "url",
  "wiremock",
 ]
 
@@ -3203,10 +3203,10 @@ dependencies = [
  "dotenvy",
  "ethers-core",
  "ethers-signers",
+ "everruns-ard",
  "everruns-container-sandbox",
  "everruns-core",
  "everruns-durable",
- "everruns-integrations-ard",
  "everruns-integrations-brave-search",
  "everruns-integrations-browserless",
  "everruns-integrations-cursor",
@@ -3320,13 +3320,13 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "everruns-anthropic",
+ "everruns-ard",
  "everruns-bedrock",
  "everruns-container-sandbox",
  "everruns-core",
  "everruns-durable",
  "everruns-fireworks",
  "everruns-gemini",
- "everruns-integrations-ard",
  "everruns-integrations-brave-search",
  "everruns-integrations-browserless",
  "everruns-integrations-cursor",

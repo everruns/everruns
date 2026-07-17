@@ -216,7 +216,7 @@ jobs:
             parallel_integration:
               - 'integrations/parallel/**'
             ard:
-              - 'integrations/ard/**'
+              - 'crates/ard/**'
 
       # Exclusion filters need `predicate-quantifier: every`; with the default
       # `some`, a rule like `!integrations/foo/**/*.md` matches almost every
@@ -414,6 +414,10 @@ jobs:
           # (off in hosted builds) so its transport test runs here. All in-process,
           # no network/credentials.
           cargo test -p everruns-mcp --all-features
+          # ard: platform discovery capability (sibling of mcp/a2a). No --all-features
+          # here — it enables `ard-live-tests`, which fails closed without a live
+          # registry. Live coverage runs in the dedicated ard.yml workflow.
+          cargo test -p everruns-ard
           # Do not pass --all-features here: it would enable `turbopuffer-live-tests`,
           # which fails closed without TURBOPUFFER_API_KEY. Live tests run separately.
           cargo test -p everruns-turbopuffer --lib
@@ -437,7 +441,6 @@ jobs:
           cargo test -p everruns-integrations-e2b
           cargo test -p everruns-integrations-github
           cargo test -p everruns-integrations-sprites
-          cargo test -p everruns-integrations-ard
 
   # Durable-worker PR coverage. Catches regressions in the worker crate's
   # durable execution paths (act/reason/input task handling, DLQ emission,
