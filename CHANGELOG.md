@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.17.11] - 2026-07-16
+
+### What's Changed
+
+- feat(core): MountFs display policy seam for host-native paths ([#2816](https://github.com/everruns/everruns/pull/2816)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): run workflow tests against real gRPC control-plane ([#2799](https://github.com/everruns/everruns/pull/2799)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.10] - 2026-07-16
 
 ### Highlights
@@ -70,6 +77,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - fix(sessions): require agent permission for agent sessions ([#2757](https://github.com/everruns/everruns/pull/2757)) by [@chaliy](https://github.com/chaliy)
 - fix(models): apply tiered cost estimates ([#2755](https://github.com/everruns/everruns/pull/2755)) by [@chaliy](https://github.com/chaliy)
 - fix(core): keep spawn_agent schema free of top-level oneOf ([#2806](https://github.com/everruns/everruns/pull/2806)) by [@chaliy](https://github.com/chaliy)
+- fix(core): preserve workspace display paths ([#2779](https://github.com/everruns/everruns/pull/2779)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): harden recovery endpoint timing ([#2769](https://github.com/everruns/everruns/pull/2769)) by [@chaliy](https://github.com/chaliy)
+- perf(ui): avoid dashboard capability and model overfetch ([#2814](https://github.com/everruns/everruns/pull/2814)) by [@chaliy](https://github.com/chaliy)
+- perf(ui): eliminate duplicate dashboard agent-list requests ([#2813](https://github.com/everruns/everruns/pull/2813)) by [@chaliy](https://github.com/chaliy)
+- perf(ui): stop automatic /agents/new prefetch on dashboard startup ([#2815](https://github.com/everruns/everruns/pull/2815)) by [@chaliy](https://github.com/chaliy)
 
 ## [0.17.9] - 2026-07-14
 
