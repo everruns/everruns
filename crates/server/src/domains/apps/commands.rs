@@ -2049,7 +2049,7 @@ pub async fn invoke_webhook_app_channel(
 // CreateApp
 // ============================================================================
 
-/// Create a new app with a harness and optional agent/channel.
+/// Create a new app with a harness, agent, and optional channel.
 #[derive(Debug, Deserialize)]
 pub struct CreateApp(pub CreateAppRequest);
 
@@ -2066,7 +2066,7 @@ impl Command for CreateApp {
         CommandMeta {
             name: "create_app",
             category: "apps",
-            description: "Create a new app with a harness and optional agent/channel.",
+            description: "Create a new app with a harness, agent, and optional channel.",
             method: "POST",
             path: "/v1/apps",
         }

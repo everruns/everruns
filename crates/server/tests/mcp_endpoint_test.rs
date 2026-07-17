@@ -1704,17 +1704,37 @@ async fn test_mcp_execute_list_capabilities() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_execute_app_commands_support_schedule_and_webhook_channels() {
+async fn test_mcp_execute_app_commands_reject_schedule_and_support_webhook_channels() {
     let server = TestServer::in_memory().await;
     let app_name = format!("repo-checker-{}", unique_suffix());
+
+    let create_agent_resp = mcp_tool_call(
+        &server,
+        "execute",
+        json!({
+            "commands": format!(
+                "create_agent --name '{app_name}-agent' --display_name 'Repo Checker Agent' --system_prompt 'Test prompt'"
+            )
+        }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&create_agent_resp),
+        "create_agent failed: {}",
+        tool_text(&create_agent_resp)
+    );
+    let agent_id = tool_json(&create_agent_resp)["id"]
+        .as_str()
+        .expect("agent id")
+        .to_string();
 
     let create_resp = mcp_tool_call(
         &server,
         "execute",
         json!({
             "commands": format!(
-                "create_app --name '{app_name}' --description 'repo checks' --harness_id {}",
-                server.seed_generic_harness_id
+                "create_app --name '{app_name}' --description 'repo checks' --harness_id {} --agent_id {agent_id}",
+                server.seed_generic_harness_id,
             )
         }),
     )
@@ -1738,20 +1758,10 @@ async fn test_mcp_execute_app_commands_support_schedule_and_webhook_channels() {
     )
     .await;
     assert!(
-        !tool_is_error(&add_schedule_resp),
-        "add_app_channel schedule failed: {}",
+        tool_is_error(&add_schedule_resp),
+        "add_schedule_app_channel unexpectedly succeeded: {}",
         tool_text(&add_schedule_resp)
     );
-    let schedule_channel = tool_json(&add_schedule_resp);
-    assert_eq!(schedule_channel["channel_type"], "schedule");
-    assert_eq!(
-        schedule_channel["channel_config"]["cron_expression"],
-        "0 */10 * * * * *"
-    );
-    let schedule_channel_id = schedule_channel["id"]
-        .as_str()
-        .expect("schedule channel id");
-
     let add_webhook_resp = mcp_tool_call(
         &server,
         "execute",
@@ -1812,7 +1822,7 @@ async fn test_mcp_execute_app_commands_support_schedule_and_webhook_channels() {
         .iter()
         .filter_map(|channel| channel["channel_type"].as_str())
         .collect::<Vec<_>>();
-    assert!(channel_types.contains(&"schedule"));
+    assert!(!channel_types.contains(&"schedule"));
     assert!(channel_types.contains(&"webhook"));
     let serialized_app = serde_json::to_string(&fetched_app).unwrap();
     assert!(
@@ -1830,28 +1840,6 @@ async fn test_mcp_execute_app_commands_support_schedule_and_webhook_channels() {
         !tool_is_error(&publish_resp),
         "publish_app failed: {}",
         tool_text(&publish_resp)
-    );
-
-    let trigger_resp = mcp_tool_call(
-        &server,
-        "execute",
-        json!({
-            "commands": format!(
-                "trigger_app_schedule_channel --app_id {app_id} --channel_id {schedule_channel_id}"
-            )
-        }),
-    )
-    .await;
-    assert!(
-        !tool_is_error(&trigger_resp),
-        "trigger_app_schedule_channel failed: {}",
-        tool_text(&trigger_resp)
-    );
-    assert!(
-        tool_json(&trigger_resp)["session_id"]
-            .as_str()
-            .unwrap()
-            .starts_with("session_")
     );
 }
 
