@@ -22,7 +22,8 @@ import type {
 } from "@/lib/api/types";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 import type { ToolOutputStreams } from "@/app/(main)/sessions/[sessionId]/session-context";
-import { getEventData, isImageFilePart } from "@/lib/api/types";
+import { getEventData, isImageFilePart, isTextPart } from "@/lib/api/types";
+import type { TextAnnotation } from "@/lib/api/types";
 import { useAgents, useProviders } from "@/hooks";
 import { buildTraceConfigByDriver, resolveGenerationTraceUrl } from "@/lib/chat-trace";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
@@ -109,6 +110,11 @@ function getMessageImages(content: ContentPart[]): Array<{ image_id: string; fil
     image_id: part.image_id,
     filename: part.filename,
   }));
+}
+
+function getMessageAnnotations(content: ContentPart[] | undefined): TextAnnotation[] {
+  if (!content) return [];
+  return content.flatMap((part) => (isTextPart(part) && part.annotations ? part.annotations : []));
 }
 
 function getTurnFailedMessage(locale: SupportedLocale, data: TurnFailedData): string {
@@ -591,6 +597,7 @@ export const ChatMessageList = memo(function ChatMessageList({
                 )
               : [];
           const images = data.message?.content ? getMessageImages(data.message.content) : [];
+          const annotations = isUser ? [] : getMessageAnnotations(data.message?.content);
           // Deep link to this generation's trace on the provider (assistant
           // messages only; user messages carry no provider response id).
           const genTraceUrl = outputData
@@ -659,7 +666,9 @@ export const ChatMessageList = memo(function ChatMessageList({
                       </div>
                       <div className="flex flex-1 items-start gap-2">
                         <div className={chatSurfaceStyles.agentMessage}>
-                          {textContent && <MessageContent text={textContent} />}
+                          {textContent && (
+                            <MessageContent text={textContent} annotations={annotations} />
+                          )}
                           {images.length > 0 && (
                             <div className="mt-2 flex flex-wrap gap-2">
                               {images.map((image) => (

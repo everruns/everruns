@@ -16,19 +16,46 @@ import { hasA2UIBlocks, splitA2UIBlocks } from "@/lib/a2ui-utils";
 import { StreamdownMessage } from "@/components/chat/streamdown-message";
 import { OpenUIBlock } from "@/components/chat/openui-renderer";
 import { A2UIBlock } from "@/components/chat/a2ui-renderer";
+import type { TextAnnotation } from "@/lib/api/schema-types";
+import {
+  type CitationSource,
+  MessageSources,
+  injectCitationMarkers,
+  numberCitations,
+} from "@/components/chat/message-citations";
 
 interface MessageContentProps {
   /** Raw message text (may contain ```openui or ```a2ui blocks) */
   text: string;
   /** Whether content is actively streaming */
   isStreaming?: boolean;
+  /** Claim-level citations attached to the message text (see specs/citations.md). */
+  annotations?: TextAnnotation[];
 }
 
 /**
  * Renders message text, splitting generative-UI code blocks into rendered UI
- * and surrounding markdown into Streamdown-rendered text.
+ * and surrounding markdown into Streamdown-rendered text. When the message
+ * carries citation annotations, inline chips and a source strip are rendered.
  */
-export function MessageContent({ text, isStreaming = false }: MessageContentProps) {
+export function MessageContent({ text, isStreaming = false, annotations }: MessageContentProps) {
+  // Citation path: inline chips + source strip. Only in the fast (no
+  // generative-UI blocks) path — chip markers are char-offset based and a2ui
+  // splitting would shift offsets. Skipped while streaming (offsets apply to
+  // the finalized message only).
+  if (annotations && annotations.length > 0 && !isStreaming && !hasA2UIBlocks(text)) {
+    const { sources } = numberCitations(annotations);
+    const citations = new Map<number, CitationSource>(sources.map((s) => [s.n, s]));
+    return (
+      <div>
+        <StreamdownMessage variant="inline" className="text-foreground" citations={citations}>
+          {injectCitationMarkers(text, annotations)}
+        </StreamdownMessage>
+        <MessageSources sources={sources} />
+      </div>
+    );
+  }
+
   // Fast path: no generative-UI blocks → pure markdown.
   if (!hasA2UIBlocks(text)) {
     return (

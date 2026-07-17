@@ -2970,6 +2970,8 @@ export type ContentPart =
   | {
       type: "text";
       text: string;
+      /** Claim-level citations attached to spans of `text` (see specs/citations.md). */
+      annotations?: import("./schema-types").TextAnnotation[];
     }
   | {
       type: "image";
@@ -3012,6 +3014,7 @@ export type ContentPart =
 export function isTextPart(part: ContentPart): part is {
   type: "text";
   text: string;
+  annotations?: import("./schema-types").TextAnnotation[];
 } {
   return part.type === "text";
 }

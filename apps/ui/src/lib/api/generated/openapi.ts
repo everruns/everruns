@@ -4409,6 +4409,25 @@ export interface components {
        */
       schema_ref?: string | null;
     };
+    /** @description The source a [`TextAnnotation`] points to. */
+    AnnotationSource: {
+      /**
+       * @description Provenance within the document (line / char / page / block ranges),
+       *     reusing the retrieval `location` JSONB shape.
+       */
+      location?: unknown;
+      /**
+       * @description Trimmed passage that backs the claim. Display-only; never relied on for
+       *     prompt reconstruction.
+       */
+      snippet?: string | null;
+      title?: string | null;
+      /**
+       * @description Stable, linkable locator (e.g. `github://owner/repo@main/docs/x.md` or an
+       *     `https://` URL).
+       */
+      uri: string;
+    };
     /** @description Request body for API-key-based connections (e.g., Brave Search) */
     ApiKeyConnectionRequest: {
       api_key: string;
@@ -14861,8 +14880,43 @@ export interface components {
       /** @description Total number of items matching the query, across all pages. */
       total: number;
     };
+    /**
+     * @description A claim-level citation attached to a span of generated text.
+     *
+     *     The single shared type across every citation capability: a text span linked
+     *     to a source. Producers agree only on this render contract — each capability
+     *     keeps its own richer representation (e.g. `KnowledgeIndexCitation`) and maps
+     *     into this envelope at emit time. See `specs/citations.md`.
+     */
+    TextAnnotation: {
+      /** @description Exclusive end char offset. */
+      end: number;
+      /**
+       * @description Opaque producer id (e.g. `kchk_…`, `kbe_…`, a URL hash). Not interpreted
+       *     by the render contract.
+       */
+      external_id?: string | null;
+      /**
+       * @description Capability id that produced this annotation (e.g. `citation_retrieval`).
+       *     Lets the UI and evals attribute and filter each citation by feed.
+       */
+      origin: string;
+      /** @description The cited source. */
+      source: components["schemas"]["AnnotationSource"];
+      /** @description 0-indexed start char offset into the enclosing `TextContentPart.text`. */
+      start: number;
+      verified?: null | components["schemas"]["VerificationVerdict"];
+    };
     /** @description Text content part */
     TextContentPart: {
+      /**
+       * @description Claim-level citations attached to spans of `text`.
+       *
+       *     The narrow render contract shared by all citation capabilities (see
+       *     `specs/citations.md`). Empty for non-cited text, so the wire shape of
+       *     existing messages is unchanged.
+       */
+      annotations?: components["schemas"]["TextAnnotation"][];
       text: string;
     };
     /**
@@ -16131,6 +16185,20 @@ export interface components {
       name: string;
       /** @description The API value (e.g., "low", "high") */
       value: components["schemas"]["Verbosity"];
+    };
+    /**
+     * @description Whether a cited source entails the claim it is attached to.
+     * @enum {string}
+     */
+    VerificationStatus: "entailed" | "unsupported" | "uncertain";
+    /** @description Outcome of citation verification (see the `citation_verification` capability). */
+    VerificationVerdict: {
+      /**
+       * Format: float
+       * @description Entailment confidence in `[0, 1]`, when the verifier produced one.
+       */
+      score?: number | null;
+      status: components["schemas"]["VerificationStatus"];
     };
     /** @description Request body for voice attach. */
     VoiceAttachRequest: components["schemas"]["VoiceSessionOptions"] & {
