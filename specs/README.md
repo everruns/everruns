@@ -68,6 +68,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/knowledge-bases.md` - Curated organization knowledge
 - `specs/okf-adoption.md` - Open Knowledge Format (OKF) import/export adoption for Knowledge Bases
 - `specs/knowledge-indexes.md` - Source-backed, embedded, citable knowledge indexes
+- `specs/citations.md` - Claim-level source provenance as composable citation capabilities
 - `specs/memory.md` - Org-scoped named Memories (mountable into Workspaces)
 - `specs/infinity-context.md` - Unlimited conversation length via context management
 - `specs/compaction.md` - Context compaction capability
