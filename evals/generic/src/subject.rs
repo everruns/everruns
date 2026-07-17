@@ -110,23 +110,33 @@ impl Subject for GenericRuntimeSubject {
                     ..Default::default()
                 });
             }
-            match runtime.run_turn(session_id, input).await {
+            let error = match runtime.run_turn(session_id, input).await {
                 Ok(result) => {
                     transcript.final_response = result.response;
                     transcript.iterations += result.iterations;
-                    if !result.success {
-                        let msg = result.error.unwrap_or_else(|| "turn failed".into());
-                        transcript.error_kind = classify_runtime_error(&msg);
-                        transcript.error = Some(msg);
-                        break;
+                    if result.success {
+                        None
+                    } else {
+                        Some(result.error.unwrap_or_else(|| "turn failed".into()))
                     }
                 }
-                Err(e) => {
-                    let msg = e.to_string();
+                Err(e) => Some(e.to_string()),
+            };
+            if let Some(msg) = error {
+                // A route that cannot accept the sample's modality (e.g. no
+                // image-input endpoint for this model) is a target/provider
+                // gap, not a graded answer — skip the case (all scorers N/A),
+                // mirroring how an unmet harness `requires` skips.
+                if is_modality_unsupported(&msg) {
+                    transcript.metadata.insert(
+                        SKIPPED_KEY.into(),
+                        format!("target route does not support this input modality: {msg}").into(),
+                    );
+                } else {
                     transcript.error_kind = classify_runtime_error(&msg);
                     transcript.error = Some(msg);
-                    break;
                 }
+                break;
             }
         }
 
@@ -312,6 +322,17 @@ fn resolved_model(target: &Target) -> Result<ResolvedModel, String> {
     })
 }
 
+/// True when a provider error says the selected route cannot accept the
+/// input modality at all (observed verbatim: OpenRouter's `404 {"message":
+/// "No endpoints found that support image input"}` for models without a
+/// vision-capable endpoint). Such cases skip rather than fail or retry.
+fn is_modality_unsupported(message: &str) -> bool {
+    let m = message.to_ascii_lowercase();
+    ["image input", "audio input", "video input"]
+        .iter()
+        .any(|modality| m.contains(&format!("support {modality}")))
+}
+
 /// Classify a runtime/provider error string: transient scaffolding faults are
 /// infra (scored N/A, retried); everything else is a real, scoreable subject
 /// failure so a genuine model error is never silently excused.
@@ -413,11 +434,23 @@ mod tests {
         ] {
             assert_eq!(classify_runtime_error(msg), ErrorKind::Infra, "{msg}");
         }
-        // A genuine capability gap stays a real, scoreable failure.
+        // A capability gap is not infra — it is handled separately as a skip
+        // (see `is_modality_unsupported`), never retried.
         assert_eq!(
             classify_runtime_error("404 Not Found: No endpoints found that support image input"),
             ErrorKind::Subject
         );
+    }
+
+    #[test]
+    fn modality_unsupported_routes_are_detected() {
+        // Observed verbatim from OpenRouter for models with no vision route;
+        // these skip the case (all scorers N/A) instead of failing it.
+        assert!(is_modality_unsupported(
+            "OpenAI Responses API error (404 Not Found): {\"error\":{\"message\":\"No endpoints found that support image input\",\"code\":404}}"
+        ));
+        assert!(!is_modality_unsupported("invalid image data"));
+        assert!(!is_modality_unsupported("429 Too Many Requests"));
     }
 
     #[test]

@@ -120,7 +120,8 @@ expectations in `metadata`, which the scorers read:
 Metadata keys (all optional):
 
 - `requires`: capability ids the case needs; unmet ⇒ the case is skipped on
-  that harness profile.
+  that harness profile. (A target route that rejects the sample's input
+  modality — e.g. no image endpoint — skips the same way.)
 - `expect_tools`: `[{ "tool": "write_file", "min": 2 }]` — each tool must be
   called at least `min` times (default 1).
 - `forbid_tools`: `["delete_file"]` — must NOT be called (safety cases).
@@ -133,11 +134,13 @@ Metadata keys (all optional):
 
 Tags select subsets: `text` (no tools; runs on every harness), `tools`,
 `smoke` (fast text-only sanity set), `safety`, `multimodal` / `vision`
-(image-input cases — sent with the first turn; a non-vision model fails these
-with a provider error, so exclude them via tags when comparing text-only
-models), plus per-category tags (`instruction`, `format`, `reasoning`,
-`extraction`, `multi-turn`, `files`, `shell`, `time`, `knowledge`,
-`efficiency`).
+(image-input cases — sent with the first turn; a target route with no
+image-capable endpoint skips these as N/A rather than failing), and
+`robustness` (`vision-tiny-image`: a 64×32 image some vision pipelines
+mis-register — e.g. gpt-5.5 perceives it mirrored — so a fail there is a
+preprocessing robustness signal, not a spatial-reasoning one), plus
+per-category tags (`instruction`, `format`, `reasoning`, `extraction`,
+`multi-turn`, `files`, `shell`, `time`, `knowledge`, `efficiency`).
 
 ## Scoring
 
