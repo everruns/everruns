@@ -113,13 +113,16 @@ variant carries citation deltas up to the reason atom).
 ### Verification is a separate, composable guardrail capability
 
 `citation_verification` is a standalone capability with `is_guardrail() = true`.
-It consumes annotations produced by **any** citation feed, runs an NLI-style
-entailment check (claim = hypothesis, `source.snippet` = premise) using a
-configured utility model, and stamps each annotation's `verified` verdict
-(`entailed` / `unsupported` / `uncertain`, with a score). It is **off by
-default** (it costs an extra model call) and configured via `config_schema`
-(`verifier` binding, `threshold`). Keeping it decoupled from the feeds means any
-feed can be paired with any verifier, and evals can vary one axis at a time.
+It consumes annotations produced by **any** citation feed via the
+`CitationVerifier` seam (run once over the collected set after the feeds), and
+stamps each annotation's `verified` verdict (`entailed` / `unsupported` /
+`uncertain`, with a score). Two modes (config `mode`): `heuristic` (default) —
+deterministic lexical entailment (token overlap between the claim span and
+`source.snippet`), no model call; and `llm` — a utility-model NLI judgement
+(claim = hypothesis, `source.snippet` = premise) that falls back to the
+heuristic when no utility model is available. Keeping it decoupled from the
+feeds means any feed can be paired with any verifier, and evals can vary one
+axis at a time.
 
 Citation capabilities expose a lightweight `verify: bool` in their own config as
 an ergonomic switch that simply implies the `citation_verification` dependency;
@@ -151,10 +154,15 @@ keep `snippet` for display but never rely on it for prompt reconstruction.
 
 Because each feed is a capability with the same output contract, a citation
 eval is two agents identical except for the enabled `citation_*` capability,
-scored on citation faithfulness and coverage. A scorer
-(`crates/server/src/domains/evals/`, `specs/evals.md`) grades annotated messages
-using the `verified` verdicts plus a held-out NLI judge. This makes citation
-approaches directly benchmarkable — the payoff of keeping the waist thin.
+scored on citation faithfulness and coverage. The `Scorer::CitationFaithful`
+rule (`crates/core/src/eval.rs`, graded in `crates/server/src/domains/evals/`)
+reads the `TextAnnotation`s off the final message — they already ride in the
+event log the runner fetches — and scores coverage (min citations) plus
+faithfulness (fraction verified `entailed`), so it composes with
+`citation_verification`. This makes citation approaches directly benchmarkable —
+the payoff of keeping the waist thin. A held-out LLM judge (reusing
+`observers::judge::JudgeClient`) that grades faithfulness even when verification
+is off is a follow-up increment.
 
 ## Security and privacy
 
@@ -170,17 +178,23 @@ approaches directly benchmarkable — the payoff of keeping the waist thin.
 
 ## Phasing
 
-1. **Waist** — `TextAnnotation` + optional `annotations` on `TextContentPart`;
-   the `PostGenerationAnnotationHook` seam in the reason atom; regenerated TS
-   types. No behavior change until a capability emits.
-2. **`citation_retrieval`** capability over existing `search_index` /
-   `search_knowledge`, plus the UI component and `features()` gate. First
-   end-to-end path, no provider work.
-3. **`citation_native`** — Anthropic `search_result`/`document` blocks +
+1. **Waist** *(landed)* — `TextAnnotation` + optional `annotations` on
+   `TextContentPart`; the `PostGenerationAnnotationHook` seam in the reason
+   atom; regenerated TS types. No behavior change until a capability emits.
+2. **`citation_retrieval`** *(landed, backend)* — feed over existing
+   `search_index` / `search_knowledge` with deterministic token-overlap
+   alignment. No provider work.
+3. **`citation_verification`** *(landed)* — guardrail capability + verifier
+   seam (heuristic default, `llm` mode).
+4. **`CitationFaithful` eval scorer** *(landed)* — grades coverage +
+   faithfulness from message annotations.
+5. **UI** — inline numbered chips + hover popover + source strip + verified
+   badge, gated on the `citations` feature.
+6. **`citation_native`** — Anthropic `search_result`/`document` blocks +
    `citations_delta` parsing + `LlmStreamEvent` carriage. Proves the
    multi-capability, same-contract design with a distinct feed.
-4. **`citation_verification`** guardrail capability + the citation eval scorer.
-5. **`citation_web`** and additional feeds as sources land.
+7. **`citation_web`**, the held-out LLM judge scorer, and additional feeds as
+   sources land.
 
 ## Open questions
 
