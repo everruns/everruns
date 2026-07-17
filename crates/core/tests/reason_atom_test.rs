@@ -1625,7 +1625,7 @@ async fn test_llm_call_config_previous_response_id() {
     let agent = RuntimeAgent::new("test prompt", "test-model");
 
     // Builder sets previous_response_id
-    let config = LlmCallConfigBuilder::from(&agent)
+    let config = everruns_core::llm_conversions::llm_call_config_builder_from_agent(&agent)
         .previous_response_id(Some("resp_prev_001".to_string()))
         .build();
     assert_eq!(
@@ -1634,7 +1634,8 @@ async fn test_llm_call_config_previous_response_id() {
     );
 
     // Builder defaults to None
-    let config_default = LlmCallConfigBuilder::from(&agent).build();
+    let config_default =
+        everruns_core::llm_conversions::llm_call_config_builder_from_agent(&agent).build();
     assert_eq!(config_default.previous_response_id, None);
 }
 

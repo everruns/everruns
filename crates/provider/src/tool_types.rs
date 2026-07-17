@@ -13,6 +13,18 @@ use utoipa::ToSchema;
 
 pub const HUMAN_INTENT_ARGUMENT: &str = "human_intent";
 
+/// An image returned by a tool execution.
+///
+/// This allows tools (built-in or MCP) to return images that are sent
+/// to the LLM as native image content blocks, not stringified JSON.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolResultImage {
+    /// Base64-encoded image data
+    pub base64: String,
+    /// MIME type (e.g., "image/png", "image/jpeg")
+    pub media_type: String,
+}
+
 const HUMAN_INTENT_DESCRIPTION: &str = "Short user-facing narration of what this tool call will do, written as an action phrase like \"Listing all harnesses\". Do not include hidden reasoning, private chain of thought, secrets, or credential values.";
 
 /// Tool policy determines how tool calls are handled
@@ -420,7 +432,7 @@ pub struct ToolHints {
     /// Set this on tools that mutate shared session state so that, e.g., two
     /// file writes or two SQL mutations in one batch do not race. Read-only
     /// tools should leave this `None` so they always parallelize. See
-    /// `crate::atoms::tool_scheduler` for how the act scheduler consumes it.
+    /// the act scheduler (`tool_scheduler` in everruns-core) for how the act scheduler consumes it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub concurrency_class: Option<String>,
 
@@ -613,7 +625,7 @@ pub struct ToolResult {
     pub result: Option<serde_json::Value>,
     /// Images returned by the tool (sent as native image content to LLM)
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub images: Option<Vec<crate::tools::ToolResultImage>>,
+    pub images: Option<Vec<ToolResultImage>>,
     /// Error message (failure)
     pub error: Option<String>,
     /// When set, indicates the tool requires a user connection for this provider.

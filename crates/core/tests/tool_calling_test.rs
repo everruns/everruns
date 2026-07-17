@@ -653,7 +653,8 @@ async fn test_tool_result_with_images_llm_conversion() {
     let msg = Message::tool_result_with_images("call_456", Some(json!({"info": "test"})), images);
 
     let resolved = HashMap::new();
-    let llm_msg = LlmMessage::from_message_with_images(&msg, &resolved);
+    let llm_msg =
+        everruns_core::llm_conversions::llm_message_from_message_with_images(&msg, &resolved);
 
     // Should be Tool role with tool_call_id
     assert_eq!(

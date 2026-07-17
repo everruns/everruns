@@ -3159,16 +3159,29 @@ version = "0.17.12"
 name = "everruns-provider"
 version = "0.17.11"
 dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
  "chrono",
+ "eventsource-stream",
+ "futures",
+ "hex",
+ "http 1.4.2",
+ "rand 0.10.2",
  "regex",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "sqlx",
+ "thiserror 2.0.18",
  "tokio",
  "tracing",
  "url",
  "utoipa",
  "uuid 1.24.0",
+ "wiremock",
 ]
 
 [[package]]

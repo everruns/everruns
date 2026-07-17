@@ -1266,7 +1266,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                                 .and_then(|i| i.get("phase"))
                                                 .and_then(|p| p.as_str())
                                                 .and_then(
-                                                    crate::message::ExecutionPhase::from_provider_str,
+                                                    crate::execution_phase::ExecutionPhase::from_provider_str,
                                                 )
                                             {
                                                 return Ok(LlmStreamEvent::MessagePhase(phase));
@@ -1577,7 +1577,7 @@ fn handle_streaming_event(
                 Some(types::OutputItem::Message {
                     phase: Some(phase_str),
                     ..
-                }) => match crate::message::ExecutionPhase::from_provider_str(&phase_str) {
+                }) => match crate::execution_phase::ExecutionPhase::from_provider_str(&phase_str) {
                     Some(phase) => LlmStreamEvent::MessagePhase(phase),
                     None => LlmStreamEvent::TextDelta(String::new()),
                 },
@@ -4095,8 +4095,14 @@ mod tests {
         // `response.output_item.added` (before any text delta). The driver must
         // surface it as a mid-stream `MessagePhase` hint.
         for (wire, expected) in [
-            ("commentary", crate::message::ExecutionPhase::Commentary),
-            ("final_answer", crate::message::ExecutionPhase::FinalAnswer),
+            (
+                "commentary",
+                crate::execution_phase::ExecutionPhase::Commentary,
+            ),
+            (
+                "final_answer",
+                crate::execution_phase::ExecutionPhase::FinalAnswer,
+            ),
         ] {
             let event: StreamingEvent = serde_json::from_value(serde_json::json!({
                 "type": "response.output_item.added",
@@ -4555,7 +4561,7 @@ mod tests {
 
     #[test]
     fn test_build_input_with_phases_enabled() {
-        use crate::message::ExecutionPhase;
+        use crate::execution_phase::ExecutionPhase;
 
         let messages = vec![
             LlmMessage::text(LlmMessageRole::System, "You are helpful"),

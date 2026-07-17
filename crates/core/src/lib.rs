@@ -34,7 +34,7 @@
 // Runtime types (tool definitions, capability types)
 pub mod capability_types;
 pub mod tool_fingerprint;
-pub mod tool_types;
+pub use everruns_provider::tool_types;
 
 // User-defined hooks (see specs/user-hooks.md)
 pub mod hook_adapter;
@@ -98,8 +98,8 @@ pub mod leased_resource;
 pub mod mcp_proxy;
 pub mod mcp_server;
 pub mod memory;
-pub mod model;
-pub mod model_profiles;
+pub use everruns_provider::model;
+pub use everruns_provider::model_profiles;
 pub mod model_router;
 pub mod mount_fs;
 pub mod network_access;
@@ -107,7 +107,7 @@ pub mod observer;
 pub mod organization;
 pub mod payment;
 pub mod principal;
-pub mod provider;
+pub use everruns_provider::provider;
 pub mod reporting;
 pub mod session;
 pub mod session_file;
@@ -148,18 +148,22 @@ pub mod config;
 pub mod config_layer;
 pub mod context_report;
 pub mod dependency_blocker;
-pub mod driver_helpers;
-pub mod driver_registry;
-pub mod error;
+pub use everruns_provider::driver_helpers;
+pub use everruns_provider::driver_registry;
+pub use everruns_provider::error;
 pub mod guardrail_checks;
 pub mod guardrail_gallery;
 pub mod llm_error_hook;
-pub mod llm_retry;
+pub use everruns_provider::llm_retry;
+// Adapters from core domain types (Message, RuntimeAgent, ResolvedModel) to the
+// provider driver types. Lives on the core side to keep the crate dependency
+// one-directional (core -> everruns-provider).
+pub mod llm_conversions;
 pub mod message;
 pub mod message_filter;
 pub mod message_retriever;
-pub mod openai_protocol;
-pub mod openresponses_protocol;
+pub use everruns_provider::openai_protocol;
+pub use everruns_provider::openresponses_protocol;
 pub use everruns_provider::openresponses_types;
 pub mod outline;
 pub mod output_guardrail;
@@ -169,8 +173,8 @@ pub mod platform_store;
 pub mod resource_ownership;
 pub mod runtime_agent;
 pub mod runtime_context;
-pub mod stream_accumulator;
-pub mod stream_reconnect;
+pub use everruns_provider::stream_accumulator;
+pub use everruns_provider::stream_reconnect;
 pub mod tool_output_sanitizer;
 pub mod tools;
 pub mod traits;

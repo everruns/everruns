@@ -527,7 +527,7 @@ pub fn get_model_profile(provider_type: &DriverId, model_id: &str) -> Option<Mod
 /// profiles are per million tokens.
 ///
 /// Token buckets are disjoint by convention (drivers normalize at the boundary;
-/// see [`TokenUsage`](crate::events::TokenUsage)): `input_tokens` is non-cached
+/// see the `TokenUsage` event): `input_tokens` is non-cached
 /// input only, with `cache_read_tokens` / `cache_creation_tokens` additive on
 /// top. Cost is therefore uniform across providers — each bucket is billed at
 /// its own rate (cache-creation tokens have no dedicated price and bill at the

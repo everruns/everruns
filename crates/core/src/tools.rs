@@ -145,13 +145,9 @@ fn has_session_background_permits(session_id: SessionId) -> bool {
 ///
 /// This allows tools (built-in or MCP) to return images that are sent
 /// to the LLM as native image content blocks, not stringified JSON.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolResultImage {
-    /// Base64-encoded image data
-    pub base64: String,
-    /// MIME type (e.g., "image/png", "image/jpeg")
-    pub media_type: String,
-}
+// `ToolResultImage` now lives in the provider abstraction (`tool_types`), which
+// is re-exported here so `crate::tools::ToolResultImage` keeps resolving.
+pub use crate::tool_types::ToolResultImage;
 
 /// Result of a tool execution.
 ///

@@ -21,15 +21,35 @@ keywords = ["everruns", "llm", "provider", "ai", "agents"]
 categories = ["api-bindings", "asynchronous"]
 
 [dependencies]
+# Serialization
 serde.workspace = true
 serde_json.workspace = true
+
+# IDs / time / text
 uuid.workspace = true
 regex.workspace = true
 url = "2"
 chrono.workspace = true
+
+# Async + HTTP (shared protocol drivers, retry/stream helpers)
+async-trait.workspace = true
+futures.workspace = true
+tokio = { workspace = true, features = ["sync", "rt", "time", "net"] }
+reqwest = { workspace = true, features = ["json", "stream", "rustls", "blocking"] }
+eventsource-stream = "0.2"
+http = "1"
+bytes = "1"
+
+# Encoding / hashing / rng
+base64.workspace = true
+sha2.workspace = true
+hex.workspace = true
+rand.workspace = true
+
+# Errors / tracing
+anyhow.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
-# DNS resolution for SSRF-safe URL validation (url_validation).
-tokio = { workspace = true, features = ["net"] }
 
 # Optional integrations, mirroring everruns-core's feature gating.
 utoipa = { workspace = true, optional = true }
@@ -40,3 +60,7 @@ sqlx = { workspace = true, optional = true }
 openapi = ["dep:utoipa"]
 # sqlx Postgres encode/decode for TypedId.
 sqlx = ["dep:sqlx"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"
