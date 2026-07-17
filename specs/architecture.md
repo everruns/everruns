@@ -94,7 +94,7 @@ Production event routing therefore prefers:
    - `server/` → `everruns-server` - **Control plane**: HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
    - `worker/` → `everruns-worker` - TaskWorker, WorkerAdapters, activities, gRPC adapters, durable task execution
    - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, LLM drivers, egress service, internal system services, shared types)
-   - `runtime/` → `everruns-runtime` - Public in-process runtime plus reusable host-phase execution for embedded and durable/server-backed execution
+   - `runtime/` → `everruns-runtime` - The agentic runtime: in-process entrypoint to the agentic framework, plus reusable host-phase execution for embedded and durable/server-backed execution
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine
    - `openai/` → `everruns-openai` - OpenAI LLM provider implementation

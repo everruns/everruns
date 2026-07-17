@@ -2,7 +2,8 @@
 
 ## Abstract
 
-`everruns-runtime` is the public execution crate for Everruns.
+`everruns-runtime` is the agentic runtime for Everruns — the public entrypoint
+to the Everruns agentic framework.
 
 It lets embedders run sessions inside their own process without the durable
 execution engine, gRPC worker boundary, or control-plane server. It also owns

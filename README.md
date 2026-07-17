@@ -158,7 +158,7 @@ Run `/everruns-dev:whoami` and complete the OAuth flow on first use. See [`plugi
 
 ## Embed in your own app
 
-Need to run Everruns harnesses in-process? Use the embedded runtime crate (`everruns-runtime`) with `InProcessRuntimeBuilder` for in-memory sessions, filesystem, and storage. See the [Runtime](https://docs.everruns.com/features/runtime/) and [Embedding Everruns](https://docs.everruns.com/advanced/embedding-everruns/) guides.
+Need to build agents directly in Rust? `everruns-runtime` is the agentic runtime — the in-process entrypoint to the Everruns agentic framework. Use `InProcessRuntimeBuilder` for in-memory sessions, filesystem, and storage. See the [Runtime](https://docs.everruns.com/features/runtime/) and [Embedding Everruns](https://docs.everruns.com/advanced/embedding-everruns/) guides.
 
 A CLI (`everruns-cli`) is also available for scripting against a deployment — see the [CLI](https://docs.everruns.com/features/cli/) guide.
 

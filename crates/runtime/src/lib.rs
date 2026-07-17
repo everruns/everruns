@@ -1,11 +1,12 @@
-//! Public in-process runtime for embedding Everruns.
+//! The agentic runtime — the in-process entrypoint to the Everruns agentic
+//! framework.
 //!
 //! The runtime crate exposes an in-memory execution surface that runs the same
 //! core atoms (`input`, `reason`, `act`) used elsewhere in the system, but
 //! without the durable engine, gRPC worker boundary, or control-plane server.
 //! It is part of the [Everruns](https://everruns.com) ecosystem.
 //!
-//! This is the intended public entrypoint for embedders who want to:
+//! This is the agentic framework entrypoint for embedders who want to:
 //!
 //! - run sessions in their own process
 //! - provide their own platform definition (capabilities, drivers, harnesses)

@@ -12,7 +12,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/models.md` - Data models (Agent, Session, Message, etc.)
 - `specs/id-schema.md` - Standardized prefixed ID format
 - `specs/domains.md` - Domain modules: Command trait, feature-oriented structure, MCP catalog generation
-- `specs/runtime.md` - Public in-process runtime contract for embedded execution
+- `specs/runtime.md` - The agentic runtime: in-process agentic-framework entrypoint and embedded-execution contract
 - `specs/embedding.md` - Embedding contract and `PlatformDefinition`
 - `specs/providers.md` - Providers domain model: drivers, services, providers, models, model profiles
 - `specs/llm-drivers.md` - LLM driver trait, provider implementations
