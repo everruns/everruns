@@ -82,6 +82,23 @@ async fn validate_agent(ctx: &Ctx, agent_id: &AgentId) -> Result<Uuid, CommandEr
     Ok(row.id.uuid())
 }
 
+fn require_app_agent(agent_id: Option<Uuid>) -> Result<Uuid, CommandError> {
+    agent_id.ok_or_else(|| {
+        CommandError::bad_request(
+            "Apps require an agent. Existing agent-less apps remain runnable, but must be assigned an agent before they can be updated.",
+        )
+    })
+}
+
+fn reject_new_schedule_channel(channel_type: &ChannelType) -> Result<(), CommandError> {
+    if *channel_type == ChannelType::Schedule {
+        return Err(CommandError::bad_request(
+            "App schedule channels are deprecated. Create a schedule trigger on the app's agent instead.",
+        ));
+    }
+    Ok(())
+}
+
 async fn validate_agent_identity(
     ctx: &Ctx,
     identity_id: everruns_core::typed_id::AgentIdentityId,
@@ -2082,6 +2099,7 @@ impl Command for CreateApp {
         let mut channel_config = channel_config.unwrap_or_default();
 
         if let Some(channel_type) = channel_type.clone() {
+            reject_new_schedule_channel(&channel_type)?;
             ensure_channel_type_enabled(ctx, &channel_type)?;
             if channel_type == ChannelType::Schedule {
                 let _ = durable_store(ctx)?;
@@ -2109,6 +2127,7 @@ impl Command for CreateApp {
             Some(agent_id) => Some(validate_agent(ctx, &agent_id).await?),
             None => None,
         };
+        let agent_uuid = Some(require_app_agent(agent_uuid)?);
         let agent_version_uuid = if let Some(version_id) = agent_version_id {
             Some(validate_published_agent_version(ctx, agent_uuid, version_id).await?)
         } else {
@@ -2695,6 +2714,7 @@ impl Command for UpdateAppCmd {
             None
         };
         let effective_agent_id = agent_id.or(existing.agent_id);
+        require_app_agent(effective_agent_id)?;
         let agent_version_id = match req.agent_version_id {
             UpdateField::Set(version_id) => UpdateField::Set(
                 validate_published_agent_version(ctx, effective_agent_id, version_id).await?,
@@ -3142,6 +3162,7 @@ impl Command for AddChannel {
         }
 
         ensure_channel_type_enabled(ctx, &self.req.channel_type)?;
+        reject_new_schedule_channel(&self.req.channel_type)?;
 
         if self.req.channel_type == ChannelType::Schedule {
             let _ = durable_store(ctx)?;
@@ -3902,6 +3923,7 @@ impl Command for UpdateChannelCmd {
             .channel_type
             .clone()
             .unwrap_or(current_channel_type.clone());
+        reject_new_schedule_channel(&final_channel_type)?;
         let existing_decrypted = q::decrypt_channel_config(
             encryption,
             channel_row.channel_config_encrypted.as_deref(),
@@ -4065,6 +4087,40 @@ mod tests {
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     fn lock_env() -> std::sync::MutexGuard<'static, ()> {
         ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    #[test]
+    fn apps_require_an_agent_for_writes() {
+        let err = require_app_agent(None).expect_err("agent-less writes must be rejected");
+        assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
+        assert!(
+            err.to_string()
+                .contains("Existing agent-less apps remain runnable")
+        );
+    }
+
+    #[test]
+    fn new_schedule_channels_point_to_agent_triggers() {
+        let err = reject_new_schedule_channel(&ChannelType::Schedule)
+            .expect_err("new App schedule channels must be rejected");
+        assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
+        assert!(err.to_string().contains("app's agent"));
+    }
+
+    #[test]
+    fn non_schedule_channels_remain_available() {
+        for channel_type in [
+            ChannelType::Slack,
+            ChannelType::AgUi,
+            ChannelType::Webhook,
+            ChannelType::A2a,
+            ChannelType::Fcp,
+            ChannelType::ApiEndpoint,
+            ChannelType::PublicChat,
+        ] {
+            reject_new_schedule_channel(&channel_type)
+                .unwrap_or_else(|err| panic!("{channel_type} unexpectedly rejected: {err}"));
+        }
     }
 
     fn test_app_and_channel() -> (App, AppChannel) {

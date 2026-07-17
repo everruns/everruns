@@ -307,6 +307,22 @@ export interface paths {
     patch: operations["update_agent_trigger"];
     trace?: never;
   };
+  "/v1/agents/{agent_id}/triggers/{trigger_id}/runs": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get: operations["list_agent_trigger_runs"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/agents/{agent_id}/triggers/{trigger_id}/trigger": {
     parameters: {
       query?: never;
@@ -4207,6 +4223,16 @@ export interface components {
        */
       updated_at: string;
     };
+    /** @description One recent durable execution of an agent schedule trigger. */
+    AgentTriggerRun: {
+      /** Format: date-time */
+      completed_at?: string | null;
+      error?: string | null;
+      id: string;
+      /** Format: date-time */
+      scheduled_at: string;
+      status: string;
+    };
     /**
      * @description The kind of event that fires an agent trigger. Only scheduled triggers exist
      *     today; the enum leaves room for webhook/event triggers later.
@@ -5553,7 +5579,8 @@ export interface components {
     /** @description Request to create a new app */
     CreateAppRequest: {
       /**
-       * @description Optional ID of the agent to use.
+       * @description ID of the agent to use. The command validation requires this field even
+       *     though it remains optional in the wire shape for a clear domain error.
        * @example agent_01933b5a00007000800000000000001
        */
       agent_id?: string | null;
@@ -5570,9 +5597,9 @@ export interface components {
        */
       agent_version_policy?: components["schemas"]["AgentVersionPolicy"];
       /**
-       * @description Initial channel configuration. Shape depends on `channel_type`. Examples:
-       *     `{"token": "whk_redacted", "message": "Run support triage"}` for `webhook`,
-       *     `{"cron_expression": "0 9 * * *", "message": "Daily standup"}` for `schedule`.
+       * @description Initial channel configuration. Shape depends on `channel_type`, for
+       *     example `{"token": "whk_redacted", "message": "Run support triage"}`
+       *     for `webhook`. New schedule channels are rejected; use agent triggers.
        */
       channel_config?: Record<string, unknown> | null;
       channel_type?: null | components["schemas"]["ChannelType"];
@@ -19036,6 +19063,40 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+      /** @description Trigger not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ErrorResponse"];
+        };
+      };
+    };
+  };
+  list_agent_trigger_runs: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Agent ID (prefixed) */
+        agent_id: string;
+        /** @description Trigger ID (prefixed) */
+        trigger_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Recent trigger outcomes */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AgentTriggerRun"][];
         };
       };
       /** @description Trigger not found */

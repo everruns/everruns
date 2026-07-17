@@ -15,27 +15,21 @@ Verifies Add channel opens a reload-safe full-page route with channel type cards
 | Field | Value |
 | --- | --- |
 | Route | `/apps/{appId}/channels/new` |
-| Channel type | schedule |
-| Cron preset | Hourly :30 |
-| Timezone | `America/Chicago` |
-| Message | `Run {{app.name}} now.` |
+| Channel type | webhook |
 
 ## Steps
 
 1. Navigate to the App detail page.
 2. Click Add channel.
 3. Verify the browser URL is `/apps/{appId}/channels/new`.
-4. Verify the five channel type cards are visible: Schedule, Webhook, AG-UI, FCP, Slack.
-5. Select Schedule.
-6. Choose the Hourly :30 preset.
-7. Enter `America/Chicago` as the timezone.
-8. Enter the invocation message.
-9. Verify the summary sidebar displays a human-readable schedule preview and timezone.
-10. Click Save channel.
+4. Verify Webhook, AG-UI, FCP, and Slack channel type cards are visible.
+5. Verify Schedule is not offered and the page directs scheduled automation to the agent's Triggers tab.
+6. Select Webhook.
+7. Click Save channel.
 
 ## Expected Result
 
 - The Add channel flow is not a dialog.
 - Reloading the route preserves a valid page state.
-- The schedule preview never shows the raw cron expression.
+- Schedule is not available as a new App channel.
 - Saving creates a channel and navigates to the full-page Edit Channel route for the new channel.

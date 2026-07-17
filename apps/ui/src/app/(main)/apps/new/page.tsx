@@ -39,8 +39,7 @@ export default function NewAppPage() {
   const { data: agents = [] } = useAgents();
 
   // Agent-first prefill: selecting an agent seeds the harness from the agent's
-  // own harness (still editable). The picker stays visible so a no-agent app can
-  // choose its own harness, and so a user can override the agent's harness.
+  // own harness (still editable).
   const handleAgentChange = (nextAgentId: string) => {
     setAgentId(nextAgentId);
     const agent = agents.find((candidate) => candidate.id === nextAgentId);
@@ -51,18 +50,19 @@ export default function NewAppPage() {
 
   const nameError = submitted && !name.trim();
   const harnessError = submitted && !harnessId;
+  const agentError = submitted && !agentId;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitted(true);
 
-    if (!name.trim() || !harnessId) return;
+    if (!name.trim() || !harnessId || !agentId) return;
 
     try {
       const app = await createApp.mutateAsync({
         name: name.trim(),
         description: description.trim() || undefined,
-        agent_id: agentId || undefined,
+        agent_id: agentId,
         harness_id: harnessId,
       });
 
@@ -81,7 +81,7 @@ export default function NewAppPage() {
         icon={<Rocket />}
         title="New app"
         badges={<Badge variant="accent">Draft</Badge>}
-        description="Deploy an agent to a channel — Slack, AG-UI, webhook, or schedule."
+        description="Deploy an agent to a channel — Slack, AG-UI, webhook, and more."
       />
 
       <form id="app-create-form" onSubmit={handleSubmit}>
@@ -130,7 +130,7 @@ export default function NewAppPage() {
             <div>
               <h2 className="text-lg font-semibold tracking-tight">Deployment</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                Choose a harness now. You can change it or bind an agent anytime.
+                Choose the agent and harness this app deploys.
               </p>
             </div>
 
@@ -157,18 +157,14 @@ export default function NewAppPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="agent">
-                  Agent <span className="font-normal text-muted-foreground">optional</span>
+                  Agent <span className="text-destructive">*</span>
                 </Label>
-                <AgentSelect
-                  value={agentId}
-                  onValueChange={handleAgentChange}
-                  includeNoneOption
-                  noneLabel="Choose later"
-                  className="w-full"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Bind an agent now or assign one later.
-                </p>
+                <AgentSelect value={agentId} onValueChange={handleAgentChange} className="w-full" />
+                {agentError ? (
+                  <p className="text-xs text-destructive">Select an agent to continue.</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">The agent this app publishes.</p>
+                )}
               </div>
             </div>
 
@@ -176,8 +172,7 @@ export default function NewAppPage() {
 
             <div className="flex flex-wrap items-center justify-between gap-4">
               <p className="max-w-md text-sm text-muted-foreground">
-                Create the draft now — change the harness or bind an agent anytime from the detail
-                page.
+                Create the draft now — channel configuration happens on the detail page.
               </p>
               <div className="flex items-center gap-2">
                 <Button type="button" variant="outline" onClick={() => router.back()}>

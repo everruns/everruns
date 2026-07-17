@@ -40,7 +40,9 @@ import {
   Telescope,
   Terminal,
   Boxes,
+  Clock3,
 } from "lucide-react";
+import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
 import { CopyButton } from "@/components/ui/copy-button";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
 import {
@@ -187,6 +189,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
     { value: "overview", label: "Overview", icon: <LayoutDashboard className="size-4" /> },
     { value: "preview", label: "Preview", icon: <Eye className="size-4" /> },
     { value: "integrate", label: "Integrate", icon: <Terminal className="size-4" /> },
+    { value: "triggers", label: "Triggers", icon: <Clock3 className="size-4" /> },
     { value: "stats", label: "Stats", icon: <BarChart3 className="size-4" /> },
     ...(agentVersionsEnabled
       ? [{ value: "versions", label: "Versions", icon: <GitBranch className="size-4" /> }]
@@ -476,6 +479,14 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
               </CardContent>
             </Card>
           </PageRail>
+        </PageColumns>
+      )}
+
+      {activeTab === "triggers" && (
+        <PageColumns>
+          <PageMain>
+            <AgentTriggersPanel agentId={agentId} />
+          </PageMain>
         </PageColumns>
       )}
 

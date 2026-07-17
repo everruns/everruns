@@ -5,11 +5,24 @@
 // below are the flat shape callers send, which the commands normalize into that
 // config.
 
+use chrono::{DateTime, Utc};
 use everruns_core::InvocationSessionMode;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 pub use crate::storage::models::{AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrigger};
+
+/// One recent durable execution of an agent schedule trigger.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AgentTriggerRun {
+    pub id: String,
+    pub status: String,
+    pub scheduled_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
 
 /// Request to create a schedule trigger on an agent.
 #[derive(Debug, Clone, Deserialize, ToSchema)]

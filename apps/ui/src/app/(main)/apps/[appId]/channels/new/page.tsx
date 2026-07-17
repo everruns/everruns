@@ -38,7 +38,7 @@ export default function NewChannelPage({ params }: { params: Promise<{ appId: st
   const queryClient = useQueryClient();
   const { data: app, isLoading } = useApp(appId);
   const { can, isLoading: policiesLoading } = usePolicies("apps");
-  const [formState, setFormState] = useState(() => getDefaultChannelFormState("schedule"));
+  const [formState, setFormState] = useState(() => getDefaultChannelFormState("webhook"));
   const isReadOnly = isReadOnlyStatus(app?.status);
   const canManage = !policiesLoading && can("app.manage") && !isReadOnly;
 
@@ -89,7 +89,7 @@ export default function NewChannelPage({ params }: { params: Promise<{ appId: st
         icon={<Radio />}
         title="New channel"
         badges={<Badge variant="outline">{app.status}</Badge>}
-        description="Invoke this app on a schedule, via webhook, through AG-UI, or from Slack."
+        description="Invoke this app via webhook, through AG-UI, or from Slack. Configure schedules on the agent's Triggers tab."
         actions={
           <>
             <Button

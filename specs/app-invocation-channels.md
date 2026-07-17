@@ -4,10 +4,11 @@
 
 App invocation channels are unattended ingress modes on top of the App abstraction. They let an App inject a configured user message into an app-owned session when an external trigger fires.
 
-Current invocation channels:
+Current invocation channel:
 
-- `schedule` — app-owned durable cron trigger
 - `webhook` — authenticated HTTP trigger
+
+The former App `schedule` channel is deprecated in favor of Agent triggers.
 
 This spec is intentionally separate from:
 
@@ -22,12 +23,12 @@ The durable scheduler is infrastructure. App invocation channels are one product
 
 ## Goals
 
-1. Let an App run unattended without adding a messaging integration such as Slack
+1. Let an App receive unattended webhook invocations without adding a messaging integration such as Slack
 2. Reuse the existing App lifecycle, ownership, harness, agent, and agent identity model
 3. Support two invocation routing modes:
    - reuse one stable session per channel
    - create a fresh session per trigger
-4. Keep schedule/webhook behavior in the app domain instead of scattering logic across scheduler APIs
+4. Keep webhook behavior in the app domain instead of scattering it across generic APIs
 
 ## Non-Goals
 
@@ -39,15 +40,9 @@ The durable scheduler is infrastructure. App invocation channels are one product
 
 An invocation channel is stored as a normal `app_channels` row:
 
-- `channel_type = schedule | webhook`
+- `channel_type = webhook`
 - `channel_config = typed JSON config`
 - `enabled = channel-local gate`
-
-Schedule channels also own a managed durable binding:
-
-- foreign key: `app_channels.durable_schedule_id`
-- target activity: `invoke_scheduled_app_channel`
-- target input: `{org_id, app_id, channel_id}`
 
 See `crates/core/src/app.rs` for canonical domain types.
 
@@ -74,7 +69,7 @@ Per-invocation sessions add:
 
 ## Session Ownership
 
-App-channel ingress (`webhook`, `schedule`, `ag_ui`, `slack`, A2A) typically runs as `Caller::internal(org)`, whose default principal is the system principal. Without an override, sessions created from an app channel would be owned by `system-owner`, and `shared_session` reuse — which keys on `app.owner_principal_id` — would never match.
+App-channel ingress (`webhook`, `ag_ui`, `slack`, A2A) typically runs as `Caller::internal(org)`, whose default principal is the system principal. Without an override, sessions created from an app channel would be owned by `system-owner`, and `shared_session` reuse — which keys on `app.owner_principal_id` — would never match.
 
 To make `shared_session` work and to keep ownership accountable, app-channel sessions adopt the App row's owner instead of the caller's:
 
@@ -103,11 +98,6 @@ Common template context:
 - `invocation.source`
 - `invocation.triggered_at`
 
-Schedule-only context:
-
-- `schedule.cron_expression`
-- `schedule.timezone`
-
 Webhook-only context:
 
 - `payload`
@@ -115,44 +105,11 @@ Webhook-only context:
 - `webhook.json`
 - `webhook.headers`
 
-## Schedule Channel
+## Deprecated Schedule Channel Migration
 
-Config fields:
+New App schedule channels are rejected. Migration `106_migrate_app_schedules_to_agent_triggers.sql` maps every agent-bound channel's `cron_expression`, `timezone`, `session_mode`, and `message` unchanged into a schedule Agent trigger. An active channel's existing durable schedule row and execution history are retained and retargeted from `invoke_scheduled_app_channel` to `invoke_agent_trigger`, preserving the scheduler occurrence identity and preventing duplicate firing. Channels without an active durable binding become disabled triggers. The migrated App channel rows are then removed.
 
-- `cron_expression`
-- `timezone`
-- `session_mode`
-- `message`
-
-`cron_expression` accepts standard 5-field cron input and the durable
-scheduler's 7-field format. App channel creation/update normalizes 5-field
-input to the canonical 7-field durable expression before storing the channel
-config or syncing the backing durable schedule.
-
-Behavior:
-
-- accepted cron input is either 5-field (`*/10 * * * *`) or 7-field
-  (`0 */10 * * * * *`); 5-field input is normalized to the durable
-  scheduler's 7-field representation when stored
-- create/update/delete stays in the app domain
-- the app domain creates or updates the backing durable schedule
-- publish state and channel `enabled` control whether the durable binding is enabled
-- deleting the app channel deletes the durable binding
-- unpublishing disables the binding without deleting it
-- `POST /v1/apps/{app_id}/channels/{channel_id}/trigger` manually invokes a
-  schedule channel for testing without exposing the backing durable schedule ID
-
-The durable scheduler only knows how to fire `invoke_scheduled_app_channel`. All app-specific resolution happens in the app domain at execution time.
-
-Limits:
-
-- Minimum cron interval: 300 seconds (5 minutes) by default; configurable via
-  `SCHEDULE_CHANNEL_MIN_INTERVAL_SECONDS`. Create/update rejects expressions
-  that would fire more frequently.
-- Maximum enabled schedule channels per org: 10 by default; configurable via
-  `SCHEDULE_CHANNEL_MAX_PER_ORG`. Enabling a channel (create with
-  `enabled=true`, or update from disabled to enabled) is rejected when the
-  org is already at the cap.
+The agent-less App grandfather rule takes precedence: existing Apps whose `agent_id` is null, including any schedule channels and durable bindings they already own, are left untouched and remain runtime-compatible. No Agent is synthesized or backfilled for them.
 
 ## Webhook Channel
 
@@ -182,12 +139,11 @@ Behavior:
 Invocation channels must be reachable through all app-management surfaces:
 
 - HTTP app APIs
-- MCP/bash command catalog (`create_app`, `list_app_channels`,
-  `add_app_channel`, `trigger_app_schedule_channel`, etc.). Generic durable
-  schedule commands are intentionally not exposed through MCP scripting; app
-  schedule channels own their lifecycle.
+- MCP/bash command catalog (`create_app`, `list_app_channels`, `add_app_channel`, etc.)
 - `platform_management` capability (`read_apps`, `manage_apps`, `manage_app_channels`)
 - Apps UI
+
+Agent-owned schedules use the Agent trigger API and Agent detail Triggers UI instead.
 
 Secrets in channel configs are write-only in user-facing responses. App and
 channel reads return only non-secret fields plus `*_configured` booleans where
@@ -197,8 +153,8 @@ callers need to know whether a secret exists.
 
 Coverage should include:
 
-1. durable schedule binding lifecycle across create, publish, unpublish, update, disable, delete
-2. shared-session and per-invocation behavior for both channel types
+1. schedule-channel migration preserves config and durable execution identity
+2. shared-session and per-invocation webhook behavior
 3. webhook authentication failures
 4. template rendering with structured payloads and raw bodies
 5. MCP/bash command execution for app/channel operations

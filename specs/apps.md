@@ -2,9 +2,9 @@
 
 ## Abstract
 
-An App is a deployable unit that binds a Harness and optional Agent to one or more invocation channels. Interactive channels such as Slack and AG-UI accept user traffic directly. Invocation channels such as `schedule` and `webhook` inject a configured message into an app-owned session when an external trigger fires. The publish/unpublish lifecycle controls whether those channels actively accept or emit new invocations.
+An App is a deployable unit that binds a Harness and Agent to one or more invocation channels. Interactive channels such as Slack and AG-UI accept user traffic directly. Webhook invocation channels inject a configured message into an app-owned session when an external trigger fires. The publish/unpublish lifecycle controls whether those channels actively accept new invocations.
 
-See [app-invocation-channels.md](app-invocation-channels.md) for the dedicated spec covering schedule/webhook behavior, session routing, templates, and durable bindings.
+See [app-invocation-channels.md](app-invocation-channels.md) for webhook behavior and the legacy schedule-channel migration contract.
 
 Authentication for App-published endpoints is described by the shared framework in [app-endpoint-auth.md](app-endpoint-auth.md). AG-UI and A2A keep their existing legacy auth fields for backward compatibility and adopt the shared model when inline `channel_config.auth` is configured.
 
@@ -12,10 +12,11 @@ Authentication for App-published endpoints is described by the shared framework 
 
 ### App
 
-Top-level deployment entity. Composes existing building blocks (Harness, optional Agent) with one or more distribution channels.
+Top-level deployment entity. Composes existing building blocks (Harness and Agent) with one or more distribution channels.
 
 - Each App references exactly one Harness (required)
-- Each App references zero or one Agent
+- Each newly created or updated App references exactly one Agent
+- The storage field remains nullable solely to grandfather existing agent-less Apps. Those rows are not backfilled or rewritten and remain runtime-compatible, but any later App update must assign an Agent.
 - When `FEATURE_AGENT_VERSIONS` is enabled, each App may choose an Agent version policy: `default`, `latest`, or `pinned`. See [agent-versions.md](agent-versions.md).
 - Each App has zero or more **Channels** (stored in `app_channels` table)
 - Apps have a publish lifecycle: `draft` → `published` → `draft`
@@ -30,11 +31,12 @@ A distribution channel attached to an App. Each channel has its own type, config
 - Uses dual-ID pattern: `appchan_` prefix
 - `channel_type` is optional at create time; when present it creates the first channel automatically
 - Channels can be added, updated, or removed via `/v1/apps/{app_id}/channels`
-- Schedule channels additionally own an internal durable schedule binding (`app_channels.durable_schedule_id`) used to synchronize app lifecycle with the durable scheduler
 
 ### Channel Types
 
-Current: `slack`, `ag_ui`, `schedule`, `webhook`, `a2a`, `fcp`, `api_endpoint`, `public_chat`. Future: `whatsapp`, `web_widget`, `discord`, etc. The `api_endpoint` channel carries an app-scoped, execution-only API key over the native session API; see [app-api-keys.md](app-api-keys.md).
+Current: `slack`, `ag_ui`, `webhook`, `a2a`, `fcp`, `api_endpoint`, `public_chat`. Future: `whatsapp`, `web_widget`, `discord`, etc. The `api_endpoint` channel carries an app-scoped, execution-only API key over the native session API; see [app-api-keys.md](app-api-keys.md).
+
+The former App `schedule` channel is deprecated. New schedule channels are rejected with guidance to create an Agent trigger. Migration `106_migrate_app_schedules_to_agent_triggers.sql` converts each agent-bound schedule channel to an Agent trigger, preserves the cron/timezone/session mode/message config and existing durable schedule identity, then removes the old channel binding. Agent-less grandfather rows, including any schedule binding they already own, are left unchanged.
 
 `public_chat` is an isolated, public-facing chat web app bound to a single App's agent (anonymous by default, optional Google sign-in, optional Cloudflare Turnstile bot mitigation, plus branding). It reuses AG-UI streaming and the shared App endpoint auth verifier. See [public-chat.md](public-chat.md).
 
@@ -161,12 +163,7 @@ session lookup, image upload, task polling, cancellation, or message dispatch.
 Failures are deliberately generic so callers cannot distinguish provider
 misconfiguration from credential probing beyond 401/403 class.
 
-`schedule` and `webhook` are app invocation channels, not interactive messaging adapters:
-
-- `schedule` owns a managed durable schedule binding
-- `webhook` exposes a token-authenticated app-scoped HTTP endpoint
-- both inject a configured user message into an app-owned session
-- both support `shared_session` and `session_per_invocation`
+`webhook` is an app invocation channel, not an interactive messaging adapter. It exposes a token-authenticated app-scoped HTTP endpoint, injects a configured user message into an app-owned session, and supports `shared_session` and `session_per_invocation`. Scheduled proactive execution belongs to Agent triggers.
 
 Examples and detailed behavior live in [app-invocation-channels.md](app-invocation-channels.md).
 
@@ -213,7 +210,7 @@ Apps are the publish surface for Harnesses and Agents. To avoid forcing users to
 - Harness detail → `/apps/new?harness_id={harness_id}`
 - Agent detail → `/apps/new?agent_id={agent_id}`
 
-The create form is a streamlined draft form: an **App details** section (name, description) and a **Deployment** section (required Harness, optional Agent). Channel and agent-identity configuration are deferred to the detail page, so creation always yields a draft. The form reads `harness_id` and `agent_id` from the query string to seed its selectors. Because a Harness is required, the harness shortcut yields a directly submittable draft. Selecting an Agent — from the query-string shortcut or in the form — prefills the harness from that Agent's `harness_id` (still editable), so the agent shortcut yields a submittable draft once the Agent loads.
+The create form is a streamlined draft form: an **App details** section (name, description) and a **Deployment** section (required Harness and Agent). Channel and agent-identity configuration are deferred to the detail page, so creation always yields a draft. The form reads `harness_id` and `agent_id` from the query string to seed its selectors. Selecting an Agent — from the query-string shortcut or in the form — prefills the harness from that Agent's `harness_id` (still editable).
 
 ## Data Model
 
@@ -241,7 +238,6 @@ All endpoints under `/v1/apps`. See `crates/server/src/api/apps.rs`.
 | POST | `/v1/apps/{app_id}/channels` | Add a channel |
 | PATCH | `/v1/apps/{app_id}/channels/{channel_id}` | Update a channel |
 | DELETE | `/v1/apps/{app_id}/channels/{channel_id}` | Remove a channel |
-| POST | `/v1/apps/{app_id}/channels/{channel_id}/trigger` | Manually trigger a schedule channel |
 | POST | `/v1/apps/{app_id}/webhooks/{channel_id}` | Trigger a webhook channel |
 
 ## ID Schema

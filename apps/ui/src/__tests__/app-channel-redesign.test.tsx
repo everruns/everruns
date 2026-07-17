@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { CronLabel, describeCronExpression } from "@/components/apps/cron-label";
 import {
   buildChannelConfig,
+  CHANNEL_FORM_KINDS,
   ChannelForm,
   getDefaultChannelFormState,
   isChannelFormValid,
@@ -87,7 +88,7 @@ describe("app channel redesign", () => {
     expect(screen.queryByText("0 30 * * * * *")).not.toBeInTheDocument();
   });
 
-  it("builds backend-compatible schedule channel config", () => {
+  it("keeps legacy schedule config readable but rejects new schedule channels", () => {
     const state = {
       ...getDefaultChannelFormState("schedule"),
       scheduleCronExpression: "0 30 * * * * *",
@@ -95,7 +96,8 @@ describe("app channel redesign", () => {
       channelMessage: "Run {{app.name}} now.",
     };
 
-    expect(isChannelFormValid(state)).toBe(true);
+    expect(CHANNEL_FORM_KINDS).not.toContain("schedule");
+    expect(isChannelFormValid(state)).toBe(false);
     expect(buildChannelConfig(state)).toEqual({
       cron_expression: "0 30 * * * * *",
       timezone: "America/Chicago",
@@ -107,7 +109,7 @@ describe("app channel redesign", () => {
     );
   });
 
-  it("rejects unsupported cron shapes before submit", () => {
+  it("rejects schedule channels before submit regardless of cron shape", () => {
     const base = {
       ...getDefaultChannelFormState("schedule"),
       channelMessage: "Run {{app.name}} now.",
@@ -115,7 +117,7 @@ describe("app channel redesign", () => {
 
     expect(isChannelFormValid({ ...base, scheduleCronExpression: "0 */5 * * * *" })).toBe(false);
     expect(isChannelFormValid({ ...base, scheduleCronExpression: "0 0 9 * * * 2027" })).toBe(false);
-    expect(isChannelFormValid({ ...base, scheduleCronExpression: "0 0 9 * * * *" })).toBe(true);
+    expect(isChannelFormValid({ ...base, scheduleCronExpression: "0 0 9 * * * *" })).toBe(false);
   });
 
   it("shows raw cron only inside the editable cron input", () => {
