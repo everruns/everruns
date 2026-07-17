@@ -8,7 +8,7 @@ Inspired by OpenAI's `tool_search` feature, but designed as a provider-agnostic 
 
 ### Layering relative to resource discovery
 
-`tool_search` operates over tools that are **already attached** to the agent — it only defers their schemas. The question of *which* MCP server or A2A agent should even be attached in the first place is one layer up, answered by the ARD client capability (`resource_discovery`, [`integrations/ard/SPEC.md`](../integrations/ard/SPEC.md)). When ARD attaches an MCP server mid-session, its tools appear next turn as `mcp_<name>__*` and are then subject to this `tool_search` deferral like any other tool.
+`tool_search` operates over tools that are **already attached** to the agent — it only defers their schemas. The question of *which* MCP server or A2A agent should even be attached in the first place is one layer up, answered by the ARD client capability (`resource_discovery`, [`crates/ard/SPEC.md`](../crates/ard/SPEC.md)). When ARD attaches an MCP server mid-session, its tools appear next turn as `mcp_<name>__*` and are then subject to this `tool_search` deferral like any other tool.
 
 ## Motivation
 

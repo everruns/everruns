@@ -25,6 +25,7 @@ members = [
     "crates/session-sqldb",
     "crates/container-sandbox",
     "crates/observability",
+    "crates/ard",
     "integrations/docker",
     "integrations/daytona",
     "integrations/deno",
@@ -36,7 +37,6 @@ members = [
     "integrations/browserless",
     "integrations/e2b",
     "integrations/sprites",
-    "integrations/ard",
     "examples/coding-cli",
 ]
 
@@ -154,6 +154,7 @@ everruns-sdk = "0.2.0"
 everruns-core = { path = "crates/core", version = "0.17.12" }
 everruns-observability = { path = "crates/observability", version = "0.17.1" }
 everruns-mcp = { path = "crates/mcp", version = "0.17.12" }
+everruns-ard = { path = "crates/ard", version = "0.17.12" }
 everruns-openai = { path = "crates/openai", version = "0.17.0" }
 everruns-runtime = { path = "crates/runtime", version = "0.17.12" }
 

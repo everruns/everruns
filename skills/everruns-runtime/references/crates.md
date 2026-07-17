@@ -60,7 +60,15 @@ Integration crates ship optional capabilities. Construct the capability and
 | `everruns-integrations-brave-search` | Brave Search capability | Requires Brave API key |
 | `everruns-integrations-parallel` | Parallel capability | Parallel web search MCP |
 | `everruns-integrations-browserless` | Browserless capability | Headless browser automation |
-| `everruns-integrations-ard` | ARD capability | Agentic Resource Discovery client |
+
+### Discovery
+
+Platform-level discovery capability (a sibling of MCP / A2A, not an external
+integration).
+
+| Crate | Capability | Notes |
+|---|---|---|
+| `everruns-ard` | `resource_discovery` | Agentic Resource Discovery client — discover + attach external MCP servers / A2A agents at runtime |
 
 ### Blueprints
 

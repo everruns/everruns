@@ -67,7 +67,11 @@ Auto-registered via `inventory` plugin system. Each crate has a `SPEC.md`.
 | Sprites | [`integrations/sprites/SPEC.md`](../integrations/sprites/SPEC.md) | Persistent Firecracker microVMs via Sprites (Fly.io). Persistent filesystem, checkpoints, HTTP services. |
 | Cursor | [`integrations/cursor/SPEC.md`](../integrations/cursor/SPEC.md) | Cursor Cloud Agents API for launching and managing asynchronous coding agents on GitHub repositories. |
 | Docker | `integrations/docker/` | Container-based agent execution. Experimental (Dev only). No spec yet. |
-| ARD | [`integrations/ard/SPEC.md`](../integrations/ard/SPEC.md) | Client-side Agentic Resource Discovery (`resource_discovery`): discover and attach external MCP servers / A2A agents from ARD registries at runtime. Experimental (Dev only). **Live registry CI tests are quarantined (EVE-659):** the public reference registry was decommissioned, so the fail-closed live job is removed from the weekly sweep and gated off in `ard-integration.yml` rather than allowed to silently pass; the wiremock-backed unit/integration tests still run. Re-enable once a reachable reference registry exists. |
+
+> **ARD is not an integration.** Agentic Resource Discovery is a platform-level
+> discovery protocol (a sibling of MCP and A2A), so it lives in `crates/ard`
+> (`everruns-ard`), not under `integrations/`. See
+> [`crates/ard/SPEC.md`](../crates/ard/SPEC.md).
 
 ## Messaging Integrations (`crates/server/`)
 

@@ -1,6 +1,9 @@
-# everruns-integrations-ard
+# everruns-ard
 
-Agentic Resource Discovery (ARD) **client** integration for Everruns agents.
+Agentic Resource Discovery (ARD) **client** capability for Everruns agents.
+
+ARD is a platform-level discovery protocol — a sibling of MCP and A2A, not an
+external-service integration — so it lives in `crates/` alongside `everruns-mcp`.
 
 Adds a `resource_discovery` capability that lets a running agent discover
 external capabilities (MCP servers, A2A agents) from ARD registries and attach

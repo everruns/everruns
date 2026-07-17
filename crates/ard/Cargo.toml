@@ -1,12 +1,13 @@
-# Agentic Resource Discovery (ARD) client integration
-# Decision: External integration crate, auto-registered via inventory plugin system
+# Agentic Resource Discovery (ARD) client capability
+# Decision: Platform capability crate (like MCP / A2A), auto-registered via the
+#   inventory plugin system. Not an external-service integration.
 # Decision: Client/consumer side only — discover + attach external MCP servers and
 #   A2A agents via ARD registries. Publishing (ARD-as-a-server) is tracked separately.
 # Decision: Connection-backed — registry auth header via a connection provider,
 #   with a fallback session-secret/env var for operator/test use.
 
 [package]
-name = "everruns-integrations-ard"
+name = "everruns-ard"
 readme = "README.md"
 version.workspace = true
 rust-version.workspace = true
@@ -15,10 +16,10 @@ repository.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
-description = "Agentic Resource Discovery (ARD) client integration for Everruns agents"
+description = "Agentic Resource Discovery (ARD) client capability for Everruns agents"
 keywords = ["everruns", "ard", "discovery", "mcp", "agents"]
 categories = ["api-bindings", "development-tools"]
-documentation = "https://docs.rs/everruns-integrations-ard"
+documentation = "https://docs.rs/everruns-ard"
 
 [dependencies]
 everruns-core.workspace = true

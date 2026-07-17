@@ -90,6 +90,7 @@ everruns-core = { path = "../core", features = ["embedded-platform-docs", "opena
 # init these rely on stays in core's `telemetry` feature (on by default).
 everruns-observability = { workspace = true }
 everruns-mcp = { path = "../mcp" }
+everruns-ard = { path = "../ard" }
 everruns-integrations-docker = { path = "../../integrations/docker" }
 everruns-integrations-brave-search = { path = "../../integrations/brave-search" }
 everruns-integrations-parallel = { path = "../../integrations/parallel" }
@@ -101,7 +102,6 @@ everruns-integrations-deno = { path = "../../integrations/deno" }
 everruns-integrations-browserless = { path = "../../integrations/browserless" }
 everruns-integrations-e2b = { path = "../../integrations/e2b" }
 everruns-integrations-sprites = { path = "../../integrations/sprites" }
-everruns-integrations-ard = { path = "../../integrations/ard" }
 everruns-container-sandbox = { path = "../container-sandbox" }
 everruns-session-sqldb = { path = "../session-sqldb" }
 everruns-worker = { path = "../worker" }  # For AgentRunner trait

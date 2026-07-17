@@ -1425,7 +1425,7 @@ The capability that agents execute is the compiled `definition` JSONB persisted 
 
 ## 27. Agentic Resource Discovery (`resource_discovery`)
 
-The `resource_discovery` capability (`integrations/ard/SPEC.md`, crate `everruns-integrations-ard`) lets a running agent discover external capabilities from ARD registries (the [ARD spec](https://agenticresourcediscovery.org/spec/)) and attach them mid-session. `discover_resources` proxies the registry `POST /search` (outside model context, results cached in session KV `ard_disco:`); `attach_resource` resolves a cached entry, runs a trust gate, and persists an attachment to session KV `ard_attach:`. During turn-context assembly, `everruns_core::ard_attachment::apply_session_attachments` folds attachments into the session config layer in **both** the server `GetTurnContext` and the in-process runtime `load_turn_context`: MCP entries become a session-scoped `mcpServers` record (tools appear next turn, prefixed `mcp_<name>__*`, subject to `tool_search`), and A2A entries merge into the session's `a2a_agent_delegation` config so the existing `spawn_agent` flow can target them. The capability is experimental/Dev-only and `risk_level` High. Registry-returned text is untrusted external data (same class as TM-TOOL-005 / TM-AGENT-002).
+The `resource_discovery` capability (`crates/ard/SPEC.md`, crate `everruns-ard`) lets a running agent discover external capabilities from ARD registries (the [ARD spec](https://agenticresourcediscovery.org/spec/)) and attach them mid-session. `discover_resources` proxies the registry `POST /search` (outside model context, results cached in session KV `ard_disco:`); `attach_resource` resolves a cached entry, runs a trust gate, and persists an attachment to session KV `ard_attach:`. During turn-context assembly, `everruns_core::ard_attachment::apply_session_attachments` folds attachments into the session config layer in **both** the server `GetTurnContext` and the in-process runtime `load_turn_context`: MCP entries become a session-scoped `mcpServers` record (tools appear next turn, prefixed `mcp_<name>__*`, subject to `tool_search`), and A2A entries merge into the session's `a2a_agent_delegation` config so the existing `spawn_agent` flow can target them. The capability is experimental/Dev-only and `risk_level` High. Registry-returned text is untrusted external data (same class as TM-TOOL-005 / TM-AGENT-002).
 
 This section reuses the existing TM-API, TM-TOOL, TM-AGENT, and TM-DOS categories rather than introducing a new prefix.
 
@@ -1582,6 +1582,6 @@ path to any management API. Mitigations live in
 - `specs/apps.md` — Apps system (agent deployment to channels)
 - `crates/server/specs/slack-integration.md` — Slack bot integration
 - `integrations/brave-search/SPEC.md` — Brave Search web search integration
-- `integrations/ard/SPEC.md` — Agentic Resource Discovery (`resource_discovery`) client integration
+- `crates/ard/SPEC.md` — Agentic Resource Discovery (`resource_discovery`) client capability
 - `specs/infinity-context.md` — Unlimited conversation length via context management
 - [fetchkit v0.1.2 source](https://crates.io/crates/fetchkit) — SSRF protection (resolve-then-check, DNS pinning, DnsPolicy), URL prefix blocking, fetch options, fetcher registry

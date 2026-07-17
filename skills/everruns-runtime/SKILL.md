@@ -192,7 +192,9 @@ full catalog with crate names, `DriverId`s, and capability names is in
   `everruns-integrations-cursor`.
 - **Search / web integrations**: `everruns-integrations-duckduckgo` (no key),
   `everruns-integrations-brave-search`, `everruns-integrations-parallel`,
-  `everruns-integrations-browserless`, `everruns-integrations-ard`.
+  `everruns-integrations-browserless`.
+- **Discovery**: `everruns-ard` — Agentic Resource Discovery client
+  (`resource_discovery`), a platform capability like MCP/A2A.
 - **Durable local backends**: `everruns-local` — SQLite-backed,
   restart-survivable stores for single-process hosts (task registry, schedules,
   platform store).

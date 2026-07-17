@@ -56,7 +56,7 @@ jobs:
           # subdomains no longer resolve), so the fail-closed live tests can
           # never pass. Per the fail-closed contract we remove the job rather
           # than let it silently skip/pass. The wiremock-backed unit +
-          # integration tests (`cargo test -p everruns-integrations-ard`) still
+          # integration tests (`cargo test -p everruns-ard`) still
           # cover the ARD client. Re-add this entry (or repoint
           # ARD_LIVE_REGISTRY_URL) once a reachable reference registry exists.
           # See EVE-659.

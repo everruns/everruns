@@ -1,7 +1,7 @@
 //! Live ARD registry tests against the public reference registry.
 //!
 //! Gated behind:
-//!   cargo test -p everruns-integrations-ard --features ard-live-tests
+//!   cargo test -p everruns-ard --features ard-live-tests
 //!
 //! Fail-closed contract (specs/integrations.md): when the feature flag is on but
 //! the required env var is missing or empty, these tests MUST `panic!` — CI live
@@ -10,9 +10,7 @@
 
 #![cfg(feature = "ard-live-tests")]
 
-use everruns_integrations_ard::client::{
-    ArdRegistryClient, Federation, SearchQuery, SearchRequest,
-};
+use everruns_ard::client::{ArdRegistryClient, Federation, SearchQuery, SearchRequest};
 
 /// Read a required env var or fail closed.
 fn required_env(name: &str) -> String {
