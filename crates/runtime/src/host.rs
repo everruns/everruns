@@ -474,11 +474,12 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         // Pin system-prompt file reads to the session's workspace (the default
         // 1:1 case is a transparent pass-through), then resolve through the
         // mount resolver (EVE-660): `/workspace` is a mount + cwd.
-        file_store: Some(everruns_core::MountFs::wrap(
-            everruns_core::WorkspaceScopedFileSystem::wrap(
-                adapter.file_store(),
-                session.workspace_id,
-            ),
+        // `scoped_prompt_file_store` wraps with `wrap_if_needed` so a local
+        // embedder's backend-native display policy survives here too (it must
+        // match the reason path — see its doc); server stores stay on `/workspace`.
+        file_store: Some(everruns_core::scoped_prompt_file_store(
+            adapter.file_store(),
+            session.workspace_id,
         )),
         model: None,
     };

@@ -338,6 +338,41 @@ impl ResolvedMount {
     }
 }
 
+/// Wrap an embedder's file store for a model-facing [`SystemPromptContext`]:
+/// pin reads to the session's workspace, then guarantee a `/workspace` mount +
+/// cwd — WITHOUT discarding a display policy the embedder already configured.
+///
+/// This is the single, shared way the reason path
+/// ([`crate::runtime_context::assemble_turn_context`]) and the executor path
+/// (`everruns_runtime`'s `load_execution_capabilities`) build their prompt
+/// file store. Both used to inline `MountFs::wrap(WorkspaceScopedFileSystem::…)`
+/// separately; they drifted from the tool-execution (`act`) path — which wraps
+/// with [`MountFs::wrap_if_needed`] — so a local embedder's real host paths
+/// reached tool narration but were forced back to `/workspace` in the system
+/// prompt. Centralizing here keeps all three paths identical so presentation
+/// cannot drift again.
+///
+/// Why `wrap_if_needed` (not `wrap`): if `file_store` is already a [`MountFs`]
+/// (a local embedder that opted into [`DisplayPolicy::BackendNative`] via
+/// [`MountFs::with_backend_display`]), re-wrapping would bury it under a fresh
+/// default-`WorkspaceAlias` resolver and re-hide the host path — regressing
+/// EVE-660 / #258 host-path presentation. `wrap_if_needed` preserves the
+/// embedder's resolver (and its policy), and also avoids collapsing multi-root
+/// named mounts (see [`MountFs::wrap_if_needed`]).
+///
+/// Multi-tenant/server stores are unaffected: they are not mount resolvers, so
+/// they still get wrapped into the default `/workspace` alias, keeping host
+/// paths out of model-visible output (#2776, threat model TM-FS).
+pub fn scoped_prompt_file_store(
+    file_store: Arc<dyn SessionFileSystem>,
+    workspace_id: crate::typed_id::WorkspaceId,
+) -> Arc<dyn SessionFileSystem> {
+    MountFs::wrap_if_needed(crate::traits::WorkspaceScopedFileSystem::wrap(
+        file_store,
+        workspace_id,
+    ))
+}
+
 /// Normalize an input into an absolute virtual path: join cwd if relative, then
 /// collapse `.`/`..` segments (a leading `..` is clamped at root).
 fn normalize_virtual(input: &str, cwd: &str) -> String {
@@ -971,6 +1006,55 @@ mod tests {
         assert_eq!(
             fs.resolve_path("/workspace/src/lib.rs"),
             "/host/root/src/lib.rs"
+        );
+    }
+
+    #[test]
+    fn scoped_prompt_file_store_preserves_backend_native_policy() {
+        // The regression guard for #258: when the embedder hands in a MountFs
+        // that already opted into backend-native display, the shared prompt-store
+        // wrapper must NOT bury it under a fresh `/workspace`-alias resolver.
+        let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore {
+            host_root: Some("/host/root".to_string()),
+            ..Default::default()
+        });
+        let embedder_store: Arc<dyn SessionFileSystem> =
+            Arc::new(MountFs::new(backend).with_backend_display());
+
+        let prompt_store =
+            scoped_prompt_file_store(embedder_store, crate::typed_id::WorkspaceId::from_seed(1));
+
+        // Host path survives all the way to what the system prompt would render.
+        assert_eq!(prompt_store.display_root(), "/host/root");
+        assert_eq!(
+            prompt_store.display_path("/src/lib.rs"),
+            "/host/root/src/lib.rs"
+        );
+        // Routing is unchanged: /workspace still resolves to the backend.
+        assert_eq!(
+            prompt_store.resolve_path("/workspace/src/lib.rs"),
+            "/host/root/src/lib.rs"
+        );
+    }
+
+    #[test]
+    fn scoped_prompt_file_store_defaults_plain_backend_to_workspace_alias() {
+        // A multi-tenant/server store is not a mount resolver, so the wrapper
+        // still mounts it under the host-agnostic `/workspace` alias — host paths
+        // must never leak into model-visible output (#2776, TM-FS).
+        let backend: Arc<dyn SessionFileSystem> = Arc::new(FlatStore {
+            host_root: Some("/host/root".to_string()),
+            ..Default::default()
+        });
+
+        let prompt_store =
+            scoped_prompt_file_store(backend, crate::typed_id::WorkspaceId::from_seed(2));
+
+        assert_eq!(prompt_store.display_root(), WORKSPACE_MOUNT);
+        assert!(
+            !prompt_store
+                .display_path("/src/lib.rs")
+                .contains("/host/root")
         );
     }
 

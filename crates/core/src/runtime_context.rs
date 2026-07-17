@@ -216,13 +216,12 @@ async fn assemble_turn_context_with_mode(
     // workspace so an attached shared workspace's instructions are used. For the
     // default 1:1 session this is a transparent pass-through. Then resolve model
     // paths through the mount resolver (EVE-660): `/workspace` is a mount + cwd,
-    // not a per-store prefix.
-    let file_store = file_store.map(|fs| {
-        crate::mount_fs::MountFs::wrap(crate::traits::WorkspaceScopedFileSystem::wrap(
-            fs,
-            session.workspace_id,
-        ))
-    });
+    // not a per-store prefix. `scoped_prompt_file_store` wraps with
+    // `wrap_if_needed`, so a local embedder's backend-native display policy
+    // survives into the system prompt (see its doc); server stores stay on the
+    // `/workspace` alias.
+    let file_store =
+        file_store.map(|fs| crate::mount_fs::scoped_prompt_file_store(fs, session.workspace_id));
     // The resolved model is known here, so model-adaptive capabilities (e.g.
     // `auto_tool_search`) can pick the right mechanism during collection in
     // `build_runtime_agent` below.

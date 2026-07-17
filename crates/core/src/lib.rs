@@ -221,7 +221,7 @@ pub use message_filter::{
     MessageFilterProvider, MessageQuery, PrependTransform,
 };
 pub use message_retriever::{InputMessage, MessageRetriever};
-pub use mount_fs::{DisplayPolicy, MountFs, WORKSPACE_MOUNT};
+pub use mount_fs::{DisplayPolicy, MountFs, WORKSPACE_MOUNT, scoped_prompt_file_store};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use runtime_context::{
     AssembledTurnContext, ResolvedRuntimeCapabilities, assemble_turn_context, inspect_turn_context,

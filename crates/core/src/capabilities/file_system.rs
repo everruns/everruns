@@ -2825,6 +2825,36 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn system_prompt_backend_native_store_shows_host_root() {
+        // #258 end-to-end: a local embedder whose MountFs opted into
+        // backend-native display, wrapped by the same `scoped_prompt_file_store`
+        // helper the reason/executor paths use, must surface real host paths in
+        // the model-facing system prompt — not the `/workspace` alias.
+        let cap = FileSystemCapability;
+        let backend = Arc::new(MockFileStore::with_display_root("/host/repo"));
+        let embedder_store: Arc<dyn SessionFileSystem> =
+            Arc::new(crate::mount_fs::MountFs::new(backend).with_backend_display());
+        let prompt_store = crate::mount_fs::scoped_prompt_file_store(
+            embedder_store,
+            crate::typed_id::WorkspaceId::from_seed(7),
+        );
+        let ctx = SystemPromptContext {
+            session_id: SessionId::new(),
+            locale: None,
+            file_store: Some(prompt_store),
+            model: None,
+        };
+
+        let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
+
+        assert!(
+            prompt.contains("Workspace root: `/host/repo`"),
+            "system prompt should present the host root: {prompt}"
+        );
+        assert!(!prompt.contains("Workspace root: `/workspace`"));
+    }
+
+    #[tokio::test]
     async fn system_prompt_escapes_store_display_root_xml_text() {
         let cap = FileSystemCapability;
         let store = Arc::new(MockFileStore::with_display_root(
