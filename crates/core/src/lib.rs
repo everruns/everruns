@@ -32,6 +32,7 @@
 //! ```
 
 // Runtime types (tool definitions, capability types)
+pub mod annotation_hook;
 pub mod capability_types;
 pub mod tool_fingerprint;
 pub use everruns_provider::tool_types;

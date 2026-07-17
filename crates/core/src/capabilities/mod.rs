@@ -94,6 +94,7 @@ mod background_execution;
 mod bashkit_shell;
 mod btw;
 mod budgeting;
+mod citation_retrieval;
 mod claude_tool_search;
 pub mod compaction;
 mod current_time;
@@ -186,6 +187,9 @@ pub use auto_tool_search::{AUTO_TOOL_SEARCH_CAPABILITY_ID, AutoToolSearchCapabil
 pub use background_execution::{BACKGROUND_EXECUTION_CAPABILITY_ID, BackgroundExecutionCapability};
 pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
 pub use budgeting::{BUDGETING_CAPABILITY_ID, BudgetingCapability};
+pub use citation_retrieval::{
+    CITATION_RETRIEVAL_CAPABILITY_ID, CitationRetrievalCapability, CitationRetrievalConfig,
+};
 pub use claude_tool_search::{CLAUDE_TOOL_SEARCH_CAPABILITY_ID, ClaudeToolSearchCapability};
 pub use compaction::{
     COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionConfig, CompactionStep,
@@ -1112,6 +1116,28 @@ pub trait Capability: Send + Sync {
     ) -> Vec<Arc<dyn crate::output_guardrail::PostGenerationOutputGuardrail>> {
         vec![]
     }
+
+    /// Returns end-of-message citation annotation hooks contributed by this
+    /// capability, adapted to per-agent config.
+    ///
+    /// Like [`Self::post_output_guardrails_with_config`], these run once on the
+    /// fully assembled assistant message after streaming completes. But instead
+    /// of a block/allow decision they attach citation [`crate::message::TextAnnotation`]s
+    /// to the message text (optionally rewriting it first, e.g. to strip inline
+    /// citation markers). This is the seam citation capabilities use to turn
+    /// retrieved sources into claim-level provenance. See
+    /// [`crate::annotation_hook`] and `specs/citations.md`.
+    ///
+    /// A capability contributes nothing unless a citation feed is configured,
+    /// keeping the common (no-citations) case free of work.
+    ///
+    /// Default: no annotation hooks.
+    fn post_output_annotation_hooks_with_config(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Vec<Arc<dyn crate::annotation_hook::PostGenerationAnnotationHook>> {
+        vec![]
+    }
 }
 
 pub trait ToolDefinitionHook: Send + Sync {
@@ -1471,6 +1497,9 @@ impl CapabilityRegistry {
 
         // Knowledge indexes (source-backed embedded collections — see specs/knowledge-indexes.md)
         registry.register(KnowledgeIndexCapability);
+
+        // Retrieval citations (claim-level provenance from search results — see specs/citations.md)
+        registry.register(CitationRetrievalCapability);
 
         // Fake demo capabilities (all environments)
         registry.register(FakeWarehouseCapability);

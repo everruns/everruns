@@ -49,6 +49,7 @@ use crate::message_retriever::MessageRetriever;
 use crate::openresponses_protocol::{
     CompactInputItem, CompactRequest, compact_output_to_messages, messages_to_compact_input,
 };
+use crate::annotation_hook::{AnnotationProvider, collect_annotations};
 use crate::output_guardrail::{
     ArmedGuardrail, OutputGuardrailContext, PostGenerationOutputContext, PostGenerationProvider,
     TrippedGuardrail, evaluate_guardrails, evaluate_post_generation_guardrails,
@@ -1375,6 +1376,32 @@ impl ReasonAtom {
                     providers
                         .into_iter()
                         .map(move |provider| PostGenerationProvider {
+                            capability_id: cap_id.to_string(),
+                            provider,
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .flatten()
+            .collect();
+
+        // End-of-message citation annotation hooks (see specs/citations.md).
+        // Collected here alongside the guardrail providers; evaluated once on
+        // the finalized final-answer message to attach claim-level citations.
+        // Empty unless a citation capability is configured.
+        let annotation_providers: Vec<AnnotationProvider> = resolved_capability_configs
+            .iter()
+            .filter_map(|cfg| {
+                let cap_id = cfg.capability_ref.as_str();
+                let cap = self.capability_registry.get(cap_id)?;
+                let providers = cap.post_output_annotation_hooks_with_config(&cfg.config);
+                if providers.is_empty() {
+                    return None;
+                }
+                Some(
+                    providers
+                        .into_iter()
+                        .map(move |provider| AnnotationProvider {
                             capability_id: cap_id.to_string(),
                             provider,
                         })
@@ -2835,6 +2862,37 @@ impl ReasonAtom {
             tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
         }
 
+        // End-of-message citation annotation seam (see specs/citations.md). Runs
+        // once on the finalized final-answer text after guardrails allow it, to
+        // attach claim-level citations. Skipped when a guardrail already tripped,
+        // when there are no citation providers, when there is no text, or while
+        // the message still carries tool calls (citations attach to answer
+        // prose, not intermediate tool-calling turns). The built-in feeds do not
+        // rewrite text, so streamed deltas stay valid and no buffering is needed;
+        // a future feed that rewrites (e.g. to strip inline markers) must also
+        // opt into delta buffering.
+        let mut citation_annotations: Vec<crate::message::TextAnnotation> = Vec::new();
+        if tripped.is_none()
+            && !annotation_providers.is_empty()
+            && !text.is_empty()
+            && tool_calls.is_empty()
+        {
+            // Strip the synthetic timestamp prefix first (idempotent with the
+            // later strip at message build) so annotation char offsets computed
+            // here stay valid against the finalized message text.
+            text = crate::capabilities::strip_leading_timestamp_annotations(&text);
+            let collected = collect_annotations(
+                &annotation_providers,
+                &runtime_agent.system_prompt,
+                &text,
+                &messages,
+                self.utility_llm_service.as_ref(),
+            )
+            .await;
+            text = collected.text;
+            citation_annotations = collected.annotations;
+        }
+
         // Release buffered text only after post-generation guardrails allow it.
         // If they block, the replacement path below emits only sanitized text.
         if buffer_output_deltas
@@ -3066,6 +3124,16 @@ impl ReasonAtom {
             Message::assistant(&text)
         }
         .with_id(output_message_id);
+        // Attach citation annotations produced by the annotation seam above to
+        // the message's text part (see specs/citations.md).
+        if !citation_annotations.is_empty() {
+            for part in assistant_message.content.iter_mut() {
+                if let crate::message::ContentPart::Text(t) = part {
+                    t.annotations = std::mem::take(&mut citation_annotations);
+                    break;
+                }
+            }
+        }
         // Use the API-provided phase when available (preserving the provider's value),
         // otherwise derive from state: Commentary for intermediate iterations (with tool
         // calls), FinalAnswer for the completed response.
