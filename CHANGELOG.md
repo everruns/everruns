@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.17.12] - 2026-07-17
+
+### What's Changed
+
+- feat(evals): generic in-process eval study over the local runtime ([#2818](https://github.com/everruns/everruns/pull/2818)) by [@chaliy](https://github.com/chaliy)
+- fix(core): keep embedder display policy in system-prompt file store ([#2819](https://github.com/everruns/everruns/pull/2819)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.11] - 2026-07-16
 
 ### What's Changed
