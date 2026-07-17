@@ -37,7 +37,8 @@ live filesystem.
 ## In-process Runtime
 
 Embedders that want to execute harnesses in their own process, without the
-durable engine or control-plane server, should use `everruns-runtime`.
+durable engine or control-plane server, should use `everruns-runtime` — the
+agentic runtime and in-process entrypoint to the agentic framework.
 
 `everruns-runtime` consumes the same `PlatformDefinition` type and uses the
 shared core atoms and turn state machine. This keeps embedded execution aligned

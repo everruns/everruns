@@ -1,17 +1,18 @@
 # everruns-runtime
 
-> Embed Everruns agents directly in your Rust process — no server, worker, or database required.
+> The agentic runtime — build agents in Rust by embedding the Everruns agentic framework directly in your process. No server, worker, or database required.
 
 [![Crates.io](https://img.shields.io/crates/v/everruns-runtime.svg)](https://crates.io/crates/everruns-runtime)
 [![Documentation](https://docs.rs/everruns-runtime/badge.svg)](https://docs.rs/everruns-runtime)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-`everruns-runtime` is the in-process entrypoint for embedding Everruns. It runs a
-harness entirely inside your own process — with in-memory stores by default —
-using the same `input → reason → act` loop as worker- and server-backed
-execution, but without the durable engine, gRPC worker boundary, or
-control-plane server. It is the recommended starting point for trying Everruns,
-writing tests, and embedding agents in your own application.
+`everruns-runtime` is the agentic runtime at the core of Everruns — the
+entrypoint to the Everruns agentic framework. It runs an agent harness entirely
+inside your own process — with in-memory stores by default — using the same
+`input → reason → act` loop as worker- and server-backed execution, but without
+the durable engine, gRPC worker boundary, or control-plane server. It is the
+recommended starting point for building agents, trying Everruns, and writing
+tests.
 
 Part of the [Everruns](https://everruns.com) ecosystem — the durable agentic
 harness engine for building unstoppable agents. The runtime builds on the

@@ -6,7 +6,7 @@ how to register them, and what they contribute.
 
 The two required crates are always:
 
-- `everruns-runtime` — the in-process engine ([docs.rs](https://docs.rs/everruns-runtime))
+- `everruns-runtime` — the agentic runtime; the in-process agentic-framework entrypoint ([docs.rs](https://docs.rs/everruns-runtime))
 - `everruns-core` — shared types (capabilities, drivers, models, `PlatformDefinition`)
 
 ## LLM provider crates (drivers)

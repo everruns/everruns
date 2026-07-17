@@ -1,6 +1,6 @@
 ---
 title: Runtime
-description: Embed Everruns harnesses directly in your Rust process with the everruns-runtime crate — in-memory by default, no PostgreSQL, server, or worker required.
+description: The agentic runtime for Rust — the in-process entrypoint to the Everruns agentic framework. Embed agent harnesses directly in your process with the everruns-runtime crate; in-memory by default, no PostgreSQL, server, or worker required.
 # See features/sdk.mdx: explicit slug needed so links-validator resolves this
 # symlinked .mdx page's route. Keep equal to the file-derived route.
 slug: features/runtime
@@ -8,7 +8,7 @@ sidebar:
   label: Runtime
 ---
 
-The `everruns-runtime` crate runs an Everruns harness **entirely inside your own Rust process**. There is no PostgreSQL, no control-plane server, and no worker boundary — just the harness, your capabilities, and your code.
+`everruns-runtime` is **the agentic runtime** — the entrypoint to the Everruns agentic framework. It runs an agent harness **entirely inside your own Rust process**. There is no PostgreSQL, no control-plane server, and no worker boundary — just the harness, your capabilities, and your code.
 
 It is the Rust-native counterpart to the [SDKs](/features/sdk/): where the SDKs talk to a running Everruns server over HTTP, the runtime *is* the engine, linked straight into your binary.
 

@@ -1,6 +1,6 @@
 ---
 name: everruns-runtime
-description: Embed the Everruns agent engine directly in a Rust process with the everruns-runtime crate — run harnesses in-process with no PostgreSQL, server, or worker. Use when building local agentic apps (coding agents, personal agents, CLIs), writing in-process agent tests, registering custom capabilities/drivers/backends, or wiring optional provider and integration crates (OpenAI, Anthropic, Daytona, E2B, …).
+description: The agentic runtime for Rust — the in-process entrypoint to the Everruns agentic framework, via the everruns-runtime crate. Run agent harnesses in-process with no PostgreSQL, server, or worker. Use when building local agentic apps (coding agents, personal agents, CLIs), writing in-process agent tests, registering custom capabilities/drivers/backends, or wiring optional provider and integration crates (OpenAI, Anthropic, Daytona, E2B, …).
 license: MIT
 compatibility: Rust 1.94+ (edition 2024)
 metadata:
@@ -14,13 +14,14 @@ metadata:
 
 # everruns-runtime
 
-> Embed Everruns agents directly in your Rust process — no server, worker, or database required.
+> The agentic runtime — build agents in Rust by embedding the Everruns agentic framework directly in your process. No server, worker, or database required.
 
-`everruns-runtime` is the public, in-process entrypoint for [Everruns](https://everruns.com),
-the open-source durable agentic harness engine. It runs an Everruns **harness**
-entirely inside your own binary, using the same `input → reason → act` loop as
-the worker- and server-backed runtime, but **in-memory by default** — no
-PostgreSQL, no control-plane server, no gRPC worker boundary.
+`everruns-runtime` is the agentic runtime for [Everruns](https://everruns.com) —
+the in-process entrypoint to the open-source Everruns agentic framework. It runs
+an agent **harness** entirely inside your own binary, using the same
+`input → reason → act` loop as the worker- and server-backed runtime, but
+**in-memory by default** — no PostgreSQL, no control-plane server, no gRPC worker
+boundary.
 
 It is the Rust-native counterpart to the [SDKs](https://docs.everruns.com/features/sdk/):
 where the SDKs talk to a *running* Everruns server over HTTP, the runtime **is**
