@@ -217,9 +217,10 @@ pub use llm_error_hook::{
     LlmErrorContext, LlmErrorHook, LlmErrorHookOutcome, LlmErrorHookServices,
 };
 pub use message::{
-    ContentPart, ContentType, Controls, ExternalActor, ImageContentPart, ImageFileContentPart,
-    InputContentPart, Message, MessageRole, ReasoningConfig, TextContentPart, ToolCallContentPart,
-    ToolResultContentPart,
+    AnnotationSource, ContentPart, ContentType, Controls, ExternalActor, ImageContentPart,
+    ImageFileContentPart, InputContentPart, Message, MessageRole, ReasoningConfig, TextAnnotation,
+    TextContentPart, ToolCallContentPart, ToolResultContentPart, VerificationStatus,
+    VerificationVerdict,
 };
 pub use message_filter::{
     ExcludedNoticeTransform, FilterContext, InjectedMessage, InjectionPosition, MessageFilter,

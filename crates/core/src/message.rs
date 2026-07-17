@@ -269,12 +269,98 @@ impl From<&str> for ContentType {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TextContentPart {
     pub text: String,
+    /// Claim-level citations attached to spans of `text`.
+    ///
+    /// The narrow render contract shared by all citation capabilities (see
+    /// `specs/citations.md`). Empty for non-cited text, so the wire shape of
+    /// existing messages is unchanged.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub annotations: Vec<TextAnnotation>,
 }
 
 impl TextContentPart {
     pub fn new(text: impl Into<String>) -> Self {
-        Self { text: text.into() }
+        Self {
+            text: text.into(),
+            annotations: Vec::new(),
+        }
     }
+
+    /// Attach citation annotations, replacing any existing ones.
+    pub fn with_annotations(mut self, annotations: Vec<TextAnnotation>) -> Self {
+        self.annotations = annotations;
+        self
+    }
+}
+
+/// A claim-level citation attached to a span of generated text.
+///
+/// The single shared type across every citation capability: a text span linked
+/// to a source. Producers agree only on this render contract — each capability
+/// keeps its own richer representation (e.g. `KnowledgeIndexCitation`) and maps
+/// into this envelope at emit time. See `specs/citations.md`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct TextAnnotation {
+    /// 0-indexed start char offset into the enclosing `TextContentPart.text`.
+    pub start: usize,
+    /// Exclusive end char offset.
+    pub end: usize,
+    /// Capability id that produced this annotation (e.g. `citation_retrieval`).
+    /// Lets the UI and evals attribute and filter each citation by feed.
+    pub origin: String,
+    /// The cited source.
+    pub source: AnnotationSource,
+    /// Opaque producer id (e.g. `kchk_…`, `kbe_…`, a URL hash). Not interpreted
+    /// by the render contract.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_id: Option<String>,
+    /// Verification verdict, filled by the `citation_verification` capability.
+    /// Absent means unverified (not "unsupported").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verified: Option<VerificationVerdict>,
+}
+
+/// The source a [`TextAnnotation`] points to.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct AnnotationSource {
+    /// Stable, linkable locator (e.g. `github://owner/repo@main/docs/x.md` or an
+    /// `https://` URL).
+    pub uri: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Trimmed passage that backs the claim. Display-only; never relied on for
+    /// prompt reconstruction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub snippet: Option<String>,
+    /// Provenance within the document (line / char / page / block ranges),
+    /// reusing the retrieval `location` JSONB shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<serde_json::Value>,
+}
+
+/// Outcome of citation verification (see the `citation_verification` capability).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct VerificationVerdict {
+    pub status: VerificationStatus,
+    /// Entailment confidence in `[0, 1]`, when the verifier produced one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub score: Option<f32>,
+}
+
+/// Whether a cited source entails the claim it is attached to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum VerificationStatus {
+    /// The source supports the claim.
+    Entailed,
+    /// The source does not support the claim.
+    Unsupported,
+    /// The verifier could not decide.
+    Uncertain,
 }
 
 /// Image content part (base64 or URL)
