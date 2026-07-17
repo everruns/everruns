@@ -228,7 +228,10 @@ pub fn token_overlap_ratio(needle: &[String], haystack: &[String]) -> f32 {
 
 /// The substring of `text` covered by a char span `[start, end)`.
 pub fn span_text(text: &str, start: usize, end: usize) -> String {
-    text.chars().skip(start).take(end.saturating_sub(start)).collect()
+    text.chars()
+        .skip(start)
+        .take(end.saturating_sub(start))
+        .collect()
 }
 
 #[cfg(test)]

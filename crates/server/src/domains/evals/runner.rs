@@ -777,10 +777,7 @@ fn score_citation_faithful(
             reason: "no citations required or present".to_string(),
         };
     }
-    let with_verdict = annotations
-        .iter()
-        .filter(|a| a.verified.is_some())
-        .count();
+    let with_verdict = annotations.iter().filter(|a| a.verified.is_some()).count();
     let entailed = annotations
         .iter()
         .filter(|a| {

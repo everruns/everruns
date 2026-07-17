@@ -26,6 +26,9 @@ use std::time::Instant;
 use uuid::Uuid;
 
 use super::{Atom, AtomContext};
+use crate::annotation_hook::{
+    AnnotationProvider, VerifierProvider, collect_annotations, verify_annotations,
+};
 use crate::capabilities::CapabilityRegistry;
 use crate::driver_registry::{
     DriverRegistry, LlmCompletionMetadata, LlmMessage, LlmMessageContent, LlmMessageRole,
@@ -48,9 +51,6 @@ use crate::message::{Message, MessageRole};
 use crate::message_retriever::MessageRetriever;
 use crate::openresponses_protocol::{
     CompactInputItem, CompactRequest, compact_output_to_messages, messages_to_compact_input,
-};
-use crate::annotation_hook::{
-    AnnotationProvider, VerifierProvider, collect_annotations, verify_annotations,
 };
 use crate::output_guardrail::{
     ArmedGuardrail, OutputGuardrailContext, PostGenerationOutputContext, PostGenerationProvider,

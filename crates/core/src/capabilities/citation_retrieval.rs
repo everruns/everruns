@@ -201,7 +201,9 @@ fn extract_retrieval_citations(messages: &[Message]) -> Vec<RetrievalCitation> {
             if !RETRIEVAL_TOOLS.contains(name) {
                 continue;
             }
-            let Some(value) = &result.result else { continue };
+            let Some(value) = &result.result else {
+                continue;
+            };
             let Some(results) = value.get("results").and_then(|r| r.as_array()) else {
                 continue;
             };
@@ -224,10 +226,7 @@ fn normalize_entry(entry: &serde_json::Value) -> Option<RetrievalCitation> {
     if snippet.is_empty() {
         return None;
     }
-    let external_id = entry
-        .get("id")
-        .and_then(|v| v.as_str())
-        .map(str::to_string);
+    let external_id = entry.get("id").and_then(|v| v.as_str()).map(str::to_string);
     let title = entry
         .get("document_title")
         .or_else(|| entry.get("title"))
@@ -239,7 +238,11 @@ fn normalize_entry(entry: &serde_json::Value) -> Option<RetrievalCitation> {
         .or_else(|| entry.get("uri"))
         .and_then(|v| v.as_str())
         .map(str::to_string)
-        .or_else(|| external_id.as_ref().map(|id| format!("everruns://citation/{id}")))
+        .or_else(|| {
+            external_id
+                .as_ref()
+                .map(|id| format!("everruns://citation/{id}"))
+        })
         .unwrap_or_else(|| "everruns://citation".to_string());
     Some(RetrievalCitation {
         external_id,
@@ -262,10 +265,8 @@ fn align_citations(
     if sentences.is_empty() {
         return Vec::new();
     }
-    let sentence_tokens: Vec<Vec<String>> = sentences
-        .iter()
-        .map(|s| citation_tokens(&s.text))
-        .collect();
+    let sentence_tokens: Vec<Vec<String>> =
+        sentences.iter().map(|s| citation_tokens(&s.text)).collect();
 
     let mut annotations = Vec::new();
     for citation in citations {
@@ -407,7 +408,10 @@ mod tests {
     fn ignores_non_retrieval_tools() {
         let messages = vec![
             tool_call_msg("c1", "bash"),
-            tool_result_msg("c1", json!({"results": [{"id": "x", "snippet": "hi there"}]})),
+            tool_result_msg(
+                "c1",
+                json!({"results": [{"id": "x", "snippet": "hi there"}]}),
+            ),
         ];
         assert!(extract_retrieval_citations(&messages).is_empty());
     }
@@ -426,7 +430,11 @@ mod tests {
         let anns = align_citations(text, &cites, 0.5);
         assert_eq!(anns.len(), 1);
         let ann = &anns[0];
-        let cited: String = text.chars().skip(ann.start).take(ann.end - ann.start).collect();
+        let cited: String = text
+            .chars()
+            .skip(ann.start)
+            .take(ann.end - ann.start)
+            .collect();
         assert!(cited.contains("Photosynthesis converts sunlight"));
         assert_eq!(ann.external_id.as_deref(), Some("kchk_1"));
         assert_eq!(ann.origin, CITATION_RETRIEVAL_CAPABILITY_ID);
