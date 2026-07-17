@@ -1074,6 +1074,13 @@ impl ServerAppBuilder {
                 notifications_enabled,
                 event_delivery.clone(),
             )),
+            // Judged scorers (citation_judged) use the org's own configured model,
+            // mirroring the observer LLM judge.
+            judge: Some(Arc::new(crate::domains::observers::LlmJudgeClient::new(
+                db.clone(),
+                driver_registry.clone(),
+                provider_resolver.clone(),
+            ))),
         });
         let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone())
             .with_run_context(eval_run_ctx);

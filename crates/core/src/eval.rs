@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use crate::typed_id::{
-    AgentId, AppId, EvalCaseId, EvalDatasetId, EvalId, EvalResultId, EvalRunId, HarnessId,
+    AgentId, AppId, EvalCaseId, EvalDatasetId, EvalId, EvalResultId, EvalRunId, HarnessId, ModelId,
     SessionId,
 };
 
@@ -332,6 +332,22 @@ pub enum Scorer {
         #[serde(default = "default_weight")]
         weight: f64,
     },
+    /// Citation faithfulness judged by an LLM: each cited claim/source pair is
+    /// graded by a model, so the eval works even without the
+    /// `citation_verification` capability. See `specs/citations.md`.
+    CitationJudged {
+        /// Rubric override; a citation-faithfulness rubric is used when absent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        rubric: Option<String>,
+        /// Judge model; the org's default is used when absent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model_id: Option<ModelId>,
+        /// Minimum judged score `[0,1]` to pass.
+        #[serde(default = "default_pass_threshold")]
+        pass_threshold: f64,
+        #[serde(default = "default_weight")]
+        weight: f64,
+    },
 }
 
 fn default_pass_threshold() -> f64 {
@@ -357,6 +373,7 @@ impl Scorer {
             Scorer::FileContains { .. } => "file_contains",
             Scorer::JsonSchema { .. } => "json_schema",
             Scorer::CitationFaithful { .. } => "citation_faithful",
+            Scorer::CitationJudged { .. } => "citation_judged",
         }
     }
 }

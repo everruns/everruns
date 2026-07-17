@@ -32,6 +32,10 @@ pub struct EvalRunContext {
     pub db: Arc<StorageBackend>,
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
+    /// LLM judge for judged scorers (e.g. `citation_judged`). `None` when the
+    /// deployment has no model provider stack; judged scorers then report the
+    /// judge as unavailable rather than erroring the run.
+    pub judge: Option<Arc<dyn crate::domains::observers::JudgeClient>>,
 }
 
 /// Spawn the eval run execution in the background.
@@ -400,6 +404,7 @@ async fn execute_case_inner(
         &tool_calls,
         turn_count,
         ctx,
+        org_id,
         session_uuid,
     )
     .await;
@@ -673,6 +678,7 @@ fn scorer_weight(scorer: &Scorer) -> f64 {
         Scorer::FileContains { weight, .. } => *weight,
         Scorer::JsonSchema { weight, .. } => *weight,
         Scorer::CitationFaithful { weight, .. } => *weight,
+        Scorer::CitationJudged { weight, .. } => *weight,
     }
 }
 
@@ -684,6 +690,7 @@ async fn run_scorers(
     tool_calls: &[String],
     turns: u32,
     ctx: &EvalRunContext,
+    org_id: i64,
     session_uuid: Uuid,
 ) -> Vec<Score> {
     let mut scores = Vec::with_capacity(scorers.len());
@@ -695,6 +702,7 @@ async fn run_scorers(
             tool_calls,
             turns,
             ctx,
+            org_id,
             session_uuid,
         )
         .await;
@@ -711,6 +719,7 @@ async fn run_single_scorer(
     tool_calls: &[String],
     turns: u32,
     ctx: &EvalRunContext,
+    org_id: i64,
     session_uuid: Uuid,
 ) -> Score {
     if let Some(score) =
@@ -724,6 +733,23 @@ async fn run_single_scorer(
             pass_threshold,
             ..
         } => score_citation_faithful(annotations, *min_citations, *pass_threshold),
+        Scorer::CitationJudged {
+            rubric,
+            model_id,
+            pass_threshold,
+            ..
+        } => {
+            score_citation_judged(
+                ctx,
+                org_id,
+                final_content,
+                annotations,
+                rubric.as_deref(),
+                model_id.clone(),
+                *pass_threshold,
+            )
+            .await
+        }
         Scorer::FileContains { path, text, .. } => {
             let file = ctx.db.get_session_file(session_uuid, path).await;
             let pass = match file {
@@ -805,6 +831,86 @@ fn score_citation_faithful(
     }
 }
 
+const CITATION_JUDGE_RUBRIC: &str = "You are judging citation faithfulness. Each numbered item is a CLAIM the agent \
+     made and the SOURCE it cited. Judge whether each SOURCE actually supports its \
+     CLAIM. `value` is the fraction of items whose source supports the claim \
+     (1.0 = all supported, 0.0 = none). Penalize claims whose source is unrelated \
+     or contradicts them.";
+
+/// Grade citation faithfulness with the org's LLM judge, reusing the observer
+/// judge (`observers::judge::JudgeClient`). Fails open to a clear reason when no
+/// judge/model is available so a judge outage never errors the whole run.
+async fn score_citation_judged(
+    ctx: &EvalRunContext,
+    org_id: i64,
+    final_content: &str,
+    annotations: &[TextAnnotation],
+    rubric: Option<&str>,
+    model_id: Option<everruns_core::typed_id::ModelId>,
+    pass_threshold: f64,
+) -> Score {
+    if annotations.is_empty() {
+        return Score {
+            pass: true,
+            value: 1.0,
+            reason: "no citations to judge".to_string(),
+        };
+    }
+    let Some(judge) = ctx.judge.as_ref() else {
+        return Score {
+            pass: false,
+            value: 0.0,
+            reason: "citation judge unavailable (no model provider)".to_string(),
+        };
+    };
+    let evidence = crate::domains::observers::TurnEvidence {
+        input_message: String::new(),
+        final_answer: build_citation_pairs(final_content, annotations),
+        tool_names: Vec::new(),
+    };
+    let rubric = rubric.unwrap_or(CITATION_JUDGE_RUBRIC);
+    match judge.judge(org_id, model_id, rubric, &evidence).await {
+        Ok(Some(result)) => Score {
+            pass: result.value >= pass_threshold,
+            value: result.value,
+            reason: result.reasoning,
+        },
+        Ok(None) => Score {
+            pass: false,
+            value: 0.0,
+            reason: "no judge model configured for org".to_string(),
+        },
+        Err(e) => Score {
+            pass: false,
+            value: 0.0,
+            reason: format!("citation judge error: {e}"),
+        },
+    }
+}
+
+/// Render each annotation as a numbered CLAIM/SOURCE pair for the judge. The
+/// claim is the answer span the citation is attached to; the source is the
+/// cited snippet (and uri).
+fn build_citation_pairs(text: &str, annotations: &[TextAnnotation]) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::new();
+    for (i, ann) in annotations.iter().enumerate() {
+        let claim: String = chars
+            .get(ann.start..ann.end.min(chars.len()))
+            .map(|s| s.iter().collect())
+            .unwrap_or_default();
+        let source = ann.source.snippet.as_deref().unwrap_or("(no snippet)");
+        out.push_str(&format!(
+            "[{}] CLAIM: {}\n    SOURCE ({}): {}\n",
+            i + 1,
+            claim.trim(),
+            ann.source.uri,
+            source.trim(),
+        ));
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -867,6 +973,27 @@ mod tests {
         let score = score_citation_faithful(&[ann], 1, 0.8);
         assert!(!score.pass);
         assert!(score.reason.contains("enable citation_verification"));
+    }
+
+    #[test]
+    fn citation_pairs_render_claim_and_source() {
+        let text = "The sky is blue. Grass is green.";
+        let anns = vec![TextAnnotation {
+            start: 0,
+            end: 16,
+            origin: "citation_retrieval".to_string(),
+            source: AnnotationSource {
+                uri: "doc://a".to_string(),
+                title: None,
+                snippet: Some("The sky appears blue due to Rayleigh scattering.".to_string()),
+                location: None,
+            },
+            external_id: None,
+            verified: None,
+        }];
+        let pairs = build_citation_pairs(text, &anns);
+        assert!(pairs.contains("[1] CLAIM: The sky is blue."));
+        assert!(pairs.contains("SOURCE (doc://a): The sky appears blue"));
     }
 
     #[tokio::test]

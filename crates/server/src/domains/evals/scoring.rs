@@ -119,6 +119,8 @@ pub fn score_rule(
         // Needs the message's citation annotations, not just trace text; graded
         // in the eval runner's async path.
         Scorer::CitationFaithful { .. } => return None,
+        // Needs annotations + an LLM judge; graded in the eval runner.
+        Scorer::CitationJudged { .. } => return None,
     };
     Some(score)
 }
