@@ -55,12 +55,26 @@ async fn create_app_with_a2a_mode(
     message: &str,
     session_mode: &str,
 ) -> (Value, String) {
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": format!("{name}-agent"),
+                "display_name": format!("{name} agent"),
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
     let app: Value = server
         .post(
             "/v1/apps",
             json!({
                 "name": name,
                 "harness_id": server.seed_generic_harness_id.clone(),
+                "agent_id": agent["id"],
             }),
         )
         .await
