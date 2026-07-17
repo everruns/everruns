@@ -1,0 +1,50 @@
+# OpenAI Image Generation Integration
+# Decision: Lives as an integration crate (not in the `everruns-openai` driver
+# crate) so the provider crate stays a pure ChatDriver with no dependency on
+# core's capability/tool/session runtime. Auto-registered via the inventory
+# IntegrationPlugin system, exactly like the other integration crates.
+
+[package]
+name = "everruns-integrations-openai-image"
+readme = "README.md"
+version.workspace = true
+rust-version.workspace = true
+homepage.workspace = true
+repository.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "OpenAI GPT Image generation/editing capability for Everruns agents"
+keywords = ["everruns", "openai", "image", "generation", "agents"]
+categories = ["api-bindings", "development-tools"]
+documentation = "https://docs.rs/everruns-integrations-openai-image"
+
+[dependencies]
+# Capability/tool/session runtime lives in core with default features on, the
+# same as the other integration crates.
+everruns-core.workspace = true
+inventory.workspace = true
+
+# HTTP client for the OpenAI Image API (multipart uploads for edits)
+reqwest = { workspace = true, features = ["multipart"] }
+eventsource-stream.workspace = true
+
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# Async
+async-trait.workspace = true
+tokio.workspace = true
+futures.workspace = true
+
+# Encoding
+base64.workspace = true
+
+# Errors / tracing
+anyhow.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"

@@ -2960,6 +2960,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-integrations-openai-image"
+version = "0.17.11"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "eventsource-stream",
+ "everruns-core",
+ "futures",
+ "inventory",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-integrations-parallel"
 version = "0.17.12"
 dependencies = [
@@ -3105,14 +3124,9 @@ dependencies = [
 name = "everruns-openai"
 version = "0.17.12"
 dependencies = [
- "anyhow",
  "async-trait",
- "base64 0.22.1",
  "chrono",
- "eventsource-stream",
  "everruns-core",
- "futures",
- "inventory",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -3216,6 +3230,7 @@ dependencies = [
  "everruns-integrations-duckduckgo",
  "everruns-integrations-e2b",
  "everruns-integrations-github",
+ "everruns-integrations-openai-image",
  "everruns-integrations-parallel",
  "everruns-integrations-sprites",
  "everruns-internal-protocol",
@@ -3336,6 +3351,7 @@ dependencies = [
  "everruns-integrations-duckduckgo",
  "everruns-integrations-e2b",
  "everruns-integrations-github",
+ "everruns-integrations-openai-image",
  "everruns-integrations-parallel",
  "everruns-integrations-sprites",
  "everruns-internal-protocol",
