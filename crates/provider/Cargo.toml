@@ -1,0 +1,42 @@
+# Everruns Provider Abstraction
+# Decision: Foundation crate that holds the driver-facing types the LLM provider
+# interface is built on (typed IDs, credential form schema, user-facing error
+# taxonomy, OpenResponses wire types, URL validation). Extracted from
+# everruns-core so provider crates can depend on this instead of core. core
+# depends on this crate and re-exports these modules at their existing paths, so
+# the rest of the workspace is unaffected during the migration.
+
+[package]
+name = "everruns-provider"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-provider"
+description = "Provider/LLM abstraction foundation shared by Everruns core and provider crates"
+keywords = ["everruns", "llm", "provider", "ai", "agents"]
+categories = ["api-bindings", "asynchronous"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+uuid.workspace = true
+regex.workspace = true
+url = "2"
+chrono.workspace = true
+tracing.workspace = true
+# DNS resolution for SSRF-safe URL validation (url_validation).
+tokio = { workspace = true, features = ["net"] }
+
+# Optional integrations, mirroring everruns-core's feature gating.
+utoipa = { workspace = true, optional = true }
+sqlx = { workspace = true, optional = true }
+
+[features]
+# OpenAPI schema derives (utoipa::ToSchema).
+openapi = ["dep:utoipa"]
+# sqlx Postgres encode/decode for TypedId.
+sqlx = ["dep:sqlx"]

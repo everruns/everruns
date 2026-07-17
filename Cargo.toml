@@ -5,6 +5,7 @@ members = [
     "crates/server",
     "crates/worker",
     "crates/core",
+    "crates/provider",
     "crates/bedrock",
     "crates/mcp",
     "crates/llm-tests",
@@ -153,6 +154,7 @@ futures-util = "0.3"
 # Everruns SDK
 everruns-sdk = "0.2.0"
 everruns-core = { path = "crates/core", version = "0.17.12" }
+everruns-provider = { path = "crates/provider", version = "0.17.12" }
 everruns-observability = { path = "crates/observability", version = "0.17.1" }
 everruns-mcp = { path = "crates/mcp", version = "0.17.12" }
 everruns-ard = { path = "crates/ard", version = "0.17.12" }

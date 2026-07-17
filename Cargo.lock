@@ -2697,6 +2697,7 @@ dependencies = [
  "eventsource-stream",
  "everruns-a2ui",
  "everruns-openui",
+ "everruns-provider",
  "fetchkit",
  "futures",
  "globset",
@@ -3153,6 +3154,22 @@ dependencies = [
 [[package]]
 name = "everruns-openui"
 version = "0.17.12"
+
+[[package]]
+name = "everruns-provider"
+version = "0.17.11"
+dependencies = [
+ "chrono",
+ "regex",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tokio",
+ "tracing",
+ "url",
+ "utoipa",
+ "uuid 1.24.0",
+]
 
 [[package]]
 name = "everruns-runtime"
