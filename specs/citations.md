@@ -159,10 +159,11 @@ rule (`crates/core/src/eval.rs`, graded in `crates/server/src/domains/evals/`)
 reads the `TextAnnotation`s off the final message — they already ride in the
 event log the runner fetches — and scores coverage (min citations) plus
 faithfulness (fraction verified `entailed`), so it composes with
-`citation_verification`. This makes citation approaches directly benchmarkable —
-the payoff of keeping the waist thin. A held-out LLM judge (reusing
-`observers::judge::JudgeClient`) that grades faithfulness even when verification
-is off is a follow-up increment.
+`citation_verification`. A second scorer, `Scorer::CitationJudged`, grades each
+cited claim/source pair with the org's model (reusing
+`observers::judge::JudgeClient`) so faithfulness is measured even when
+verification is off. This makes citation approaches directly benchmarkable — the
+payoff of keeping the waist thin.
 
 ## Security and privacy
 
@@ -186,15 +187,18 @@ is off is a follow-up increment.
    alignment. No provider work.
 3. **`citation_verification`** *(landed)* — guardrail capability + verifier
    seam (heuristic default, `llm` mode).
-4. **`CitationFaithful` eval scorer** *(landed)* — grades coverage +
-   faithfulness from message annotations.
-5. **UI** — inline numbered chips + hover popover + source strip + verified
-   badge, gated on the `citations` feature.
-6. **`citation_native`** — Anthropic `search_result`/`document` blocks +
-   `citations_delta` parsing + `LlmStreamEvent` carriage. Proves the
-   multi-capability, same-contract design with a distinct feed.
-7. **`citation_web`**, the held-out LLM judge scorer, and additional feeds as
-   sources land.
+4. **Eval scorers** *(landed)* — `CitationFaithful` (coverage + verdict-based
+   faithfulness) and `CitationJudged` (LLM-judged faithfulness via the reused
+   observer judge).
+5. **UI** *(landed)* — inline numbered chips + hover popover + source strip +
+   verified badge, gated on the `citations` feature.
+6. **`citation_native`** *(deferred)* — Anthropic `search_result`/`document`
+   blocks + `citations_delta` parsing + `LlmStreamEvent`/`LlmResponse` carriage.
+   Proves the multi-capability, same-contract design with a provider-native
+   feed. Deferred because its provider round-trip needs live-API validation and
+   it widens the shared LLM response/stream types across all drivers; best as
+   its own PR.
+7. **`citation_web`** and additional feeds as sources land.
 
 ## Open questions
 
