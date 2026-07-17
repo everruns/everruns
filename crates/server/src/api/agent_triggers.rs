@@ -203,6 +203,7 @@ pub async fn get_agent_trigger(
 #[utoipa::path(
     get,
     path = "/v1/agents/{agent_id}/triggers/{trigger_id}/runs",
+    description = "List the ten most recent durable execution outcomes for an agent trigger.",
     params(
         ("agent_id" = String, Path, description = "Agent ID (prefixed)"),
         ("trigger_id" = String, Path, description = "Trigger ID (prefixed)")

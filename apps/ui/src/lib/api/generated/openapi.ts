@@ -314,6 +314,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
+    /** @description List the ten most recent durable execution outcomes for an agent trigger. */
     get: operations["list_agent_trigger_runs"];
     put?: never;
     post?: never;
@@ -4225,12 +4226,21 @@ export interface components {
     };
     /** @description One recent durable execution of an agent schedule trigger. */
     AgentTriggerRun: {
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Time the execution completed, when terminal.
+       */
       completed_at?: string | null;
+      /** @description Failure message for an unsuccessful execution. */
       error?: string | null;
+      /** @description Durable execution identifier. */
       id: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Time the execution was scheduled.
+       */
       scheduled_at: string;
+      /** @description Current durable execution status. */
       status: string;
     };
     /**
@@ -15458,10 +15468,14 @@ export interface components {
      *     are preserved from the stored config.
      */
     UpdateAgentTriggerRequest: {
+      /** @description Replacement cron expression. */
       cron_expression?: string | null;
+      /** @description Replacement enabled state. */
       enabled?: boolean | null;
+      /** @description Replacement message sent when the trigger fires. */
       message?: string | null;
       session_mode?: null | components["schemas"]["InvocationSessionMode"];
+      /** @description Replacement IANA timezone identifier. */
       timezone?: string | null;
     };
     /** @description Request to update an app. Only provided fields will be updated. */

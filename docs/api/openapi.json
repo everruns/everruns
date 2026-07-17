@@ -1255,6 +1255,7 @@
         "tags": [
           "agent-triggers"
         ],
+        "description": "List the ten most recent durable execution outcomes for an agent trigger.",
         "operationId": "list_agent_trigger_runs",
         "parameters": [
           {
@@ -15907,23 +15908,28 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Time the execution completed, when terminal."
           },
           "error": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Failure message for an unsuccessful execution."
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Durable execution identifier."
           },
           "scheduled_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Time the execution was scheduled."
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "Current durable execution status."
           }
         }
       },
@@ -35819,19 +35825,22 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Replacement cron expression."
           },
           "enabled": {
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Replacement enabled state."
           },
           "message": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Replacement message sent when the trigger fires."
           },
           "session_mode": {
             "oneOf": [
@@ -35839,7 +35848,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/InvocationSessionMode"
+                "$ref": "#/components/schemas/InvocationSessionMode",
+                "description": "Replacement session reuse strategy."
               }
             ]
           },
@@ -35847,7 +35857,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Replacement IANA timezone identifier."
           }
         }
       },
