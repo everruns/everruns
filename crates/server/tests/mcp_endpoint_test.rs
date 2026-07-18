@@ -2003,6 +2003,56 @@ async fn test_mcp_execute_create_mcp_server() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_org_override_requires_target_org_opt_in() {
+    let server = TestServer::in_memory().await;
+
+    let org2: Value = server
+        .post(
+            "/v1/orgs",
+            json!({ "name": format!("MCP Disabled Override Target {}", unique_suffix()) }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let org2_id = org2["id"].as_str().expect("org2 id").to_string();
+
+    let switch_resp = server
+        .post("/v1/users/me/switch-org", json!({ "org_id": org2_id }))
+        .await
+        .assert_status(StatusCode::OK);
+    let org2_cookie = extract_cookie(switch_resp.headers(), "everruns_org");
+
+    let direct_org2_resp = mcp_request_raw(
+        &server,
+        "initialize",
+        json!({}),
+        vec![("cookie", org2_cookie.as_str())],
+    )
+    .await;
+    assert_eq!(direct_org2_resp.status(), StatusCode::NOT_FOUND);
+
+    let override_resp = mcp_tool_call(
+        &server,
+        "execute",
+        json!({
+            "organization_id": org2_id,
+            "commands": "list_agents --limit 5",
+        }),
+    )
+    .await;
+    assert!(
+        tool_is_error(&override_resp),
+        "disabled target org override unexpectedly executed: {}",
+        tool_text(&override_resp)
+    );
+    assert!(
+        tool_text(&override_resp).contains("MCP endpoint is not enabled"),
+        "expected MCP feature-gate failure, got: {}",
+        tool_text(&override_resp)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_adversarial_tool_chain_cannot_escape_org_scope() {
     let server = TestServer::in_memory().await;
     let marker = format!("org2-agent-marker-{}", unique_suffix());

@@ -1341,6 +1341,12 @@ async fn resolve_org_by_id(
         )
     });
 
+    if !feature_flags.mcp_endpoint {
+        return Err(format!(
+            "MCP endpoint is not enabled for organization: {org_public_id}"
+        ));
+    }
+
     Ok(ResolvedOrg {
         org_id: org_row.org_id,
         public_id: org_row.public_id.clone(),
