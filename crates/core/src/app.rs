@@ -647,6 +647,11 @@ pub struct AgUiChannelConfig {
         skip_serializing_if = "is_default_ag_ui_generic_tool_text"
     )]
     pub generic_tool_text: String,
+    /// Whether provider-curated reasoning summaries may be emitted on public
+    /// AG-UI streams. Defaults off because published apps can be anonymous and
+    /// summaries may derive from private prompts, tools, or retrieved data.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub reasoning_summary_visible: bool,
     /// Optional inline auth config for this public endpoint. When omitted,
     /// legacy `anonymous` + `token` behavior applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -663,6 +668,10 @@ fn default_ag_ui_generic_tool_text() -> String {
 
 fn is_default_ag_ui_generic_tool_text(value: &str) -> bool {
     value == DEFAULT_AG_UI_GENERIC_TOOL_TEXT
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// Default FCP handshake body. Returned by `GET` when the channel config does
@@ -995,6 +1004,7 @@ impl PublicChatChannelConfig {
             rate_limit_per_minute: self.rate_limit_per_minute,
             tool_visibility: self.tool_visibility,
             generic_tool_text: self.generic_tool_text.clone(),
+            reasoning_summary_visible: false,
             auth: self.auth.clone(),
         }
     }
@@ -1203,6 +1213,7 @@ mod tests {
         assert!(config.auth.is_none());
         assert_eq!(config.tool_visibility, AgUiToolVisibility::Generic);
         assert_eq!(config.generic_tool_text, DEFAULT_AG_UI_GENERIC_TOOL_TEXT);
+        assert!(!config.reasoning_summary_visible);
     }
 
     #[test]
@@ -1214,6 +1225,7 @@ mod tests {
             rate_limit_per_minute: Some(120),
             tool_visibility: AgUiToolVisibility::None,
             generic_tool_text: "Please wait".to_string(),
+            reasoning_summary_visible: true,
             auth: None,
         };
         let json = serde_json::to_string(&config).unwrap();
@@ -1224,6 +1236,7 @@ mod tests {
         assert_eq!(parsed.rate_limit_per_minute, Some(120));
         assert_eq!(parsed.tool_visibility, AgUiToolVisibility::None);
         assert_eq!(parsed.generic_tool_text, "Please wait");
+        assert!(parsed.reasoning_summary_visible);
     }
 
     #[test]
@@ -1242,6 +1255,7 @@ mod tests {
             rate_limit_per_minute: None,
             tool_visibility: AgUiToolVisibility::Generic,
             generic_tool_text: DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
+            reasoning_summary_visible: false,
             auth: None,
         };
         let json = serde_json::to_value(&config).unwrap();

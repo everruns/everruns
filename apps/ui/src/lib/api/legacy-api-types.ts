@@ -532,6 +532,7 @@ export interface AgUiChannelConfig {
   tool_visibility?: AgUiToolVisibility;
   /** Text shown while tools are running when tool_visibility is "generic". */
   generic_tool_text?: string;
+  reasoning_summary_visible?: boolean;
   auth?: AppEndpointAuthConfig;
 }
 

@@ -1257,9 +1257,9 @@ rationale and the non-overlapping definitions.
   hidden chain-of-thought is never persisted or exposed.
 - **Reasoning summary** — the provider-curated safe summary carried on
   `reason.item` (`summary`), alongside opaque/encrypted continuation state. The
-  summary is a *reasoning artifact*, surfaced on the reasoning channel by
-  default — never relabeled as an assistant answer. The opaque
-  `encrypted_content` is never surfaced to a consumer.
+  summary is a *reasoning artifact* that may be surfaced on the reasoning
+  channel when a transport explicitly opts in — never relabeled as an assistant
+  answer. The opaque `encrypted_content` is never surfaced to a consumer.
 - **Tool activity** — narration/progress/output scoped to a `tool_call` id; its
   own channel, never merged into the assistant-message channel.
 
@@ -1270,7 +1270,7 @@ rationale and the non-overlapping definitions.
 | Commentary | `output.message.delta` / `output.message.completed` (`phase = commentary`) | AG-UI `TEXT_MESSAGE_*`; ACP `agent_message_chunk` | — | — |
 | Final answer | `output.message.completed` (`phase = final_answer`) | AG-UI `TEXT_MESSAGE_*`; ACP `agent_message_chunk` | — | — |
 | Thinking | `reason.thinking.*` | — | AG-UI `REASONING_*` / `THINKING_*`; ACP `agent_thought_chunk` | — |
-| Reasoning summary | `reason.item` (`summary`) | — | AG-UI `REASONING_*` / `THINKING_*` (visible by default; policy may omit); ACP `agent_thought_chunk` | — |
+| Reasoning summary | `reason.item` (`summary`) | — | AG-UI `REASONING_*` / `THINKING_*` (only when channel policy opts in); ACP `agent_thought_chunk` | — |
 | Tool narration/progress/output | `tool.started` / `tool.completed` | — | — | AG-UI `TOOL_CALL_*`; ACP `tool_call` / `tool_call_update` |
 
 **HARD fallback rule:** when a message's phase is missing or unknown (e.g. a
