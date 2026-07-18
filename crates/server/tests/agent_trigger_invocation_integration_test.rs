@@ -140,6 +140,46 @@ async fn agent_trigger_binds_schedule_and_invokes_shared_session() {
     );
     assert!(session.agent_id.is_some(), "session is hosted by the agent");
 
+    // Ownership (EVE-758): the trigger session is owned by the agent's own
+    // lazily-created identity principal, and the agent row is now linked to it.
+    let agent_row = server
+        .db
+        .get_agent(DEFAULT_ORG_ID, session.agent_id.expect("agent id"))
+        .await
+        .expect("get agent")
+        .expect("agent exists");
+    let identity_id = agent_row
+        .agent_identity_id
+        .expect("agent linked to a lazily-created identity on first fire");
+    let owner = server
+        .db
+        .get_principal(DEFAULT_ORG_ID, session.owner_principal_id)
+        .await
+        .expect("get owner principal")
+        .expect("owner principal exists");
+    assert_eq!(
+        owner.kind, "agent_identity",
+        "trigger session is owned by the agent's identity principal"
+    );
+    assert_eq!(
+        session.agent_identity_id,
+        Some(identity_id),
+        "session records the agent's identity"
+    );
+
+    // The second (shared) fire reuses the same identity and the same session.
+    let agent_after_second = server
+        .db
+        .get_agent(DEFAULT_ORG_ID, agent_row.id)
+        .await
+        .expect("get agent")
+        .expect("agent exists");
+    assert_eq!(
+        agent_after_second.agent_identity_id,
+        Some(identity_id),
+        "shared-mode reuse keeps the same identity (no re-link)"
+    );
+
     // The rendered template reached the session as a user message, twice.
     let texts = list_user_message_texts(&server, &first.session_id.to_string()).await;
     assert!(

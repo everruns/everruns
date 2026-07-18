@@ -456,6 +456,13 @@ pub struct AgentRow {
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,
     pub harness_id: HarnessId,
+    /// Lazily-created identity principal subject for this agent (EVE-758).
+    /// NULL until the agent first acts unattended (e.g. an agent trigger fire),
+    /// at which point an `agent_identities` row is created and linked so the
+    /// agent owns its unattended sessions as itself. Storage-only: intentionally
+    /// not surfaced on the public `everruns_core::Agent` API.
+    #[sqlx(default)]
+    pub agent_identity_id: Option<AgentIdentityId>,
     #[sqlx(default)]
     pub default_version_id: Option<everruns_core::AgentVersionId>,
     #[sqlx(default)]

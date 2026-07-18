@@ -394,3 +394,109 @@ async fn binding_torn_down_on_delete() {
         "archived trigger excluded from active list"
     );
 }
+
+// ---- ensure_identity_for_agent (EVE-758) --------------------------------
+
+/// Full `AgentRow` for identity tests (the helper above returns only ids).
+async fn seed_agent_row(db: &Arc<StorageBackend>) -> crate::storage::models::AgentRow {
+    let (public_id, _) = seed_agent(db).await;
+    db.get_agent_by_public_id(DEFAULT_ORG_ID, &public_id)
+        .await
+        .unwrap()
+        .expect("seeded agent row")
+}
+
+#[tokio::test]
+async fn ensure_identity_for_agent_creates_and_links_when_none() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let agent = seed_agent_row(&db).await;
+    assert!(agent.agent_identity_id.is_none());
+
+    let (identity_id, owner) = ensure_identity_for_agent(&db, DEFAULT_ORG_ID, &agent)
+        .await
+        .expect("lazily create identity");
+
+    // The trigger session owner is the agent's own identity principal.
+    assert_eq!(owner.kind, "agent_identity");
+    // The agent row is now linked to the freshly-created identity.
+    let linked = db
+        .get_agent(DEFAULT_ORG_ID, agent.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(linked.agent_identity_id, Some(identity_id));
+}
+
+#[tokio::test]
+async fn ensure_identity_for_agent_is_idempotent_across_fires() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let agent = seed_agent_row(&db).await;
+
+    let (first, _) = ensure_identity_for_agent(&db, DEFAULT_ORG_ID, &agent)
+        .await
+        .expect("first fire");
+    // Second fire re-reads the (now linked) agent, mirroring the real path.
+    let agent = db
+        .get_agent(DEFAULT_ORG_ID, agent.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let (second, _) = ensure_identity_for_agent(&db, DEFAULT_ORG_ID, &agent)
+        .await
+        .expect("second fire");
+
+    assert_eq!(first, second, "same identity reused on subsequent fires");
+}
+
+#[tokio::test]
+async fn ensure_identity_for_agent_never_overrides_explicit_identity() {
+    use crate::storage::models::CreateAgentIdentityRow;
+    use everruns_core::AgentIdentityId;
+
+    let db = Arc::new(StorageBackend::in_memory());
+    let mut agent = seed_agent_row(&db).await;
+
+    let explicit = AgentIdentityId::new();
+    db.create_agent_identity(CreateAgentIdentityRow {
+        org_id: DEFAULT_ORG_ID,
+        id: explicit,
+        name: "Explicit".to_string(),
+        description: None,
+        avatar_url: None,
+        locale: None,
+        timezone: None,
+    })
+    .await
+    .unwrap();
+    assert!(
+        db.set_agent_identity_id(DEFAULT_ORG_ID, agent.id, explicit)
+            .await
+            .unwrap()
+    );
+    agent.agent_identity_id = Some(explicit);
+
+    let (identity_id, owner) = ensure_identity_for_agent(&db, DEFAULT_ORG_ID, &agent)
+        .await
+        .expect("resolve explicit identity");
+
+    assert_eq!(identity_id, explicit, "explicit identity is returned as-is");
+    assert_eq!(owner.kind, "agent_identity");
+    let linked = db
+        .get_agent(DEFAULT_ORG_ID, agent.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        linked.agent_identity_id,
+        Some(explicit),
+        "explicit identity is never overridden"
+    );
+
+    // A guarded set on an already-linked agent is a no-op.
+    assert!(
+        !db.set_agent_identity_id(DEFAULT_ORG_ID, agent.id, AgentIdentityId::new())
+            .await
+            .unwrap(),
+        "set_agent_identity_id refuses to override an existing link"
+    );
+}

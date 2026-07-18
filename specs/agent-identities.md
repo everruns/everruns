@@ -32,6 +32,26 @@ Agent identities also participate in durable ownership through the principal gra
 - that principal keeps its existing parent/effective user when the identity is edited
 - sessions and apps that reference the identity can use the identity principal as their durable owner without losing the effective human owner
 
+### Identity per agent (lazy default)
+
+Agent identities can be created and managed standalone (the CRUD API above), but
+an agent also gets one **lazily, on demand**: the first time an agent acts
+unattended (currently an agent-trigger fire — see `specs/agent-triggers.md`) it
+is given its own `agent_identity` so it owns that work as itself.
+
+- The link lives on `agents.agent_identity_id` (storage-only; not on the public
+  `Agent` API). It is nullable and created on first unattended action.
+- Creation is idempotent and never overrides an existing link: an identity
+  attached explicitly, or from a prior fire, is reused. The guarded link write
+  only sets `agent_identity_id` while it is still NULL, so a concurrent
+  first-fire race resolves to a single winner (the loser's orphan identity is
+  soft-archived best-effort).
+- The lazily-created identity's principal is parented to the org system-owner,
+  so the effective human/system owner and budgeting are unchanged; the agent
+  simply acts as itself.
+- No retroactive rewrite: existing agents and their historical sessions are left
+  as-is and pick up an identity on their next unattended action.
+
 ### Scheduling
 
 `SessionSchedule` does not own a separate identity field. Schedules inherit the resident identity from their session at execution time.

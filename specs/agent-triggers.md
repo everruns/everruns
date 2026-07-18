@@ -84,13 +84,17 @@ the durable schedule id.
 
 ## Ownership and provenance
 
-Agents do not yet carry their own identity principal, so trigger sessions are
-owned by the **org's default owner principal** (resolved via
-`PrincipalService::default_owner_principal` for an internal caller). This keeps
-unattended runs correctly attributed and budgeted, and is the stable key the
-`shared_session` reuse lookup matches on. Converging this onto a per-agent
-identity principal — so each agent acts as itself — is P5
-(`specs/agent-identities.md`); this spec will move to that owner when P5 lands.
+Trigger sessions are owned by the **agent's own `agent_identity` principal**, so
+each agent acts as itself on unattended runs. The identity is created lazily on
+the agent's first fire (`ensure_identity_for_agent`): an `agent_identities` row
+is created, its principal is ensured via
+`PrincipalService::default_owner_principal(internal_caller, Some(identity_id))`
+— parented to the org system-owner, so the effective owner/budget stays system,
+as before — and the agent row is linked through `agents.agent_identity_id` with
+a guarded write that only sets the link when it is still NULL. An
+explicitly-linked identity is never overridden, and subsequent fires reuse the
+same identity. That identity principal is the stable key the `shared_session`
+reuse lookup matches on. See `specs/agent-identities.md` for the identity model.
 
 ## Relationship to App schedule channels
 

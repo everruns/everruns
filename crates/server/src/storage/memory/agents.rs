@@ -4,7 +4,7 @@ use super::super::models::*;
 use super::InMemoryDatabase;
 use super::matches_search_tokens;
 use anyhow::Result;
-use everruns_core::AgentId;
+use everruns_core::{AgentId, AgentIdentityId};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -26,6 +26,7 @@ impl InMemoryDatabase {
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
             harness_id: input.harness_id,
+            agent_identity_id: None,
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -108,6 +109,7 @@ impl InMemoryDatabase {
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
             harness_id: input.harness_id,
+            agent_identity_id: None,
             default_version_id: None,
             forked_from_agent_id: None,
             forked_from_version_id: None,
@@ -306,6 +308,27 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
+    /// Link an agent to its lazily-created identity, only when not already
+    /// linked (EVE-758). Returns `true` when this call set the link, `false`
+    /// when it was already linked — never overrides an existing link.
+    pub async fn set_agent_identity_id(
+        &self,
+        org_id: i64,
+        id: AgentId,
+        agent_identity_id: AgentIdentityId,
+    ) -> Result<bool> {
+        let mut agents = self.agents.write();
+        if let Some(agent) = agents.get_mut(&id).filter(|a| a.org_id == org_id) {
+            if agent.agent_identity_id.is_some() {
+                return Ok(false);
+            }
+            agent.agent_identity_id = Some(agent_identity_id);
+            agent.updated_at = Self::now();
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
     pub async fn delete_agent(&self, org_id: i64, id: AgentId) -> Result<bool> {
         let mut agents = self.agents.write();
         if let Some(agent) = agents.get_mut(&id) {
@@ -376,6 +399,7 @@ impl InMemoryDatabase {
                 system_prompt: input.system_prompt,
                 default_model_id: input.default_model_id,
                 harness_id: input.harness_id,
+                agent_identity_id: None,
                 default_version_id: None,
                 forked_from_agent_id: None,
                 forked_from_version_id: None,
@@ -447,6 +471,7 @@ impl InMemoryDatabase {
                 system_prompt: input.system_prompt,
                 default_model_id: input.default_model_id,
                 harness_id: input.harness_id,
+                agent_identity_id: None,
                 default_version_id: None,
                 forked_from_agent_id: None,
                 forked_from_version_id: None,
