@@ -144,6 +144,7 @@ impl<T: HarnessStore + ?Sized> HarnessStore for std::sync::Arc<T> {
 // SessionStore - For retrieving session information
 // ============================================================================
 
+use crate::capability_types::AgentCapabilityConfig;
 use crate::leased_resource::{LeasedResource, UpsertLeasedResource};
 use crate::session::Session;
 
@@ -170,12 +171,58 @@ impl<T: SessionStore + ?Sized> SessionStore for std::sync::Arc<T> {
 pub trait SessionMutator: Send + Sync {
     /// Update a session's human-readable title.
     async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session>;
+
+    /// Add or replace a session-scoped capability atomically.
+    ///
+    /// Session backends that support live capability reconfiguration override
+    /// this method. The default keeps existing backends source-compatible and
+    /// fails closed instead of pretending the capability was applied.
+    async fn upsert_session_capability(
+        &self,
+        _session_id: SessionId,
+        _capability: AgentCapabilityConfig,
+    ) -> Result<Session> {
+        Err(crate::error::AgentLoopError::store(
+            "session backend does not support live capability reconfiguration",
+        ))
+    }
+
+    /// Remove a session-scoped capability atomically.
+    async fn remove_session_capability(
+        &self,
+        _session_id: SessionId,
+        _capability_id: &str,
+    ) -> Result<Session> {
+        Err(crate::error::AgentLoopError::store(
+            "session backend does not support live capability reconfiguration",
+        ))
+    }
 }
 
 #[async_trait]
 impl<T: SessionMutator + ?Sized> SessionMutator for std::sync::Arc<T> {
     async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session> {
         (**self).update_session_title(session_id, title).await
+    }
+
+    async fn upsert_session_capability(
+        &self,
+        session_id: SessionId,
+        capability: AgentCapabilityConfig,
+    ) -> Result<Session> {
+        (**self)
+            .upsert_session_capability(session_id, capability)
+            .await
+    }
+
+    async fn remove_session_capability(
+        &self,
+        session_id: SessionId,
+        capability_id: &str,
+    ) -> Result<Session> {
+        (**self)
+            .remove_session_capability(session_id, capability_id)
+            .await
     }
 }
 

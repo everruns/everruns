@@ -175,6 +175,15 @@ Both points hang off an optional adapter hook
 default `None`, so hosts that don't configure MCP pay nothing and behavior is
 unchanged.
 
+Capability-contributed MCP servers participate in the same runtime path. The
+runtime dependency-resolves the effective capability set, collects its MCP
+servers as defaults, then overlays explicit harness/agent/session servers by
+logical name. A live capability change invalidates that session's discovery
+cache, so activation discovers new servers on the next reason boundary and
+deactivation cannot retain stale tool definitions. Stdio transport remains
+per-invocation: each discovery/call tears down its child process, so removal
+leaves no persistent process to disconnect.
+
 > Historical note: an earlier design routed `mcp_*` calls through a separate
 > `CompositeToolExecutor` wrapper instead of registering MCP tools in the
 > registry. That kept MCP tools invisible to registry-introspecting tools and

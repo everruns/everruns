@@ -15,7 +15,10 @@ use crate::in_memory::{InMemorySessionFileStore, InMemorySessionFileSystemFactor
 use async_trait::async_trait;
 use everruns_core::agent::Agent;
 use everruns_core::atoms::{ActInput, AtomContext, InputAtomInput, ReasonInput};
-use everruns_core::capabilities::{Capability, CapabilityRegistry};
+use everruns_core::capabilities::{
+    Capability, CapabilityRegistry, CapabilityStatus, collect_capability_mcp_servers,
+    resolve_capability_configs,
+};
 use everruns_core::config_layer::AgentConfigOverlay;
 use everruns_core::driver_registry::{DriverId, DriverRegistry};
 use everruns_core::error::{AgentLoopError, Result};
@@ -39,8 +42,8 @@ use everruns_core::traits::{
 use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine};
 use everruns_core::typed_id::{AgentId, HarnessId, OrgId, SessionId};
 use everruns_core::{
-    AgentCapabilityConfig, InputMessage, MessageRetriever, SessionFileSystem,
-    SessionFileSystemFactoryContext, plugin_capability_id,
+    AgentCapabilityConfig, CapabilityId, InputMessage, MessageRetriever, SessionFileSystem,
+    SessionFileSystemFactoryContext, plugin_capability_id, resolve_runtime_capabilities,
 };
 use sha2::{Digest, Sha256};
 use std::path::Path;
@@ -115,6 +118,23 @@ pub struct TurnResult {
     pub error: Option<String>,
     /// Turn identifier used to correlate emitted events.
     pub turn_id: everruns_core::typed_id::TurnId,
+}
+
+/// Result of changing the session-scoped capability set of a live runtime.
+///
+/// A changed result is the refresh seam for embedders: every subsequent reason
+/// or act boundary reassembles model and execution surfaces from the updated
+/// session overlay.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CapabilityDelta {
+    /// Canonical capability id.
+    pub capability_id: String,
+    /// Whether the session overlay changed.
+    pub changed: bool,
+    /// Whether the capability is active after the operation.
+    pub active: bool,
+    /// Whether prompt, tool, hook, command, or MCP surfaces must be refreshed.
+    pub surfaces_dirty: bool,
 }
 
 impl TurnResult {
@@ -641,7 +661,18 @@ impl InProcessRuntime {
             .get_harness_chain(session.harness_id)
             .await
             .unwrap_or_default();
-        crate::mcp::merge_session_scoped_servers(&harness_chain, agent, session)
+        let resolved = resolve_runtime_capabilities(
+            &harness_chain,
+            agent,
+            session,
+            self.platform_definition.capability_registry(),
+        );
+        let contributed = collect_capability_mcp_servers(
+            &resolved.resolved_capability_configs,
+            self.platform_definition.capability_registry(),
+        );
+        let explicit = crate::mcp::merge_session_scoped_servers(&harness_chain, agent, session);
+        everruns_core::merge_scoped_mcp_servers(&contributed, &explicit)
     }
     /// Create a builder for the in-process runtime.
     pub fn builder() -> InProcessRuntimeBuilder {
@@ -660,6 +691,127 @@ impl InProcessRuntime {
     /// [`InProcessRuntimeBuilder::with_plugin_dir`] is called.
     pub fn plugin_warnings(&self) -> &[String] {
         &self.plugin_warnings
+    }
+
+    /// Activate a registered capability on a running session.
+    ///
+    /// The capability is validated and dependency-resolved before the session
+    /// overlay changes. Conversation history and the session identity are
+    /// untouched. Re-activating an already-effective capability is a no-op.
+    pub async fn activate_capability(
+        &self,
+        session_id: SessionId,
+        capability: impl Into<AgentCapabilityConfig>,
+    ) -> Result<CapabilityDelta> {
+        let mut capability = capability.into();
+        let registry = self.platform_definition.capability_registry();
+        let registered = registry.get(capability.capability_id()).ok_or_else(|| {
+            AgentLoopError::config(format!(
+                "unknown capability: {}",
+                capability.capability_id()
+            ))
+        })?;
+        if registered.status() != CapabilityStatus::Available {
+            return Err(AgentLoopError::config(format!(
+                "capability is not available: {}",
+                capability.capability_id()
+            )));
+        }
+        registered
+            .validate_config(&capability.config)
+            .map_err(|error| {
+                AgentLoopError::config(format!("invalid capability config: {error}"))
+            })?;
+
+        let canonical_id = registered.id().to_string();
+        capability.capability_ref = CapabilityId::new(canonical_id.clone());
+        let context = self.load_context(session_id).await?;
+        if context
+            .resolved_capability_configs
+            .iter()
+            .any(|config| config.capability_id() == canonical_id)
+        {
+            return Ok(CapabilityDelta {
+                capability_id: canonical_id,
+                changed: false,
+                active: true,
+                surfaces_dirty: false,
+            });
+        }
+
+        let mut candidate = context.effective_overlay.capabilities;
+        candidate.push(capability.clone());
+        resolve_capability_configs(&candidate, registry)
+            .map_err(|error| AgentLoopError::config(error.to_string()))?;
+
+        self.session_store
+            .upsert_session_capability(session_id, capability)
+            .await?;
+        self.mcp_discovery_cache
+            .invalidate_session(session_id.uuid());
+        Ok(CapabilityDelta {
+            capability_id: canonical_id,
+            changed: true,
+            active: true,
+            surfaces_dirty: true,
+        })
+    }
+
+    /// Deactivate a capability previously activated on this running session.
+    ///
+    /// Capabilities inherited from the agent or harness cannot be removed by a
+    /// session-scoped operation; callers must change their owning layer.
+    pub async fn deactivate_capability(
+        &self,
+        session_id: SessionId,
+        capability_id: &str,
+    ) -> Result<CapabilityDelta> {
+        let registry = self.platform_definition.capability_registry();
+        let registered = registry.get(capability_id).ok_or_else(|| {
+            AgentLoopError::config(format!("unknown capability: {capability_id}"))
+        })?;
+        let canonical_id = registered.id().to_string();
+        let context = self.load_context(session_id).await?;
+        if !context
+            .resolved_capability_configs
+            .iter()
+            .any(|config| config.capability_id() == canonical_id)
+        {
+            return Ok(CapabilityDelta {
+                capability_id: canonical_id,
+                changed: false,
+                active: false,
+                surfaces_dirty: false,
+            });
+        }
+
+        let session_capability_id = context
+            .session
+            .capabilities
+            .iter()
+            .find(|config| {
+                registry
+                    .get(config.capability_id())
+                    .is_some_and(|capability| capability.id() == canonical_id)
+            })
+            .map(|config| config.capability_id().to_string())
+            .ok_or_else(|| {
+                AgentLoopError::config(format!(
+                    "capability {canonical_id} is inherited and cannot be deactivated at the session layer"
+                ))
+            })?;
+
+        self.session_store
+            .remove_session_capability(session_id, &session_capability_id)
+            .await?;
+        self.mcp_discovery_cache
+            .invalidate_session(session_id.uuid());
+        Ok(CapabilityDelta {
+            capability_id: canonical_id,
+            changed: true,
+            active: false,
+            surfaces_dirty: true,
+        })
     }
 
     /// Execute one turn for an existing session.

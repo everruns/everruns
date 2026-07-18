@@ -137,6 +137,34 @@ Capabilities are defined in **everruns-core** and resolved at the **API layer**:
 - The Agent Loop remains focused on execution
 - RuntimeAgent is built with merged system prompt and tools from capabilities
 
+### Live session reconfiguration
+
+The in-process runtime supports changing the session-scoped capability overlay
+without rebuilding the runtime or replacing the session:
+
+- `InProcessRuntime::activate_capability(session_id, config)` validates the
+  registered capability config, resolves the candidate dependency graph, and
+  atomically adds the canonical capability config to the session layer.
+- `InProcessRuntime::deactivate_capability(session_id, id)` atomically removes
+  a capability previously activated on the session layer.
+- Both methods return `CapabilityDelta`. `surfaces_dirty = true` is the
+  embedder refresh seam; the following reason/act boundary re-collects the
+  system prompt, model-visible tool definitions, executable tools, pre/post
+  tool hooks, tool-call hooks, commands, and capability-contributed MCP
+  servers from the updated source of truth.
+- Repeating an already-satisfied operation succeeds with `changed = false` and
+  `surfaces_dirty = false`. Unknown or unavailable capabilities, invalid
+  configs, dependency errors, and unsupported session backends fail before any
+  runtime surface changes.
+- The operation is intentionally session-scoped and non-durable. Embedders own
+  persisted enable/disable settings. A session operation cannot remove a
+  capability inherited from its harness or agent; that capability must be
+  changed at its owning layer.
+
+`SessionMutator::{upsert_session_capability, remove_session_capability}` is the
+host-storage seam. Its default implementation fails closed, while the bundled
+in-memory runtime store implements both mutations atomically.
+
 #### Deployment Availability (session creation)
 
 Some built-in capabilities are feature-gated (e.g. `container_sandbox` behind

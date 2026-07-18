@@ -4,6 +4,7 @@
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use everruns_core::AgentCapabilityConfig;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::session::Session;
 use everruns_core::session_file::{
@@ -58,6 +59,44 @@ impl SessionMutator for InMemorySessionStore {
             .get_mut(&session_id)
             .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
         session.title = Some(title);
+        session.updated_at = Utc::now();
+        Ok(session.clone())
+    }
+
+    async fn upsert_session_capability(
+        &self,
+        session_id: SessionId,
+        capability: AgentCapabilityConfig,
+    ) -> Result<Session> {
+        let mut sessions = self.sessions.write().await;
+        let session = sessions
+            .get_mut(&session_id)
+            .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+        if let Some(existing) = session
+            .capabilities
+            .iter_mut()
+            .find(|existing| existing.capability_id() == capability.capability_id())
+        {
+            *existing = capability;
+        } else {
+            session.capabilities.push(capability);
+        }
+        session.updated_at = Utc::now();
+        Ok(session.clone())
+    }
+
+    async fn remove_session_capability(
+        &self,
+        session_id: SessionId,
+        capability_id: &str,
+    ) -> Result<Session> {
+        let mut sessions = self.sessions.write().await;
+        let session = sessions
+            .get_mut(&session_id)
+            .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+        session
+            .capabilities
+            .retain(|capability| capability.capability_id() != capability_id);
         session.updated_at = Utc::now();
         Ok(session.clone())
     }
