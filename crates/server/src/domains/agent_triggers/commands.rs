@@ -23,13 +23,14 @@ use crate::execution_metadata;
 use crate::services::PrincipalService;
 use crate::storage::StorageBackend;
 use crate::storage::models::{
-    AgentRow, AgentTriggerRow, CreateAgentTriggerRow, UpdateAgentTrigger,
+    AgentRow, AgentTriggerRow, CreateAgentIdentityRow, CreateAgentTriggerRow, PrincipalRow,
+    UpdateAgentTrigger,
 };
 use chrono::Utc;
 use everruns_core::typed_id::{AgentId, SessionId, TriggerId};
 use everruns_core::{
-    AgentAction, AgentTrigger, AgentTriggerType, AuditEvent, Caller, InvocationSessionMode, Policy,
-    ScheduleTriggerConfig,
+    AgentAction, AgentIdentityId, AgentTrigger, AgentTriggerType, AuditEvent, Caller,
+    InvocationSessionMode, Policy, ScheduleTriggerConfig,
 };
 use everruns_durable::{
     CreateScheduleRow, Pagination as DurablePagination, ScheduleExecutionFilter,
@@ -879,11 +880,12 @@ pub async fn invoke_agent_trigger(
         ));
     }
 
-    // Ownership: agents have no agent-identity layer, so the session is owned by
-    // the org's default owner principal (internal caller → system/human owner).
-    // Resolving it up front lets the shared-session reuse lookup key on it.
-    let owner = PrincipalService::new(db.clone())
-        .default_owner_principal(&Caller::internal(org_id), None)
+    // Ownership: the trigger session is owned by the agent's own identity
+    // principal, lazily created on this agent's first unattended action. The
+    // agent thus acts as itself; an explicitly-linked identity is never
+    // overridden. Resolving it up front lets the shared-session reuse lookup
+    // key on the (stable) identity principal.
+    let (agent_identity_id, owner) = ensure_identity_for_agent(db, org_id, &agent)
         .await
         .map_err(classify_anyhow)?;
 
@@ -894,6 +896,7 @@ pub async fn invoke_agent_trigger(
         &agent,
         trigger_id,
         config.session_mode,
+        agent_identity_id,
         owner.id,
         owner.resolved_user_id,
     )
@@ -926,6 +929,75 @@ pub async fn invoke_agent_trigger(
     })
 }
 
+/// Resolve the agent-identity principal that owns this agent's unattended work,
+/// lazily creating the identity on the agent's first fire (EVE-758).
+///
+/// - If the agent is already linked to an identity (explicitly or from a prior
+///   fire), that identity's principal is ensured and returned — it is NEVER
+///   overridden (`ensure_agent_identity_principal` also preserves the existing
+///   parent at the principal layer).
+/// - Otherwise a fresh `agent_identities` row is created, its principal is
+///   ensured (parented to the internal caller's system-owner, so the effective
+///   human/system owner is unchanged), and the agent is linked with a guarded
+///   set that only writes when the link is still NULL.
+///
+/// Returns the identity id and its principal row (the durable session owner).
+async fn ensure_identity_for_agent(
+    db: &Arc<StorageBackend>,
+    org_id: i64,
+    agent: &AgentRow,
+) -> anyhow::Result<(AgentIdentityId, PrincipalRow)> {
+    let principals = PrincipalService::new(db.clone());
+    let caller = Caller::internal(org_id);
+
+    // Already linked: ensure and return without ever creating a new identity.
+    if let Some(identity_id) = agent.agent_identity_id {
+        let principal = principals
+            .default_owner_principal(&caller, Some(identity_id))
+            .await?;
+        return Ok((identity_id, principal));
+    }
+
+    // First unattended action: create the agent's own identity.
+    let new_id = AgentIdentityId::new();
+    db.create_agent_identity(CreateAgentIdentityRow {
+        org_id,
+        id: new_id,
+        name: agent.name.clone(),
+        description: Some(format!("Identity for agent {}", agent.public_id)),
+        avatar_url: None,
+        locale: None,
+        timezone: None,
+    })
+    .await?;
+    let principal = principals
+        .default_owner_principal(&caller, Some(new_id))
+        .await?;
+
+    // Guarded link: only claims the agent when it is still unlinked. When a
+    // concurrent first-fire won the race this returns false; adopt the winner's
+    // identity and soft-archive our just-created orphan (best-effort).
+    if db.set_agent_identity_id(org_id, agent.id, new_id).await? {
+        return Ok((new_id, principal));
+    }
+
+    let winner = db
+        .get_agent(org_id, agent.id)
+        .await?
+        .and_then(|a| a.agent_identity_id)
+        .ok_or_else(|| anyhow::anyhow!("agent identity link missing after concurrent set"))?;
+    // Best-effort cleanup of the orphaned identity + its principal. Failure here
+    // is harmless: the orphan is an unreferenced, archivable row on a rare race.
+    let _ = db.delete_agent_identity(org_id, new_id).await;
+    let _ = principals
+        .sync_agent_identity_status(org_id, new_id, everruns_core::PrincipalStatus::Archived)
+        .await;
+    let winner_principal = principals
+        .default_owner_principal(&caller, Some(winner))
+        .await?;
+    Ok((winner, winner_principal))
+}
+
 fn trigger_session_tags(trigger_id: TriggerId) -> Vec<String> {
     vec![
         format!("agent_trigger:{trigger_id}"),
@@ -941,6 +1013,7 @@ async fn find_or_create_trigger_session(
     agent: &AgentRow,
     trigger_id: TriggerId,
     session_mode: InvocationSessionMode,
+    agent_identity_id: AgentIdentityId,
     owner_principal_id: everruns_core::PrincipalId,
     resolved_owner_user_id: Option<Uuid>,
 ) -> Result<(SessionId, bool), CommandError> {
@@ -979,7 +1052,7 @@ async fn find_or_create_trigger_session(
                 harness_name: None,
                 agent_id: Some(agent.id),
                 agent_name: None,
-                agent_identity_id: None,
+                agent_identity_id: Some(agent_identity_id),
                 title: Some(title),
                 goal: None,
                 locale: None,

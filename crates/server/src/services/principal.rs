@@ -188,7 +188,7 @@ impl PrincipalService {
                 kind: "agent_identity".to_string(),
                 subject_id: Some(agent_identity_id.uuid()),
                 parent_principal_id: Some(parent.id),
-                resolved_user_id: Some(resolved_user_id),
+                resolved_user_id,
                 metadata,
             })
             .await
@@ -304,7 +304,17 @@ impl PrincipalService {
         Ok(())
     }
 
-    async fn resolve_user_from_lineage(&self, org_id: i64, start: &PrincipalRow) -> Result<Uuid> {
+    /// Walk a principal's parent chain to the human user that ultimately owns
+    /// it, if any. Returns `None` when the lineage terminates at the org's
+    /// system principal: a system-owned (unattended) principal has no resolved
+    /// human user. This lets an agent-identity principal be parented to the
+    /// org system-owner — e.g. a lazily-created agent-trigger identity (EVE-758)
+    /// — resolving to "no user" (system-owned) rather than erroring.
+    async fn resolve_user_from_lineage(
+        &self,
+        org_id: i64,
+        start: &PrincipalRow,
+    ) -> Result<Option<Uuid>> {
         let mut current = start.clone();
         for _ in 0..MAX_PRINCIPAL_DEPTH {
             if current.org_id != org_id {
@@ -315,11 +325,17 @@ impl PrincipalService {
                 return current
                     .subject_id
                     .or(current.resolved_user_id)
-                    .ok_or_else(|| anyhow!("User principal missing subject"));
+                    .ok_or_else(|| anyhow!("User principal missing subject"))
+                    .map(Some);
             }
 
             if let Some(user_id) = current.resolved_user_id {
-                return Ok(user_id);
+                return Ok(Some(user_id));
+            }
+
+            // The org system-owner is a terminal root with no human behind it.
+            if current.kind == "system" {
+                return Ok(None);
             }
 
             let parent_id = current
