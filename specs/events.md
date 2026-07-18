@@ -283,6 +283,7 @@ Emitted when the LLM starts generating a response. UI can show a "thinking" indi
   },
   "data": {
     "turn_id": "...",
+    "message_id": "message_550e8400e29b41d4a716446655440000",
     "model": "gpt-4o",
     "iteration": 1
   }
@@ -290,6 +291,8 @@ Emitted when the LLM starts generating a response. UI can show a "thinking" indi
 ```
 
 **`iteration`** (optional, u32): 1-based iteration number within the current turn. Lets the UI show which iteration the agent is on during multi-step tool-calling flows. Only displayed when > 1.
+
+**`message_id`** (required, MessageId): stable random-public identifier allocated before generation begins. It scopes one assistant message within the turn and is reused by every `output.message.delta` / `output.message.replaced` event and by the completed `message.id`. This is the same public identifier, not a separate streaming id space.
 
 **`phase`** (optional, string — `"commentary"` | `"final_answer"`): best-effort streamed phase hint (EVE-774). This event is emitted *before* the LLM call, so `phase` is generally absent here. When absent it means **"not yet classified — treat as ordinary assistant text"**, NEVER "thinking". See the shared hint semantics under `output.message.delta`.
 
@@ -309,6 +312,7 @@ Streaming text update during LLM generation. Events are batched (~100ms) to redu
   },
   "data": {
     "turn_id": "...",
+    "message_id": "message_550e8400e29b41d4a716446655440000",
     "delta": "Hello, ",
     "accumulated": "Hello, ",
     "phase": "commentary"
@@ -317,6 +321,8 @@ Streaming text update during LLM generation. Events are batched (~100ms) to redu
 ```
 
 **`phase`** (optional, string — `"commentary"` | `"final_answer"`): best-effort streamed phase hint (EVE-774) letting consumers classify streamed assistant text as commentary vs final answer *before* `output.message.completed` arrives.
+
+Consumers group streamed assistant text by **`message_id`**, not `turn_id`: a multi-step turn may contain multiple assistant messages, each with a distinct id. All deltas for one generated message carry the id from its corresponding `output.message.started`.
 
 - **Absent = "not yet classified — treat as ordinary assistant text", NEVER "thinking".** A missing/unknown phase must fall back to the assistant-text channel, never the reasoning/thinking channel (the EVE-448 class of bug).
 - **Monotonic refinement only.** Within a single message the hint advances `absent → "commentary" | "final_answer"` at most once and then never changes: it never flip-flops between the two values and never reverts to absent (`ExecutionPhase::refine_streamed_hint` enforces this).
@@ -339,6 +345,7 @@ Streaming output was withheld by an output guardrail (see `specs/capabilities.md
   },
   "data": {
     "turn_id": "...",
+    "message_id": "message_550e8400e29b41d4a716446655440000",
     "guardrail_capability_id": "prompt_canary_guardrail",
     "guardrail_id": "prompt_canary",
     "reason_code": "system_prompt_leak",
@@ -350,6 +357,7 @@ Streaming output was withheld by an output guardrail (see `specs/capabilities.md
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `turn_id` | TurnId (string, prefixed UUIDv7 — e.g. `"turn_01933b5a..."`) | yes | Turn the replaced output belongs to |
+| `message_id` | MessageId (string, random-public prefixed UUIDv4) | yes | Assistant message being replaced; matches the started/delta and subsequent completed `message.id` |
 | `guardrail_capability_id` | string | yes | Capability that contributed the guardrail (e.g. `"prompt_canary_guardrail"`) |
 | `guardrail_id` | string | yes | Stable id of the guardrail itself (e.g. `"prompt_canary"`) |
 | `reason_code` | string | yes | Stable machine-readable reason (e.g. `"system_prompt_leak"`). Clients localize their copy from this rather than `replacement` |
@@ -411,6 +419,8 @@ Agent response message. Emitted when LLM generation completes.
   }
 }
 ```
+
+The completed **`message.id`** is the same `message_id` allocated by `output.message.started`. Replay reconstructs assistant-message boundaries by grouping started/delta/replaced/completed lifecycle events by this id. Partial-stream recovery preserves the persisted id when finalizing an interrupted message; a legacy in-flight start that predates this field begins a new recovery lifecycle with a freshly allocated random-public id.
 
 **`message.phase`** (optional, string): Execution phase — `"in_progress"` for intermediate messages with tool calls (agent is still working), `"completed"` for the final answer. Set by `ReasonAtom` based on whether tool calls are present. Sent as input to the OpenAI Responses API on assistant messages; other providers store it internally for consistent UI behavior. See `crates/core/src/atoms/reason.rs`.
 

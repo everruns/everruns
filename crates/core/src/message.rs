@@ -579,6 +579,15 @@ impl InputContentPart {
 }
 
 impl Message {
+    /// Override the generated message id.
+    ///
+    /// Streaming producers use this to allocate a public id before emitting
+    /// `output.message.started`, then reuse it on the completed message.
+    pub fn with_id(mut self, id: MessageId) -> Self {
+        self.id = id;
+        self
+    }
+
     /// Create a new user message
     pub fn user(content: impl Into<String>) -> Self {
         Self {

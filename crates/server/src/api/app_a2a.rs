@@ -1631,9 +1631,10 @@ mod tests {
     #[test]
     fn translate_unrelated_event_returns_none() {
         use everruns_core::events::OutputMessageStartedData;
-        use everruns_core::typed_id::TurnId;
+        use everruns_core::typed_id::{MessageId, TurnId};
         let data = EventData::OutputMessageStarted(OutputMessageStartedData {
             turn_id: TurnId::new(),
+            message_id: MessageId::new(),
             model: None,
             iteration: None,
             phase: None,

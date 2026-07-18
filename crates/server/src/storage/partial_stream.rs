@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use everruns_core::error::AgentLoopError;
 use everruns_core::traits::{PartialStreamState, PartialStreamStore};
-use everruns_core::typed_id::SessionId;
+use everruns_core::typed_id::{MessageId, SessionId};
 use sqlx::PgPool;
 
 /// PostgreSQL-backed partial-stream store.
@@ -34,24 +34,37 @@ impl PartialStreamStore for PgPartialStreamStore {
         session_id: SessionId,
         turn_id: &str,
     ) -> Result<Option<PartialStreamState>, AgentLoopError> {
-        // Find the sequence of the latest output.message.started for this turn.
-        let started_seq: Option<i32> = sqlx::query_scalar(
+        // Find the latest output.message.started and carry its message id into
+        // recovery so the reconstructed lifecycle stays in one id scope.
+        let started: Option<(i32, Option<String>)> = sqlx::query_as(
             r#"
-            SELECT MAX(sequence)
+            SELECT sequence, data->>'message_id'
             FROM events
             WHERE session_id = $1
               AND context->>'turn_id' = $2
               AND event_type = 'output.message.started'
+            ORDER BY sequence DESC
+            LIMIT 1
             "#,
         )
         .bind(session_id.uuid())
         .bind(turn_id)
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|e| AgentLoopError::tool(format!("partial_stream started check: {e}")))?;
 
-        let Some(started_seq) = started_seq else {
+        let Some((started_seq, raw_message_id)) = started else {
             return Ok(None);
+        };
+        // A worker upgraded while an old-format stream is in flight may find a
+        // started event without message_id. Allocate an id for the recovery
+        // lifecycle in that one legacy case; all new emissions persist the id.
+        let legacy_stream = raw_message_id.is_none();
+        let message_id = match raw_message_id {
+            Some(raw) => MessageId::parse(&raw).map_err(|e| {
+                AgentLoopError::tool(format!("partial_stream invalid message_id: {e}"))
+            })?,
+            None => MessageId::new(),
         };
 
         // Check if a completion/replacement with sequence > started_seq exists.
@@ -62,14 +75,23 @@ impl PartialStreamStore for PgPartialStreamStore {
                 SELECT 1 FROM events
                 WHERE session_id = $1
                   AND context->>'turn_id' = $2
-                  AND event_type IN ('output.message.completed', 'output.message.replaced')
                   AND sequence > $3
+                  AND event_type IN ('output.message.completed', 'output.message.replaced')
+                  AND (
+                    $5
+                    OR (event_type = 'output.message.completed'
+                        AND data->'message'->>'id' = $4)
+                    OR (event_type = 'output.message.replaced'
+                        AND data->>'message_id' = $4)
+                  )
             )
             "#,
         )
         .bind(session_id.uuid())
         .bind(turn_id)
         .bind(started_seq)
+        .bind(message_id.to_string())
+        .bind(legacy_stream)
         .fetch_one(&self.pool)
         .await
         .map_err(|e| AgentLoopError::tool(format!("partial_stream completed check: {e}")))?;
@@ -89,6 +111,7 @@ impl PartialStreamStore for PgPartialStreamStore {
               AND context->>'turn_id' = $2
               AND event_type = 'output.message.delta'
               AND sequence > $3
+              AND ($5 OR data->>'message_id' = $4)
             ORDER BY sequence DESC
             LIMIT 1
             "#,
@@ -96,12 +119,17 @@ impl PartialStreamStore for PgPartialStreamStore {
         .bind(session_id.uuid())
         .bind(turn_id)
         .bind(started_seq)
+        .bind(message_id.to_string())
+        .bind(legacy_stream)
         .fetch_optional(&self.pool)
         .await
         .map_err(|e| AgentLoopError::tool(format!("partial_stream delta fetch: {e}")))?
         .flatten()
         .unwrap_or_default();
 
-        Ok(Some(PartialStreamState { accumulated }))
+        Ok(Some(PartialStreamState {
+            message_id,
+            accumulated,
+        }))
     }
 }

@@ -12,7 +12,7 @@ use crate::session_file::{
     FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
 };
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::typed_id::{AgentId, HarnessId, ImageId, ModelId, SessionId, WorkspaceId};
+use crate::typed_id::{AgentId, HarnessId, ImageId, MessageId, ModelId, SessionId, WorkspaceId};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::any::{Any, TypeId};
@@ -1556,6 +1556,9 @@ impl StreamHeartbeater for NoopStreamHeartbeater {
 /// State of a partially-streamed assistant message detected in the event log.
 #[derive(Debug, Clone)]
 pub struct PartialStreamState {
+    /// Stable public id from the latest `output.message.started` event.
+    pub message_id: MessageId,
+
     /// Accumulated text from the last `output.message.delta` for the turn.
     /// Empty when `output.message.started` was emitted but no delta arrived.
     pub accumulated: String,
