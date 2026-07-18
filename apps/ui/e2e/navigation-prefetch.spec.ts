@@ -152,6 +152,34 @@ test.describe("Sidebar navigation prefetch", () => {
     await expect(page).toHaveURL(/\/agents\/new$/);
   });
 
+  test("Agents page startup does not prefetch the agent-creation route", async ({ page }) => {
+    // EVE-793: the /agents page shows two links to /agents/new (masthead "New
+    // agent" action and the empty-state "Create your first agent" CTA). They
+    // must not eagerly prefetch the agent-creation RSC payload on startup — only
+    // on hover/focus intent or navigation.
+    const agentsNewRscRequests: Request[] = [];
+    page.on("request", (request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (isRscRequest(request) && pathname === "/agents/new") {
+        agentsNewRscRequests.push(request);
+      }
+    });
+
+    await page.goto("/agents");
+    await expect(page.getByRole("link", { name: "Create your first agent" })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+
+    expect(agentsNewRscRequests).toHaveLength(0);
+  });
+
+  test("Agents page create link still navigates to /agents/new on click", async ({ page }) => {
+    await page.goto("/agents");
+    const createLink = page.getByRole("link", { name: "Create your first agent" });
+    await expect(createLink).toBeVisible();
+    await createLink.click();
+    await expect(page).toHaveURL(/\/agents\/new$/);
+  });
+
   test("sidebar click navigation works without broad route prefetch", async ({ page }) => {
     await page.goto("/dashboard");
     await expect(page.getByRole("link", { name: "Sessions" })).toBeVisible();
