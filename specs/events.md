@@ -283,11 +283,14 @@ Emitted when the LLM starts generating a response. UI can show a "thinking" indi
   },
   "data": {
     "turn_id": "...",
+    "message_id": "message_...",
     "model": "gpt-4o",
     "iteration": 1
   }
 }
 ```
+
+**`message_id`** (string, prefixed random public id — e.g. `"message_a1b2…"`): public identity of the assistant message being streamed. The **same** id is carried by every `output.message.started` / `delta` / `replaced` event for one generated message and is reused verbatim as the completed `Message.id` — it is **never** split into a separate id space. This lets consumers group deltas, tell two assistant messages produced in one turn apart, and reconstruct message boundaries during replay before `output.message.completed` arrives. Generated up front per reasoning iteration in `ReasonAtom` (`crates/core/src/atoms/reason.rs`); the id is the random public id from EVE-771, not a time-ordered uuidv7. Distinct from the `input_message_id` in `context`, which identifies the *user* message that triggered the turn.
 
 **`iteration`** (optional, u32): 1-based iteration number within the current turn. Lets the UI show which iteration the agent is on during multi-step tool-calling flows. Only displayed when > 1.
 
@@ -309,12 +312,15 @@ Streaming text update during LLM generation. Events are batched (~100ms) to redu
   },
   "data": {
     "turn_id": "...",
+    "message_id": "message_...",
     "delta": "Hello, ",
     "accumulated": "Hello, ",
     "phase": "commentary"
   }
 }
 ```
+
+**`message_id`** (string): identity of the assistant message this delta belongs to — equal to the `message_id` of the message's `output.message.started` event and to the completed `Message.id`. See the shared semantics under `output.message.started`.
 
 **`phase`** (optional, string — `"commentary"` | `"final_answer"`): best-effort streamed phase hint (EVE-774) letting consumers classify streamed assistant text as commentary vs final answer *before* `output.message.completed` arrives.
 
@@ -339,6 +345,7 @@ Streaming output was withheld by an output guardrail (see `specs/capabilities.md
   },
   "data": {
     "turn_id": "...",
+    "message_id": "message_...",
     "guardrail_capability_id": "prompt_canary_guardrail",
     "guardrail_id": "prompt_canary",
     "reason_code": "system_prompt_leak",
@@ -350,6 +357,7 @@ Streaming output was withheld by an output guardrail (see `specs/capabilities.md
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `turn_id` | TurnId (string, prefixed UUIDv7 — e.g. `"turn_01933b5a..."`) | yes | Turn the replaced output belongs to |
+| `message_id` | MessageId (string, prefixed random public id — e.g. `"message_a1b2…"`) | yes | Message being replaced; equal to the `started`/`delta` `message_id` and the completed `Message.id`. `replaced` is a terminal lifecycle event, so it carries the id to scope the discard-and-replace to the right message during replay. See `output.message.started` |
 | `guardrail_capability_id` | string | yes | Capability that contributed the guardrail (e.g. `"prompt_canary_guardrail"`) |
 | `guardrail_id` | string | yes | Stable id of the guardrail itself (e.g. `"prompt_canary"`) |
 | `reason_code` | string | yes | Stable machine-readable reason (e.g. `"system_prompt_leak"`). Clients localize their copy from this rather than `replacement` |
@@ -411,6 +419,8 @@ Agent response message. Emitted when LLM generation completes.
   }
 }
 ```
+
+**`message.id`** (string): the assistant message's public id. This is the **same** value streamed as `message_id` on the preceding `output.message.started` / `delta` / `replaced` events for this message — it closes the lifecycle rather than introducing a new identifier. See `output.message.started`.
 
 **`message.phase`** (optional, string): Execution phase — `"in_progress"` for intermediate messages with tool calls (agent is still working), `"completed"` for the final answer. Set by `ReasonAtom` based on whether tool calls are present. Sent as input to the OpenAI Responses API on assistant messages; other providers store it internally for consistent UI behavior. See `crates/core/src/atoms/reason.rs`.
 

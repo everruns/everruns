@@ -1721,6 +1721,12 @@ impl ReasonAtom {
         // This allows UI to show a thinking indicator immediately
         let streaming_event_context = EventContext::from_atom_context(context);
 
+        // Generate the public message id up front so the whole streaming
+        // lifecycle (started/delta/replaced) can carry it, and the completed
+        // `Message` reuses the same id instead of minting a fresh one at
+        // completion. See `specs/events.md`.
+        let message_id = MessageId::new();
+
         // Arm output guardrails for this stream. Each guardrail sees the
         // assembled system prompt and its own per-capability config (already
         // borrowed in `guardrail_providers` above, so no second scan over
@@ -1760,6 +1766,7 @@ impl ReasonAtom {
                 streaming_event_context.clone(),
                 OutputMessageStartedData {
                     turn_id: context.turn_id,
+                    message_id,
                     model: Some(runtime_agent.model.clone()),
                     iteration: Some(iteration),
                     // Emitted before the LLM call — phase is not yet known, so the
@@ -2469,6 +2476,7 @@ impl ReasonAtom {
                                     streaming_event_context.clone(),
                                     OutputMessageDeltaData {
                                         turn_id: context.turn_id,
+                                        message_id,
                                         delta: pending_delta.clone(),
                                         accumulated: text.clone(),
                                         phase: streamed_phase,
@@ -2630,6 +2638,7 @@ impl ReasonAtom {
                                     streaming_event_context.clone(),
                                     OutputMessageDeltaData {
                                         turn_id: context.turn_id,
+                                        message_id,
                                         delta: pending_delta.clone(),
                                         accumulated: text.clone(),
                                         phase: streamed_phase,
@@ -2823,6 +2832,7 @@ impl ReasonAtom {
                     streaming_event_context.clone(),
                     OutputMessageDeltaData {
                         turn_id: context.turn_id,
+                        message_id,
                         delta: pending_delta.clone(),
                         accumulated: text.clone(),
                         phase: streamed_phase,
@@ -2855,6 +2865,7 @@ impl ReasonAtom {
                     replaced_event_context,
                     OutputMessageReplacedData {
                         turn_id: context.turn_id,
+                        message_id,
                         guardrail_capability_id: t.capability_id.clone(),
                         guardrail_id: t.guardrail_id.clone(),
                         reason_code: t.block.reason_code.clone(),
@@ -3034,10 +3045,12 @@ impl ReasonAtom {
         // so exact-output replies are not polluted by the injected prefix.
         let text = crate::capabilities::strip_leading_timestamp_annotations(&text);
         let has_tool_calls = !tool_calls.is_empty();
+        // Reuse the id generated before the stream started so the completed
+        // message shares its identity with the started/delta/replaced events.
         let mut assistant_message = if has_tool_calls {
-            Message::assistant_with_tools(&text, tool_calls.clone())
+            Message::assistant_with_tools(&text, tool_calls.clone()).with_id(message_id)
         } else {
-            Message::assistant(&text)
+            Message::assistant(&text).with_id(message_id)
         };
         // Use the API-provided phase when available (preserving the provider's value),
         // otherwise derive from state: Commentary for intermediate iterations (with tool
@@ -3123,6 +3136,11 @@ impl ReasonAtom {
         let event_context = EventContext::from_atom_context(context);
         let turn_id = context.turn_id;
 
+        // Generate the public message id up front so the reconstructed
+        // started/completed pair shares one identity, matching the live
+        // streaming lifecycle.
+        let message_id = MessageId::new();
+
         // Signal that output is starting (keeps the streaming protocol intact).
         let _ = self
             .event_emitter
@@ -3131,6 +3149,7 @@ impl ReasonAtom {
                 event_context.clone(),
                 OutputMessageStartedData {
                     turn_id,
+                    message_id,
                     model: None,
                     iteration: Some(iteration),
                     // Recovery/finalize path reconstructs the started signal only;
@@ -3143,7 +3162,7 @@ impl ReasonAtom {
         // Build the assistant message from accumulated text and persist via event.
         // Strip any echoed `[time …]` annotation the model produced (EVE-710).
         let accumulated = crate::capabilities::strip_leading_timestamp_annotations(&accumulated);
-        let assistant_message = Message::assistant(&accumulated);
+        let assistant_message = Message::assistant(&accumulated).with_id(message_id);
         let output_message_id = assistant_message.id;
         self.event_emitter
             .emit(EventRequest::new(

@@ -29140,6 +29140,7 @@
         "description": "Data for output.message.delta event\n\nIncremental text update during LLM generation. Events are batched (~100ms)\nto reduce volume while providing real-time feedback.",
         "required": [
           "turn_id",
+          "message_id",
           "delta",
           "accumulated"
         ],
@@ -29151,6 +29152,11 @@
           "delta": {
             "type": "string",
             "description": "The new text chunk"
+          },
+          "message_id": {
+            "type": "string",
+            "description": "Public identity of the assistant message this delta belongs to.\n\nEquals the `message_id` of the `started` event and the completed\n`Message.id`, so deltas can be grouped into their message during replay.",
+            "example": "message_00000000000000000000000000000001"
           },
           "phase": {
             "oneOf": [
@@ -29175,6 +29181,7 @@
         "description": "Data for `output.message.replaced` event.\n\nEmitted between the last (suppressed) `output.message.delta` and the final\n`output.message.completed`. Tells the client to discard everything it has\naccumulated for `turn_id` and use `replacement` as the assistant message\ntext. The original model output is never persisted or replayed.",
         "required": [
           "turn_id",
+          "message_id",
           "guardrail_capability_id",
           "guardrail_id",
           "reason_code",
@@ -29188,6 +29195,11 @@
           "guardrail_id": {
             "type": "string",
             "description": "Stable ID of the guardrail itself (e.g. `\"prompt_canary\"`)."
+          },
+          "message_id": {
+            "type": "string",
+            "description": "Public identity of the assistant message being replaced.\n\nEquals the `message_id` of the `started`/`delta` events and the\ncompleted `Message.id`. `replaced` is a terminal lifecycle event for\nreplay recovery, so it carries the id to scope the discard-and-replace\nto the correct message.",
+            "example": "message_00000000000000000000000000000001"
           },
           "reason_code": {
             "type": "string",
@@ -29208,7 +29220,8 @@
         "type": "object",
         "description": "Data for output.message.started event\n\nEmitted when the LLM starts generating a response. UI can show a\n\"thinking\" indicator until output.message.delta or output.message.completed events arrive.",
         "required": [
-          "turn_id"
+          "turn_id",
+          "message_id"
         ],
         "properties": {
           "iteration": {
@@ -29219,6 +29232,11 @@
             "format": "int32",
             "description": "Current iteration number within this turn (1-based).\nUseful for UI to show progress during multi-step tool-calling flows.",
             "minimum": 0
+          },
+          "message_id": {
+            "type": "string",
+            "description": "Public identity of the assistant message being streamed.\n\nShared by `started` / `delta` / `replaced` / `completed` for one\ngenerated message, so consumers can group deltas and tell two assistant\nmessages in one turn apart before `completed` arrives. This is the same\nvalue as the completed `Message.id` — never a separate id space.",
+            "example": "message_00000000000000000000000000000001"
           },
           "model": {
             "type": [

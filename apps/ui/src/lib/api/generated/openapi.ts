@@ -11570,6 +11570,14 @@ export interface components {
       accumulated: string;
       /** @description The new text chunk */
       delta: string;
+      /**
+       * @description Public identity of the assistant message this delta belongs to.
+       *
+       *     Equals the `message_id` of the `started` event and the completed
+       *     `Message.id`, so deltas can be grouped into their message during replay.
+       * @example message_00000000000000000000000000000001
+       */
+      message_id: string;
       phase?: null | components["schemas"]["ExecutionPhase"];
       /**
        * @description Turn ID this delta belongs to
@@ -11593,6 +11601,16 @@ export interface components {
       guardrail_capability_id: string;
       /** @description Stable ID of the guardrail itself (e.g. `"prompt_canary"`). */
       guardrail_id: string;
+      /**
+       * @description Public identity of the assistant message being replaced.
+       *
+       *     Equals the `message_id` of the `started`/`delta` events and the
+       *     completed `Message.id`. `replaced` is a terminal lifecycle event for
+       *     replay recovery, so it carries the id to scope the discard-and-replace
+       *     to the correct message.
+       * @example message_00000000000000000000000000000001
+       */
+      message_id: string;
       /**
        * @description Stable machine-readable reason code (e.g. `"system_prompt_leak"`).
        *     Clients localize their copy from this rather than the human text.
@@ -11619,6 +11637,16 @@ export interface components {
        *     Useful for UI to show progress during multi-step tool-calling flows.
        */
       iteration?: number | null;
+      /**
+       * @description Public identity of the assistant message being streamed.
+       *
+       *     Shared by `started` / `delta` / `replaced` / `completed` for one
+       *     generated message, so consumers can group deltas and tell two assistant
+       *     messages in one turn apart before `completed` arrives. This is the same
+       *     value as the completed `Message.id` — never a separate id space.
+       * @example message_00000000000000000000000000000001
+       */
+      message_id: string;
       /** @description Optional model name being used */
       model?: string | null;
       phase?: null | components["schemas"]["ExecutionPhase"];

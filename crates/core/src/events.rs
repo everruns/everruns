@@ -763,6 +763,15 @@ pub struct OutputMessageStartedData {
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
     pub turn_id: TurnId,
 
+    /// Public identity of the assistant message being streamed.
+    ///
+    /// Shared by `started` / `delta` / `replaced` / `completed` for one
+    /// generated message, so consumers can group deltas and tell two assistant
+    /// messages in one turn apart before `completed` arrives. This is the same
+    /// value as the completed `Message.id` — never a separate id space.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "message_00000000000000000000000000000001"))]
+    pub message_id: MessageId,
+
     /// Optional model name being used
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -795,6 +804,13 @@ pub struct OutputMessageDeltaData {
     /// Turn ID this delta belongs to
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
     pub turn_id: TurnId,
+
+    /// Public identity of the assistant message this delta belongs to.
+    ///
+    /// Equals the `message_id` of the `started` event and the completed
+    /// `Message.id`, so deltas can be grouped into their message during replay.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "message_00000000000000000000000000000001"))]
+    pub message_id: MessageId,
 
     /// The new text chunk
     pub delta: String,
@@ -892,6 +908,15 @@ pub struct OutputMessageReplacedData {
     /// Turn ID this replacement belongs to.
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
     pub turn_id: TurnId,
+
+    /// Public identity of the assistant message being replaced.
+    ///
+    /// Equals the `message_id` of the `started`/`delta` events and the
+    /// completed `Message.id`. `replaced` is a terminal lifecycle event for
+    /// replay recovery, so it carries the id to scope the discard-and-replace
+    /// to the correct message.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "message_00000000000000000000000000000001"))]
+    pub message_id: MessageId,
 
     /// Stable ID of the capability that contributed the guardrail
     /// (e.g. `"prompt_canary_guardrail"`).
@@ -3287,6 +3312,7 @@ mod tests {
             EventContext::empty(),
             OutputMessageDeltaData {
                 turn_id,
+                message_id: MessageId::new(),
                 delta: "hel".to_string(),
                 accumulated: "hel".to_string(),
                 phase: None,
@@ -3378,6 +3404,7 @@ mod tests {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = OutputMessageStartedData {
             turn_id,
+            message_id: MessageId::new(),
             model: Some("claude-4-opus".to_string()),
             iteration: None,
             phase: None,
@@ -3397,6 +3424,7 @@ mod tests {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = OutputMessageStartedData {
             turn_id,
+            message_id: MessageId::new(),
             model: None,
             iteration: None,
             phase: None,
@@ -3465,6 +3493,7 @@ mod tests {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = OutputMessageDeltaData {
             turn_id,
+            message_id: MessageId::new(),
             delta: "Hello".to_string(),
             accumulated: "Hello".to_string(),
             phase: None,
@@ -3489,6 +3518,7 @@ mod tests {
 
         let started_none = OutputMessageStartedData {
             turn_id,
+            message_id: MessageId::new(),
             model: None,
             iteration: None,
             phase: None,
@@ -3501,6 +3531,7 @@ mod tests {
 
         let delta_commentary = OutputMessageDeltaData {
             turn_id,
+            message_id: MessageId::new(),
             delta: "one moment".to_string(),
             accumulated: "one moment".to_string(),
             phase: Some(crate::message::ExecutionPhase::Commentary),
@@ -3514,6 +3545,7 @@ mod tests {
 
         let delta_final = OutputMessageDeltaData {
             turn_id,
+            message_id: MessageId::new(),
             delta: "done".to_string(),
             accumulated: "done".to_string(),
             phase: Some(crate::message::ExecutionPhase::FinalAnswer),
@@ -3529,8 +3561,10 @@ mod tests {
         // Verify OutputMessageDelta decodes with all fields preserved through the
         // type-driven dispatcher (regression guard for field-dropping decode bugs).
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
+        let message_id = MessageId::new();
         let data = OutputMessageDeltaData {
             turn_id,
+            message_id,
             delta: "Hello world".to_string(),
             accumulated: "Hello world".to_string(),
             phase: None,
@@ -3546,6 +3580,7 @@ mod tests {
         match deserialized {
             EventData::OutputMessageDelta(td) => {
                 assert_eq!(td.turn_id, turn_id);
+                assert_eq!(td.message_id, message_id);
                 assert_eq!(td.delta, "Hello world");
                 assert_eq!(td.accumulated, "Hello world");
             }
@@ -3558,6 +3593,7 @@ mod tests {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = OutputMessageStartedData {
             turn_id,
+            message_id: MessageId::new(),
             model: Some("claude-3".to_string()),
             iteration: None,
             phase: None,
@@ -3960,6 +3996,7 @@ mod contract_tests {
     fn snapshot_output_message_started() {
         let data = OutputMessageStartedData {
             turn_id: test_turn_id(),
+            message_id: test_message_id(),
             model: Some("gpt-4o".to_string()),
             iteration: None,
             phase: None,
@@ -3975,6 +4012,7 @@ mod contract_tests {
     fn snapshot_output_message_delta() {
         let data = OutputMessageDeltaData {
             turn_id: test_turn_id(),
+            message_id: test_message_id(),
             delta: "Hello".to_string(),
             accumulated: "Hello".to_string(),
             phase: None,
@@ -4518,6 +4556,7 @@ mod contract_tests {
                 OUTPUT_MESSAGE_STARTED,
                 OutputMessageStartedData {
                     turn_id: test_turn_id(),
+                    message_id: test_message_id(),
                     model: None,
                     iteration: None,
                     phase: None,
@@ -4528,6 +4567,7 @@ mod contract_tests {
                 OUTPUT_MESSAGE_DELTA,
                 OutputMessageDeltaData {
                     turn_id: test_turn_id(),
+                    message_id: test_message_id(),
                     delta: "x".to_string(),
                     accumulated: "x".to_string(),
                     phase: None,

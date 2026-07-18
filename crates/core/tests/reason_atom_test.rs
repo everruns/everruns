@@ -1197,6 +1197,107 @@ async fn test_reason_atom_emits_output_message_completed_on_success() {
     assert!(has_llm_generation, "Should emit llm.generation event");
 }
 
+/// EVE-772: `output.message.started`/`delta`/`completed` for one generated
+/// message must share a single `message_id`, and two assistant messages
+/// produced in the same turn (separate reasoning iterations) must have
+/// distinct ids so consumers can group deltas and tell messages apart.
+#[tokio::test]
+async fn test_reason_atom_streaming_lifecycle_shares_one_message_id() {
+    use everruns_core::in_memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    message_retriever
+        .seed(session_id.into(), vec![Message::user("Hello there")])
+        .await;
+
+    // A fixed response streams text deltas before completing.
+    let driver_registry =
+        create_custom_driver_registry(LlmSimConfig::fixed("Hi, how can I help you today?"));
+    let event_emitter = InMemoryEventEmitter::new();
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever.clone(),
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        event_emitter.clone(),
+    );
+
+    // Run two reasoning iterations against the same turn context to model two
+    // assistant messages within one turn.
+    let context = create_context(session_id);
+    for iteration in 1..=2u32 {
+        atom.execute(ReasonInput {
+            context: context.clone(),
+            harness_id,
+            agent_id: Some(agent_id.into()),
+            org_id: 0,
+            mcp_tool_definitions: vec![],
+            previous_response_id: None,
+            iteration,
+        })
+        .await
+        .expect("ReasonAtom should succeed");
+    }
+
+    let events = event_emitter.events().await;
+
+    // Group the lifecycle ids per message. `started` opens each message, so we
+    // key the deltas/completed that follow it by matching id.
+    let mut started_ids = Vec::new();
+    let mut delta_ids = Vec::new();
+    let mut completed_ids = Vec::new();
+    for event in &events {
+        match &event.data {
+            everruns_core::EventData::OutputMessageStarted(d) => started_ids.push(d.message_id),
+            everruns_core::EventData::OutputMessageDelta(d) => delta_ids.push(d.message_id),
+            everruns_core::EventData::OutputMessageCompleted(d) => completed_ids.push(d.message.id),
+            _ => {}
+        }
+    }
+
+    assert_eq!(started_ids.len(), 2, "one started per iteration");
+    assert_eq!(completed_ids.len(), 2, "one completed per iteration");
+    assert!(!delta_ids.is_empty(), "deltas should have been streamed");
+
+    // Every streamed delta and the completed message reuse one of the two
+    // started ids — never a fresh identifier.
+    for id in &delta_ids {
+        assert!(
+            started_ids.contains(id),
+            "each delta message_id matches a started message_id"
+        );
+    }
+    for id in &completed_ids {
+        assert!(
+            started_ids.contains(id),
+            "each completed message id matches a started message_id"
+        );
+    }
+
+    // The two messages in this turn are distinct.
+    assert_ne!(
+        started_ids[0], started_ids[1],
+        "two messages in one turn have distinct ids"
+    );
+    assert_ne!(
+        completed_ids[0], completed_ids[1],
+        "two completed messages in one turn have distinct ids"
+    );
+}
+
 #[tokio::test]
 async fn test_reason_atom_retries_structured_processing_error_before_output() {
     use everruns_core::in_memory::InMemoryEventEmitter;

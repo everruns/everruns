@@ -579,6 +579,17 @@ impl InputContentPart {
 }
 
 impl Message {
+    /// Override the message id.
+    ///
+    /// The streaming lifecycle (`output.message.started`/`delta`/`replaced`)
+    /// generates the public message id up front so every event can carry it;
+    /// the completed `Message` must reuse that same id rather than mint a fresh
+    /// one at completion. See `specs/events.md`.
+    pub fn with_id(mut self, id: MessageId) -> Self {
+        self.id = id;
+        self
+    }
+
     /// Create a new user message
     pub fn user(content: impl Into<String>) -> Self {
         Self {
