@@ -552,6 +552,7 @@ pub(crate) async fn run_app_agent_stream(
         thinking_text_started: false,
         tool_visibility: channel_config.tool_visibility,
         generic_tool_text: channel_config.generic_tool_text.clone(),
+        reasoning_summary_visible: channel_config.reasoning_summary_visible,
         active_tool_activity_count: 0,
         public_tool_activity_started: false,
         public_tool_activity_opened_thinking: false,
@@ -1043,6 +1044,7 @@ struct AgUiStreamState {
     thinking_text_started: bool,
     tool_visibility: AgUiToolVisibility,
     generic_tool_text: String,
+    reasoning_summary_visible: bool,
     active_tool_activity_count: usize,
     public_tool_activity_started: bool,
     public_tool_activity_opened_thinking: bool,
@@ -1305,12 +1307,13 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             state.public_tool_activity_opened_thinking = false;
         }
         // EVE-775: a provider `reason.item` summary is a *reasoning artifact*
-        // (EVE-768 design note), so it renders on the AG-UI reasoning channel
-        // (`THINKING_*` / `REASONING_*`) — never on the assistant-text channel.
-        // Only the provider-curated `summary` segments are surfaced; the opaque
-        // `encrypted_content` reasoning context is never emitted to a consumer.
+        // (EVE-768 design note), so when channel policy opts in it renders on
+        // the AG-UI reasoning channel (`THINKING_*` / `REASONING_*`) — never on
+        // the assistant-text channel. Opaque `encrypted_content` is never emitted.
         "reason.item" => {
-            if let Ok(data) = parse_event_data::<ReasonItemData>(event) {
+            if state.reasoning_summary_visible
+                && let Ok(data) = parse_event_data::<ReasonItemData>(event)
+            {
                 push_reasoning_summary(state, &data.summary);
             }
         }
@@ -1584,6 +1587,7 @@ mod tests {
             thinking_text_started: false,
             tool_visibility: AgUiToolVisibility::Generic,
             generic_tool_text: "Working...".to_string(),
+            reasoning_summary_visible: false,
             active_tool_activity_count: 0,
             public_tool_activity_started: false,
             public_tool_activity_opened_thinking: false,
@@ -1850,12 +1854,38 @@ mod tests {
         assert_ne!(*start_ids[1], turn_message_id);
     }
 
+    #[tokio::test]
+    async fn test_reason_item_summary_hidden_by_default() {
+        let mut state = test_stream_state().await;
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
+        let event = Event::new(
+            SessionId::from_uuid(state.session_id),
+            EventContext::turn(turn_id, input_message_id),
+            ReasonItemData {
+                turn_id,
+                provider: "openai".to_string(),
+                model: Some("gpt-5.5".to_string()),
+                item_id: "rs_private".to_string(),
+                encrypted_content: Some("OPAQUE-DO-NOT-LEAK".to_string()),
+                summary: vec!["Looked up private CRM details.".to_string()],
+                token_count: Some(42),
+            },
+        );
+
+        translate_event(&mut state, &event);
+
+        assert!(state.queue.is_empty());
+        assert!(!state.finished);
+    }
+
     // EVE-775: a provider `reason.item` summary is a reasoning artifact and must
     // project onto the AG-UI reasoning channel (THINKING_*), never the
     // assistant-text channel, and never leak opaque reasoning content.
     #[tokio::test]
-    async fn test_reason_item_summary_projects_to_reasoning_channel() {
+    async fn test_reason_item_summary_projects_to_reasoning_channel_when_enabled() {
         let mut state = test_stream_state().await;
+        state.reasoning_summary_visible = true;
         let turn_id = TurnId::new();
         let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
         let event = Event::new(
@@ -1916,6 +1946,7 @@ mod tests {
     #[tokio::test]
     async fn test_reason_item_empty_summary_emits_nothing() {
         let mut state = test_stream_state().await;
+        state.reasoning_summary_visible = true;
         let turn_id = TurnId::new();
         let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
         let event = Event::new(
@@ -1941,6 +1972,7 @@ mod tests {
     #[tokio::test]
     async fn test_reason_summary_and_commentary_use_separate_channels() {
         let mut state = test_stream_state().await;
+        state.reasoning_summary_visible = true;
         let turn_id = TurnId::new();
         let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
         let context = EventContext::turn(turn_id, input_message_id);
@@ -1999,6 +2031,7 @@ mod tests {
     #[tokio::test]
     async fn test_reason_item_summary_appends_to_active_thinking_block() {
         let mut state = test_stream_state().await;
+        state.reasoning_summary_visible = true;
         let turn_id = TurnId::new();
         let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
         let context = EventContext::turn(turn_id, input_message_id);
