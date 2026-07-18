@@ -602,7 +602,7 @@ pub fn aggressive_trim(
         }
         kept.sort_by_key(|(i, _)| *i);
         result.extend(kept.into_iter().map(|(_, m)| m));
-        return result;
+        return crate::tool_call_integrity::retain_complete_llm_tool_exchanges(result);
     }
 
     token_budget -= protected_budget;
@@ -631,7 +631,7 @@ pub fn aggressive_trim(
     all_kept.sort_by_key(|(i, _)| *i);
 
     result.extend(all_kept.into_iter().map(|(_, m)| m));
-    result
+    crate::tool_call_integrity::retain_complete_llm_tool_exchanges(result)
 }
 
 // ============================================================================
@@ -806,7 +806,7 @@ pub fn apply_hierarchical_memory(
         result.extend_from_slice(&messages[hot_start..]);
     }
 
-    result
+    crate::tool_call_integrity::retain_complete_llm_tool_exchanges(result)
 }
 
 // ============================================================================
@@ -1633,6 +1633,25 @@ pub fn build_summary_message(summary_text: &str) -> LlmMessage {
     }
 }
 
+/// Compose a summary with the verbatim recent tail without splitting tool exchanges.
+///
+/// The summary replaces the older prefix, so a result retained at the boundary has
+/// no visible call unless that call is also in `recent_messages`. Incomplete pieces
+/// are removed from this prompt-facing view; stored history remains unchanged.
+pub fn compose_summary_with_recent(
+    system_message: Option<LlmMessage>,
+    summary_text: &str,
+    recent_messages: &[LlmMessage],
+) -> Vec<LlmMessage> {
+    let mut messages = Vec::with_capacity(recent_messages.len() + 2);
+    if let Some(system_message) = system_message {
+        messages.push(system_message);
+    }
+    messages.push(build_summary_message(summary_text));
+    messages.extend_from_slice(recent_messages);
+    crate::tool_call_integrity::retain_complete_llm_tool_exchanges(messages)
+}
+
 // ============================================================================
 // Compaction Step Tracking
 // ============================================================================
@@ -1657,6 +1676,19 @@ mod tests {
     use super::*;
     use crate::tool_types::ToolCall;
     use serde_json::json;
+
+    fn assert_complete_tool_exchanges(messages: &[LlmMessage]) {
+        let calls: std::collections::HashSet<_> = messages
+            .iter()
+            .flat_map(|message| message.tool_calls.iter().flatten())
+            .map(|call| call.id.as_str())
+            .collect();
+        let results: std::collections::HashSet<_> = messages
+            .iter()
+            .filter_map(|message| message.tool_call_id.as_deref())
+            .collect();
+        assert_eq!(calls, results, "tool calls and results must remain atomic");
+    }
 
     fn make_user_msg(text: &str) -> LlmMessage {
         LlmMessage {
@@ -1691,6 +1723,27 @@ mod tests {
                 name: tool_name.to_string(),
                 arguments: json!({"path": "src/main.rs"}),
             }]),
+            tool_call_id: None,
+            phase: None,
+            thinking: None,
+            thinking_signature: None,
+        }
+    }
+
+    fn make_assistant_with_tool_calls(calls: &[(&str, &str)]) -> LlmMessage {
+        LlmMessage {
+            role: LlmMessageRole::Assistant,
+            content: LlmMessageContent::Text(String::new()),
+            tool_calls: Some(
+                calls
+                    .iter()
+                    .map(|(call_id, tool_name)| ToolCall {
+                        id: (*call_id).to_string(),
+                        name: (*tool_name).to_string(),
+                        arguments: json!({}),
+                    })
+                    .collect(),
+            ),
             tool_call_id: None,
             phase: None,
             thinking: None,
@@ -3057,6 +3110,7 @@ mod tests {
             extract_text(&result.messages[3].content),
             "Skill 2 instructions"
         );
+        assert_complete_tool_exchanges(&result.messages);
     }
 
     #[test]
@@ -3096,6 +3150,89 @@ mod tests {
         assert!(
             has_skill_call,
             "Skill tool call must survive aggressive trim"
+        );
+    }
+
+    #[test]
+    fn aggressive_trim_keeps_parallel_tool_calls_atomic() {
+        let messages = vec![
+            make_user_msg("system"),
+            make_user_msg("original task"),
+            make_assistant_with_tool_calls(&[
+                ("call_skill", "activate_skill"),
+                ("call_bash", "bash"),
+            ]),
+            make_tool_result("call_skill", "Important skill instructions"),
+            make_tool_result("call_bash", &"output ".repeat(100)),
+            make_user_msg(&"recent user ".repeat(40)),
+            make_assistant_msg(&"recent answer ".repeat(40)),
+        ];
+
+        let result = aggressive_trim(&messages, 300, true);
+        let visible_calls: Vec<_> = result
+            .iter()
+            .flat_map(|message| message.tool_calls.iter().flatten())
+            .map(|call| call.id.as_str())
+            .collect();
+        let visible_results: Vec<_> = result
+            .iter()
+            .filter_map(|message| message.tool_call_id.as_deref())
+            .collect();
+
+        assert!(visible_calls.contains(&"call_skill"));
+        assert!(visible_results.contains(&"call_skill"));
+        assert_eq!(
+            visible_calls, visible_results,
+            "reduction must not expose a call without its result"
+        );
+        assert_complete_tool_exchanges(&result);
+    }
+
+    #[test]
+    fn hierarchical_memory_prunes_only_evicted_calls_from_a_protected_parallel_batch() {
+        let messages = vec![
+            make_assistant_with_tool_calls(&[
+                ("call_skill", "activate_skill"),
+                ("call_bash", "bash"),
+            ]),
+            make_tool_result("call_skill", "Important skill instructions"),
+            make_tool_result("call_bash", "ordinary output"),
+            make_user_msg("recent question"),
+            make_assistant_msg("recent answer"),
+        ];
+        let result = apply_hierarchical_memory(
+            &messages,
+            &HierarchicalMemoryConfig {
+                hot_messages: 2,
+                warm_messages: 0,
+            },
+            &ObservationMaskingConfig::default(),
+            Some("Summary of old work"),
+        );
+
+        assert_complete_tool_exchanges(&result);
+        let calls: Vec<_> = result
+            .iter()
+            .flat_map(|message| message.tool_calls.iter().flatten())
+            .map(|call| call.id.as_str())
+            .collect();
+        assert_eq!(calls, vec!["call_skill"]);
+    }
+
+    #[test]
+    fn summary_boundary_drops_a_recent_result_whose_call_was_summarized() {
+        let recent = vec![
+            make_tool_result("call_old", "old result"),
+            make_user_msg("continue"),
+        ];
+        let result = compose_summary_with_recent(None, "Earlier work", &recent);
+
+        assert_complete_tool_exchanges(&result);
+        assert!(result.iter().all(|message| message.tool_call_id.is_none()));
+        assert!(
+            result
+                .iter()
+                .any(|message| extract_text(&message.content) == "continue")
         );
     }
 

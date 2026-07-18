@@ -1386,6 +1386,8 @@ impl ReasonAtom {
 
         // 7. Create LLM driver using factory
         let chat_driver = self.create_chat_driver(&model_with_provider)?;
+        let stateful_response_continuation =
+            previous_response_id.is_some() && chat_driver.supports_stateful_responses();
 
         // 8. Resolve the reasoning effort for THIS LLM step.
         //    Source priority (re-evaluated on every step so mid-turn changes
@@ -1587,6 +1589,10 @@ impl ReasonAtom {
         };
         let mut context_messages =
             model_view_providers.apply_model_view(patched_messages, &model_view_context);
+        context_messages = crate::tool_call_integrity::retain_complete_message_tool_exchanges(
+            &context_messages,
+            stateful_response_continuation,
+        );
 
         // 9c. Append live dynamic facts (e.g. the current time) at the tail.
         // Collected fresh each request so values are current, and delivered as a
@@ -1668,6 +1674,15 @@ impl ReasonAtom {
                 "ReasonAtom: stripped error placeholder messages from LLM input"
             );
         }
+
+        // Context reducers operate on prompt-facing copies and may select only
+        // one side of a tool exchange at a window boundary. Stateless requests
+        // must be self-contained; stateful Responses requests may retain
+        // result-only deltas whose calls live behind `previous_response_id`.
+        llm_messages = crate::tool_call_integrity::retain_complete_llm_tool_exchanges_for_request(
+            llm_messages,
+            stateful_response_continuation,
+        );
 
         // 12. Build LLM call config with reasoning effort and metadata
         let mut llm_config_builder =
@@ -2146,7 +2161,10 @@ impl ReasonAtom {
                                     }
                                 }
 
-                                llm_messages_for_call = compacted_llm_messages;
+                                llm_messages_for_call =
+                                    crate::tool_call_integrity::retain_complete_llm_tool_exchanges(
+                                        compacted_llm_messages,
+                                    );
 
                                 let step_duration = step_start.elapsed().as_millis() as u64;
                                 strategies_used.push("native".to_string());
@@ -2176,7 +2194,7 @@ impl ReasonAtom {
                     // Only run if we haven't done native compaction (which already compressed everything)
                     if run_summarization && !strategies_used.contains(&"native".to_string()) {
                         use crate::capabilities::{
-                            build_summarization_prompt, build_summary_message,
+                            build_summarization_prompt, compose_summary_with_recent,
                             format_messages_for_summarization,
                         };
 
@@ -2246,15 +2264,13 @@ impl ReasonAtom {
                             {
                                 Ok(response) => {
                                     let summary_text = response.text;
-                                    let summary_msg = build_summary_message(&summary_text);
-
-                                    let mut new_messages = Vec::new();
-                                    if has_system_prompt {
-                                        new_messages.push(llm_messages_for_call[0].clone());
-                                    }
-                                    new_messages.push(summary_msg);
-                                    new_messages.extend_from_slice(recent);
-                                    llm_messages_for_call = new_messages;
+                                    let system_message =
+                                        has_system_prompt.then(|| llm_messages_for_call[0].clone());
+                                    llm_messages_for_call = compose_summary_with_recent(
+                                        system_message,
+                                        &summary_text,
+                                        recent,
+                                    );
 
                                     let step_duration = step_start.elapsed().as_millis() as u64;
                                     strategies_used.push("summarization".to_string());

@@ -162,6 +162,7 @@ pub mod llm_conversions;
 pub mod message;
 pub mod message_filter;
 pub mod message_retriever;
+mod tool_call_integrity;
 pub use everruns_provider::openai_protocol;
 pub use everruns_provider::openresponses_protocol;
 pub use everruns_provider::openresponses_types;

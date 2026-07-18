@@ -92,6 +92,11 @@ When searching history:
   **additional** to `max_recent_messages` (which caps only the recent tail) and is
   preserved outside the token budget when configured. The value is capped at 16 to
   bound the extra head fetch and the always-preserved prompt anchor.
+- Window boundaries MUST NOT expose a tool call after its result has been
+  excluded. Result-only deltas remain available until request assembly because
+  OpenAI Responses may keep the matching call behind `previous_response_id`;
+  stateless request assembly removes such unmatched results. This reduction is
+  prompt-only and never mutates the queryable stored history.
 
 ## Design
 

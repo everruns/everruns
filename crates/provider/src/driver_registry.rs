@@ -350,6 +350,15 @@ pub trait ChatDriver: Send + Sync {
         false
     }
 
+    /// Whether this driver persists Responses API state and can resolve tool
+    /// calls that are reachable only through `previous_response_id`.
+    ///
+    /// Stateless and custom drivers default to `false`; they must receive a
+    /// self-contained tool call/result transcript on every request.
+    fn supports_stateful_responses(&self) -> bool {
+        false
+    }
+
     /// Whether this driver can express the request-level `parallel_tool_calls`
     /// preference on the wire for `model`.
     ///
@@ -414,6 +423,10 @@ impl ChatDriver for Box<dyn ChatDriver> {
 
     fn supports_compact(&self) -> bool {
         (**self).supports_compact()
+    }
+
+    fn supports_stateful_responses(&self) -> bool {
+        (**self).supports_stateful_responses()
     }
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {
@@ -2053,7 +2066,7 @@ mod tests {
     }
 
     #[test]
-    fn test_chat_driver_default_omits_parallel_tool_calls() {
+    fn test_chat_driver_defaults_are_conservative_and_boxed_capabilities_forward() {
         // Default trait impl is conservative: drivers opt in.
         struct DefaultDriver;
         #[async_trait]
@@ -2067,6 +2080,25 @@ mod tests {
             }
         }
         assert!(!DefaultDriver.supports_parallel_tool_calls("any-model"));
+        assert!(!DefaultDriver.supports_stateful_responses());
+
+        struct StatefulDriver;
+        #[async_trait]
+        impl ChatDriver for StatefulDriver {
+            async fn chat_completion_stream(
+                &self,
+                _messages: Vec<LlmMessage>,
+                _config: &LlmCallConfig,
+            ) -> Result<LlmResponseStream> {
+                unreachable!()
+            }
+
+            fn supports_stateful_responses(&self) -> bool {
+                true
+            }
+        }
+        let boxed: BoxedChatDriver = Box::new(StatefulDriver);
+        assert!(boxed.supports_stateful_responses());
     }
 
     #[test]

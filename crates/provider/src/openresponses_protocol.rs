@@ -984,6 +984,10 @@ fn endpoint_persists_responses(api_url: &str) -> bool {
 
 #[async_trait]
 impl ChatDriver for OpenResponsesProtocolChatDriver {
+    fn supports_stateful_responses(&self) -> bool {
+        endpoint_persists_responses(&self.api_url)
+    }
+
     async fn chat_completion_stream(
         &self,
         messages: Vec<LlmMessage>,
@@ -3345,6 +3349,7 @@ mod tests {
         assert!(endpoint_persists_responses(
             "https://my-resource.services.ai.azure.com/openai/v1/responses"
         ));
+        assert!(OpenResponsesProtocolChatDriver::new("test").supports_stateful_responses());
     }
 
     #[test]
@@ -3362,6 +3367,13 @@ mod tests {
         assert!(!endpoint_persists_responses(
             "https://api.openai.example.com/v1/responses"
         ));
+        assert!(
+            !OpenResponsesProtocolChatDriver::with_base_url(
+                "test",
+                "https://openrouter.ai/api/v1/responses"
+            )
+            .supports_stateful_responses()
+        );
     }
 
     /// End-to-end shape of the call path: against a stateless gateway, a request

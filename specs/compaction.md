@@ -20,6 +20,20 @@ The model view applies generic cost-control masking according to the configured 
 
 Provider cache telemetry feeds this same model-view step. If the previous call reports high uncached input or a low cache-read ratio, the model view may mask older tool results earlier so repeated full-history prompts do not keep paying for cache misses.
 
+### Tool-call structural integrity
+
+Prompt-facing reduction preserves tool calls and results as atomic protocol
+structure. If a reducer removes a result from a parallel batch, it also removes
+that call from the visible assistant call set while leaving complete protected
+pairs intact. A stateless model view likewise removes results whose calls are no
+longer visible. Stateful Responses continuations are the sole exception: a
+result-only delta may refer to a call held by `previous_response_id`.
+
+This invariant applies to proactive and reactive trimming, summary boundaries,
+hierarchical tiers, provider-compacted output, and infinity-context composition.
+Reducers only change prompt-facing copies: stored session history remains
+lossless, and reducers never invent successful tool results.
+
 ## Current State
 
 ### What Exists
