@@ -297,7 +297,7 @@ impl NatsEventDelivery {
 mod tests {
     use super::*;
     use everruns_core::events::{EventData, OutputMessageDeltaData};
-    use everruns_core::typed_id::{EventId, SessionId, TurnId};
+    use everruns_core::typed_id::{EventId, MessageId, SessionId, TurnId};
 
     fn make_test_event(session_id: Uuid) -> Event {
         Event {
@@ -308,6 +308,7 @@ mod tests {
             context: Default::default(),
             data: EventData::OutputMessageDelta(OutputMessageDeltaData {
                 turn_id: TurnId::new(),
+                message_id: MessageId::new(),
                 delta: "hello".to_string(),
                 accumulated: "hello".to_string(),
                 phase: None,

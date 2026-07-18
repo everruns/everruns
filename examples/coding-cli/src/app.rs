@@ -1765,7 +1765,7 @@ mod tests {
     };
     use everruns_core::message::Message;
     use everruns_core::tool_types::ToolCall;
-    use everruns_core::{SessionId, TurnId};
+    use everruns_core::{MessageId, SessionId, TurnId};
 
     use everruns_core::command::{CommandArg, CommandDescriptor, CommandSource};
 
@@ -2069,6 +2069,7 @@ mod tests {
             EventContext::empty(),
             OutputMessageStartedData {
                 turn_id: TurnId::new(),
+                message_id: MessageId::new(),
                 model: None,
                 iteration: Some(3),
                 phase: None,

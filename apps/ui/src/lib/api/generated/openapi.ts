@@ -11570,6 +11570,12 @@ export interface components {
       accumulated: string;
       /** @description The new text chunk */
       delta: string;
+      /**
+       * @description Stable public ID for this assistant message across its streaming lifecycle.
+       *     This is the same identifier as `OutputMessageCompletedData.message.id`.
+       * @example message_550e8400e29b41d4a716446655440000
+       */
+      message_id: string;
       phase?: null | components["schemas"]["ExecutionPhase"];
       /**
        * @description Turn ID this delta belongs to
@@ -11593,6 +11599,12 @@ export interface components {
       guardrail_capability_id: string;
       /** @description Stable ID of the guardrail itself (e.g. `"prompt_canary"`). */
       guardrail_id: string;
+      /**
+       * @description Stable public ID for the assistant message whose streamed text is replaced.
+       *     This is the same identifier as the subsequent completed `Message.id`.
+       * @example message_550e8400e29b41d4a716446655440000
+       */
+      message_id: string;
       /**
        * @description Stable machine-readable reason code (e.g. `"system_prompt_leak"`).
        *     Clients localize their copy from this rather than the human text.
@@ -11619,6 +11631,12 @@ export interface components {
        *     Useful for UI to show progress during multi-step tool-calling flows.
        */
       iteration?: number | null;
+      /**
+       * @description Stable public ID for this assistant message across its streaming lifecycle.
+       *     This is the same identifier as `OutputMessageCompletedData.message.id`.
+       * @example message_550e8400e29b41d4a716446655440000
+       */
+      message_id: string;
       /** @description Optional model name being used */
       model?: string | null;
       phase?: null | components["schemas"]["ExecutionPhase"];

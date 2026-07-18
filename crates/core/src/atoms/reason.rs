@@ -57,7 +57,8 @@ use crate::runtime_context::{AssembledTurnContext, assemble_turn_context};
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::traits::{
     AgentStore, DurableToolCallStatus, DurableToolResultStore, EventEmitter, HarnessStore,
-    ImageResolver, PartialStreamStore, ProviderStore, ResolvedImage, ResolvedModel, SessionStore,
+    ImageResolver, PartialStreamState, PartialStreamStore, ProviderStore, ResolvedImage,
+    ResolvedModel, SessionStore,
 };
 use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use crate::{ErrorDisclosure, UserFacingError, UserFacingErrorContext, user_facing_error_codes};
@@ -1517,7 +1518,7 @@ impl ReasonAtom {
                         .finalize_partial_stream(
                             session_id,
                             context,
-                            partial.accumulated,
+                            partial,
                             iteration,
                             runtime_agent.max_iterations,
                             &runtime_agent.tools,
@@ -1748,6 +1749,10 @@ impl ReasonAtom {
         // seam allows the finalized output so blocked tokens are never emitted
         // or persisted as output.message.delta events.
         let buffer_output_deltas = !post_output_providers.is_empty();
+        // Allocate the public message id before the first lifecycle event so
+        // started/delta/replaced/completed can be grouped without turn-level
+        // heuristics. Each reasoning iteration reaches this point separately.
+        let output_message_id = MessageId::new();
         tracing::info!(
             session_id = %session_id,
             turn_id = %context.turn_id,
@@ -1760,6 +1765,7 @@ impl ReasonAtom {
                 streaming_event_context.clone(),
                 OutputMessageStartedData {
                     turn_id: context.turn_id,
+                    message_id: output_message_id,
                     model: Some(runtime_agent.model.clone()),
                     iteration: Some(iteration),
                     // Emitted before the LLM call — phase is not yet known, so the
@@ -2469,6 +2475,7 @@ impl ReasonAtom {
                                     streaming_event_context.clone(),
                                     OutputMessageDeltaData {
                                         turn_id: context.turn_id,
+                                        message_id: output_message_id,
                                         delta: pending_delta.clone(),
                                         accumulated: text.clone(),
                                         phase: streamed_phase,
@@ -2630,6 +2637,7 @@ impl ReasonAtom {
                                     streaming_event_context.clone(),
                                     OutputMessageDeltaData {
                                         turn_id: context.turn_id,
+                                        message_id: output_message_id,
                                         delta: pending_delta.clone(),
                                         accumulated: text.clone(),
                                         phase: streamed_phase,
@@ -2823,6 +2831,7 @@ impl ReasonAtom {
                     streaming_event_context.clone(),
                     OutputMessageDeltaData {
                         turn_id: context.turn_id,
+                        message_id: output_message_id,
                         delta: pending_delta.clone(),
                         accumulated: text.clone(),
                         phase: streamed_phase,
@@ -2855,6 +2864,7 @@ impl ReasonAtom {
                     replaced_event_context,
                     OutputMessageReplacedData {
                         turn_id: context.turn_id,
+                        message_id: output_message_id,
                         guardrail_capability_id: t.capability_id.clone(),
                         guardrail_id: t.guardrail_id.clone(),
                         reason_code: t.block.reason_code.clone(),
@@ -3038,7 +3048,8 @@ impl ReasonAtom {
             Message::assistant_with_tools(&text, tool_calls.clone())
         } else {
             Message::assistant(&text)
-        };
+        }
+        .with_id(output_message_id);
         // Use the API-provided phase when available (preserving the provider's value),
         // otherwise derive from state: Commentary for intermediate iterations (with tool
         // calls), FinalAnswer for the completed response.
@@ -3058,8 +3069,6 @@ impl ReasonAtom {
             assistant_message.thinking = Some(thinking.clone());
             assistant_message.thinking_signature = thinking_signature.clone();
         }
-        let output_message_id = assistant_message.id;
-
         // Emit output.message.completed event (this stores the message as an event with proper turn context)
         // Include token usage for tracking (child of reason span)
         let message_event_context = EventContext::from_atom_context(context).with_span(
@@ -3115,13 +3124,14 @@ impl ReasonAtom {
         &self,
         session_id: SessionId,
         context: &AtomContext,
-        accumulated: String,
+        partial: PartialStreamState,
         iteration: u32,
         max_iterations: usize,
         tool_definitions: &[ToolDefinition],
     ) -> Result<ReasonResult> {
         let event_context = EventContext::from_atom_context(context);
         let turn_id = context.turn_id;
+        let message_id = partial.message_id;
 
         // Signal that output is starting (keeps the streaming protocol intact).
         let _ = self
@@ -3131,6 +3141,7 @@ impl ReasonAtom {
                 event_context.clone(),
                 OutputMessageStartedData {
                     turn_id,
+                    message_id,
                     model: None,
                     iteration: Some(iteration),
                     // Recovery/finalize path reconstructs the started signal only;
@@ -3142,9 +3153,10 @@ impl ReasonAtom {
 
         // Build the assistant message from accumulated text and persist via event.
         // Strip any echoed `[time …]` annotation the model produced (EVE-710).
-        let accumulated = crate::capabilities::strip_leading_timestamp_annotations(&accumulated);
-        let assistant_message = Message::assistant(&accumulated);
-        let output_message_id = assistant_message.id;
+        let accumulated =
+            crate::capabilities::strip_leading_timestamp_annotations(&partial.accumulated);
+        let assistant_message = Message::assistant(&accumulated).with_id(message_id);
+        let output_message_id = message_id;
         self.event_emitter
             .emit(EventRequest::new(
                 session_id,
@@ -3986,7 +3998,7 @@ mod tests {
 
     use crate::traits::{NoopPartialStreamStore, PartialStreamState, PartialStreamStore};
 
-    struct MockPartialStore(Option<String>);
+    struct MockPartialStore(Option<PartialStreamState>);
 
     #[async_trait::async_trait]
     impl PartialStreamStore for MockPartialStore {
@@ -3995,9 +4007,7 @@ mod tests {
             _session_id: crate::typed_id::SessionId,
             _turn_id: &str,
         ) -> crate::error::Result<Option<PartialStreamState>> {
-            Ok(self.0.as_deref().map(|s| PartialStreamState {
-                accumulated: s.to_string(),
-            }))
+            Ok(self.0.clone())
         }
     }
 
@@ -4013,17 +4023,26 @@ mod tests {
 
     #[tokio::test]
     async fn test_partial_stream_store_returns_accumulated_when_partial_exists() {
-        let store = MockPartialStore(Some("partial text so far".to_string()));
+        let message_id = MessageId::new();
+        let store = MockPartialStore(Some(PartialStreamState {
+            message_id,
+            accumulated: "partial text so far".to_string(),
+        }));
         let result = store
             .get_partial_stream(crate::typed_id::SessionId::new(), "turn_01")
             .await
             .unwrap();
-        assert_eq!(result.unwrap().accumulated, "partial text so far");
+        let partial = result.unwrap();
+        assert_eq!(partial.message_id, message_id);
+        assert_eq!(partial.accumulated, "partial text so far");
     }
 
     #[tokio::test]
     async fn test_partial_stream_store_returns_empty_when_started_no_delta() {
-        let store = MockPartialStore(Some(String::new()));
+        let store = MockPartialStore(Some(PartialStreamState {
+            message_id: MessageId::new(),
+            accumulated: String::new(),
+        }));
         let result = store
             .get_partial_stream(crate::typed_id::SessionId::new(), "turn_01")
             .await

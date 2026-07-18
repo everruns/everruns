@@ -763,6 +763,11 @@ pub struct OutputMessageStartedData {
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
     pub turn_id: TurnId,
 
+    /// Stable public ID for this assistant message across its streaming lifecycle.
+    /// This is the same identifier as `OutputMessageCompletedData.message.id`.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "message_550e8400e29b41d4a716446655440000"))]
+    pub message_id: MessageId,
+
     /// Optional model name being used
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
@@ -795,6 +800,11 @@ pub struct OutputMessageDeltaData {
     /// Turn ID this delta belongs to
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
     pub turn_id: TurnId,
+
+    /// Stable public ID for this assistant message across its streaming lifecycle.
+    /// This is the same identifier as `OutputMessageCompletedData.message.id`.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "message_550e8400e29b41d4a716446655440000"))]
+    pub message_id: MessageId,
 
     /// The new text chunk
     pub delta: String,
@@ -892,6 +902,11 @@ pub struct OutputMessageReplacedData {
     /// Turn ID this replacement belongs to.
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
     pub turn_id: TurnId,
+
+    /// Stable public ID for the assistant message whose streamed text is replaced.
+    /// This is the same identifier as the subsequent completed `Message.id`.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "message_550e8400e29b41d4a716446655440000"))]
+    pub message_id: MessageId,
 
     /// Stable ID of the capability that contributed the guardrail
     /// (e.g. `"prompt_canary_guardrail"`).
@@ -3287,6 +3302,7 @@ mod tests {
             EventContext::empty(),
             OutputMessageDeltaData {
                 turn_id,
+                message_id: MessageId::new(),
                 delta: "hel".to_string(),
                 accumulated: "hel".to_string(),
                 phase: None,
@@ -3378,6 +3394,7 @@ mod tests {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = OutputMessageStartedData {
             turn_id,
+            message_id: MessageId::new(),
             model: Some("claude-4-opus".to_string()),
             iteration: None,
             phase: None,
@@ -3397,6 +3414,7 @@ mod tests {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = OutputMessageStartedData {
             turn_id,
+            message_id: MessageId::new(),
             model: None,
             iteration: None,
             phase: None,
@@ -3465,6 +3483,7 @@ mod tests {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = OutputMessageDeltaData {
             turn_id,
+            message_id: MessageId::new(),
             delta: "Hello".to_string(),
             accumulated: "Hello".to_string(),
             phase: None,
@@ -3481,6 +3500,60 @@ mod tests {
     }
 
     #[test]
+    fn test_output_message_lifecycle_shares_message_id() {
+        let turn_id = TurnId::new();
+        let message_id = MessageId::new();
+        let next_message_id = MessageId::new();
+
+        let started = OutputMessageStartedData {
+            turn_id,
+            message_id,
+            model: None,
+            iteration: Some(1),
+            phase: None,
+        };
+        let next_started = OutputMessageStartedData {
+            turn_id,
+            message_id: next_message_id,
+            model: None,
+            iteration: Some(2),
+            phase: None,
+        };
+        let delta = OutputMessageDeltaData {
+            turn_id,
+            message_id,
+            delta: "Hello".to_string(),
+            accumulated: "Hello".to_string(),
+            phase: None,
+        };
+        let replaced = OutputMessageReplacedData {
+            turn_id,
+            message_id,
+            guardrail_capability_id: "guardrails".to_string(),
+            guardrail_id: "example".to_string(),
+            reason_code: "blocked".to_string(),
+            replacement: "Safe response".to_string(),
+        };
+        let completed = OutputMessageCompletedData::new(
+            Message::assistant("Safe response").with_id(message_id),
+        );
+
+        assert_eq!(started.message_id, message_id);
+        assert_eq!(delta.message_id, message_id);
+        assert_eq!(replaced.message_id, message_id);
+        assert_eq!(completed.message.id, message_id);
+        assert_ne!(started.message_id, next_started.message_id);
+
+        for value in [
+            serde_json::to_value(started).unwrap(),
+            serde_json::to_value(delta).unwrap(),
+            serde_json::to_value(replaced).unwrap(),
+        ] {
+            assert_eq!(value["message_id"], message_id.to_string());
+        }
+    }
+
+    #[test]
     fn test_output_message_phase_hint_serde() {
         // EVE-774: the streamed phase hint is skipped when None (so existing
         // consumers see no new field) and serialized as the provider wire value
@@ -3489,6 +3562,7 @@ mod tests {
 
         let started_none = OutputMessageStartedData {
             turn_id,
+            message_id: MessageId::new(),
             model: None,
             iteration: None,
             phase: None,
@@ -3501,6 +3575,7 @@ mod tests {
 
         let delta_commentary = OutputMessageDeltaData {
             turn_id,
+            message_id: MessageId::new(),
             delta: "one moment".to_string(),
             accumulated: "one moment".to_string(),
             phase: Some(crate::message::ExecutionPhase::Commentary),
@@ -3514,6 +3589,7 @@ mod tests {
 
         let delta_final = OutputMessageDeltaData {
             turn_id,
+            message_id: MessageId::new(),
             delta: "done".to_string(),
             accumulated: "done".to_string(),
             phase: Some(crate::message::ExecutionPhase::FinalAnswer),
@@ -3531,6 +3607,7 @@ mod tests {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = OutputMessageDeltaData {
             turn_id,
+            message_id: MessageId::new(),
             delta: "Hello world".to_string(),
             accumulated: "Hello world".to_string(),
             phase: None,
@@ -3558,6 +3635,7 @@ mod tests {
         let turn_id = TurnId::from_uuid(Uuid::now_v7());
         let data = OutputMessageStartedData {
             turn_id,
+            message_id: MessageId::new(),
             model: Some("claude-3".to_string()),
             iteration: None,
             phase: None,
@@ -3960,6 +4038,7 @@ mod contract_tests {
     fn snapshot_output_message_started() {
         let data = OutputMessageStartedData {
             turn_id: test_turn_id(),
+            message_id: test_message_id(),
             model: Some("gpt-4o".to_string()),
             iteration: None,
             phase: None,
@@ -3975,6 +4054,7 @@ mod contract_tests {
     fn snapshot_output_message_delta() {
         let data = OutputMessageDeltaData {
             turn_id: test_turn_id(),
+            message_id: test_message_id(),
             delta: "Hello".to_string(),
             accumulated: "Hello".to_string(),
             phase: None,
@@ -4518,6 +4598,7 @@ mod contract_tests {
                 OUTPUT_MESSAGE_STARTED,
                 OutputMessageStartedData {
                     turn_id: test_turn_id(),
+                    message_id: test_message_id(),
                     model: None,
                     iteration: None,
                     phase: None,
@@ -4528,6 +4609,7 @@ mod contract_tests {
                 OUTPUT_MESSAGE_DELTA,
                 OutputMessageDeltaData {
                     turn_id: test_turn_id(),
+                    message_id: test_message_id(),
                     delta: "x".to_string(),
                     accumulated: "x".to_string(),
                     phase: None,

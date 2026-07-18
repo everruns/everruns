@@ -1706,6 +1706,7 @@ mod tests {
             context.clone(),
             OutputMessageDeltaData {
                 turn_id,
+                message_id: MessageId::new(),
                 delta: "Hello".to_string(),
                 accumulated: "Hello".to_string(),
                 phase: None,
@@ -1757,6 +1758,7 @@ mod tests {
             context.clone(),
             OutputMessageDeltaData {
                 turn_id,
+                message_id: MessageId::new(),
                 delta: "Let me check that.".to_string(),
                 accumulated: "Let me check that.".to_string(),
                 phase: None,
@@ -1983,6 +1985,7 @@ mod tests {
             context.clone(),
             OutputMessageDeltaData {
                 turn_id,
+                message_id: MessageId::new(),
                 delta: "Let me look into that.".to_string(),
                 accumulated: "Let me look into that.".to_string(),
                 phase: None,
