@@ -6,8 +6,8 @@
 [![Documentation](https://docs.rs/everruns-anthropic/badge.svg)](https://docs.rs/everruns-anthropic)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-`everruns-anthropic` registers an Anthropic driver with
-[`everruns-core`](https://crates.io/crates/everruns-core) so the same Everruns
+`everruns-anthropic` registers an Anthropic driver into a `DriverRegistry` from
+[`everruns-provider`](https://crates.io/crates/everruns-provider) so the same Everruns
 agent loop can run against Claude models through the provider-neutral driver
 trait. It speaks the Claude Messages API with streaming, tool use, and reasoning,
 and maps provider errors onto Everruns runtime errors.
@@ -22,7 +22,7 @@ or run with no key at all using the built-in LLM simulator in
 
 ```rust
 use everruns_anthropic::{AnthropicChatDriver, register_driver};
-use everruns_core::DriverRegistry;
+use everruns_provider::DriverRegistry;
 
 let driver = AnthropicChatDriver::new("your-api-key");
 

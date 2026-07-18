@@ -235,7 +235,7 @@ separate usage meanings (`configured`, `resolved`, `exposed`, `invoked`,
 
 ### LLM Provider
 
-Configuration for LLM API providers. See `crates/core/src/provider.rs` for full type definitions.
+Configuration for LLM API providers. See `crates/provider/src/provider.rs` for full type definitions.
 
 Key design points:
 - `provider_type` stored as plain string without CHECK constraint (forward compatibility)
@@ -250,7 +250,7 @@ Default providers and models seeded on startup. See `crates/server/src/seed.rs` 
 
 ### LLM Model
 
-Configuration for a specific model within a provider. See `crates/core/src/model.rs`.
+Configuration for a specific model within a provider. See `crates/provider/src/model.rs`.
 
 Key design points:
 - `source` enum: `manual` (user-added), `discovered` (from provider API), `predefined` (seeded)
@@ -267,7 +267,7 @@ Read-only metadata describing model capabilities, costs, and limits. Computed at
 
 **IMPORTANT:** Never guess or extrapolate profile data (pricing, limits, capabilities). Prefer models.dev when a model is listed there; otherwise source directly from the provider's official documentation (e.g. `developers.openai.com/api/docs/models/<id>`, Anthropic model cards). When a profile is added ahead of the models.dev entry, note the provider-doc source in a comment on the profile block and revisit once models.dev catches up. Never guess values.
 
-See `crates/core/src/model.rs` for `ModelProfile`, `ModelCost`, `ModelLimits`, and `ReasoningEffortConfig` types.
+See `crates/provider/src/model.rs` for `ModelProfile`, `ModelCost`, `ModelLimits`, and `ReasoningEffortConfig` types.
 
 Profiles matched by provider_type + model_id with version normalization (e.g., "gpt-4o-2024-11-20" → "gpt-4o").
 

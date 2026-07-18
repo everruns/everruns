@@ -6,8 +6,8 @@
 [![Documentation](https://docs.rs/everruns-gemini/badge.svg)](https://docs.rs/everruns-gemini)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-`everruns-gemini` registers a Google Gemini driver with
-[`everruns-core`](https://crates.io/crates/everruns-core) so
+`everruns-gemini` registers a Google Gemini driver into a `DriverRegistry` from
+[`everruns-provider`](https://crates.io/crates/everruns-provider) so
 the same Everruns agent loop can run against Gemini models. It implements the
 provider-neutral `ChatDriver` contract and maps Everruns' messages, tools, and
 reasoning onto the Gemini API. Core has no knowledge of specific providers; hosts
@@ -24,7 +24,7 @@ backends, or run with no key using the built-in LLM simulator in
 
 ```rust
 use everruns_gemini::{GeminiChatDriver, register_driver};
-use everruns_core::DriverRegistry;
+use everruns_provider::DriverRegistry;
 
 let mut registry = DriverRegistry::new();
 register_driver(&mut registry);

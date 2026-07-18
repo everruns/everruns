@@ -16,7 +16,7 @@ LLM drivers provide a provider-agnostic interface for interacting with Large Lan
 
 ```mermaid
 graph TD
-    subgraph Core [everruns-core]
+    subgraph Provider [everruns-provider]
         ChatDriver[ChatDriver Trait]
         Registry[DriverRegistry]
         Errors[AgentLoopError]
@@ -53,7 +53,7 @@ graph TD
 
 ### ChatDriver Trait
 
-1. **Trait Definition**: See `crates/core/src/driver_registry.rs` for `ChatDriver` trait, `LlmStreamEvent`, `ProviderType`, and `LlmCallConfig`.
+1. **Trait Definition**: See `crates/provider/src/driver_registry.rs` for `ChatDriver` trait, `LlmStreamEvent`, `ProviderType`, and `LlmCallConfig`.
 
 2. **Streaming Response**: Drivers return a stream of `LlmStreamEvent` (TextDelta, ToolCalls, ThinkingDelta, ThinkingSignature, Done, Error). In-band provider failures use `LlmStreamError` so stable provider code and HTTP status survive the driver boundary.
 
@@ -86,7 +86,7 @@ name, declared `ServiceKind`s (see `specs/providers.md`), a credential form
 schema, and per-service factories (chat today). Chat drivers are created
 on-demand from `ProviderConfig`. All real built-in providers require API keys;
 `LlmSim` and `External` drivers are exempted (external drivers may authenticate
-via `ProviderMetadata`). See `crates/core/src/driver_registry.rs` for
+via `ProviderMetadata`). See `crates/provider/src/driver_registry.rs` for
 `DriverRegistry` and `DriverDescriptor`.
 
 ### Host-Owned Transport
@@ -158,7 +158,7 @@ Agents can override `max_tokens` via agent config. Cost guardrails should be con
 
 Extended thinking allows models to perform chain-of-thought reasoning before generating responses. Supported by both Anthropic Claude and OpenAI o-series/GPT-5 models.
 
-Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5, Opus 4.8/4.7, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5 and Opus 4.8/4.7 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/anthropic/src/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/core/src/model_profiles.rs`.
+Anthropic has two thinking request forms, selected per model family by the driver. Recent Claude families (Fable 5, Opus 4.8/4.7, and the 4.6 family) take adaptive thinking (`thinking.type = "adaptive"` plus `output_config.effort`); the budget-based `budget_tokens` form is removed on Fable 5 and Opus 4.8/4.7 and returns 400 there. Older Claude models keep budget-based extended thinking. The family list lives in `crates/anthropic/src/driver.rs` and must stay in sync with the adaptive-thinking profiles in `crates/provider/src/model_profiles.rs`.
 
 #### Stream Events
 
@@ -291,11 +291,11 @@ sequenceDiagram
 
 | Component | Location |
 |-----------|----------|
-| ChatDriver trait | `crates/core/src/driver_registry.rs` |
-| AgentLoopError | `crates/core/src/error.rs` |
+| ChatDriver trait | `crates/provider/src/driver_registry.rs` |
+| AgentLoopError | `crates/provider/src/error.rs` |
 | OpenAI driver | `crates/openai/src/driver.rs` |
-| Open Responses protocol | `crates/core/src/openresponses_protocol.rs` |
-| Chat Completions protocol | `crates/core/src/openai_protocol.rs` |
+| Open Responses protocol | `crates/provider/src/openresponses_protocol.rs` |
+| Chat Completions protocol | `crates/provider/src/openai_protocol.rs` |
 | Anthropic driver | `crates/anthropic/src/driver.rs` |
 | Gemini driver | `crates/gemini/src/driver.rs` |
 | Bedrock driver | `crates/bedrock/src/driver.rs` |
@@ -330,9 +330,10 @@ gated by the resolved provider type.
 
 Microsoft MAI models (e.g. `mai-code-1-flash`) are served via Azure AI Foundry
 behind an OpenAI-compatible Chat Completions API. The `everruns-mai` crate is a
-standalone, crates.io-publishable provider crate that wraps the core
-`OpenAIProtocolChatDriver` and tags it with `DriverId::Mai`. Model ids resolve
-to the Microsoft-vendor profiles in `crates/core/src/model_profiles.rs` (the
+standalone, crates.io-publishable provider crate that wraps the shared
+`OpenAIProtocolChatDriver` (from `everruns-provider`) and tags it with
+`DriverId::Mai`. Model ids resolve
+to the Microsoft-vendor profiles in `crates/provider/src/model_profiles.rs` (the
 `MICROSOFT_MAI` surface).
 
 ### Model Discovery
@@ -382,7 +383,7 @@ generic, async `AuthHeaderProvider` hook
 (`OpenAIProtocolChatDriver::with_auth_provider` and
 `OpenResponsesProtocolChatDriver::with_auth_provider`); the trait is exported
 from one stable place (`everruns_core::AuthHeaderProvider`, defined in
-`crates/core/src/openai_protocol.rs`). When set, it overrides the default
+`crates/provider/src/openai_protocol.rs`). When set, it overrides the default
 host-keyed `api-key`/bearer logic and is awaited once per HTTP attempt — for the
 Open Responses driver this includes the streaming `/responses` call, every retry
 attempt, and the `/responses/compact` call — so providers can refresh short-lived
@@ -556,7 +557,7 @@ When a request to the OpenAI Responses API sets `previous_response_id`, the prov
 
 Invariant: **a request with `previous_response_id` only carries delta items in `input`** — typically tool results (`function_call_output`) for the prior assistant turn plus any fresh user messages. Prior assistant messages, reasoning items, and the assistant's own function calls are dropped because they live in server-side state. `instructions` (system message) is sent separately and is exempt. Empty `input` is allowed.
 
-`OpenResponsesProtocolChatDriver` enforces this by trimming `input` via `compute_delta_input_items` whenever `previous_response_id` is `Some(_)` (see `crates/core/src/openresponses_protocol.rs`).
+`OpenResponsesProtocolChatDriver` enforces this by trimming `input` via `compute_delta_input_items` whenever `previous_response_id` is `Some(_)` (see `crates/provider/src/openresponses_protocol.rs`).
 
 ### Stateless Gateways
 
@@ -621,7 +622,7 @@ Drivers parse provider-specific headers to determine retry timing:
 
 ### Retry Metadata
 
-On successful completion after retries, `LlmCompletionMetadata` includes retry info (attempts, total wait time, rate limit info). The `llm.generation` event also includes retry info. See `crates/core/src/driver_registry.rs` for `RetryMetadata`.
+On successful completion after retries, `LlmCompletionMetadata` includes retry info (attempts, total wait time, rate limit info). The `llm.generation` event also includes retry info. See `crates/provider/src/driver_registry.rs` for `RetryMetadata`.
 
 ### Implementation Details
 
@@ -643,7 +644,7 @@ The `/v1/responses/compact` endpoint is a context-compression feature for the Op
 
 ### ChatDriver Compact Methods
 
-The `ChatDriver` trait includes `supports_compact()` and `compact()` methods. See `crates/core/src/driver_registry.rs` for `CompactRequest`, `CompactInputItem`, `CompactResponse`, and `CompactOutputItem` types.
+The `ChatDriver` trait includes `supports_compact()` and `compact()` methods. See `crates/provider/src/driver_registry.rs` for `CompactRequest`, `CompactInputItem`, `CompactResponse`, and `CompactOutputItem` types.
 
 ### Provider Support
 

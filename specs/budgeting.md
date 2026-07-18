@@ -17,7 +17,7 @@ Key use cases:
 
 See source files for full definitions:
 - Core types: `crates/core/src/budget.rs`
-- Typed IDs: `crates/core/src/typed_id.rs` (`BudgetId`, `LedgerEntryId`)
+- Typed IDs: `crates/provider/src/typed_id.rs` (`BudgetId`, `LedgerEntryId`)
 - Events: `crates/core/src/events.rs` (budget event constants and `BudgetEventData`)
 - Storage: `crates/server/src/storage/repositories/budgets.rs`, `crates/server/src/storage/memory/budgets.rs`
 - Service: `crates/server/src/domains/budgets/service.rs`

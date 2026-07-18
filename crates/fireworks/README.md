@@ -6,8 +6,8 @@
 [![Documentation](https://docs.rs/everruns-fireworks/badge.svg)](https://docs.rs/everruns-fireworks)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-`everruns-fireworks` registers the Fireworks AI driver with
-[`everruns-core`](https://crates.io/crates/everruns-core) so the same Everruns
+`everruns-fireworks` registers the Fireworks AI driver into a `DriverRegistry` from
+[`everruns-provider`](https://crates.io/crates/everruns-provider) so the same Everruns
 agent loop can run against [Fireworks AI](https://fireworks.ai/)'s open-model
 catalog (Llama, Qwen, DeepSeek, Kimi, GLM, gpt-oss, ...). Fireworks exposes an
 OpenAI-compatible Chat Completions API, so the driver wraps the core Chat

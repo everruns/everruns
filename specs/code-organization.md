@@ -53,19 +53,28 @@ badge-free header and omit docs.rs links.
 ### Crate dependency conventions
 
 Thin LLM provider crates (`openai`, `anthropic`, `gemini`, `bedrock`, `mai`,
-`fireworks`, `openrouter`) depend on `everruns-core` with
-`default-features = false`. Core's heavy subtrees (telemetry/OTLP, `a2a` gRPC,
-web-fetch/fetchkit, and the `llmsim` simulator driver) are opt-in features kept
-in core's `default`, so the application crates stay full while standalone
-provider builds shed them. Crates
-that pull in the runtime (e.g. `everruns-local` → `everruns-runtime`) cannot
-benefit — feature unification re-enables the subtrees — so they keep full
-defaults.
+`fireworks`, `openrouter`) depend on `everruns-provider`, **not**
+`everruns-core`. `everruns-provider` is the lean provider/LLM abstraction crate
+that owns the driver surface (`ChatDriver`, the shared OpenAI/OpenResponses
+protocol drivers, model profiles, retry/stream helpers, typed IDs, the
+credential form schema, and the LLM error taxonomy). It carries none of core's
+heavy subtrees (telemetry/OTLP, `a2a` gRPC, web-fetch/fetchkit, the `llmsim`
+simulator driver), so a standalone provider build never pulls them in. A
+provider is therefore a pure `ChatDriver` implementation with no dependency on
+core's agent-loop runtime; provider crates keep `everruns-core` only as a
+**dev-dependency** for integration tests that drive the in-memory runtime +
+`llmsim` harness.
+
+`everruns-core` depends on `everruns-provider` and re-exports every moved module
+at its original path (`everruns_core::driver_registry`, `::model_profiles`,
+`::error`, `::typed_id`, …), so application crates and embedders that import
+those paths are unaffected. Crates that pull in the runtime (e.g.
+`everruns-local` → `everruns-runtime`) still depend on full `everruns-core`.
 
 Two pin conventions follow from the publish set:
 
 - **Unpublished** crates reference path deps without a version
-  (`{ path = "../core", default-features = false }`), matching `server`/`worker`.
+  (`{ path = "../provider" }` for provider crates; `{ path = "../core", default-features = false }` for crates that do depend on core), matching `server`/`worker`.
 - **Published** crates that pin a sibling by exact version must be registered in
   *both* `.github/workflows/publish-crates.yml` (`dependency_versions`) and
   `scripts/sync-publish-pin-versions.py` (`INNER_PINS`). The release process

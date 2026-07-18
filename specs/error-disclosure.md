@@ -9,7 +9,7 @@ on string parsing.
 
 LLM drivers classify provider failures at the provider boundary — where the
 HTTP status and response body are still available — into `LlmErrorKind`
-(`crates/core/src/error.rs`): authentication, quota exhaustion, rate limit,
+(`crates/provider/src/error.rs`): authentication, quota exhaustion, rate limit,
 provider unavailable, invalid request, or other. All drivers (OpenAI chat,
 OpenAI Responses, Anthropic, Gemini, Bedrock) attach a kind; `other` falls
 back to the legacy string classifier (`classify_runtime_error_message`), so

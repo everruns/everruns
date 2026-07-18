@@ -134,6 +134,7 @@ jobs:
               "crates/core/Cargo.toml": [
                   "everruns-openui",
                   "everruns-a2ui",
+                  "everruns-provider",
               ],
               "crates/mcp/Cargo.toml": [
                   "everruns-core",
@@ -146,19 +147,19 @@ jobs:
                   "everruns-runtime",
               ],
               "crates/openai/Cargo.toml": [
-                  "everruns-core",
+                  "everruns-provider",
               ],
               "crates/anthropic/Cargo.toml": [
-                  "everruns-core",
+                  "everruns-provider",
               ],
               "crates/openrouter/Cargo.toml": [
-                  "everruns-core",
+                  "everruns-provider",
               ],
               "crates/bedrock/Cargo.toml": [
-                  "everruns-core",
+                  "everruns-provider",
               ],
               "crates/gemini/Cargo.toml": [
-                  "everruns-core",
+                  "everruns-provider",
               ],
               "integrations/duckduckgo/Cargo.toml": [
                   "everruns-core",
@@ -225,6 +226,7 @@ jobs:
           CRATES=(
             everruns-openui
             everruns-a2ui
+            everruns-provider
             everruns-core
             everruns-mcp
             everruns-openai
