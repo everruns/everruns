@@ -207,6 +207,18 @@ embedded runtime needs for:
 - persisting assistant and tool-result messages from emitted events
 - configuring the runtime default model
 
+`RuntimeSessionStore` also inherits the live capability mutation methods from
+`SessionMutator`. A custom backend that wants to support
+`InProcessRuntime::{activate_capability, deactivate_capability}` implements
+atomic session-capability upsert/removal; backends that do not implement the
+methods return the default unsupported error.
+
+Live capability changes do not replace the `RuntimeAgent` in place. The session
+overlay is the source of truth, and the existing per-boundary assembly path
+rebuilds the prompt, definitions, executable registry, and hooks before the
+next reason/act step. This preserves session identity and conversation history
+and avoids two independently mutable copies of the runtime surface.
+
 Use `RuntimeBackends::in_memory()` for the all-in-memory default, then chain
 `.with_message_store(...)`, `.with_storage_store(...)`, etc. to override
 individual non-filesystem stores.

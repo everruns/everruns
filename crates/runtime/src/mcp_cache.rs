@@ -127,6 +127,14 @@ impl McpDiscoveryCache {
         self.entries.lock().unwrap_or_else(|e| e.into_inner())
     }
 
+    /// Drop every cached discovery for a session after its live capability set
+    /// changes. Capability-contributed MCP servers may have been added,
+    /// removed, or replaced under an existing logical server name.
+    pub(crate) fn invalidate_session(&self, session_id: Uuid) {
+        self.entries()
+            .retain(|(cached_session_id, _), _| *cached_session_id != session_id);
+    }
+
     /// Classify the entry for `key` at `now`.
     fn classify(&self, key: &CacheKey, now: Instant) -> Freshness {
         match self.entries().get_mut(key) {

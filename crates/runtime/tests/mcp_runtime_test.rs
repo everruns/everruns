@@ -8,15 +8,18 @@
 //! without resolving (and the fake egress never actually connects).
 
 use async_trait::async_trait;
+use everruns_core::command::{CommandDescriptor, CommandSource};
 use everruns_core::driver_registry::DriverRegistry;
-use everruns_core::llmsim_driver::LlmSimConfig;
+use everruns_core::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
 use everruns_core::{
-    CapabilityRegistry, DriverId, EgressRequest, EgressResponse, EgressResult, EgressService,
-    EgressStreamResponse, PlatformDefinition, ResolvedModel, ScopedMcpServer, ScopedMcpServers,
-    ToolCall,
+    AgentCapabilityConfig, Capability, CapabilityRegistry, CapabilityStatus, DriverId,
+    EgressRequest, EgressResponse, EgressResult, EgressService, EgressStreamResponse,
+    PlatformDefinition, ResolvedModel, ScopedMcpServer, ScopedMcpServers, Tool, ToolCall,
+    ToolContext, ToolExecutionResult, ToolResult,
 };
 use everruns_runtime::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use serde_json::{Value, json};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 /// A public, non-blocked IP literal: passes SSRF validation without DNS and is
@@ -105,6 +108,127 @@ fn platform_with_egress(traffic: Arc<Mutex<McpTraffic>>) -> PlatformDefinition {
         .build()
 }
 
+#[derive(Default)]
+struct HookCounts {
+    pre: AtomicUsize,
+    post: AtomicUsize,
+}
+
+struct LiveTool;
+
+#[async_trait]
+impl Tool for LiveTool {
+    fn name(&self) -> &str {
+        "live_echo"
+    }
+
+    fn description(&self) -> &str {
+        "Echo a value from a live capability."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": { "value": { "type": "string" } },
+            "required": ["value"],
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::success(json!({ "echo": arguments["value"] }))
+    }
+}
+
+struct CountingPreHook(Arc<HookCounts>);
+
+#[async_trait]
+impl everruns_core::atoms::PreToolUseHook for CountingPreHook {
+    async fn before_exec(
+        &self,
+        tool_call: ToolCall,
+        _tool_def: &everruns_core::ToolDefinition,
+        _context: &ToolContext,
+    ) -> everruns_core::atoms::PreToolUseDecision {
+        self.0.pre.fetch_add(1, Ordering::SeqCst);
+        everruns_core::atoms::PreToolUseDecision::Continue(tool_call)
+    }
+}
+
+struct CountingPostHook(Arc<HookCounts>);
+
+#[async_trait]
+impl everruns_core::atoms::PostToolExecHook for CountingPostHook {
+    async fn after_exec(
+        &self,
+        _tool_call: &ToolCall,
+        _tool_def: &everruns_core::ToolDefinition,
+        _result: &mut ToolResult,
+        _context: &ToolContext,
+    ) {
+        self.0.post.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+struct LiveCapability {
+    hooks: Arc<HookCounts>,
+}
+
+impl Capability for LiveCapability {
+    fn id(&self) -> &str {
+        "live_test"
+    }
+
+    fn name(&self) -> &str {
+        "Live Test"
+    }
+
+    fn description(&self) -> &str {
+        "Exercises every live capability surface."
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+
+    fn system_prompt_addition(&self) -> Option<&str> {
+        Some("LIVE_CAPABILITY_PROMPT")
+    }
+
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        vec![Box::new(LiveTool)]
+    }
+
+    fn pre_tool_use_hooks(&self) -> Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>> {
+        vec![Arc::new(CountingPreHook(self.hooks.clone()))]
+    }
+
+    fn post_tool_exec_hooks(&self) -> Vec<Arc<dyn everruns_core::atoms::PostToolExecHook>> {
+        vec![Arc::new(CountingPostHook(self.hooks.clone()))]
+    }
+
+    fn commands(&self) -> Vec<CommandDescriptor> {
+        vec![CommandDescriptor {
+            name: "live".to_string(),
+            description: "Live command".to_string(),
+            args: vec![],
+            source: CommandSource::System,
+        }]
+    }
+
+    fn mcp_servers(&self) -> ScopedMcpServers {
+        scoped_servers()
+    }
+
+    fn validate_config(&self, config: &Value) -> std::result::Result<(), String> {
+        if config.get("enabled").and_then(Value::as_bool) == Some(true) {
+            Ok(())
+        } else {
+            Err("enabled must be true".to_string())
+        }
+    }
+}
+
 #[tokio::test]
 async fn runtime_discovers_and_executes_scoped_mcp_tool() {
     let traffic = Arc::new(Mutex::new(McpTraffic::default()));
@@ -170,4 +294,163 @@ async fn runtime_discovers_and_executes_scoped_mcp_tool() {
         vec!["echo".to_string()],
         "the mcp_docs__echo call should be routed out as a tools/call for 'echo'"
     );
+}
+
+#[tokio::test]
+async fn live_capability_activation_and_deactivation_refresh_every_surface() {
+    let traffic = Arc::new(Mutex::new(McpTraffic::default()));
+    let hooks = Arc::new(HookCounts::default());
+    let mut capabilities = CapabilityRegistry::with_builtins();
+    capabilities.register(LiveCapability {
+        hooks: hooks.clone(),
+    });
+    let platform = PlatformDefinition::builder()
+        .capability_registry(capabilities)
+        .driver_registry(DriverRegistry::new())
+        .egress_service(Arc::new(FakeMcpEgress {
+            traffic: traffic.clone(),
+        }))
+        .build();
+
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(platform)
+        .llm_sim(LlmSimConfig::scripted(vec![
+            SimTurn::Assistant("before activation".to_string()),
+            SimTurn::ToolCalls(vec![
+                SimToolCall {
+                    name: "live_echo".to_string(),
+                    arguments: json!({ "value": "hello" }),
+                    id: None,
+                },
+                SimToolCall {
+                    name: "mcp_docs__echo".to_string(),
+                    arguments: json!({ "message": "hi" }),
+                    id: None,
+                },
+            ]),
+            SimTurn::Assistant("after live tools".to_string()),
+            SimTurn::Assistant("after deactivation".to_string()),
+        ]))
+        .single_session(|session| {
+            session
+                .harness("live", "Base prompt")
+                .agent("live-agent", "Base agent prompt")
+                .agent_max_iterations(8)
+        })
+        .build()
+        .await
+        .expect("runtime builds");
+    let session_id = runtime.default_session_id().expect("session id");
+
+    runtime
+        .run_text_turn(session_id, "Before activation")
+        .await
+        .expect("initial turn runs");
+    let before = runtime.load_context(session_id).await.unwrap();
+    assert!(
+        !before
+            .runtime_agent
+            .system_prompt
+            .contains("LIVE_CAPABILITY_PROMPT")
+    );
+    assert!(
+        !before
+            .runtime_agent
+            .tools
+            .iter()
+            .any(|tool| tool.name() == "live_echo")
+    );
+    assert!(runtime.list_commands(session_id).await.unwrap().is_empty());
+    assert_eq!(traffic.lock().unwrap().tools_list_calls, 0);
+
+    let invalid = runtime
+        .activate_capability(session_id, AgentCapabilityConfig::new("live_test"))
+        .await
+        .expect_err("invalid config must fail before mutation");
+    assert!(invalid.to_string().contains("enabled must be true"));
+
+    let delta = runtime
+        .activate_capability(
+            session_id,
+            AgentCapabilityConfig::with_config("live_test", json!({ "enabled": true })),
+        )
+        .await
+        .expect("activation succeeds");
+    assert!(delta.changed && delta.active && delta.surfaces_dirty);
+    let duplicate = runtime
+        .activate_capability(
+            session_id,
+            AgentCapabilityConfig::with_config("live_test", json!({ "enabled": true })),
+        )
+        .await
+        .expect("activation is idempotent");
+    assert!(!duplicate.changed && duplicate.active && !duplicate.surfaces_dirty);
+
+    let active = runtime.load_context(session_id).await.unwrap();
+    assert!(
+        active
+            .runtime_agent
+            .system_prompt
+            .contains("LIVE_CAPABILITY_PROMPT")
+    );
+    assert!(
+        active
+            .runtime_agent
+            .tools
+            .iter()
+            .any(|tool| tool.name() == "live_echo")
+    );
+    assert_eq!(
+        runtime.list_commands(session_id).await.unwrap()[0].name,
+        "live"
+    );
+
+    let live_turn = runtime
+        .run_text_turn(session_id, "Use the live tools")
+        .await
+        .expect("live turn runs");
+    assert!(live_turn.success);
+    assert_eq!(traffic.lock().unwrap().tools_call_names, vec!["echo"]);
+    assert_eq!(hooks.pre.load(Ordering::SeqCst), 2);
+    assert_eq!(hooks.post.load(Ordering::SeqCst), 2);
+
+    let delta = runtime
+        .deactivate_capability(session_id, "live_test")
+        .await
+        .expect("deactivation succeeds");
+    assert!(delta.changed && !delta.active && delta.surfaces_dirty);
+    let duplicate = runtime
+        .deactivate_capability(session_id, "live_test")
+        .await
+        .expect("deactivation is idempotent");
+    assert!(!duplicate.changed && !duplicate.active && !duplicate.surfaces_dirty);
+
+    let inactive = runtime.load_context(session_id).await.unwrap();
+    assert!(
+        !inactive
+            .runtime_agent
+            .system_prompt
+            .contains("LIVE_CAPABILITY_PROMPT")
+    );
+    assert!(
+        !inactive
+            .runtime_agent
+            .tools
+            .iter()
+            .any(|tool| tool.name() == "live_echo")
+    );
+    assert!(runtime.list_commands(session_id).await.unwrap().is_empty());
+    runtime
+        .run_text_turn(session_id, "After deactivation")
+        .await
+        .expect("post-deactivation turn runs");
+    assert_eq!(hooks.pre.load(Ordering::SeqCst), 2);
+    assert_eq!(hooks.post.load(Ordering::SeqCst), 2);
+    assert_eq!(traffic.lock().unwrap().tools_call_names, vec!["echo"]);
+
+    let unknown = runtime
+        .activate_capability(session_id, "does_not_exist")
+        .await
+        .expect_err("unknown capability must fail");
+    assert!(unknown.to_string().contains("unknown capability"));
 }
