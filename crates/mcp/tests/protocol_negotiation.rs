@@ -36,7 +36,13 @@ struct Recorded {
 #[derive(Clone, Copy, PartialEq)]
 enum ServerKind {
     StatelessRc,
-    Stateful { version: &'static str },
+    Stateful {
+        version: &'static str,
+    },
+    RejectsRc {
+        version: &'static str,
+        stable_failure: bool,
+    },
 }
 
 /// A scripted MCP server over the egress boundary.
@@ -117,34 +123,65 @@ impl EgressService for ScriptedEgress {
                 "tools/call" => Ok(Self::ok(call)),
                 _ => Ok(Self::ok(json!({ "jsonrpc": "2.0", "id": 1, "result": {} }))),
             },
-            ServerKind::Stateful { version } => match method.as_str() {
-                "initialize" => {
-                    let mut headers = BTreeMap::new();
-                    headers.insert("Mcp-Session-Id".to_string(), self.session_id.to_string());
-                    Ok(EgressResponse {
-                        status: 200,
-                        headers,
-                        body: serde_json::to_vec(&json!({
-                            "jsonrpc": "2.0", "id": 0,
-                            "result": { "protocolVersion": version, "capabilities": {} }
+            kind => {
+                let (version, stable_failure, stateless_rejection) = match kind {
+                    ServerKind::Stateful { version } => (
+                        version,
+                        false,
+                        b"Bad Request: Mcp-Session-Id header is required".to_vec(),
+                    ),
+                    ServerKind::RejectsRc {
+                        version,
+                        stable_failure,
+                    } => (
+                        version,
+                        stable_failure,
+                        serde_json::to_vec(&json!({
+                            "jsonrpc": "2.0",
+                            "id": 1,
+                            "error": {
+                                "code": -32600,
+                                "message": "Bad Request: Unsupported protocol version: 2026-07-28 (supported versions include 2025-06-18)"
+                            }
                         }))
                         .unwrap(),
-                    })
+                    ),
+                    ServerKind::StatelessRc => unreachable!(),
+                };
+                match method.as_str() {
+                    "initialize" => {
+                        let mut headers = BTreeMap::new();
+                        headers.insert("Mcp-Session-Id".to_string(), self.session_id.to_string());
+                        Ok(EgressResponse {
+                            status: 200,
+                            headers,
+                            body: serde_json::to_vec(&json!({
+                                "jsonrpc": "2.0", "id": 0,
+                                "result": { "protocolVersion": version, "capabilities": {} }
+                            }))
+                            .unwrap(),
+                        })
+                    }
+                    "notifications/initialized" => Ok(EgressResponse {
+                        status: 202,
+                        headers: BTreeMap::new(),
+                        body: Vec::new(),
+                    }),
+                    "tools/list" | "tools/call" if !has_session => Ok(EgressResponse {
+                        status: 400,
+                        headers: BTreeMap::new(),
+                        body: stateless_rejection,
+                    }),
+                    "tools/list" | "tools/call" if stable_failure => Ok(EgressResponse {
+                        status: 400,
+                        headers: BTreeMap::new(),
+                        body: b"stable request rejected".to_vec(),
+                    }),
+                    "tools/list" => Ok(Self::ok(tools)),
+                    "tools/call" => Ok(Self::ok(call)),
+                    _ => Ok(Self::ok(json!({ "jsonrpc": "2.0", "id": 1, "result": {} }))),
                 }
-                "notifications/initialized" => Ok(EgressResponse {
-                    status: 202,
-                    headers: BTreeMap::new(),
-                    body: Vec::new(),
-                }),
-                "tools/list" | "tools/call" if !has_session => Ok(EgressResponse {
-                    status: 400,
-                    headers: BTreeMap::new(),
-                    body: b"Bad Request: Mcp-Session-Id header is required".to_vec(),
-                }),
-                "tools/list" => Ok(Self::ok(tools)),
-                "tools/call" => Ok(Self::ok(call)),
-                _ => Ok(Self::ok(json!({ "jsonrpc": "2.0", "id": 1, "result": {} }))),
-            },
+            }
         }
     }
 
@@ -205,6 +242,76 @@ async fn auto_falls_back_to_handshake_for_stateful_server() {
     // The first attempt had no session; the retry echoes the captured session.
     assert!(!log[0].has_session);
     assert!(log[3].has_session, "retried list must carry the session id");
+}
+
+#[tokio::test]
+async fn auto_falls_back_when_authenticated_server_rejects_rc_protocol_version() {
+    let (egress, log) = ScriptedEgress::new(ServerKind::RejectsRc {
+        version: "2025-06-18",
+        stable_failure: false,
+    });
+    let auth = StaticAuthProvider::new().with_bearer("linear", "linear-token");
+    let tools = McpClient::new(egress, Arc::new(auth))
+        .discover(&McpConnection::http("linear", URL))
+        .await
+        .unwrap();
+    assert_eq!(tools.len(), 1);
+
+    let log = log.lock().unwrap();
+    let methods: Vec<&str> = log.iter().map(|request| request.method.as_str()).collect();
+    assert_eq!(
+        methods,
+        vec![
+            "tools/list",
+            "initialize",
+            "notifications/initialized",
+            "tools/list"
+        ],
+        "the rejected RC probe must cause exactly one stateful retry"
+    );
+    assert!(
+        log.iter()
+            .all(|request| request.authorization.as_deref() == Some("Bearer linear-token")),
+        "authentication must be preserved across the fallback"
+    );
+    assert_eq!(log[0].protocol_header.as_deref(), Some("2026-07-28"));
+    assert_eq!(log[3].protocol_header.as_deref(), Some("2025-06-18"));
+    assert!(
+        log[3].has_session,
+        "the stable retry must carry the session id"
+    );
+}
+
+#[tokio::test]
+async fn auto_reports_rc_probe_and_stable_fallback_failures() {
+    let (egress, log) = ScriptedEgress::new(ServerKind::RejectsRc {
+        version: "2025-06-18",
+        stable_failure: true,
+    });
+    let error = client(egress)
+        .discover(&McpConnection::http("linear", URL))
+        .await
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("MCP RC probe failed"));
+    assert!(error.contains("Unsupported protocol version: 2026-07-28"));
+    assert!(error.contains("stable fallback failed: 400 - stable request rejected"));
+    let log = log.lock().unwrap();
+    assert_eq!(
+        log.iter()
+            .filter(|request| request.method == "initialize")
+            .count(),
+        1,
+        "a failed fallback must not restart negotiation"
+    );
+    assert_eq!(
+        log.iter()
+            .filter(|request| request.method == "tools/list")
+            .count(),
+        2,
+        "the operation must be retried exactly once"
+    );
 }
 
 #[tokio::test]
@@ -282,6 +389,25 @@ async fn pinned_legacy_handshakes_first_without_a_stateless_probe() {
             .take_while(|r| r.method != "initialize")
             .any(|r| r.method == "tools/list"),
         "no stateless probe should precede the pinned handshake"
+    );
+}
+
+#[tokio::test]
+async fn pinned_stable_handshakes_first_without_a_stateless_probe() {
+    let (egress, log) = ScriptedEgress::new(ServerKind::Stateful {
+        version: "2025-06-18",
+    });
+    let connection = McpConnection::http("docs", URL).with_protocol_mode(McpProtocolMode::Stable);
+    client(egress).discover(&connection).await.unwrap();
+
+    let log = log.lock().unwrap();
+    assert_eq!(log[0].method, "initialize");
+    assert_eq!(log[0].protocol_header.as_deref(), Some("2025-06-18"));
+    assert_eq!(
+        log.iter()
+            .filter(|request| request.method == "initialize")
+            .count(),
+        1
     );
 }
 

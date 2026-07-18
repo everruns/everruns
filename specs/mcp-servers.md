@@ -60,7 +60,7 @@ config when `auto`, so existing configuration is byte-identical.
 
 | Mode | Behavior |
 |------|----------|
-| `auto` (default) | Probe and adapt. Tries the stateless RC path first; on a response that signals the server needs a session (e.g. HTTP 400 mentioning `Mcp-Session-Id`, or a "not initialized" JSON-RPC error), transparently runs the handshake and retries. The verdict (era + session id) is cached per server for a short TTL so a `tools/list` + `tools/call` pair negotiates once. |
+| `auto` (default) | Probe and adapt. Tries the stateless RC path first; on a response that signals the server needs a session (e.g. HTTP 400 mentioning `Mcp-Session-Id`, a "not initialized" JSON-RPC error, or an explicit unsupported/invalid protocol-version rejection), transparently runs the stable handshake and retries once. The verdict (era + session id) is cached per server for a short TTL so a `tools/list` + `tools/call` pair negotiates once. If the fallback also fails, the error reports both failures. |
 | `legacy` | Pin `2025-03-26`; always handshake first. |
 | `stable` | Pin `2025-06-18`; always handshake first. |
 | `rc` | Pin `2026-07-28`; never handshake. |

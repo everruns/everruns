@@ -144,6 +144,19 @@ pub fn looks_like_handshake_required(status: u16, body: &str) -> bool {
     {
         return true;
     }
+    // Some stable servers reject the optimistic RC header before they can
+    // report a session requirement. Keep this limited to explicit protocol
+    // version language so unrelated validation failures do not trigger a retry.
+    if status == 400
+        && (lower.contains("protocol version")
+            || lower.contains("protocol-version")
+            || lower.contains("protocolversion"))
+        && (lower.contains("unsupported")
+            || lower.contains("not supported")
+            || lower.contains("invalid"))
+    {
+        return true;
+    }
     // JSON-RPC-level signals (may arrive on a 200).
     lower.contains("server not initialized")
         || lower.contains("session required")
@@ -251,7 +264,7 @@ mod tests {
     }
 
     #[test]
-    fn handshake_detection_triggers_on_session_signals_only() {
+    fn handshake_detection_requires_explicit_fallback_signals() {
         assert!(looks_like_handshake_required(
             400,
             "Bad Request: Mcp-Session-Id header is required"
@@ -260,8 +273,20 @@ mod tests {
             200,
             r#"{"error":{"code":-32600,"message":"Server not initialized"}}"#
         ));
+        assert!(looks_like_handshake_required(
+            400,
+            r#"{"jsonrpc":"2.0","id":1,"error":{"code":-32600,"message":"Unsupported protocol version: 2026-07-28"}}"#
+        ));
+        assert!(looks_like_handshake_required(
+            400,
+            "Invalid MCP-Protocol-Version header"
+        ));
         assert!(!looks_like_handshake_required(500, "internal server error"));
         assert!(!looks_like_handshake_required(400, "invalid arguments"));
+        assert!(!looks_like_handshake_required(
+            400,
+            "unsupported tool argument"
+        ));
     }
 
     #[test]
