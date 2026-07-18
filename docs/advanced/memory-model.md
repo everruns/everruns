@@ -10,6 +10,8 @@ Everruns separates **where the agent works** from **what the agent remembers acr
 
 These two tiers are intentional. Workspace is where an agent does its current task; Memory is where the org persists state it wants reused across tasks.
 
+For the shipped organization, agent, and user ownership tiers—including the private `/memory/user` and automatic `/memory/agent` mounts—see [Agent and user memory](/features/memory-scopes/).
+
 ## The two-axis grid
 
 Scope × surface, with the same surfaces appearing on both sides:
@@ -113,6 +115,7 @@ These exist in Everruns but live outside this model:
 
 ## Further reading
 
+- [Agent and user memory](/features/memory-scopes/) — scoped memory mounts, access, and privacy defaults
 - [`specs/memory.md`](https://github.com/everruns/everruns/blob/main/specs/memory.md) — durable design intent for the Memory tier
 - [`specs/workspace.md`](https://github.com/everruns/everruns/blob/main/specs/workspace.md) — Workspace specification (file surface, mount point, git VCS)
 - [`specs/knowledge-bases.md`](https://github.com/everruns/everruns/blob/main/specs/knowledge-bases.md) — curated org knowledge, the curation-first sibling of Memory
