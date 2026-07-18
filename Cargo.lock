@@ -2561,6 +2561,7 @@ dependencies = [
  "chrono",
  "eventsource-stream",
  "everruns-core",
+ "everruns-provider",
  "futures",
  "reqwest 0.13.4",
  "serde",
@@ -2595,7 +2596,7 @@ dependencies = [
  "aws-sdk-bedrockruntime",
  "aws-smithy-types",
  "base64 0.22.1",
- "everruns-core",
+ "everruns-provider",
  "futures",
  "serde",
  "serde_json",
@@ -2697,6 +2698,7 @@ dependencies = [
  "eventsource-stream",
  "everruns-a2ui",
  "everruns-openui",
+ "everruns-provider",
  "fetchkit",
  "futures",
  "globset",
@@ -2770,6 +2772,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
+ "everruns-provider",
  "futures",
  "reqwest 0.13.4",
  "serde",
@@ -2784,6 +2787,7 @@ version = "0.17.12"
 dependencies = [
  "async-trait",
  "everruns-core",
+ "everruns-provider",
  "futures",
  "reqwest 0.13.4",
  "serde",
@@ -2960,6 +2964,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-integrations-openai-image"
+version = "0.17.12"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "eventsource-stream",
+ "everruns-core",
+ "futures",
+ "inventory",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-integrations-parallel"
 version = "0.17.12"
 dependencies = [
@@ -3060,6 +3083,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
+ "everruns-provider",
  "futures",
  "reqwest 0.13.4",
  "serde",
@@ -3105,14 +3129,10 @@ dependencies = [
 name = "everruns-openai"
 version = "0.17.12"
 dependencies = [
- "anyhow",
  "async-trait",
- "base64 0.22.1",
  "chrono",
- "eventsource-stream",
  "everruns-core",
- "futures",
- "inventory",
+ "everruns-provider",
  "reqwest 0.13.4",
  "serde",
  "serde_json",
@@ -3128,6 +3148,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
+ "everruns-provider",
  "futures",
  "reqwest 0.13.4",
  "serde",
@@ -3139,6 +3160,35 @@ dependencies = [
 [[package]]
 name = "everruns-openui"
 version = "0.17.12"
+
+[[package]]
+name = "everruns-provider"
+version = "0.17.12"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.22.1",
+ "bytes",
+ "chrono",
+ "eventsource-stream",
+ "futures",
+ "hex",
+ "http 1.4.2",
+ "rand 0.10.2",
+ "regex",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "sha2 0.11.0",
+ "sqlx",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+ "utoipa",
+ "uuid 1.24.0",
+ "wiremock",
+]
 
 [[package]]
 name = "everruns-runtime"
@@ -3216,6 +3266,7 @@ dependencies = [
  "everruns-integrations-duckduckgo",
  "everruns-integrations-e2b",
  "everruns-integrations-github",
+ "everruns-integrations-openai-image",
  "everruns-integrations-parallel",
  "everruns-integrations-sprites",
  "everruns-internal-protocol",
@@ -3336,6 +3387,7 @@ dependencies = [
  "everruns-integrations-duckduckgo",
  "everruns-integrations-e2b",
  "everruns-integrations-github",
+ "everruns-integrations-openai-image",
  "everruns-integrations-parallel",
  "everruns-integrations-sprites",
  "everruns-internal-protocol",

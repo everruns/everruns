@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use everruns_core::driver_helpers::shared_request_http_client;
-use everruns_core::llm_retry::{LlmRetryConfig, is_transient_error};
-use everruns_core::{EmbedRequest, EmbedResponse, EmbeddingsDriver, EmbeddingsDriverError};
+use everruns_provider::driver_helpers::shared_request_http_client;
+use everruns_provider::llm_retry::{LlmRetryConfig, is_transient_error};
+use everruns_provider::{EmbedRequest, EmbedResponse, EmbeddingsDriver, EmbeddingsDriverError};
 use serde::{Deserialize, Serialize};
 
 /// Embeddings driver for OpenAI's `/v1/embeddings` endpoint.

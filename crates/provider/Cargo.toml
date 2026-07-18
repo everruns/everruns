@@ -1,0 +1,66 @@
+# Everruns Provider Abstraction
+# Decision: Foundation crate that holds the driver-facing types the LLM provider
+# interface is built on (typed IDs, credential form schema, user-facing error
+# taxonomy, OpenResponses wire types, URL validation). Extracted from
+# everruns-core so provider crates can depend on this instead of core. core
+# depends on this crate and re-exports these modules at their existing paths, so
+# the rest of the workspace is unaffected during the migration.
+
+[package]
+name = "everruns-provider"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-provider"
+description = "Provider/LLM abstraction foundation shared by Everruns core and provider crates"
+keywords = ["everruns", "llm", "provider", "ai", "agents"]
+categories = ["api-bindings", "asynchronous"]
+
+[dependencies]
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+
+# IDs / time / text
+uuid.workspace = true
+regex.workspace = true
+url = "2"
+chrono.workspace = true
+
+# Async + HTTP (shared protocol drivers, retry/stream helpers)
+async-trait.workspace = true
+futures.workspace = true
+tokio = { workspace = true, features = ["sync", "rt", "time", "net"] }
+reqwest = { workspace = true, features = ["json", "stream", "rustls", "blocking"] }
+eventsource-stream = "0.2"
+http = "1"
+bytes = "1"
+
+# Encoding / hashing / rng
+base64.workspace = true
+sha2.workspace = true
+hex.workspace = true
+rand.workspace = true
+
+# Errors / tracing
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+# Optional integrations, mirroring everruns-core's feature gating.
+utoipa = { workspace = true, optional = true }
+sqlx = { workspace = true, optional = true }
+
+[features]
+# OpenAPI schema derives (utoipa::ToSchema).
+openapi = ["dep:utoipa"]
+# sqlx Postgres encode/decode for TypedId.
+sqlx = ["dep:sqlx"]
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"

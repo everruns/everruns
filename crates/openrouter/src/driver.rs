@@ -11,15 +11,15 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::TimeZone;
 
-use everruns_core::OpenResponsesProtocolChatDriver;
-use everruns_core::credential_schema::CredentialFormSchema;
-use everruns_core::driver_helpers::fetch_models;
-use everruns_core::driver_registry::{
+use everruns_provider::OpenResponsesProtocolChatDriver;
+use everruns_provider::credential_schema::CredentialFormSchema;
+use everruns_provider::driver_helpers::fetch_models;
+use everruns_provider::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
     LlmCallConfig, LlmMessage, LlmResponseStream,
 };
-use everruns_core::error::Result;
-use everruns_core::openai_protocol::{
+use everruns_provider::error::Result;
+use everruns_provider::openai_protocol::{
     apply_models_api_auth, models_url_for_api_url, normalize_api_url, url_host_eq,
 };
 
@@ -173,7 +173,7 @@ fn is_openrouter_api_url(api_url: &str) -> bool {
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::DriverRegistry;
+/// use everruns_provider::DriverRegistry;
 /// use everruns_openrouter::register_driver;
 ///
 /// let mut registry = DriverRegistry::new();
@@ -188,7 +188,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
         // OpenRouter supports a one-click PKCE flow that hands back a
         // user-controlled API key, so an admin can connect without minting and
         // pasting a key manually. The key is stored like any other credential.
-        oauth: Some(everruns_core::DriverOAuthConfig::openrouter()),
+        oauth: Some(everruns_provider::DriverOAuthConfig::openrouter()),
         ..DriverDescriptor::chat_only(DriverId::OpenRouter, |config| {
             let api_key = config.api_key.as_deref().unwrap_or("");
             let driver = match config.base_url.as_deref() {
@@ -203,7 +203,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::driver_registry::{DriverId, ProviderConfig, ServiceKind};
+    use everruns_provider::driver_registry::{DriverId, ProviderConfig, ServiceKind};
 
     #[test]
     fn test_openrouter_driver_defaults_to_responses_api() {
@@ -291,7 +291,10 @@ mod tests {
             .oauth
             .as_ref()
             .expect("OpenRouter declares an OAuth connect flow");
-        assert_eq!(oauth.flow, everruns_core::DriverOAuthFlow::OpenRouterPkce);
+        assert_eq!(
+            oauth.flow,
+            everruns_provider::DriverOAuthFlow::OpenRouterPkce
+        );
         assert_eq!(oauth.authorize_url, "https://openrouter.ai/auth");
         assert_eq!(oauth.token_url, "https://openrouter.ai/api/v1/auth/keys");
     }

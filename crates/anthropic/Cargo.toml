@@ -43,9 +43,11 @@ tracing.workspace = true
 # default-features = false sheds core's heavy optional subtrees
 # (telemetry/OTLP, a2a gRPC, web-fetch/fetchkit) that this provider does not
 # need, keeping the standalone crate's dependency tree small.
-everruns-core = { path = "../core", version = "0.17.12", default-features = false }
+everruns-provider = { path = "../provider", version = "0.17.12" }
 
 [dev-dependencies]
+# Integration tests use core's in-memory runtime + llmsim harness.
+everruns-core = { path = "../core" }
 tokio = { workspace = true, features = ["full", "test-util"] }
 # wiremock serves the golden streaming SSE fixtures; futures drains the stream.
 wiremock = "0.6"

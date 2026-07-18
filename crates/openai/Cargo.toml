@@ -19,16 +19,13 @@ categories = ["api-bindings", "asynchronous"]
 
 [dependencies]
 # Core dependencies
-anyhow.workspace = true
 async-trait.workspace = true
 
 # Async runtime
 tokio.workspace = true
-futures.workspace = true
 
 # HTTP client
-reqwest = { workspace = true, features = ["multipart"] }
-eventsource-stream.workspace = true
+reqwest.workspace = true
 
 # Serialization
 serde.workspace = true
@@ -36,18 +33,18 @@ serde_json.workspace = true
 
 # Date/time
 chrono.workspace = true
-base64.workspace = true
 
 # Tracing
 tracing.workspace = true
-inventory.workspace = true
 
 # Internal dependencies
 # default-features = false sheds core's heavy optional subtrees
 # (telemetry/OTLP, a2a gRPC, web-fetch/fetchkit) that this provider does not
 # need, keeping the standalone crate's dependency tree small.
-everruns-core = { path = "../core", version = "0.17.12", default-features = false }
+everruns-provider = { path = "../provider", version = "0.17.12" }
 
 [dev-dependencies]
+# Integration tests use core's in-memory runtime + llmsim harness.
+everruns-core = { path = "../core" }
 tokio = { workspace = true, features = ["full", "test-util"] }
 wiremock = "0.6"

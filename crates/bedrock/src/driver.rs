@@ -20,14 +20,14 @@ use aws_sdk_bedrockruntime::types::{
 };
 use aws_smithy_types::Document;
 use base64::prelude::*;
-use everruns_core::credential_schema::{CredentialFormSchema, FormField};
-use everruns_core::driver_registry::{
+use everruns_provider::credential_schema::{CredentialFormSchema, FormField};
+use everruns_provider::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverId,
     DriverRegistry, LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage,
     LlmMessageContent, LlmMessageRole, LlmResponseStream, LlmStreamEvent,
 };
-use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
-use everruns_core::tool_types::{ToolCall, ToolDefinition};
+use everruns_provider::error::{AgentLoopError, LlmErrorKind, Result};
+use everruns_provider::tool_types::{ToolCall, ToolDefinition};
 use serde_json::Value;
 use std::collections::HashMap;
 use tokio_stream::wrappers::ReceiverStream;
@@ -733,7 +733,7 @@ mod tests {
 
     #[test]
     fn test_build_messages_system_extracted() {
-        use everruns_core::driver_registry::{LlmMessage, LlmMessageContent, LlmMessageRole};
+        use everruns_provider::driver_registry::{LlmMessage, LlmMessageContent, LlmMessageRole};
         let messages = vec![
             LlmMessage {
                 role: LlmMessageRole::System,
@@ -766,7 +766,7 @@ mod tests {
         // (infinity_context / compaction) must both survive as system blocks, in
         // order — the later one must not overwrite the agent system prompt. No
         // System-role message may leak into the conversation messages.
-        use everruns_core::driver_registry::{LlmMessage, LlmMessageRole};
+        use everruns_provider::driver_registry::{LlmMessage, LlmMessageRole};
         let messages = vec![
             LlmMessage::text(LlmMessageRole::System, "A"),
             LlmMessage::text(LlmMessageRole::User, "hi"),
@@ -787,7 +787,7 @@ mod tests {
 
     #[test]
     fn test_build_tool_result_block_missing_id_returns_none() {
-        use everruns_core::driver_registry::{LlmMessage, LlmMessageContent, LlmMessageRole};
+        use everruns_provider::driver_registry::{LlmMessage, LlmMessageContent, LlmMessageRole};
         let msg = LlmMessage {
             role: LlmMessageRole::Tool,
             content: LlmMessageContent::Text("result".to_string()),

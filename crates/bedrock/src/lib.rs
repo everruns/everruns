@@ -13,7 +13,7 @@
 //!
 //! ```
 //! use everruns_bedrock::{BedrockChatDriver, register_driver};
-//! use everruns_core::DriverRegistry;
+//! use everruns_provider::DriverRegistry;
 //!
 //! let mut registry = DriverRegistry::new();
 //! register_driver(&mut registry);
@@ -24,4 +24,4 @@ mod driver;
 
 pub use driver::{BedrockChatDriver, register_driver};
 
-pub use everruns_core::driver_registry::{ChatDriver, DriverRegistry};
+pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};

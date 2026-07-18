@@ -20,24 +20,24 @@ use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
-use everruns_core::credential_schema::CredentialFormSchema;
-use everruns_core::driver_helpers::{
+use everruns_provider::credential_schema::CredentialFormSchema;
+use everruns_provider::driver_helpers::{
     self, ANTHROPIC_NOT_FOUND_PATTERNS, ANTHROPIC_TOO_LARGE_PATTERNS, AUDIO_CONTENT_PLACEHOLDER,
     parse_data_url,
 };
-use everruns_core::driver_registry::{
+use everruns_provider::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmResponseStream, LlmStreamEvent, fold_system_messages,
 };
-use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
-use everruns_core::is_provider_quota_message;
-use everruns_core::llm_retry::{
+use everruns_provider::error::{AgentLoopError, LlmErrorKind, Result};
+use everruns_provider::is_provider_quota_message;
+use everruns_provider::llm_retry::{
     LlmRetryConfig, RateLimitInfo, RetryDecision, RetryMetadata, SendOutcome, is_rate_limit_status,
     retry_request, send_error_message,
 };
-use everruns_core::stream_reconnect::connect_sse_with_reconnect;
-use everruns_core::tool_types::{DeferrablePolicy, ToolCall, ToolDefinition};
+use everruns_provider::stream_reconnect::connect_sse_with_reconnect;
+use everruns_provider::tool_types::{DeferrablePolicy, ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_MODELS_URL: &str = "https://api.anthropic.com/v1/models";
@@ -684,8 +684,10 @@ impl ChatDriver for AnthropicChatDriver {
         // keep the flag for the header.
         let (wire_model, wants_million_context) = split_million_context(&config.model);
 
-        let profile =
-            everruns_core::get_model_profile(&everruns_core::DriverId::Anthropic, wire_model);
+        let profile = everruns_provider::get_model_profile(
+            &everruns_provider::DriverId::Anthropic,
+            wire_model,
+        );
 
         // Hosted tool_search (deferred tool loading) is gated on the Anthropic
         // model profile. When a hosted `ToolSearchConfig` is present and the
@@ -1138,7 +1140,7 @@ impl std::fmt::Debug for AnthropicChatDriver {
 /// # Example
 ///
 /// ```ignore
-/// use everruns_core::DriverRegistry;
+/// use everruns_provider::DriverRegistry;
 /// use everruns_anthropic::register_driver;
 ///
 /// let mut registry = DriverRegistry::new();
@@ -1346,7 +1348,7 @@ struct AnthropicOutputConfig {
 /// Claude families that use adaptive thinking. On Fable 5, Opus 4.8/4.7, and
 /// Sonnet 5 budget-based thinking is removed (400); on Opus 4.6 / Sonnet 4.6 it
 /// is deprecated and adaptive is the recommended form. Keep in sync with the
-/// adaptive-thinking profiles in `everruns_core::model_profiles`.
+/// adaptive-thinking profiles in `everruns_provider::model_profiles`.
 const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
     "claude-fable-5",
     "claude-opus-4-8",
@@ -1748,8 +1750,8 @@ impl AnthropicModelInfo {
     ///
     /// This profile contains limits and capability flags discovered from the API.
     /// Cost data is NOT available from the API and remains in hardcoded profiles.
-    fn to_discovered_profile(&self) -> everruns_core::model::ModelProfile {
-        use everruns_core::model::*;
+    fn to_discovered_profile(&self) -> everruns_provider::model::ModelProfile {
+        use everruns_provider::model::*;
 
         let caps = self.capabilities.as_ref();
 
@@ -1835,8 +1837,8 @@ impl AnthropicModelInfo {
     fn build_reasoning_effort(
         &self,
         caps: Option<&AnthropicModelCapabilities>,
-    ) -> Option<everruns_core::model::ReasoningEffortConfig> {
-        use everruns_core::model::*;
+    ) -> Option<everruns_provider::model::ReasoningEffortConfig> {
+        use everruns_provider::model::*;
 
         let thinking = caps?.thinking.as_ref()?;
         if !thinking.supported {
@@ -1948,9 +1950,9 @@ impl AnthropicModelInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::driver_registry::ChatDriver;
-    use everruns_core::model::Modality;
-    use everruns_core::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
+    use everruns_provider::driver_registry::ChatDriver;
+    use everruns_provider::model::Modality;
+    use everruns_provider::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
 
     #[test]
     fn supports_parallel_tool_calls_is_true() {
@@ -2411,7 +2413,7 @@ mod tests {
         let messages = vec![LlmMessage {
             role: LlmMessageRole::Assistant,
             content: LlmMessageContent::Text(String::new()),
-            tool_calls: Some(vec![everruns_core::tool_types::ToolCall {
+            tool_calls: Some(vec![everruns_provider::tool_types::ToolCall {
                 id: "call_123".to_string(),
                 name: "get_weather".to_string(),
                 arguments: serde_json::json!({"city": "London"}),
@@ -3005,8 +3007,8 @@ mod tests {
     #[test]
     fn test_default_max_tokens_from_known_model() {
         // Known Anthropic models should resolve max_tokens from profile
-        let profile = everruns_core::get_model_profile(
-            &everruns_core::DriverId::Anthropic,
+        let profile = everruns_provider::get_model_profile(
+            &everruns_provider::DriverId::Anthropic,
             "claude-sonnet-4-5-20250514",
         );
         assert!(profile.is_some(), "claude-sonnet-4-5 should have a profile");
@@ -3023,8 +3025,8 @@ mod tests {
     #[test]
     fn test_default_max_tokens_unknown_model_falls_back() {
         // Unknown model should return None (triggering the 16384 fallback)
-        let profile = everruns_core::get_model_profile(
-            &everruns_core::DriverId::Anthropic,
+        let profile = everruns_provider::get_model_profile(
+            &everruns_provider::DriverId::Anthropic,
             "nonexistent-model-xyz",
         );
         assert!(profile.is_none(), "unknown model should not have a profile");
