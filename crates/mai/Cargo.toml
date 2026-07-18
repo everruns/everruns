@@ -41,7 +41,7 @@ tracing.workspace = true
 # (telemetry/OTLP, a2a gRPC, web-fetch/fetchkit) that this provider does not
 # need, keeping the dependency tree small. No version pin: this crate is not in
 # the publish set, so it follows the unpublished-crate convention (path only).
-everruns-provider = { path = "../provider", version = "0.17.12" }
+everruns-provider = { path = "../provider" }
 
 [dev-dependencies]
 # Integration tests use core's in-memory runtime + llmsim harness.

@@ -11,7 +11,7 @@ Two modes:
 
 The pin set mirrors `dependency_versions` in
 `.github/workflows/publish-crates.yml` and `workspace.dependencies` in
-`Cargo.toml` (everruns-core).
+`Cargo.toml` (everruns-core, everruns-provider).
 """
 
 from __future__ import annotations
@@ -34,11 +34,11 @@ INNER_PINS: dict[str, list[str]] = {
     "crates/mcp/Cargo.toml": ["everruns-core"],
     "crates/runtime/Cargo.toml": ["everruns-core"],
     "crates/local/Cargo.toml": ["everruns-core", "everruns-runtime"],
-    "crates/openai/Cargo.toml": ["everruns-core"],
-    "crates/anthropic/Cargo.toml": ["everruns-core"],
-    "crates/openrouter/Cargo.toml": ["everruns-core"],
-    "crates/bedrock/Cargo.toml": ["everruns-core"],
-    "crates/gemini/Cargo.toml": ["everruns-core"],
+    "crates/openai/Cargo.toml": ["everruns-provider"],
+    "crates/anthropic/Cargo.toml": ["everruns-provider"],
+    "crates/openrouter/Cargo.toml": ["everruns-provider"],
+    "crates/bedrock/Cargo.toml": ["everruns-provider"],
+    "crates/gemini/Cargo.toml": ["everruns-provider"],
     "integrations/duckduckgo/Cargo.toml": ["everruns-core"],
     "integrations/github/Cargo.toml": ["everruns-core"],
     "integrations/daytona/Cargo.toml": ["everruns-core"],
@@ -53,7 +53,7 @@ INNER_PINS: dict[str, list[str]] = {
 }
 
 # Workspace.dependencies path pins (root Cargo.toml).
-WORKSPACE_PIN_DEPS: list[str] = ["everruns-core", "everruns-mcp", "everruns-runtime"]
+WORKSPACE_PIN_DEPS: list[str] = ["everruns-core", "everruns-provider", "everruns-mcp", "everruns-runtime"]
 
 
 def workspace_version() -> str:
