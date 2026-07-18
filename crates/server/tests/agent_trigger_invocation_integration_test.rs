@@ -193,6 +193,11 @@ async fn agent_trigger_binds_schedule_and_invokes_shared_session() {
         2,
         "both fires dispatched into the shared session"
     );
+
+    server
+        .delete(&format!("/v1/agent-identities/{identity_id}"))
+        .await
+        .assert_status(StatusCode::CONFLICT);
 }
 
 #[tokio::test]

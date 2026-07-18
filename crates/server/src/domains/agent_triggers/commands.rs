@@ -952,6 +952,16 @@ async fn ensure_identity_for_agent(
 
     // Already linked: ensure and return without ever creating a new identity.
     if let Some(identity_id) = agent.agent_identity_id {
+        let identity = db
+            .get_agent_identity(org_id, identity_id)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Agent identity not found"))?;
+        if identity.status != "active" {
+            anyhow::bail!(
+                "Agent identity {} is not active and cannot own new trigger sessions",
+                identity_id
+            );
+        }
         let principal = principals
             .default_owner_principal(&caller, Some(identity_id))
             .await?;

@@ -349,6 +349,29 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
+    pub async fn has_agent_with_identity(
+        &self,
+        org_id: i64,
+        agent_identity_id: AgentIdentityId,
+    ) -> Result<bool> {
+        let exists: Option<(i32,)> = sqlx::query_as(
+            r#"
+            SELECT 1
+            FROM agents
+            WHERE org_id = $1
+              AND agent_identity_id = $2
+              AND status != 'deleted'
+            LIMIT 1
+            "#,
+        )
+        .bind(org_id)
+        .bind(agent_identity_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(exists.is_some())
+    }
+
     pub async fn delete_agent(&self, org_id: i64, id: AgentId) -> Result<bool> {
         // Archive instead of hard delete
         let result = sqlx::query(
