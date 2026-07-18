@@ -281,11 +281,30 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
         }
 
         let outcome = trim_messages_to_token_budget(messages, &config);
-        let total_excluded_count = existing_notice_count.saturating_add(outcome.hidden_count);
+        let mut total_excluded_count = existing_notice_count.saturating_add(outcome.hidden_count);
         if total_excluded_count > 0 {
+            // The reduction must not leave a visible call whose result was
+            // evicted. Result-only deltas remain eligible here because a
+            // stateful Responses request may reference their calls through
+            // `previous_response_id`; ReasonAtom resolves that distinction at
+            // the final runtime boundary.
+            let head_ids: std::collections::HashSet<String> = messages
+                .iter()
+                .take(outcome.head_len)
+                .map(|message| message.id.to_string())
+                .collect();
+            let count_before_integrity = messages.len();
+            *messages =
+                crate::tool_call_integrity::retain_complete_message_tool_exchanges(messages, true);
+            total_excluded_count = total_excluded_count
+                .saturating_add(count_before_integrity.saturating_sub(messages.len()));
+            let retained_head_len = messages
+                .iter()
+                .take_while(|message| head_ids.contains(&message.id.to_string()))
+                .count();
             // Place the notice right after the anchored head so the layout reads
             // [task anchor] -> [N hidden] -> [recent window].
-            insert_excluded_notice(messages, outcome.head_len, total_excluded_count);
+            insert_excluded_notice(messages, retained_head_len, total_excluded_count);
         }
     }
 
@@ -1372,6 +1391,65 @@ mod tests {
         assert!(
             messages.iter().any(|m| m.role == MessageRole::ToolResult),
             "locally unmatched tool result must be preserved until provider serialization"
+        );
+
+        let llm_messages = messages
+            .iter()
+            .map(crate::llm_conversions::llm_message_from_message)
+            .collect();
+        let stateless_view =
+            crate::tool_call_integrity::retain_complete_llm_tool_exchanges_for_request(
+                llm_messages,
+                false,
+            );
+        assert!(
+            stateless_view
+                .iter()
+                .all(|message| message.tool_call_id.is_none()),
+            "a stateless runtime view must drop a result whose call was trimmed"
+        );
+    }
+
+    #[test]
+    fn trim_removes_a_visible_call_when_its_result_is_evicted() {
+        use crate::tool_types::ToolCall;
+
+        let provider = InfinityContextFilterProvider;
+        let mut messages = vec![
+            Message::user("original task"),
+            Message::assistant_with_tools(
+                "calling tool",
+                vec![ToolCall {
+                    id: "call_old".to_string(),
+                    name: "bash".to_string(),
+                    arguments: serde_json::json!({}),
+                }],
+            ),
+            Message::tool_result(
+                "call_old",
+                Some(serde_json::json!("large result ".repeat(500))),
+                None,
+            ),
+            Message::user("recent question"),
+            Message::assistant("recent answer"),
+        ];
+
+        provider.post_load(
+            &mut messages,
+            &serde_json::json!({
+                "context_budget_tokens": 1,
+                "min_recent_messages": 2,
+                "keep_first_messages": 2
+            }),
+        );
+
+        assert!(
+            messages
+                .iter()
+                .flat_map(Message::tool_calls)
+                .next()
+                .is_none(),
+            "the anchored assistant message must not retain a call after its result is hidden"
         );
     }
 

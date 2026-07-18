@@ -193,8 +193,9 @@ pub use compaction::{
     MaskingSummaryFormat, MemoryTier, ObservationMaskingConfig, ObservationMaskingResult,
     SessionCompactionMetrics, SummarizationConfig, aggressive_trim, apply_cost_control_masking,
     apply_hierarchical_memory, apply_observation_masking, build_model_view_messages,
-    build_summarization_prompt, build_summary_message, classify_memory_tiers, estimate_tokens,
-    estimate_total_tokens, format_messages_for_summarization, should_compact_proactively,
+    build_summarization_prompt, build_summary_message, classify_memory_tiers,
+    compose_summary_with_recent, estimate_tokens, estimate_total_tokens,
+    format_messages_for_summarization, should_compact_proactively,
 };
 pub use current_time::{CURRENT_TIME_CAPABILITY_ID, CurrentTimeCapability, GetCurrentTimeTool};
 pub use data_knowledge::{DATA_KNOWLEDGE_CAPABILITY_ID, DataKnowledgeCapability};
