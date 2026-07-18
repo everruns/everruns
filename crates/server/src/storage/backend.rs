@@ -621,6 +621,14 @@ impl StorageBackend {
         dispatch!(self, set_agent_identity_id, org_id, id, agent_identity_id)
     }
 
+    pub async fn has_agent_with_identity(
+        &self,
+        org_id: i64,
+        agent_identity_id: AgentIdentityId,
+    ) -> Result<bool> {
+        dispatch!(self, has_agent_with_identity, org_id, agent_identity_id)
+    }
+
     pub async fn delete_agent(&self, org_id: i64, id: AgentId) -> Result<bool> {
         dispatch!(self, delete_agent, org_id, id)
     }

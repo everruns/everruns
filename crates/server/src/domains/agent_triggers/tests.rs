@@ -500,3 +500,40 @@ async fn ensure_identity_for_agent_never_overrides_explicit_identity() {
         "set_agent_identity_id refuses to override an existing link"
     );
 }
+
+#[tokio::test]
+async fn ensure_identity_for_agent_rejects_archived_linked_identity() {
+    use crate::storage::models::CreateAgentIdentityRow;
+    use everruns_core::AgentIdentityId;
+
+    let db = Arc::new(StorageBackend::in_memory());
+    let mut agent = seed_agent_row(&db).await;
+
+    let identity_id = AgentIdentityId::new();
+    db.create_agent_identity(CreateAgentIdentityRow {
+        org_id: DEFAULT_ORG_ID,
+        id: identity_id,
+        name: "Archived".to_string(),
+        description: None,
+        avatar_url: None,
+        locale: None,
+        timezone: None,
+    })
+    .await
+    .unwrap();
+    db.set_agent_identity_id(DEFAULT_ORG_ID, agent.id, identity_id)
+        .await
+        .unwrap();
+    db.delete_agent_identity(DEFAULT_ORG_ID, identity_id)
+        .await
+        .unwrap();
+    agent.agent_identity_id = Some(identity_id);
+
+    let err = ensure_identity_for_agent(&db, DEFAULT_ORG_ID, &agent)
+        .await
+        .expect_err("archived identity must not own new trigger sessions");
+    assert!(
+        err.to_string().contains("is not active"),
+        "unexpected error: {err:#}"
+    );
+}

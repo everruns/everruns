@@ -329,6 +329,18 @@ impl InMemoryDatabase {
         Ok(false)
     }
 
+    pub async fn has_agent_with_identity(
+        &self,
+        org_id: i64,
+        agent_identity_id: AgentIdentityId,
+    ) -> Result<bool> {
+        Ok(self.agents.read().values().any(|agent| {
+            agent.org_id == org_id
+                && agent.agent_identity_id == Some(agent_identity_id)
+                && agent.status != "deleted"
+        }))
+    }
+
     pub async fn delete_agent(&self, org_id: i64, id: AgentId) -> Result<bool> {
         let mut agents = self.agents.write();
         if let Some(agent) = agents.get_mut(&id) {

@@ -282,6 +282,31 @@ impl Command for UpdateAgentIdentityCmd {
 
 inventory::submit! { CommandDescriptor::of::<UpdateAgentIdentityCmd>() }
 
+async fn ensure_no_live_references(
+    ctx: &Ctx,
+    identity_id: AgentIdentityId,
+) -> Result<(), CommandError> {
+    crate::domains::apps::queries::ensure_no_app_references_to_agent_identity(
+        &ctx.db,
+        ctx.org_id(),
+        identity_id.uuid(),
+    )
+    .await?;
+
+    if ctx
+        .db
+        .has_agent_with_identity(ctx.org_id(), identity_id)
+        .await
+        .map_err(classify_anyhow)?
+    {
+        return Err(CommandError::conflict(
+            "Cannot archive or delete agent identity while agents still reference it",
+        ));
+    }
+
+    Ok(())
+}
+
 // ============================================================================
 // DeleteAgentIdentity
 // ============================================================================
@@ -320,12 +345,7 @@ impl Command for DeleteAgentIdentity {
             .parse()
             .map_err(|e| CommandError::bad_request(format!("Invalid identity ID: {e}")))?;
 
-        crate::domains::apps::queries::ensure_no_app_references_to_agent_identity(
-            &ctx.db,
-            ctx.org_id(),
-            identity_id.uuid(),
-        )
-        .await?;
+        ensure_no_live_references(ctx, identity_id).await?;
 
         let deleted = ctx
             .db
@@ -385,12 +405,7 @@ impl Command for DestroyAgentIdentity {
             .parse()
             .map_err(|e| CommandError::bad_request(format!("Invalid identity ID: {e}")))?;
 
-        crate::domains::apps::queries::ensure_no_app_references_to_agent_identity(
-            &ctx.db,
-            ctx.org_id(),
-            identity_id.uuid(),
-        )
-        .await?;
+        ensure_no_live_references(ctx, identity_id).await?;
 
         let destroyed = ctx
             .db
