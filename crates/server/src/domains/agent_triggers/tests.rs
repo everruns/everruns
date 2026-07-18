@@ -77,6 +77,84 @@ fn create_req(cron: &str, message: &str, enabled: bool) -> CreateAgentTriggerReq
     }
 }
 
+#[tokio::test]
+async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let agent_harness_id = everruns_core::HarnessId::from_seed(10);
+    let app_harness_id = everruns_core::HarnessId::from_seed(20);
+    let owner_principal_id = everruns_core::PrincipalId::from_seed(30);
+    let resolved_owner_user_id = Some(uuid::Uuid::from_u128(40));
+    let agent_identity_id = Some(everruns_core::AgentIdentityId::from_uuid(
+        uuid::Uuid::from_u128(50),
+    ));
+    let app_id = Some(uuid::Uuid::from_u128(60));
+    let now = chrono::Utc::now();
+    let agent = crate::storage::models::AgentRow {
+        id: AgentId::from_uuid(uuid::Uuid::from_u128(70)),
+        public_id: AgentId::from_uuid(uuid::Uuid::from_u128(71)).to_string(),
+        org_id: DEFAULT_ORG_ID,
+        name: "trigger-agent".to_string(),
+        display_name: None,
+        description: None,
+        system_prompt: String::new(),
+        default_model_id: None,
+        harness_id: agent_harness_id,
+        agent_identity_id: None,
+        default_version_id: None,
+        forked_from_agent_id: None,
+        forked_from_version_id: None,
+        root_agent_id: None,
+        tags: vec![],
+        status: "active".to_string(),
+        created_at: now,
+        updated_at: now,
+        archived_at: None,
+        deleted_at: None,
+        initial_files: serde_json::json!([]),
+        tools: serde_json::json!([]),
+        mcp_servers: serde_json::json!({}),
+        network_access: None,
+        max_iterations: None,
+        parallel_tool_calls: None,
+        total_input_tokens: 0,
+        total_output_tokens: 0,
+        total_cache_read_tokens: 0,
+        total_cache_creation_tokens: 0,
+        total_actual_cost_usd: 0.0,
+        total_estimated_cost_usd: 0.0,
+        total_cost_usd: 0.0,
+    };
+    let trigger = crate::storage::models::AgentTriggerRow {
+        id: everruns_core::TriggerId::from_uuid(uuid::Uuid::from_u128(80)),
+        org_id: DEFAULT_ORG_ID,
+        agent_id: agent.id,
+        trigger_type: "schedule".to_string(),
+        config: serde_json::json!({}),
+        enabled: true,
+        durable_schedule_id: None,
+        execution_harness_id: Some(app_harness_id),
+        execution_owner_principal_id: Some(owner_principal_id),
+        execution_resolved_owner_user_id: resolved_owner_user_id,
+        execution_agent_identity_id: agent_identity_id,
+        execution_app_id: app_id,
+        status: "active".to_string(),
+        created_at: now,
+        updated_at: now,
+        archived_at: None,
+        deleted_at: None,
+    };
+
+    let context = resolve_trigger_execution_context(&db, DEFAULT_ORG_ID, &agent, &trigger)
+        .await
+        .expect("resolve migrated context");
+
+    assert_eq!(context.harness_id, app_harness_id);
+    assert_eq!(context.owner_principal_id, owner_principal_id);
+    assert_eq!(context.resolved_owner_user_id, resolved_owner_user_id);
+    assert_eq!(context.agent_identity_id, agent_identity_id);
+    assert_eq!(context.app_id, app_id);
+}
+
 // ---- cron / config validation -------------------------------------------
 
 #[test]

@@ -344,6 +344,11 @@ async fn run_agent_trigger_conformance(
             }),
             enabled: true,
             durable_schedule_id: None,
+            execution_harness_id: None,
+            execution_owner_principal_id: None,
+            execution_resolved_owner_user_id: None,
+            execution_agent_identity_id: None,
+            execution_app_id: None,
         })
         .await
         .expect("create agent trigger");

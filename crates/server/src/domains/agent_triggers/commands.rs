@@ -406,6 +406,11 @@ impl Command for CreateAgentTrigger {
                 config: build_schedule_config_value(&config)?,
                 enabled: req.enabled,
                 durable_schedule_id: None,
+                execution_harness_id: None,
+                execution_owner_principal_id: None,
+                execution_resolved_owner_user_id: None,
+                execution_agent_identity_id: None,
+                execution_app_id: None,
             })
             .await
             .map_err(classify_anyhow)?;
@@ -880,25 +885,20 @@ pub async fn invoke_agent_trigger(
         ));
     }
 
-    // Ownership: the trigger session is owned by the agent's own identity
-    // principal, lazily created on this agent's first unattended action. The
-    // agent thus acts as itself; an explicitly-linked identity is never
-    // overridden. Resolving it up front lets the shared-session reuse lookup
-    // key on the (stable) identity principal.
-    let (agent_identity_id, owner) = ensure_identity_for_agent(db, org_id, &agent)
-        .await
-        .map_err(classify_anyhow)?;
+    // Resolve who owns this trigger's session: migrated App schedules preserve
+    // their original App execution context, while native triggers are owned by
+    // the agent's own identity principal (lazily created on first fire).
+    let execution_context =
+        resolve_trigger_execution_context(db, org_id, &agent, &trigger_row).await?;
 
     let (session_id, created_session) = find_or_create_trigger_session(
         db,
         session_service,
         org_id,
         &agent,
+        &execution_context,
         trigger_id,
         config.session_mode,
-        agent_identity_id,
-        owner.id,
-        owner.resolved_user_id,
     )
     .await?;
 
@@ -908,7 +908,7 @@ pub async fn invoke_agent_trigger(
         &agent,
         trigger_id,
         session_id,
-        owner.id,
+        execution_context.owner_principal_id,
         rendered_message,
     )
     .await?;
@@ -919,7 +919,7 @@ pub async fn invoke_agent_trigger(
         &agent,
         trigger_id,
         session_id,
-        owner.id,
+        execution_context.owner_principal_id,
         created_session,
     );
 
@@ -1008,6 +1008,57 @@ async fn ensure_identity_for_agent(
     Ok((winner, winner_principal))
 }
 
+#[derive(Debug, Clone)]
+struct TriggerExecutionContext {
+    harness_id: everruns_core::HarnessId,
+    owner_principal_id: everruns_core::PrincipalId,
+    resolved_owner_user_id: Option<Uuid>,
+    agent_identity_id: Option<everruns_core::AgentIdentityId>,
+    app_id: Option<Uuid>,
+}
+
+/// Resolve the execution context (harness, owner principal, identity, app) that
+/// a trigger fire runs under.
+///
+/// - Migrated App schedules persist their original App execution context on the
+///   trigger row (`execution_*`). Preserving it avoids silently changing harness
+///   capabilities, private memory scope, or identity-backed providers after the
+///   106 migration retargeted App schedules to Agent triggers.
+/// - Native Agent triggers have no persisted context: the session is owned by
+///   the agent's own identity principal, lazily created on first fire (EVE-758),
+///   so the agent acts as itself and the shared-session reuse key stays stable.
+async fn resolve_trigger_execution_context(
+    db: &Arc<StorageBackend>,
+    org_id: i64,
+    agent: &AgentRow,
+    trigger: &AgentTriggerRow,
+) -> Result<TriggerExecutionContext, CommandError> {
+    if let (Some(harness_id), Some(owner_principal_id)) = (
+        trigger.execution_harness_id,
+        trigger.execution_owner_principal_id,
+    ) {
+        return Ok(TriggerExecutionContext {
+            harness_id,
+            owner_principal_id,
+            resolved_owner_user_id: trigger.execution_resolved_owner_user_id,
+            agent_identity_id: trigger.execution_agent_identity_id,
+            app_id: trigger.execution_app_id,
+        });
+    }
+
+    let (agent_identity_id, owner) = ensure_identity_for_agent(db, org_id, agent)
+        .await
+        .map_err(classify_anyhow)?;
+
+    Ok(TriggerExecutionContext {
+        harness_id: agent.harness_id,
+        owner_principal_id: owner.id,
+        resolved_owner_user_id: owner.resolved_user_id,
+        agent_identity_id: Some(agent_identity_id),
+        app_id: None,
+    })
+}
+
 fn trigger_session_tags(trigger_id: TriggerId) -> Vec<String> {
     vec![
         format!("agent_trigger:{trigger_id}"),
@@ -1021,16 +1072,18 @@ async fn find_or_create_trigger_session(
     session_service: &SessionService,
     org_id: i64,
     agent: &AgentRow,
+    execution_context: &TriggerExecutionContext,
     trigger_id: TriggerId,
     session_mode: InvocationSessionMode,
-    agent_identity_id: AgentIdentityId,
-    owner_principal_id: everruns_core::PrincipalId,
-    resolved_owner_user_id: Option<Uuid>,
 ) -> Result<(SessionId, bool), CommandError> {
     let shared_tags = trigger_session_tags(trigger_id);
     if session_mode == InvocationSessionMode::SharedSession
         && let Some(existing) = db
-            .find_session_by_tags_and_owner(org_id, owner_principal_id, &shared_tags)
+            .find_session_by_tags_and_owner(
+                org_id,
+                execution_context.owner_principal_id,
+                &shared_tags,
+            )
             .await
             .map_err(classify_anyhow)?
     {
@@ -1048,43 +1101,60 @@ async fn find_or_create_trigger_session(
         format!("{} agent_trigger {}", agent.name, Utc::now().to_rfc3339())
     };
 
-    let session = session_service
-        .create_from_agent_trigger(
-            &Caller::internal(org_id),
-            agent.harness_id.uuid(),
-            agent.id.uuid(),
-            agent.id,
-            owner_principal_id,
-            resolved_owner_user_id,
-            CreateSessionRequest {
-                workspace_id: None,
-                harness_id: Some(agent.harness_id),
-                harness_name: None,
-                agent_id: Some(agent.id),
-                agent_name: None,
-                agent_identity_id: Some(agent_identity_id),
-                title: Some(title),
-                goal: None,
-                locale: None,
-                tags,
-                model_id: None,
-                capabilities: vec![],
-                tools: vec![],
-                mcp_servers: Default::default(),
-                system_prompt: None,
-                initial_files: vec![],
-                hints: None,
-                network_access: None,
-                max_iterations: None,
-                parallel_tool_calls: None,
-                parent_session_id: None,
-                forked_from_session_id: None,
-                budget_root_session_id: None,
-                seed: everruns_core::SessionSeedMode::Fresh,
-            },
-        )
-        .await
-        .map_err(classify_anyhow)?;
+    let req = CreateSessionRequest {
+        workspace_id: None,
+        harness_id: Some(execution_context.harness_id),
+        harness_name: None,
+        agent_id: Some(agent.id),
+        agent_name: None,
+        agent_identity_id: execution_context.agent_identity_id,
+        title: Some(title),
+        goal: None,
+        locale: None,
+        tags,
+        model_id: None,
+        capabilities: vec![],
+        tools: vec![],
+        mcp_servers: Default::default(),
+        system_prompt: None,
+        initial_files: vec![],
+        hints: None,
+        network_access: None,
+        max_iterations: None,
+        parallel_tool_calls: None,
+        parent_session_id: None,
+        forked_from_session_id: None,
+        budget_root_session_id: None,
+        seed: everruns_core::SessionSeedMode::Fresh,
+    };
+
+    let session = if let Some(app_id) = execution_context.app_id {
+        session_service
+            .create_from_app(
+                &Caller::internal(org_id),
+                execution_context.harness_id.uuid(),
+                Some(agent.id.uuid()),
+                Some(agent.id),
+                app_id,
+                execution_context.owner_principal_id,
+                execution_context.resolved_owner_user_id,
+                req,
+            )
+            .await
+    } else {
+        session_service
+            .create_from_agent_trigger(
+                &Caller::internal(org_id),
+                execution_context.harness_id.uuid(),
+                agent.id.uuid(),
+                agent.id,
+                execution_context.owner_principal_id,
+                execution_context.resolved_owner_user_id,
+                req,
+            )
+            .await
+    }
+    .map_err(classify_anyhow)?;
 
     Ok((session.id, true))
 }
