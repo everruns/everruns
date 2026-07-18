@@ -88,6 +88,36 @@ impl Database {
         Ok(rows)
     }
 
+    /// Atomically persist a refreshed OAuth grant, including rotated refresh token.
+    pub async fn update_user_connection_oauth_tokens(
+        &self,
+        input: UpdateUserConnectionOAuthTokens,
+    ) -> Result<Option<UserConnectionRow>> {
+        let row = sqlx::query_as::<_, UserConnectionRow>(
+            r#"
+            UPDATE user_connections
+            SET access_token_encrypted = $2,
+                refresh_token_encrypted = $3,
+                expires_at = $4,
+                scopes = COALESCE($5, scopes),
+                updated_at = NOW()
+            WHERE id = $1 AND connection_type = 'oauth'
+            RETURNING id, user_id, provider, connection_type, provider_user_id,
+                      provider_username, access_token_encrypted, refresh_token_encrypted,
+                      scopes, expires_at, installation_id, provider_metadata, created_at, updated_at
+            "#,
+        )
+        .bind(input.connection_id)
+        .bind(input.access_token_encrypted)
+        .bind(input.refresh_token_encrypted)
+        .bind(input.expires_at)
+        .bind(input.scopes)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     /// Get the encrypted connection token for a session.
     ///
     /// Resolution order:

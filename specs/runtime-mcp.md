@@ -127,9 +127,11 @@ trait McpAuthProvider {
 }
 ```
 
-- The **server** keeps its current behavior by implementing the trait over the
-  existing session-secret + `UserConnectionResolver` web-OAuth resolution
-  (today's `McpToolExecutor::resolve_auth_header`). No behavior change.
+- The **server** implements the trait over the existing session-secret +
+  `UserConnectionResolver` web-OAuth resolution. Its resolver owns token
+  lifetime: it lazily refreshes near-expiry grants, coalesces concurrent
+  refreshes, and atomically persists refresh-token rotation before returning
+  the new access token.
 - The **runtime/coding-CLI** provides simpler implementations: a static
   bearer/header provider, an env-var provider, and (future) a device-code
   flow. The CLI does not require a browser redirect.

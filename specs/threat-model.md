@@ -477,6 +477,7 @@ fn authorizer(action: AuthAction) -> Authorization {
 | TM-TOOL-021 | Agent handoff credential leakage or unauthorized target delegation | High | `agent_handoff` delegates only to configured target Agent ids through `spawn_agent(target.type="agent")`, requires server-side `UserConnectionResolver` checks before start, never accepts credentials in tool args/config/task metadata, records only non-secret target/provider/scope labels in `session_tasks`, and keeps invite-mode joins in the current session behind duplicate capability/mount conflict checks. Child-session follow-up control routes through `message_task` for the parent-owned task. Provider tools must still enforce scoped grants before real external writes. | MITIGATED |
 | TM-TOOL-022 | Cross-tenant MCP credential reach via guardrail `mcp` check | High | The guardrails `mcp` check (specs/guardrails.md) names a `server`/`tool` to call over the scoped-MCP client. The check resolves connections through the host's per-session `McpConnectionResolver`, which only resolves servers scoped to the current session/org; a tenant's guardrail config can only reach that tenant's servers and never another tenant's MCP credentials. A misconfigured/unknown server fails open (allow) rather than blocking. The verdict parser reads only `verdict`/`reason`, so a poisoned endpoint response cannot widen behavior beyond the fail-open baseline. | MITIGATED |
 | TM-TOOL-024 | WebFetch rendered-page JavaScript escapes egress controls or exhausts worker resources | High | Rendered fetch is explicitly request-opt-in (`render: "rakers"`) on an already admin-gated high-risk capability. FetchKit fetches the initial document through the normal DNS/egress/redirect/body-size policy, runs inline scripts with a per-script timeout, sends renderer subresource traffic to a local deny proxy, and caps rendered output before conversion. Everruns integration tests prove the backend is opt-in and returns rendered content; FetchKit upstream tests cover subresource denial, timeout, and output capping. | MITIGATED |
+| TM-TOOL-025 | MCP OAuth refresh-token theft, torn rotation, or refresh stampede | High | Refresh tokens stay envelope-encrypted and are never logged; token endpoints are revalidated and DNS-pinned through `EgressService` for every refresh (TM-TOOL-018); a bounded per-grant single-flight coalesces concurrent refreshes; access token, rotated refresh token, expiry, and scope are persisted atomically before the new access token is returned. Rejected or incomplete grants fail closed to `connection_required`. | MITIGATED |
 
 ### Mitigation Details
 
@@ -586,6 +587,10 @@ Validation runs for:
 MCP server URLs are validated twice:
 1. On create/update in the control plane — static check via `validate_safe_url` rejects unsafe schemes, loopback, RFC1918, link-local, and cloud metadata targets.
 2. At execution time (before each tool call and `tools/list` fetch) via `validate_url_dns_pinned` — performs the same static checks then resolves the hostname via `tokio::net::lookup_host` and verifies every returned IP against the blocked ranges. This closes the DNS-rebinding gap: an attacker cannot register a public hostname that initially resolves to a safe IP but later rebinds to an internal address, because the IP is re-checked on every outbound request.
+
+The same execution-time validation and DNS pinning applies to MCP OAuth token
+endpoint requests, including lazy refreshes; cached OAuth discovery metadata is
+never treated as permission to bypass the egress boundary.
 
 ## 8. LLM Integration (TM-LLM)
 

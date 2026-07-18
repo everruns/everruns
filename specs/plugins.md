@@ -119,13 +119,15 @@ Because the provider id is always assigned server-side from a host-created row,
 plugin content can never bind to another provider (e.g. `github`) and read
 tokens connected for it (`TM-PLUGIN-004`).
 
-**Token refresh (limitation).** Short-lived OAuth access tokens (Resend's are
-~15 min) are not yet auto-refreshed: the connection resolver returns the stored
-access token without exchanging the refresh token. This is a pre-existing
-limitation of the MCP-OAuth connection path (it applies to org-managed OAuth
-MCP servers too); until refresh lands, a user reconnects when the token
-expires. Refresh-token rotation in the connection resolver is the tracked
-follow-up.
+**Token refresh.** The connection resolver refreshes short-lived OAuth access
+tokens lazily when they are expired or within 60 seconds of expiry. Refreshes
+use the anchor's registered OAuth client through the host egress boundary;
+concurrent resolution of one grant is coalesced, and rotated access/refresh
+tokens are persisted atomically for both session-scoped and user-scoped
+connections. A rejected refresh fails closed to the standard
+`connection_required` reconnect flow. This applies equally to plugin anchors
+such as Resend (whose access tokens last about 15 minutes) and org-managed
+OAuth MCP servers.
 
 ## Marketplaces
 

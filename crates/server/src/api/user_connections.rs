@@ -9,6 +9,7 @@ use crate::auth::config::AuthConfig;
 use crate::auth::middleware::{AuthState, AuthUser};
 use crate::auth::oauth::GitHubAppService;
 use crate::domains::mcp_servers::{McpServerOAuthSettings, McpServerService, McpServerSettings};
+use crate::oauth_client::{egress_oauth_json, exchange_oauth_code};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,
@@ -24,9 +25,8 @@ use everruns_core::connector::{
     ConnectorFormSchema as CoreFormSchema, ConnectorRegistry, ConnectorType,
 };
 use everruns_core::{
-    Caller, EgressRequest, EgressRequestKind, EgressService, McpServerAuthMode, SessionId,
-    mcp_oauth_provider_id_for_uuid, mcp_oauth_session_secret_name, validate_safe_url,
-    validate_url_dns_pinned,
+    Caller, EgressService, McpServerAuthMode, SessionId, mcp_oauth_provider_id_for_uuid,
+    validate_safe_url,
 };
 use rand::RngExt;
 use reqwest::Url;
@@ -36,7 +36,7 @@ use std::sync::Arc;
 use utoipa::ToSchema;
 
 use super::common::{impl_auth_state, sanitized_bad_gateway, sanitized_internal_error};
-use crate::storage::models::CreateUserConnectionRow;
+use crate::storage::models::{CreateUserConnectionRow, UpsertMcpOAuthSessionCredentials};
 
 /// App state for user connections routes
 #[derive(Clone)]
@@ -199,17 +199,6 @@ struct OAuthServerMetadata {
 struct OAuthClientRegistration {
     client_id: String,
     client_secret: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct OAuthTokenResponse {
-    access_token: String,
-    #[serde(default)]
-    refresh_token: Option<String>,
-    #[serde(default)]
-    expires_in: Option<i64>,
-    #[serde(default)]
-    scope: Option<String>,
 }
 
 // ============================================================================
@@ -763,41 +752,25 @@ pub async fn connection_oauth_callback(
         ))?;
         state
             .db
-            .upsert_session_secret(crate::storage::models::UpsertSessionSecret {
+            .upsert_mcp_oauth_session_credentials(UpsertMcpOAuthSessionCredentials {
                 session_id,
-                name: mcp_oauth_session_secret_name(server_id, "access_token"),
-                value_encrypted: encryption
+                server_id,
+                access_token_encrypted: encryption
                     .encrypt_string(&token.access_token)
+                    .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
+                refresh_token_encrypted: token
+                    .refresh_token
+                    .as_deref()
+                    .map(|value| encryption.encrypt_string(value))
+                    .transpose()
+                    .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
+                expires_at_encrypted: expires_at
+                    .map(|value| encryption.encrypt_string(&value.to_rfc3339()))
+                    .transpose()
                     .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
             })
             .await
             .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
-        if let Some(refresh_token) = &token.refresh_token {
-            state
-                .db
-                .upsert_session_secret(crate::storage::models::UpsertSessionSecret {
-                    session_id,
-                    name: mcp_oauth_session_secret_name(server_id, "refresh_token"),
-                    value_encrypted: encryption
-                        .encrypt_string(refresh_token)
-                        .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
-                })
-                .await
-                .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
-        }
-        if let Some(expires_at) = expires_at {
-            state
-                .db
-                .upsert_session_secret(crate::storage::models::UpsertSessionSecret {
-                    session_id,
-                    name: mcp_oauth_session_secret_name(server_id, "expires_at"),
-                    value_encrypted: encryption
-                        .encrypt_string(&expires_at.to_rfc3339())
-                        .map_err(|e| sanitized_internal_error("OAuth connection", &e))?,
-                })
-                .await
-                .map_err(|e| sanitized_internal_error("OAuth connection", &e))?;
-        }
     } else {
         let encryption = state.encryption.as_ref().ok_or((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1370,47 +1343,6 @@ async fn register_oauth_client(
     .await
 }
 
-async fn exchange_oauth_code(
-    egress: &dyn EgressService,
-    token_endpoint: &str,
-    client_id: &str,
-    client_secret: Option<&str>,
-    redirect_uri: &str,
-    code: &str,
-    code_verifier: &str,
-) -> Result<OAuthTokenResponse, (StatusCode, String)> {
-    validate_safe_url(token_endpoint).map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Token endpoint blocked: {e}"),
-        )
-    })?;
-    let mut params = vec![
-        ("grant_type", "authorization_code".to_string()),
-        ("client_id", client_id.to_string()),
-        ("redirect_uri", redirect_uri.to_string()),
-        ("code", code.to_string()),
-        ("code_verifier", code_verifier.to_string()),
-    ];
-    if let Some(secret) = client_secret {
-        params.push(("client_secret", secret.to_string()));
-    }
-    let body = serde_urlencoded::to_string(&params)
-        .map_err(|e| sanitized_bad_gateway("OAuth token body", &e))?
-        .into_bytes();
-    egress_oauth_json(
-        egress,
-        "POST",
-        token_endpoint,
-        &[(
-            "Content-Type",
-            "application/x-www-form-urlencoded".to_string(),
-        )],
-        body,
-    )
-    .await
-}
-
 fn finalize_oauth_redirect(
     auth_config: &AuthConfig,
     return_to: &str,
@@ -1467,80 +1399,10 @@ fn parse_and_validate_url(url: &str) -> Result<Url, (StatusCode, String)> {
     Url::parse(url).map_err(|e| (StatusCode::BAD_REQUEST, format!("Invalid URL: {e}")))
 }
 
-/// Send an OAuth discovery/registration/token request through the host egress
-/// boundary with DNS pinning (TM-API-013, TM-MCP), parsing the JSON body.
-///
-/// These endpoints come from the attacker-controlled OAuth discovery response
-/// and were previously fetched with a bare `reqwest::Client::new()`, which
-/// follows redirects and does no DNS pinning — letting a URL that passed
-/// create-time `validate_safe_url` DNS-rebind or 302-redirect to a private/
-/// metadata address at request time (EVE-623). Routing through [`EgressService`]
-/// after `validate_url_dns_pinned` (pinning the connection to the validated IPs)
-/// reuses the egress hardening (redirects disabled, DNS-pinned connect) used by
-/// the MCP runtime and capabilities.
-async fn egress_oauth_json<T: serde::de::DeserializeOwned>(
-    egress: &dyn EgressService,
-    method: &str,
-    url: &str,
-    headers: &[(&str, String)],
-    body: Vec<u8>,
-) -> Result<T, (StatusCode, String)> {
-    // Resolve-and-pin before sending so the request connects to the exact IPs we
-    // validated, closing the DNS-rebind TOCTOU window.
-    let (parsed, pinned_addrs) = validate_url_dns_pinned(url)
-        .await
-        .map_err(|e| (StatusCode::BAD_REQUEST, format!("Blocked URL: {e}")))?;
-    let host = parsed.host_str().unwrap_or("").to_string();
-
-    let mut request = EgressRequest::new(method, url, EgressRequestKind::Mcp);
-    for (name, value) in headers {
-        request = request.header(*name, value.clone());
-    }
-    if !body.is_empty() {
-        request = request.body(body);
-    }
-    if pinned_addrs.is_empty() {
-        // IP-literal URL: nothing to pin, but still demand boundary-side
-        // validation before connect.
-        request = request.require_dns_pinning();
-    } else {
-        request = request.pinned_addrs(host, pinned_addrs);
-    }
-
-    let response = egress
-        .send(request)
-        .await
-        .map_err(|e| sanitized_bad_gateway("OAuth external service", &e))?;
-
-    if !(200..300).contains(&response.status) {
-        let body_text = String::from_utf8_lossy(&response.body);
-        let truncated = truncate_utf8_for_log(&body_text, 512);
-        tracing::error!(
-            status = response.status,
-            body_len = response.body.len(),
-            "External service error: {truncated}"
-        );
-        return Err((StatusCode::BAD_GATEWAY, "Bad gateway".to_string()));
-    }
-
-    serde_json::from_slice(&response.body)
-        .map_err(|e| sanitized_bad_gateway("External service response parse", &e))
-}
-
-fn truncate_utf8_for_log(input: &str, max_bytes: usize) -> &str {
-    if input.len() <= max_bytes {
-        return input;
-    }
-    let mut end = max_bytes;
-    while end > 0 && !input.is_char_boundary(end) {
-        end -= 1;
-    }
-    &input[..end]
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::EgressRequest;
 
     #[test]
     fn valid_state_accepted() {
@@ -1626,14 +1488,6 @@ mod tests {
         let query: GitHubInstallationCallbackQuery = serde_json::from_str(json).unwrap();
         assert_eq!(query.installation_id, 12345);
         assert_eq!(query.state, None);
-    }
-
-    #[test]
-    fn truncate_utf8_for_log_handles_multibyte_boundary() {
-        let value = format!("{}étail", "a".repeat(511));
-        let truncated = truncate_utf8_for_log(&value, 512);
-        assert_eq!(truncated, "a".repeat(511));
-        assert!(truncated.is_char_boundary(truncated.len()));
     }
 
     // =========================================================================

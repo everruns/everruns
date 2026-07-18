@@ -52,6 +52,7 @@ pub use services::EventService;
 pub mod storage;
 
 // OpenAPI spec generation
+mod oauth_client;
 pub mod openapi;
 pub mod platform;
 pub use platform::{

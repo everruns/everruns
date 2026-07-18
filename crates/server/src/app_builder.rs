@@ -102,11 +102,13 @@ fn build_connection_resolver(
     db: &Arc<StorageBackend>,
     encryption: &Arc<EncryptionService>,
     auth_config: &auth::AuthConfig,
+    egress: Arc<dyn everruns_core::EgressService>,
 ) -> Arc<dyn everruns_core::traits::UserConnectionResolver> {
     Arc::new(crate::storage::DbConnectionResolver::new(
         db.as_ref().clone(),
         encryption.as_ref().clone(),
         github_app_token_minter(auth_config),
+        egress,
     ))
 }
 
@@ -114,10 +116,11 @@ fn optional_connection_resolver(
     db: &Arc<StorageBackend>,
     encryption: &Option<Arc<EncryptionService>>,
     auth_config: &auth::AuthConfig,
+    egress: Arc<dyn everruns_core::EgressService>,
 ) -> Option<Arc<dyn everruns_core::traits::UserConnectionResolver>> {
     encryption
         .as_ref()
-        .map(|enc| build_connection_resolver(db, enc, auth_config))
+        .map(|enc| build_connection_resolver(db, enc, auth_config, egress))
 }
 
 struct ServerTaskNotifier {
@@ -667,8 +670,12 @@ impl ServerAppBuilder {
                                 database.clone(),
                                 enc.as_ref().clone(),
                             ));
-                        let connection_resolver =
-                            Some(build_connection_resolver(&db, enc, &auth_config));
+                        let connection_resolver = Some(build_connection_resolver(
+                            &db,
+                            enc,
+                            &auth_config,
+                            platform_definition.egress_service(),
+                        ));
                         let service =
                             Arc::new(crate::domains::session_sandbox::SessionSandboxService::new(
                                 db.clone(),
@@ -690,8 +697,12 @@ impl ServerAppBuilder {
                     }
                 },
                 crate::storage::StorageBackend::InMemory(mem_db) => {
-                    let connection_resolver =
-                        optional_connection_resolver(&db, &encryption, &auth_config);
+                    let connection_resolver = optional_connection_resolver(
+                        &db,
+                        &encryption,
+                        &auth_config,
+                        platform_definition.egress_service(),
+                    );
                     let service =
                         Arc::new(crate::domains::session_sandbox::SessionSandboxService::new(
                             db.clone(),
@@ -2140,8 +2151,13 @@ impl ServerAppBuilder {
                 // slot empty — `runtime_host::connection_resolver()` always calls into the
                 // adapter at runtime and would otherwise panic.
                 let connection_resolver: Arc<dyn everruns_core::traits::UserConnectionResolver> =
-                    optional_connection_resolver(&db, &encryption, &auth_config)
-                        .unwrap_or_else(|| Arc::new(crate::storage::NoopConnectionResolver));
+                    optional_connection_resolver(
+                        &db,
+                        &encryption,
+                        &auth_config,
+                        platform_definition.egress_service(),
+                    )
+                    .unwrap_or_else(|| Arc::new(crate::storage::NoopConnectionResolver));
                 adapters = adapters.with_connection_resolver(connection_resolver);
 
                 let worker_config = TaskWorkerConfig::dev_mode();
@@ -2246,8 +2262,12 @@ impl ServerAppBuilder {
         );
 
         // -- Source-backed Memory sync (both prod and dev) --
-        let memory_connection_resolver =
-            optional_connection_resolver(&db, &encryption, &auth_config);
+        let memory_connection_resolver = optional_connection_resolver(
+            &db,
+            &encryption,
+            &auth_config,
+            platform_definition.egress_service(),
+        );
         supervisor.track_optional(
             "memory_source_sync",
             crate::domains::memory::source_sync::spawn_memory_source_sync_task(

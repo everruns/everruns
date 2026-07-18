@@ -625,6 +625,7 @@ impl WorkerServiceImpl {
                     db.as_ref().clone(),
                     enc.as_ref().clone(),
                     github_app_minter,
+                    platform_definition.egress_service(),
                 )) as Arc<dyn everruns_core::traits::UserConnectionResolver>
             });
 

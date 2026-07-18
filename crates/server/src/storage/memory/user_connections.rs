@@ -67,6 +67,27 @@ impl InMemoryDatabase {
         Ok(connections)
     }
 
+    pub async fn update_user_connection_oauth_tokens(
+        &self,
+        input: UpdateUserConnectionOAuthTokens,
+    ) -> Result<Option<UserConnectionRow>> {
+        let mut connections = self.user_connections.write();
+        let Some(connection) = connections.get_mut(&input.connection_id) else {
+            return Ok(None);
+        };
+        if connection.connection_type != "oauth" {
+            return Ok(None);
+        }
+        connection.access_token_encrypted = Some(input.access_token_encrypted);
+        connection.refresh_token_encrypted = Some(input.refresh_token_encrypted);
+        connection.expires_at = input.expires_at;
+        if input.scopes.is_some() {
+            connection.scopes = input.scopes;
+        }
+        connection.updated_at = Self::now();
+        Ok(Some(connection.clone()))
+    }
+
     /// Get encrypted connection token for a session.
     ///
     /// If the session has an `agent_identity_id`, checks `agent_identity_connections`

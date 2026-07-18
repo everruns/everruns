@@ -3197,6 +3197,26 @@ impl StorageBackend {
         dispatch!(self, upsert_session_secret, input)
     }
 
+    pub async fn get_mcp_oauth_session_credentials(
+        &self,
+        session_id: SessionId,
+        server_id: Uuid,
+    ) -> Result<Option<McpOAuthSessionCredentialsRow>> {
+        dispatch!(
+            self,
+            get_mcp_oauth_session_credentials,
+            session_id,
+            server_id
+        )
+    }
+
+    pub async fn upsert_mcp_oauth_session_credentials(
+        &self,
+        input: UpsertMcpOAuthSessionCredentials,
+    ) -> Result<()> {
+        dispatch!(self, upsert_mcp_oauth_session_credentials, input)
+    }
+
     // ============================================
     // User Connections
     // ============================================
@@ -3218,6 +3238,13 @@ impl StorageBackend {
 
     pub async fn list_user_connections(&self, user_id: Uuid) -> Result<Vec<UserConnectionRow>> {
         dispatch!(self, list_user_connections, user_id)
+    }
+
+    pub async fn update_user_connection_oauth_tokens(
+        &self,
+        input: UpdateUserConnectionOAuthTokens,
+    ) -> Result<Option<UserConnectionRow>> {
+        dispatch!(self, update_user_connection_oauth_tokens, input)
     }
 
     pub async fn delete_user_connection(&self, user_id: Uuid, provider: &str) -> Result<bool> {

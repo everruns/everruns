@@ -113,14 +113,22 @@ Connection tokens are resolved lazily at tool execution time via `UserConnection
 
 1. Tool (e.g. `git_clone`) requests token via `context.connection_resolver`
 2. For GitHub App: resolver reads `installation_id`, mints a fresh 1h token via GitHub API
-3. For legacy OAuth: resolver decrypts stored `access_token_encrypted`
-4. If no connection exists, tool returns guidance: "connect GitHub in Settings > Connections"
+3. For MCP OAuth: resolver returns an unexpired access token or lazily exchanges
+   the encrypted refresh token. A 60-second skew avoids racing expiry;
+   concurrent reads of one grant are coalesced, and rotated access/refresh
+   tokens are committed atomically. Session-scoped MCP grants take precedence
+   over the persistent user connection.
+4. For other legacy OAuth: resolver decrypts stored `access_token_encrypted`
+5. If no connection exists or an MCP refresh is rejected, tool returns the
+   provider-specific `connection_required` guidance.
 
 Benefits:
 - Tokens are always fresh (1h TTL, minted on demand)
 - Sessions created before connecting still get tokens
 - No long-lived secrets stored for GitHub
 - Token scope is limited to installed repos only
+- Short-lived MCP OAuth tokens remain fresh without reconnecting, while refresh
+  failures fail closed to reconnection
 
 The token value never appears in tool arguments, tool results, or message history.
 
