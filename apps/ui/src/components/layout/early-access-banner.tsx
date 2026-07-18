@@ -3,31 +3,80 @@
 // Early-access banner shown above the app shell. Warns that Everruns is still
 // stabilizing and links to GitHub. Dismissal is persisted per-user via the
 // user-preferences key/value service, so it stays dismissed across devices.
-import { useState } from "react";
+//
+// EVE-794: the banner previously returned null while the dismissed preference
+// was loading, then inserted a 44px (h-11) row after the request resolved for
+// undismissed users — shifting the entire app shell down (CLS ~0.024). Reserving
+// the slot during loading and collapsing on resolve would instead shift the
+// shell for dismissed users, so neither half-measure is enough.
+//
+// Instead the dismissal decision is available synchronously at first paint: it
+// is seeded from a localStorage cache written whenever the banner is dismissed.
+// A dismissed user renders nothing from the first frame (no flash, no leftover
+// gap); an undismissed user renders the banner as part of the initial stable
+// layout. The server-side preference stays the source of truth and reconciles
+// the local cache once it resolves.
+import { useEffect, useState } from "react";
 import { FlaskConical, ArrowRight, X } from "lucide-react";
 
 import { GithubIcon } from "@/components/icons/github-icon";
 import { useUserPreference, useSetUserPreference } from "@/hooks/use-user-preferences";
 
 const BANNER_DISMISSED_KEY = "ui.early_access_banner.dismissed";
+// Synchronously-readable mirror of the dismissed preference, so first paint can
+// decide whether to show the banner without waiting for the server round-trip.
+const BANNER_DISMISSED_CACHE_KEY = "everruns:ui:early-access-banner-dismissed";
 const GITHUB_URL = "https://github.com/everruns/everruns";
 
+function readCachedDismissed(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(BANNER_DISMISSED_CACHE_KEY) === "true";
+  } catch {
+    // Storage may be unavailable (private mode, quota); treat as not dismissed.
+    return false;
+  }
+}
+
+function writeCachedDismissed(dismissed: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (dismissed) {
+      window.localStorage.setItem(BANNER_DISMISSED_CACHE_KEY, "true");
+    } else {
+      window.localStorage.removeItem(BANNER_DISMISSED_CACHE_KEY);
+    }
+  } catch {
+    // Best-effort: the server preference remains authoritative.
+  }
+}
+
 export function EarlyAccessBanner() {
-  const { data: preference, isLoading } = useUserPreference(BANNER_DISMISSED_KEY);
+  const { data: preference } = useUserPreference(BANNER_DISMISSED_KEY);
   const setPreference = useSetUserPreference();
-  // Local flag hides the banner immediately on click, before the write settles.
-  const [dismissedLocally, setDismissedLocally] = useState(false);
+  // Seed synchronously from the local cache so the very first frame already
+  // knows whether to render the banner — no post-paint insert or collapse.
+  const [dismissed, setDismissed] = useState(readCachedDismissed);
 
-  const dismissed = dismissedLocally || preference?.value === true;
+  // Reconcile with the server once the preference resolves and keep the local
+  // cache in sync so the next cold load on this device is correct. `undefined`
+  // means the query is still loading — keep the cached decision until then.
+  useEffect(() => {
+    if (preference === undefined) return;
+    const serverDismissed = preference?.value === true;
+    setDismissed(serverDismissed);
+    writeCachedDismissed(serverDismissed);
+  }, [preference]);
 
-  // Wait for the stored state before first paint so the banner doesn't flash in
-  // for users who already dismissed it.
-  if (isLoading || dismissed) {
+  if (dismissed) {
     return null;
   }
 
   const handleDismiss = () => {
-    setDismissedLocally(true);
+    // Hide immediately and persist locally so a reload before the write settles
+    // still starts dismissed; the server write keeps cross-device state in sync.
+    setDismissed(true);
+    writeCachedDismissed(true);
     setPreference.mutate({ key: BANNER_DISMISSED_KEY, value: true });
   };
 
