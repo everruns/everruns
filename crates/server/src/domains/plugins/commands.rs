@@ -468,6 +468,22 @@ fn validate_compiled_mcp_servers(
     Ok(())
 }
 
+/// The marketplace/install row name is the trusted plugin identity. Reject a
+/// fetched package whose manifest compiles to a different definition name so
+/// updates cannot rebind OAuth anchors owned by another installed plugin.
+fn validate_compiled_plugin_identity(
+    expected_name: &str,
+    definition: &everruns_core::DeclarativeCapabilityDefinition,
+) -> Result<(), CommandError> {
+    if definition.name != expected_name {
+        return Err(CommandError::bad_request(format!(
+            "Plugin manifest name '{}' does not match expected plugin '{}'",
+            definition.name, expected_name
+        )));
+    }
+    Ok(())
+}
+
 fn build_source_json(source_type: &str, source_value: &str) -> serde_json::Value {
     match source_type {
         "github" => serde_json::json!({ "repo": source_value }),
@@ -1020,16 +1036,16 @@ impl Command for InstallPluginCmd {
 
         let compiled = compile_plugin(&file_set)
             .map_err(|e| CommandError::bad_request(format!("Plugin compilation failed: {e}")))?;
+        validate_compiled_plugin_identity(&req.plugin_name, &compiled.definition)?;
         validate_compiled_mcp_servers(&compiled.definition)?;
 
         // OAuth MCP servers get an anchor row and a host-assigned provider id
         // (see oauth_anchor.rs).
         let mut definition = compiled.definition.clone();
-        let plugin_name = definition.name.clone();
         super::oauth_anchor::sync_plugin_oauth_anchors(
             &ctx.db,
             ctx.org_id(),
-            &plugin_name,
+            &req.plugin_name,
             &mut definition,
         )
         .await
@@ -1318,16 +1334,16 @@ impl Command for UpdatePlugin {
 
         let compiled = compile_plugin(&file_set)
             .map_err(|e| CommandError::bad_request(format!("Plugin compilation failed: {e}")))?;
+        validate_compiled_plugin_identity(&install.name, &compiled.definition)?;
         validate_compiled_mcp_servers(&compiled.definition)?;
 
         // Re-sync OAuth anchors: reuse existing anchors (provider ids and
         // user connections survive updates), drop anchors for removed servers.
         let mut definition = compiled.definition.clone();
-        let plugin_name = definition.name.clone();
         super::oauth_anchor::sync_plugin_oauth_anchors(
             &ctx.db,
             ctx.org_id(),
-            &plugin_name,
+            &install.name,
             &mut definition,
         )
         .await
@@ -1364,3 +1380,37 @@ impl Command for UpdatePlugin {
 }
 
 inventory::submit! { CommandDescriptor::of::<UpdatePlugin>() }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use everruns_core::capabilities::DeclarativeCapabilityDefinition;
+
+    #[test]
+    fn compiled_plugin_identity_accepts_expected_name() {
+        let definition = DeclarativeCapabilityDefinition {
+            name: "resend".to_string(),
+            ..DeclarativeCapabilityDefinition::default()
+        };
+
+        validate_compiled_plugin_identity("resend", &definition).unwrap();
+    }
+
+    #[test]
+    fn compiled_plugin_identity_rejects_manifest_name_mismatch() {
+        let definition = DeclarativeCapabilityDefinition {
+            name: "resend".to_string(),
+            ..DeclarativeCapabilityDefinition::default()
+        };
+
+        let err = validate_compiled_plugin_identity("evilmail", &definition).unwrap_err();
+
+        assert_eq!(err.status(), axum::http::StatusCode::BAD_REQUEST);
+        assert!(
+            err.message()
+                .contains("does not match expected plugin 'evilmail'"),
+            "{}",
+            err.message()
+        );
+    }
+}
