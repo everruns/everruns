@@ -21,7 +21,7 @@ describe("StreamingMessage", () => {
   });
 
   it("reveals accepted text incrementally instead of rendering a full chunk immediately", () => {
-    render(<StreamingMessage text="Hello" />);
+    render(<StreamingMessage messageId="message-1" text="Hello" />);
 
     expect(screen.getByTestId("message-content")).toHaveTextContent("H");
 
@@ -35,7 +35,7 @@ describe("StreamingMessage", () => {
   });
 
   it("reveals grapheme clusters without splitting combined glyphs", () => {
-    render(<StreamingMessage text="👩‍💻a" />);
+    render(<StreamingMessage messageId="message-1" text="👩‍💻a" />);
 
     expect(screen.getByTestId("message-content")).toHaveTextContent("👩‍💻");
 
@@ -44,13 +44,13 @@ describe("StreamingMessage", () => {
   });
 
   it("keeps typing from the visible prefix when a larger accumulated delta arrives", () => {
-    const { rerender } = render(<StreamingMessage text="Hel" />);
+    const { rerender } = render(<StreamingMessage messageId="message-1" text="Hel" />);
 
     advanceFrame();
     advanceFrame();
     expect(screen.getByTestId("message-content")).toHaveTextContent("Hel");
 
-    rerender(<StreamingMessage text="Hello world" />);
+    rerender(<StreamingMessage messageId="message-1" text="Hello world" />);
 
     expect(screen.getByTestId("message-content")).toHaveTextContent("Hel");
 
@@ -58,15 +58,18 @@ describe("StreamingMessage", () => {
     expect(screen.getByTestId("message-content")).toHaveTextContent("Hell");
   });
 
-  it("resets cleanly when the target text is replaced by a different turn", () => {
-    const { rerender } = render(<StreamingMessage text="Previous" />);
+  it("resets cleanly when a different message starts in the same turn", () => {
+    const { rerender } = render(
+      <StreamingMessage messageId="commentary-message" text="Previous" />,
+    );
 
     act(() => {
       jest.runOnlyPendingTimers();
     });
 
-    rerender(<StreamingMessage text="New" />);
+    rerender(<StreamingMessage messageId="final-message" text="Final" />);
 
-    expect(screen.getByTestId("message-content")).toHaveTextContent("N");
+    expect(screen.getByTestId("message-content")).toHaveTextContent("F");
+    expect(screen.getByTestId("message-content")).not.toHaveTextContent("Previous");
   });
 });

@@ -394,6 +394,9 @@ impl EventBus for JsonlEventEmitter {
 fn message_from_event(data: &EventData) -> Option<Message> {
     match data {
         EventData::InputMessage(d) => Some(d.message.clone()),
+        // Completed messages already carry the canonical message-scoped id.
+        // Streaming deltas are intentionally absent from the replay log, so
+        // preserving this id is the CLI projection's grouping boundary.
         EventData::OutputMessageCompleted(OutputMessageCompletedData { message, .. }) => {
             Some(message.clone())
         }
@@ -465,10 +468,27 @@ fn parse_structured_tool_result_text(text: &str) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::MessageId;
     use everruns_core::events::{
         EventContext, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
     };
     use everruns_core::message::Message;
+
+    #[test]
+    fn completed_message_projection_preserves_message_scoped_ids() {
+        let commentary_id = MessageId::new();
+        let final_id = MessageId::new();
+        let commentary = EventData::OutputMessageCompleted(OutputMessageCompletedData::new(
+            Message::assistant("Checking").with_id(commentary_id),
+        ));
+        let final_answer = EventData::OutputMessageCompleted(OutputMessageCompletedData::new(
+            Message::assistant("Done").with_id(final_id),
+        ));
+
+        assert_eq!(message_from_event(&commentary).unwrap().id, commentary_id);
+        assert_eq!(message_from_event(&final_answer).unwrap().id, final_id);
+        assert_ne!(commentary_id, final_id);
+    }
 
     fn input_event(session_id: SessionId, text: &str) -> Event {
         Event::new(

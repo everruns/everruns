@@ -44,11 +44,18 @@ function charactersPerFrame(remaining: number): number {
   return 1;
 }
 
-function useSmoothedText(targetText: string): string {
+function useSmoothedText(targetText: string, messageId: string): string {
   const targetCharacters = useMemo(() => splitCharacters(targetText), [targetText]);
   const [visibleCharacters, setVisibleCharacters] = useState<string[]>(() =>
     targetCharacters.slice(0, Math.min(1, targetCharacters.length)),
   );
+
+  useEffect(() => {
+    setVisibleCharacters(targetCharacters.slice(0, Math.min(1, targetCharacters.length)));
+    // `messageId` is the lifecycle boundary. Accumulated text updates for the
+    // same message must preserve the visible prefix instead of restarting.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messageId]);
 
   useEffect(() => {
     setVisibleCharacters((current) => {
@@ -80,12 +87,13 @@ function useSmoothedText(targetText: string): string {
 }
 
 interface StreamingMessageProps {
+  messageId: string;
   text: string;
   className?: string;
 }
 
-export function StreamingMessage({ text, className }: StreamingMessageProps) {
-  const visibleText = useSmoothedText(text);
+export function StreamingMessage({ messageId, text, className }: StreamingMessageProps) {
+  const visibleText = useSmoothedText(text, messageId);
 
   return (
     <div className={cn("relative", className)}>

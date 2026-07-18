@@ -214,7 +214,7 @@ function StreamingDemo() {
       <div className="border p-4 min-h-[400px] bg-background">
         {streamedText ? (
           isStreaming ? (
-            <StreamingMessage text={streamedText} />
+            <StreamingMessage messageId="dev-markdown-stream" text={streamedText} />
           ) : (
             <StreamdownMessage variant="inline">{streamedText}</StreamdownMessage>
           )

@@ -132,6 +132,7 @@ export function ChatPanel() {
     setIsWaitingForResponse,
     isThinking,
     streamingText,
+    streamingMessageId,
     streamingIteration,
     sendMessage,
     cancelCurrentTurn,
@@ -604,8 +605,8 @@ export function ChatPanel() {
                       )}
                       {isThinking && !streamingText ? (
                         <ThinkingIndicator />
-                      ) : streamingText ? (
-                        <StreamingMessage text={streamingText} />
+                      ) : streamingText && streamingMessageId ? (
+                        <StreamingMessage messageId={streamingMessageId} text={streamingText} />
                       ) : null}
                     </div>
                   </div>

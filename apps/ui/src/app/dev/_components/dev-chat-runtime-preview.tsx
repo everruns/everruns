@@ -170,6 +170,7 @@ export function DevChatRuntimeScene({
         ? "Applying the runtime chat surface directly to this dev page."
         : null,
     streamingTurnId: scenario === "chat-components" ? "turn-dev-streaming" : null,
+    streamingMessageId: scenario === "chat-components" ? "message-dev-streaming" : null,
     streamingIteration: scenario === "chat-components" ? 2 : null,
     sendMessage,
     cancelCurrentTurn: createNoopCancelMutation(),

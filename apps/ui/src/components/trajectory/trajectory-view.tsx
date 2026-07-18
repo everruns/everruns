@@ -100,7 +100,9 @@ export function TrajectoryView({ events, colorMode }: TrajectoryViewProps) {
   const { locale } = useLocale();
   // Count structural events as a stable primitive memoization key.
   // This number only changes when a turn/reason/act/tool/message event arrives,
-  // NOT on every output.message.delta or reason.thinking.delta (which fire 10-30x/sec).
+  // NOT on every message-scoped output.message.delta or reason.thinking.delta
+  // (which fire 10-30x/sec). Trajectory nodes consume canonical completed
+  // messages, so no turn-level delta accumulator is needed here.
   const structuralCount = useMemo(() => countStructuralEvents(events), [events]);
 
   // Build nodes/edges/stats only when structural events change

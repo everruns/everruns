@@ -2245,18 +2245,34 @@ export interface InputMessageData {
 /** Data for output.message.started event (LLM generation started) */
 export interface OutputMessageStartedData {
   turn_id: string;
+  /** Stable public ID for this assistant message across its streaming lifecycle */
+  message_id: string;
   model?: string;
   /** 1-based iteration number within the turn */
   iteration?: number;
+  phase?: "commentary" | "final_answer";
 }
 
 /** Data for output.message.delta event (streaming text update) */
 export interface OutputMessageDeltaData {
   turn_id: string;
+  /** Stable public ID for this assistant message across its streaming lifecycle */
+  message_id: string;
   /** The new text since last delta */
   delta: string;
   /** Accumulated text so far */
   accumulated: string;
+  phase?: "commentary" | "final_answer";
+}
+
+/** Data for output.message.replaced event (guardrail replacement) */
+export interface LegacyOutputMessageReplacedData {
+  turn_id: string;
+  message_id: string;
+  guardrail_capability_id: string;
+  guardrail_id: string;
+  reason_code: string;
+  replacement: string;
 }
 
 /** Data for output.message.completed event */
@@ -2563,6 +2579,7 @@ export type EventData =
   | InputMessageData
   | OutputMessageStartedData
   | OutputMessageDeltaData
+  | LegacyOutputMessageReplacedData
   | OutputMessageCompletedData
   | TurnStartedData
   | TurnCompletedData
@@ -2598,6 +2615,7 @@ export interface EventTypeMap {
   "input.message": InputMessageData;
   "output.message.started": OutputMessageStartedData;
   "output.message.delta": OutputMessageDeltaData;
+  "output.message.replaced": LegacyOutputMessageReplacedData;
   "output.message.completed": OutputMessageCompletedData;
   "turn.started": TurnStartedData;
   "turn.completed": TurnCompletedData;

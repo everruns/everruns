@@ -33,6 +33,7 @@ import type {
 } from "@/lib/api/types";
 import { getTextFromContent, isToolCallPart, getEventData } from "@/lib/api/types";
 import { getLocalizedOutputMessageText } from "@/lib/runtime-errors";
+import { latestStreamingMessage } from "@/lib/streaming-message-state";
 import type { UseMutationResult } from "@tanstack/react-query";
 
 /** Accumulated streamed output for a single tool call */
@@ -78,6 +79,7 @@ export interface SessionContextValue {
   isThinking: boolean;
   streamingText: string | null;
   streamingTurnId: string | null;
+  streamingMessageId: string | null;
   /** Current iteration number within the active turn (1-based) */
   streamingIteration: number | null;
   // Message sending
@@ -146,6 +148,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   const [isThinking, setIsThinking] = useState(false);
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [streamingTurnId, setStreamingTurnId] = useState<string | null>(null);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
   const [streamingIteration, setStreamingIteration] = useState<number | null>(null);
 
   // Optimistic events - shown immediately before SSE confirms
@@ -243,6 +246,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
         setIsThinking(false);
         setStreamingText(null);
         setStreamingTurnId(null);
+        setStreamingMessageId(null);
         break;
       }
       if (event.type === "turn.cancelled") {
@@ -251,6 +255,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
         setIsThinking(false);
         setStreamingText(null);
         setStreamingTurnId(null);
+        setStreamingMessageId(null);
         break;
       }
       if (event.type === "turn.failed") {
@@ -259,6 +264,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
         setIsThinking(false);
         setStreamingText(null);
         setStreamingTurnId(null);
+        setStreamingMessageId(null);
         setStreamingIteration(null);
         setLocalStatus("idle");
         break;
@@ -266,63 +272,16 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     }
   }, [events]);
 
-  // Update streaming state from SSE events (reason.thinking.started, output.message.delta, output.message.completed)
-  // This provides real-time feedback while the LLM generates text
+  // Project streaming state by message_id. A single turn may contain multiple
+  // commentary/final assistant messages, each with an independent lifecycle.
   useEffect(() => {
-    if (!events || events.length === 0) return;
-
-    // Process events from newest to oldest to find current streaming state
-    for (let i = events.length - 1; i >= 0; i--) {
-      const event = events[i];
-
-      // output.message.completed finalizes the response - stop streaming
-      if (event.type === "output.message.completed") {
-        const turnId = event.context?.turn_id;
-        // Only clear streaming if this message is for the current streaming turn
-        if (!streamingTurnId || turnId === streamingTurnId) {
-          setIsThinking(false);
-          setStreamingText(null);
-          setStreamingTurnId(null);
-          setStreamingIteration(null);
-        }
-        break;
-      }
-
-      // output.message.delta provides incremental text updates
-      {
-        const deltaData = getEventData(event, "output.message.delta");
-        if (deltaData) {
-          setIsThinking(false); // No longer just thinking, now we have text
-          setStreamingText(deltaData.accumulated);
-          setStreamingTurnId(deltaData.turn_id);
-          break;
-        }
-      }
-
-      // output.message.started tracks iteration number
-      {
-        const startedData = getEventData(event, "output.message.started");
-        if (startedData?.iteration) {
-          setStreamingIteration(startedData.iteration);
-        }
-        // Don't break - continue looking for delta/thinking events
-      }
-
-      // reason.thinking.started indicates LLM is generating (before first text)
-      {
-        const thinkData = getEventData(event, "reason.thinking.started");
-        if (thinkData) {
-          // Only set thinking if we don't already have streaming text for this turn
-          if (!streamingText || streamingTurnId !== thinkData.turn_id) {
-            setIsThinking(true);
-            setStreamingText(null);
-            setStreamingTurnId(thinkData.turn_id);
-          }
-          break;
-        }
-      }
-    }
-  }, [events, streamingTurnId, streamingText]);
+    const streaming = latestStreamingMessage(events ?? []);
+    setIsThinking(streaming.isThinking);
+    setStreamingText(streaming.text);
+    setStreamingTurnId(streaming.turnId);
+    setStreamingMessageId(streaming.messageId);
+    setStreamingIteration(streaming.iteration);
+  }, [events]);
 
   // Reset local status, optimistic events, and streaming state when session changes
   useEffect(() => {
@@ -331,6 +290,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     setIsThinking(false);
     setStreamingText(null);
     setStreamingTurnId(null);
+    setStreamingMessageId(null);
     setStreamingIteration(null);
   }, [sessionId]);
 
@@ -652,6 +612,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     isThinking,
     streamingText,
     streamingTurnId,
+    streamingMessageId,
     streamingIteration,
     sendMessage,
     cancelCurrentTurn,

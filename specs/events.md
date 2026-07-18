@@ -331,7 +331,7 @@ Consumers group streamed assistant text by **`message_id`**, not `turn_id`: a mu
 
 #### `output.message.replaced`
 
-Streaming output was withheld by an output guardrail (see `specs/capabilities.md` § Output Guardrails). Emitted between the last (suppressed) `output.message.delta` and the final `output.message.completed`. Clients should discard everything they accumulated for `turn_id` and use `replacement` as the assistant message text. The model's original tokens are never persisted or replayed on subsequent turns.
+Streaming output was withheld by an output guardrail (see `specs/capabilities.md` § Output Guardrails). Emitted between the last (suppressed) `output.message.delta` and the final `output.message.completed`. Clients should discard only the text accumulated for `message_id` and use `replacement` as that assistant message's text. The model's original tokens are never persisted or replayed on subsequent turns.
 
 ```json
 {
