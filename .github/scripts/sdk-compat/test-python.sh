@@ -25,8 +25,24 @@ import inspect
 import os
 import random
 import string
+import json
+import urllib.request
 
 from everruns_sdk import Everruns
+
+
+def api_post(path: str, body: dict) -> dict:
+    request = urllib.request.Request(
+        f"{os.environ['EVERRUNS_BASE_URL'].rstrip('/')}{path}",
+        data=json.dumps(body).encode(),
+        headers={
+            "Authorization": f"Bearer {os.environ['EVERRUNS_API_KEY']}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(request) as response:
+        return json.load(response)
 
 
 async def main() -> None:
@@ -69,6 +85,34 @@ async def main() -> None:
     if fetched_session.id != session.id:
         raise RuntimeError(f"session id mismatch: {fetched_session.id} != {session.id}")
     print("  session fetch verified")
+
+    # 5. Exercise newly generated trigger and participant API surfaces. Raw
+    # HTTP keeps older published SDK cohorts compatible with the current API.
+    trigger = api_post(
+        f"/v1/agents/{agent.id}/triggers",
+        {
+            "cron_expression": "0 0 * * *",
+            "timezone": "UTC",
+            "session_mode": "session_per_invocation",
+            "message": "SDK compatibility trigger",
+            "enabled": False,
+        },
+    )
+    if trigger.get("agent_id") != agent.id:
+        raise RuntimeError("created trigger has wrong agent")
+    print(f"  trigger created: {trigger['id']}")
+
+    guest = await client.agents.create(
+        name=f"sdk-compat-py-guest-{suffix}",
+        system_prompt="Compatibility guest agent",
+    )
+    participant = api_post(
+        f"/v1/sessions/{session.id}/participants",
+        {"kind": "agent", "agent_id": guest.id},
+    )
+    if participant.get("agent_id") != guest.id:
+        raise RuntimeError("created participant has wrong agent")
+    print(f"  participant added: {participant['id']}")
 
     print(f"ok python sdk {version}")
 

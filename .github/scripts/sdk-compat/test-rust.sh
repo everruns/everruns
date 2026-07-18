@@ -25,7 +25,64 @@ edition = "2021"
 [dependencies]
 everruns-sdk = "=$version"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+reqwest = { version = "0.12", features = ["json"] }
+serde_json = "1"
 TOML
+
+cat > "$workdir/smoke/src/compat.rs" <<'RS'
+use everruns_sdk::Everruns;
+
+pub async fn exercise_new_surfaces(
+    client: &Everruns,
+    base_url: &str,
+    api_key: &str,
+    agent_id: &str,
+    session_id: &str,
+    suffix: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let http = reqwest::Client::new();
+    let trigger: serde_json::Value = http
+        .post(format!("{}/v1/agents/{agent_id}/triggers", base_url.trim_end_matches('/')))
+        .bearer_auth(api_key)
+        .json(&serde_json::json!({
+            "cron_expression": "0 0 * * *",
+            "timezone": "UTC",
+            "session_mode": "session_per_invocation",
+            "message": "SDK compatibility trigger",
+            "enabled": false
+        }))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    assert_eq!(trigger["agent_id"], agent_id);
+    println!("  trigger created: {}", trigger["id"]);
+
+    let guest = client
+        .agents()
+        .create(
+            &format!("sdk-compat-rs-guest-{suffix}"),
+            "Compatibility guest agent",
+        )
+        .await?;
+    let participant: serde_json::Value = http
+        .post(format!(
+            "{}/v1/sessions/{session_id}/participants",
+            base_url.trim_end_matches('/')
+        ))
+        .bearer_auth(api_key)
+        .json(&serde_json::json!({ "kind": "agent", "agent_id": guest.id.clone() }))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    assert_eq!(participant["agent_id"], guest.id);
+    println!("  participant added: {}", participant["id"]);
+    Ok(())
+}
+RS
 
 # The SDK session API changed across versions:
 #   v0.1.0-v0.1.2: sessions().create(agent_id)
@@ -45,17 +102,19 @@ if version_cmp "$version" "0.1.4"; then
 # v0.1.4+: create() takes no args; use create_with_options() with builder
 cat > "$workdir/smoke/src/main.rs" <<'RS'
 use everruns_sdk::{Everruns, CreateSessionRequest};
+mod compat;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("EVERRUNS_API_KEY")?;
     let base_url = std::env::var("EVERRUNS_BASE_URL")?;
     let sdk_version = std::env::var("SDK_VERSION")?;
+    let suffix = format!("{}-{}", sdk_version.replace('.', "-"), std::process::id());
 
-    let client = Everruns::with_base_url(api_key, &base_url)?;
+    let client = Everruns::with_base_url(api_key.clone(), &base_url)?;
 
     // 1. Create agent
-    let agent = client.agents().create("sdk-compat-rs", "Compatibility test agent").await?;
+    let agent = client.agents().create(&format!("sdk-compat-rs-{suffix}"), "Compatibility test agent").await?;
     println!("  agent created: {}", agent.id);
 
     // 2. Fetch agent and verify
@@ -76,6 +135,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(fetched_session.id, session.id, "session id mismatch");
     println!("  session fetch verified");
 
+    // 5. Raw HTTP keeps older published SDK cohorts compatible while checking
+    // the current trigger and participant API surfaces.
+    compat::exercise_new_surfaces(
+        &client, &base_url, &api_key, &agent.id, &session.id, &suffix,
+    )
+    .await?;
+
     println!("ok rust sdk {}", sdk_version);
     Ok(())
 }
@@ -84,17 +150,19 @@ elif version_cmp "$version" "0.1.3"; then
 # v0.1.3: create(harness_id)
 cat > "$workdir/smoke/src/main.rs" <<'RS'
 use everruns_sdk::Everruns;
+mod compat;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("EVERRUNS_API_KEY")?;
     let base_url = std::env::var("EVERRUNS_BASE_URL")?;
     let sdk_version = std::env::var("SDK_VERSION")?;
+    let suffix = format!("{}-{}", sdk_version.replace('.', "-"), std::process::id());
 
-    let client = Everruns::with_base_url(api_key, &base_url)?;
+    let client = Everruns::with_base_url(api_key.clone(), &base_url)?;
 
     // 1. Create agent
-    let agent = client.agents().create("sdk-compat-rs", "Compatibility test agent").await?;
+    let agent = client.agents().create(&format!("sdk-compat-rs-{suffix}"), "Compatibility test agent").await?;
     println!("  agent created: {}", agent.id);
 
     // 2. Fetch agent and verify
@@ -112,6 +180,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     assert_eq!(fetched_session.id, session.id, "session id mismatch");
     println!("  session fetch verified");
 
+    compat::exercise_new_surfaces(
+        &client, &base_url, &api_key, &agent.id, &session.id, &suffix,
+    )
+    .await?;
+
     println!("ok rust sdk {}", sdk_version);
     Ok(())
 }
@@ -120,17 +193,19 @@ else
 # v0.1.0-v0.1.2: create(agent_id)
 cat > "$workdir/smoke/src/main.rs" <<'RS'
 use everruns_sdk::Everruns;
+mod compat;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("EVERRUNS_API_KEY")?;
     let base_url = std::env::var("EVERRUNS_BASE_URL")?;
     let sdk_version = std::env::var("SDK_VERSION")?;
+    let suffix = format!("{}-{}", sdk_version.replace('.', "-"), std::process::id());
 
-    let client = Everruns::with_base_url(api_key, &base_url)?;
+    let client = Everruns::with_base_url(api_key.clone(), &base_url)?;
 
     // 1. Create agent
-    let agent = client.agents().create("sdk-compat-rs", "Compatibility test agent").await?;
+    let agent = client.agents().create(&format!("sdk-compat-rs-{suffix}"), "Compatibility test agent").await?;
     println!("  agent created: {}", agent.id);
 
     // 2. Fetch agent and verify
@@ -146,6 +221,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fetched_session = client.sessions().get(&session.id).await?;
     assert_eq!(fetched_session.id, session.id, "session id mismatch");
     println!("  session fetch verified");
+
+    compat::exercise_new_surfaces(
+        &client, &base_url, &api_key, &agent.id, &session.id, &suffix,
+    )
+    .await?;
 
     println!("ok rust sdk {}", sdk_version);
     Ok(())
