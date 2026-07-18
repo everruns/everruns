@@ -32,6 +32,7 @@ use everruns_server::domains::common::{
 use everruns_server::domains::evals::{CreateEvalRun, ListEvals};
 use everruns_server::domains::harnesses::types::CreateHarnessRequest;
 use everruns_server::domains::harnesses::{CreateHarness, ListHarnesses};
+use everruns_server::domains::messages::{ExportSessionMessages, SessionExportFormat};
 use everruns_server::domains::session_files::{GetWorkspaceFile, ListWorkspaceFiles};
 use everruns_server::domains::session_tasks::{
     CancelSessionTask, GetSessionTask, ListSessionTasks, PostSessionTaskMessage,
@@ -231,6 +232,24 @@ async fn session_task_commands_honor_session_permissions_before_access() {
     .await
     .expect_err("cancel must require the session manage policy");
     assert_forbidden(cancel_err);
+}
+
+#[tokio::test]
+async fn session_export_requires_session_view_policy_before_lookup() {
+    // Regression for ATIF export RBAC: both export formats expose session data,
+    // so a resolver denying OrgSessionsManage must block before ID parsing or lookup.
+    let ctx = make_ctx(caller_with_role(OrgRole::Owner), Arc::new(DenyAllResolver));
+
+    for format in [SessionExportFormat::Jsonl, SessionExportFormat::Atif] {
+        let err = ExportSessionMessages {
+            session_id: "not-a-session-id".to_string(),
+            format,
+        }
+        .run(&ctx)
+        .await
+        .expect_err("session export must require SESSION_VIEW");
+        assert_forbidden(err);
+    }
 }
 
 fn assert_forbidden(err: CommandError) {

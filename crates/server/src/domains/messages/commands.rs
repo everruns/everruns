@@ -241,6 +241,10 @@ impl Command for ExportSessionMessages {
         Some("session_id")
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::sessions::SESSION_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<ExportSessionJsonl, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::session_service(ctx)?
