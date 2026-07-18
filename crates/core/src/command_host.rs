@@ -14,8 +14,8 @@
 use crate::capabilities::CapabilityRegistry;
 use crate::command::CommandResult;
 use crate::driver_registry::{
-    BoxedChatDriver, DriverRegistry, LlmCallConfig, LlmCallConfigBuilder, LlmMessage,
-    LlmMessageRole, LlmResponseStream, ProviderConfig, ToolSearchConfig,
+    BoxedChatDriver, DriverRegistry, LlmCallConfig, LlmMessage, LlmMessageRole, LlmResponseStream,
+    ToolSearchConfig,
 };
 use crate::error::{AgentLoopError, Result};
 use crate::message::{Controls, Message, MessageRole, patch_dangling_tool_calls};
@@ -300,7 +300,7 @@ impl StoreCommandHost {
         };
         let image_ids: HashSet<Uuid> = messages
             .iter()
-            .flat_map(LlmMessage::extract_image_file_ids)
+            .flat_map(crate::llm_conversions::extract_image_file_ids)
             .collect();
         let mut resolved = HashMap::new();
         for image_id in image_ids {
@@ -364,7 +364,8 @@ impl StoreCommandHost {
             .map(|prompt| LlmMessage::text(LlmMessageRole::System, prompt.clone()))
             .collect();
         for msg in &messages {
-            let mut llm_msg = LlmMessage::from_message_with_images(msg, &resolved_images);
+            let mut llm_msg =
+                crate::llm_conversions::llm_message_from_message_with_images(msg, &resolved_images);
             if msg.role == MessageRole::User
                 && let Some(actor) = &msg.external_actor
             {
@@ -373,15 +374,16 @@ impl StoreCommandHost {
             llm_messages.push(llm_msg);
         }
 
-        let mut llm_config_builder = LlmCallConfigBuilder::from(&assembled.runtime_agent)
-            .model(&model.model)
-            .tools(vec![])
-            .tool_search(ToolSearchConfig {
-                enabled: false,
-                threshold: usize::MAX,
-            })
-            .previous_response_id(None)
-            .with_metadata("session_id", self.session_id.to_string());
+        let mut llm_config_builder =
+            crate::llm_conversions::llm_call_config_builder_from_agent(&assembled.runtime_agent)
+                .model(&model.model)
+                .tools(vec![])
+                .tool_search(ToolSearchConfig {
+                    enabled: false,
+                    threshold: usize::MAX,
+                })
+                .previous_response_id(None)
+                .with_metadata("session_id", self.session_id.to_string());
         if let Some(effort) = request
             .controls
             .as_ref()
@@ -398,7 +400,9 @@ impl StoreCommandHost {
 
         let driver = self
             .driver_registry
-            .create_chat_driver(&ProviderConfig::from(&model))
+            .create_chat_driver(
+                &crate::llm_conversions::provider_config_from_resolved_model(&model),
+            )
             .map_err(|error| SessionCompletionError::Completion {
                 error: error.to_string(),
                 context: context.clone(),

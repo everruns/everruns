@@ -16,25 +16,25 @@ use serde_json::{Value, json};
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
 
-use everruns_core::credential_schema::CredentialFormSchema;
-use everruns_core::driver_helpers::{
+use everruns_provider::credential_schema::CredentialFormSchema;
+use everruns_provider::driver_helpers::{
     self, AUDIO_CONTENT_PLACEHOLDER, GEMINI_NOT_FOUND_PATTERNS, GEMINI_TOO_LARGE_PATTERNS,
     parse_data_url,
 };
-use everruns_core::driver_registry::{
+use everruns_provider::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverDescriptor, DriverId, DriverRegistry,
     LlmCallConfig, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmResponseStream, LlmStreamEvent, disjoint_prompt_tokens,
     fold_system_messages,
 };
-use everruns_core::error::{AgentLoopError, LlmErrorKind, Result};
-use everruns_core::is_provider_quota_message;
-use everruns_core::llm_retry::{
+use everruns_provider::error::{AgentLoopError, LlmErrorKind, Result};
+use everruns_provider::is_provider_quota_message;
+use everruns_provider::llm_retry::{
     LlmRetryConfig, RetryDecision, RetryMetadata, SendOutcome, retry_request, send_error_message,
 };
-use everruns_core::stream_accumulator::StreamToolCallAccumulator;
-use everruns_core::stream_reconnect::connect_bytes_with_reconnect;
-use everruns_core::tool_types::{ToolCall, ToolDefinition};
+use everruns_provider::stream_accumulator::StreamToolCallAccumulator;
+use everruns_provider::stream_reconnect::connect_bytes_with_reconnect;
+use everruns_provider::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_BASE_URL: &str = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -55,7 +55,7 @@ impl GeminiChatDriver {
     /// Create a new driver with the given API key
     pub fn new(api_key: impl Into<String>) -> Self {
         Self {
-            client: everruns_core::driver_helpers::shared_streaming_http_client(),
+            client: everruns_provider::driver_helpers::shared_streaming_http_client(),
             api_key: api_key.into(),
             base_url: DEFAULT_BASE_URL.to_string(),
             uses_custom_url: false,
@@ -66,7 +66,7 @@ impl GeminiChatDriver {
     /// Create a new driver with a custom base URL
     pub fn with_base_url(api_key: impl Into<String>, base_url: impl Into<String>) -> Self {
         Self {
-            client: everruns_core::driver_helpers::shared_streaming_http_client(),
+            client: everruns_provider::driver_helpers::shared_streaming_http_client(),
             api_key: api_key.into(),
             base_url: base_url.into(),
             uses_custom_url: true,
@@ -406,15 +406,18 @@ impl ChatDriver for GeminiChatDriver {
         // If no max_tokens specified, use model's max output from profile, or 8192 fallback
         if generation_config.max_output_tokens.is_none() {
             generation_config.max_output_tokens = Some(
-                everruns_core::get_model_profile(&everruns_core::DriverId::Gemini, &config.model)
-                    .and_then(|p| {
-                        p.limits.and_then(|l| {
-                            u32::try_from(l.output)
-                                .ok()
-                                .and_then(|v| if v > 0 { Some(v) } else { None })
-                        })
+                everruns_provider::get_model_profile(
+                    &everruns_provider::DriverId::Gemini,
+                    &config.model,
+                )
+                .and_then(|p| {
+                    p.limits.and_then(|l| {
+                        u32::try_from(l.output)
+                            .ok()
+                            .and_then(|v| if v > 0 { Some(v) } else { None })
                     })
-                    .unwrap_or(8_192),
+                })
+                .unwrap_or(8_192),
             );
         }
 
@@ -1094,7 +1097,7 @@ mod tests {
     use super::*;
     use everruns_core::FileSystemCapability;
     use everruns_core::capabilities::Capability;
-    use everruns_core::driver_registry::ChatDriver;
+    use everruns_provider::driver_registry::ChatDriver;
 
     #[test]
     fn supports_parallel_tool_calls_is_false() {
@@ -1177,7 +1180,7 @@ mod tests {
 
     #[test]
     fn test_convert_tools() {
-        use everruns_core::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
+        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
         let tools = vec![ToolDefinition::Builtin(BuiltinTool {
             name: "get_weather".to_string(),
             display_name: None,
@@ -1192,7 +1195,7 @@ mod tests {
             policy: ToolPolicy::Auto,
             category: None,
             deferrable: DeferrablePolicy::default(),
-            hints: everruns_core::tool_types::ToolHints::default(),
+            hints: everruns_provider::tool_types::ToolHints::default(),
             full_parameters: None,
         })];
 
@@ -1206,7 +1209,7 @@ mod tests {
 
     #[test]
     fn test_convert_tools_strips_additional_properties() {
-        use everruns_core::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
+        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
         let tools = vec![ToolDefinition::Builtin(BuiltinTool {
             name: "search".to_string(),
             display_name: None,
@@ -1222,7 +1225,7 @@ mod tests {
             policy: ToolPolicy::Auto,
             category: None,
             deferrable: DeferrablePolicy::default(),
-            hints: everruns_core::tool_types::ToolHints::default(),
+            hints: everruns_provider::tool_types::ToolHints::default(),
             full_parameters: None,
         })];
 
@@ -1238,7 +1241,7 @@ mod tests {
 
     #[test]
     fn test_convert_tools_strips_additional_properties_nested() {
-        use everruns_core::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
+        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
         let tools = vec![ToolDefinition::Builtin(BuiltinTool {
             name: "complex".to_string(),
             display_name: None,
@@ -1277,7 +1280,7 @@ mod tests {
             policy: ToolPolicy::Auto,
             category: None,
             deferrable: DeferrablePolicy::default(),
-            hints: everruns_core::tool_types::ToolHints::default(),
+            hints: everruns_provider::tool_types::ToolHints::default(),
             full_parameters: None,
         })];
 
@@ -1309,7 +1312,7 @@ mod tests {
 
     #[test]
     fn test_convert_tools_preserves_property_named_additional_properties() {
-        use everruns_core::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
+        use everruns_provider::tool_types::{BuiltinTool, DeferrablePolicy, ToolPolicy};
         let tools = vec![ToolDefinition::Builtin(BuiltinTool {
             name: "configure".to_string(),
             display_name: None,
@@ -1328,7 +1331,7 @@ mod tests {
             policy: ToolPolicy::Auto,
             category: None,
             deferrable: DeferrablePolicy::default(),
-            hints: everruns_core::tool_types::ToolHints::default(),
+            hints: everruns_provider::tool_types::ToolHints::default(),
             full_parameters: None,
         })];
 
@@ -1536,8 +1539,10 @@ mod tests {
     #[test]
     fn test_default_max_tokens_from_known_model() {
         // Known Gemini models should resolve max_tokens from profile
-        let profile =
-            everruns_core::get_model_profile(&everruns_core::DriverId::Gemini, "gemini-1.5-pro");
+        let profile = everruns_provider::get_model_profile(
+            &everruns_provider::DriverId::Gemini,
+            "gemini-1.5-pro",
+        );
         assert!(profile.is_some(), "gemini-1.5-pro should have a profile");
         let limits = profile.unwrap().limits.expect("profile should have limits");
         assert!(limits.output > 0, "output limit should be positive");
@@ -1546,8 +1551,8 @@ mod tests {
     #[test]
     fn test_default_max_tokens_unknown_model_falls_back() {
         // Unknown model should return None (triggering the 8192 fallback)
-        let profile = everruns_core::get_model_profile(
-            &everruns_core::DriverId::Gemini,
+        let profile = everruns_provider::get_model_profile(
+            &everruns_provider::DriverId::Gemini,
             "nonexistent-model-xyz",
         );
         assert!(profile.is_none(), "unknown model should not have a profile");

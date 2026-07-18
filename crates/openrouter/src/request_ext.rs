@@ -15,13 +15,13 @@
 use std::borrow::Cow;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use everruns_core::OpenResponsesRequestExtension;
-use everruns_core::driver_registry::{
+use everruns_provider::OpenResponsesRequestExtension;
+use everruns_provider::driver_registry::{
     LlmCallConfig, OPENROUTER_HTTP_REFERER_METADATA_KEY, OPENROUTER_X_TITLE_METADATA_KEY,
     OpenRouterCapacityStrategy, OpenRouterPluginConfig, OpenRouterRoutingConfig,
 };
-use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::llm_retry::{RateLimitInfo, RateLimitType};
+use everruns_provider::error::{AgentLoopError, Result};
+use everruns_provider::llm_retry::{RateLimitInfo, RateLimitType};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use serde_json::{Value, json};
 
@@ -324,7 +324,7 @@ fn plugins_to_wire(config: &OpenRouterPluginConfig) -> Option<Vec<Value>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::driver_registry::{OpenRouterFilePlugin, OpenRouterWebSearchPlugin};
+    use everruns_provider::driver_registry::{OpenRouterFilePlugin, OpenRouterWebSearchPlugin};
 
     #[test]
     fn empty_plugin_config_serializes_to_none() {

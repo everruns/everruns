@@ -28,8 +28,8 @@ use uuid::Uuid;
 use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::driver_registry::{
-    DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
-    LlmMessageRole, LlmStreamEvent, ProviderConfig,
+    DriverRegistry, LlmCompletionMetadata, LlmMessage, LlmMessageContent, LlmMessageRole,
+    LlmStreamEvent,
 };
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
@@ -1651,7 +1651,8 @@ impl ReasonAtom {
                 stripped_error_count += 1;
                 continue;
             }
-            let mut llm_msg = LlmMessage::from_message_with_images(msg, &resolved_images);
+            let mut llm_msg =
+                crate::llm_conversions::llm_message_from_message_with_images(msg, &resolved_images);
             if msg.role == MessageRole::User
                 && let Some(ref actor) = msg.external_actor
             {
@@ -1668,7 +1669,8 @@ impl ReasonAtom {
         }
 
         // 12. Build LLM call config with reasoning effort and metadata
-        let mut llm_config_builder = LlmCallConfigBuilder::from(&runtime_agent);
+        let mut llm_config_builder =
+            crate::llm_conversions::llm_call_config_builder_from_agent(&runtime_agent);
         if let Some(effort) = reasoning_effort.clone() {
             llm_config_builder = llm_config_builder.reasoning_effort(effort);
         }
@@ -3201,7 +3203,7 @@ impl ReasonAtom {
         model: &ResolvedModel,
     ) -> Result<crate::driver_registry::BoxedChatDriver> {
         self.driver_registry
-            .create_chat_driver(&ProviderConfig::from(model))
+            .create_chat_driver(&crate::llm_conversions::provider_config_from_resolved_model(model))
     }
 
     /// Resolve image_file references to actual image data
@@ -3226,7 +3228,7 @@ impl ReasonAtom {
         // Collect all unique image_file IDs from all messages
         let image_ids: Vec<Uuid> = messages
             .iter()
-            .flat_map(LlmMessage::extract_image_file_ids)
+            .flat_map(crate::llm_conversions::extract_image_file_ids)
             .collect::<std::collections::HashSet<_>>()
             .into_iter()
             .collect();

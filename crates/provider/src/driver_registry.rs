@@ -17,7 +17,6 @@
 use crate::credential_schema::CredentialFormSchema;
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
 use crate::openresponses_protocol::{CompactRequest, CompactResponse};
-use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::{ToolCall, ToolDefinition};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -150,7 +149,7 @@ pub enum LlmStreamEvent {
     /// classify streamed assistant text as commentary vs final answer; the
     /// authoritative value is still the completed `Message.phase`. Other
     /// providers never emit this and stay unclassified until completion.
-    MessagePhase(crate::message::ExecutionPhase),
+    MessagePhase(crate::execution_phase::ExecutionPhase),
     /// Streaming completed
     Done(Box<LlmCompletionMetadata>),
     /// Error during streaming
@@ -186,7 +185,7 @@ pub struct DiscoveredModel {
 ///
 /// Contains token usage and completion information from the LLM response.
 ///
-/// Token buckets are **disjoint** by convention (see [`TokenUsage`]): drivers
+/// Token buckets are **disjoint** by convention (see the `TokenUsage` event): drivers
 /// normalize provider wire formats at the boundary so `prompt_tokens` carries
 /// only non-cached input, with `cache_read_tokens` / `cache_creation_tokens`
 /// additive on top. Inclusive providers (OpenAI Responses / Chat Completions,
@@ -194,7 +193,6 @@ pub struct DiscoveredModel {
 /// [`disjoint_prompt_tokens`]; Anthropic / Bedrock already report disjoint
 /// buckets and pass values through unchanged.
 ///
-/// [`TokenUsage`]: crate::events::TokenUsage
 #[derive(Debug, Clone, Default)]
 pub struct LlmCompletionMetadata {
     /// Total tokens used (non-cached prompt + cache read/creation + completion)
@@ -227,7 +225,7 @@ pub struct LlmCompletionMetadata {
 }
 
 /// Normalize an inclusive provider's reported prompt-token count to the disjoint
-/// [`TokenUsage`] convention by subtracting the cached-read subset.
+/// `TokenUsage` convention by subtracting the cached-read subset.
 ///
 /// OpenAI (Responses & Chat Completions) and Gemini report a prompt token count
 /// that *includes* cached reads; callers pass that raw count plus the provider's
@@ -235,7 +233,6 @@ pub struct LlmCompletionMetadata {
 /// guards against a provider reporting `cache_read > reported_input`. Anthropic /
 /// Bedrock already report disjoint buckets and must not call this.
 ///
-/// [`TokenUsage`]: crate::events::TokenUsage
 pub fn disjoint_prompt_tokens(reported_input: u32, cache_read: Option<u32>) -> u32 {
     reported_input.saturating_sub(cache_read.unwrap_or(0))
 }
@@ -443,7 +440,7 @@ pub struct LlmMessage {
     /// Helps models distinguish between intermediate working commentary (`Commentary`)
     /// and completed answers (`FinalAnswer`) in multi-step tool-calling flows.
     /// Only set on assistant messages. Must be preserved when replaying conversation history.
-    pub phase: Option<crate::message::ExecutionPhase>,
+    pub phase: Option<crate::execution_phase::ExecutionPhase>,
     /// Thinking content from extended thinking models (Anthropic Claude)
     /// Must be included in subsequent API calls when thinking is enabled
     pub thinking: Option<String>,
@@ -1326,26 +1323,8 @@ impl LlmCallConfig {
     }
 }
 
-impl From<&RuntimeAgent> for LlmCallConfig {
-    fn from(runtime_agent: &RuntimeAgent) -> Self {
-        Self {
-            model: runtime_agent.model.clone(),
-            temperature: runtime_agent.temperature,
-            max_tokens: runtime_agent.max_tokens,
-            tools: runtime_agent.tools.clone(),
-            reasoning_effort: None, // Set by ReasonAtom from user message controls
-            speed: None,            // Set by ReasonAtom from user message controls
-            verbosity: None,        // Set by ReasonAtom from user message controls
-            metadata: HashMap::new(), // Set by ReasonAtom with session/agent context
-            previous_response_id: None,
-            tool_search: runtime_agent.tool_search.clone(),
-            prompt_cache: runtime_agent.prompt_cache.clone(),
-            openrouter_routing: runtime_agent.openrouter_routing.clone(),
-            parallel_tool_calls: runtime_agent.parallel_tool_calls,
-            volatile_suffix_len: 0,
-        }
-    }
-}
+// The `From<&RuntimeAgent>` adapter for LlmCallConfig lives in
+// everruns-core (`llm_conversions`), since RuntimeAgent is a core domain type.
 
 /// Response from an LLM call (non-streaming)
 #[derive(Debug, Clone)]
@@ -1361,32 +1340,17 @@ pub struct LlmResponse {
 
 /// Builder for LlmCallConfig with fluent API
 ///
-/// Use `from(&runtime_agent)` to start building from a RuntimeAgent, then chain
-/// methods like `reasoning_effort()`, `temperature()`, etc. Call `build()`
-/// to get the final config.
-///
-/// # Example
-///
-/// ```ignore
-/// use everruns_core::llm::LlmCallConfigBuilder;
-/// use everruns_core::runtime_agent::RuntimeAgent;
-///
-/// let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
-/// let llm_config = LlmCallConfigBuilder::from(&runtime_agent)
-///     .reasoning_effort("high")
-///     .temperature(0.7)
-///     .build();
-/// ```
+/// Chain methods like `reasoning_effort()`, `temperature()`, etc. and call
+/// `build()` to get the final config. To start from a core `RuntimeAgent`, use
+/// `everruns_core::llm_conversions::llm_call_config_builder_from_agent`.
 pub struct LlmCallConfigBuilder {
     config: LlmCallConfig,
 }
 
 impl LlmCallConfigBuilder {
-    /// Start building from a RuntimeAgent
-    pub fn from(runtime_agent: &RuntimeAgent) -> Self {
-        Self {
-            config: LlmCallConfig::from(runtime_agent),
-        }
+    /// Construct a builder wrapping an existing config.
+    pub fn from_config(config: LlmCallConfig) -> Self {
+        Self { config }
     }
 
     /// Set reasoning effort level (for models that support it: low, medium, high)
@@ -1490,198 +1454,9 @@ impl LlmCallConfigBuilder {
     }
 }
 
-// ============================================================================
-// Conversion from Message
-// ============================================================================
-
-impl From<&crate::message::Message> for LlmMessage {
-    /// Convert a Message to LlmMessage (text-only, images become placeholders)
-    ///
-    /// This conversion is suitable for messages without images or when image
-    /// resolution is not available. For multimodal messages, use
-    /// `LlmMessage::from_message_with_images()` instead.
-    fn from(msg: &crate::message::Message) -> Self {
-        let role = match msg.role {
-            crate::message::MessageRole::System => LlmMessageRole::System,
-            crate::message::MessageRole::User => LlmMessageRole::User,
-            crate::message::MessageRole::Agent => LlmMessageRole::Assistant,
-            crate::message::MessageRole::ToolResult => LlmMessageRole::Tool,
-        };
-
-        // Convert tool calls from ContentPart format to ToolCall format
-        let tool_calls: Vec<ToolCall> = msg
-            .tool_calls()
-            .into_iter()
-            .map(|tc| ToolCall {
-                id: tc.id.clone(),
-                name: tc.name.clone(),
-                arguments: tc.arguments.clone(),
-            })
-            .collect();
-
-        LlmMessage {
-            role,
-            content: LlmMessageContent::Text(msg.content_to_llm_string()),
-            tool_calls: if tool_calls.is_empty() {
-                None
-            } else {
-                Some(tool_calls)
-            },
-            tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
-            phase: msg.phase,
-            thinking: msg.thinking.clone(),
-            thinking_signature: msg.thinking_signature.clone(),
-        }
-    }
-}
-
-// ============================================================================
-// Message Conversion with Images
-// ============================================================================
-
-use crate::traits::ResolvedImage;
-use uuid::Uuid;
-
-impl LlmMessage {
-    /// Convert a Message to LlmMessage with resolved images
-    ///
-    /// This method handles multimodal messages by converting:
-    /// - `text` content parts → `LlmContentPart::Text`
-    /// - `image` content parts → `LlmContentPart::Image` (data URL)
-    /// - `image_file` content parts → `LlmContentPart::Image` (resolved to data URL)
-    /// - `tool_call` content parts → extracted to `tool_calls` field
-    /// - `tool_result` content parts → text representation
-    ///
-    /// # Provider-specific formatting
-    ///
-    /// The `LlmContentPart::Image` uses data URLs which are converted by each provider:
-    /// - **OpenAI**: `{ "type": "image_url", "image_url": { "url": "data:..." } }`
-    /// - **Anthropic**: `{ "type": "image", "source": { "type": "base64", ... } }`
-    ///
-    /// # Arguments
-    ///
-    /// * `msg` - The message to convert
-    /// * `resolved_images` - Pre-resolved images keyed by image_id
-    pub fn from_message_with_images(
-        msg: &crate::message::Message,
-        resolved_images: &HashMap<Uuid, ResolvedImage>,
-    ) -> Self {
-        use crate::message::{ContentPart, MessageRole};
-
-        let role = match msg.role {
-            MessageRole::System => LlmMessageRole::System,
-            MessageRole::User => LlmMessageRole::User,
-            MessageRole::Agent => LlmMessageRole::Assistant,
-            MessageRole::ToolResult => LlmMessageRole::Tool,
-        };
-
-        // Convert content parts to LlmContentParts
-        let mut parts: Vec<LlmContentPart> = Vec::new();
-        let mut tool_calls: Vec<ToolCall> = Vec::new();
-
-        for part in &msg.content {
-            match part {
-                ContentPart::Text(t) => {
-                    parts.push(LlmContentPart::Text {
-                        text: t.text.clone(),
-                    });
-                }
-                ContentPart::Image(img) => {
-                    // Convert inline image to data URL
-                    if let Some(url) = &img.url {
-                        parts.push(LlmContentPart::Image { url: url.clone() });
-                    } else if let (Some(base64), Some(media_type)) = (&img.base64, &img.media_type)
-                    {
-                        let data_url = format!("data:{};base64,{}", media_type, base64);
-                        parts.push(LlmContentPart::Image { url: data_url });
-                    }
-                }
-                ContentPart::ImageFile(img_file) => {
-                    // Resolve image_file to actual image data
-                    if let Some(resolved) = resolved_images.get(&img_file.image_id.uuid()) {
-                        parts.push(LlmContentPart::Image {
-                            url: resolved.to_data_url(),
-                        });
-                    } else {
-                        // Image not found - add placeholder text
-                        parts.push(LlmContentPart::Text {
-                            text: format!("[Image not found: {}]", img_file.image_id),
-                        });
-                    }
-                }
-                ContentPart::ToolCall(tc) => {
-                    // Extract tool calls to separate field (don't include in content)
-                    tool_calls.push(ToolCall {
-                        id: tc.id.clone(),
-                        name: tc.name.clone(),
-                        arguments: tc.arguments.clone(),
-                    });
-                }
-                ContentPart::ToolResult(tr) => {
-                    // Convert tool result to text representation
-                    let text = if let Some(err) = &tr.error {
-                        format!("Tool error: {}", err)
-                    } else if let Some(res) = &tr.result {
-                        serde_json::to_string(res).unwrap_or_else(|_| "{}".to_string())
-                    } else {
-                        "{}".to_string()
-                    };
-                    // Primary hard limit enforced by OutputHardLimitHook (EVE-225)
-                    // at tool execution time. This backstop catches tool results
-                    // that bypass ActAtom hooks (client-submitted, stored events).
-                    let text = truncate_tool_result(text);
-                    parts.push(LlmContentPart::Text { text });
-                }
-            }
-        }
-
-        // Determine content format
-        let content = if parts.len() == 1 && matches!(&parts[0], LlmContentPart::Text { .. }) {
-            // Single text part - use simple Text format
-            if let LlmContentPart::Text { text } = &parts[0] {
-                LlmMessageContent::Text(text.clone())
-            } else {
-                LlmMessageContent::Parts(parts)
-            }
-        } else if parts.is_empty() {
-            // No content parts - use empty text
-            LlmMessageContent::Text(String::new())
-        } else {
-            // Multiple parts or non-text - use Parts format
-            LlmMessageContent::Parts(parts)
-        };
-
-        LlmMessage {
-            role,
-            content,
-            tool_calls: if tool_calls.is_empty() {
-                None
-            } else {
-                Some(tool_calls)
-            },
-            tool_call_id: msg.tool_call_id().map(|s| s.to_string()),
-            phase: msg.phase,
-            thinking: msg.thinking.clone(),
-            thinking_signature: msg.thinking_signature.clone(),
-        }
-    }
-
-    /// Check if a message contains image_file references that need resolution
-    pub fn message_has_image_files(msg: &crate::message::Message) -> bool {
-        msg.content.iter().any(|p| p.is_image_file())
-    }
-
-    /// Extract all image_file IDs from a message
-    pub fn extract_image_file_ids(msg: &crate::message::Message) -> Vec<Uuid> {
-        msg.content
-            .iter()
-            .filter_map(|p| match p {
-                crate::message::ContentPart::ImageFile(f) => Some(f.image_id.uuid()),
-                _ => None,
-            })
-            .collect()
-    }
-}
+// The Message->LlmMessage adapters (plain, with-images, and image-file
+// helpers) live in everruns-core (`llm_conversions`): they depend on core
+// domain types (Message, ContentPart, ResolvedImage).
 
 // ============================================================================
 // Driver Factory Types
@@ -1801,16 +1576,8 @@ impl DriverConfig {
     }
 }
 
-impl From<&crate::traits::ResolvedModel> for ProviderConfig {
-    fn from(model: &crate::traits::ResolvedModel) -> Self {
-        Self {
-            provider_type: model.provider_type.clone(),
-            api_key: model.api_key.clone(),
-            base_url: model.base_url.clone(),
-            metadata: model.provider_metadata.clone().unwrap_or_default(),
-        }
-    }
-}
+// The `From<&ResolvedModel>` adapter for ProviderConfig lives in
+// everruns-core (`llm_conversions`), since ResolvedModel is a core domain type.
 
 /// Boxed chat driver for dynamic dispatch
 pub type BoxedChatDriver = Box<dyn ChatDriver>;
@@ -2251,7 +2018,7 @@ const MAX_TOOL_RESULT_BYTES: usize = 64 * 1024;
 const TRUNCATION_SUFFIX: &str =
     "\n\n[Output truncated — exceeded 64 KiB limit. Try quiet flags, pipes, or redirect to file.]";
 
-fn truncate_tool_result(text: String) -> String {
+pub fn truncate_tool_result(text: String) -> String {
     if text.len() <= MAX_TOOL_RESULT_BYTES {
         return text;
     }
@@ -2283,24 +2050,6 @@ mod tests {
         assert_eq!(disjoint_prompt_tokens(1000, Some(0)), 1000);
         // Saturating: a provider reporting cache > input never underflows.
         assert_eq!(disjoint_prompt_tokens(800, Some(1000)), 0);
-    }
-
-    #[test]
-    fn test_resolved_parallel_tool_calls_gating() {
-        let mut config = LlmCallConfig::from(&RuntimeAgent::new("p", "gpt-5.2"));
-
-        // No preference => always None.
-        assert_eq!(config.resolved_parallel_tool_calls(true), None);
-        assert_eq!(config.resolved_parallel_tool_calls(false), None);
-
-        // Preference passes through only when the driver/model supports it.
-        config.parallel_tool_calls = Some(true);
-        assert_eq!(config.resolved_parallel_tool_calls(true), Some(true));
-        assert_eq!(config.resolved_parallel_tool_calls(false), None);
-
-        config.parallel_tool_calls = Some(false);
-        assert_eq!(config.resolved_parallel_tool_calls(true), Some(false));
-        assert_eq!(config.resolved_parallel_tool_calls(false), None);
     }
 
     #[test]
@@ -2366,119 +2115,6 @@ mod tests {
             ],
         )];
         assert_eq!(fold_system_messages(&messages), Some("foobar".to_string()));
-    }
-
-    #[test]
-    fn test_llm_call_config_builder_from_runtime_agent() {
-        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
-        let llm_config = LlmCallConfigBuilder::from(&runtime_agent).build();
-
-        assert_eq!(llm_config.model, "gpt-4o");
-        assert!(llm_config.reasoning_effort.is_none());
-        assert!(llm_config.temperature.is_none());
-        assert!(llm_config.max_tokens.is_none());
-        assert!(llm_config.tools.is_empty());
-        assert!(llm_config.metadata.is_empty());
-        // No server tools configured on the agent → none on the call config.
-        assert!(llm_config.openrouter_routing.is_none());
-    }
-
-    #[test]
-    fn runtime_agent_openrouter_routing_flows_into_call_config() {
-        // Closes the assembly loop: a capability sets RuntimeAgent.openrouter_routing
-        // (server tools), and the From<&RuntimeAgent> conversion the reason atom
-        // uses must carry it through to the OpenRouter driver.
-        let mut runtime_agent = RuntimeAgent::new("You are helpful", "openai/gpt-5-mini");
-        runtime_agent.openrouter_routing = Some(OpenRouterRoutingConfig {
-            server_tools: vec![OpenRouterServerTool::new(
-                OpenRouterServerToolKind::WebSearch,
-            )],
-            ..Default::default()
-        });
-
-        let llm_config = LlmCallConfig::from(&runtime_agent);
-        let routing = llm_config
-            .openrouter_routing
-            .expect("server-tool routing survives into the call config");
-        assert_eq!(routing.server_tools.len(), 1);
-        assert_eq!(
-            routing.server_tools[0].kind.wire_type(),
-            "openrouter:web_search"
-        );
-    }
-
-    #[test]
-    fn test_llm_call_config_builder_with_metadata() {
-        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
-        let llm_config = LlmCallConfigBuilder::from(&runtime_agent)
-            .with_metadata("session_id", "session_abc123")
-            .with_metadata("agent_id", "agent_xyz789")
-            .build();
-
-        assert_eq!(
-            llm_config.metadata.get("session_id"),
-            Some(&"session_abc123".to_string())
-        );
-        assert_eq!(
-            llm_config.metadata.get("agent_id"),
-            Some(&"agent_xyz789".to_string())
-        );
-    }
-
-    #[test]
-    fn test_llm_call_config_builder_with_metadata_hashmap() {
-        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
-        let mut metadata = HashMap::new();
-        metadata.insert("key1".to_string(), "value1".to_string());
-        metadata.insert("key2".to_string(), "value2".to_string());
-
-        let llm_config = LlmCallConfigBuilder::from(&runtime_agent)
-            .metadata(metadata)
-            .build();
-
-        assert_eq!(llm_config.metadata.get("key1"), Some(&"value1".to_string()));
-        assert_eq!(llm_config.metadata.get("key2"), Some(&"value2".to_string()));
-    }
-
-    #[test]
-    fn test_llm_call_config_builder_with_reasoning_effort() {
-        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
-        let llm_config = LlmCallConfigBuilder::from(&runtime_agent)
-            .reasoning_effort("high")
-            .build();
-
-        assert_eq!(llm_config.reasoning_effort, Some("high".to_string()));
-    }
-
-    #[test]
-    fn test_llm_call_config_builder_with_all_options() {
-        let runtime_agent = RuntimeAgent::new("You are helpful", "gpt-4o");
-        let llm_config = LlmCallConfigBuilder::from(&runtime_agent)
-            .model("claude-3-opus")
-            .reasoning_effort("medium")
-            .temperature(0.7)
-            .max_tokens(1000)
-            .build();
-
-        assert_eq!(llm_config.model, "claude-3-opus");
-        assert_eq!(llm_config.reasoning_effort, Some("medium".to_string()));
-        assert_eq!(llm_config.temperature, Some(0.7));
-        assert_eq!(llm_config.max_tokens, Some(1000));
-    }
-
-    #[test]
-    fn test_llm_call_config_builder_with_openrouter_routing() {
-        let runtime_agent = RuntimeAgent::new("You are helpful", "openai/gpt-5-mini");
-        let routing = OpenRouterRoutingConfig::fallback_models([
-            "openai/gpt-5-mini",
-            "anthropic/claude-sonnet-4.5",
-        ]);
-
-        let llm_config = LlmCallConfigBuilder::from(&runtime_agent)
-            .openrouter_routing(routing.clone())
-            .build();
-
-        assert_eq!(llm_config.openrouter_routing, Some(routing));
     }
 
     #[test]
@@ -2888,209 +2524,6 @@ mod tests {
         assert!(registry.has_driver(&DriverId::LlmSim));
     }
 
-    // ========================================================================
-    // Image resolution tests
-    // ========================================================================
-
-    use crate::{ContentPart, ImageFileContentPart, Message, MessageRole, TextContentPart};
-
-    #[test]
-    fn test_message_has_image_files_with_image_file() {
-        let message = Message {
-            id: uuid::Uuid::new_v4().into(),
-            role: MessageRole::User,
-            content: vec![
-                ContentPart::Text(TextContentPart {
-                    text: "Look at this image".to_string(),
-                }),
-                ContentPart::ImageFile(ImageFileContentPart {
-                    image_id: uuid::Uuid::new_v4().into(),
-                    filename: Some("test.png".to_string()),
-                }),
-            ],
-            phase: None,
-            thinking: None,
-            thinking_signature: None,
-            controls: None,
-            metadata: None,
-            external_actor: None,
-            created_at: chrono::Utc::now(),
-        };
-
-        assert!(LlmMessage::message_has_image_files(&message));
-    }
-
-    #[test]
-    fn test_message_has_image_files_without_image_file() {
-        let message = Message {
-            id: uuid::Uuid::new_v4().into(),
-            role: MessageRole::User,
-            content: vec![ContentPart::Text(TextContentPart {
-                text: "Just text".to_string(),
-            })],
-            phase: None,
-            thinking: None,
-            thinking_signature: None,
-            controls: None,
-            metadata: None,
-            external_actor: None,
-            created_at: chrono::Utc::now(),
-        };
-
-        assert!(!LlmMessage::message_has_image_files(&message));
-    }
-
-    #[test]
-    fn test_extract_image_file_ids() {
-        let id1 = uuid::Uuid::new_v4();
-        let id2 = uuid::Uuid::new_v4();
-
-        let message = Message {
-            id: uuid::Uuid::new_v4().into(),
-            role: MessageRole::User,
-            content: vec![
-                ContentPart::Text(TextContentPart {
-                    text: "Look at these images".to_string(),
-                }),
-                ContentPart::ImageFile(ImageFileContentPart {
-                    image_id: id1.into(),
-                    filename: Some("test1.png".to_string()),
-                }),
-                ContentPart::ImageFile(ImageFileContentPart {
-                    image_id: id2.into(),
-                    filename: Some("test2.png".to_string()),
-                }),
-            ],
-            phase: None,
-            thinking: None,
-            thinking_signature: None,
-            controls: None,
-            metadata: None,
-            external_actor: None,
-            created_at: chrono::Utc::now(),
-        };
-
-        let ids = LlmMessage::extract_image_file_ids(&message);
-        assert_eq!(ids.len(), 2);
-        assert!(ids.contains(&id1));
-        assert!(ids.contains(&id2));
-    }
-
-    #[test]
-    fn test_from_message_with_images_text_only() {
-        let message = Message {
-            id: uuid::Uuid::new_v4().into(),
-            role: MessageRole::User,
-            content: vec![ContentPart::Text(TextContentPart {
-                text: "Hello".to_string(),
-            })],
-            phase: None,
-            thinking: None,
-            thinking_signature: None,
-            controls: None,
-            metadata: None,
-            external_actor: None,
-            created_at: chrono::Utc::now(),
-        };
-
-        let resolved = std::collections::HashMap::new();
-        let llm_message = LlmMessage::from_message_with_images(&message, &resolved);
-
-        assert_eq!(llm_message.role, LlmMessageRole::User);
-        match llm_message.content {
-            LlmMessageContent::Text(text) => assert_eq!(text, "Hello"),
-            _ => panic!("Expected text content"),
-        }
-    }
-
-    #[test]
-    fn test_from_message_with_images_resolved_image() {
-        let image_id = uuid::Uuid::new_v4();
-        let message = Message {
-            id: uuid::Uuid::new_v4().into(),
-            role: MessageRole::User,
-            content: vec![
-                ContentPart::Text(TextContentPart {
-                    text: "Look at this".to_string(),
-                }),
-                ContentPart::ImageFile(ImageFileContentPart {
-                    image_id: image_id.into(),
-                    filename: Some("test.png".to_string()),
-                }),
-            ],
-            phase: None,
-            thinking: None,
-            thinking_signature: None,
-            controls: None,
-            metadata: None,
-            external_actor: None,
-            created_at: chrono::Utc::now(),
-        };
-
-        let mut resolved = std::collections::HashMap::new();
-        resolved.insert(
-            image_id,
-            crate::ResolvedImage::new("base64data", "image/png"),
-        );
-
-        let llm_message = LlmMessage::from_message_with_images(&message, &resolved);
-
-        match &llm_message.content {
-            LlmMessageContent::Parts(parts) => {
-                assert_eq!(parts.len(), 2);
-                // First part should be text
-                assert!(matches!(&parts[0], LlmContentPart::Text { .. }));
-                // Second part should be resolved image
-                if let LlmContentPart::Image { url } = &parts[1] {
-                    assert!(url.starts_with("data:image/png;base64,"));
-                } else {
-                    panic!("Expected image content part");
-                }
-            }
-            _ => panic!("Expected parts content"),
-        }
-    }
-
-    #[test]
-    fn test_from_message_with_images_unresolved_image() {
-        let image_id = uuid::Uuid::new_v4();
-        let message = Message {
-            id: uuid::Uuid::new_v4().into(),
-            role: MessageRole::User,
-            content: vec![ContentPart::ImageFile(ImageFileContentPart {
-                image_id: image_id.into(),
-                filename: Some("missing.png".to_string()),
-            })],
-            phase: None,
-            thinking: None,
-            thinking_signature: None,
-            controls: None,
-            metadata: None,
-            external_actor: None,
-            created_at: chrono::Utc::now(),
-        };
-
-        // Empty resolved map - image not found
-        let resolved = std::collections::HashMap::new();
-        let llm_message = LlmMessage::from_message_with_images(&message, &resolved);
-
-        // Should have placeholder text for missing image
-        // When there's only one part, it may return Text directly instead of Parts
-        match &llm_message.content {
-            LlmMessageContent::Text(text) => {
-                assert!(text.contains("Image not found"));
-            }
-            LlmMessageContent::Parts(parts) => {
-                assert_eq!(parts.len(), 1);
-                if let LlmContentPart::Text { text } = &parts[0] {
-                    assert!(text.contains("Image not found"));
-                } else {
-                    panic!("Expected text placeholder for missing image");
-                }
-            }
-        }
-    }
-
     #[test]
     fn test_prepend_text_prefix_simple_text() {
         let mut msg = LlmMessage::text(LlmMessageRole::User, "Hello bot");
@@ -3310,7 +2743,9 @@ mod tests {
     }
 
     // -------------------------------------------------------------------------
+
     // OpenRouterRoutingPreset tests
+
     // -------------------------------------------------------------------------
 
     #[test]

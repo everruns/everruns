@@ -34,7 +34,7 @@
 // Runtime types (tool definitions, capability types)
 pub mod capability_types;
 pub mod tool_fingerprint;
-pub mod tool_types;
+pub use everruns_provider::tool_types;
 
 // User-defined hooks (see specs/user-hooks.md)
 pub mod hook_adapter;
@@ -71,7 +71,7 @@ pub mod error_reporter;
 
 // Typed ID system (type-safe prefixed identifiers)
 // See specs/id-schema.md for specification
-pub mod typed_id;
+pub use everruns_provider::typed_id;
 
 // Audit logging types and trait (EVE-226)
 pub mod audit;
@@ -90,7 +90,7 @@ pub mod ard_attachment;
 pub mod capability_dto;
 pub mod connector;
 pub mod credential_provider;
-pub mod credential_schema;
+pub use everruns_provider::credential_schema;
 pub mod eval;
 pub mod events;
 pub mod harness;
@@ -98,8 +98,8 @@ pub mod leased_resource;
 pub mod mcp_proxy;
 pub mod mcp_server;
 pub mod memory;
-pub mod model;
-pub mod model_profiles;
+pub use everruns_provider::model;
+pub use everruns_provider::model_profiles;
 pub mod model_router;
 pub mod mount_fs;
 pub mod network_access;
@@ -107,7 +107,7 @@ pub mod observer;
 pub mod organization;
 pub mod payment;
 pub mod principal;
-pub mod provider;
+pub use everruns_provider::provider;
 pub mod reporting;
 pub mod session;
 pub mod session_file;
@@ -134,7 +134,7 @@ pub mod progress_reporting;
 pub mod resource_names;
 
 // URL validation for SSRF prevention (shared utility)
-pub mod url_validation;
+pub use everruns_provider::url_validation;
 
 // Plugin compiler (directory → declarative capability definition)
 // See specs/plugins.md
@@ -148,19 +148,23 @@ pub mod config;
 pub mod config_layer;
 pub mod context_report;
 pub mod dependency_blocker;
-pub mod driver_helpers;
-pub mod driver_registry;
-pub mod error;
+pub use everruns_provider::driver_helpers;
+pub use everruns_provider::driver_registry;
+pub use everruns_provider::error;
 pub mod guardrail_checks;
 pub mod guardrail_gallery;
 pub mod llm_error_hook;
-pub mod llm_retry;
+pub use everruns_provider::llm_retry;
+// Adapters from core domain types (Message, RuntimeAgent, ResolvedModel) to the
+// provider driver types. Lives on the core side to keep the crate dependency
+// one-directional (core -> everruns-provider).
+pub mod llm_conversions;
 pub mod message;
 pub mod message_filter;
 pub mod message_retriever;
-pub mod openai_protocol;
-pub mod openresponses_protocol;
-pub mod openresponses_types;
+pub use everruns_provider::openai_protocol;
+pub use everruns_provider::openresponses_protocol;
+pub use everruns_provider::openresponses_types;
 pub mod outline;
 pub mod output_guardrail;
 pub mod path_identity;
@@ -169,13 +173,13 @@ pub mod platform_store;
 pub mod resource_ownership;
 pub mod runtime_agent;
 pub mod runtime_context;
-pub mod stream_accumulator;
-pub mod stream_reconnect;
+pub use everruns_provider::stream_accumulator;
+pub use everruns_provider::stream_reconnect;
 pub mod tool_output_sanitizer;
 pub mod tools;
 pub mod traits;
 pub mod truncation_info;
-pub mod user_facing_error;
+pub use everruns_provider::user_facing_error;
 
 // In-memory implementations for examples and testing
 pub mod in_memory;

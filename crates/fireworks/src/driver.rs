@@ -11,16 +11,16 @@ use async_trait::async_trait;
 use chrono::TimeZone;
 use serde::Deserialize;
 
-use everruns_core::OpenAIProtocolChatDriver;
-use everruns_core::credential_schema::{CredentialFormSchema, FormField};
-use everruns_core::driver_helpers::fetch_models;
-use everruns_core::driver_registry::{
+use everruns_provider::OpenAIProtocolChatDriver;
+use everruns_provider::credential_schema::{CredentialFormSchema, FormField};
+use everruns_provider::driver_helpers::fetch_models;
+use everruns_provider::driver_registry::{
     BoxedChatDriver, ChatDriver, DiscoveredModel, DriverConfig, DriverDescriptor, DriverId,
     DriverRegistry, LlmCallConfig, LlmMessage, LlmResponseStream,
 };
-use everruns_core::error::Result;
-use everruns_core::model::{Modality, ModelLimits, ModelModalities, ModelProfile};
-use everruns_core::openai_protocol::{
+use everruns_provider::error::Result;
+use everruns_provider::model::{Modality, ModelLimits, ModelModalities, ModelProfile};
+use everruns_provider::openai_protocol::{
     apply_models_api_auth, models_url_for_api_url, normalize_api_url, url_host_eq,
 };
 
@@ -333,12 +333,12 @@ fn fireworks_credential_schema() -> CredentialFormSchema {
 /// # Example
 ///
 /// ```
-/// use everruns_core::DriverRegistry;
+/// use everruns_provider::DriverRegistry;
 /// use everruns_fireworks::register_driver;
 ///
 /// let mut registry = DriverRegistry::new();
 /// register_driver(&mut registry);
-/// assert!(registry.has_driver(&everruns_core::DriverId::Fireworks));
+/// assert!(registry.has_driver(&everruns_provider::DriverId::Fireworks));
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
     registry.register_descriptor(DriverDescriptor {
@@ -352,7 +352,7 @@ pub fn register_driver(registry: &mut DriverRegistry) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::driver_registry::{ProviderConfig, ServiceKind};
+    use everruns_provider::driver_registry::{ProviderConfig, ServiceKind};
     use wiremock::matchers::{header, method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 

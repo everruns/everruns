@@ -21,6 +21,11 @@ keywords = ["agent", "agentic", "llm", "ai", "framework"]
 categories = ["development-tools", "asynchronous"]
 
 [dependencies]
+# Provider/LLM abstraction foundation (typed IDs, credential schema, user-facing
+# error taxonomy, OpenResponses wire types, URL validation). core re-exports its
+# modules at their original paths.
+everruns-provider = { workspace = true }
+
 # Core dependencies
 anyhow.workspace = true
 thiserror.workspace = true
@@ -162,8 +167,8 @@ embedded-platform-docs = ["dep:include_dir"]
 # Experimental sandboxed Lua execution capability (mlua, vendored Lua 5.4).
 # Off by default; enabling compiles the C sources. See specs/lua-execution.md.
 lua = ["dep:mlua"]
-openapi = ["utoipa"]
-sqlx = ["dep:sqlx"]
+openapi = ["utoipa", "everruns-provider/openapi"]
+sqlx = ["dep:sqlx", "everruns-provider/sqlx"]
 tree-sitter-outlines = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-typescript", "dep:tree-sitter-python"]
 ui-capabilities = ["dep:everruns-openui", "dep:everruns-a2ui"]
 llm-tests = []  # LLM integration tests (requires API keys)

@@ -14,7 +14,7 @@
 //! # Registering the Driver
 //!
 //! ```
-//! use everruns_core::DriverRegistry;
+//! use everruns_provider::DriverRegistry;
 //! use everruns_openai::register_driver;
 //!
 //! let mut registry = DriverRegistry::new();
@@ -24,7 +24,7 @@
 //! # Embedded Agent Example
 //!
 //! ```ignore
-//! use everruns_core::{
+//! use everruns_provider::{
 //!     CapabilityRegistry, CredentialProvider, DriverRegistry, DriverId, EnvCredentialProvider,
 //!     ResolvedModel, PlatformDefinition,
 //! };
@@ -63,8 +63,6 @@
 
 mod driver;
 pub(crate) mod embeddings;
-mod image_capability;
-mod images;
 mod types;
 
 #[cfg(test)]
@@ -72,10 +70,9 @@ mod tests;
 
 pub use driver::{OpenAIChatDriver, OpenAICompletionsChatDriver, register_driver};
 pub use embeddings::OpenAIEmbeddingsDriver;
-pub use image_capability::{EditImageTool, GenerateImageTool, GptImageGenCapability};
 pub use types::{
     ChatMessage, ChatRequest, CompletionMetadata, LlmConfig, LlmStreamEvent, MessageRole,
 };
 
 // Re-export core types for convenience
-pub use everruns_core::driver_registry::{ChatDriver, DriverRegistry};
+pub use everruns_provider::driver_registry::{ChatDriver, DriverRegistry};
