@@ -2472,6 +2472,11 @@ pub struct AgentTriggerRow {
     pub config: serde_json::Value,
     pub enabled: bool,
     pub durable_schedule_id: Option<Uuid>,
+    pub execution_harness_id: Option<HarnessId>,
+    pub execution_owner_principal_id: Option<PrincipalId>,
+    pub execution_resolved_owner_user_id: Option<Uuid>,
+    pub execution_agent_identity_id: Option<AgentIdentityId>,
+    pub execution_app_id: Option<Uuid>,
     pub status: String,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -2488,6 +2493,11 @@ pub struct CreateAgentTriggerRow {
     pub config: serde_json::Value,
     pub enabled: bool,
     pub durable_schedule_id: Option<Uuid>,
+    pub execution_harness_id: Option<HarnessId>,
+    pub execution_owner_principal_id: Option<PrincipalId>,
+    pub execution_resolved_owner_user_id: Option<Uuid>,
+    pub execution_agent_identity_id: Option<AgentIdentityId>,
+    pub execution_app_id: Option<Uuid>,
 }
 
 #[derive(Debug, Clone, Default)]
