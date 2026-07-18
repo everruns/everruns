@@ -203,7 +203,7 @@ let use_tool_search = profile.tool_search && config.tools.len() >= TOOL_SEARCH_T
 
 ## Model Profile Updates
 
-Set `tool_search: true` for models that support it. Default `false` for all others. See `crates/core/src/model_profiles.rs` for current profile definitions. OpenAI sets the flag per model literal (the `gpt-5.4*` / `gpt-5.5*` families); Anthropic sets it centrally by family in `anthropic_family_supports_tool_search` (Sonnet 4.0+, Opus 4.0+, Haiku 4.5+, Fable 5 — per docs.claude.com), since the support rule is a clean family cutoff.
+Set `tool_search: true` for models that support it. Default `false` for all others. See `crates/provider/src/model_profiles.rs` for current profile definitions. OpenAI sets the flag per model literal (the `gpt-5.4*` / `gpt-5.5*` families); Anthropic sets it centrally by family in `anthropic_family_supports_tool_search` (Sonnet 4.0+, Opus 4.0+, Haiku 4.5+, Fable 5 — per docs.claude.com), since the support rule is a clean family cutoff.
 
 A model's `tool_search: true` flag must be backed by a verified end-to-end round-trip
 (deferred-load → schema fetch → tool call) against the live provider, not just the
@@ -229,7 +229,7 @@ There are two enforcement points, and they sit at different layers:
 
 ## Driver Changes
 
-The OpenAI driver extends `ResponsesTool` with `Namespace` and `ToolSearch` variants and adds `convert_tools_with_search()` (namespace grouping + defer_loading + `{"type":"tool_search"}`). See `crates/core/src/openresponses_protocol.rs`.
+The OpenAI driver extends `ResponsesTool` with `Namespace` and `ToolSearch` variants and adds `convert_tools_with_search()` (namespace grouping + defer_loading + `{"type":"tool_search"}`). See `crates/provider/src/openresponses_protocol.rs`.
 
 The Anthropic driver adds an `AnthropicToolEntry` (untagged: a function tool or a `tool_search_tool_bm25_20251119` server tool) and `convert_tools_with_search()`, which marks deferrable tools `defer_loading: true` and prepends the search-tool entry. No namespaces — Anthropic defers each tool individually. The hosted search-tool entry is always non-deferred, which also satisfies Anthropic's "at least one tool must be non-deferred" constraint. No beta header is required. See `crates/anthropic/src/driver.rs`. The streaming parser ignores the server-side `server_tool_use` / `tool_search_tool_result` blocks (parse-or-skip) and captures the model's subsequent normal `tool_use` for the discovered tool.
 

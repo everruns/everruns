@@ -93,7 +93,8 @@ Production event routing therefore prefers:
 2. **Crate Separation** (folder → package name):
    - `server/` → `everruns-server` - **Control plane**: HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
    - `worker/` → `everruns-worker` - TaskWorker, WorkerAdapters, activities, gRPC adapters, durable task execution
-   - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, LLM drivers, egress service, internal system services, shared types)
+   - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, egress service, internal system services, shared types). Depends on and re-exports `everruns-provider`.
+   - `provider/` → `everruns-provider` - LLM/provider abstraction that the provider crates depend on instead of core: `ChatDriver`, the shared OpenAI/OpenResponses protocol drivers, model profiles, retry/stream helpers, typed IDs, credential form schema, and the LLM error taxonomy
    - `runtime/` → `everruns-runtime` - The agentic runtime: in-process entrypoint to the agentic framework, plus reusable host-phase execution for embedded and durable/server-backed execution
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine
@@ -119,6 +120,7 @@ everruns/
 │   ├── server/           # Control plane: HTTP API + gRPC server + storage
 │   ├── worker/           # Durable worker with gRPC client
 │   ├── core/             # Shared abstractions and types
+│   ├── provider/         # LLM/provider abstraction (ChatDriver, protocol drivers, model profiles)
 │   ├── runtime/          # Public in-process embedded runtime
 │   ├── internal-protocol/# gRPC protocol definitions
 │   ├── durable/          # Durable execution engine
@@ -426,7 +428,7 @@ The core crate provides DB-agnostic agent abstractions with pluggable backends:
 
 OpenAI-specific LLM provider implementation:
 
-1. **Implements Core Traits**: `ChatDriver` trait from `everruns-core`
+1. **Implements the driver trait**: `ChatDriver` trait from `everruns-provider`
 2. **OpenAI + Azure OpenAI Support**: Supports OpenAI-hosted and Azure-hosted OpenAI v1 endpoints
 3. **Streaming Support**: Full SSE streaming with tool call support
 4. **Native API Access**: Direct methods for OpenAI-specific functionality
@@ -445,7 +447,7 @@ a vendor-neutral, open-source API standard for multi-provider LLM interfaces.
 - **Better caching**: 40-80% better cache utilization vs Chat Completions API
 - **Provider-agnostic**: Events and responses follow a standardized format
 
-**Driver Selection**: `OpenAIChatDriver` (Responses API, recommended) or `OpenAICompletionsChatDriver` (Chat Completions). See `crates/openai/src/driver.rs` and the protocol implementations in `crates/core/src/`.
+**Driver Selection**: `OpenAIChatDriver` (Responses API, recommended) or `OpenAICompletionsChatDriver` (Chat Completions). See `crates/openai/src/driver.rs` and the protocol implementations in `crates/provider/src/`.
 
 ### LlmSim Driver (Testing)
 

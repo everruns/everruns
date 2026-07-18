@@ -45,7 +45,7 @@ Note: OpenAI Responses API (`function_call_output`) does not support images in t
 
 ### Tool Hints
 
-`ToolHints` provides semantic metadata about a tool's behavioral properties. See `crates/core/src/tool_types.rs` for the struct definition. All fields are `Option<bool>` — `None` means unspecified.
+`ToolHints` provides semantic metadata about a tool's behavioral properties. See `crates/provider/src/tool_types.rs` for the struct definition. All fields are `Option<bool>` — `None` means unspecified.
 
 Follows the [MCP tool annotations](https://spec.modelcontextprotocol.io) convention plus everruns-specific hints:
 

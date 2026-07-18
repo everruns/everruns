@@ -25,7 +25,7 @@ Where:
 
 ### Entity Prefixes
 
-For the full list of entity prefixes and type aliases, see `crates/core/src/typed_id.rs`.
+For the full list of entity prefixes and type aliases, see `crates/provider/src/typed_id.rs`.
 
 **Example:** `agent_01933b5a00007000800000000000002`
 
@@ -51,11 +51,11 @@ let id = format!("agent_{}", uuid.simple()); // agent_0193...
 | **Time-ordered** (default) — DB-backed keys: `agent`, `session`, `event`, `turn`, `org`, and all other entities with a table/PK/index | UUIDv7 | Time-ordering gives B-tree insert locality and lets the id double as a sort key. |
 | **Random-public** — `message` | UUIDv4 (`TypedId::new_random()`) | Messages are **not** DB entities: they live embedded in `events.data` JSONB with no table, FK, index, or sort dependency on the id, and the id is the *public* identifier serialized to clients (`output.message.completed`, `EventContext.input_message_id`). UUIDv7's time-ordering does no work here and would leak a creation timestamp into a client-visible id, so message ids are random. Same wire format → no migration; legacy UUIDv7 message ids keep parsing. |
 
-`TurnId` stays UUIDv7: turn ordering is used by durable execution, and the raw turn UUID's current public exposure via AG-UI is being removed by the streaming `message_id` work rather than by re-randomizing the turn id. To make a new id class random, override `generate_uuid()` on its marker in `crates/core/src/typed_id.rs`.
+`TurnId` stays UUIDv7: turn ordering is used by durable execution, and the raw turn UUID's current public exposure via AG-UI is being removed by the streaming `message_id` work rather than by re-randomizing the turn id. To make a new id class random, override `generate_uuid()` on its marker in `crates/provider/src/typed_id.rs`.
 
 ### ID Validation
 
-IDs must match `^{prefix}_[0-9a-f]{32}$`. See `TypedId` validation in `crates/core/src/typed_id.rs`.
+IDs must match `^{prefix}_[0-9a-f]{32}$`. See `TypedId` validation in `crates/provider/src/typed_id.rs`.
 
 ### Database Storage — Dual-ID Pattern
 
@@ -99,7 +99,7 @@ IDs are serialized as strings in JSON:
 
 ### Well-Known IDs
 
-For the full list of well-known IDs and range allocations, see `crates/core/src/typed_id.rs` and `crates/server/src/seed.rs`.
+For the full list of well-known IDs and range allocations, see `crates/provider/src/typed_id.rs` and `crates/server/src/seed.rs`.
 
 ## Design Decisions
 
@@ -122,6 +122,6 @@ Existing UUIDs are migrated to prefixed format:
 
 ## Type Implementation
 
-`TypedId<T>` provides type-safe ID handling with serde, sqlx, Display/Debug, and validation. See `crates/core/src/typed_id.rs` for the full implementation, type aliases, and usage patterns.
+`TypedId<T>` provides type-safe ID handling with serde, sqlx, Display/Debug, and validation. See `crates/provider/src/typed_id.rs` for the full implementation, type aliases, and usage patterns.
 
 **IMPORTANT: Typed IDs are mandatory throughout the codebase.** All code MUST use typed IDs (e.g., `SessionId`, `AgentId`) instead of raw `Uuid` for entity identifiers.

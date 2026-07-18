@@ -501,5 +501,5 @@ visibility rather than changing the capability ownership model.
 - `specs/infinity-context.md` — pull-based backstop capability; defers to compaction when both are enabled
 - `specs/events.md` — event schema
 - `specs/capabilities.md` — capability system
-- `crates/core/src/driver_registry.rs` — `ChatDriver` trait with `supports_compact()` / `compact()`
-- `crates/core/src/openresponses_protocol.rs` — `CompactRequest` / `CompactResponse` types
+- `crates/provider/src/driver_registry.rs` — `ChatDriver` trait with `supports_compact()` / `compact()`
+- `crates/provider/src/openresponses_protocol.rs` — `CompactRequest` / `CompactResponse` types

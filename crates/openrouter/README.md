@@ -6,8 +6,8 @@
 [![Documentation](https://docs.rs/everruns-openrouter/badge.svg)](https://docs.rs/everruns-openrouter)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-`everruns-openrouter` registers the OpenRouter driver with
-[`everruns-core`](https://crates.io/crates/everruns-core) so the same Everruns
+`everruns-openrouter` registers the OpenRouter driver into a `DriverRegistry` from
+[`everruns-provider`](https://crates.io/crates/everruns-provider) so the same Everruns
 agent loop can run against OpenRouter's model catalog. OpenRouter exposes an
 OpenAI-compatible Responses API, so the driver wraps the core Open Responses
 protocol driver and parses OpenRouter's richer `/models` metadata into capability

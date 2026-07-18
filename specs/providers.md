@@ -143,7 +143,7 @@ The model's identity, promoted from a runtime-computed shadow type to a first-cl
 
 - **Stable key**: `"{vendor}/{model}"` (e.g. `anthropic/claude-sonnet-4.6`, `openai/gpt-5.5`, `openai/text-embedding-3-large`).
 - **Service kind**: which service this model belongs to (`chat`, `embeddings`, `realtime`, ...). Pickers filter on it — chat pickers never show `gpt-realtime-2`; embedding configuration only shows embedding profiles. This removes the per-model special-casing the voice spec required.
-- **Metadata**: vendor, default display name, capabilities (tools, vision, reasoning, structured output), limits, cost, modalities, reasoning-effort config, speed (service-tier) config — everything `LlmModelProfile` carries today (`crates/core/src/model.rs`), still sourced from models.dev cross-referenced with official provider docs (sourcing rules in `specs/models.md` apply unchanged).
+- **Metadata**: vendor, default display name, capabilities (tools, vision, reasoning, structured output), limits, cost, modalities, reasoning-effort config, speed (service-tier) config — everything `LlmModelProfile` carries today (`crates/provider/src/model.rs`), still sourced from models.dev cross-referenced with official provider docs (sourcing rules in `specs/models.md` apply unchanged).
 - **Sources**: built-in code registry (as today) plus discovered profiles persisted from provider metadata (the OpenRouter `supported_parameters` path). Org-custom profiles are out of scope until self-hosted models need them.
 - **Invariant**: every model row has a profile. Discovery that cannot match a known profile creates a minimal one (key derived from the wire id, service `chat`, no cost/limits data — never guessed).
 
@@ -182,7 +182,7 @@ Consumers and their paths:
 
 The credential schema is a shared primitive between drivers and connectors:
 
-- **Schema**: named fields with a type (`password`, `text`, `url`), required flag, optional placeholder / help text / default value, and optional mutually-exclusive **group** label. Drivers and connectors declare schemas the same way (`crates/core/src/credential_schema.rs`); the Settings UI renders both with one form component that lays out discrete typed inputs (multi-field credentials, grouped alternatives) — no hand-authored JSON.
+- **Schema**: named fields with a type (`password`, `text`, `url`), required flag, optional placeholder / help text / default value, and optional mutually-exclusive **group** label. Drivers and connectors declare schemas the same way (`crates/provider/src/credential_schema.rs`); the Settings UI renders both with one form component that lays out discrete typed inputs (multi-field credentials, grouped alternatives) — no hand-authored JSON.
 - **Validation**: ungrouped required fields must be present; fields sharing a group label form one alternative method, and at least one group must be complete (`CredentialFormSchema::validate`). Connectors additionally declare async `validate()` against the upstream API.
 - **Storage**: the submitted field map is assembled into one credential document (`assemble_credential_document`) and encrypted with the AES-256-GCM envelope (`specs/encryption.md`); values are never returned by any API. A lone `api_key` is stored as the raw key; multi-field credentials are stored as a JSON object keyed by field name. At driver-construction time the document is parsed back into the typed `DriverConfig::credentials` map (`parse_credential_document`), the single point where the stored string becomes typed fields for every path (server, worker, sync, dev).
 
@@ -200,7 +200,7 @@ A driver may additionally declare an **interactive OAuth connect flow** so an or
 
 The capability is declared, not special-cased, mirroring services and credential schema:
 
-- `DriverDescriptor::oauth: Option<DriverOAuthConfig>` (`crates/core/src/driver_registry.rs`). `Some` makes "Connect with {provider}" available; `None` means manual entry only. `DriverOAuthConfig` carries the authorize/token endpoints and a `DriverOAuthFlow` wire-flavor discriminator. Adding OAuth to another driver is filling in this field plus a `DriverOAuthFlow` variant — **no new endpoints**.
+- `DriverDescriptor::oauth: Option<DriverOAuthConfig>` (`crates/provider/src/driver_registry.rs`). `Some` makes "Connect with {provider}" available; `None` means manual entry only. `DriverOAuthConfig` carries the authorize/token endpoints and a `DriverOAuthFlow` wire-flavor discriminator. Adding OAuth to another driver is filling in this field plus a `DriverOAuthFlow` variant — **no new endpoints**.
 - Two org-scoped endpoints under the existing provider resource drive every OAuth driver: `GET /v1/providers/{id}/oauth/authorize` (redirects to the provider with PKCE) and `GET /v1/providers/{id}/oauth/callback` (exchanges the code, stores the credential, redirects to Settings → Providers). Both require `provider.manage`.
 
 **OpenRouter** is the first driver to declare it (`DriverOAuthFlow::OpenRouterPkce`). OpenRouter's one-click PKCE flow returns a *user-controlled API key*; the admin authorizes once and the key is stored org-wide. PKCE uses a public client (no client id/secret or app registration). Note OpenRouter's callback URL must be HTTPS on port 443 or 3000 for non-localhost deployments.
@@ -286,11 +286,11 @@ PR-sized slices, each leaving the tree green and self-consistent (code + specs +
 
 The refactor has landed; current implementations live at:
 
-- `crates/core/src/provider.rs` — `Provider` entity + `DriverId`
-- `crates/core/src/model.rs` — `Model` / `ModelWithProvider` entity types
-- `crates/core/src/model_profiles.rs` — built-in profile data
-- `crates/core/src/driver_registry.rs` — `ChatDriver` trait + `DriverRegistry` (string-keyed driver ids, credential schema + service factories); `DriverConfig` typed `credentials` map
-- `crates/core/src/credential_schema.rs` — declared credential form schema (typed fields, groups, validation) + credential-document assemble/parse
+- `crates/provider/src/provider.rs` — `Provider` entity + `DriverId`
+- `crates/provider/src/model.rs` — `Model` / `ModelWithProvider` entity types
+- `crates/provider/src/model_profiles.rs` — built-in profile data
+- `crates/provider/src/driver_registry.rs` — `ChatDriver` trait + `DriverRegistry` (string-keyed driver ids, credential schema + service factories); `DriverConfig` typed `credentials` map
+- `crates/provider/src/credential_schema.rs` — declared credential form schema (typed fields, groups, validation) + credential-document assemble/parse
 - `crates/core/src/traits.rs` — `ProviderStore` + `ResolvedModel`
 - `crates/server/src/services/provider_resolver.rs` — fail-closed resolution (`resolve_service`)
 - `crates/server/src/services/model_sync.rs` — model discovery

@@ -6,8 +6,8 @@
 [![Documentation](https://docs.rs/everruns-openai/badge.svg)](https://docs.rs/everruns-openai)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/everruns/everruns/blob/main/LICENSE)
 
-`everruns-openai` registers OpenAI drivers with
-[`everruns-core`](https://crates.io/crates/everruns-core) so the same Everruns
+`everruns-openai` registers OpenAI drivers into a `DriverRegistry` from
+[`everruns-provider`](https://crates.io/crates/everruns-provider) so the same Everruns
 agent loop can run against OpenAI models. It ships the recommended Responses API
 driver plus a Chat Completions compatibility driver for OpenAI-compatible
 endpoints, mapping Everruns' provider-neutral messages, tools, and reasoning
