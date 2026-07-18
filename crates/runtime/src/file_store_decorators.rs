@@ -17,7 +17,9 @@
 
 use async_trait::async_trait;
 use everruns_core::error::{AgentLoopError, Result};
-use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
+use everruns_core::session_file::{
+    FileInfo, FileStat, GrepMatch, GrepOptions, GrepSearchResult, InitialFile, SessionFile,
+};
 use everruns_core::traits::SessionFileSystem;
 use everruns_core::typed_id::SessionId;
 use std::path::Component;
@@ -159,6 +161,17 @@ impl SessionFileSystem for WriteBlocklistFileStore {
     ) -> Result<Vec<GrepMatch>> {
         self.inner
             .grep_files(session_id, pattern, path_pattern)
+            .await
+    }
+
+    async fn grep_files_with_options(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        self.inner
+            .grep_files_with_options(session_id, pattern, options)
             .await
     }
 
@@ -339,6 +352,17 @@ impl SessionFileSystem for ApprovalGatingFileStore {
             .await
     }
 
+    async fn grep_files_with_options(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        options: &GrepOptions,
+    ) -> Result<GrepSearchResult> {
+        self.inner
+            .grep_files_with_options(session_id, pattern, options)
+            .await
+    }
+
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
         self.inner.create_directory(session_id, path).await
     }
@@ -401,6 +425,39 @@ mod tests {
             .unwrap()
             .expect("read through blocklist must succeed");
         assert_eq!(file.content.as_deref(), Some("settings"));
+    }
+
+    #[tokio::test]
+    async fn write_blocklist_contextual_grep_passes_through() {
+        let inner_store: Arc<dyn SessionFileSystem> = inner();
+        inner_store
+            .write_file(
+                sid(),
+                "/output.log",
+                "before\nError: failed\nROOT_CAUSE=duplicate_sentinel\nafter\n",
+                "text",
+            )
+            .await
+            .unwrap();
+        let store = WriteBlocklistFileStore::new(inner_store);
+
+        let result = store
+            .grep_files_with_options(
+                sid(),
+                "Error|failed",
+                &GrepOptions {
+                    before_context: 1,
+                    after_context: 1,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("contextual grep must pass through the decorator");
+
+        assert_eq!(result.returned_matches, 1);
+        assert_eq!(result.blocks.len(), 1);
+        assert_eq!(result.blocks[0].start_line, 1);
+        assert_eq!(result.blocks[0].end_line, 3);
     }
 
     #[tokio::test]
@@ -515,6 +572,40 @@ mod tests {
         let file = store.read_file(sid(), "/notes.txt").await.unwrap();
         assert_eq!(file.unwrap().content.as_deref(), Some("hi"));
         assert!(gate.writes.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn approval_gating_contextual_grep_passes_through_without_prompt() {
+        let inner_store: Arc<dyn SessionFileSystem> = inner();
+        inner_store
+            .write_file(
+                sid(),
+                "/output.log",
+                "before\nError: failed\nROOT_CAUSE=duplicate_sentinel\nafter\n",
+                "text",
+            )
+            .await
+            .unwrap();
+        let gate = Arc::new(RecordingGate::new(false));
+        let store = ApprovalGatingFileStore::new(inner_store, gate.clone());
+
+        let result = store
+            .grep_files_with_options(
+                sid(),
+                "Error|failed",
+                &GrepOptions {
+                    before_context: 1,
+                    after_context: 1,
+                    ..GrepOptions::default()
+                },
+            )
+            .await
+            .expect("contextual grep must pass through the decorator");
+
+        assert_eq!(result.returned_matches, 1);
+        assert_eq!(result.blocks.len(), 1);
+        assert!(gate.writes.lock().unwrap().is_empty());
+        assert!(gate.deletes.lock().unwrap().is_empty());
     }
 
     #[tokio::test]
