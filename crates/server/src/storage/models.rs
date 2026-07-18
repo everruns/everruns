@@ -2109,6 +2109,34 @@ pub struct CreateUserConnectionRow {
     pub provider_metadata: Option<serde_json::Value>,
 }
 
+/// Encrypted MCP OAuth credential bundle stored in session secrets.
+#[derive(Debug, Clone)]
+pub struct McpOAuthSessionCredentialsRow {
+    pub access_token_encrypted: Vec<u8>,
+    pub refresh_token_encrypted: Option<Vec<u8>>,
+    pub expires_at_encrypted: Option<Vec<u8>>,
+}
+
+/// Atomic replacement for a session-scoped MCP OAuth grant.
+#[derive(Debug, Clone)]
+pub struct UpsertMcpOAuthSessionCredentials {
+    pub session_id: SessionId,
+    pub server_id: Uuid,
+    pub access_token_encrypted: Vec<u8>,
+    pub refresh_token_encrypted: Option<Vec<u8>>,
+    pub expires_at_encrypted: Option<Vec<u8>>,
+}
+
+/// Atomic rotation of a persistent user OAuth connection.
+#[derive(Debug, Clone)]
+pub struct UpdateUserConnectionOAuthTokens {
+    pub connection_id: Uuid,
+    pub access_token_encrypted: Vec<u8>,
+    pub refresh_token_encrypted: Vec<u8>,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub scopes: Option<String>,
+}
+
 // ============================================
 // Agent Identity Connection models
 // ============================================

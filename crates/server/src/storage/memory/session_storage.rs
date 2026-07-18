@@ -127,6 +127,79 @@ impl InMemoryDatabase {
 
         Ok(row)
     }
+
+    pub async fn get_mcp_oauth_session_credentials(
+        &self,
+        session_id: SessionId,
+        server_id: uuid::Uuid,
+    ) -> Result<Option<McpOAuthSessionCredentialsRow>> {
+        let access_name = everruns_core::mcp_oauth_session_secret_name(server_id, "access_token");
+        let refresh_name = everruns_core::mcp_oauth_session_secret_name(server_id, "refresh_token");
+        let expires_name = everruns_core::mcp_oauth_session_secret_name(server_id, "expires_at");
+        let storage = self.session_secrets.read();
+        let access_token_encrypted = storage
+            .get(&(session_id, access_name))
+            .map(|row| row.value_encrypted.clone());
+
+        Ok(
+            access_token_encrypted.map(|access_token_encrypted| McpOAuthSessionCredentialsRow {
+                access_token_encrypted,
+                refresh_token_encrypted: storage
+                    .get(&(session_id, refresh_name))
+                    .map(|row| row.value_encrypted.clone()),
+                expires_at_encrypted: storage
+                    .get(&(session_id, expires_name))
+                    .map(|row| row.value_encrypted.clone()),
+            }),
+        )
+    }
+
+    pub async fn upsert_mcp_oauth_session_credentials(
+        &self,
+        input: UpsertMcpOAuthSessionCredentials,
+    ) -> Result<()> {
+        let now = Self::now();
+        let mut storage = self.session_secrets.write();
+        let names_and_values = [
+            (
+                everruns_core::mcp_oauth_session_secret_name(input.server_id, "access_token"),
+                Some(input.access_token_encrypted),
+            ),
+            (
+                everruns_core::mcp_oauth_session_secret_name(input.server_id, "refresh_token"),
+                input.refresh_token_encrypted,
+            ),
+            (
+                everruns_core::mcp_oauth_session_secret_name(input.server_id, "expires_at"),
+                input.expires_at_encrypted,
+            ),
+        ];
+
+        for (name, value_encrypted) in names_and_values {
+            let key = (input.session_id, name.clone());
+            if let Some(value_encrypted) = value_encrypted {
+                if let Some(existing) = storage.get_mut(&key) {
+                    existing.value_encrypted = value_encrypted;
+                    existing.updated_at = now;
+                } else {
+                    storage.insert(
+                        key,
+                        SessionSecretRow {
+                            id: uuid::Uuid::now_v7(),
+                            session_id: input.session_id,
+                            name,
+                            value_encrypted,
+                            created_at: now,
+                            updated_at: now,
+                        },
+                    );
+                }
+            } else {
+                storage.remove(&key);
+            }
+        }
+        Ok(())
+    }
 }
 
 // ============================================================================
