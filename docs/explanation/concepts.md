@@ -69,6 +69,6 @@ See [Events as the primary store](/explanation/events/) for the consequences.
 
 ## Apps connect agents to the outside world
 
-A bare agent has no way to receive messages from users. An **App** wires a harness + agent pair to a channel (Slack, webhook, schedule, AG-UI) and exposes a publish/unpublish lifecycle. The App owns the inbound auth, the session-routing strategy (per-thread, per-channel, per-user), and the channel-specific config.
+A bare agent has no way to receive messages from users. An **App** wires a harness + agent pair to an inbound channel (such as Slack, webhook, or AG-UI) and exposes a publish/unpublish lifecycle. The App owns the inbound auth, the session-routing strategy (per-thread, per-channel, per-user), and the channel-specific config. For proactive scheduled work, use [agent triggers](/features/agent-triggers/) instead of the deprecated App schedule channel.
 
 This is why apps are a separate concept from agents: the same agent can be deployed to multiple channels, and you want to publish and revoke those deployments independently.
