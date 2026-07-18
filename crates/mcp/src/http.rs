@@ -240,6 +240,7 @@ async fn negotiate_and_send(
 
     // Auto fallback: a stateless attempt the server rejected because it wants a
     // session — handshake, then retry once.
+    let mut rejected_probe = None;
     let response = if mode == McpProtocolMode::Auto
         && !negotiated.stateful
         && !(200..300).contains(&response.status)
@@ -249,6 +250,7 @@ async fn negotiate_and_send(
             url = %url,
             "MCP stateless attempt rejected; falling back to stateful handshake"
         );
+        rejected_probe = Some((response.status, response.body.clone()));
         negotiated = do_handshake(
             egress,
             url,
@@ -257,7 +259,15 @@ async fn negotiate_and_send(
             protocol::DEFAULT_STATEFUL_VERSION,
             timeout,
         )
-        .await?;
+        .await
+        .map_err(|fallback_error| {
+            anyhow!(
+                "MCP RC probe failed: {} - {}; stable fallback failed: {}",
+                response.status,
+                response.body,
+                fallback_error
+            )
+        })?;
         send_op(
             egress,
             url,
@@ -269,12 +279,29 @@ async fn negotiate_and_send(
             op_body,
             timeout,
         )
-        .await?
+        .await
+        .map_err(|fallback_error| {
+            anyhow!(
+                "MCP RC probe failed: {} - {}; stable fallback request failed: {}",
+                response.status,
+                response.body,
+                fallback_error
+            )
+        })?
     } else {
         response
     };
 
     if !(200..300).contains(&response.status) {
+        if let Some((probe_status, probe_body)) = rejected_probe {
+            return Err(anyhow!(
+                "MCP RC probe failed: {} - {}; stable fallback failed: {} - {}",
+                probe_status,
+                probe_body,
+                response.status,
+                response.body
+            ));
+        }
         return Err(anyhow!(
             "MCP server returned error: {} - {}",
             response.status,
