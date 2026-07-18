@@ -90,6 +90,24 @@ pub enum Commands {
         command: commands::sessions::SessionsCommand,
     },
 
+    /// Manage an agent's schedule triggers
+    Triggers {
+        /// Agent ID that owns the triggers
+        #[arg(long)]
+        agent: String,
+        #[command(subcommand)]
+        command: commands::triggers::TriggersCommand,
+    },
+
+    /// Manage a session's participants
+    Participants {
+        /// Session ID that owns the participants
+        #[arg(long)]
+        session: String,
+        #[command(subcommand)]
+        command: commands::participants::ParticipantsCommand,
+    },
+
     /// File sync and management
     Files {
         #[command(subcommand)]
@@ -212,6 +230,30 @@ async fn main() -> anyhow::Result<()> {
             commands::sessions::run(
                 command,
                 &client,
+                &api_url,
+                &api_key,
+                org_id.as_deref(),
+                output_format,
+                cli.quiet,
+            )
+            .await
+        }
+        Commands::Triggers { agent, command } => {
+            commands::triggers::run(
+                command,
+                agent,
+                &api_url,
+                &api_key,
+                org_id.as_deref(),
+                output_format,
+                cli.quiet,
+            )
+            .await
+        }
+        Commands::Participants { session, command } => {
+            commands::participants::run(
+                command,
+                session,
                 &api_url,
                 &api_key,
                 org_id.as_deref(),
@@ -398,6 +440,82 @@ mod tests {
             }
         } else {
             panic!("Expected Sessions command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_triggers_create() {
+        let cli = Cli::try_parse_from([
+            "everruns",
+            "triggers",
+            "--agent",
+            "agent_abc",
+            "create",
+            "--cron",
+            "30 * * * *",
+            "--timezone",
+            "America/Chicago",
+            "--session-mode",
+            "session-per-invocation",
+            "--message",
+            "Prepare report",
+        ])
+        .unwrap();
+        if let Commands::Triggers { agent, command } = cli.command {
+            assert_eq!(agent, "agent_abc");
+            assert!(matches!(
+                command,
+                commands::triggers::TriggersCommand::Create {
+                    session_mode: commands::triggers::SessionMode::SessionPerInvocation,
+                    ..
+                }
+            ));
+        } else {
+            panic!("Expected Triggers command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_trigger_run_now() {
+        let cli = Cli::try_parse_from([
+            "everruns",
+            "triggers",
+            "--agent",
+            "agent_abc",
+            "run-now",
+            "trg_abc",
+        ])
+        .unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Triggers {
+                command: commands::triggers::TriggersCommand::RunNow { .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn test_cli_parse_participants_add() {
+        let cli = Cli::try_parse_from([
+            "everruns",
+            "participants",
+            "--session",
+            "session_abc",
+            "add",
+            "--agent",
+            "agent_guest",
+        ])
+        .unwrap();
+        if let Commands::Participants { session, command } = cli.command {
+            assert_eq!(session, "session_abc");
+            assert!(matches!(
+                command,
+                commands::participants::ParticipantsCommand::Add { agent }
+                    if agent == "agent_guest"
+            ));
+        } else {
+            panic!("Expected Participants command");
         }
     }
 

@@ -91,6 +91,43 @@ Session management.
 - `watch <id>` — stream session events in real time via SSE (like `kubectl logs -f`). Text mode: status/lifecycle events go to stderr, assistant message content goes to stdout (pipeable). JSON mode: each event as a JSON object to stdout. Exits cleanly on Ctrl+C.
 - `export <id> [-o <path>] [--format jsonl|atif]` — export session messages to a file (`-o`/`--output`) or stdout. `--format` defaults to `jsonl` (one message per line); `atif` emits an ATIF trajectory.
 
+### `everruns triggers`
+
+Manage schedule triggers scoped to an agent with `--agent <id>`.
+
+- `list` — list the agent's active triggers. Text output renders common cron schedules as a human-readable cadence with timezone; JSON and YAML retain the API response.
+- `create --cron <expression> --message <text> [--timezone <iana>] [--session-mode shared-session|session-per-invocation] [--disabled]`
+- `update <trigger-id> [--cron <expression>] [--message <text>] [--timezone <iana>] [--session-mode shared-session|session-per-invocation]`
+- `enable <trigger-id>`
+- `disable <trigger-id>`
+- `run-now <trigger-id>` — fire one invocation immediately.
+
+Examples:
+
+```bash
+everruns triggers --agent agent_... create \
+  --cron '30 * * * *' \
+  --timezone America/Chicago \
+  --session-mode session-per-invocation \
+  --message 'Prepare the hourly report'
+everruns triggers --agent agent_... list
+everruns triggers --agent agent_... run-now trg_...
+```
+
+### `everruns participants`
+
+Manage participants scoped to a session with `--session <id>`.
+
+- `list` — list active and past participants, including host/member role and leave status.
+- `add --agent <agent-id>` (alias: `invite`) — invite an agent as a member.
+- `remove <participant-id>` — mark an active member as having left. The session host cannot be removed.
+
+```bash
+everruns participants --session session_... add --agent agent_...
+everruns participants --session session_... list
+everruns participants --session session_... remove part_...
+```
+
 ### `everruns chat`
 
 Send message and poll for response.

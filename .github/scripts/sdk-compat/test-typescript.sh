@@ -35,6 +35,21 @@ const client = new Everruns({
 
 const suffix = Math.random().toString(36).slice(2, 10);
 
+async function apiPost(path, body) {
+  const response = await fetch(`${process.env.EVERRUNS_BASE_URL.replace(/\/$/, "")}${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.EVERRUNS_API_KEY}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(`POST ${path} failed (${response.status}): ${await response.text()}`);
+  }
+  return response.json();
+}
+
 // 1. Create agent
 const agent = await client.agents.create({
   name: `sdk-compat-ts-${suffix}`,
@@ -61,6 +76,33 @@ if (fetchedSession.id !== session.id) {
   throw new Error(`session id mismatch: ${fetchedSession.id} != ${session.id}`);
 }
 console.log("  session fetch verified");
+
+// 5. Exercise newly generated trigger and participant API surfaces. Raw HTTP
+// keeps older published SDK cohorts compatible with the current API.
+const trigger = await apiPost(`/v1/agents/${agent.id}/triggers`, {
+  cron_expression: "0 0 * * *",
+  timezone: "UTC",
+  session_mode: "session_per_invocation",
+  message: "SDK compatibility trigger",
+  enabled: false,
+});
+if (trigger.agent_id !== agent.id) {
+  throw new Error("created trigger has wrong agent");
+}
+console.log(`  trigger created: ${trigger.id}`);
+
+const guest = await client.agents.create({
+  name: `sdk-compat-ts-guest-${suffix}`,
+  systemPrompt: "Compatibility guest agent",
+});
+const participant = await apiPost(`/v1/sessions/${session.id}/participants`, {
+  kind: "agent",
+  agent_id: guest.id,
+});
+if (participant.agent_id !== guest.id) {
+  throw new Error("created participant has wrong agent");
+}
+console.log(`  participant added: ${participant.id}`);
 
 console.log(`ok typescript sdk ${process.env.SDK_VERSION}`);
 JS

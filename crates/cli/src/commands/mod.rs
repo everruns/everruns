@@ -1,4 +1,5 @@
 pub mod agents;
+pub mod api;
 pub mod capabilities;
 pub mod chat;
 pub mod connections;
@@ -6,5 +7,7 @@ pub mod files;
 pub mod login;
 pub mod logout;
 pub mod orgs;
+pub mod participants;
 pub mod sessions;
 pub mod status;
+pub mod triggers;
