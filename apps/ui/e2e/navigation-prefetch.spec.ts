@@ -152,6 +152,16 @@ test.describe("Sidebar navigation prefetch", () => {
     await expect(page).toHaveURL(/\/agents\/new$/);
   });
 
+  // EVE-793: the Agents-page /agents/new prefetch regression is covered
+  // deterministically by the jest test
+  // `src/__tests__/agents-page-new-agent-prefetch.test.tsx` (both the masthead
+  // and empty-state links assert prefetch is disabled and fires only on
+  // hover/focus intent). It is intentionally not duplicated here: /agents
+  // renders its header from a server-side fetch that this suite's browser-level
+  // `page.route` mocks cannot intercept, so the page never reaches a stable
+  // rendered state under these mocks (unlike the client-fetched dashboard
+  // widget), which made an /agents e2e case non-deterministic.
+
   test("sidebar click navigation works without broad route prefetch", async ({ page }) => {
     await page.goto("/dashboard");
     await expect(page.getByRole("link", { name: "Sessions" })).toBeVisible();

@@ -11,6 +11,7 @@ import {
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { NewAgentLink } from "@/components/dashboard/new-agent-link";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { Badge } from "@/components/ui/badge";
@@ -194,12 +195,12 @@ export default function AgentsPage() {
               <Upload className="size-4" />
               {importAgent.isPending ? "Importing..." : "Import"}
             </Button>
-            <Link href="/agents/new">
+            <NewAgentLink>
               <Button variant="accent">
                 <Plus className="size-4" />
                 New agent
               </Button>
-            </Link>
+            </NewAgentLink>
           </>
         }
       />
@@ -273,12 +274,12 @@ export default function AgentsPage() {
                 action={
                   !search &&
                   statusTab === "active" && (
-                    <Link href="/agents/new">
+                    <NewAgentLink>
                       <Button variant="accent">
                         <Plus className="size-4" />
                         Create your first agent
                       </Button>
-                    </Link>
+                    </NewAgentLink>
                   )
                 }
               />
