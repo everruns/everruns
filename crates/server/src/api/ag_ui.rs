@@ -54,7 +54,7 @@ use everruns_core::message::ExecutionPhase;
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
 use everruns_core::{
     AgUiChannelConfig, AgUiToolVisibility, App, AppStatus, Caller, ContentPart, ExternalActor,
-    MessageRole, typed_id::ImageId,
+    MessageId, MessageRole, typed_id::ImageId,
 };
 use futures::{
     StreamExt,
@@ -993,22 +993,22 @@ fn is_terminal_public_output_message(
     assistant_emitted_delta || !public_content_parts_to_string(&message.content).is_empty()
 }
 
-/// Returns the AG-UI `messageId` for the assistant message currently being
-/// streamed, allocating a fresh id the first time a message scope opens.
+/// Projects the canonical streamed message id into AG-UI's message id space.
 ///
-/// The id is message-scoped, not turn-scoped: `close_assistant_text_without_finishing`
-/// clears the cached id at every non-terminal message boundary, so a commentary
-/// message and the final answer within one turn receive distinct ids. The id is a
-/// random public identifier and is never derived from `turn_id`, so the internal
-/// turn uuid is never exposed on the public AG-UI transport.
-///
-/// Once EVE-772 lands `message_id` on the streaming lifecycle events, this should
-/// key off the streamed `message_id` so the AG-UI id equals the stored `Message.id`.
-fn ensure_assistant_message_id(state: &mut AgUiStreamState) -> AgUiMessageId {
-    state
-        .assistant_message_id
-        .get_or_insert_with(AgUiMessageId::random)
-        .clone()
+/// A new lifecycle id closes any still-open assistant text before switching
+/// scopes. Normal streams close through `output.message.completed`; this guard
+/// also keeps replay/reconnect projections correct when a terminal event is
+/// missing.
+fn ensure_assistant_message_id(
+    state: &mut AgUiStreamState,
+    streamed_message_id: MessageId,
+) -> AgUiMessageId {
+    let projected = AgUiMessageId::from(streamed_message_id.uuid());
+    if state.assistant_message_id.as_ref() != Some(&projected) {
+        close_assistant_text_without_finishing(state);
+        state.assistant_message_id = Some(projected.clone());
+    }
+    projected
 }
 
 fn close_assistant_text_without_finishing(state: &mut AgUiStreamState) {
@@ -1193,7 +1193,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
     match event.event_type.as_str() {
         "output.message.delta" => {
             if let Ok(data) = parse_event_data::<OutputMessageDeltaData>(event) {
-                let message_id = ensure_assistant_message_id(state);
+                let message_id = ensure_assistant_message_id(state, data.message_id);
                 if !state.assistant_content_started {
                     state
                         .queue
@@ -1218,7 +1218,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
                     close_assistant_text_without_finishing(state);
                     return;
                 }
-                let message_id = ensure_assistant_message_id(state);
+                let message_id = ensure_assistant_message_id(state, data.message.id);
                 if !state.assistant_content_started {
                     state
                         .queue
@@ -1318,7 +1318,6 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             }
         }
         "tool.started" if parse_event_data::<ToolStartedData>(event).is_ok() => {
-            ensure_assistant_message_id(state);
             state.active_tool_activity_count += 1;
             match state.tool_visibility {
                 AgUiToolVisibility::None => {}
@@ -1334,7 +1333,6 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             }
         }
         "tool.completed" if parse_event_data::<ToolCompletedData>(event).is_ok() => {
-            ensure_assistant_message_id(state);
             state.active_tool_activity_count = state.active_tool_activity_count.saturating_sub(1);
             push_public_tool_activity_end(state);
         }
@@ -1671,10 +1669,13 @@ mod tests {
         let mut state = test_stream_state().await;
         let turn_id = TurnId::new();
         let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
+        let output_message_id = MessageId::new();
         let event = Event::new(
             SessionId::from_uuid(state.session_id),
             EventContext::turn(turn_id, input_message_id),
-            OutputMessageCompletedData::new(Message::assistant("Hello from AG-UI")),
+            OutputMessageCompletedData::new(
+                Message::assistant("Hello from AG-UI").with_id(output_message_id),
+            ),
         );
 
         translate_event(&mut state, &event);
@@ -1690,6 +1691,13 @@ mod tests {
                 AgUiEventType::RunFinished,
             ]
         );
+        match &state.queue[0] {
+            AgUiEvent::TextMessageStart(event) => assert_eq!(
+                event.message_id,
+                AgUiMessageId::from(output_message_id.uuid())
+            ),
+            _ => panic!("expected text start event"),
+        }
         assert!(state.finished);
     }
 
@@ -1700,13 +1708,14 @@ mod tests {
         let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
         let context = EventContext::turn(turn_id, input_message_id);
         let session_id = SessionId::from_uuid(state.session_id);
+        let streamed_message_id = MessageId::new();
 
         let delta_event = Event::new(
             session_id,
             context.clone(),
             OutputMessageDeltaData {
                 turn_id,
-                message_id: MessageId::new(),
+                message_id: streamed_message_id,
                 delta: "Hello".to_string(),
                 accumulated: "Hello".to_string(),
                 phase: None,
@@ -1717,7 +1726,9 @@ mod tests {
         let completed_event = Event::new(
             session_id,
             context,
-            OutputMessageCompletedData::new(Message::assistant("Hello from AG-UI")),
+            OutputMessageCompletedData::new(
+                Message::assistant("Hello from AG-UI").with_id(streamed_message_id),
+            ),
         );
         translate_event(&mut state, &completed_event);
 
@@ -1752,13 +1763,15 @@ mod tests {
         let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
         let context = EventContext::turn(turn_id, input_message_id);
         let session_id = SessionId::from_uuid(state.session_id);
+        let commentary_message_id = MessageId::new();
+        let final_message_id = MessageId::new();
 
         let delta_event = Event::new(
             session_id,
             context.clone(),
             OutputMessageDeltaData {
                 turn_id,
-                message_id: MessageId::new(),
+                message_id: commentary_message_id,
                 delta: "Let me check that.".to_string(),
                 accumulated: "Let me check that.".to_string(),
                 phase: None,
@@ -1778,6 +1791,7 @@ mod tests {
                         arguments: serde_json::json!({"query": "base harness"}),
                     }],
                 )
+                .with_id(commentary_message_id)
                 .with_phase(ExecutionPhase::Commentary),
             ),
         );
@@ -1800,6 +1814,7 @@ mod tests {
             context,
             OutputMessageCompletedData::new(
                 Message::assistant("The Base harness is the default execution wrapper.")
+                    .with_id(final_message_id)
                     .with_phase(ExecutionPhase::FinalAnswer),
             ),
         );
@@ -1835,9 +1850,8 @@ mod tests {
         );
         assert!(state.finished);
 
-        // EVE-773: the commentary message and the final answer are distinct AG-UI
-        // messages, so they must carry distinct message-scoped ids, and neither may
-        // leak the raw turn uuid onto the public transport.
+        // EVE-773: AG-UI projects the canonical streamed message ids, preserving
+        // the commentary/final boundary without exposing the turn uuid.
         let start_ids: Vec<&AgUiMessageId> = state
             .queue
             .iter()
@@ -1851,6 +1865,11 @@ mod tests {
             start_ids[0], start_ids[1],
             "commentary and final answer must have distinct messageIds"
         );
+        assert_eq!(
+            *start_ids[0],
+            AgUiMessageId::from(commentary_message_id.uuid())
+        );
+        assert_eq!(*start_ids[1], AgUiMessageId::from(final_message_id.uuid()));
         let turn_message_id = AgUiMessageId::from(turn_id.uuid());
         assert_ne!(*start_ids[0], turn_message_id);
         assert_ne!(*start_ids[1], turn_message_id);

@@ -11587,9 +11587,9 @@ export interface components {
      * @description Data for `output.message.replaced` event.
      *
      *     Emitted between the last (suppressed) `output.message.delta` and the final
-     *     `output.message.completed`. Tells the client to discard everything it has
-     *     accumulated for `turn_id` and use `replacement` as the assistant message
-     *     text. The original model output is never persisted or replayed.
+     *     `output.message.completed`. Tells the client to discard the text accumulated
+     *     for `message_id` and use `replacement` as that assistant message's text. The
+     *     original model output is never persisted or replayed.
      */
     OutputMessageReplacedData: {
       /**

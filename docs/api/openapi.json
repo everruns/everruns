@@ -29178,7 +29178,7 @@
       },
       "OutputMessageReplacedData": {
         "type": "object",
-        "description": "Data for `output.message.replaced` event.\n\nEmitted between the last (suppressed) `output.message.delta` and the final\n`output.message.completed`. Tells the client to discard everything it has\naccumulated for `turn_id` and use `replacement` as the assistant message\ntext. The original model output is never persisted or replayed.",
+        "description": "Data for `output.message.replaced` event.\n\nEmitted between the last (suppressed) `output.message.delta` and the final\n`output.message.completed`. Tells the client to discard the text accumulated\nfor `message_id` and use `replacement` as that assistant message's text. The\noriginal model output is never persisted or replayed.",
         "required": [
           "turn_id",
           "message_id",
