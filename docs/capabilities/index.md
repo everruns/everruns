@@ -61,6 +61,8 @@ Structured data and knowledge capabilities.
 | Capability | ID | Tools |
 |---|---|---|
 | [SQL Database](/capabilities/sql-database/) | `session_sql_database` | 3 |
+| [Retrieval Citations](/capabilities/citation-retrieval/) | `citation_retrieval` | 0 |
+| [Citation Verification](/capabilities/citation-verification/) | `citation_verification` | 0 |
 
 ### Media
 
@@ -235,6 +237,7 @@ Capabilities declare UI features they contribute. The session aggregates feature
 | `schedules` | Schedules tab | [Schedules](/capabilities/session-schedules/) |
 | `sql_database` | Database tab | [SQL Database](/capabilities/sql-database/) |
 | `subagents` | Subagents tab | [Sub Agents](/capabilities/sub-agents/) |
+| `citations` | Inline citation chips + Sources strip | [Retrieval Citations](/capabilities/citation-retrieval/), [Citation Verification](/capabilities/citation-verification/) |
 
 ### Ordering
 

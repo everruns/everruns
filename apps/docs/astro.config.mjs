@@ -212,6 +212,8 @@ export default defineConfig({
                       collapsed: true,
                       items: [
                         { label: "SQL Database", slug: "capabilities/sql-database" },
+                        { label: "Retrieval Citations", slug: "capabilities/citation-retrieval" },
+                        { label: "Citation Verification", slug: "capabilities/citation-verification" },
                       ],
                     },
                     {
