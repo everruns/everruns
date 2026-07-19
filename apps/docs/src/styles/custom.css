@@ -61,6 +61,35 @@
 }
 
 /* Sidebar links - left border accent for active state (Slate design) */
+.sidebar-content a,
+.sidebar-content summary {
+  border-radius: 0;
+}
+
+/* Nested groups are navigation controls, not section headings. Keep a quiet
+   three-step hierarchy: top-level group, nested group, then page link. */
+.sidebar-content ul ul > li > details > summary {
+  border-left: 2px solid transparent;
+  margin-left: -2px;
+  padding-left: 0.5rem;
+}
+
+.sidebar-content ul ul > li > details > summary .large {
+  color: inherit;
+  font-size: 0.9375rem;
+  font-weight: 400;
+}
+
+.sidebar-content ul ul > li > details > summary .caret {
+  font-size: 1rem;
+  opacity: 0.6;
+}
+
+.sidebar-content ul ul > li > details > summary:focus-visible {
+  outline: 2px solid #d4a43a;
+  outline-offset: 2px;
+}
+
 :root[data-theme="light"] .sidebar-content a {
   color: #404040;
   border-left: 2px solid transparent;
@@ -69,6 +98,15 @@
 }
 
 :root[data-theme="light"] .sidebar-content a:hover {
+  color: #0a0a0a;
+  background: #f5f5f5;
+}
+
+:root[data-theme="light"] .sidebar-content ul ul > li > details > summary {
+  color: #404040;
+}
+
+:root[data-theme="light"] .sidebar-content ul ul > li > details > summary:hover {
   color: #0a0a0a;
   background: #f5f5f5;
 }
@@ -88,6 +126,15 @@
 }
 
 :root[data-theme="dark"] .sidebar-content a:hover {
+  color: #ffffff;
+  background: #1a1a1a;
+}
+
+:root[data-theme="dark"] .sidebar-content ul ul > li > details > summary {
+  color: #a0a0a0;
+}
+
+:root[data-theme="dark"] .sidebar-content ul ul > li > details > summary:hover {
   color: #ffffff;
   background: #1a1a1a;
 }
