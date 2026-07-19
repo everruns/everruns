@@ -43,7 +43,7 @@ tracing.workspace = true
 # default-features = false sheds core's heavy optional subtrees
 # (telemetry/OTLP, a2a gRPC, web-fetch/fetchkit) that this provider does not
 # need, keeping the standalone crate's dependency tree small.
-everruns-provider = { path = "../provider", version = "0.17.13" }
+everruns-provider = { path = "../provider", version = "0.17.14" }
 
 [dev-dependencies]
 # Integration tests use core's in-memory runtime + llmsim harness.

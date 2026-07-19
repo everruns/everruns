@@ -132,10 +132,10 @@ inventory.workspace = true
 llmsim = { version = "0.5.1", default-features = false, optional = true }
 
 # OpenUI component definitions and prompt generator
-everruns-openui = { path = "../openui", version = "0.17.13", optional = true }
+everruns-openui = { path = "../openui", version = "0.17.14", optional = true }
 
 # A2UI component catalog and prompt generator
-everruns-a2ui = { path = "../a2ui", version = "0.17.13", optional = true }
+everruns-a2ui = { path = "../a2ui", version = "0.17.14", optional = true }
 
 # A2A outbound agent delegation (optional; behind the `a2a` feature). Pulls the
 # tonic/prost gRPC stack and a second reqwest major, so it is the largest single
