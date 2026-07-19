@@ -350,9 +350,7 @@ mod tests {
             id: uuid::Uuid::new_v4().into(),
             role: MessageRole::User,
             content: vec![
-                ContentPart::Text(TextContentPart {
-                    text: "Look at this image".to_string(),
-                }),
+                ContentPart::Text(TextContentPart::new("Look at this image".to_string())),
                 ContentPart::ImageFile(ImageFileContentPart {
                     image_id: uuid::Uuid::new_v4().into(),
                     filename: Some("test.png".to_string()),
@@ -375,9 +373,7 @@ mod tests {
         let message = Message {
             id: uuid::Uuid::new_v4().into(),
             role: MessageRole::User,
-            content: vec![ContentPart::Text(TextContentPart {
-                text: "Just text".to_string(),
-            })],
+            content: vec![ContentPart::Text(TextContentPart::new("Just text".to_string()))],
             phase: None,
             thinking: None,
             thinking_signature: None,
@@ -399,9 +395,7 @@ mod tests {
             id: uuid::Uuid::new_v4().into(),
             role: MessageRole::User,
             content: vec![
-                ContentPart::Text(TextContentPart {
-                    text: "Look at these images".to_string(),
-                }),
+                ContentPart::Text(TextContentPart::new("Look at these images".to_string())),
                 ContentPart::ImageFile(ImageFileContentPart {
                     image_id: id1.into(),
                     filename: Some("test1.png".to_string()),
@@ -431,9 +425,7 @@ mod tests {
         let message = Message {
             id: uuid::Uuid::new_v4().into(),
             role: MessageRole::User,
-            content: vec![ContentPart::Text(TextContentPart {
-                text: "Hello".to_string(),
-            })],
+            content: vec![ContentPart::Text(TextContentPart::new("Hello".to_string()))],
             phase: None,
             thinking: None,
             thinking_signature: None,
@@ -460,9 +452,7 @@ mod tests {
             id: uuid::Uuid::new_v4().into(),
             role: MessageRole::User,
             content: vec![
-                ContentPart::Text(TextContentPart {
-                    text: "Look at this".to_string(),
-                }),
+                ContentPart::Text(TextContentPart::new("Look at this".to_string())),
                 ContentPart::ImageFile(ImageFileContentPart {
                     image_id: image_id.into(),
                     filename: Some("test.png".to_string()),
