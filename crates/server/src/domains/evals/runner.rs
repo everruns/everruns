@@ -745,7 +745,7 @@ async fn run_single_scorer(
                 final_content,
                 annotations,
                 rubric.as_deref(),
-                model_id.clone(),
+                *model_id,
                 *pass_threshold,
             )
             .await
