@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.17.14] - 2026-07-19
+
+### Highlights
+
+- **Kimi K3 model** — Added a model profile for Kimi K3, so it can be selected as a provider model ([#2848](https://github.com/everruns/everruns/pull/2848)).
+
+### What's Changed
+
+- feat(provider): add Kimi K3 model profile ([#2848](https://github.com/everruns/everruns/pull/2848)) by [@chaliy](https://github.com/chaliy)
+- refactor(core): avoid if_let_guard in spawn-mode parsing ([#2847](https://github.com/everruns/everruns/pull/2847)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.13] - 2026-07-19
 
 ### Highlights
