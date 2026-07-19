@@ -436,6 +436,11 @@ static REGISTRY: &[ModelDescriptor] = &[
         OPENAI_COMPAT,
     ),
     md(
+        &["kimi-k3", "moonshotai/kimi-k3"],
+        ModelVendor::Moonshot,
+        OPENAI_COMPAT,
+    ),
+    md(
         &["grok-4.3", "x-ai/grok-4.3", "xai/grok-4.3"],
         ModelVendor::XAi,
         OPENAI_COMPAT,
@@ -2409,6 +2414,49 @@ fn third_party_profile_data(model_id: &str) -> Option<ModelProfile> {
             }),
             modalities: Some(ModelModalities {
                 input: vec![Modality::Text],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: None,
+            speed: None,
+            verbosity: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+        }),
+
+        // Moonshot Kimi K3 — flagship multimodal Kimi model with a 1M-token
+        // context window. Source: models.dev (moonshotai provider). models.dev
+        // lists graded reasoning effort (low/high/max), but like the other
+        // OpenAI-compatible third-party models here we don't wire a graded
+        // effort selector; `reasoning: true` still gates reasoning support.
+        // Knowledge cutoff not published.
+        "kimi-k3" | "moonshotai/kimi-k3" => Some(ModelProfile {
+            name: "Kimi K3".into(),
+            family: "kimi-k3".into(),
+            description: None,
+            release_date: Some("2026-07-16".into()),
+            last_updated: Some("2026-07-16".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: None,
+            tool_call: true,
+            structured_output: true,
+            open_weights: true,
+            cost: Some(ModelCost {
+                input: 3.00,
+                output: 15.00,
+                cache_read: Some(0.30),
+                cost_tiers: vec![],
+            }),
+            limits: Some(ModelLimits {
+                context: 1_048_576,
+                input: None,
+                output: 131_072,
+                max_media: None,
+            }),
+            modalities: Some(ModelModalities {
+                input: vec![Modality::Text, Modality::Image, Modality::Video],
                 output: vec![Modality::Text],
             }),
             reasoning_effort: None,
@@ -4860,6 +4908,8 @@ mod tests {
             ("MAI-1-preview", "MAI-1-preview"),
             ("MiniMax-M3", "MiniMax-M3"),
             ("kimi-k2-thinking", "Kimi K2 Thinking"),
+            ("kimi-k3", "Kimi K3"),
+            ("moonshotai/kimi-k3", "Kimi K3"),
             ("grok-4.3", "Grok 4.3"),
             ("x-ai/grok-4.3", "Grok 4.3"),
         ];
@@ -4868,6 +4918,30 @@ mod tests {
                 .unwrap_or_else(|| panic!("missing profile for {id}"));
             assert_eq!(profile.name, name, "wrong profile for {id}");
         }
+    }
+
+    #[test]
+    fn test_kimi_k3_profile() {
+        let profile = get_model_profile(&DriverId::OpenAICompletions, "kimi-k3").unwrap();
+        assert_eq!(profile.name, "Kimi K3");
+        assert_eq!(profile.family, "kimi-k3");
+        assert!(profile.reasoning);
+        assert!(profile.tool_call);
+        assert!(profile.open_weights);
+        assert!(!profile.temperature);
+        let cost = profile.cost.as_ref().unwrap();
+        assert_eq!(cost.input, 3.00);
+        assert_eq!(cost.output, 15.00);
+        assert_eq!(cost.cache_read, Some(0.30));
+        assert!(cost.cost_tiers.is_empty());
+        let limits = profile.limits.as_ref().unwrap();
+        assert_eq!(limits.context, 1_048_576);
+        assert_eq!(limits.output, 131_072);
+        let modalities = profile.modalities.as_ref().unwrap();
+        assert_eq!(
+            modalities.input,
+            vec![Modality::Text, Modality::Image, Modality::Video]
+        );
     }
 
     #[test]
