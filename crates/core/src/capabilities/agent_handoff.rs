@@ -386,13 +386,17 @@ impl SpawnAgentHandoffMode {
     fn parse(value: Option<&str>, context: &ToolContext) -> std::result::Result<Self, String> {
         let explicit = match value.map(str::trim).filter(|s| !s.is_empty()) {
             None => None,
-            Some(value) if let Some(mode) = SpawnMode::parse(value) => Some(Self::Spawn(mode)),
-            Some("invite") => Some(Self::Invite),
-            Some(other) => {
-                return Err(format!(
-                    "Invalid mode: \"{other}\". Valid modes: background, foreground, invite."
-                ));
-            }
+            Some(value) => match SpawnMode::parse(value) {
+                Some(mode) => Some(Self::Spawn(mode)),
+                None => match value {
+                    "invite" => Some(Self::Invite),
+                    other => {
+                        return Err(format!(
+                            "Invalid mode: \"{other}\". Valid modes: background, foreground, invite."
+                        ));
+                    }
+                },
+            },
         };
         let has_registry = context.session_task_registry.is_some();
         match explicit {

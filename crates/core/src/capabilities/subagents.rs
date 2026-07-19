@@ -834,12 +834,14 @@ fn resolve_spawn_mode(
         .filter(|s| !s.is_empty())
     {
         None => None,
-        Some(value) if let Some(mode) = SpawnMode::parse(value) => Some(mode),
-        Some(other) => {
-            return Err(ToolExecutionResult::tool_error(format!(
-                "Invalid mode: \"{other}\". Valid modes: background, foreground."
-            )));
-        }
+        Some(value) => match SpawnMode::parse(value) {
+            Some(mode) => Some(mode),
+            None => {
+                return Err(ToolExecutionResult::tool_error(format!(
+                    "Invalid mode: \"{value}\". Valid modes: background, foreground."
+                )));
+            }
+        },
     };
     let has_registry = context.session_task_registry.is_some();
     match explicit {
