@@ -1427,12 +1427,14 @@ impl Tool for SpawnAgentTool {
         };
         let mode = match arguments.get("mode").and_then(Value::as_str) {
             None => SpawnMode::Foreground,
-            Some(value) if let Some(mode) = SpawnMode::parse(value) => mode,
-            Some(other) => {
-                return ToolExecutionResult::tool_error(format!(
-                    "Invalid mode: {other}. Expected background, foreground"
-                ));
-            }
+            Some(value) => match SpawnMode::parse(value) {
+                Some(mode) => mode,
+                None => {
+                    return ToolExecutionResult::tool_error(format!(
+                        "Invalid mode: {value}. Expected background, foreground"
+                    ));
+                }
+            },
         };
         let timeout_secs = arguments
             .get("wait_timeout_secs")
