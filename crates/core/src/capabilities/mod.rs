@@ -3244,6 +3244,8 @@ mod tests {
             "data_knowledge",
             "knowledge_base",
             "knowledge_index",
+            "citation_retrieval",
+            "citation_verification",
             "tool_output_persistence",
             "tool_output_distillation",
             "fake_warehouse",
