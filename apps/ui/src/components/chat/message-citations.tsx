@@ -103,6 +103,15 @@ function hostOf(uri: string): string {
   }
 }
 
+// THREAT[TM-WEB-012]: citation source URIs are LLM/retrieval-sourced (from
+// tool results), so a malicious one could be `javascript:`/`data:`. Only http(s)
+// URIs are ever rendered as a clickable <a href>; everything else (e.g.
+// `github://`, `everruns://`, or a hostile scheme) renders as inert text.
+// Mirrors `isSafeUrl` for A2UI (TM-WEB-A2UI-01).
+function isLinkableUri(uri: string): boolean {
+  return /^https?:\/\//i.test(uri);
+}
+
 function VerifiedBadge({ verified }: { verified?: VerificationVerdict | null }) {
   if (!verified) return null;
   if (verified.status === "entailed") {
@@ -127,7 +136,7 @@ function VerifiedBadge({ verified }: { verified?: VerificationVerdict | null }) 
 }
 
 function SourcePreview({ source }: { source: CitationSource }) {
-  const isExternal = /^https?:/i.test(source.uri);
+  const isLinkable = isLinkableUri(source.uri);
   return (
     <div className="max-w-xs space-y-1">
       <div className="flex items-center justify-between gap-2">
@@ -140,7 +149,7 @@ function SourcePreview({ source }: { source: CitationSource }) {
         </p>
       )}
       <span className="flex items-center gap-1 break-all text-[10px] text-muted-foreground">
-        {isExternal && <ExternalLink className="h-2.5 w-2.5 shrink-0" />}
+        {isLinkable && <ExternalLink className="h-2.5 w-2.5 shrink-0" />}
         {source.uri}
       </span>
     </div>
@@ -149,7 +158,7 @@ function SourcePreview({ source }: { source: CitationSource }) {
 
 /** Inline superscript chip for a cited span. */
 export function CitationChip({ source }: { source: CitationSource }): ReactNode {
-  const isExternal = /^https?:/i.test(source.uri);
+  const isLinkable = isLinkableUri(source.uri);
   const chip = (
     <sup
       className="ml-0.5 inline-flex h-4 min-w-4 cursor-pointer items-center justify-center rounded bg-muted px-1 align-super text-[10px] font-medium text-muted-foreground no-underline transition-colors hover:bg-accent hover:text-accent-foreground"
@@ -161,7 +170,7 @@ export function CitationChip({ source }: { source: CitationSource }): ReactNode 
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        {isExternal ? (
+        {isLinkable ? (
           <a href={source.uri} target="_blank" rel="noopener noreferrer">
             {chip}
           </a>
@@ -183,7 +192,7 @@ export function MessageSources({ sources }: { sources: CitationSource[] }): Reac
     <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-border/50 pt-2">
       <span className="text-[10px] uppercase tracking-[0.18em] text-muted-foreground">Sources</span>
       {sources.map((source) => {
-        const isExternal = /^https?:/i.test(source.uri);
+        const isLinkable = isLinkableUri(source.uri);
         const label = (
           <span className="inline-flex items-center gap-1 rounded border border-border/60 bg-muted/60 px-1.5 py-0.5 text-[11px] text-foreground transition-colors hover:bg-accent">
             <span className="font-medium text-muted-foreground">{source.n}</span>
@@ -194,7 +203,7 @@ export function MessageSources({ sources }: { sources: CitationSource[] }): Reac
         return (
           <Tooltip key={source.n}>
             <TooltipTrigger asChild>
-              {isExternal ? (
+              {isLinkable ? (
                 <a href={source.uri} target="_blank" rel="noopener noreferrer">
                   {label}
                 </a>
