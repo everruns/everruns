@@ -17,6 +17,12 @@ import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 import type { DiagramPlugin } from "@streamdown/mermaid";
 import { MarkdownLink } from "@/components/markdown/markdown-link";
+import {
+  type CitationSource,
+  CitationChip,
+  parseCitationHref,
+} from "@/components/chat/message-citations";
+import type { AnchorHTMLAttributes } from "react";
 import "./streamdown-message.css";
 
 // Lazy-load the mermaid plugin to avoid pulling the full mermaid dependency
@@ -58,6 +64,25 @@ const code = {
 
 const markdownComponents = { a: MarkdownLink };
 
+/**
+ * Build markdown component overrides that render `#cite-<n>` links as inline
+ * citation chips (see `message-citations.tsx`) and everything else as a normal
+ * MarkdownLink. Falls back to the shared components when no citations are given.
+ */
+function buildComponents(citations?: Map<number, CitationSource>) {
+  if (!citations || citations.size === 0) return markdownComponents;
+  return {
+    a: (props: AnchorHTMLAttributes<HTMLAnchorElement>) => {
+      const n = parseCitationHref(props.href);
+      if (n !== null) {
+        const source = citations.get(n);
+        return source ? <CitationChip source={source} /> : null;
+      }
+      return <MarkdownLink {...props} />;
+    },
+  };
+}
+
 // Streamdown styles loaded from streamdown-message.css
 
 export interface StreamdownMessageProps {
@@ -70,6 +95,11 @@ export interface StreamdownMessageProps {
   className?: string;
   /** Variant for different display contexts */
   variant?: "default" | "compact" | "inline";
+  /**
+   * When set, `#cite-<n>` links in the text render as inline citation chips
+   * looked up in this map (keyed by 1-based source number).
+   */
+  citations?: Map<number, CitationSource>;
 }
 
 /**
@@ -88,6 +118,7 @@ export function StreamdownMessage({
   enableCodeHighlighting = true,
   className,
   variant = "default",
+  citations,
 }: StreamdownMessageProps) {
   const mermaid = useMermaidPlugin();
 
@@ -96,6 +127,8 @@ export function StreamdownMessage({
   if (enableCodeHighlighting) {
     plugins.code = code;
   }
+
+  const components = buildComponents(citations);
 
   return (
     <div
@@ -111,7 +144,7 @@ export function StreamdownMessage({
         plugins={plugins}
         isAnimating={isAnimating}
         remarkPlugins={[remarkGfm, remarkGithubAlerts]}
-        components={markdownComponents}
+        components={components}
       >
         {children}
       </Streamdown>

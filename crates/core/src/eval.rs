@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use crate::typed_id::{
-    AgentId, AppId, EvalCaseId, EvalDatasetId, EvalId, EvalResultId, EvalRunId, HarnessId,
+    AgentId, AppId, EvalCaseId, EvalDatasetId, EvalId, EvalResultId, EvalRunId, HarnessId, ModelId,
     SessionId,
 };
 
@@ -318,6 +318,51 @@ pub enum Scorer {
         #[serde(default = "default_weight")]
         weight: f64,
     },
+    /// Citation faithfulness: the answer's citations (see `specs/citations.md`)
+    /// must cover the claim and be verified as supported. Scored from the
+    /// `TextAnnotation`s on the final message — pair with the
+    /// `citation_verification` capability so verdicts are present.
+    CitationFaithful {
+        /// Minimum number of citations the answer must carry.
+        #[serde(default)]
+        #[cfg_attr(feature = "openapi", schema(example = 1))]
+        min_citations: u32,
+        /// Minimum fraction of citations verified `entailed` to pass.
+        #[serde(default = "default_pass_threshold")]
+        #[cfg_attr(feature = "openapi", schema(example = 0.8))]
+        pass_threshold: f64,
+        /// Relative weight of this scorer in the case's weighted average.
+        #[serde(default = "default_weight")]
+        #[cfg_attr(feature = "openapi", schema(example = 1.0))]
+        weight: f64,
+    },
+    /// Citation faithfulness judged by an LLM: each cited claim/source pair is
+    /// graded by a model, so the eval works even without the
+    /// `citation_verification` capability. See `specs/citations.md`.
+    CitationJudged {
+        /// Rubric override; a citation-faithfulness rubric is used when absent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(
+            feature = "openapi",
+            schema(example = "Score the fraction of cited claims supported by their source.")
+        )]
+        rubric: Option<String>,
+        /// Judge model; the org's default is used when absent.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        model_id: Option<ModelId>,
+        /// Minimum judged score `[0,1]` to pass.
+        #[serde(default = "default_pass_threshold")]
+        #[cfg_attr(feature = "openapi", schema(example = 0.8))]
+        pass_threshold: f64,
+        /// Relative weight of this scorer in the case's weighted average.
+        #[serde(default = "default_weight")]
+        #[cfg_attr(feature = "openapi", schema(example = 1.0))]
+        weight: f64,
+    },
+}
+
+fn default_pass_threshold() -> f64 {
+    0.8
 }
 
 impl Scorer {
@@ -338,6 +383,8 @@ impl Scorer {
             Scorer::TurnsWithin { .. } => "turns_within",
             Scorer::FileContains { .. } => "file_contains",
             Scorer::JsonSchema { .. } => "json_schema",
+            Scorer::CitationFaithful { .. } => "citation_faithful",
+            Scorer::CitationJudged { .. } => "citation_judged",
         }
     }
 }

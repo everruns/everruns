@@ -1655,6 +1655,8 @@ fn scorer_weight(scorer: &Scorer) -> f64 {
         Scorer::TurnsWithin { weight, .. } => *weight,
         Scorer::FileContains { weight, .. } => *weight,
         Scorer::JsonSchema { weight, .. } => *weight,
+        Scorer::CitationFaithful { weight, .. } => *weight,
+        Scorer::CitationJudged { weight, .. } => *weight,
     }
 }
 

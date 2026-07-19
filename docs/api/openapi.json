@@ -16151,6 +16151,39 @@
           }
         }
       },
+      "AnnotationSource": {
+        "type": "object",
+        "description": "The source a [`TextAnnotation`] points to.",
+        "required": [
+          "uri"
+        ],
+        "properties": {
+          "location": {
+            "description": "Provenance within the document (line / char / page / block ranges),\nreusing the retrieval `location` JSONB shape."
+          },
+          "snippet": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Trimmed passage that backs the claim. Display-only; never relied on for\nprompt reconstruction.",
+            "example": "The control plane owns durable state."
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable source title, when known.",
+            "example": "Architecture Overview"
+          },
+          "uri": {
+            "type": "string",
+            "description": "Stable, linkable locator (e.g. `github://owner/repo@main/docs/x.md` or an\n`https://` URL).",
+            "example": "github://owner/repo@main/docs/x.md"
+          }
+        }
+      },
       "ApiKeyConnectionRequest": {
         "type": "object",
         "description": "Request body for API-key-based connections (e.g., Brave Search)",
@@ -34693,6 +34726,58 @@
           }
         }
       },
+      "TextAnnotation": {
+        "type": "object",
+        "description": "A claim-level citation attached to a span of generated text.\n\nThe single shared type across every citation capability: a text span linked\nto a source. Producers agree only on this render contract — each capability\nkeeps its own richer representation (e.g. `KnowledgeIndexCitation`) and maps\ninto this envelope at emit time. See `specs/citations.md`.",
+        "required": [
+          "start",
+          "end",
+          "origin",
+          "source"
+        ],
+        "properties": {
+          "end": {
+            "type": "integer",
+            "description": "Exclusive end char offset.",
+            "example": 19,
+            "minimum": 0
+          },
+          "external_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Opaque producer id (e.g. `kchk_…`, `kbe_…`, a URL hash). Not interpreted\nby the render contract.",
+            "example": "kchk_01j9y3q8w2"
+          },
+          "origin": {
+            "type": "string",
+            "description": "Capability id that produced this annotation (e.g. `citation_retrieval`).\nLets the UI and evals attribute and filter each citation by feed.",
+            "example": "citation_retrieval"
+          },
+          "source": {
+            "$ref": "#/components/schemas/AnnotationSource",
+            "description": "The cited source."
+          },
+          "start": {
+            "type": "integer",
+            "description": "0-indexed start char offset into the enclosing `TextContentPart.text`.",
+            "example": 0,
+            "minimum": 0
+          },
+          "verified": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/VerificationVerdict",
+                "description": "Verification verdict, filled by the `citation_verification` capability.\nAbsent means unverified (not \"unsupported\")."
+              }
+            ]
+          }
+        }
+      },
       "TextContentPart": {
         "type": "object",
         "description": "Text content part",
@@ -34700,6 +34785,13 @@
           "text"
         ],
         "properties": {
+          "annotations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TextAnnotation"
+            },
+            "description": "Claim-level citations attached to spans of `text`.\n\nThe narrow render contract shared by all citation capabilities (see\n`specs/citations.md`). Empty for non-cited text, so the wire shape of\nexisting messages is unchanged."
+          },
           "text": {
             "type": "string"
           }
@@ -37179,6 +37271,38 @@
           "value": {
             "$ref": "#/components/schemas/Verbosity",
             "description": "The API value (e.g., \"low\", \"high\")"
+          }
+        }
+      },
+      "VerificationStatus": {
+        "type": "string",
+        "description": "Whether a cited source entails the claim it is attached to.",
+        "enum": [
+          "entailed",
+          "unsupported",
+          "uncertain"
+        ],
+        "example": "entailed"
+      },
+      "VerificationVerdict": {
+        "type": "object",
+        "description": "Outcome of citation verification (see the `citation_verification` capability).",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "score": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "float",
+            "description": "Entailment confidence in `[0, 1]`, when the verifier produced one.",
+            "example": 0.92
+          },
+          "status": {
+            "$ref": "#/components/schemas/VerificationStatus",
+            "description": "Whether the cited source supports the claim."
           }
         }
       },
