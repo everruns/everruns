@@ -9,6 +9,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.17.13] - 2026-07-19
+
+### Highlights
+
+- **Agent-first CLI** — New `triggers` and `participants` CLI commands, and agent-trigger sessions are now owned by the agent's own identity ([#2828](https://github.com/everruns/everruns/pull/2828), [#2829](https://github.com/everruns/everruns/pull/2829)).
+- **Steadier live streaming** — Streaming message lifecycle events are correlated and output is projected by message id, so in-progress responses render more reliably ([#2842](https://github.com/everruns/everruns/pull/2842), [#2843](https://github.com/everruns/everruns/pull/2843)).
+
+### What's Changed
+
+- feat(runtime): reconfigure live capabilities ([#2844](https://github.com/everruns/everruns/pull/2844)) by [@chaliy](https://github.com/chaliy)
+- feat(events): correlate streaming message lifecycle ([#2842](https://github.com/everruns/everruns/pull/2842)) by [@chaliy](https://github.com/chaliy)
+- feat(agents): own agent-trigger sessions by the agent's identity ([#2829](https://github.com/everruns/everruns/pull/2829)) by [@chaliy](https://github.com/chaliy)
+- feat(cli): add triggers and participants commands ([#2828](https://github.com/everruns/everruns/pull/2828)) by [@chaliy](https://github.com/chaliy)
+- fix(streaming): project output by message id ([#2843](https://github.com/everruns/everruns/pull/2843)) by [@chaliy](https://github.com/chaliy)
+- fix(server): refresh expiring MCP OAuth tokens ([#2841](https://github.com/everruns/everruns/pull/2841)) by [@chaliy](https://github.com/chaliy)
+- fix(core): keep compacted tool exchanges atomic ([#2840](https://github.com/everruns/everruns/pull/2840)) by [@chaliy](https://github.com/chaliy)
+- fix(agent-triggers): add execution-context columns to preserve app context ([#2832](https://github.com/everruns/everruns/pull/2832)) by [@chaliy](https://github.com/chaliy)
+- fix(agent-identities): block archived trigger owners ([#2831](https://github.com/everruns/everruns/pull/2831)) by [@chaliy](https://github.com/chaliy)
+- fix(export): enforce session view on exports ([#2836](https://github.com/everruns/everruns/pull/2836)) by [@chaliy](https://github.com/chaliy)
+- fix(server): gate AG-UI reasoning summaries ([#2835](https://github.com/everruns/everruns/pull/2835)) by [@chaliy](https://github.com/chaliy)
+- fix(plugins): validate package identity on update ([#2834](https://github.com/everruns/everruns/pull/2834)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): enforce endpoint gate on org overrides ([#2833](https://github.com/everruns/everruns/pull/2833)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): fall back on unsupported RC versions by [@chaliy](https://github.com/chaliy)
+- fix(runtime): forward contextual grep through decorators ([#2830](https://github.com/everruns/everruns/pull/2830)) by [@chaliy](https://github.com/chaliy)
+- perf(ui): eliminate Early Access banner layout shift ([#2839](https://github.com/everruns/everruns/pull/2839)) by [@chaliy](https://github.com/chaliy)
+- perf(ui): stop /agents/new prefetches on Agents page startup ([#2838](https://github.com/everruns/everruns/pull/2838)) by [@chaliy](https://github.com/chaliy)
+- refactor: extract everruns-provider so providers don't depend on core ([#2825](https://github.com/everruns/everruns/pull/2825)) by [@chaliy](https://github.com/chaliy)
+- refactor(ard): move ARD from integrations to a platform crate ([#2824](https://github.com/everruns/everruns/pull/2824)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.12] - 2026-07-17
 
 ### What's Changed
