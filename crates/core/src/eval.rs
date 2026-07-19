@@ -325,11 +325,15 @@ pub enum Scorer {
     CitationFaithful {
         /// Minimum number of citations the answer must carry.
         #[serde(default)]
+        #[cfg_attr(feature = "openapi", schema(example = 1))]
         min_citations: u32,
         /// Minimum fraction of citations verified `entailed` to pass.
         #[serde(default = "default_pass_threshold")]
+        #[cfg_attr(feature = "openapi", schema(example = 0.8))]
         pass_threshold: f64,
+        /// Relative weight of this scorer in the case's weighted average.
         #[serde(default = "default_weight")]
+        #[cfg_attr(feature = "openapi", schema(example = 1.0))]
         weight: f64,
     },
     /// Citation faithfulness judged by an LLM: each cited claim/source pair is
@@ -338,14 +342,21 @@ pub enum Scorer {
     CitationJudged {
         /// Rubric override; a citation-faithfulness rubric is used when absent.
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(
+            feature = "openapi",
+            schema(example = "Score the fraction of cited claims supported by their source.")
+        )]
         rubric: Option<String>,
         /// Judge model; the org's default is used when absent.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         model_id: Option<ModelId>,
         /// Minimum judged score `[0,1]` to pass.
         #[serde(default = "default_pass_threshold")]
+        #[cfg_attr(feature = "openapi", schema(example = 0.8))]
         pass_threshold: f64,
+        /// Relative weight of this scorer in the case's weighted average.
         #[serde(default = "default_weight")]
+        #[cfg_attr(feature = "openapi", schema(example = 1.0))]
         weight: f64,
     },
 }

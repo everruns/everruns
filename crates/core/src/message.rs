@@ -303,17 +303,21 @@ impl TextContentPart {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TextAnnotation {
     /// 0-indexed start char offset into the enclosing `TextContentPart.text`.
+    #[cfg_attr(feature = "openapi", schema(example = 0))]
     pub start: usize,
     /// Exclusive end char offset.
+    #[cfg_attr(feature = "openapi", schema(example = 19))]
     pub end: usize,
     /// Capability id that produced this annotation (e.g. `citation_retrieval`).
     /// Lets the UI and evals attribute and filter each citation by feed.
+    #[cfg_attr(feature = "openapi", schema(example = "citation_retrieval"))]
     pub origin: String,
     /// The cited source.
     pub source: AnnotationSource,
     /// Opaque producer id (e.g. `kchk_…`, `kbe_…`, a URL hash). Not interpreted
     /// by the render contract.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "kchk_01j9y3q8w2"))]
     pub external_id: Option<String>,
     /// Verification verdict, filled by the `citation_verification` capability.
     /// Absent means unverified (not "unsupported").
@@ -327,12 +331,22 @@ pub struct TextAnnotation {
 pub struct AnnotationSource {
     /// Stable, linkable locator (e.g. `github://owner/repo@main/docs/x.md` or an
     /// `https://` URL).
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "github://owner/repo@main/docs/x.md")
+    )]
     pub uri: String,
+    /// Human-readable source title, when known.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "Architecture Overview"))]
     pub title: Option<String>,
     /// Trimmed passage that backs the claim. Display-only; never relied on for
     /// prompt reconstruction.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "The control plane owns durable state.")
+    )]
     pub snippet: Option<String>,
     /// Provenance within the document (line / char / page / block ranges),
     /// reusing the retrieval `location` JSONB shape.
@@ -344,15 +358,18 @@ pub struct AnnotationSource {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct VerificationVerdict {
+    /// Whether the cited source supports the claim.
     pub status: VerificationStatus,
     /// Entailment confidence in `[0, 1]`, when the verifier produced one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 0.92))]
     pub score: Option<f32>,
 }
 
 /// Whether a cited source entails the claim it is attached to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "entailed"))]
 #[serde(rename_all = "snake_case")]
 pub enum VerificationStatus {
     /// The source supports the claim.

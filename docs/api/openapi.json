@@ -16166,17 +16166,21 @@
               "string",
               "null"
             ],
-            "description": "Trimmed passage that backs the claim. Display-only; never relied on for\nprompt reconstruction."
+            "description": "Trimmed passage that backs the claim. Display-only; never relied on for\nprompt reconstruction.",
+            "example": "The control plane owns durable state."
           },
           "title": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable source title, when known.",
+            "example": "Architecture Overview"
           },
           "uri": {
             "type": "string",
-            "description": "Stable, linkable locator (e.g. `github://owner/repo@main/docs/x.md` or an\n`https://` URL)."
+            "description": "Stable, linkable locator (e.g. `github://owner/repo@main/docs/x.md` or an\n`https://` URL).",
+            "example": "github://owner/repo@main/docs/x.md"
           }
         }
       },
@@ -34735,6 +34739,7 @@
           "end": {
             "type": "integer",
             "description": "Exclusive end char offset.",
+            "example": 19,
             "minimum": 0
           },
           "external_id": {
@@ -34742,11 +34747,13 @@
               "string",
               "null"
             ],
-            "description": "Opaque producer id (e.g. `kchk_…`, `kbe_…`, a URL hash). Not interpreted\nby the render contract."
+            "description": "Opaque producer id (e.g. `kchk_…`, `kbe_…`, a URL hash). Not interpreted\nby the render contract.",
+            "example": "kchk_01j9y3q8w2"
           },
           "origin": {
             "type": "string",
-            "description": "Capability id that produced this annotation (e.g. `citation_retrieval`).\nLets the UI and evals attribute and filter each citation by feed."
+            "description": "Capability id that produced this annotation (e.g. `citation_retrieval`).\nLets the UI and evals attribute and filter each citation by feed.",
+            "example": "citation_retrieval"
           },
           "source": {
             "$ref": "#/components/schemas/AnnotationSource",
@@ -34755,6 +34762,7 @@
           "start": {
             "type": "integer",
             "description": "0-indexed start char offset into the enclosing `TextContentPart.text`.",
+            "example": 0,
             "minimum": 0
           },
           "verified": {
@@ -37273,7 +37281,8 @@
           "entailed",
           "unsupported",
           "uncertain"
-        ]
+        ],
+        "example": "entailed"
       },
       "VerificationVerdict": {
         "type": "object",
@@ -37288,10 +37297,12 @@
               "null"
             ],
             "format": "float",
-            "description": "Entailment confidence in `[0, 1]`, when the verifier produced one."
+            "description": "Entailment confidence in `[0, 1]`, when the verifier produced one.",
+            "example": 0.92
           },
           "status": {
-            "$ref": "#/components/schemas/VerificationStatus"
+            "$ref": "#/components/schemas/VerificationStatus",
+            "description": "Whether the cited source supports the claim."
           }
         }
       },

@@ -4419,12 +4419,18 @@ export interface components {
       /**
        * @description Trimmed passage that backs the claim. Display-only; never relied on for
        *     prompt reconstruction.
+       * @example The control plane owns durable state.
        */
       snippet?: string | null;
+      /**
+       * @description Human-readable source title, when known.
+       * @example Architecture Overview
+       */
       title?: string | null;
       /**
        * @description Stable, linkable locator (e.g. `github://owner/repo@main/docs/x.md` or an
        *     `https://` URL).
+       * @example github://owner/repo@main/docs/x.md
        */
       uri: string;
     };
@@ -14889,21 +14895,29 @@ export interface components {
      *     into this envelope at emit time. See `specs/citations.md`.
      */
     TextAnnotation: {
-      /** @description Exclusive end char offset. */
+      /**
+       * @description Exclusive end char offset.
+       * @example 19
+       */
       end: number;
       /**
        * @description Opaque producer id (e.g. `kchk_…`, `kbe_…`, a URL hash). Not interpreted
        *     by the render contract.
+       * @example kchk_01j9y3q8w2
        */
       external_id?: string | null;
       /**
        * @description Capability id that produced this annotation (e.g. `citation_retrieval`).
        *     Lets the UI and evals attribute and filter each citation by feed.
+       * @example citation_retrieval
        */
       origin: string;
       /** @description The cited source. */
       source: components["schemas"]["AnnotationSource"];
-      /** @description 0-indexed start char offset into the enclosing `TextContentPart.text`. */
+      /**
+       * @description 0-indexed start char offset into the enclosing `TextContentPart.text`.
+       * @example 0
+       */
       start: number;
       verified?: null | components["schemas"]["VerificationVerdict"];
     };
@@ -16188,6 +16202,7 @@ export interface components {
     };
     /**
      * @description Whether a cited source entails the claim it is attached to.
+     * @example entailed
      * @enum {string}
      */
     VerificationStatus: "entailed" | "unsupported" | "uncertain";
@@ -16196,8 +16211,10 @@ export interface components {
       /**
        * Format: float
        * @description Entailment confidence in `[0, 1]`, when the verifier produced one.
+       * @example 0.92
        */
       score?: number | null;
+      /** @description Whether the cited source supports the claim. */
       status: components["schemas"]["VerificationStatus"];
     };
     /** @description Request body for voice attach. */
