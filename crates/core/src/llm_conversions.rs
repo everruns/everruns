@@ -373,7 +373,9 @@ mod tests {
         let message = Message {
             id: uuid::Uuid::new_v4().into(),
             role: MessageRole::User,
-            content: vec![ContentPart::Text(TextContentPart::new("Just text".to_string()))],
+            content: vec![ContentPart::Text(TextContentPart::new(
+                "Just text".to_string(),
+            ))],
             phase: None,
             thinking: None,
             thinking_signature: None,
