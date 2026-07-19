@@ -6,7 +6,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "generic",
         "Generic",
-        "General-purpose harness with file system, bash, web fetch, secrets, session management, session schedules, long-context support, context compaction, budgeting, self-managed budget guidance, tool output persistence, tool output distillation, loop detection, message timestamp annotations, detailed error disclosure, parallel tool calls, and agent skills. Recommended default for most use cases.",
+        "General-purpose harness with file system, bash, web fetch, secrets, session management, session schedules, long-context support, context compaction, budgeting, self-managed budget guidance, tool output persistence, tool output distillation, loop detection, message timestamp annotations, detailed error disclosure, parallel tool calls, agent skills, and claim-level citations with verification. Recommended default for most use cases.",
         SYSTEM_PROMPT,
     )
     .with_tags(["generic", "default", "built-in"])
@@ -54,6 +54,14 @@ pub fn definition() -> BuiltInHarnessDefinition {
         ),
         BuiltInCapabilityDefinition::new("tool_output_persistence"),
         BuiltInCapabilityDefinition::new("tool_output_distillation"),
+        // Citations (specs/citations.md). citation_retrieval attaches
+        // claim-level citations to answers from any retrieval feed
+        // (search_index / search_knowledge) — a no-op until a knowledge
+        // capability is also enabled on the agent. citation_verification stamps
+        // faithfulness verdicts; its default `heuristic` mode is deterministic
+        // and adds no model call.
+        BuiltInCapabilityDefinition::new("citation_retrieval"),
+        BuiltInCapabilityDefinition::new("citation_verification"),
     ])
 }
 
