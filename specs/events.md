@@ -1251,9 +1251,9 @@ Downstream transports (AG-UI, ACP, the terminal example) render the runtime
 event stream onto a small set of **channels**. The load-bearing rule — the one
 that fixes the EVE-448 class of bug where deliberate progress was labeled
 "Thinking" — is that each runtime concept maps to exactly one channel, and a
-projection must never move an item across channels to fake a phase. See
-`proposals/commentary-in-runtime-event-model.md` (EVE-768) for the full design
-rationale and the non-overlapping definitions.
+projection must never move an item across channels to fake a phase. The design
+rationale and protocol comparison (AG-UI/ACP/Codex) behind this model live in
+EVE-768 and its design-note PR (#2731); this spec is the authoritative contract.
 
 **Definitions (non-overlapping):**
 
