@@ -104,6 +104,29 @@ Notebook tutorials use a checked-in `.ipynb` file as the source of truth and a h
 
 Design follows the brand guidelines defined in [specs/brand.md](brand.md) (colors, typography, visual principles).
 
+### Screenshots
+
+Screenshots must be captured from the real running product — never faked,
+mocked, or staged.
+
+- **Do not** hand-author HTML/CSS that imitates the UI, reconstruct a
+  component's markup, paint a screenshot in a design tool, or edit an image so
+  it shows behavior the product does not actually produce. A picture that looks
+  like the product but was not produced by it is a fabrication, even when it is
+  visually faithful.
+- **Do** capture the actual application, or the actual React component from
+  `apps/ui` rendered by the real app (e.g. a throwaway route that mounts the
+  real component with sample props, screenshotted via the pre-installed
+  Chromium). The image must reflect the real component's styling, layout, and
+  behavior.
+- Any temporary route, fixture, or harness added only to capture a screenshot
+  must be removed before committing; commit the image, not the scaffolding.
+- Prefer representative sample data over real user/org data, and never include
+  secrets, tokens, or private content in a captured image.
+
+This rule exists because docs screenshots are load-bearing evidence of how the
+product behaves; a fabricated one silently misleads readers.
+
 ### Build & Deployment
 
 1. **Build Command**: `pnpm run build`
