@@ -25,7 +25,7 @@ Each citation gets one of three verdicts, shown as a badge on the chip preview a
 | `unsupported` | The source does not support the claim. Rendered as an amber **unsupported** badge. |
 | `uncertain` | Support could not be established. Rendered as an **unverified** badge. |
 
-![An assistant message whose Sources strip shows three cited sources with verdict badges: source 1 "verified" (green), source 2 "unsupported" (amber), and source 3 "unverified", produced by citation_verification over the retrieval feed's citations.](../images/capabilities/citations-ui.png)
+![An assistant message whose Sources strip shows three cited sources with verdict badges: source 1 "verified" (green), source 2 "unsupported" (amber), and source 3 "unverified", produced by citation_verification over the retrieval feed's citations.](./citations-ui.png)
 
 ## Modes
 

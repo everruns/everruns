@@ -18,7 +18,7 @@ It contributes **no tools** and **no system prompt**, and it never rewrites the 
 
 Grounded sentences get an inline numbered chip. Hovering a chip previews the source (title, snippet, and link); a deduped **Sources** strip sits below the message. When [Citation Verification](/capabilities/citation-verification/) is also enabled, each source carries a faithfulness badge.
 
-![An assistant message with inline numbered citation chips on grounded sentences, a hover popover previewing the cited source's title, snippet, and URL, and a "Sources" strip below the message listing three deduped sources with verified / unsupported / unverified badges.](../images/capabilities/citations-ui.png)
+![An assistant message with inline numbered citation chips on grounded sentences, a hover popover previewing the cited source's title, snippet, and URL, and a "Sources" strip below the message listing three deduped sources with verified / unsupported / unverified badges.](./citations-ui.png)
 
 ## Feed
 
