@@ -25,7 +25,7 @@ use everruns_core::traits::{
     LeasedResourceStore, PaymentAuthority, ProviderCredentialStore, ProviderStore, ResolvedModel,
     SessionCreationAuthority, SessionFileSystem, SessionMutator, SessionResourceRegistry,
     SessionScheduleStore, SessionSqlDbStoreRef, SessionStorageStore, SessionStore,
-    UserConnectionResolver,
+    ToolContextServices, UserConnectionResolver,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::vector_store::KnowledgeIndexSearch;
@@ -570,6 +570,54 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
             &resolved.resolved_capability_configs,
         ),
     })
+}
+
+fn runtime_tool_context_services<A: RuntimeHostAdapter>(
+    adapter: &A,
+    org_id: i64,
+    session_id: SessionId,
+    agent_id: Option<AgentId>,
+    tool_registry: Option<Arc<ToolRegistry>>,
+    mcp_invoker: Option<Arc<dyn everruns_core::McpToolInvoker>>,
+    subagent_nesting_policy: everruns_core::SubagentNestingPolicy,
+) -> ToolContextServices {
+    ToolContextServices {
+        file_store: Some(adapter.file_store()),
+        storage_store: adapter.storage_store(),
+        image_store: adapter.image_artifact_store(org_id),
+        provider_credential_store: adapter.provider_credential_store(org_id),
+        utility_llm_service: adapter.utility_llm_service(),
+        mcp_invoker,
+        egress_service: adapter.egress_service(),
+        sqldb_store: adapter.sqldb_store(),
+        message_retriever: Some(adapter.message_store()),
+        session_store: Some(adapter.session_store(org_id)),
+        session_mutator: Some(adapter.session_mutator(org_id)),
+        agent_store: Some(adapter.agent_store(org_id)),
+        connection_resolver: adapter.connection_resolver(),
+        schedule_store: adapter.schedule_store(org_id),
+        platform_store: adapter.platform_store(org_id, session_id),
+        knowledge_store: adapter.knowledge_store(),
+        knowledge_index_search: adapter.knowledge_index_search(org_id),
+        leased_resource_store: adapter.leased_resource_store(),
+        session_resource_registry: adapter.session_resource_registry(),
+        session_task_registry: adapter.session_task_registry(),
+        event_emitter: Some(adapter.event_emitter()),
+        capability_registry: Some(adapter.capability_registry()),
+        tool_registry,
+        org_id: Some(
+            org_public_id_from_internal(org_id)
+                .parse()
+                .expect("internal org id converts to valid public org id"),
+        ),
+        network_access: None,
+        budget_checker: adapter.budget_checker(org_id, agent_id),
+        payment_authority: adapter.payment_authority(org_id, agent_id),
+        session_creation_authority: adapter.session_creation_authority(org_id, session_id),
+        subagent_spawn_store: adapter.subagent_spawn_store(),
+        subagent_nesting_policy,
+        reasoning_effort_handle: adapter.reasoning_effort_handle(session_id),
+    }
 }
 
 /// Shared lifecycle helper for runtime-backed hosts.
@@ -1132,6 +1180,39 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
         }
     }
 
+    // Validate the executor-side registry before ReasonAtom exposes its tool
+    // definitions to the model. This catches host wiring errors as
+    // configuration failures instead of late tool-call failures.
+    let validation_session = adapter
+        .session_store(org_id)
+        .get_session(input.context.session_id)
+        .await?
+        .ok_or_else(|| {
+            everruns_core::error::AgentLoopError::session_not_found(input.context.session_id)
+        })?;
+    let validation_capabilities = load_execution_capabilities(
+        adapter,
+        org_id,
+        input.context.session_id,
+        input.harness_id,
+        input.agent_id,
+        validation_session.locale.clone(),
+        validation_session.blueprint_id.as_deref(),
+    )
+    .await?;
+    let validation_services = runtime_tool_context_services(
+        adapter,
+        org_id,
+        input.context.session_id,
+        input.agent_id,
+        Some(Arc::new(validation_capabilities.tool_registry.clone())),
+        None,
+        validation_capabilities.subagent_nesting_policy,
+    );
+    validation_capabilities
+        .tool_registry
+        .validate_context_services(&validation_services)?;
+
     let mut turn_context = adapter
         .load_turn_context(org_id, input.context.session_id)
         .await?;
@@ -1338,90 +1419,29 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     }
 
     let builtin_tool_registry = Arc::new(tool_registry.clone());
+    let context_services = runtime_tool_context_services(
+        adapter,
+        org_id,
+        input.context.session_id,
+        input.agent_id,
+        Some(builtin_tool_registry),
+        mcp_invoker,
+        execution_capabilities.subagent_nesting_policy,
+    );
+    tool_registry.validate_context_services(&context_services)?;
     let executor: Arc<dyn everruns_core::traits::ToolExecutor> = Arc::new(tool_registry);
 
-    let mut atom =
-        ActAtom::with_file_store(executor, adapter.event_emitter(), adapter.file_store())
-            .with_session_store(adapter.session_store(org_id))
-            .with_session_mutator(adapter.session_mutator(org_id))
-            .with_agent_store(adapter.agent_store(org_id))
-            .with_tool_registry(builtin_tool_registry)
-            .with_org_id(
-                org_public_id_from_internal(org_id)
-                    .parse()
-                    .expect("internal org id converts to valid public org id"),
-            )
-            .with_capability_registry(adapter.capability_registry())
-            .with_post_tool_hooks(execution_capabilities.post_tool_hooks)
-            .with_pre_tool_hooks(execution_capabilities.pre_tool_hooks)
-            .with_tool_call_hooks(execution_capabilities.tool_call_hooks)
-            .with_subagent_nesting_policy(execution_capabilities.subagent_nesting_policy);
+    let mut atom = ActAtom::new(executor, adapter.event_emitter())
+        .with_context_services(context_services)
+        .with_post_tool_hooks(execution_capabilities.post_tool_hooks)
+        .with_pre_tool_hooks(execution_capabilities.pre_tool_hooks)
+        .with_tool_call_hooks(execution_capabilities.tool_call_hooks);
 
-    if let Some(storage_store) = adapter.storage_store() {
-        atom = atom.with_storage_store(storage_store);
-    }
-    if let Some(knowledge_store) = adapter.knowledge_store() {
-        atom = atom.with_knowledge_store(knowledge_store);
-    }
-    if let Some(image_store) = adapter.image_artifact_store(org_id) {
-        atom = atom.with_image_store(image_store);
-    }
-    if let Some(provider_credential_store) = adapter.provider_credential_store(org_id) {
-        atom = atom.with_provider_credential_store(provider_credential_store);
-    }
-    if let Some(utility_llm_service) = adapter.utility_llm_service() {
-        atom = atom.with_utility_llm_service(utility_llm_service);
-    }
-    if let Some(invoker) = mcp_invoker {
-        atom = atom.with_mcp_invoker(invoker);
-    }
-    if let Some(egress_service) = adapter.egress_service() {
-        atom = atom.with_egress_service(egress_service);
-    }
-    if let Some(connection_resolver) = adapter.connection_resolver() {
-        atom = atom.with_connection_resolver(connection_resolver);
-    }
-    if let Some(sqldb_store) = adapter.sqldb_store() {
-        atom = atom.with_sqldb_store(sqldb_store);
-    }
-    if let Some(leased_resource_store) = adapter.leased_resource_store() {
-        atom = atom.with_leased_resource_store(leased_resource_store);
-    }
-    if let Some(registry) = adapter.session_resource_registry() {
-        atom = atom.with_session_resource_registry(registry);
-    }
-    if let Some(registry) = adapter.session_task_registry() {
-        atom = atom.with_session_task_registry(registry);
-    }
-    if let Some(schedule_store) = adapter.schedule_store(org_id) {
-        atom = atom.with_schedule_store(schedule_store);
-    }
-    if let Some(platform_store) = adapter.platform_store(org_id, input.context.session_id) {
-        atom = atom.with_platform_store(platform_store);
-    }
-    if let Some(knowledge_index_search) = adapter.knowledge_index_search(org_id) {
-        atom = atom.with_knowledge_index_search(knowledge_index_search);
-    }
-    if let Some(budget_checker) = adapter.budget_checker(org_id, input.agent_id) {
-        atom = atom.with_budget_checker(budget_checker);
-    }
-    if let Some(payment_authority) = adapter.payment_authority(org_id, input.agent_id) {
-        atom = atom.with_payment_authority(payment_authority);
-    }
-    if let Some(authority) = adapter.session_creation_authority(org_id, input.context.session_id) {
-        atom = atom.with_session_creation_authority(authority);
-    }
     if let Some(limiter) = adapter.outbound_tool_rate_limiter(org_id) {
         atom = atom.with_outbound_tool_rate_limiter(limiter);
     }
     if let Some(store) = adapter.durable_tool_result_store() {
         atom = atom.with_durable_tool_result_store(store);
-    }
-    if let Some(store) = adapter.subagent_spawn_store() {
-        atom = atom.with_subagent_spawn_store(store);
-    }
-    if let Some(handle) = adapter.reasoning_effort_handle(input.context.session_id) {
-        atom = atom.with_reasoning_effort_handle(handle);
     }
 
     atom.execute(input).await

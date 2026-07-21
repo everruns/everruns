@@ -20,7 +20,7 @@ use crate::session_file::SessionFile;
 use crate::tool_output_sanitizer::build_binary_read_file_result;
 use crate::tool_types::{ToolDefinition, ToolHints};
 use crate::tools::{Tool, ToolExecutionResult, ToolResultImage};
-use crate::traits::{SessionFileSystem, ToolContext};
+use crate::traits::{SessionFileSystem, ToolContext, ToolContextService};
 use crate::truncation_info::{TruncationInfo, TruncationReason};
 use async_trait::async_trait;
 use serde_json::{Value, json};
@@ -1196,6 +1196,10 @@ impl Tool for ReadFileTool {
     fn requires_context(&self) -> bool {
         true
     }
+
+    fn required_context_services(&self) -> &'static [ToolContextService] {
+        &[ToolContextService::SessionFileSystem]
+    }
 }
 
 // ============================================================================
@@ -1308,6 +1312,10 @@ impl Tool for WriteFileTool {
 
     fn requires_context(&self) -> bool {
         true
+    }
+
+    fn required_context_services(&self) -> &'static [ToolContextService] {
+        &[ToolContextService::SessionFileSystem]
     }
 }
 
@@ -1543,6 +1551,10 @@ impl Tool for EditFileTool {
     fn requires_context(&self) -> bool {
         true
     }
+
+    fn required_context_services(&self) -> &'static [ToolContextService] {
+        &[ToolContextService::SessionFileSystem]
+    }
 }
 
 // ============================================================================
@@ -1697,6 +1709,10 @@ impl Tool for ListDirectoryTool {
 
     fn requires_context(&self) -> bool {
         true
+    }
+
+    fn required_context_services(&self) -> &'static [ToolContextService] {
+        &[ToolContextService::SessionFileSystem]
     }
 }
 
@@ -1903,6 +1919,10 @@ impl Tool for GrepFilesTool {
     fn requires_context(&self) -> bool {
         true
     }
+
+    fn required_context_services(&self) -> &'static [ToolContextService] {
+        &[ToolContextService::SessionFileSystem]
+    }
 }
 
 // ============================================================================
@@ -2018,6 +2038,10 @@ impl Tool for DeleteFileTool {
     fn requires_context(&self) -> bool {
         true
     }
+
+    fn required_context_services(&self) -> &'static [ToolContextService] {
+        &[ToolContextService::SessionFileSystem]
+    }
 }
 
 // ============================================================================
@@ -2120,6 +2144,10 @@ impl Tool for StatFileTool {
 
     fn requires_context(&self) -> bool {
         true
+    }
+
+    fn required_context_services(&self) -> &'static [ToolContextService] {
+        &[ToolContextService::SessionFileSystem]
     }
 }
 

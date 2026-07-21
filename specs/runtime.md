@@ -110,6 +110,14 @@ in one place — host-side — so any improvement (tool-registry caching,
 error semantics, hook ordering) flows to both embedded and durable hosts
 automatically.
 
+The host also owns one cloneable tool-context service snapshot per act
+assembly. Every production `ToolContext` is derived from that complete
+snapshot, then decorated only with per-call metadata. Active built-in tools
+declare hard service requirements, and host assembly validates the active
+registry before reason exposes its definitions to the model. Missing services
+are configuration errors that name the tool and service; deliberately
+service-free tests may continue to use `ToolContext::new`.
+
 Host planning APIs:
 
 - `RuntimeTurnState`

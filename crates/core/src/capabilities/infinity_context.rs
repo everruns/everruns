@@ -10,7 +10,7 @@ use crate::message_filter::{
 };
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
+use crate::traits::{ToolContext, ToolContextService};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -540,6 +540,10 @@ impl Tool for QueryHistoryTool {
 
     fn requires_context(&self) -> bool {
         true
+    }
+
+    fn required_context_services(&self) -> &'static [ToolContextService] {
+        &[ToolContextService::MessageRetriever]
     }
 
     async fn execute_with_context(

@@ -207,58 +207,8 @@ where
     // their own task (`tokio::spawn`) without borrowing `self` for `'static`.
     tool_executor: Arc<T>,
     event_emitter: Arc<E>,
-    /// Optional file store for context-aware tools
-    file_store: Option<Arc<dyn SessionFileSystem>>,
-    /// Optional SQL database store for sql_execute/sql_query/sql_schema tools
-    sqldb_store: Option<crate::traits::SessionSqlDbStoreRef>,
-    /// Optional session storage store for kv_store/secret_store tools
-    storage_store: Option<Arc<dyn crate::traits::SessionStorageStore>>,
-    /// Optional image artifact store for durable image persistence
-    image_store: Option<Arc<dyn crate::traits::ImageArtifactStore>>,
-    /// Optional provider credential store for tool-side API clients
-    provider_credential_store: Option<Arc<dyn crate::traits::ProviderCredentialStore>>,
-    /// Optional utility LLM service for capability internals
-    utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
-    /// Optional scoped-MCP tool invoker for capability internals (guardrails
-    /// `mcp` check delegating to an external guardrail endpoint).
-    mcp_invoker: Option<Arc<dyn crate::McpToolInvoker>>,
-    /// Optional outbound egress service for HTTP/API traffic.
-    egress_service: Option<Arc<dyn crate::EgressService>>,
-    /// Optional resolver for user connection tokens
-    connection_resolver: Option<Arc<dyn crate::traits::UserConnectionResolver>>,
-    /// Optional session store for session metadata reads
-    session_store: Option<Arc<dyn SessionStore>>,
-    /// Optional session mutator for session metadata updates
-    session_mutator: Option<Arc<dyn SessionMutator>>,
-    /// Optional agent store for agent metadata reads
-    agent_store: Option<Arc<dyn AgentStore>>,
-    /// Optional session schedule store for scheduling tools
-    schedule_store: Option<Arc<dyn crate::traits::SessionScheduleStore>>,
-    /// Optional platform store for org-level management tools
-    platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
-    /// Optional knowledge store backing the `search_knowledge` tool
-    knowledge_store: Option<Arc<dyn crate::traits::KnowledgeStore>>,
-    /// Optional hybrid retrieval over bound Knowledge Indexes for `search_index`.
-    knowledge_index_search: Option<Arc<dyn crate::vector_store::KnowledgeIndexSearch>>,
-    /// Optional leased resource store for provider lease tracking
-    leased_resource_store: Option<Arc<dyn crate::traits::LeasedResourceStore>>,
-    /// Optional session resource registry
-    session_resource_registry: Option<Arc<dyn crate::traits::SessionResourceRegistry>>,
-    session_task_registry: Option<Arc<dyn crate::session_task::SessionTaskRegistry>>,
-    /// Optional capability registry for blueprint lookups in subagent tools
-    capability_registry: Option<crate::capabilities::CapabilityRegistry>,
-    /// Optional built-in tool registry for meta-tools that delegate to sibling tools.
-    tool_registry: Option<Arc<crate::tools::ToolRegistry>>,
-    /// Optional org ID for org-scoped operations.
-    org_id: Option<crate::typed_id::OrgId>,
-    /// Merged network access list for URL filtering in tools.
-    network_access: Option<crate::network_access::NetworkAccessList>,
-    /// Optional budget checker for the check_budget tool.
-    budget_checker: Option<Arc<dyn crate::traits::BudgetChecker>>,
-    /// Optional internal payment authority for paid capability tools.
-    payment_authority: Option<Arc<dyn crate::traits::PaymentAuthority>>,
-    /// Optional host authority for detached peer-session creation.
-    session_creation_authority: Option<Arc<dyn crate::traits::SessionCreationAuthority>>,
+    /// Runtime-owned service snapshot cloned into every per-call ToolContext.
+    context_services: crate::traits::ToolContextServices,
     /// Optional per-org outbound tool-call rate limiter (TM-TOOL-009).
     /// When present, each tool call increments the org counter; calls that
     /// exceed the per-org window return a tool error rather than a hard failure.
@@ -268,12 +218,6 @@ where
     /// workers can skip already-settled calls and avoid double side-effects for
     /// `AtMostOnce` tools.
     durable_tool_result_store: Option<Arc<dyn DurableToolResultStore>>,
-    /// Durable spawn handle store for subagent reattach (EVE-535). When present,
-    /// subagent delegation claims a slot before creating the child and settles after
-    /// completion, enabling reattach on reclaim.
-    subagent_spawn_store: Option<Arc<dyn crate::traits::SubagentSpawnStore>>,
-    /// Resolved subagent nesting policy for this turn.
-    subagent_nesting_policy: crate::traits::SubagentNestingPolicy,
     /// Post-act hooks that run after tool execution completes.
     /// Hooks inspect the result and may emit events (e.g. tool.call_requested).
     hooks: Vec<Box<dyn PostActHook>>,
@@ -292,9 +236,6 @@ where
     /// Final post-tool-exec hooks (infrastructure): run after capability hooks.
     /// Always registered, cannot be removed by capabilities (EVE-225).
     final_post_tool_hooks: Vec<Arc<dyn act_hooks::PostToolExecHook>>,
-    /// Optional live reasoning-effort handle (EVE-595) handed to each tool's
-    /// `ToolContext` so a tool can change effort mid-turn.
-    reasoning_effort_handle: Option<crate::traits::ReasoningEffortHandle>,
 }
 
 impl<T, E> ActAtom<T, E>
@@ -307,42 +248,14 @@ where
         Self {
             tool_executor: Arc::new(tool_executor),
             event_emitter: Arc::new(event_emitter),
-            file_store: None,
-            sqldb_store: None,
-            storage_store: None,
-            image_store: None,
-            provider_credential_store: None,
-            utility_llm_service: None,
-            mcp_invoker: None,
-            egress_service: None,
-            connection_resolver: None,
-            session_store: None,
-            session_mutator: None,
-            agent_store: None,
-            schedule_store: None,
-            platform_store: None,
-            knowledge_store: None,
-            knowledge_index_search: None,
-            leased_resource_store: None,
-            session_resource_registry: None,
-            session_task_registry: None,
-            capability_registry: None,
-            tool_registry: None,
-            org_id: None,
-            network_access: None,
-            budget_checker: None,
-            payment_authority: None,
-            session_creation_authority: None,
+            context_services: crate::traits::ToolContextServices::default(),
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
-            subagent_spawn_store: None,
-            subagent_nesting_policy: crate::traits::SubagentNestingPolicy::default(),
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
             tool_call_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
-            reasoning_effort_handle: None,
         }
     }
 
@@ -355,43 +268,26 @@ where
         Self {
             tool_executor: Arc::new(tool_executor),
             event_emitter: Arc::new(event_emitter),
-            file_store: Some(file_store),
-            sqldb_store: None,
-            storage_store: None,
-            image_store: None,
-            provider_credential_store: None,
-            utility_llm_service: None,
-            mcp_invoker: None,
-            egress_service: None,
-            connection_resolver: None,
-            session_store: None,
-            session_mutator: None,
-            agent_store: None,
-            schedule_store: None,
-            platform_store: None,
-            knowledge_store: None,
-            knowledge_index_search: None,
-            leased_resource_store: None,
-            session_resource_registry: None,
-            session_task_registry: None,
-            capability_registry: None,
-            tool_registry: None,
-            org_id: None,
-            network_access: None,
-            budget_checker: None,
-            payment_authority: None,
-            session_creation_authority: None,
+            context_services: crate::traits::ToolContextServices {
+                file_store: Some(file_store),
+                ..Default::default()
+            },
             outbound_tool_rate_limiter: None,
             durable_tool_result_store: None,
-            subagent_spawn_store: None,
-            subagent_nesting_policy: crate::traits::SubagentNestingPolicy::default(),
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
             tool_call_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
-            reasoning_effort_handle: None,
         }
+    }
+
+    /// Replace the complete runtime-owned service snapshot used for every
+    /// per-call [`ToolContext`]. Production hosts should prefer this over
+    /// assembling individual services on the atom.
+    pub fn with_context_services(mut self, services: crate::traits::ToolContextServices) -> Self {
+        self.context_services = services;
+        self
     }
 
     /// Add a custom post-act hook.
@@ -420,7 +316,7 @@ where
 
     /// Set the SQL database store on this atom
     pub fn with_sqldb_store(mut self, store: crate::traits::SessionSqlDbStoreRef) -> Self {
-        self.sqldb_store = Some(store);
+        self.context_services.sqldb_store = Some(store);
         self
     }
 
@@ -429,19 +325,19 @@ where
         mut self,
         store: Arc<dyn crate::traits::SessionStorageStore>,
     ) -> Self {
-        self.storage_store = Some(store);
+        self.context_services.storage_store = Some(store);
         self
     }
 
     /// Set the image artifact store on this atom
     pub fn with_image_store(mut self, store: Arc<dyn crate::traits::ImageArtifactStore>) -> Self {
-        self.image_store = Some(store);
+        self.context_services.image_store = Some(store);
         self
     }
 
     /// Set the knowledge store on this atom (backs `search_knowledge`).
     pub fn with_knowledge_store(mut self, store: Arc<dyn crate::traits::KnowledgeStore>) -> Self {
-        self.knowledge_store = Some(store);
+        self.context_services.knowledge_store = Some(store);
         self
     }
 
@@ -450,25 +346,25 @@ where
         mut self,
         store: Arc<dyn crate::traits::ProviderCredentialStore>,
     ) -> Self {
-        self.provider_credential_store = Some(store);
+        self.context_services.provider_credential_store = Some(store);
         self
     }
 
     /// Set the utility LLM service on this atom.
     pub fn with_utility_llm_service(mut self, service: Arc<dyn crate::UtilityLlmService>) -> Self {
-        self.utility_llm_service = Some(service);
+        self.context_services.utility_llm_service = Some(service);
         self
     }
 
     /// Set the scoped-MCP tool invoker on this atom (guardrails `mcp` check).
     pub fn with_mcp_invoker(mut self, invoker: Arc<dyn crate::McpToolInvoker>) -> Self {
-        self.mcp_invoker = Some(invoker);
+        self.context_services.mcp_invoker = Some(invoker);
         self
     }
 
     /// Set the outbound egress service on this atom.
     pub fn with_egress_service(mut self, service: Arc<dyn crate::EgressService>) -> Self {
-        self.egress_service = Some(service);
+        self.context_services.egress_service = Some(service);
         self
     }
 
@@ -477,25 +373,25 @@ where
         mut self,
         resolver: Arc<dyn crate::traits::UserConnectionResolver>,
     ) -> Self {
-        self.connection_resolver = Some(resolver);
+        self.context_services.connection_resolver = Some(resolver);
         self
     }
 
     /// Set session store for context-aware tools.
     pub fn with_session_store(mut self, store: Arc<dyn SessionStore>) -> Self {
-        self.session_store = Some(store);
+        self.context_services.session_store = Some(store);
         self
     }
 
     /// Set session mutator for context-aware tools.
     pub fn with_session_mutator(mut self, mutator: Arc<dyn SessionMutator>) -> Self {
-        self.session_mutator = Some(mutator);
+        self.context_services.session_mutator = Some(mutator);
         self
     }
 
     /// Set agent store for context-aware tools.
     pub fn with_agent_store(mut self, store: Arc<dyn AgentStore>) -> Self {
-        self.agent_store = Some(store);
+        self.context_services.agent_store = Some(store);
         self
     }
 
@@ -504,7 +400,7 @@ where
         mut self,
         store: Arc<dyn crate::traits::SessionScheduleStore>,
     ) -> Self {
-        self.schedule_store = Some(store);
+        self.context_services.schedule_store = Some(store);
         self
     }
 
@@ -513,7 +409,7 @@ where
         mut self,
         store: Arc<dyn crate::platform_store::PlatformStore>,
     ) -> Self {
-        self.platform_store = Some(store);
+        self.context_services.platform_store = Some(store);
         self
     }
 
@@ -522,7 +418,7 @@ where
         mut self,
         search: Arc<dyn crate::vector_store::KnowledgeIndexSearch>,
     ) -> Self {
-        self.knowledge_index_search = Some(search);
+        self.context_services.knowledge_index_search = Some(search);
         self
     }
 
@@ -531,7 +427,7 @@ where
         mut self,
         store: Arc<dyn crate::traits::LeasedResourceStore>,
     ) -> Self {
-        self.leased_resource_store = Some(store);
+        self.context_services.leased_resource_store = Some(store);
         self
     }
 
@@ -540,7 +436,7 @@ where
         mut self,
         registry: Arc<dyn crate::traits::SessionResourceRegistry>,
     ) -> Self {
-        self.session_resource_registry = Some(registry);
+        self.context_services.session_resource_registry = Some(registry);
         self
     }
 
@@ -549,7 +445,7 @@ where
         mut self,
         registry: Arc<dyn crate::session_task::SessionTaskRegistry>,
     ) -> Self {
-        self.session_task_registry = Some(registry);
+        self.context_services.session_task_registry = Some(registry);
         self
     }
 
@@ -557,13 +453,13 @@ where
         mut self,
         registry: crate::capabilities::CapabilityRegistry,
     ) -> Self {
-        self.capability_registry = Some(registry);
+        self.context_services.capability_registry = Some(registry);
         self
     }
 
     /// Set the active built-in tool registry for meta-tools like `spawn_background`.
     pub fn with_tool_registry(mut self, registry: Arc<crate::tools::ToolRegistry>) -> Self {
-        self.tool_registry = Some(registry);
+        self.context_services.tool_registry = Some(registry);
         self
     }
 
@@ -596,7 +492,7 @@ where
 
     /// Set org ID for org-scoped operations.
     pub fn with_org_id(mut self, org_id: crate::typed_id::OrgId) -> Self {
-        self.org_id = Some(org_id);
+        self.context_services.org_id = Some(org_id);
         self
     }
 
@@ -605,13 +501,13 @@ where
         mut self,
         network_access: Option<crate::network_access::NetworkAccessList>,
     ) -> Self {
-        self.network_access = network_access;
+        self.context_services.network_access = network_access;
         self
     }
 
     /// Set the budget checker for the check_budget tool.
     pub fn with_budget_checker(mut self, checker: Arc<dyn crate::traits::BudgetChecker>) -> Self {
-        self.budget_checker = Some(checker);
+        self.context_services.budget_checker = Some(checker);
         self
     }
 
@@ -620,7 +516,7 @@ where
         mut self,
         authority: Arc<dyn crate::traits::PaymentAuthority>,
     ) -> Self {
-        self.payment_authority = Some(authority);
+        self.context_services.payment_authority = Some(authority);
         self
     }
 
@@ -629,7 +525,7 @@ where
         mut self,
         authority: Arc<dyn crate::traits::SessionCreationAuthority>,
     ) -> Self {
-        self.session_creation_authority = Some(authority);
+        self.context_services.session_creation_authority = Some(authority);
         self
     }
 
@@ -656,7 +552,7 @@ where
         mut self,
         store: Arc<dyn crate::traits::SubagentSpawnStore>,
     ) -> Self {
-        self.subagent_spawn_store = Some(store);
+        self.context_services.subagent_spawn_store = Some(store);
         self
     }
 
@@ -665,7 +561,7 @@ where
         mut self,
         policy: crate::traits::SubagentNestingPolicy,
     ) -> Self {
-        self.subagent_nesting_policy = policy;
+        self.context_services.subagent_nesting_policy = policy;
         self
     }
 
@@ -676,7 +572,7 @@ where
         mut self,
         handle: crate::traits::ReasoningEffortHandle,
     ) -> Self {
-        self.reasoning_effort_handle = Some(handle);
+        self.context_services.reasoning_effort_handle = Some(handle);
         self
     }
 }
@@ -1033,7 +929,7 @@ where
         &self,
         atom_context: &AtomContext,
     ) -> Option<Arc<dyn SessionFileSystem>> {
-        let store = self.file_store.as_ref()?.clone();
+        let store = self.context_services.file_store.as_ref()?.clone();
         let store = if let Some(workspace_id) = atom_context.workspace_id {
             crate::traits::WorkspaceScopedFileSystem::wrap(store, workspace_id)
         } else {
@@ -1103,8 +999,10 @@ where
         // Per-org outbound tool-call rate limiting (TM-TOOL-009).
         // Checked before tool.started so a denied call emits no events and leaves
         // no unmatched started/completed pair in UI or telemetry.
-        if let (Some(limiter), Some(ref org_id)) = (&self.outbound_tool_rate_limiter, self.org_id)
-            && !limiter.check_org(org_id).await
+        if let (Some(limiter), Some(ref org_id)) = (
+            &self.outbound_tool_rate_limiter,
+            self.context_services.org_id,
+        ) && !limiter.check_org(org_id).await
         {
             tracing::warn!(
                 session_id = %context.session_id,
@@ -1557,11 +1455,8 @@ where
         };
 
         // Execute the tool (always with context so tools can emit progress events)
-        let mut tool_context = if let Some(ref store) = self.file_store {
-            ToolContext::with_file_store(context.session_id, store.clone())
-        } else {
-            ToolContext::new(context.session_id)
-        };
+        let mut tool_context =
+            ToolContext::from_services(context.session_id, &self.context_services);
         // Key file I/O by the attached workspace when known: pin the file store
         // to the workspace so shared-workspace sessions address the workspace's
         // files, not the session's own keyspace. For the default 1:1 case this
@@ -1581,90 +1476,15 @@ where
         if let Some(store) = tool_context.file_store.take() {
             tool_context.file_store = Some(crate::mount_fs::MountFs::wrap_if_needed(store));
         }
-        if let Some(ref store) = self.sqldb_store {
-            tool_context.sqldb_store = Some(store.clone());
-        }
-        if let Some(ref store) = self.storage_store {
-            tool_context.storage_store = Some(store.clone());
-        }
-        if let Some(ref store) = self.image_store {
-            tool_context.image_store = Some(store.clone());
-        }
-        if let Some(ref store) = self.provider_credential_store {
-            tool_context.provider_credential_store = Some(store.clone());
-        }
-        if let Some(ref service) = self.utility_llm_service {
-            tool_context.utility_llm_service = Some(service.clone());
-        }
-        if let Some(ref invoker) = self.mcp_invoker {
-            tool_context.mcp_invoker = Some(invoker.clone());
-        }
-        if let Some(ref service) = self.egress_service {
-            tool_context.egress_service = Some(service.clone());
-        }
-        if let Some(ref resolver) = self.connection_resolver {
-            tool_context.connection_resolver = Some(resolver.clone());
-        }
-        if let Some(ref store) = self.session_store {
-            tool_context.session_store = Some(store.clone());
-        }
-        if let Some(ref mutator) = self.session_mutator {
-            tool_context.session_mutator = Some(mutator.clone());
-        }
-        if let Some(ref store) = self.agent_store {
-            tool_context.agent_store = Some(store.clone());
-        }
-        if let Some(ref store) = self.schedule_store {
-            tool_context.schedule_store = Some(store.clone());
-        }
-        if let Some(ref store) = self.platform_store {
-            tool_context.platform_store = Some(store.clone());
-        }
-        if let Some(ref store) = self.knowledge_store {
-            tool_context.knowledge_store = Some(store.clone());
-        }
-        if let Some(ref search) = self.knowledge_index_search {
-            tool_context.knowledge_index_search = Some(search.clone());
-        }
-        if let Some(ref store) = self.leased_resource_store {
-            tool_context.leased_resource_store = Some(store.clone());
-        }
-        if let Some(ref registry) = self.session_resource_registry {
-            tool_context.session_resource_registry = Some(registry.clone());
-        }
-        if let Some(ref registry) = self.session_task_registry {
-            tool_context.session_task_registry = Some(registry.clone());
-        }
-        if let Some(ref registry) = self.capability_registry {
-            tool_context.capability_registry = Some(registry.clone());
-        }
-        if let Some(ref registry) = self.tool_registry {
-            tool_context.tool_registry = Some(registry.clone());
-        }
         tool_context.visible_tool_names = Some(visible_tool_names.clone());
-        if let Some(ref checker) = self.budget_checker {
-            tool_context.budget_checker = Some(checker.clone());
-        }
-        if let Some(ref authority) = self.payment_authority {
-            tool_context.payment_authority = Some(authority.clone());
-        }
-        if let Some(ref authority) = self.session_creation_authority {
-            tool_context.session_creation_authority = Some(authority.clone());
-        }
-        if let Some(ref store) = self.subagent_spawn_store {
-            tool_context.subagent_spawn_store = Some(store.clone());
-        }
-        tool_context.subagent_nesting_policy = self.subagent_nesting_policy;
-        if let Some(ref handle) = self.reasoning_effort_handle {
-            tool_context.reasoning_effort_handle = Some(handle.clone());
-        }
-        tool_context.org_id = self.org_id;
         // Input network_access (per-session, merged from harness+agent+session) takes precedence
         tool_context.network_access = network_access
             .cloned()
-            .or_else(|| self.network_access.clone());
+            .or_else(|| self.context_services.network_access.clone());
         // Provide event emitter + context so tools can emit tool.progress events
-        tool_context.event_emitter = Some(self.event_emitter.clone() as Arc<dyn EventEmitter>);
+        if tool_context.event_emitter.is_none() {
+            tool_context.event_emitter = Some(self.event_emitter.clone() as Arc<dyn EventEmitter>);
+        }
         tool_context.event_context = Some(event_context.clone());
         tool_context.tool_call_id = Some(tool_call.id.clone());
 

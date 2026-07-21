@@ -205,6 +205,11 @@ Use the `query_history` tool to search or retrieve earlier messages.]
 
 ### Query History Tool Schema
 
+`query_history` requires the runtime's `MessageRetriever` ToolContext service.
+Runtime host assembly validates that requirement before exposing the tool, and
+the same session-scoped retriever is used for fresh, resumed, and automatic
+turns.
+
 ```json
 {
   "name": "query_history",

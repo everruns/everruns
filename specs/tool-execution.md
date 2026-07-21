@@ -268,6 +268,14 @@ V1 limitation:
 
 `ToolContext` may carry worker-backed service stores in addition to filesystem and session metadata handles. These stores let tools perform org-scoped operations without bypassing worker authorization boundaries.
 
+Production hosts assemble these services into one runtime-owned snapshot and
+derive every per-call `ToolContext` from it. A tool with a hard dependency uses
+`Tool::required_context_services`; the runtime validates the active registry
+before the tool is advertised. Optional services that only enrich behavior are
+not hard requirements. This keeps service-free tools valid while preventing a
+context-aware tool from being model-visible when its required backend was
+accidentally omitted.
+
 Current examples:
 
 - `storage_store` for key/value and secret storage
