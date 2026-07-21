@@ -1,12 +1,14 @@
 use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
-use everruns_core::capabilities::TestMathCapability;
+use everruns_core::capabilities::{
+    InfinityContextCapability, SessionTasksCapability, TestMathCapability,
+};
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
-    Agent, CapabilityRegistry, DriverId, Harness, InitialFile, MessageRole, PlatformDefinition,
-    ResolvedModel, Session, SessionFileSystem, SessionFileSystemFactory,
+    Agent, CapabilityRegistry, DriverId, Harness, InitialFile, Message, MessageRole,
+    PlatformDefinition, ResolvedModel, Session, SessionFileSystem, SessionFileSystemFactory,
     SessionFileSystemFactoryContext, ToolCall,
 };
 use everruns_runtime::{
@@ -157,6 +159,42 @@ async fn default_runtime_uses_runtime_safe_capability_preset() {
 }
 
 #[tokio::test]
+async fn runtime_rejects_tools_missing_required_context_services_before_reason() {
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(SessionTasksCapability);
+    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(platform)
+        .llm_sim(LlmSimConfig::fixed("model must not be reached"))
+        .single_session(|s| {
+            s.harness("tasks", "Manage session tasks.")
+                .with_capability("session_tasks")
+                .agent("tasks-agent", "Inspect tasks.")
+        })
+        .build()
+        .await
+        .unwrap();
+
+    let error = runtime
+        .run_text_turn(
+            runtime.default_session_id().expect("default session id"),
+            "List tasks.",
+        )
+        .await
+        .expect_err("missing required service must fail configuration");
+    let message = error.to_string();
+    assert!(
+        message.contains("cancel_task"),
+        "error must name tool: {message}"
+    );
+    assert!(
+        message.contains("SessionTaskRegistry"),
+        "error must name missing service: {message}",
+    );
+}
+
+#[tokio::test]
 async fn runtime_executes_tool_loop_and_persists_messages() {
     let harness_id = "harness_00000000000000000000000000000021".parse().unwrap();
     let agent_id = "agent_00000000000000000000000000000021".parse().unwrap();
@@ -227,6 +265,136 @@ async fn runtime_executes_tool_loop_and_persists_messages() {
             .iter()
             .any(|event_type| event_type == "tool.completed"),
         "tool execution events must be captured for embedders",
+    );
+}
+
+#[tokio::test]
+async fn query_history_reads_messages_through_in_process_reason_act_path() {
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(InfinityContextCapability);
+    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(platform)
+        .llm_sim(
+            LlmSimConfig::fixed("History retrieved.").with_tool_call_sequence(vec![
+                vec![ToolCall {
+                    id: "call_history_1".into(),
+                    name: "query_history".into(),
+                    arguments: serde_json::json!({"query": "remember"}),
+                }],
+                vec![],
+            ]),
+        )
+        .single_session(|s| {
+            s.harness("history", "Use conversation history when needed.")
+                .with_capability("infinity_context")
+                .agent("history-agent", "Use query_history when asked.")
+        })
+        .build()
+        .await
+        .unwrap();
+
+    let session_id = runtime.default_session_id().expect("default session id");
+    let result = runtime
+        .run_text_turn(session_id, "Remember the deployment code is blue.")
+        .await
+        .unwrap();
+    assert!(result.success);
+
+    let history_result = runtime
+        .messages(session_id)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|message| {
+            message.role == MessageRole::ToolResult
+                && message.tool_call_id() == Some("call_history_1")
+        })
+        .expect("query_history tool result");
+    let serialized = history_result.content_to_llm_string();
+    assert!(
+        serialized.contains("Remember the deployment code is blue."),
+        "stored history must reach query_history through ToolContext; got: {serialized}",
+    );
+}
+
+#[tokio::test]
+async fn query_history_reads_seeded_resumed_session_messages() {
+    let harness_id = everruns_core::HarnessId::from_seed(797);
+    let agent_id = everruns_core::AgentId::from_seed(797);
+    let session_id = everruns_core::SessionId::from_seed(797);
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(InfinityContextCapability);
+    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+    let backends = RuntimeBackends::in_memory();
+    backends
+        .message_store
+        .store_message(
+            session_id,
+            Message::user("The seeded deployment code is amber."),
+        )
+        .await
+        .unwrap();
+
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(platform)
+        .backends(backends)
+        .llm_sim(
+            LlmSimConfig::fixed("Seeded history retrieved.").with_tool_call_sequence(vec![
+                vec![ToolCall {
+                    id: "call_seeded_history".into(),
+                    name: "query_history".into(),
+                    arguments: serde_json::json!({"query": "amber"}),
+                }],
+                vec![],
+            ]),
+        )
+        .default_model(ResolvedModel {
+            model: "llmsim-model".into(),
+            provider_type: DriverId::LlmSim,
+            api_key: Some("fake-key".into()),
+            base_url: None,
+            provider_metadata: None,
+        })
+        .harness(
+            HarnessBuilder::new("history", "Use conversation history when needed.")
+                .id(harness_id)
+                .capability("infinity_context")
+                .build(),
+        )
+        .agent(
+            AgentBuilder::new("history-agent", "Use query_history when asked.")
+                .id(agent_id)
+                .build(),
+        )
+        .session(
+            SessionBuilder::new(harness_id)
+                .id(session_id)
+                .agent(agent_id)
+                .build(),
+        )
+        .build()
+        .await
+        .unwrap();
+
+    runtime
+        .run_text_turn(session_id, "What was the seeded deployment code?")
+        .await
+        .unwrap();
+
+    let history_result = runtime
+        .messages(session_id)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|message| message.tool_call_id() == Some("call_seeded_history"))
+        .expect("query_history tool result");
+    assert!(
+        history_result
+            .content_to_llm_string()
+            .contains("The seeded deployment code is amber."),
+        "seeded history must remain queryable after runtime construction",
     );
 }
 

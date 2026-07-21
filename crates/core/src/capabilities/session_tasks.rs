@@ -6,9 +6,10 @@
 // (spawn_agent, spawn_background) — every spawn creates a task and returns its
 // task_id; these tools provide the uniform query/messaging/cancel/wait plane.
 //
-// Decision: tools degrade gracefully when `context.session_task_registry` is
-// absent (e.g. embedders without a registry) — they return a tool error
-// instead of panicking, matching other registry-backed capabilities.
+// Decision: tools declare `SessionTaskRegistry` as a hard context-service
+// requirement, so production runtime assembly rejects the capability before
+// model exposure when the host lacks that backend. Direct/test execution still
+// returns a tool error instead of panicking.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::session_task::{
@@ -17,7 +18,7 @@ use crate::session_task::{
 };
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
+use crate::traits::{ToolContext, ToolContextService};
 use async_trait::async_trait;
 use serde_json::{Value, json};
 use std::sync::Arc;
@@ -202,6 +203,10 @@ impl Tool for ListTasksTool {
     fn requires_context(&self) -> bool {
         true
     }
+
+    fn required_context_services(&self) -> &'static [ToolContextService] {
+        &[ToolContextService::SessionTaskRegistry]
+    }
 }
 
 async fn list_tasks_impl(
@@ -298,6 +303,10 @@ impl Tool for GetTaskTool {
     fn requires_context(&self) -> bool {
         true
     }
+
+    fn required_context_services(&self) -> &'static [ToolContextService] {
+        &[ToolContextService::SessionTaskRegistry]
+    }
 }
 
 async fn get_task_impl(
@@ -384,6 +393,10 @@ impl Tool for MessageTaskTool {
 
     fn requires_context(&self) -> bool {
         true
+    }
+
+    fn required_context_services(&self) -> &'static [ToolContextService] {
+        &[ToolContextService::SessionTaskRegistry]
     }
 }
 
@@ -496,6 +509,10 @@ impl Tool for CancelTaskTool {
     fn requires_context(&self) -> bool {
         true
     }
+
+    fn required_context_services(&self) -> &'static [ToolContextService] {
+        &[ToolContextService::SessionTaskRegistry]
+    }
 }
 
 async fn cancel_task_impl(
@@ -599,6 +616,10 @@ impl Tool for WaitTaskTool {
 
     fn requires_context(&self) -> bool {
         true
+    }
+
+    fn required_context_services(&self) -> &'static [ToolContextService] {
+        &[ToolContextService::SessionTaskRegistry]
     }
 }
 

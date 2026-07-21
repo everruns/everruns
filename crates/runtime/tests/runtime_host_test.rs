@@ -327,6 +327,68 @@ impl Tool for OverlayEchoTool {
     }
 }
 
+struct ContextParityTool;
+
+#[async_trait]
+impl Tool for ContextParityTool {
+    fn name(&self) -> &str {
+        "context_parity"
+    }
+
+    fn description(&self) -> &str {
+        "Reports whether runtime host services reached ToolContext."
+    }
+
+    fn parameters_schema(&self) -> serde_json::Value {
+        json!({"type": "object", "additionalProperties": false})
+    }
+
+    async fn execute(&self, _arguments: serde_json::Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error("context required")
+    }
+
+    async fn execute_with_context(
+        &self,
+        _arguments: serde_json::Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        ToolExecutionResult::success(json!({
+            "file_store": context.file_store.is_some(),
+            "message_retriever": context.message_retriever.is_some(),
+            "session_store": context.session_store.is_some(),
+            "session_mutator": context.session_mutator.is_some(),
+            "agent_store": context.agent_store.is_some(),
+            "session_task_registry": context.session_task_registry.is_some(),
+            "capability_registry": context.capability_registry.is_some(),
+            "tool_registry": context.tool_registry.is_some(),
+            "org_id": context.org_id.is_some(),
+            "event_emitter": context.event_emitter.is_some(),
+            "event_context": context.event_context.is_some(),
+            "tool_call_id": context.tool_call_id.is_some(),
+        }))
+    }
+}
+
+struct ContextParityCapability;
+
+impl Capability for ContextParityCapability {
+    fn id(&self) -> &str {
+        "context_parity"
+    }
+
+    fn name(&self) -> &str {
+        "Context Parity"
+    }
+
+    fn description(&self) -> &str {
+        "Test capability for runtime-owned ToolContext service propagation."
+    }
+
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        vec![Box::new(ContextParityTool)]
+    }
+}
+
 struct OverlayHook;
 
 #[async_trait]
@@ -890,6 +952,72 @@ async fn act_activity_executes_capability_tools_from_harness_registry() {
     assert_eq!(result.success_count, 1);
     assert_eq!(result.error_count, 0);
     assert_eq!(result.results.len(), 1);
+}
+
+#[tokio::test]
+async fn runtime_host_services_reach_final_tool_context_in_parity() {
+    let mut adapter = mock_host();
+    adapter
+        .capability_registry
+        .register(ContextParityCapability);
+    adapter.session_task_registry = Some(Arc::new(TestTaskRegistry::default()));
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    let input_message_id = MessageId::from_uuid(Uuid::now_v7());
+    let mut test_harness = harness(harness_id);
+    test_harness.capabilities = vec![AgentCapabilityConfig::new("context_parity")];
+    adapter.harness_store.add_harness(test_harness).await;
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+
+    let tool_definitions = build_registry(
+        &adapter.capability_registry,
+        session_id,
+        &[AgentCapabilityConfig::new("context_parity")],
+    )
+    .await
+    .unwrap()
+    .tool_definitions();
+    let result = execute_act_activity(
+        &adapter,
+        ActInput {
+            org_id: Some(1),
+            context: AtomContext::new(
+                session_id,
+                TurnId::from_uuid(Uuid::now_v7()),
+                input_message_id,
+            ),
+            harness_id,
+            agent_id: None,
+            tool_calls: vec![ToolCall {
+                id: "call_context_parity".into(),
+                name: "context_parity".into(),
+                arguments: json!({}),
+            }],
+            tool_definitions,
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    let payload = result.results[0]
+        .result
+        .result
+        .as_ref()
+        .expect("context parity payload");
+    for (service, available) in payload.as_object().expect("object payload") {
+        assert_eq!(
+            available,
+            &json!(true),
+            "{service} did not reach ToolContext"
+        );
+    }
 }
 
 /// EVE-601: the runtime act path must surface capability-owned `Tool::narrate()`

@@ -1643,6 +1643,157 @@ impl PartialStreamStore for NoopPartialStreamStore {
     }
 }
 
+/// Runtime-owned services that may be exposed to tools.
+///
+/// Tools declare the subset they require through
+/// [`crate::tools::Tool::required_context_services`]. Runtime hosts validate
+/// those declarations before advertising tools to the model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ToolContextService {
+    SessionFileSystem,
+    SessionStorageStore,
+    ImageArtifactStore,
+    ProviderCredentialStore,
+    UtilityLlmService,
+    McpInvoker,
+    EgressService,
+    SessionSqlDbStore,
+    MessageRetriever,
+    SessionStore,
+    SessionMutator,
+    AgentStore,
+    ConnectionResolver,
+    ScheduleStore,
+    PlatformStore,
+    KnowledgeStore,
+    KnowledgeIndexSearch,
+    LeasedResourceStore,
+    SessionResourceRegistry,
+    SessionTaskRegistry,
+    EventEmitter,
+    CapabilityRegistry,
+    ToolRegistry,
+    OrgId,
+    BudgetChecker,
+    PaymentAuthority,
+    SessionCreationAuthority,
+    SubagentSpawnStore,
+    ReasoningEffortHandle,
+}
+
+impl ToolContextService {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::SessionFileSystem => "SessionFileSystem",
+            Self::SessionStorageStore => "SessionStorageStore",
+            Self::ImageArtifactStore => "ImageArtifactStore",
+            Self::ProviderCredentialStore => "ProviderCredentialStore",
+            Self::UtilityLlmService => "UtilityLlmService",
+            Self::McpInvoker => "McpInvoker",
+            Self::EgressService => "EgressService",
+            Self::SessionSqlDbStore => "SessionSqlDbStore",
+            Self::MessageRetriever => "MessageRetriever",
+            Self::SessionStore => "SessionStore",
+            Self::SessionMutator => "SessionMutator",
+            Self::AgentStore => "AgentStore",
+            Self::ConnectionResolver => "ConnectionResolver",
+            Self::ScheduleStore => "SessionScheduleStore",
+            Self::PlatformStore => "PlatformStore",
+            Self::KnowledgeStore => "KnowledgeStore",
+            Self::KnowledgeIndexSearch => "KnowledgeIndexSearch",
+            Self::LeasedResourceStore => "LeasedResourceStore",
+            Self::SessionResourceRegistry => "SessionResourceRegistry",
+            Self::SessionTaskRegistry => "SessionTaskRegistry",
+            Self::EventEmitter => "EventEmitter",
+            Self::CapabilityRegistry => "CapabilityRegistry",
+            Self::ToolRegistry => "ToolRegistry",
+            Self::OrgId => "OrgId",
+            Self::BudgetChecker => "BudgetChecker",
+            Self::PaymentAuthority => "PaymentAuthority",
+            Self::SessionCreationAuthority => "SessionCreationAuthority",
+            Self::SubagentSpawnStore => "SubagentSpawnStore",
+            Self::ReasoningEffortHandle => "ReasoningEffortHandle",
+        }
+    }
+}
+
+/// Cloneable snapshot of all services a runtime host makes available to tools.
+///
+/// Production act execution constructs each [`ToolContext`] from this bundle;
+/// per-call metadata is applied afterwards.
+#[derive(Clone, Default)]
+pub struct ToolContextServices {
+    pub file_store: Option<Arc<dyn SessionFileSystem>>,
+    pub storage_store: Option<Arc<dyn SessionStorageStore>>,
+    pub image_store: Option<Arc<dyn ImageArtifactStore>>,
+    pub provider_credential_store: Option<Arc<dyn ProviderCredentialStore>>,
+    pub utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
+    pub mcp_invoker: Option<Arc<dyn crate::McpToolInvoker>>,
+    pub egress_service: Option<Arc<dyn crate::EgressService>>,
+    pub sqldb_store: Option<SessionSqlDbStoreRef>,
+    pub message_retriever: Option<Arc<dyn crate::message_retriever::MessageRetriever>>,
+    pub session_store: Option<Arc<dyn SessionStore>>,
+    pub session_mutator: Option<Arc<dyn SessionMutator>>,
+    pub agent_store: Option<Arc<dyn AgentStore>>,
+    pub connection_resolver: Option<Arc<dyn UserConnectionResolver>>,
+    pub schedule_store: Option<Arc<dyn SessionScheduleStore>>,
+    pub platform_store: Option<Arc<dyn crate::platform_store::PlatformStore>>,
+    pub knowledge_store: Option<Arc<dyn KnowledgeStore>>,
+    pub knowledge_index_search: Option<Arc<dyn crate::vector_store::KnowledgeIndexSearch>>,
+    pub leased_resource_store: Option<Arc<dyn LeasedResourceStore>>,
+    pub session_resource_registry: Option<Arc<dyn SessionResourceRegistry>>,
+    pub session_task_registry: Option<Arc<dyn crate::session_task::SessionTaskRegistry>>,
+    pub event_emitter: Option<Arc<dyn EventEmitter>>,
+    pub capability_registry: Option<crate::capabilities::CapabilityRegistry>,
+    pub tool_registry: Option<Arc<crate::tools::ToolRegistry>>,
+    pub org_id: Option<crate::typed_id::OrgId>,
+    pub network_access: Option<crate::network_access::NetworkAccessList>,
+    pub budget_checker: Option<Arc<dyn BudgetChecker>>,
+    pub payment_authority: Option<Arc<dyn PaymentAuthority>>,
+    pub session_creation_authority: Option<Arc<dyn SessionCreationAuthority>>,
+    pub subagent_spawn_store: Option<Arc<dyn SubagentSpawnStore>>,
+    pub subagent_nesting_policy: SubagentNestingPolicy,
+    pub reasoning_effort_handle: Option<ReasoningEffortHandle>,
+}
+
+impl ToolContextServices {
+    pub fn provides(&self, service: ToolContextService) -> bool {
+        match service {
+            ToolContextService::SessionFileSystem => self.file_store.is_some(),
+            ToolContextService::SessionStorageStore => self.storage_store.is_some(),
+            ToolContextService::ImageArtifactStore => self.image_store.is_some(),
+            ToolContextService::ProviderCredentialStore => self.provider_credential_store.is_some(),
+            ToolContextService::UtilityLlmService => self.utility_llm_service.is_some(),
+            ToolContextService::McpInvoker => self.mcp_invoker.is_some(),
+            ToolContextService::EgressService => self.egress_service.is_some(),
+            ToolContextService::SessionSqlDbStore => self.sqldb_store.is_some(),
+            ToolContextService::MessageRetriever => self.message_retriever.is_some(),
+            ToolContextService::SessionStore => self.session_store.is_some(),
+            ToolContextService::SessionMutator => self.session_mutator.is_some(),
+            ToolContextService::AgentStore => self.agent_store.is_some(),
+            ToolContextService::ConnectionResolver => self.connection_resolver.is_some(),
+            ToolContextService::ScheduleStore => self.schedule_store.is_some(),
+            ToolContextService::PlatformStore => self.platform_store.is_some(),
+            ToolContextService::KnowledgeStore => self.knowledge_store.is_some(),
+            ToolContextService::KnowledgeIndexSearch => self.knowledge_index_search.is_some(),
+            ToolContextService::LeasedResourceStore => self.leased_resource_store.is_some(),
+            ToolContextService::SessionResourceRegistry => self.session_resource_registry.is_some(),
+            ToolContextService::SessionTaskRegistry => self.session_task_registry.is_some(),
+            ToolContextService::EventEmitter => self.event_emitter.is_some(),
+            ToolContextService::CapabilityRegistry => self.capability_registry.is_some(),
+            ToolContextService::ToolRegistry => self.tool_registry.is_some(),
+            ToolContextService::OrgId => self.org_id.is_some(),
+            ToolContextService::BudgetChecker => self.budget_checker.is_some(),
+            ToolContextService::PaymentAuthority => self.payment_authority.is_some(),
+            ToolContextService::SessionCreationAuthority => {
+                self.session_creation_authority.is_some()
+            }
+            ToolContextService::SubagentSpawnStore => self.subagent_spawn_store.is_some(),
+            ToolContextService::ReasoningEffortHandle => self.reasoning_effort_handle.is_some(),
+        }
+    }
+}
+
 /// Runtime context provided to tools during execution.
 ///
 /// This context contains:
@@ -1842,6 +1993,49 @@ impl ToolContext {
             subagent_spawn_store: None,
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
+        }
+    }
+
+    /// Construct a production tool context from a validated runtime service snapshot.
+    pub fn from_services(session_id: SessionId, services: &ToolContextServices) -> Self {
+        Self {
+            session_id,
+            workspace_id: WorkspaceId::from_uuid(session_id.uuid()),
+            file_store: services.file_store.clone(),
+            storage_store: services.storage_store.clone(),
+            image_store: services.image_store.clone(),
+            provider_credential_store: services.provider_credential_store.clone(),
+            utility_llm_service: services.utility_llm_service.clone(),
+            mcp_invoker: services.mcp_invoker.clone(),
+            egress_service: services.egress_service.clone(),
+            sqldb_store: services.sqldb_store.clone(),
+            message_retriever: services.message_retriever.clone(),
+            session_store: services.session_store.clone(),
+            session_mutator: services.session_mutator.clone(),
+            agent_store: services.agent_store.clone(),
+            connection_resolver: services.connection_resolver.clone(),
+            schedule_store: services.schedule_store.clone(),
+            platform_store: services.platform_store.clone(),
+            knowledge_store: services.knowledge_store.clone(),
+            knowledge_index_search: services.knowledge_index_search.clone(),
+            leased_resource_store: services.leased_resource_store.clone(),
+            session_resource_registry: services.session_resource_registry.clone(),
+            session_task_registry: services.session_task_registry.clone(),
+            event_emitter: services.event_emitter.clone(),
+            event_context: None,
+            tool_call_id: None,
+            capability_registry: services.capability_registry.clone(),
+            tool_registry: services.tool_registry.clone(),
+            visible_tool_names: None,
+            org_id: services.org_id,
+            network_access: services.network_access.clone(),
+            locale: None,
+            budget_checker: services.budget_checker.clone(),
+            payment_authority: services.payment_authority.clone(),
+            session_creation_authority: services.session_creation_authority.clone(),
+            subagent_spawn_store: services.subagent_spawn_store.clone(),
+            subagent_nesting_policy: services.subagent_nesting_policy,
+            reasoning_effort_handle: services.reasoning_effort_handle.clone(),
         }
     }
 

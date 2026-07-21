@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use everruns_core::capabilities::{Capability, CapabilityStatus};
+use everruns_core::capabilities::{Capability, CapabilityStatus, InfinityContextCapability};
 use everruns_core::driver_registry::DriverRegistry;
 use everruns_core::error::Result;
 use everruns_core::llmsim_driver::{LlmSimConfig, SimToolCall, SimTurn};
@@ -24,7 +24,8 @@ use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 use everruns_core::typed_id::SessionId;
 use everruns_core::{
-    AgentId, CapabilityRegistry, DriverId, HarnessId, PlatformDefinition, ResolvedModel,
+    AgentId, CapabilityRegistry, DriverId, HarnessId, MessageRole, PlatformDefinition,
+    ResolvedModel,
 };
 use everruns_runtime::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 
@@ -283,6 +284,7 @@ impl Tool for CompleteChildTool {
 fn platform(policy: TaskWakePolicy) -> PlatformDefinition {
     let mut caps = CapabilityRegistry::new();
     caps.register(WakeDemoCapability { policy });
+    caps.register(InfinityContextCapability);
     let mut drivers = DriverRegistry::new();
     everruns_core::llmsim_driver::register_driver(&mut drivers);
     PlatformDefinition::new(caps, drivers)
@@ -300,6 +302,7 @@ async fn build_runtime(
     let harness = HarnessBuilder::new("wake", "Coordinate background work.")
         .id(harness_id)
         .capability("wake_demo")
+        .capability("infinity_context")
         .build();
     let agent = AgentBuilder::new("agent", "Delegate, then react to results.")
         .id(agent_id)
@@ -396,6 +399,45 @@ async fn terminal_wake_injected_mid_turn_exactly_once() {
         wake_message_count(&messages, "reviewed 3 documents"),
         1,
         "wake payload should include the task summary"
+    );
+}
+
+#[tokio::test]
+async fn query_history_reads_automatic_background_wake_message() {
+    let registry = Arc::new(TestTaskRegistry::default());
+    let script = vec![
+        tool_call("spawn_child"),
+        tool_call("complete_child"),
+        SimTurn::ToolCalls(vec![SimToolCall {
+            name: "query_history".to_string(),
+            arguments: serde_json::json!({"query": "reviewed 3 documents"}),
+            id: Some("call_wake_history".to_string()),
+        }]),
+        SimTurn::Assistant("Recovered the wake from history.".to_string()),
+    ];
+    let (runtime, session_id) =
+        build_runtime(TaskWakePolicy::OnTerminal, script, registry.clone()).await;
+
+    runtime
+        .run_text_turn(session_id, "Kick off a doc review and verify its wake.")
+        .await
+        .expect("run turn");
+
+    let history_result = runtime
+        .messages(session_id)
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|message| {
+            message.role == MessageRole::ToolResult
+                && message.tool_call_id() == Some("call_wake_history")
+        })
+        .expect("query_history result");
+    assert!(
+        history_result
+            .content_to_llm_string()
+            .contains("reviewed 3 documents"),
+        "background wake history must reach query_history",
     );
 }
 

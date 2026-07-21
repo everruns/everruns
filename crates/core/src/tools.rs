@@ -22,7 +22,7 @@ use crate::background::{
 use crate::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
 };
-use crate::traits::ToolContext;
+use crate::traits::{ToolContext, ToolContextService, ToolContextServices};
 use crate::typed_id::SessionId;
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 
@@ -552,6 +552,14 @@ pub trait Tool: Send + Sync {
         false
     }
 
+    /// Runtime services that must be present before this tool can be exposed.
+    ///
+    /// Context-aware tools should declare hard requirements here. Optional
+    /// services that only enable extra behavior should not be listed.
+    fn required_context_services(&self) -> &'static [ToolContextService] {
+        &[]
+    }
+
     /// Returns the tool policy (auto or requires_approval).
     ///
     /// Default is `Auto` which means the tool executes immediately.
@@ -790,6 +798,25 @@ impl ToolRegistry {
     /// `RuntimeAgent::with_tools()`.
     pub fn tool_definitions(&self) -> Vec<ToolDefinition> {
         self.tools.values().map(|t| t.to_definition()).collect()
+    }
+
+    /// Fail configuration before model exposure when a registered tool is
+    /// missing a runtime service it declares as required.
+    pub fn validate_context_services(&self, services: &ToolContextServices) -> Result<()> {
+        let mut tools: Vec<_> = self.tools.values().collect();
+        tools.sort_by_key(|tool| tool.name());
+        for tool in tools {
+            for service in tool.required_context_services() {
+                if !services.provides(*service) {
+                    return Err(crate::error::AgentLoopError::config(format!(
+                        "tool \"{}\" requires unavailable ToolContext service {}",
+                        tool.name(),
+                        service.name(),
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Remove a tool from the registry
