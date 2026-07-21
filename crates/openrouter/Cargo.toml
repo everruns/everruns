@@ -34,7 +34,7 @@ chrono.workspace = true
 # default-features = false sheds core's heavy optional subtrees (telemetry/OTLP,
 # a2a gRPC, web-fetch/fetchkit) that an OpenRouter provider does not need. This
 # is what keeps the standalone `everruns-openrouter` dependency tree small.
-everruns-provider = { path = "../provider", version = "0.17.14" }
+everruns-provider = { path = "../provider", version = "0.17.15" }
 
 [dev-dependencies]
 # Integration tests use core's in-memory runtime + llmsim harness.
