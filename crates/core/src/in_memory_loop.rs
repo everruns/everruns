@@ -33,7 +33,7 @@ use crate::session::{Session, SessionStatus};
 use crate::tool_types::ToolCall;
 use crate::tools::{Tool, ToolRegistry, ToolRegistryBuilder};
 use crate::traits::{EventEmitter, ResolvedModel};
-use crate::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine};
+use crate::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine, TurnStopReason};
 use crate::typed_id::{AgentId, HarnessId, SessionId, TurnId};
 
 // ============================================================================
@@ -112,6 +112,8 @@ pub struct TurnResult {
     pub success: bool,
     /// Error message if the turn failed
     pub error: Option<String>,
+    /// Structured reason the turn stopped.
+    pub stop_reason: TurnStopReason,
     /// Turn ID for this turn
     pub turn_id: TurnId,
 }
@@ -124,25 +126,31 @@ impl TurnResult {
 
     /// Create a TurnResult from a TurnOutcome and turn_id.
     fn from_outcome(outcome: TurnOutcome, turn_id: TurnId) -> Self {
+        let stop_reason = outcome.stop_reason();
         match outcome {
             TurnOutcome::Success {
                 response,
                 iterations,
                 tool_calls_count,
+                ..
             } => Self {
                 response,
                 iterations,
                 tool_calls_count,
                 success: true,
                 error: None,
+                stop_reason,
                 turn_id,
             },
-            TurnOutcome::Failed { error, iterations } => Self {
+            TurnOutcome::Failed {
+                error, iterations, ..
+            } => Self {
                 response: String::new(),
                 iterations,
                 tool_calls_count: 0,
                 success: false,
                 error: Some(error),
+                stop_reason,
                 turn_id,
             },
             TurnOutcome::MaxIterationsReached {
@@ -155,6 +163,7 @@ impl TurnResult {
                 tool_calls_count,
                 success: true, // Max iterations is not a failure
                 error: None,
+                stop_reason,
                 turn_id,
             },
             // A sealed turn was deliberately stopped (EVE-534). Surface it as a
@@ -171,6 +180,7 @@ impl TurnResult {
                 tool_calls_count,
                 success: false,
                 error: Some(format!("turn sealed: {reason}")),
+                stop_reason,
                 turn_id,
             },
         }
@@ -738,10 +748,10 @@ impl InMemoryAgenticLoop {
                     // has_pending_user_messages is always false.
                     state_machine.on_reason_completed(
                         reason_result.text.clone(),
-                        reason_result.has_tool_calls,
                         tool_call_count,
                         reason_result.success,
                         reason_result.error.clone(),
+                        reason_result.finish_reason.clone(),
                         false,
                     );
 

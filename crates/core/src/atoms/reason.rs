@@ -549,6 +549,9 @@ pub struct ReasonResult {
     /// LLM provider's response ID for chaining with `previous_response_id`
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
+    /// Raw provider finish reason for this generation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finish_reason: Option<String>,
     /// Resolved locale used for this turn's prompt and backend-authored strings.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub locale: Option<String>,
@@ -1281,13 +1284,17 @@ impl ReasonAtom {
                     has_tool_calls: false,
                     tool_definitions: vec![],
                     max_iterations: default_max_iterations(),
-                    error: Some(error_msg),
+                    error: Some(error_msg.clone()),
                     user_facing_error: Some(user_error),
                     error_disclosure: Some(error_disclosure),
                     usage: None,
                     output_message_id,
                     time_to_first_token_ms: None,
                     response_id: None,
+                    finish_reason: error_msg
+                        .to_ascii_lowercase()
+                        .contains("model refused")
+                        .then(|| "refusal".to_string()),
                     locale: None,
                     network_access: None,
                     parallel_tool_calls: None,
@@ -3013,6 +3020,9 @@ impl ReasonAtom {
         let response_id = completion_metadata
             .as_ref()
             .and_then(|meta| meta.response_id.clone());
+        let finish_reason = completion_metadata
+            .as_ref()
+            .and_then(|meta| meta.finish_reason.clone());
 
         // 15. Convert completion metadata to TokenUsage.
         //
@@ -3055,12 +3065,13 @@ impl ReasonAtom {
         );
         let tools_summary: Vec<ToolDefinitionSummary> =
             runtime_agent.tools.iter().map(|t| t.into()).collect();
-        // Infer finish reasons from content
-        let finish_reasons = if !tool_calls.is_empty() {
-            Some(vec!["tool_calls".to_string()])
-        } else {
-            Some(vec!["stop".to_string()])
-        };
+        let finish_reasons = Some(vec![finish_reason.clone().unwrap_or_else(|| {
+            if tool_calls.is_empty() {
+                "stop".to_string()
+            } else {
+                "tool_calls".to_string()
+            }
+        })]);
         // Extract retry info from completion metadata (if retries occurred)
         let retry_info = completion_metadata
             .as_ref()
@@ -3224,6 +3235,7 @@ impl ReasonAtom {
             output_message_id: Some(output_message_id),
             time_to_first_token_ms,
             response_id,
+            finish_reason,
             locale: resolved_locale,
             network_access: runtime_agent.network_access.clone(),
             parallel_tool_calls: runtime_agent.parallel_tool_calls,
@@ -3315,6 +3327,7 @@ impl ReasonAtom {
             output_message_id: Some(output_message_id),
             time_to_first_token_ms: None,
             response_id: None,
+            finish_reason: Some("stop".to_string()),
             locale: None,
             network_access: None,
             // Finalize path has no tool calls, so the preference is irrelevant.

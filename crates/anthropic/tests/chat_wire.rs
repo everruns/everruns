@@ -181,8 +181,6 @@ async fn text_stream_golden_events() {
                 completion: Some(5),
                 cache_read: Some(4),
                 cache_creation: Some(2),
-                // message_stop always reports "stop" regardless of the
-                // message_delta stop_reason; the golden output pins that.
                 finish: Some("stop".into()),
             },
         ]
@@ -320,7 +318,7 @@ async fn fragmented_tool_use_golden_events() {
                 completion: Some(9),
                 cache_read: None,
                 cache_creation: None,
-                finish: Some("stop".into()),
+                finish: Some("tool_calls".into()),
             },
         ]
     );

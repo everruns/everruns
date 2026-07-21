@@ -81,6 +81,11 @@ runtime shape and records the generated session id for
 - `read_file(session_id, path)` to inspect the in-memory workspace
 - `events()` to inspect emitted runtime events
 
+Each completed turn exposes a stable structured stop reason in addition to the
+existing success/error fields, so embedders can distinguish normal completion,
+provider token limits, runtime request caps, refusal, failure, and cancellation
+without parsing provider strings.
+
 ### Host execution responsibilities
 
 `everruns-runtime` must also expose a reusable host contract for durable or
@@ -124,6 +129,9 @@ Host planning APIs:
 - `RuntimeActPlan`
 - `RuntimeTurnPlan`
 - `plan_next_host_turn(...)`
+
+Terminal host plans carry the same structured stop reason. Durable hosts must
+preserve it in the turn value returned to their downstream caller.
 
 The planner contract is intentionally durable-agnostic. Runtime decides the
 next semantic step; the host owns queueing, retries, scheduling, persistence,

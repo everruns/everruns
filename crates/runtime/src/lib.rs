@@ -119,6 +119,7 @@ pub use everruns_core::AssembledTurnContext;
 // (terminal / awaiting_input / outbound message) in process, with the same
 // filter semantics as server webhook delivery but without HTTP.
 pub use everruns_core::task_observer::{TaskTransition, TaskTransitionObserver};
+pub use everruns_core::turn::TurnStopReason;
 pub use file_store_decorators::{
     ApprovalGatingFileStore, DEFAULT_WRITE_BLOCKLIST, FileApprovalGate, WriteBlocklistFileStore,
 };

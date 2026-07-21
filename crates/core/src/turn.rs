@@ -94,7 +94,7 @@
 //!         }
 //!         TurnAction::ExecuteReason => {
 //!             let result = reason_atom.execute(...).await?;
-//!             sm.on_reason_completed(text, result.has_tool_calls, count, result.success, result.error, has_pending)?;
+//!             sm.on_reason_completed(text, count, result.success, result.error, result.finish_reason, has_pending)?;
 //!         }
 //!         TurnAction::ExecuteAct { tool_calls } => {
 //!             act_atom.execute(...).await?;
@@ -313,6 +313,8 @@ pub enum TurnOutcome {
         iterations: usize,
         /// Total tool calls made
         tool_calls_count: usize,
+        /// Structured reason the final generation stopped.
+        stop_reason: TurnStopReason,
     },
 
     /// Turn failed due to an error
@@ -321,6 +323,8 @@ pub enum TurnOutcome {
         error: String,
         /// Iterations completed before failure
         iterations: usize,
+        /// Structured reason the turn failed.
+        stop_reason: TurnStopReason,
     },
 
     /// Turn stopped due to max iterations limit
@@ -352,6 +356,31 @@ pub enum TurnOutcome {
     },
 }
 
+/// Stable reason a turn stopped, independent of provider-specific strings.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TurnStopReason {
+    EndTurn,
+    MaxTokens,
+    MaxTurnRequests,
+    Refusal,
+    Error,
+    Cancelled,
+}
+
+impl TurnStopReason {
+    /// Normalize a provider finish reason at the runtime boundary.
+    pub fn from_provider_finish_reason(reason: Option<&str>) -> Self {
+        match reason.map(str::to_ascii_lowercase).as_deref() {
+            Some("length" | "max_tokens" | "max_output_tokens") => Self::MaxTokens,
+            Some("refusal" | "content_filter" | "safety") => Self::Refusal,
+            Some("error") => Self::Error,
+            Some("cancelled" | "canceled") => Self::Cancelled,
+            _ => Self::EndTurn,
+        }
+    }
+}
+
 impl TurnOutcome {
     /// Check if the turn completed successfully
     pub fn is_success(&self) -> bool {
@@ -368,6 +397,17 @@ impl TurnOutcome {
         match self {
             TurnOutcome::Sealed { reason, .. } => Some(*reason),
             _ => None,
+        }
+    }
+
+    /// Return the stable reason this outcome stopped.
+    pub fn stop_reason(&self) -> TurnStopReason {
+        match self {
+            TurnOutcome::Success { stop_reason, .. } | TurnOutcome::Failed { stop_reason, .. } => {
+                *stop_reason
+            }
+            TurnOutcome::MaxIterationsReached { .. } => TurnStopReason::MaxTurnRequests,
+            TurnOutcome::Sealed { .. } => TurnStopReason::Error,
         }
     }
 
@@ -433,6 +473,9 @@ pub struct TurnStateMachine {
     /// Pending error from Reason (set when success=false)
     pending_error: Option<String>,
 
+    /// Provider-derived reason for the terminal generation.
+    pending_stop_reason: TurnStopReason,
+
     /// Whether the last Reason had tool calls
     has_pending_tool_calls: bool,
 
@@ -458,6 +501,7 @@ impl TurnStateMachine {
             total_tool_calls: 0,
             last_response: String::new(),
             pending_error: None,
+            pending_stop_reason: TurnStopReason::EndTurn,
             has_pending_tool_calls: false,
             pending_seal: None,
         }
@@ -509,6 +553,7 @@ impl TurnStateMachine {
                     TurnAction::Complete(TurnOutcome::Failed {
                         error: error.clone(),
                         iterations: self.current_iteration,
+                        stop_reason: self.pending_stop_reason,
                     })
                 } else if self.current_iteration >= self.max_iterations {
                     TurnAction::Complete(TurnOutcome::MaxIterationsReached {
@@ -521,6 +566,7 @@ impl TurnStateMachine {
                         response: self.last_response.clone(),
                         iterations: self.current_iteration,
                         tool_calls_count: self.total_tool_calls,
+                        stop_reason: self.pending_stop_reason,
                     })
                 }
             }
@@ -540,10 +586,10 @@ impl TurnStateMachine {
     /// # Arguments
     ///
     /// * `response` - The text response from the LLM (may be empty)
-    /// * `has_tool_calls` - Whether the LLM requested tool calls
     /// * `tool_call_count` - Number of tool calls (0 if none)
     /// * `success` - Whether the LLM call succeeded
     /// * `error` - Error message if success is false
+    /// * `finish_reason` - Raw provider finish reason, when available
     /// * `has_pending_user_messages` - Whether new user messages arrived during
     ///   this turn (steering signals). When true and reason would otherwise
     ///   complete (no tool calls, success), the turn stays in PendingReason so
@@ -552,10 +598,10 @@ impl TurnStateMachine {
     pub fn on_reason_completed(
         &mut self,
         response: String,
-        has_tool_calls: bool,
         tool_call_count: usize,
         success: bool,
         error: Option<String>,
+        finish_reason: Option<String>,
         has_pending_user_messages: bool,
     ) {
         debug_assert_eq!(self.phase, TurnPhase::PendingReason);
@@ -569,13 +615,21 @@ impl TurnStateMachine {
 
         // Handle failure
         if !success {
+            self.pending_stop_reason =
+                match TurnStopReason::from_provider_finish_reason(finish_reason.as_deref()) {
+                    TurnStopReason::Refusal => TurnStopReason::Refusal,
+                    _ => TurnStopReason::Error,
+                };
             self.pending_error = error;
             self.phase = TurnPhase::Completed;
             return;
         }
 
+        self.pending_stop_reason =
+            TurnStopReason::from_provider_finish_reason(finish_reason.as_deref());
+
         // Handle tool calls
-        if has_tool_calls && tool_call_count > 0 {
+        if tool_call_count > 0 {
             // Check max iterations before proceeding to Act
             if self.current_iteration >= self.max_iterations {
                 self.phase = TurnPhase::Completed;
@@ -652,7 +706,7 @@ mod tests {
 
         // Then reason
         assert!(matches!(sm.next_action(), TurnAction::ExecuteReason));
-        sm.on_reason_completed("Hello!".to_string(), false, 0, true, None, false);
+        sm.on_reason_completed("Hello!".to_string(), 0, true, None, None, false);
 
         // Complete
         match sm.next_action() {
@@ -660,10 +714,12 @@ mod tests {
                 response,
                 iterations,
                 tool_calls_count,
+                stop_reason,
             }) => {
                 assert_eq!(response, "Hello!");
                 assert_eq!(iterations, 1);
                 assert_eq!(tool_calls_count, 0);
+                assert_eq!(stop_reason, TurnStopReason::EndTurn);
             }
             other => panic!("Expected Success, got {:?}", other),
         }
@@ -679,7 +735,7 @@ mod tests {
 
         // First reason - requests tool call
         assert!(matches!(sm.next_action(), TurnAction::ExecuteReason));
-        sm.on_reason_completed("Let me check...".to_string(), true, 1, true, None, false);
+        sm.on_reason_completed("Let me check...".to_string(), 1, true, None, None, false);
 
         // Act
         assert!(matches!(sm.next_action(), TurnAction::ExecuteAct));
@@ -687,14 +743,7 @@ mod tests {
 
         // Second reason - no more tool calls
         assert!(matches!(sm.next_action(), TurnAction::ExecuteReason));
-        sm.on_reason_completed(
-            "Here's the result.".to_string(),
-            false,
-            0,
-            true,
-            None,
-            false,
-        );
+        sm.on_reason_completed("Here's the result.".to_string(), 0, true, None, None, false);
 
         // Complete
         match sm.next_action() {
@@ -702,6 +751,7 @@ mod tests {
                 response,
                 iterations,
                 tool_calls_count,
+                ..
             }) => {
                 assert_eq!(response, "Here's the result.");
                 assert_eq!(iterations, 2);
@@ -719,19 +769,87 @@ mod tests {
         sm.on_input_completed();
 
         // First reason - requests tool
-        sm.on_reason_completed("Trying...".to_string(), true, 1, true, None, false);
+        sm.on_reason_completed("Trying...".to_string(), 1, true, None, None, false);
         sm.on_act_completed();
 
         // Second reason - requests another tool (hits max)
-        sm.on_reason_completed("Still trying...".to_string(), true, 1, true, None, false);
+        sm.on_reason_completed("Still trying...".to_string(), 1, true, None, None, false);
 
         // Should complete with max iterations
         match sm.next_action() {
-            TurnAction::Complete(TurnOutcome::MaxIterationsReached { iterations, .. }) => {
-                assert_eq!(iterations, 2);
+            TurnAction::Complete(outcome @ TurnOutcome::MaxIterationsReached { .. }) => {
+                assert_eq!(outcome.iterations(), 2);
+                assert_eq!(outcome.stop_reason(), TurnStopReason::MaxTurnRequests);
             }
             other => panic!("Expected MaxIterationsReached, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_provider_length_finish_reason_surfaces_as_max_tokens() {
+        let mut sm = TurnStateMachine::new(test_context(), 2);
+        sm.on_input_completed();
+        sm.on_reason_completed(
+            "Truncated response".to_string(),
+            0,
+            true,
+            None,
+            Some("length".to_string()),
+            false,
+        );
+
+        match sm.next_action() {
+            TurnAction::Complete(outcome) => {
+                assert_eq!(outcome.stop_reason(), TurnStopReason::MaxTokens);
+            }
+            other => panic!("Expected completed turn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_provider_refusal_finish_reason_surfaces_as_refusal() {
+        let mut sm = TurnStateMachine::new(test_context(), 2);
+        sm.on_input_completed();
+        sm.on_reason_completed(
+            String::new(),
+            0,
+            false,
+            Some("Model refused".to_string()),
+            Some("refusal".to_string()),
+            false,
+        );
+
+        match sm.next_action() {
+            TurnAction::Complete(outcome) => {
+                assert_eq!(outcome.stop_reason(), TurnStopReason::Refusal);
+            }
+            other => panic!("Expected completed turn, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_stop_reason_wire_values_cover_terminal_contract() {
+        let values = [
+            (TurnStopReason::EndTurn, "\"end_turn\""),
+            (TurnStopReason::MaxTokens, "\"max_tokens\""),
+            (TurnStopReason::MaxTurnRequests, "\"max_turn_requests\""),
+            (TurnStopReason::Refusal, "\"refusal\""),
+            (TurnStopReason::Error, "\"error\""),
+            (TurnStopReason::Cancelled, "\"cancelled\""),
+        ];
+
+        for (reason, expected) in values {
+            assert_eq!(serde_json::to_string(&reason).unwrap(), expected);
+        }
+
+        assert_eq!(
+            TurnStopReason::from_provider_finish_reason(Some("content_filter")),
+            TurnStopReason::Refusal
+        );
+        assert_eq!(
+            TurnStopReason::from_provider_finish_reason(Some("cancelled")),
+            TurnStopReason::Cancelled
+        );
     }
 
     #[test]
@@ -744,17 +862,18 @@ mod tests {
         // Reason fails
         sm.on_reason_completed(
             String::new(),
-            false,
             0,
             false,
             Some("LLM error".to_string()),
+            None,
             false,
         );
 
         // Should complete with failure
         match sm.next_action() {
-            TurnAction::Complete(TurnOutcome::Failed { error, .. }) => {
-                assert_eq!(error, "LLM error");
+            TurnAction::Complete(outcome @ TurnOutcome::Failed { .. }) => {
+                assert_eq!(outcome.error(), Some("LLM error"));
+                assert_eq!(outcome.stop_reason(), TurnStopReason::Error);
             }
             other => panic!("Expected Failed, got {:?}", other),
         }
@@ -778,6 +897,7 @@ mod tests {
             response: "test".to_string(),
             iterations: 1,
             tool_calls_count: 0,
+            stop_reason: TurnStopReason::EndTurn,
         };
         assert!(success.is_success());
         assert_eq!(success.response(), Some("test"));
@@ -786,6 +906,7 @@ mod tests {
         let failed = TurnOutcome::Failed {
             error: "oops".to_string(),
             iterations: 0,
+            stop_reason: TurnStopReason::Error,
         };
         assert!(!failed.is_success());
         assert!(failed.response().is_none());
@@ -798,7 +919,7 @@ mod tests {
         sm.on_input_completed();
 
         // Reason completes with no tools, BUT there are pending user messages
-        sm.on_reason_completed("Hello!".to_string(), false, 0, true, None, true);
+        sm.on_reason_completed("Hello!".to_string(), 0, true, None, None, true);
 
         // Should NOT be completed — stays in PendingReason
         assert!(!sm.is_completed());
@@ -806,7 +927,7 @@ mod tests {
         assert!(matches!(sm.next_action(), TurnAction::ExecuteReason));
 
         // Second reason picks up the new message and completes normally
-        sm.on_reason_completed("Got your message!".to_string(), false, 0, true, None, false);
+        sm.on_reason_completed("Got your message!".to_string(), 0, true, None, None, false);
         match sm.next_action() {
             TurnAction::Complete(TurnOutcome::Success {
                 response,
@@ -828,10 +949,10 @@ mod tests {
         // Failure + pending messages → still fails
         sm.on_reason_completed(
             String::new(),
-            false,
             0,
             false,
             Some("LLM error".to_string()),
+            None,
             true,
         );
         assert!(sm.is_completed());
@@ -917,7 +1038,7 @@ mod tests {
         let mut sm = TurnStateMachine::new(test_context(), 10);
         sm.on_input_completed();
         // A reason completes with tool calls (turn would normally continue)...
-        sm.on_reason_completed("Working...".to_string(), true, 1, true, None, false);
+        sm.on_reason_completed("Working...".to_string(), 1, true, None, None, false);
         sm.on_act_completed();
         // ...but the engine seals it because the work budget is exhausted.
         sm.seal(SealReason::Budget);
@@ -941,10 +1062,10 @@ mod tests {
         sm.on_input_completed();
         sm.on_reason_completed(
             String::new(),
-            false,
             0,
             false,
             Some("LLM error".to_string()),
+            None,
             false,
         );
         sm.seal(SealReason::NoProgress);
@@ -994,7 +1115,7 @@ mod tests {
         sm.on_input_completed();
 
         // Tool calls + pending messages → tool calls take priority
-        sm.on_reason_completed("Working...".to_string(), true, 2, true, None, true);
+        sm.on_reason_completed("Working...".to_string(), 2, true, None, None, true);
         assert_eq!(sm.phase(), TurnPhase::PendingAct);
     }
 }

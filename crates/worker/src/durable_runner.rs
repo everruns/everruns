@@ -31,6 +31,7 @@ pub struct DurableTurnOutput {
     pub session_id: SessionId,
     pub success: bool,
     pub error: Option<String>,
+    pub stop_reason: everruns_core::turn::TurnStopReason,
 }
 
 #[async_trait]
@@ -803,12 +804,19 @@ impl AgentRunner for DurableRunner {
     async fn cancel_run(&self, session_id: SessionId) -> Result<()> {
         let workflow_id = session_id.uuid();
         let mut store = self.store.lock().await;
+        let message = "User requested cancellation".to_string();
+        let output = DurableTurnOutput {
+            session_id,
+            success: false,
+            error: Some(message.clone()),
+            stop_reason: everruns_core::turn::TurnStopReason::Cancelled,
+        };
         store
             .update_workflow_status(
                 workflow_id,
                 WorkflowStatus::Cancelled,
-                None,
-                Some("User requested cancellation".to_string()),
+                Some(serde_json::to_value(output)?),
+                Some(message),
             )
             .await
             .map_err(|e| anyhow::anyhow!("Failed to cancel workflow: {e}"))
@@ -1135,5 +1143,35 @@ mod tests {
             .expect("resume should enqueue reason");
 
         assert_eq!(notifier.activity_types(), vec!["reason"]);
+    }
+
+    #[tokio::test]
+    async fn cancellation_returns_structured_stop_reason() {
+        let shared = Arc::new(InMemoryWorkflowEventStore::new());
+        let session_id = SessionId::new();
+        shared
+            .create_workflow(
+                session_id.uuid(),
+                "turn_workflow",
+                serde_json::json!({}),
+                None,
+            )
+            .await
+            .expect("create workflow");
+
+        DurableRunner::new_with_shared_store(shared.clone())
+            .cancel_run(session_id)
+            .await
+            .expect("cancel turn");
+
+        let info = shared
+            .get_workflow_info(session_id.uuid())
+            .await
+            .expect("load cancelled workflow");
+        assert_eq!(info.status, WorkflowStatus::Cancelled);
+        let output = info.result.expect("cancelled turn output");
+        assert_eq!(output["success"], false);
+        assert_eq!(output["stop_reason"], "cancelled");
+        assert_eq!(output["error"], "User requested cancellation");
     }
 }

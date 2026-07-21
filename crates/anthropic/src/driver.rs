@@ -843,6 +843,7 @@ impl ChatDriver for AnthropicChatDriver {
         let cache_creation_tokens = Arc::new(Mutex::new(Option::<u32>::None));
         let current_tool_call = Arc::new(Mutex::new(Option::<ToolCall>::None));
         let accumulated_tool_calls = Arc::new(Mutex::new(Vec::<ToolCall>::new()));
+        let finish_reason = Arc::new(Mutex::new(Option::<String>::None));
         // Share retry metadata with stream closure (only set if retries occurred)
         let shared_retry_metadata = if retry_metadata.had_retries() {
             Some(Arc::new(retry_metadata))
@@ -858,6 +859,7 @@ impl ChatDriver for AnthropicChatDriver {
             let cache_creation_tokens = Arc::clone(&cache_creation_tokens);
             let current_tool_call = Arc::clone(&current_tool_call);
             let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
+            let finish_reason = Arc::clone(&finish_reason);
             let retry_metadata_for_done = shared_retry_metadata.clone();
 
             async move {
@@ -1006,13 +1008,22 @@ impl ChatDriver for AnthropicChatDriver {
                                         }
                                     }
 
-                                    if let Some(stop_reason) = data.delta.stop_reason
-                                        && stop_reason == "tool_use"
-                                    {
-                                        let tool_calls =
-                                            accumulated_tool_calls.lock().unwrap().clone();
-                                        if !tool_calls.is_empty() {
-                                            return Ok(LlmStreamEvent::ToolCalls(tool_calls));
+                                    if let Some(stop_reason) = data.delta.stop_reason {
+                                        let normalized = match stop_reason.as_str() {
+                                            "max_tokens" => "length",
+                                            "tool_use" => "tool_calls",
+                                            "refusal" => "refusal",
+                                            _ => "stop",
+                                        };
+                                        *finish_reason.lock().unwrap() =
+                                            Some(normalized.to_string());
+
+                                        if stop_reason == "tool_use" {
+                                            let tool_calls =
+                                                accumulated_tool_calls.lock().unwrap().clone();
+                                            if !tool_calls.is_empty() {
+                                                return Ok(LlmStreamEvent::ToolCalls(tool_calls));
+                                            }
                                         }
                                     }
                                 }
@@ -1032,7 +1043,11 @@ impl ChatDriver for AnthropicChatDriver {
                                     cache_creation_tokens: cache_creation,
                                     provider_cost_usd: None,
                                     model: Some(model),
-                                    finish_reason: Some("stop".to_string()),
+                                    finish_reason: finish_reason
+                                        .lock()
+                                        .unwrap()
+                                        .clone()
+                                        .or_else(|| Some("stop".to_string())),
                                     retry_metadata: retry_metadata_for_done
                                         .map(|arc| (*arc).clone()),
                                     response_id: None,

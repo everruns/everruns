@@ -1420,11 +1420,12 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
         RuntimeTurnPlan::ScheduleAct(plan) => {
             enqueue_act_task(store, workflow_id, &plan).await?;
         }
-        RuntimeTurnPlan::Complete { error } => {
+        RuntimeTurnPlan::Complete { stop_reason, error } => {
+            let turn_output = turn_output_with_stop_reason(output.clone(), stop_reason);
             store
                 .complete_workflow(
                     workflow_id,
-                    output.clone(),
+                    turn_output,
                     None,
                     error.map(everruns_durable::WorkflowError::new),
                 )
@@ -1445,6 +1446,16 @@ async fn schedule_next_activity<S: TaskStore, A: WorkerAdapters + Clone>(
     }
 
     Ok(())
+}
+
+fn turn_output_with_stop_reason(
+    mut output: serde_json::Value,
+    stop_reason: everruns_core::turn::TurnStopReason,
+) -> serde_json::Value {
+    if let Some(object) = output.as_object_mut() {
+        object.insert("stop_reason".to_string(), serde_json::json!(stop_reason));
+    }
+    output
 }
 
 /// Iteration boundaries at which queued `USER_MESSAGE` steering signals (task
@@ -1668,6 +1679,18 @@ mod tests {
         // Turn start and unknown activities never drain.
         assert!(!drains_wake_signals_after("process_input", false));
         assert!(!drains_wake_signals_after("input", false));
+    }
+
+    #[test]
+    fn durable_turn_output_surfaces_structured_stop_reason() {
+        let output = turn_output_with_stop_reason(
+            serde_json::json!({ "success": true, "error": null }),
+            everruns_core::turn::TurnStopReason::MaxTokens,
+        );
+
+        assert_eq!(output["success"], true);
+        assert_eq!(output["error"], serde_json::Value::Null);
+        assert_eq!(output["stop_reason"], "max_tokens");
     }
 
     #[tokio::test]

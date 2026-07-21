@@ -39,7 +39,7 @@ use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, ProviderStore, ResolvedModel, SessionMutator,
     SessionStorageStore, SessionStore, UserConnectionResolver,
 };
-use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine};
+use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine, TurnStopReason};
 use everruns_core::typed_id::{AgentId, HarnessId, OrgId, SessionId};
 use everruns_core::{
     AgentCapabilityConfig, CapabilityId, InputMessage, MessageRetriever, SessionFileSystem,
@@ -116,6 +116,8 @@ pub struct TurnResult {
     pub success: bool,
     /// Failure message when `success` is false.
     pub error: Option<String>,
+    /// Structured reason the turn stopped.
+    pub stop_reason: TurnStopReason,
     /// Turn identifier used to correlate emitted events.
     pub turn_id: everruns_core::typed_id::TurnId,
 }
@@ -139,25 +141,31 @@ pub struct CapabilityDelta {
 
 impl TurnResult {
     fn from_outcome(outcome: TurnOutcome, turn_id: everruns_core::typed_id::TurnId) -> Self {
+        let stop_reason = outcome.stop_reason();
         match outcome {
             TurnOutcome::Success {
                 response,
                 iterations,
                 tool_calls_count,
+                ..
             } => Self {
                 response,
                 iterations,
                 tool_calls_count,
                 success: true,
                 error: None,
+                stop_reason,
                 turn_id,
             },
-            TurnOutcome::Failed { error, iterations } => Self {
+            TurnOutcome::Failed {
+                error, iterations, ..
+            } => Self {
                 response: String::new(),
                 iterations,
                 tool_calls_count: 0,
                 success: false,
                 error: Some(error),
+                stop_reason,
                 turn_id,
             },
             TurnOutcome::MaxIterationsReached {
@@ -170,6 +178,7 @@ impl TurnResult {
                 tool_calls_count,
                 success: true,
                 error: None,
+                stop_reason,
                 turn_id,
             },
             // A sealed turn was deliberately stopped (EVE-534) — distinct from a
@@ -185,6 +194,7 @@ impl TurnResult {
                 tool_calls_count,
                 success: false,
                 error: Some(format!("turn sealed: {reason}")),
+                stop_reason,
                 turn_id,
             },
         }
@@ -915,10 +925,10 @@ impl InProcessRuntime {
                         .is_some_and(|q| q.has_pending(session_id));
                     state_machine.on_reason_completed(
                         reason_result.text.clone(),
-                        reason_result.has_tool_calls,
                         reason_result.tool_calls.len(),
                         reason_result.success,
                         reason_result.error.clone(),
+                        reason_result.finish_reason.clone(),
                         has_pending_wakes,
                     );
                     if reason_result.has_tool_calls {

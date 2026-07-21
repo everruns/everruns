@@ -29,8 +29,8 @@ use everruns_core::{
 };
 use everruns_runtime::{
     InMemorySessionFileStore, RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle,
-    RuntimeTurnPlan, RuntimeTurnState, execute_act_activity, execute_input_activity,
-    plan_next_host_turn,
+    RuntimeTurnPlan, RuntimeTurnState, TurnStopReason, execute_act_activity,
+    execute_input_activity, plan_next_host_turn,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -1622,6 +1622,7 @@ async fn plan_next_host_turn_schedules_act_after_reason_tool_calls() {
         output_message_id: None,
         time_to_first_token_ms: None,
         response_id: Some("resp_123".into()),
+        finish_reason: Some("tool_calls".into()),
         locale: Some("en-US".into()),
         network_access: None,
         parallel_tool_calls: None,
@@ -1645,6 +1646,56 @@ async fn plan_next_host_turn_schedules_act_after_reason_tool_calls() {
         }
         other => panic!("expected ScheduleAct, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn plan_next_host_turn_surfaces_max_turn_requests_before_another_act() {
+    let adapter = mock_host();
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+
+    let input = turn_state(session_id, harness_id);
+    let output = serde_json::to_value(ReasonResult {
+        success: true,
+        text: "Calling another tool".into(),
+        tool_calls: vec![ToolCall {
+            id: "call_mul".into(),
+            name: "multiply".into(),
+            arguments: json!({ "a": 6, "b": 7 }),
+        }],
+        has_tool_calls: true,
+        tool_definitions: vec![],
+        max_iterations: 1,
+        error: None,
+        user_facing_error: None,
+        error_disclosure: None,
+        usage: None,
+        output_message_id: None,
+        time_to_first_token_ms: None,
+        response_id: Some("resp_limit".into()),
+        finish_reason: Some("tool_calls".into()),
+        locale: None,
+        network_access: None,
+        parallel_tool_calls: None,
+    })
+    .unwrap();
+
+    let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 0)
+        .await
+        .unwrap();
+
+    assert!(matches!(
+        plan,
+        RuntimeTurnPlan::Complete {
+            stop_reason: TurnStopReason::MaxTurnRequests,
+            error: None,
+        }
+    ));
 }
 
 /// EVE-598: the request-level `parallel_tool_calls` preference set on the
@@ -1680,6 +1731,7 @@ async fn plan_next_host_turn_threads_parallel_tool_calls_into_act() {
             output_message_id: None,
             time_to_first_token_ms: None,
             response_id: Some("resp_123".into()),
+            finish_reason: Some("tool_calls".into()),
             locale: None,
             network_access: None,
             parallel_tool_calls: preference,
@@ -1735,6 +1787,7 @@ async fn plan_next_host_turn_schedules_act_with_session_blueprint_id() {
         output_message_id: None,
         time_to_first_token_ms: None,
         response_id: Some("resp_blueprint".into()),
+        finish_reason: Some("tool_calls".into()),
         locale: Some("en-US".into()),
         network_access: None,
         parallel_tool_calls: None,
@@ -1782,6 +1835,7 @@ async fn plan_next_host_turn_continues_reason_when_steering_messages_are_pending
         output_message_id: None,
         time_to_first_token_ms: None,
         response_id: Some("resp_steer".into()),
+        finish_reason: Some("stop".into()),
         locale: None,
         network_access: None,
         parallel_tool_calls: None,
@@ -1835,6 +1889,7 @@ async fn plan_next_host_turn_emits_turn_completed_summary_fields() {
         output_message_id: Some(final_message_id),
         time_to_first_token_ms: Some(50),
         response_id: Some("resp_done".into()),
+        finish_reason: Some("length".into()),
         locale: None,
         network_access: None,
         parallel_tool_calls: None,
@@ -1844,7 +1899,13 @@ async fn plan_next_host_turn_emits_turn_completed_summary_fields() {
     let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 0)
         .await
         .unwrap();
-    assert!(matches!(plan, RuntimeTurnPlan::Complete { error: None }));
+    assert!(matches!(
+        plan,
+        RuntimeTurnPlan::Complete {
+            stop_reason: everruns_runtime::TurnStopReason::MaxTokens,
+            error: None,
+        }
+    ));
 
     let events = adapter.event_emitter.events().await;
     let completed = events
@@ -1897,6 +1958,7 @@ async fn plan_next_host_turn_preserves_reason_failure_message() {
         output_message_id: None,
         time_to_first_token_ms: None,
         response_id: None,
+        finish_reason: None,
         locale: None,
         network_access: None,
         parallel_tool_calls: None,
@@ -1961,6 +2023,7 @@ async fn plan_next_host_turn_classifies_missing_api_key_as_provider_misconfigure
         output_message_id: None,
         time_to_first_token_ms: None,
         response_id: None,
+        finish_reason: None,
         locale: None,
         network_access: None,
         parallel_tool_calls: None,
@@ -2021,6 +2084,7 @@ async fn plan_next_host_turn_prefers_disclosed_user_facing_error_from_reason() {
         output_message_id: None,
         time_to_first_token_ms: None,
         response_id: None,
+        finish_reason: None,
         locale: None,
         network_access: None,
         parallel_tool_calls: None,
