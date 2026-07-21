@@ -1315,7 +1315,9 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                         Ok(LlmStreamEvent::TextDelta(String::new()))
                                     }
 
-                                    Some("response.completed") | Some("response.done") => {
+                                    Some("response.completed")
+                                    | Some("response.incomplete")
+                                    | Some("response.done") => {
                                         // Response completed - extract usage
                                         let response_obj = json.get("response").unwrap_or(&json);
 
@@ -1371,7 +1373,17 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
                                                 );
                                                 "error".to_string()
                                             }
-                                            "cancelled" => "stop".to_string(),
+                                            "incomplete" => response_obj
+                                                .get("incomplete_details")
+                                                .and_then(|details| details.get("reason"))
+                                                .and_then(|reason| reason.as_str())
+                                                .map(|reason| match reason {
+                                                    "max_output_tokens" | "max_tokens" => "length",
+                                                    other => other,
+                                                })
+                                                .unwrap_or("stop")
+                                                .to_string(),
+                                            "cancelled" => "cancelled".to_string(),
                                             _ => "stop".to_string(),
                                         };
 
@@ -1650,7 +1662,8 @@ fn handle_streaming_event(
             }
         }
 
-        StreamingEvent::ResponseCompleted { response, .. } => {
+        StreamingEvent::ResponseCompleted { response, .. }
+        | StreamingEvent::ResponseIncomplete { response, .. } => {
             // Extract usage
             if let Some(usage) = &response.usage {
                 *input_tokens.lock().unwrap() = usage.input_tokens;
@@ -1673,7 +1686,16 @@ fn handle_streaming_event(
                     );
                     "error".to_string()
                 }
-                types::ResponseStatus::Cancelled => "stop".to_string(),
+                types::ResponseStatus::Cancelled => "cancelled".to_string(),
+                types::ResponseStatus::Incomplete => response
+                    .incomplete_details
+                    .as_ref()
+                    .map(|details| match details.reason.as_str() {
+                        "max_output_tokens" | "max_tokens" => "length",
+                        other => other,
+                    })
+                    .unwrap_or("stop")
+                    .to_string(),
                 _ => "stop".to_string(),
             };
 
@@ -5005,6 +5027,47 @@ mod tests {
                 assert_eq!(metadata.cache_read_tokens, Some(800));
                 // total_tokens stays the true prompt+output total (1000 + 20).
                 assert_eq!(metadata.total_tokens, Some(1020));
+            }
+            other => panic!("expected Done event, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_incomplete_event_maps_output_limit_to_length() {
+        let event_json = r#"{
+            "type": "response.incomplete",
+            "sequence_number": 10,
+            "response": {
+                "id": "resp_incomplete",
+                "object": "response",
+                "created_at": 1780000000,
+                "status": "incomplete",
+                "incomplete_details": { "reason": "max_output_tokens" },
+                "model": "gpt-5.5",
+                "output": [],
+                "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 5,
+                    "total_tokens": 15
+                }
+            }
+        }"#;
+
+        let event: StreamingEvent = serde_json::from_str(event_json).unwrap();
+        let stream_event = handle_streaming_event(
+            event,
+            &Mutex::new(0),
+            &Mutex::new(0),
+            &Mutex::new(None),
+            &Mutex::new(Vec::new()),
+            &Mutex::new(None),
+            "gpt-5.5".to_string(),
+            None,
+        );
+
+        match stream_event {
+            LlmStreamEvent::Done(metadata) => {
+                assert_eq!(metadata.finish_reason.as_deref(), Some("length"));
             }
             other => panic!("expected Done event, got {other:?}"),
         }

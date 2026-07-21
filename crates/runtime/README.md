@@ -58,6 +58,7 @@ let session_id = runtime.default_session_id().expect("single_session id");
 let result = runtime.run_text_turn(session_id, "What is 2 + 2?").await?;
 
 assert!(result.success);
+assert_eq!(result.stop_reason, everruns_runtime::TurnStopReason::EndTurn);
 # Ok(())
 # }
 ```

@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 use everruns_core::atoms::{ActInput, AtomContext};
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::TokenUsage;
+use everruns_core::turn::TurnStopReason;
 use everruns_core::typed_id::{AgentId, ExecId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
     Controls, ReasonResult, UserFacingError, UserFacingErrorContext,
@@ -78,8 +79,13 @@ pub struct RuntimeActPlan {
 pub enum RuntimeTurnPlan {
     ScheduleReason(RuntimeTurnState),
     ScheduleAct(RuntimeActPlan),
-    Complete { error: Option<String> },
-    WaitForToolResults { resume: RuntimeTurnState },
+    Complete {
+        stop_reason: TurnStopReason,
+        error: Option<String>,
+    },
+    WaitForToolResults {
+        resume: RuntimeTurnState,
+    },
 }
 
 fn preview_final_answer(text: &str) -> Option<String> {
@@ -197,8 +203,9 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                 .map_err(|error| AgentLoopError::Internal(error.into()))?;
             let response_id = reason_result.response_id.clone();
             let summarized_state = state.with_reason_summary(&reason_result);
+            let max_turn_requests_reached = state.iteration >= reason_result.max_iterations as u32;
 
-            if reason_result.has_tool_calls && reason_result.success {
+            if reason_result.has_tool_calls && reason_result.success && !max_turn_requests_reached {
                 let session = adapter
                     .session_store(state.org_id)
                     .get_session(state.session_id)
@@ -236,7 +243,8 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                 return Ok(RuntimeTurnPlan::ScheduleAct(plan));
             }
 
-            if reason_result.success && pending_user_message_count > 0 {
+            if reason_result.success && pending_user_message_count > 0 && !max_turn_requests_reached
+            {
                 if pending_user_message_count > 1 {
                     info!(
                         session_id = %state.session_id,
@@ -308,7 +316,23 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                 )
                 .await;
 
+            let stop_reason = if !reason_result.success {
+                match TurnStopReason::from_provider_finish_reason(
+                    reason_result.finish_reason.as_deref(),
+                ) {
+                    TurnStopReason::Refusal => TurnStopReason::Refusal,
+                    _ => TurnStopReason::Error,
+                }
+            } else if max_turn_requests_reached
+                && (reason_result.has_tool_calls || pending_user_message_count > 0)
+            {
+                TurnStopReason::MaxTurnRequests
+            } else {
+                TurnStopReason::from_provider_finish_reason(reason_result.finish_reason.as_deref())
+            };
+
             Ok(RuntimeTurnPlan::Complete {
+                stop_reason,
                 error: reason_result.error,
             })
         }
@@ -318,7 +342,10 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                 .and_then(|value| value.as_bool())
                 .unwrap_or(false)
             {
-                return Ok(RuntimeTurnPlan::Complete { error: None });
+                return Ok(RuntimeTurnPlan::Complete {
+                    stop_reason: TurnStopReason::EndTurn,
+                    error: None,
+                });
             }
 
             let waiting_for_tool_results = output

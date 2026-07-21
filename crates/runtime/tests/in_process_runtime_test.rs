@@ -13,7 +13,7 @@ use everruns_core::{
 };
 use everruns_runtime::{
     AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, RealDiskFileStore, RuntimeBackends,
-    SessionBuilder,
+    SessionBuilder, TurnStopReason,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -231,6 +231,7 @@ async fn runtime_executes_tool_loop_and_persists_messages() {
         .await
         .unwrap();
     assert!(result.success);
+    assert_eq!(result.stop_reason, TurnStopReason::EndTurn);
 
     let messages = runtime.messages(session_id).await.unwrap();
     assert_eq!(

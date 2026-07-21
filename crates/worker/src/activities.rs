@@ -287,6 +287,7 @@ mod tests {
             output_message_id: None,
             time_to_first_token_ms: None,
             response_id: None,
+            finish_reason: Some("stop".to_string()),
             locale: None,
             network_access: None,
             parallel_tool_calls: None,
