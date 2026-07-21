@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.17.15] - 2026-07-20
+
+### Highlights
+
+- **Claim-level citations** — Added composable citation capabilities so agents can attach sources directly to individual claims ([#2852](https://github.com/everruns/everruns/pull/2852)).
+
+### What's Changed
+
+- feat(citations): claim-level citations as composable capabilities ([#2852](https://github.com/everruns/everruns/pull/2852)) by [@chaliy](https://github.com/chaliy)
+- fix(runtime): validate tool context services ([#2854](https://github.com/everruns/everruns/pull/2854)) by [@chaliy](https://github.com/chaliy)
+- style(docs): refine sidebar hierarchy ([#2853](https://github.com/everruns/everruns/pull/2853)) by [@chaliy](https://github.com/chaliy)
+- test(ui): browser regression test for Settings org create dialog ([#2851](https://github.com/everruns/everruns/pull/2851)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.14] - 2026-07-19
 
 ### Highlights
