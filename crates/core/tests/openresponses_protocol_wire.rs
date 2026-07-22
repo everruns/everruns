@@ -276,7 +276,8 @@ async fn native_compact_context_is_the_exact_ordered_responses_input() {
         serde_json::json!([
             { "type": "message", "role": "user", "content": "first" },
             { "type": "compaction", "encrypted_content": "opaque-native-context" },
-            { "type": "message", "role": "user", "content": "last" }
+            { "type": "message", "role": "user", "content": "last" },
+            { "type": "message", "role": "user", "content": "reconstructed transcript" }
         ])
     );
 }

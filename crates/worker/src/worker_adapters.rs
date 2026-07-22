@@ -24,8 +24,8 @@ use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
 use everruns_core::{
-    Agent, DriverRegistry, EgressService, Harness, Message, Session, ToolDefinition,
-    UtilityLlmService,
+    Agent, DriverRegistry, EgressService, Harness, Message, MessageHistory, MessageQuery, Session,
+    ToolDefinition, UtilityLlmService,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -87,6 +87,13 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     /// Load all messages for a session
     async fn load_messages(&self, session_id: Uuid) -> Result<Vec<Message>>;
+
+    async fn load_message_history(&self, query: MessageQuery) -> Result<MessageHistory> {
+        Ok(MessageHistory {
+            messages: self.load_messages(query.session_id.uuid()).await?,
+            source_sequence: None,
+        })
+    }
 
     // =========================================================================
     // Event Operations
@@ -238,6 +245,12 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     /// Get the session SQL database store.
     fn sqldb_store(&self) -> everruns_core::traits::SessionSqlDbStoreRef;
+
+    fn compaction_checkpoint_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {
+        None
+    }
 
     // =========================================================================
     // Required Store Accessors
@@ -619,6 +632,17 @@ impl<A: WorkerAdapters> everruns_core::MessageRetriever for SessionAdapter<A> {
 
     async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
         self.adapters.load_messages(session_id.uuid()).await
+    }
+
+    async fn load_filtered(&self, query: everruns_core::MessageQuery) -> Result<Vec<Message>> {
+        Ok(self.adapters.load_message_history(query).await?.messages)
+    }
+
+    async fn load_filtered_history(
+        &self,
+        query: everruns_core::MessageQuery,
+    ) -> Result<everruns_core::MessageHistory> {
+        self.adapters.load_message_history(query).await
     }
 }
 

@@ -12,6 +12,7 @@
 pub mod agent_store;
 pub mod backend;
 pub mod blob_store;
+pub mod compaction_checkpoint_store;
 pub mod connection_resolver;
 pub mod durable_tool_results;
 pub mod encryption;
@@ -40,6 +41,7 @@ mod event_tests;
 
 pub use agent_store::{DbAgentStore, create_db_agent_store};
 pub use backend::StorageBackend;
+pub use compaction_checkpoint_store::DbCompactionCheckpointStore;
 pub use connection_resolver::{DbConnectionResolver, GitHubAppTokenMinter, NoopConnectionResolver};
 pub use durable_tool_results::PgDurableToolResultStore;
 pub use encryption::{

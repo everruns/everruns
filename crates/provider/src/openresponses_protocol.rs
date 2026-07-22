@@ -1019,15 +1019,18 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             None
         };
 
-        // Native compact output is a standalone context checkpoint: its ordered
-        // items replace transcript reconstruction and must not be trimmed. It is
-        // therefore mutually exclusive with server-side continuation state.
+        // Native compact output replaces history through its durable source
+        // boundary. Messages supplied here are the raw suffix written after that
+        // boundary, so append them without rewriting or trimming the checkpoint.
+        // This is mutually exclusive with server-side continuation state.
         let input_items = match &config.provider_opaque_context {
             Some(crate::driver_registry::ProviderOpaqueContext::OpenResponsesCompact {
                 output,
             }) => {
                 previous_response_id = None;
-                output.iter().map(ResponsesInputItem::from).collect()
+                let mut input_items: Vec<_> = output.iter().map(ResponsesInputItem::from).collect();
+                input_items.extend(transcript_input_items);
+                input_items
             }
             None => finalize_input_for_request(transcript_input_items, &previous_response_id),
         };

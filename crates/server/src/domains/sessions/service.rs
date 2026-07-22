@@ -383,6 +383,11 @@ impl SessionService {
         if seed == SessionSeedMode::Fork {
             self.copy_session_storage(source_session_id, child_session_id)
                 .await?;
+            if let Some(fork_sequence) = fork_sequence {
+                self.db
+                    .copy_compaction_checkpoints(source_session_id, child_session_id, fork_sequence)
+                    .await?;
+            }
         }
 
         self.db

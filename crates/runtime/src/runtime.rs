@@ -584,6 +584,7 @@ impl InProcessRuntimeBuilder {
             session_store: backends.session_store,
             default_session_id: self.default_session_id,
             message_store: backends.message_store,
+            compaction_checkpoint_store: backends.compaction_checkpoint_store,
             provider_store: backends.provider_store,
             event_bus: backends.event_bus,
             persisting_emitter,
@@ -630,6 +631,7 @@ pub struct InProcessRuntime {
     session_store: Arc<dyn RuntimeSessionStore>,
     default_session_id: Option<SessionId>,
     message_store: Arc<dyn RuntimeMessageStore>,
+    compaction_checkpoint_store: Arc<dyn everruns_core::CompactionCheckpointStore>,
     provider_store: Arc<dyn RuntimeProviderStore>,
     event_bus: Arc<dyn EventBus>,
     persisting_emitter: PersistingEventEmitter,
@@ -1317,6 +1319,12 @@ impl RuntimeHostAdapter for InProcessRuntime {
 
     fn message_store(&self) -> Arc<dyn MessageRetriever> {
         self.message_store.clone()
+    }
+
+    fn compaction_checkpoint_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {
+        Some(self.compaction_checkpoint_store.clone())
     }
 
     fn event_emitter(&self) -> Arc<dyn EventEmitter> {

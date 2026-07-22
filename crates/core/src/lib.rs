@@ -145,6 +145,7 @@ pub mod atoms;
 pub mod capabilities;
 pub mod command;
 pub mod command_host;
+pub mod compaction_checkpoint;
 pub mod config;
 pub mod config_layer;
 pub mod context_report;
@@ -227,7 +228,7 @@ pub use message_filter::{
     ExcludedNoticeTransform, FilterContext, InjectedMessage, InjectionPosition, MessageFilter,
     MessageFilterProvider, MessageQuery, PrependTransform,
 };
-pub use message_retriever::{InputMessage, MessageRetriever};
+pub use message_retriever::{InputMessage, MessageHistory, MessageRetriever};
 pub use mount_fs::{DisplayPolicy, MountFs, WORKSPACE_MOUNT, scoped_prompt_file_store};
 pub use runtime_agent::{RuntimeAgent, RuntimeAgentBuilder};
 pub use runtime_context::{
@@ -400,6 +401,10 @@ pub use capabilities::{
 };
 pub use capabilities::{
     DeclarativeCapabilityDefinition, DeclarativeCapabilityFile, DeclarativeCapabilitySkill,
+};
+pub use compaction_checkpoint::{
+    COMPACTION_CHECKPOINT_FORMAT_VERSION, CompactionCheckpoint, CompactionCheckpointPayload,
+    CompactionCheckpointStore, InMemoryCompactionCheckpointStore,
 };
 
 // Atoms re-exports (stateless atomic operations)

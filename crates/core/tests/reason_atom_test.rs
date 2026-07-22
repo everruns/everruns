@@ -26,7 +26,7 @@ use everruns_core::{Controls, Message, ToolCall};
 use futures::stream;
 use serde_json::json;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -201,19 +201,71 @@ struct FlakyStreamDriver {
 struct NativeCompactRetryDriver {
     attempts: Arc<AtomicUsize>,
     compact_request: Arc<Mutex<Option<everruns_core::CompactRequest>>>,
+    calls: Arc<Mutex<Vec<CapturedLlmCall>>>,
+    expect_opaque: Arc<AtomicBool>,
+}
+
+type CapturedLlmCall = (Vec<everruns_core::LlmMessage>, everruns_core::LlmCallConfig);
+
+#[derive(Clone, Debug)]
+struct NativeCompactFailureDriver {
+    attempts: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl everruns_core::ChatDriver for NativeCompactFailureDriver {
+    async fn chat_completion_stream(
+        &self,
+        _messages: Vec<everruns_core::LlmMessage>,
+        _config: &everruns_core::LlmCallConfig,
+    ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
+        if self.attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+            return Err(everruns_core::AgentLoopError::request_too_large(
+                "force compact",
+            ));
+        }
+        Ok(Box::pin(stream::iter(vec![
+            Ok(everruns_core::LlmStreamEvent::TextDelta(
+                "fallback succeeded".to_string(),
+            )),
+            Ok(everruns_core::LlmStreamEvent::Done(Box::default())),
+        ])))
+    }
+
+    fn supports_compact(&self) -> bool {
+        true
+    }
+
+    async fn compact(
+        &self,
+        _request: everruns_core::CompactRequest,
+    ) -> everruns_core::Result<Option<everruns_core::CompactResponse>> {
+        Err(everruns_core::AgentLoopError::llm("compact failed"))
+    }
 }
 
 #[async_trait]
 impl everruns_core::ChatDriver for NativeCompactRetryDriver {
     async fn chat_completion_stream(
         &self,
-        _messages: Vec<everruns_core::LlmMessage>,
+        messages: Vec<everruns_core::LlmMessage>,
         config: &everruns_core::LlmCallConfig,
     ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
+        self.calls.lock().await.push((messages, config.clone()));
         if self.attempts.fetch_add(1, Ordering::SeqCst) == 0 {
             return Err(everruns_core::AgentLoopError::request_too_large(
                 "test context limit",
             ));
+        }
+
+        if !self.expect_opaque.load(Ordering::SeqCst) {
+            assert!(config.provider_opaque_context.is_none());
+            return Ok(Box::pin(stream::iter(vec![
+                Ok(everruns_core::LlmStreamEvent::TextDelta(
+                    "Used raw history for incompatible model.".to_string(),
+                )),
+                Ok(everruns_core::LlmStreamEvent::Done(Box::default())),
+            ])));
         }
 
         assert_eq!(config.previous_response_id, None);
@@ -549,9 +601,13 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
 
     let attempts = Arc::new(AtomicUsize::new(0));
     let compact_request = Arc::new(Mutex::new(None));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let expect_opaque = Arc::new(AtomicBool::new(true));
     let driver = NativeCompactRetryDriver {
         attempts: attempts.clone(),
         compact_request: compact_request.clone(),
+        calls: calls.clone(),
+        expect_opaque: expect_opaque.clone(),
     };
     let mut driver_registry = DriverRegistry::new();
     driver_registry.register(DriverId::OpenAI, move |_config| Box::new(driver.clone()));
@@ -559,16 +615,18 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
     let mut capability_registry = CapabilityRegistry::new();
     capability_registry.register(CompactionCapability);
     let event_emitter = InMemoryEventEmitter::new();
+    let checkpoint_store = Arc::new(everruns_core::InMemoryCompactionCheckpointStore::default());
     let atom = ReasonAtom::new(
-        harness_store,
-        agent_store,
-        session_store,
-        message_retriever,
-        provider_store,
-        capability_registry,
-        driver_registry,
+        harness_store.clone(),
+        agent_store.clone(),
+        session_store.clone(),
+        message_retriever.clone(),
+        provider_store.clone(),
+        capability_registry.clone(),
+        driver_registry.clone(),
         event_emitter.clone(),
-    );
+    )
+    .with_compaction_checkpoint_store(checkpoint_store.clone());
 
     let result = atom
         .execute(ReasonInput {
@@ -598,6 +656,181 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
 
     let public_events = serde_json::to_string(&event_emitter.events().await).unwrap();
     assert!(!public_events.contains("encrypted-compact-context"));
+    assert!(public_events.contains("checkpoint_id"));
+
+    // A concurrent/new-turn message written after the compact source boundary
+    // must survive as the raw suffix when a fresh atom resumes the session.
+    message_retriever
+        .add(
+            session_id.into(),
+            everruns_core::InputMessage::user("surviving raw suffix"),
+        )
+        .await
+        .unwrap();
+    let resumed_atom = ReasonAtom::new(
+        harness_store.clone(),
+        agent_store.clone(),
+        session_store.clone(),
+        message_retriever.clone(),
+        provider_store.clone(),
+        capability_registry.clone(),
+        driver_registry.clone(),
+        InMemoryEventEmitter::new(),
+    )
+    .with_compaction_checkpoint_store(checkpoint_store.clone());
+    resumed_atom
+        .execute(ReasonInput {
+            context: create_context(session_id),
+            harness_id,
+            agent_id: Some(agent_id.into()),
+            org_id: 0,
+            mcp_tool_definitions: vec![],
+            previous_response_id: Some("must_not_override_checkpoint".to_string()),
+            iteration: 1,
+        })
+        .await
+        .expect("fresh atom should resume from durable checkpoint plus suffix");
+
+    let resumed_calls = calls.lock().await;
+    let (resumed_messages, resumed_config) = resumed_calls.last().unwrap();
+    assert!(resumed_config.provider_opaque_context.is_some());
+    assert!(resumed_config.previous_response_id.is_none());
+    assert!(resumed_messages.iter().any(|message| {
+        matches!(&message.content, everruns_core::LlmMessageContent::Text(text) if text == "surviving raw suffix")
+    }));
+    assert!(!resumed_messages.iter().any(|message| {
+        matches!(&message.content, everruns_core::LlmMessageContent::Text(text) if text == "latest delta")
+    }));
+    drop(resumed_calls);
+
+    let raw_history = message_retriever.load(session_id.into()).await.unwrap();
+    assert_eq!(raw_history.len(), 2);
+    assert_eq!(raw_history[0].text(), Some("latest delta"));
+    assert_eq!(raw_history[1].text(), Some("surviving raw suffix"));
+
+    // Checkpoints are scoped to the exact provider/model contract. A model
+    // change must fall back to the complete raw transcript.
+    provider_store
+        .set_default_model(ResolvedModel {
+            model: "gpt-5.5".to_string(),
+            provider_type: DriverId::OpenAI,
+            api_key: Some("fake-api-key".to_string()),
+            base_url: None,
+            provider_metadata: None,
+        })
+        .await;
+    expect_opaque.store(false, Ordering::SeqCst);
+    let incompatible_atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        capability_registry,
+        driver_registry,
+        InMemoryEventEmitter::new(),
+    )
+    .with_compaction_checkpoint_store(checkpoint_store);
+    incompatible_atom
+        .execute(ReasonInput {
+            context: create_context(session_id),
+            harness_id,
+            agent_id: Some(agent_id.into()),
+            org_id: 0,
+            mcp_tool_definitions: vec![],
+            previous_response_id: None,
+            iteration: 1,
+        })
+        .await
+        .expect("incompatible model should use raw history");
+    let calls = calls.lock().await;
+    let (messages, config) = calls.last().unwrap();
+    assert!(config.provider_opaque_context.is_none());
+    assert!(messages.iter().any(|message| {
+        matches!(&message.content, everruns_core::LlmMessageContent::Text(text) if text == "latest delta")
+    }));
+}
+
+#[tokio::test]
+async fn native_compact_failure_does_not_install_checkpoint() {
+    use everruns_core::AgentCapabilityConfig;
+    use everruns_core::CompactionCheckpointStore;
+    use everruns_core::capabilities::{COMPACTION_CAPABILITY_ID, CompactionCapability};
+    use everruns_core::in_memory::InMemoryEventEmitter;
+    use everruns_core::traits::SessionStore;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+    provider_store
+        .set_default_model(ResolvedModel {
+            model: "gpt-5.4".to_string(),
+            provider_type: DriverId::OpenAI,
+            api_key: Some("fake-api-key".to_string()),
+            base_url: None,
+            provider_metadata: None,
+        })
+        .await;
+    let mut session = session_store
+        .get_session(session_id.into())
+        .await
+        .unwrap()
+        .unwrap();
+    session.capabilities = vec![AgentCapabilityConfig::with_config(
+        COMPACTION_CAPABILITY_ID,
+        json!({ "strategy": "native", "proactive": false }),
+    )];
+    session_store.add_session(session).await;
+    message_retriever
+        .seed(session_id.into(), vec![Message::user("raw history")])
+        .await;
+
+    let driver = NativeCompactFailureDriver {
+        attempts: Arc::new(AtomicUsize::new(0)),
+    };
+    let mut drivers = DriverRegistry::new();
+    drivers.register(DriverId::OpenAI, move |_| Box::new(driver.clone()));
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(CompactionCapability);
+    let checkpoint_store = Arc::new(everruns_core::InMemoryCompactionCheckpointStore::default());
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        capabilities,
+        drivers,
+        InMemoryEventEmitter::new(),
+    )
+    .with_compaction_checkpoint_store(checkpoint_store.clone());
+
+    atom.execute(ReasonInput {
+        context: create_context(session_id),
+        harness_id,
+        agent_id: Some(agent_id.into()),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: None,
+        iteration: 1,
+    })
+    .await
+    .expect("fallback retry should succeed");
+
+    assert!(
+        checkpoint_store
+            .get_latest(session_id.into(), "openai", "gpt-5.4")
+            .await
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[tokio::test]

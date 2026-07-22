@@ -37,6 +37,8 @@ service WorkerService {
     rpc GetMessage(GetMessageRequest) returns (GetMessageResponse);
     rpc LoadMessages(LoadMessagesRequest) returns (LoadMessagesResponse);
     rpc AddMessage(AddMessageRequest) returns (AddMessageResponse);
+    rpc GetCompactionCheckpoint(GetCompactionCheckpointRequest) returns (GetCompactionCheckpointResponse);
+    rpc InstallCompactionCheckpoint(InstallCompactionCheckpointRequest) returns (InstallCompactionCheckpointResponse);
 
     // Event operations
     rpc EmitEvent(EmitEventRequest) returns (EmitEventResponse);
@@ -515,11 +517,41 @@ message GetMessageResponse {
 message LoadMessagesRequest {
     Uuid session_id = 1;
     optional int32 message_limit = 2;
+    optional int64 after_sequence = 3;
 }
 
 message LoadMessagesResponse {
     repeated Message messages = 1;
     int32 total_count = 2;
+    optional int64 source_sequence = 3;
+}
+
+message CompactionCheckpoint {
+    Uuid id = 1;
+    Uuid session_id = 2;
+    int64 source_sequence = 3;
+    string provider_type = 4;
+    string model = 5;
+    uint32 format_version = 6;
+    bytes payload_json = 7;
+}
+
+message GetCompactionCheckpointRequest {
+    Uuid session_id = 1;
+    string provider_type = 2;
+    string model = 3;
+}
+
+message GetCompactionCheckpointResponse {
+    optional CompactionCheckpoint checkpoint = 1;
+}
+
+message InstallCompactionCheckpointRequest {
+    CompactionCheckpoint checkpoint = 1;
+}
+
+message InstallCompactionCheckpointResponse {
+    bool installed = 1;
 }
 
 message AddMessageRequest {

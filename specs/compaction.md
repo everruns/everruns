@@ -20,6 +20,38 @@ The model view applies generic cost-control masking according to the configured 
 
 Provider cache telemetry feeds this same model-view step. If the previous call reports high uncached input or a low cache-read ratio, the model view may mask older tool results earlier so repeated full-history prompts do not keep paying for cache misses.
 
+### Durable replacement checkpoints
+
+Compaction that replaces a history prefix MUST survive later turns and durable
+worker restart. The replacement is stored as a session checkpoint, separate
+from the immutable event log. Raw session events remain the lossless source for
+conversation APIs, export, audit, and `query_history`.
+
+A checkpoint records an opaque replacement context, a compatibility identity
+(provider, model, and format version), and the event-sequence boundary of the
+raw history used to create it. Model input is assembled as the latest
+compatible checkpoint followed by message events strictly after that boundary.
+An incompatible checkpoint is ignored and the model view is rebuilt from raw
+history; provider-native content is never translated through a magic text
+message or sent to a different provider/model.
+
+Checkpoint installation is atomic and monotonic. A completed compaction may
+replace the current checkpoint only when its source boundary is not older than
+the installed boundary. Messages committed while compaction is in flight have
+higher event sequences and therefore remain in the raw suffix. A failed compact
+call or failed checkpoint write leaves the previous checkpoint canonical and
+does not emit a successful compaction event.
+
+Provider-native checkpoint payloads are sensitive opaque data and MUST be
+encrypted at rest. They are available only to the internal runtime storage
+boundary. Public events and APIs expose, at most, the checkpoint identifier,
+strategy, timing, and size/token metrics; they never expose encrypted provider
+content or its plaintext.
+
+Provider-neutral summarization can use the same replacement-checkpoint
+contract with a distinct format and compatibility policy. It does not require
+changing raw event storage or provider-native serialization.
+
 ### Tool-call structural integrity
 
 Prompt-facing reduction preserves tool calls and results as atomic protocol
@@ -297,6 +329,7 @@ data: {
   "ts": "2026-03-15T...",
   "session_id": "session_...",
   "data": {
+    "checkpoint_id": "cmp_...",
     "strategy_used": "observation_masking+native",
     "tokens_before": 180000,
     "tokens_after": 95000,
@@ -308,6 +341,10 @@ data: {
   }
 }
 ```
+
+`checkpoint_id` is present when a durable replacement checkpoint was
+installed. Event data MUST NOT contain the checkpoint payload, provider-native
+encrypted content, or the at-rest ciphertext.
 
 **Reason enum:** `proactive_budget` | `request_too_large` | `manual`
 

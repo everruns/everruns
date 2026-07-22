@@ -527,7 +527,7 @@ impl EventService {
             .collect())
     }
 
-    fn row_to_event(row: EventRow) -> Event {
+    pub(crate) fn row_to_event(row: EventRow) -> Event {
         // Direct mapping from row columns to Event fields
         // Use the core library's deserialize_event_data for proper type handling
         let data = everruns_core::events::deserialize_event_data(&row.event_type, row.data);

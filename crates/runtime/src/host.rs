@@ -101,6 +101,12 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 
     fn message_store(&self) -> Arc<dyn MessageRetriever>;
 
+    fn compaction_checkpoint_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {
+        None
+    }
+
     fn event_emitter(&self) -> Arc<dyn EventEmitter>;
 
     fn file_store(&self) -> Arc<dyn SessionFileSystem>;
@@ -1265,6 +1271,9 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
     }
     if let Some(store) = adapter.durable_tool_result_store() {
         atom = atom.with_durable_tool_result_store(store);
+    }
+    if let Some(store) = adapter.compaction_checkpoint_store() {
+        atom = atom.with_compaction_checkpoint_store(store);
     }
     if let Some(handle) = adapter.reasoning_effort_handle(input.context.session_id) {
         atom = atom.with_reasoning_effort_handle(handle);

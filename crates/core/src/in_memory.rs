@@ -22,7 +22,7 @@ use uuid::Uuid;
 use crate::error::Result;
 use crate::message::Message;
 use crate::message_filter::MessageQuery;
-use crate::message_retriever::{InputMessage, MessageRetriever};
+use crate::message_retriever::{InputMessage, MessageHistory, MessageRetriever};
 use crate::traits::{AgentStore, HarnessStore, ProviderStore, SessionStore, ToolExecutor};
 use chrono::Utc;
 
@@ -138,6 +138,9 @@ impl MessageRetriever for InMemoryMessageRetriever {
         use crate::message_filter::MessageFilter;
 
         let mut messages = self.load(query.session_id).await?;
+        if let Some(after) = query.after_sequence {
+            messages = messages.into_iter().skip(after.max(0) as usize).collect();
+        }
 
         // Apply filters
         for filter in &query.filters {
@@ -172,6 +175,20 @@ impl MessageRetriever for InMemoryMessageRetriever {
         }
 
         Ok(messages)
+    }
+
+    async fn load_filtered_history(&self, query: MessageQuery) -> Result<MessageHistory> {
+        let source_sequence = self
+            .messages
+            .read()
+            .await
+            .get(&query.session_id)
+            .map(|messages| messages.len() as i64)
+            .unwrap_or(0);
+        Ok(MessageHistory {
+            messages: self.load_filtered(query).await?,
+            source_sequence: Some(source_sequence),
+        })
     }
 
     async fn count(&self, session_id: SessionId) -> Result<usize> {

@@ -743,6 +743,8 @@ pub struct ReasonAtom {
     /// continuation is scheduled and the error copy makes no auto-resume
     /// promise).
     schedule_store: Option<Arc<dyn crate::traits::SessionScheduleStore>>,
+    /// Optional durable store for replacement context checkpoints.
+    compaction_checkpoint_store: Option<Arc<dyn crate::CompactionCheckpointStore>>,
 }
 
 impl ReasonAtom {
@@ -776,6 +778,7 @@ impl ReasonAtom {
             reasoning_effort_handle: None,
             utility_llm_service: None,
             schedule_store: None,
+            compaction_checkpoint_store: None,
         }
     }
 
@@ -786,6 +789,14 @@ impl ReasonAtom {
         store: Arc<dyn crate::traits::SessionScheduleStore>,
     ) -> Self {
         self.schedule_store = Some(store);
+        self
+    }
+
+    pub fn with_compaction_checkpoint_store(
+        mut self,
+        store: Arc<dyn crate::CompactionCheckpointStore>,
+    ) -> Self {
+        self.compaction_checkpoint_store = Some(store);
         self
     }
 
@@ -1318,7 +1329,8 @@ impl ReasonAtom {
         iteration: u32,
         assembled: AssembledTurnContext,
     ) -> Result<ReasonResult> {
-        let messages = assembled.messages;
+        let mut messages = assembled.messages;
+        let mut message_source_sequence = assembled.message_source_sequence;
         let prior_usage = assembled.session.usage.clone();
         let model_with_provider = assembled.model_with_provider;
         let resolved_model_id = assembled.resolved_model_id;
@@ -1438,6 +1450,43 @@ impl ReasonAtom {
         let chat_driver = self.create_chat_driver(&model_with_provider)?;
         let stateful_response_continuation =
             previous_response_id.is_some() && chat_driver.supports_stateful_responses();
+        let mut restored_checkpoint: Option<crate::CompactionCheckpoint> = None;
+
+        if compaction_config.is_some()
+            && let Some(store) = self.compaction_checkpoint_store.as_ref()
+            && let Some(checkpoint) = store
+                .get_latest(
+                    session_id,
+                    model_with_provider.provider_type.as_str(),
+                    &model_with_provider.model,
+                )
+                .await?
+            && checkpoint.is_compatible(
+                model_with_provider.provider_type.as_str(),
+                &model_with_provider.model,
+            )
+        {
+            let filters = crate::capabilities::collect_message_filters_only(
+                &resolved_capability_configs,
+                &self.capability_registry,
+            );
+            let mut query =
+                crate::MessageQuery::new(session_id).after_sequence(checkpoint.source_sequence);
+            filters.apply_message_filters(&mut query);
+            let history = self.message_retriever.load_filtered_history(query).await?;
+            messages = history.messages;
+            filters.apply_post_load_filters(&mut messages);
+            if let crate::CompactionCheckpointPayload::Summary { text } = &checkpoint.payload {
+                messages.insert(
+                    0,
+                    Message::system(format!(
+                        "[CONVERSATION_SUMMARY]\n{text}\n[/CONVERSATION_SUMMARY]"
+                    )),
+                );
+            }
+            message_source_sequence = history.source_sequence.or(message_source_sequence);
+            restored_checkpoint = Some(checkpoint);
+        }
 
         // 8. Resolve the reasoning effort for THIS LLM step.
         //    Source priority (re-evaluated on every step so mid-turn changes
@@ -1641,7 +1690,7 @@ impl ReasonAtom {
             model_view_providers.apply_model_view(patched_messages, &model_view_context);
         context_messages = crate::tool_call_integrity::retain_complete_message_tool_exchanges(
             &context_messages,
-            stateful_response_continuation,
+            stateful_response_continuation || restored_checkpoint.is_some(),
         );
 
         // 9c. Append live dynamic facts (e.g. the current time) at the tail.
@@ -1731,7 +1780,7 @@ impl ReasonAtom {
         // result-only deltas whose calls live behind `previous_response_id`.
         llm_messages = crate::tool_call_integrity::retain_complete_llm_tool_exchanges_for_request(
             llm_messages,
-            stateful_response_continuation,
+            stateful_response_continuation || restored_checkpoint.is_some(),
         );
 
         // 12. Build LLM call config with reasoning effort and metadata
@@ -1774,6 +1823,13 @@ impl ReasonAtom {
             .previous_response_id(previous_response_id.clone())
             .volatile_suffix_len(volatile_suffix_len)
             .build();
+        if let Some(checkpoint) = restored_checkpoint.as_ref()
+            && let crate::CompactionCheckpointPayload::ProviderOpaque { context } =
+                &checkpoint.payload
+        {
+            llm_config.previous_response_id = None;
+            llm_config.provider_opaque_context = Some(context.clone());
+        }
 
         tracing::debug!(
             session_id = %session_id,
@@ -2007,6 +2063,7 @@ impl ReasonAtom {
                             session_id,
                             streaming_event_context.clone(),
                             ContextCompactedData {
+                                checkpoint_id: None,
                                 strategy_used: strategy_used.clone(),
                                 messages_before,
                                 messages_after,
@@ -2095,6 +2152,7 @@ impl ReasonAtom {
                     let cascade_start = Instant::now();
                     let mut steps: Vec<CompactionStepData> = Vec::new();
                     let mut strategies_used: Vec<String> = Vec::new();
+                    let mut checkpoint_id: Option<String> = None;
 
                     // Determine which strategies to run based on config
                     let run_masking = matches!(
@@ -2192,12 +2250,46 @@ impl ReasonAtom {
                                 ));
 
                                 let messages_after = compact_response.output.len();
-                                llm_config.previous_response_id = None;
-                                llm_config.provider_opaque_context = Some(
+                                let opaque_context =
                                     crate::driver_registry::ProviderOpaqueContext::OpenResponsesCompact {
                                         output: compact_response.output,
-                                    },
-                                );
+                                    };
+                                if let (Some(store), Some(source_sequence)) = (
+                                    self.compaction_checkpoint_store.as_ref(),
+                                    message_source_sequence,
+                                ) {
+                                    let id = Uuid::now_v7();
+                                    let installed = store
+                                        .install(crate::CompactionCheckpoint {
+                                            id,
+                                            session_id,
+                                            source_sequence,
+                                            provider_type: model_with_provider
+                                                .provider_type
+                                                .as_str()
+                                                .to_string(),
+                                            model: model_with_provider.model.clone(),
+                                            format_version:
+                                                crate::COMPACTION_CHECKPOINT_FORMAT_VERSION,
+                                            payload:
+                                                crate::CompactionCheckpointPayload::ProviderOpaque {
+                                                    context: opaque_context.clone(),
+                                                },
+                                        })
+                                        .await?;
+                                    if !installed {
+                                        return Err(AgentLoopError::store(
+                                            "a newer compaction checkpoint was installed concurrently",
+                                        ));
+                                    }
+                                    checkpoint_id = Some(id.to_string());
+                                }
+                                llm_config.previous_response_id = None;
+                                llm_config.provider_opaque_context = Some(opaque_context);
+                                // The opaque context replaces the compacted transcript. Keep only
+                                // system instructions; later turns append their raw suffix.
+                                llm_messages_for_call
+                                    .retain(|message| message.role == LlmMessageRole::System);
 
                                 let step_duration = step_start.elapsed().as_millis() as u64;
                                 strategies_used.push("native".to_string());
@@ -2379,6 +2471,7 @@ impl ReasonAtom {
                             session_id,
                             streaming_event_context.clone(),
                             ContextCompactedData {
+                                checkpoint_id,
                                 strategy_used: strategy_used.clone(),
                                 messages_before,
                                 messages_after,

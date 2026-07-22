@@ -284,6 +284,7 @@ pub struct DirectWorkerAdapters {
     vector_store: Option<Arc<dyn everruns_core::vector_store::VectorStore>>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     encryption: Option<Arc<EncryptionService>>,
+    in_memory_compaction_checkpoint_store: Arc<everruns_core::InMemoryCompactionCheckpointStore>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     permission_resolver: Arc<dyn PermissionResolver>,
     virtual_registry:
@@ -319,6 +320,9 @@ impl DirectWorkerAdapters {
             vector_store: None,
             runner: None,
             encryption: None,
+            in_memory_compaction_checkpoint_store: Arc::new(
+                everruns_core::InMemoryCompactionCheckpointStore::default(),
+            ),
             workflow_store: None,
             permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
             virtual_registry: None,
@@ -695,6 +699,17 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         let messages: Vec<Message> = events.into_iter().filter_map(event_to_message).collect();
         Ok(messages)
+    }
+
+    async fn load_message_history(
+        &self,
+        query: everruns_core::MessageQuery,
+    ) -> Result<everruns_core::MessageHistory> {
+        everruns_core::MessageRetriever::load_filtered_history(
+            &crate::storage::DbMessageRetriever::new(self.db.clone()),
+            query,
+        )
+        .await
     }
 
     // =========================================================================
@@ -1511,6 +1526,21 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     fn sqldb_store(&self) -> everruns_core::traits::SessionSqlDbStoreRef {
         self.sqldb_store.clone()
+    }
+
+    fn compaction_checkpoint_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {
+        if let Some(encryption) = self.encryption.clone() {
+            return Some(Arc::new(crate::storage::DbCompactionCheckpointStore::new(
+                self.db.clone(),
+                encryption,
+            )));
+        }
+        self.db.is_dev_mode().then(|| {
+            self.in_memory_compaction_checkpoint_store.clone()
+                as Arc<dyn everruns_core::CompactionCheckpointStore>
+        })
     }
 
     fn storage_store(&self) -> Arc<dyn everruns_core::traits::SessionStorageStore> {
