@@ -20,6 +20,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::Instant;
@@ -565,6 +566,198 @@ pub struct ReasonResult {
 
 fn default_max_iterations() -> usize {
     500
+}
+
+const CHECKPOINT_REARM_MIN_SUFFIX_MESSAGES: usize = 4;
+const PROACTIVE_RETRY_MIN_TOKEN_GROWTH: u64 = 4_096;
+const PROACTIVE_RETRY_GROWTH_DIVISOR: u64 = 20;
+
+fn proactive_source_fingerprint(
+    provider_opaque_context: Option<&crate::ProviderOpaqueContext>,
+    messages: &[LlmMessage],
+) -> [u8; 32] {
+    let mut input = match provider_opaque_context {
+        Some(crate::ProviderOpaqueContext::OpenResponsesCompact { output }) => {
+            output.iter().map(crate::CompactInputItem::from).collect()
+        }
+        None => Vec::new(),
+    };
+    input.extend(messages_to_compact_input(messages));
+    let bytes = serde_json::to_vec(&input).unwrap_or_default();
+    Sha256::digest(bytes).into()
+}
+
+#[derive(Debug)]
+struct AppliedNativeCompaction {
+    checkpoint_id: Option<String>,
+    input_items_before: usize,
+    output_items_after: usize,
+    tokens_before: Option<u64>,
+    tokens_after: Option<u64>,
+    bytes_before: Option<u64>,
+    bytes_after: Option<u64>,
+    duration_ms: u64,
+}
+
+fn materially_reduced(before: u64, after: u64) -> bool {
+    const MIN_REDUCTION_UNITS: u64 = 32;
+    let five_percent = before.div_ceil(20);
+    let required_reduction = five_percent.max(MIN_REDUCTION_UNITS).min(before);
+    after < before && before - after >= required_reduction
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn try_apply_native_compaction(
+    chat_driver: &dyn crate::ChatDriver,
+    checkpoint_store: Option<&Arc<dyn crate::CompactionCheckpointStore>>,
+    session_id: SessionId,
+    source_sequence: Option<i64>,
+    provider_type: &str,
+    model: &str,
+    system_prompt: Option<&str>,
+    stateful_response_continuation: bool,
+    previous_response_id: Option<String>,
+    llm_messages: &mut Vec<LlmMessage>,
+    llm_config: &mut crate::driver_registry::LlmCallConfig,
+) -> Result<Option<AppliedNativeCompaction>> {
+    if !chat_driver.supports_compact() {
+        return Ok(None);
+    }
+
+    let started = Instant::now();
+    let has_system_prompt = system_prompt.is_some();
+    let messages_to_compact = if has_system_prompt {
+        &llm_messages[1..]
+    } else {
+        &llm_messages[..]
+    };
+    let (mut standalone_input, has_prior_opaque_context) =
+        match llm_config.provider_opaque_context.as_ref() {
+            Some(crate::ProviderOpaqueContext::OpenResponsesCompact { output }) => (
+                output.iter().map(crate::CompactInputItem::from).collect(),
+                true,
+            ),
+            None => (Vec::new(), false),
+        };
+    standalone_input.extend(messages_to_compact_input(messages_to_compact));
+    let input_items_before = standalone_input.len();
+    let local_tokens_before = (!stateful_response_continuation && !has_prior_opaque_context)
+        .then(|| crate::capabilities::estimate_total_tokens(messages_to_compact) as u64);
+    let bytes_before = (!stateful_response_continuation || has_prior_opaque_context)
+        .then(|| {
+            serde_json::to_vec(&standalone_input)
+                .ok()
+                .map(|value| value.len() as u64)
+        })
+        .flatten();
+    let (input, compact_previous_response_id) = if has_prior_opaque_context {
+        (standalone_input, None)
+    } else if stateful_response_continuation {
+        (Vec::new(), previous_response_id)
+    } else {
+        (standalone_input, None)
+    };
+
+    let compact_response = match chat_driver
+        .compact(CompactRequest {
+            model: model.to_string(),
+            input,
+            previous_response_id: compact_previous_response_id,
+            instructions: system_prompt.map(str::to_string),
+        })
+        .await
+    {
+        Ok(Some(response)) => response,
+        Ok(None) => return Ok(None),
+        Err(error) => {
+            tracing::warn!(
+                session_id = %session_id,
+                error = %error,
+                "ReasonAtom: native compaction failed"
+            );
+            return Ok(None);
+        }
+    };
+
+    let tokens_before = compact_response
+        .usage
+        .as_ref()
+        .and_then(|usage| usage.input_tokens)
+        .map(u64::from)
+        .or(local_tokens_before);
+    let tokens_after = compact_response
+        .usage
+        .as_ref()
+        .and_then(|usage| usage.output_tokens)
+        .map(u64::from);
+    let bytes_after = serde_json::to_vec(&compact_response.output)
+        .ok()
+        .map(|value| value.len() as u64);
+    let effective = match (tokens_before, tokens_after) {
+        (Some(before), Some(after)) => materially_reduced(before, after),
+        _ => match (bytes_before, bytes_after) {
+            (Some(before), Some(after)) => materially_reduced(before, after),
+            _ => false,
+        },
+    };
+    if !effective {
+        tracing::info!(
+            session_id = %session_id,
+            ?tokens_before,
+            ?tokens_after,
+            ?bytes_before,
+            ?bytes_after,
+            "ReasonAtom: native compaction produced no material reduction"
+        );
+        return Ok(None);
+    }
+
+    let output_items_after = compact_response.output.len();
+    let opaque_context = crate::driver_registry::ProviderOpaqueContext::OpenResponsesCompact {
+        output: compact_response.output,
+    };
+    let checkpoint_id =
+        if let (Some(store), Some(source_sequence)) = (checkpoint_store, source_sequence) {
+            let id = Uuid::now_v7();
+            let installed = store
+                .install(crate::CompactionCheckpoint {
+                    id,
+                    session_id,
+                    source_sequence,
+                    provider_type: provider_type.to_string(),
+                    model: model.to_string(),
+                    format_version: crate::COMPACTION_CHECKPOINT_FORMAT_VERSION,
+                    payload: crate::CompactionCheckpointPayload::ProviderOpaque {
+                        context: opaque_context.clone(),
+                    },
+                })
+                .await?;
+            if !installed {
+                return Err(AgentLoopError::store(
+                    "a newer compaction checkpoint was installed concurrently",
+                ));
+            }
+            Some(id.to_string())
+        } else {
+            None
+        };
+
+    // Apply only after the durable install succeeds, so checkpoint failures do
+    // not partially mutate the retry request.
+    llm_config.previous_response_id = None;
+    llm_config.provider_opaque_context = Some(opaque_context);
+    llm_messages.retain(|message| message.role == LlmMessageRole::System);
+
+    Ok(Some(AppliedNativeCompaction {
+        checkpoint_id,
+        input_items_before,
+        output_items_after,
+        tokens_before,
+        tokens_after,
+        bytes_before,
+        bytes_after,
+        duration_ms: started.elapsed().as_millis() as u64,
+    }))
 }
 
 fn build_request_options(
@@ -1451,6 +1644,7 @@ impl ReasonAtom {
         let stateful_response_continuation =
             previous_response_id.is_some() && chat_driver.supports_stateful_responses();
         let mut restored_checkpoint: Option<crate::CompactionCheckpoint> = None;
+        let mut checkpoint_suffix_message_count = 0usize;
 
         if compaction_config.is_some()
             && let Some(store) = self.compaction_checkpoint_store.as_ref()
@@ -1475,6 +1669,7 @@ impl ReasonAtom {
             filters.apply_message_filters(&mut query);
             let history = self.message_retriever.load_filtered_history(query).await?;
             messages = history.messages;
+            checkpoint_suffix_message_count = messages.len();
             filters.apply_post_load_filters(&mut messages);
             if let crate::CompactionCheckpointPayload::Summary { text } = &checkpoint.payload {
                 messages.insert(
@@ -1950,43 +2145,126 @@ impl ReasonAtom {
         let mut compaction_info: Option<LlmCompactionInfo> = None;
         let mut llm_messages_for_call = llm_messages.clone();
 
-        // 13b. Proactive compaction: check token budget BEFORE calling the LLM.
-        // This avoids the latency of a RequestTooLarge round-trip.
+        // 13b. Proactive native compaction. A stateful continuation carries only
+        // the request delta, so its reconstructed transcript is not a valid
+        // pressure signal. A restored checkpoint also stays disarmed until a
+        // meaningful raw suffix has accumulated.
         if let Some(ref config) = compaction_config {
-            let context_window = crate::model_profiles::get_model_profile(
-                &model_with_provider.provider_type,
-                &model_with_provider.model,
-            )
-            .and_then(|p| p.limits.map(|l| l.context as usize))
-            .unwrap_or(128_000);
-
-            if crate::capabilities::should_compact_proactively(
-                &llm_messages_for_call,
-                config,
-                context_window,
+            use crate::capabilities::CompactionStrategy;
+            let context_window = chat_driver
+                .effective_context_window(&model_with_provider.model)
+                .or_else(|| {
+                    crate::model_profiles::get_model_profile(
+                        &model_with_provider.provider_type,
+                        &model_with_provider.model,
+                    )
+                    .and_then(|profile| profile.limits.map(|limits| limits.context as usize))
+                })
+                .unwrap_or(128_000);
+            let checkpoint_rearmed = restored_checkpoint.is_none()
+                || checkpoint_suffix_message_count >= CHECKPOINT_REARM_MIN_SUFFIX_MESSAGES;
+            let native_strategy = matches!(
+                config.strategy,
+                CompactionStrategy::Auto | CompactionStrategy::Native
+            );
+            let durable_source_available =
+                self.compaction_checkpoint_store.is_some() && message_source_sequence.is_some();
+            let estimated_tokens_before =
+                crate::capabilities::estimate_total_tokens(&llm_messages_for_call) as u64;
+            let native_attempt_rearmed = if let (Some(store), Some(source_sequence)) = (
+                self.compaction_checkpoint_store.as_ref(),
+                message_source_sequence,
             ) {
-                use crate::capabilities::{
-                    CompactionStrategy, aggressive_trim, apply_observation_masking,
-                    estimate_total_tokens,
-                };
+                match store
+                    .get_proactive_attempt(
+                        session_id,
+                        model_with_provider.provider_type.as_str(),
+                        &model_with_provider.model,
+                    )
+                    .await
+                {
+                    Ok(attempt) => attempt.is_none_or(|attempt| {
+                        if source_sequence < attempt.source_sequence
+                            || llm_messages_for_call.len() < attempt.input_message_count
+                        {
+                            return true;
+                        }
+                        let same_source_lineage = proactive_source_fingerprint(
+                            llm_config.provider_opaque_context.as_ref(),
+                            &llm_messages_for_call[..attempt.input_message_count],
+                        ) == attempt.source_fingerprint;
+                        if !same_source_lineage {
+                            return true;
+                        }
+                        if source_sequence == attempt.source_sequence {
+                            return false;
+                        }
+                        let required_growth = PROACTIVE_RETRY_MIN_TOKEN_GROWTH
+                            .max(attempt.estimated_input_tokens / PROACTIVE_RETRY_GROWTH_DIVISOR);
+                        estimated_tokens_before.saturating_sub(attempt.estimated_input_tokens)
+                            >= required_growth
+                    }),
+                    Err(error) => {
+                        tracing::warn!(
+                            session_id = %session_id,
+                            error = %error,
+                            "ReasonAtom: proactive compaction attempt watermark lookup failed"
+                        );
+                        true
+                    }
+                }
+            } else {
+                true
+            };
+            let local_pressure = !stateful_response_continuation
+                && checkpoint_rearmed
+                && crate::capabilities::should_compact_proactively(
+                    &llm_messages_for_call,
+                    config,
+                    context_window,
+                );
+            let should_attempt = native_strategy
+                && chat_driver.supports_compact()
+                && durable_source_available
+                && native_attempt_rearmed
+                && local_pressure;
+            let mut native_applied = false;
+
+            if should_attempt {
                 use crate::events::{
                     CompactionReason, CompactionStepData, ContextCompactedData,
                     ContextCompactingData,
                 };
-
                 let messages_before = llm_messages_for_call.len();
-                let cascade_start = Instant::now();
-                let mut strategies_used: Vec<String> = Vec::new();
-                let mut steps: Vec<CompactionStepData> = Vec::new();
-
-                tracing::info!(
-                    session_id = %session_id,
-                    strategy = %config.strategy,
-                    messages = messages_before,
-                    "ReasonAtom: proactive compaction triggered (budget threshold exceeded)"
+                let input_message_count = llm_messages_for_call.len();
+                let source_fingerprint = proactive_source_fingerprint(
+                    llm_config.provider_opaque_context.as_ref(),
+                    &llm_messages_for_call,
                 );
-
-                // Emit context.compacting event
+                if let Err(error) = self
+                    .compaction_checkpoint_store
+                    .as_ref()
+                    .expect("durable source availability checked above")
+                    .record_proactive_attempt(
+                        session_id,
+                        model_with_provider.provider_type.as_str(),
+                        &model_with_provider.model,
+                        crate::ProactiveCompactionAttempt {
+                            source_sequence: message_source_sequence
+                                .expect("durable source availability checked above"),
+                            estimated_input_tokens: estimated_tokens_before,
+                            input_message_count,
+                            source_fingerprint,
+                        },
+                    )
+                    .await
+                {
+                    tracing::warn!(
+                        session_id = %session_id,
+                        error = %error,
+                        "ReasonAtom: proactive compaction attempt watermark write failed"
+                    );
+                }
                 let _ = self
                     .event_emitter
                     .emit(EventRequest::new(
@@ -1996,90 +2274,96 @@ impl ReasonAtom {
                             reason: CompactionReason::ProactiveBudget,
                             strategy: config.strategy.to_string(),
                             messages_before,
+                            tokens_before: Some(estimated_tokens_before),
+                            bytes_before: None,
                         },
                     ))
                     .await;
 
-                let run_masking = matches!(
-                    config.strategy,
-                    CompactionStrategy::Auto | CompactionStrategy::ObservationMasking
-                );
-
-                // Step 1: Observation masking (free)
-                if run_masking {
-                    let step_start = Instant::now();
-                    let conversation_msgs = if has_system_prompt {
-                        &llm_messages_for_call[1..]
-                    } else {
-                        &llm_messages_for_call[..]
-                    };
-
-                    let masking_result =
-                        apply_observation_masking(conversation_msgs, &config.observation_masking);
-
-                    if masking_result.masked_count > 0 {
-                        let mut new_messages = Vec::new();
-                        if has_system_prompt {
-                            new_messages.push(llm_messages_for_call[0].clone());
-                        }
-                        new_messages.extend(masking_result.messages);
-                        llm_messages_for_call = new_messages;
-
-                        let step_duration = step_start.elapsed().as_millis() as u64;
-                        strategies_used.push("observation_masking".to_string());
-                        steps.push(CompactionStepData {
-                            strategy: "observation_masking".to_string(),
-                            messages_after: llm_messages_for_call.len(),
-                            duration_ms: step_duration,
-                        });
-                    }
-                }
-
-                // Step 2: If still over budget after masking, apply aggressive trim
-                let budget_tokens = (context_window as f32 * config.budget_percent) as usize;
-                if estimate_total_tokens(&llm_messages_for_call) > budget_tokens {
-                    let step_start = Instant::now();
-                    llm_messages_for_call =
-                        aggressive_trim(&llm_messages_for_call, budget_tokens, has_system_prompt);
-
-                    let step_duration = step_start.elapsed().as_millis() as u64;
-                    strategies_used.push("aggressive_trim".to_string());
-                    steps.push(CompactionStepData {
-                        strategy: "aggressive_trim".to_string(),
-                        messages_after: llm_messages_for_call.len(),
-                        duration_ms: step_duration,
-                    });
-                }
-
-                let cascade_duration = cascade_start.elapsed().as_millis() as u64;
-                let messages_after = llm_messages_for_call.len();
-
-                if !strategies_used.is_empty() {
-                    let strategy_used = strategies_used.join("+");
-
+                if let Some(applied) = try_apply_native_compaction(
+                    chat_driver.as_ref(),
+                    self.compaction_checkpoint_store.as_ref(),
+                    session_id,
+                    message_source_sequence,
+                    model_with_provider.provider_type.as_str(),
+                    &model_with_provider.model,
+                    has_system_prompt.then_some(runtime_agent.system_prompt.as_str()),
+                    false,
+                    None,
+                    &mut llm_messages_for_call,
+                    &mut llm_config,
+                )
+                .await?
+                {
+                    native_applied = true;
+                    compaction_info = Some(LlmCompactionInfo::new(
+                        Some(applied.input_items_before as u32),
+                        applied
+                            .tokens_after
+                            .and_then(|value| u32::try_from(value).ok()),
+                        Some(applied.duration_ms),
+                    ));
+                    let steps = vec![CompactionStepData {
+                        strategy: "native".to_string(),
+                        messages_after: applied.output_items_after,
+                        duration_ms: applied.duration_ms,
+                    }];
                     let _ = self
                         .event_emitter
                         .emit(EventRequest::new(
                             session_id,
                             streaming_event_context.clone(),
                             ContextCompactedData {
-                                checkpoint_id: None,
-                                strategy_used: strategy_used.clone(),
+                                checkpoint_id: applied.checkpoint_id,
+                                strategy_used: "native".to_string(),
                                 messages_before,
-                                messages_after,
-                                duration_ms: cascade_duration,
+                                messages_after: applied.output_items_after,
+                                tokens_before: applied.tokens_before,
+                                tokens_after: applied.tokens_after,
+                                bytes_before: applied.bytes_before,
+                                bytes_after: applied.bytes_after,
+                                duration_ms: applied.duration_ms,
                                 steps,
                             },
                         ))
                         .await;
+                }
+            }
 
-                    tracing::info!(
-                        session_id = %session_id,
-                        strategy = %strategy_used,
-                        messages_before,
-                        messages_after,
-                        duration_ms = cascade_duration,
-                        "ReasonAtom: proactive compaction completed"
+            // Preserve the provider-neutral outbound fallback. This is a model
+            // view optimization only: it does not install a replacement or
+            // claim a successful durable compaction event.
+            if local_pressure && !native_applied {
+                if matches!(
+                    config.strategy,
+                    CompactionStrategy::Auto | CompactionStrategy::ObservationMasking
+                ) {
+                    let conversation = if has_system_prompt {
+                        &llm_messages_for_call[1..]
+                    } else {
+                        &llm_messages_for_call[..]
+                    };
+                    let masked = crate::capabilities::apply_observation_masking(
+                        conversation,
+                        &config.observation_masking,
+                    );
+                    if masked.masked_count > 0 {
+                        let mut model_view = Vec::new();
+                        if has_system_prompt {
+                            model_view.push(llm_messages_for_call[0].clone());
+                        }
+                        model_view.extend(masked.messages);
+                        llm_messages_for_call = model_view;
+                    }
+                }
+                let budget_tokens = (context_window as f32 * config.budget_percent) as usize;
+                if crate::capabilities::estimate_total_tokens(&llm_messages_for_call)
+                    > budget_tokens
+                {
+                    llm_messages_for_call = crate::capabilities::aggressive_trim(
+                        &llm_messages_for_call,
+                        budget_tokens,
+                        has_system_prompt,
                     );
                 }
             }
@@ -2145,6 +2429,10 @@ impl ReasonAtom {
                                 reason: CompactionReason::RequestTooLarge,
                                 strategy: config.strategy.to_string(),
                                 messages_before,
+                                tokens_before: Some(crate::capabilities::estimate_total_tokens(
+                                    &llm_messages_for_call,
+                                ) as u64),
+                                bytes_before: None,
                             },
                         ))
                         .await;
@@ -2153,6 +2441,12 @@ impl ReasonAtom {
                     let mut steps: Vec<CompactionStepData> = Vec::new();
                     let mut strategies_used: Vec<String> = Vec::new();
                     let mut checkpoint_id: Option<String> = None;
+                    let mut tokens_before = Some(crate::capabilities::estimate_total_tokens(
+                        &llm_messages_for_call,
+                    ) as u64);
+                    let mut tokens_after = None;
+                    let mut bytes_before = None;
+                    let mut bytes_after = None;
 
                     // Determine which strategies to run based on config
                     let run_masking = matches!(
@@ -2208,111 +2502,40 @@ impl ReasonAtom {
                     }
 
                     // Step 2: Native provider compaction
-                    if run_native {
-                        let step_start = Instant::now();
-                        let messages_to_compact = if has_system_prompt {
-                            &llm_messages_for_call[1..]
-                        } else {
-                            &llm_messages_for_call[..]
-                        };
-
-                        let compact_input = messages_to_compact_input(messages_to_compact);
-                        let input_count = compact_input.len();
-                        let (compact_input, compact_previous_response_id) =
-                            if stateful_response_continuation {
-                                (Vec::new(), previous_response_id.clone())
-                            } else {
-                                (compact_input, None)
-                            };
-
-                        let compact_request = CompactRequest {
-                            model: runtime_agent.model.clone(),
-                            input: compact_input,
-                            previous_response_id: compact_previous_response_id,
-                            instructions: if has_system_prompt {
-                                Some(runtime_agent.system_prompt.clone())
-                            } else {
-                                None
-                            },
-                        };
-
-                        match chat_driver.compact(compact_request).await {
-                            Ok(Some(compact_response)) => {
-                                let input_tokens_after = compact_response
-                                    .usage
-                                    .as_ref()
-                                    .and_then(|u| u.output_tokens);
-
-                                compaction_info = Some(LlmCompactionInfo::new(
-                                    Some(input_count as u32),
-                                    input_tokens_after,
-                                    Some(step_start.elapsed().as_millis() as u64),
-                                ));
-
-                                let messages_after = compact_response.output.len();
-                                let opaque_context =
-                                    crate::driver_registry::ProviderOpaqueContext::OpenResponsesCompact {
-                                        output: compact_response.output,
-                                    };
-                                if let (Some(store), Some(source_sequence)) = (
-                                    self.compaction_checkpoint_store.as_ref(),
-                                    message_source_sequence,
-                                ) {
-                                    let id = Uuid::now_v7();
-                                    let installed = store
-                                        .install(crate::CompactionCheckpoint {
-                                            id,
-                                            session_id,
-                                            source_sequence,
-                                            provider_type: model_with_provider
-                                                .provider_type
-                                                .as_str()
-                                                .to_string(),
-                                            model: model_with_provider.model.clone(),
-                                            format_version:
-                                                crate::COMPACTION_CHECKPOINT_FORMAT_VERSION,
-                                            payload:
-                                                crate::CompactionCheckpointPayload::ProviderOpaque {
-                                                    context: opaque_context.clone(),
-                                                },
-                                        })
-                                        .await?;
-                                    if !installed {
-                                        return Err(AgentLoopError::store(
-                                            "a newer compaction checkpoint was installed concurrently",
-                                        ));
-                                    }
-                                    checkpoint_id = Some(id.to_string());
-                                }
-                                llm_config.previous_response_id = None;
-                                llm_config.provider_opaque_context = Some(opaque_context);
-                                // The opaque context replaces the compacted transcript. Keep only
-                                // system instructions; later turns append their raw suffix.
-                                llm_messages_for_call
-                                    .retain(|message| message.role == LlmMessageRole::System);
-
-                                let step_duration = step_start.elapsed().as_millis() as u64;
-                                strategies_used.push("native".to_string());
-                                steps.push(CompactionStepData {
-                                    strategy: "native".to_string(),
-                                    messages_after,
-                                    duration_ms: step_duration,
-                                });
-
-                                tracing::info!(
-                                    session_id = %session_id,
-                                    duration_ms = step_duration,
-                                    messages_after,
-                                    "ReasonAtom: native compaction applied"
-                                );
-                            }
-                            Ok(None) | Err(_) => {
-                                tracing::warn!(
-                                    session_id = %session_id,
-                                    "ReasonAtom: native compaction unavailable, continuing cascade"
-                                );
-                            }
-                        }
+                    if run_native
+                        && let Some(applied) = try_apply_native_compaction(
+                            chat_driver.as_ref(),
+                            self.compaction_checkpoint_store.as_ref(),
+                            session_id,
+                            message_source_sequence,
+                            model_with_provider.provider_type.as_str(),
+                            &model_with_provider.model,
+                            has_system_prompt.then_some(runtime_agent.system_prompt.as_str()),
+                            stateful_response_continuation,
+                            previous_response_id.clone(),
+                            &mut llm_messages_for_call,
+                            &mut llm_config,
+                        )
+                        .await?
+                    {
+                        compaction_info = Some(LlmCompactionInfo::new(
+                            Some(applied.input_items_before as u32),
+                            applied
+                                .tokens_after
+                                .and_then(|value| u32::try_from(value).ok()),
+                            Some(applied.duration_ms),
+                        ));
+                        checkpoint_id = applied.checkpoint_id;
+                        tokens_before = applied.tokens_before;
+                        tokens_after = applied.tokens_after;
+                        bytes_before = applied.bytes_before;
+                        bytes_after = applied.bytes_after;
+                        strategies_used.push("native".to_string());
+                        steps.push(CompactionStepData {
+                            strategy: "native".to_string(),
+                            messages_after: applied.output_items_after,
+                            duration_ms: applied.duration_ms,
+                        });
                     }
 
                     // Step 3: Summarization (if configured, and native didn't run or isn't available)
@@ -2457,29 +2680,53 @@ impl ReasonAtom {
 
                     let cascade_duration = cascade_start.elapsed().as_millis() as u64;
                     let messages_after = llm_messages_for_call.len();
-
-                    // Emit context.compacted event
-                    let strategy_used = if strategies_used.is_empty() {
-                        "none".to_string()
-                    } else {
-                        strategies_used.join("+")
+                    if tokens_after.is_none() {
+                        tokens_after = Some(crate::capabilities::estimate_total_tokens(
+                            &llm_messages_for_call,
+                        ) as u64);
+                    }
+                    let effective = match (tokens_before, tokens_after) {
+                        (Some(before), Some(after)) => materially_reduced(before, after),
+                        _ => match (bytes_before, bytes_after) {
+                            (Some(before), Some(after)) => materially_reduced(before, after),
+                            _ => false,
+                        },
                     };
+                    if !effective {
+                        tracing::warn!(
+                            session_id = %session_id,
+                            ?tokens_before,
+                            ?tokens_after,
+                            "ReasonAtom: compaction cascade made no material reduction"
+                        );
+                        return Err(e);
+                    }
 
-                    let _ = self
-                        .event_emitter
-                        .emit(EventRequest::new(
-                            session_id,
-                            streaming_event_context.clone(),
-                            ContextCompactedData {
-                                checkpoint_id,
-                                strategy_used: strategy_used.clone(),
-                                messages_before,
-                                messages_after,
-                                duration_ms: cascade_duration,
-                                steps,
-                            },
-                        ))
-                        .await;
+                    let strategy_used = strategies_used.join("+");
+                    let durable_semantic_compaction = strategies_used
+                        .iter()
+                        .any(|strategy| strategy != "observation_masking");
+                    if durable_semantic_compaction {
+                        let _ = self
+                            .event_emitter
+                            .emit(EventRequest::new(
+                                session_id,
+                                streaming_event_context.clone(),
+                                ContextCompactedData {
+                                    checkpoint_id,
+                                    strategy_used: strategy_used.clone(),
+                                    messages_before,
+                                    messages_after,
+                                    tokens_before,
+                                    tokens_after,
+                                    bytes_before,
+                                    bytes_after,
+                                    duration_ms: cascade_duration,
+                                    steps,
+                                },
+                            ))
+                            .await;
+                    }
 
                     tracing::info!(
                         session_id = %session_id,
@@ -3496,6 +3743,19 @@ mod tests {
     use super::*;
     use crate::driver_registry::{LlmCallConfig, PromptCacheConfig, PromptCacheStrategy};
     use std::collections::HashMap;
+
+    #[test]
+    fn material_reduction_requires_five_percent_at_normal_sizes() {
+        assert!(!materially_reduced(1_000, 951));
+        assert!(materially_reduced(1_000, 950));
+    }
+
+    #[test]
+    fn material_reduction_uses_absolute_floor_for_small_sizes() {
+        assert!(!materially_reduced(0, 0));
+        assert!(!materially_reduced(100, 69));
+        assert!(materially_reduced(100, 68));
+    }
 
     struct BlockWhenDeltaContains {
         needle: &'static str,

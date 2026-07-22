@@ -285,6 +285,7 @@ pub struct DirectWorkerAdapters {
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     encryption: Option<Arc<EncryptionService>>,
     in_memory_compaction_checkpoint_store: Arc<everruns_core::InMemoryCompactionCheckpointStore>,
+    proactive_compaction_attempts: Arc<everruns_core::ProactiveCompactionAttemptTracker>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     permission_resolver: Arc<dyn PermissionResolver>,
     virtual_registry:
@@ -322,6 +323,9 @@ impl DirectWorkerAdapters {
             encryption: None,
             in_memory_compaction_checkpoint_store: Arc::new(
                 everruns_core::InMemoryCompactionCheckpointStore::default(),
+            ),
+            proactive_compaction_attempts: Arc::new(
+                everruns_core::ProactiveCompactionAttemptTracker::default(),
             ),
             workflow_store: None,
             permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
@@ -1532,10 +1536,13 @@ impl WorkerAdapters for DirectWorkerAdapters {
         &self,
     ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {
         if let Some(encryption) = self.encryption.clone() {
-            return Some(Arc::new(crate::storage::DbCompactionCheckpointStore::new(
-                self.db.clone(),
-                encryption,
-            )));
+            return Some(Arc::new(
+                crate::storage::DbCompactionCheckpointStore::with_proactive_attempt_tracker(
+                    self.db.clone(),
+                    encryption,
+                    self.proactive_compaction_attempts.clone(),
+                ),
+            ));
         }
         self.db.is_dev_mode().then(|| {
             self.in_memory_compaction_checkpoint_store.clone()

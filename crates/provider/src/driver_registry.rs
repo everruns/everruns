@@ -382,6 +382,15 @@ pub trait ChatDriver: Send + Sync {
         false
     }
 
+    /// Effective context window for `model`, when the driver has authoritative
+    /// model metadata that is not represented by Everruns' built-in profiles.
+    ///
+    /// External drivers should override this so host policy does not guess from
+    /// a provider/model table that cannot describe their runtime model aliases.
+    fn effective_context_window(&self, _model: &str) -> Option<usize> {
+        None
+    }
+
     /// Whether this driver can express the request-level `parallel_tool_calls`
     /// preference on the wire for `model`.
     ///
@@ -450,6 +459,10 @@ impl ChatDriver for Box<dyn ChatDriver> {
 
     fn supports_stateful_responses(&self) -> bool {
         (**self).supports_stateful_responses()
+    }
+
+    fn effective_context_window(&self, model: &str) -> Option<usize> {
+        (**self).effective_context_window(model)
     }
 
     fn supports_parallel_tool_calls(&self, model: &str) -> bool {

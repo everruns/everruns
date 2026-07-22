@@ -566,11 +566,17 @@ impl GrpcClient {
 #[derive(Clone)]
 pub struct GrpcAdapter {
     client: GrpcClient,
+    proactive_compaction_attempts: Arc<everruns_core::ProactiveCompactionAttemptTracker>,
 }
 
 impl GrpcAdapter {
     pub fn new(client: GrpcClient) -> Self {
-        Self { client }
+        Self {
+            client,
+            proactive_compaction_attempts: Arc::new(
+                everruns_core::ProactiveCompactionAttemptTracker::default(),
+            ),
+        }
     }
 }
 
@@ -1149,6 +1155,31 @@ impl everruns_core::CompactionCheckpointStore for GrpcAdapter {
             .map_err(grpc_status_to_error)?
             .into_inner()
             .installed)
+    }
+
+    async fn get_proactive_attempt(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+    ) -> Result<Option<everruns_core::ProactiveCompactionAttempt>> {
+        Ok(self
+            .proactive_compaction_attempts
+            .get(session_id, provider_type, model)
+            .await)
+    }
+
+    async fn record_proactive_attempt(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+        attempt: everruns_core::ProactiveCompactionAttempt,
+    ) -> Result<()> {
+        self.proactive_compaction_attempts
+            .record(session_id, provider_type, model, attempt)
+            .await;
+        Ok(())
     }
 }
 

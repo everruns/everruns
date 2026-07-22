@@ -17975,6 +17975,24 @@
           "duration_ms"
         ],
         "properties": {
+          "bytes_after": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Serialized compact output bytes, when measurable.",
+            "minimum": 0
+          },
+          "bytes_before": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Serialized request-context bytes before compaction, when measurable.",
+            "minimum": 0
+          },
           "checkpoint_id": {
             "type": [
               "string",
@@ -18008,6 +18026,24 @@
           "strategy_used": {
             "type": "string",
             "description": "Combined strategy description (e.g., \"observation_masking+native\")."
+          },
+          "tokens_after": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Provider-reported output tokens after compaction, when available.",
+            "minimum": 0
+          },
+          "tokens_before": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Estimated or provider-reported input tokens before compaction.",
+            "minimum": 0
           }
         }
       },
@@ -18020,6 +18056,15 @@
           "messages_before"
         ],
         "properties": {
+          "bytes_before": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Serialized request-context bytes before compaction, when measurable.",
+            "minimum": 0
+          },
           "messages_before": {
             "type": "integer",
             "description": "Number of messages before compaction.",
@@ -18032,6 +18077,15 @@
           "strategy": {
             "type": "string",
             "description": "Strategy requested (may differ from strategy_used in the completed event)."
+          },
+          "tokens_before": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Estimated or provider-reported input tokens before compaction.",
+            "minimum": 0
           }
         }
       },

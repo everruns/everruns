@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use everruns_core::{
     AgentLoopError, COMPACTION_CHECKPOINT_FORMAT_VERSION, CompactionCheckpoint,
-    CompactionCheckpointPayload, CompactionCheckpointStore, SessionId,
+    CompactionCheckpointPayload, CompactionCheckpointStore, ProactiveCompactionAttempt,
+    ProactiveCompactionAttemptTracker, SessionId,
 };
 use std::sync::Arc;
 
@@ -13,11 +14,28 @@ const MAX_CHECKPOINT_PAYLOAD_BYTES: usize = 32 * 1024 * 1024;
 pub struct DbCompactionCheckpointStore {
     db: Arc<StorageBackend>,
     encryption: Arc<EncryptionService>,
+    proactive_attempts: Arc<ProactiveCompactionAttemptTracker>,
 }
 
 impl DbCompactionCheckpointStore {
     pub fn new(db: Arc<StorageBackend>, encryption: Arc<EncryptionService>) -> Self {
-        Self { db, encryption }
+        Self::with_proactive_attempt_tracker(
+            db,
+            encryption,
+            Arc::new(ProactiveCompactionAttemptTracker::default()),
+        )
+    }
+
+    pub fn with_proactive_attempt_tracker(
+        db: Arc<StorageBackend>,
+        encryption: Arc<EncryptionService>,
+        proactive_attempts: Arc<ProactiveCompactionAttemptTracker>,
+    ) -> Self {
+        Self {
+            db,
+            encryption,
+            proactive_attempts,
+        }
     }
 }
 
@@ -86,6 +104,31 @@ impl CompactionCheckpointStore for DbCompactionCheckpointStore {
             })
             .await
             .map_err(|error| AgentLoopError::store(error.to_string()))
+    }
+
+    async fn get_proactive_attempt(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+    ) -> everruns_core::Result<Option<ProactiveCompactionAttempt>> {
+        Ok(self
+            .proactive_attempts
+            .get(session_id, provider_type, model)
+            .await)
+    }
+
+    async fn record_proactive_attempt(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+        attempt: ProactiveCompactionAttempt,
+    ) -> everruns_core::Result<()> {
+        self.proactive_attempts
+            .record(session_id, provider_type, model, attempt)
+            .await;
+        Ok(())
     }
 }
 

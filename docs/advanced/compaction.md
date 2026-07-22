@@ -190,6 +190,27 @@ Compaction is a capability configured per agent or harness via `AgentCapabilityC
 | `proactive` | boolean | `true` | Compact before hitting context limits (recommended) |
 | `budget_percent` | float | `0.85` | Trigger proactive compaction at this fraction of the context window |
 
+For `auto` and `native`, proactive pressure invokes provider-native compaction
+when the driver supports it and stores the result as a durable checkpoint. The
+driver's effective model context window takes precedence over the built-in
+profile, so external drivers can report their actual limit. Stateful
+`previous_response_id` requests skip local proactive pressure checks because
+their request body is only a delta over provider-held context; reactive
+too-large recovery remains available.
+
+A native result must materially reduce provider-reported tokens, or serialized
+bytes when token usage is unavailable: at least 5%, with a 32-unit floor for
+small measurements. Smaller results do not install or replace a checkpoint and
+do not emit `context.compacted`. A newly installed checkpoint
+is not proactively replaced again until a meaningful raw-message suffix has
+accumulated. Failed and no-op native attempts are also held behind a retry
+watermark until estimated input grows by both 4,096 tokens and 5%, avoiding
+repeated compact calls against the same source. Branch and rollback selection
+ignore watermarks from a different transcript lineage. When it is re-armed, the
+next native compact request preserves the
+prior opaque checkpoint items in order before appending that suffix, for both
+proactive and reactive compaction.
+
 ### Observation Masking
 
 | Field | Type | Default | Description |
@@ -255,11 +276,13 @@ Compaction emits two SSE events:
 
 | Event | When | Key fields |
 |---|---|---|
-| `context.compacting` | Cascade starts | `reason` (proactive_budget, request_too_large, manual), `strategy`, `messages_before` |
-| `context.compacted` | Cascade completes | `strategy_used`, `messages_before`, `messages_after`, `duration_ms`, `steps[]` |
+| `context.compacting` | Semantic compaction starts | `reason` (proactive_budget, request_too_large, manual), `strategy`, `messages_before`, optional `tokens_before` / `bytes_before` |
+| `context.compacted` | Material semantic reduction completes | `strategy_used`, `messages_before`, `messages_after`, optional before/after token or byte metrics, `duration_ms`, `steps[]`, optional `checkpoint_id` |
 
 Each step in the cascade is recorded with its strategy name, resulting message count, and duration.
 Provider-encrypted native compact content is never included in these public events.
+Observation masking alone remains an outbound model-view optimization and does
+not emit `context.compacted` because it installs no semantic checkpoint.
 
 ## Best Practices
 

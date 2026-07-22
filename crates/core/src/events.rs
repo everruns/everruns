@@ -2303,6 +2303,12 @@ pub struct ContextCompactingData {
     pub strategy: String,
     /// Number of messages before compaction.
     pub messages_before: usize,
+    /// Estimated or provider-reported input tokens before compaction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens_before: Option<u64>,
+    /// Serialized request-context bytes before compaction, when measurable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bytes_before: Option<u64>,
 }
 
 /// A single step in a compaction cascade.
@@ -2330,6 +2336,18 @@ pub struct ContextCompactedData {
     pub messages_before: usize,
     /// Number of messages after compaction.
     pub messages_after: usize,
+    /// Estimated or provider-reported input tokens before compaction.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens_before: Option<u64>,
+    /// Provider-reported output tokens after compaction, when available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tokens_after: Option<u64>,
+    /// Serialized request-context bytes before compaction, when measurable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bytes_before: Option<u64>,
+    /// Serialized compact output bytes, when measurable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bytes_after: Option<u64>,
     /// Total duration of all compaction steps in milliseconds.
     pub duration_ms: u64,
     /// Individual steps in the cascade.

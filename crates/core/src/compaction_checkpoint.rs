@@ -2,8 +2,8 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use tokio::sync::RwLock;
+use std::collections::{HashMap, VecDeque};
+use tokio::sync::{Mutex, RwLock};
 use uuid::Uuid;
 
 use crate::ProviderOpaqueContext;
@@ -30,6 +30,14 @@ pub struct CompactionCheckpoint {
     pub payload: CompactionCheckpointPayload,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProactiveCompactionAttempt {
+    pub source_sequence: i64,
+    pub estimated_input_tokens: u64,
+    pub input_message_count: usize,
+    pub source_fingerprint: [u8; 32],
+}
+
 impl CompactionCheckpoint {
     pub fn is_compatible(&self, provider_type: &str, model: &str) -> bool {
         self.format_version == COMPACTION_CHECKPOINT_FORMAT_VERSION
@@ -49,14 +57,104 @@ pub trait CompactionCheckpointStore: Send + Sync {
 
     /// Install a checkpoint only if no newer source boundary is canonical.
     async fn install(&self, checkpoint: CompactionCheckpoint) -> Result<bool>;
+
+    /// Latest pressure snapshot where proactive native compaction was attempted.
+    ///
+    /// This process-lifetime watermark prevents an ineffective or failed
+    /// provider call from being repeated on every reasoning iteration. The
+    /// source fingerprint makes it lineage-local across rollback/branch
+    /// selection. Durable checkpoints remain the semantic replacement
+    /// contract; this marker only controls retry pressure and never substitutes
+    /// for a checkpoint.
+    async fn get_proactive_attempt(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+    ) -> Result<Option<ProactiveCompactionAttempt>>;
+
+    async fn record_proactive_attempt(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+        attempt: ProactiveCompactionAttempt,
+    ) -> Result<()>;
 }
 
 type CheckpointKey = (SessionId, String, String, u32);
+type AttemptKey = (SessionId, String, String);
+
+const DEFAULT_PROACTIVE_ATTEMPT_CAPACITY: usize = 4_096;
+
+/// Bounded process-local retry watermarks shared by successive reason atoms.
+/// Oldest session/provider/model entries are evicted once capacity is reached.
+#[derive(Debug)]
+pub struct ProactiveCompactionAttemptTracker {
+    capacity: usize,
+    state: Mutex<ProactiveAttemptState>,
+}
+
+#[derive(Debug, Default)]
+struct ProactiveAttemptState {
+    attempts: HashMap<AttemptKey, ProactiveCompactionAttempt>,
+    insertion_order: VecDeque<AttemptKey>,
+}
+
+impl Default for ProactiveCompactionAttemptTracker {
+    fn default() -> Self {
+        Self {
+            capacity: DEFAULT_PROACTIVE_ATTEMPT_CAPACITY,
+            state: Mutex::new(ProactiveAttemptState::default()),
+        }
+    }
+}
+
+impl ProactiveCompactionAttemptTracker {
+    pub async fn get(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+    ) -> Option<ProactiveCompactionAttempt> {
+        self.state
+            .lock()
+            .await
+            .attempts
+            .get(&(session_id, provider_type.to_string(), model.to_string()))
+            .copied()
+    }
+
+    pub async fn record(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+        attempt: ProactiveCompactionAttempt,
+    ) {
+        let key = (session_id, provider_type.to_string(), model.to_string());
+        let mut state = self.state.lock().await;
+        if let Some(current) = state.attempts.get_mut(&key) {
+            if attempt.source_sequence >= current.source_sequence {
+                *current = attempt;
+            }
+            return;
+        }
+        while state.attempts.len() >= self.capacity {
+            if let Some(oldest) = state.insertion_order.pop_front() {
+                state.attempts.remove(&oldest);
+            }
+        }
+        state.insertion_order.push_back(key.clone());
+        state.attempts.insert(key, attempt);
+    }
+}
 
 /// In-memory implementation used by embedded runtimes and entry-point tests.
 #[derive(Debug, Default)]
 pub struct InMemoryCompactionCheckpointStore {
     checkpoints: RwLock<HashMap<CheckpointKey, CompactionCheckpoint>>,
+    proactive_attempts: ProactiveCompactionAttemptTracker,
 }
 
 #[async_trait]
@@ -96,6 +194,31 @@ impl CompactionCheckpointStore for InMemoryCompactionCheckpointStore {
         }
         checkpoints.insert(key, checkpoint);
         Ok(true)
+    }
+
+    async fn get_proactive_attempt(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+    ) -> Result<Option<ProactiveCompactionAttempt>> {
+        Ok(self
+            .proactive_attempts
+            .get(session_id, provider_type, model)
+            .await)
+    }
+
+    async fn record_proactive_attempt(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+        attempt: ProactiveCompactionAttempt,
+    ) -> Result<()> {
+        self.proactive_attempts
+            .record(session_id, provider_type, model, attempt)
+            .await;
+        Ok(())
     }
 }
 
@@ -148,5 +271,26 @@ mod tests {
         assert!(!checkpoint.is_compatible("openai", "gpt-5.5"));
         checkpoint.format_version += 1;
         assert!(!checkpoint.is_compatible("openai", "gpt-5.4"));
+    }
+
+    #[tokio::test]
+    async fn proactive_attempt_tracker_evicts_oldest_entry_at_capacity() {
+        let tracker = ProactiveCompactionAttemptTracker::default();
+        let first = SessionId::new();
+        let attempt = ProactiveCompactionAttempt {
+            source_sequence: 1,
+            estimated_input_tokens: 10_000,
+            input_message_count: 1,
+            source_fingerprint: [7; 32],
+        };
+        tracker.record(first, "openai", "gpt-5.4", attempt).await;
+        let mut last = first;
+        for _ in 1..=DEFAULT_PROACTIVE_ATTEMPT_CAPACITY {
+            last = SessionId::new();
+            tracker.record(last, "openai", "gpt-5.4", attempt).await;
+        }
+
+        assert!(tracker.get(first, "openai", "gpt-5.4").await.is_none());
+        assert_eq!(tracker.get(last, "openai", "gpt-5.4").await, Some(attempt));
     }
 }

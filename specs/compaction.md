@@ -42,6 +42,32 @@ higher event sequences and therefore remain in the raw suffix. A failed compact
 call or failed checkpoint write leaves the previous checkpoint canonical and
 does not emit a successful compaction event.
 
+Proactive `auto` and `native` policy uses the driver's native compact operation
+when it is supported and installs the result through this same checkpoint path;
+reactive and proactive compaction do not have separate durability semantics. A
+fresh checkpoint is disarmed for proactive replacement until a meaningful raw
+suffix has accumulated. Native output is accepted only when provider token
+usage, or serialized byte size when token usage is unavailable, proves a
+material reduction of at least 5%, with a 32-unit absolute floor for small
+measurements. A smaller effect does not replace the checkpoint or emit
+`context.compacted`. Every proactive native attempt also records its session,
+provider/model, and raw source boundary in a process-lifetime retry watermark.
+An ineffective or failed attempt is not repeated for an unchanged or tiny
+suffix; estimated input growth of at least 4,096 tokens and 5% of the attempted
+input re-arms it. Source sequence supplies monotonic identity while a transcript
+prefix fingerprint prevents an abandoned branch's watermark from suppressing
+the selected branch. The process-local map is capped at 4,096
+session/provider/model entries with oldest-entry eviction. This retry-control
+marker is not a semantic checkpoint and is never exposed as one.
+Watermark lookup and recording fail open with a warning: a transient retry-map
+or adapter failure must never block the normal model turn.
+
+When a checkpoint is compacted again, its ordered opaque output is converted to
+compact input without interpretation and prepended to the raw suffix. This
+composition applies to proactive re-arming and reactive `RequestTooLarge`
+recovery; checkpoint N+1 must semantically contain checkpoint N plus every
+suffix item through its new source boundary.
+
 Provider-native checkpoint payloads are sensitive opaque data and MUST be
 encrypted at rest. They are available only to the internal runtime storage
 boundary. Public events and APIs expose, at most, the checkpoint identifier,
@@ -83,6 +109,16 @@ both cases.
 
 Opaque compact content is provider transport state, not a public event payload.
 Compaction events expose counts, strategy, duration, and usage metadata only.
+
+Stateful `previous_response_id` requests are deltas over provider-held context.
+The reconstructed lossless transcript is therefore not a valid local pressure
+measurement for proactive policy. In the absence of authoritative provider
+usage for that server-side context, the runtime skips local proactive
+compaction and retains reactive `RequestTooLarge` recovery by stateful handle.
+
+Observation masking remains a model-view cost optimization. It may reduce an
+outbound request without replacing semantic history, and by itself does not
+emit a successful durable `context.compacted` event.
 
 ## Current State
 
