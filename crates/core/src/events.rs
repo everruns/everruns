@@ -111,6 +111,9 @@ pub const REASON_ITEM: &str = "reason.item";
 pub const SESSION_STARTED: &str = "session.started";
 pub const SESSION_ACTIVATED: &str = "session.activated";
 pub const SESSION_IDLED: &str = "session.idled";
+/// Session title changed through a mutation path that participates in the
+/// semantic event protocol.
+pub const SESSION_TITLE_UPDATED: &str = "session.title.updated";
 
 // Schedule events
 pub const SCHEDULE_TRIGGERED: &str = "schedule.triggered";
@@ -182,6 +185,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     SESSION_STARTED,
     SESSION_ACTIVATED,
     SESSION_IDLED,
+    SESSION_TITLE_UPDATED,
     SCHEDULE_TRIGGERED,
     CONTEXT_COMPACTING,
     CONTEXT_COMPACTED,
@@ -2229,6 +2233,17 @@ pub struct SessionIdledData {
     pub usage: Option<TokenUsage>,
 }
 
+/// Data for `session.title.updated`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct SessionTitleUpdatedData {
+    /// Title before the mutation. `None` means the session was untitled.
+    pub previous_title: Option<String>,
+
+    /// New session title.
+    pub title: String,
+}
+
 // ============================================================================
 // Session task event data
 // ============================================================================
@@ -2494,6 +2509,7 @@ pub struct VoiceSessionFailedData {
 /// - `session.started` → SessionStartedData
 /// - `session.activated` → SessionActivatedData
 /// - `session.idled` → SessionIdledData
+/// - `session.title.updated` → SessionTitleUpdatedData
 /// - `file.written` → FileWrittenData
 // `untagged` is retained ONLY for encoding and schema, not decoding:
 //   - `Serialize` emits the payload inline (the event `type` lives as a sibling
@@ -2559,6 +2575,7 @@ pub enum EventData {
     SessionStarted(SessionStartedData),
     SessionActivated(SessionActivatedData),
     SessionIdled(SessionIdledData),
+    SessionTitleUpdated(SessionTitleUpdatedData),
 
     // Session task lifecycle events (full snapshots)
     TaskCreated(SessionTaskEventData),
@@ -2726,6 +2743,7 @@ event_data_kinds! {
     SessionStarted(SessionStartedData) = SESSION_STARTED,
     SessionActivated(SessionActivatedData) = SESSION_ACTIVATED,
     SessionIdled(SessionIdledData) = SESSION_IDLED,
+    SessionTitleUpdated(SessionTitleUpdatedData) = SESSION_TITLE_UPDATED,
 
     // Context compaction events
     ContextCompacting(ContextCompactingData) = CONTEXT_COMPACTING,
@@ -2804,6 +2822,7 @@ impl_from_event_data! {
     SessionStartedData => SessionStarted,
     SessionActivatedData => SessionActivated,
     SessionIdledData => SessionIdled,
+    SessionTitleUpdatedData => SessionTitleUpdated,
     ContextCompactingData => ContextCompacting,
     ContextCompactedData => ContextCompacted,
     FileWrittenData => FileWritten,
@@ -4378,6 +4397,26 @@ mod contract_tests {
         });
     }
 
+    #[test]
+    fn snapshot_session_title_updated() {
+        let data = SessionTitleUpdatedData {
+            previous_title: Some("Old title".to_string()),
+            title: "Automatic Session Titles".to_string(),
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_session_title_updated", data);
+        });
+
+        let untitled = serde_json::to_value(SessionTitleUpdatedData {
+            previous_title: None,
+            title: "First title".to_string(),
+        })
+        .expect("serialize title event");
+        assert!(untitled["previous_title"].is_null());
+    }
+
     // ========================================================================
     // Display Name Tests
     // ========================================================================
@@ -4732,6 +4771,14 @@ mod contract_tests {
                     turn_id: test_turn_id(),
                     iterations: None,
                     usage: None,
+                }
+                .into(),
+            ),
+            (
+                SESSION_TITLE_UPDATED,
+                SessionTitleUpdatedData {
+                    previous_title: Some("Old title".to_string()),
+                    title: "New title".to_string(),
                 }
                 .into(),
             ),

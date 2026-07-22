@@ -1073,6 +1073,31 @@ Session became idle (turn completed). Contains cumulative session usage for real
 
 **Usage Field:** Contains cumulative session token usage at this point.
 
+#### `session.title.updated`
+
+The session's human-readable title changed. This event is emitted only for an
+actual value change. Tool-originated mutations retain the active turn and input
+message correlation; session-level mutation paths omit turn fields when no turn
+exists.
+
+```json
+{
+  "type": "session.title.updated",
+  "session_id": "...",
+  "context": {
+    "turn_id": "...",
+    "input_message_id": "..."
+  },
+  "data": {
+    "previous_title": "Untitled investigation",
+    "title": "Automatic Session Title Policy"
+  }
+}
+```
+
+`previous_title` is `null` when the session was previously untitled. Consumers
+can project the new value directly from `title`; no session re-fetch is needed.
+
 ### Subagent Events (retired — superseded by Session Task Events)
 
 The `subagent.spawned`, `subagent.completed`, `subagent.failed`, and

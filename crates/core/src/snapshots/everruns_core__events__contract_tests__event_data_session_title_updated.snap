@@ -1,0 +1,9 @@
+---
+source: crates/core/src/events.rs
+assertion_line: 4410
+expression: data
+---
+{
+  "previous_title": "Old title",
+  "title": "Automatic Session Titles"
+}

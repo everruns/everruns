@@ -14,7 +14,7 @@ use everruns_core::provider::DriverId;
 use everruns_core::typed_id::{AgentId, MessageId, SessionParticipantId, TurnId};
 use everruns_core::{
     ANONYMOUS_USER_ID, Message, Session, SessionContextReport, SessionParticipant,
-    SessionParticipantKind, SessionParticipantRole,
+    SessionParticipantKind, SessionParticipantRole, session_title_updated_event,
 };
 use serde::Deserialize;
 use std::str::FromStr;
@@ -753,6 +753,10 @@ mod tests {
 
     fn test_ctx(db: Arc<StorageBackend>, max_sessions_per_org: i64) -> Ctx {
         let session_service = Arc::new(crate::domains::sessions::SessionService::new(db.clone()));
+        let event_service = Arc::new(crate::services::EventService::new(
+            db.clone(),
+            crate::event_delivery::EventDelivery::in_memory(),
+        ));
         let capability_service =
             Arc::new(crate::services::CapabilityService::new(db.clone(), None));
         // Internal caller: the owner principal resolves to the system principal,
@@ -764,7 +768,8 @@ mod tests {
             None,
             Arc::new(DefaultPermissionResolver),
         )
-        .with_session_service(session_service);
+        .with_session_service(session_service)
+        .with_event_service(event_service);
         ctx.resource_limits.max_sessions_per_org = max_sessions_per_org;
         ctx
     }
@@ -919,6 +924,53 @@ mod tests {
             everruns_core::SessionStatus::Idle,
             "cancelled session must settle to idle"
         );
+    }
+
+    #[tokio::test]
+    async fn update_session_title_emits_one_semantic_event_per_change() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = test_ctx(db, 100);
+        let harness_id = seed_harness(&ctx).await;
+        let session = CreateSession(create_request(harness_id))
+            .execute(&ctx)
+            .await
+            .expect("create session");
+
+        for _ in 0..2 {
+            UpdateSessionCmd {
+                session_id: session.id.to_string(),
+                req: serde_json::from_value(serde_json::json!({"title": "Updated title"}))
+                    .expect("update request"),
+            }
+            .execute(&ctx)
+            .await
+            .expect("update title");
+        }
+
+        let events = ctx
+            .event_service
+            .as_ref()
+            .expect("event service")
+            .list(
+                session.id.uuid(),
+                None,
+                None,
+                &[everruns_core::SESSION_TITLE_UPDATED.to_string()],
+                &[],
+                None,
+                None,
+            )
+            .await
+            .expect("list events");
+        assert_eq!(events.len(), 1);
+        assert!(events[0].context.turn_id.is_none());
+        match &events[0].data {
+            EventData::SessionTitleUpdated(data) => {
+                assert_eq!(data.previous_title.as_deref(), Some("Test Session"));
+                assert_eq!(data.title, "Updated title");
+            }
+            data => panic!("unexpected event data: {data:?}"),
+        }
     }
 
     #[tokio::test]
@@ -1257,11 +1309,34 @@ impl Command for UpdateSessionCmd {
         let mut req = self.req;
         req.locale =
             crate::api::validation::normalize_locale(req.locale).map_err(limit_validation_error)?;
-        q::session_service(ctx)?
+        let requested_title = req.title.clone();
+        let title_event = if let Some(title) = requested_title {
+            let previous_title = q::get_session(ctx, session_id, None).await?.title;
+            session_title_updated_event(session_id, EventContext::empty(), previous_title, title)
+        } else {
+            None
+        };
+        // Resolve the emitter before mutating so a title change cannot succeed
+        // through this path when its semantic event cannot be produced.
+        let event_service = if title_event.is_some() {
+            Some(ctx.event_service.clone().ok_or_else(|| {
+                CommandError::internal(anyhow::anyhow!("Event service not configured"))
+            })?)
+        } else {
+            None
+        };
+
+        let session = q::session_service(ctx)?
             .update(&ctx.caller, session_id.uuid(), req)
             .await
             .map_err(classify_anyhow)?
-            .ok_or_else(|| CommandError::not_found("Session"))
+            .ok_or_else(|| CommandError::not_found("Session"))?;
+
+        if let (Some(event), Some(event_service)) = (title_event, event_service) {
+            event_service.emit(event).await.map_err(classify_anyhow)?;
+        }
+
+        Ok(session)
     }
 }
 

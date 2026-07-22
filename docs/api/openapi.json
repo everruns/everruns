@@ -20588,6 +20588,9 @@
             "$ref": "#/components/schemas/SessionIdledData"
           },
           {
+            "$ref": "#/components/schemas/SessionTitleUpdatedData"
+          },
+          {
             "$ref": "#/components/schemas/SessionTaskEventData"
           },
           {
@@ -33868,6 +33871,26 @@
           "failed",
           "canceled"
         ]
+      },
+      "SessionTitleUpdatedData": {
+        "type": "object",
+        "description": "Data for `session.title.updated`.",
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "previous_title": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Title before the mutation. `None` means the session was untitled."
+          },
+          "title": {
+            "type": "string",
+            "description": "New session title."
+          }
+        }
       },
       "SetDefaultAgentVersionRequest": {
         "type": "object",
