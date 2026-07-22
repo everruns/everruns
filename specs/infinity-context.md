@@ -18,6 +18,16 @@ These are two answers to the same problem and they are **not** freely composable
 - **Infinity Context is a backstop**, valuable mainly for its lossless `query_history` search over full storage.
 - When both are enabled, infinity context detects compaction (via the derived `compaction_active` flag set during capability collection) and **defers token-budget eviction to compaction**: it anchors the task, provides `query_history`, and stops trimming, so compaction owns reduction.
 
+This deferral does not turn observation masking into a durable checkpoint.
+Masking remains a prompt-view cost optimization, while replacement checkpoints
+own semantic prefix replacement and re-arm only after a meaningful raw suffix
+accumulates. Failed or ineffective native attempts use the same meaningful
+token-growth principle as a negative retry watermark, preventing repeated
+provider calls against an unchanged over-budget transcript. Stateful provider
+continuations also skip
+local proactive pressure estimates because their outbound input is a delta, not
+the server-held context.
+
 ## Problem Statement
 
 ### Current Behavior

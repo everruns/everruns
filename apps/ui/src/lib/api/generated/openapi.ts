@@ -5318,6 +5318,18 @@ export interface components {
     ContextCompactedData: {
       /**
        * Format: int64
+       * @description Serialized compact output bytes, when measurable.
+       */
+      bytes_after?: number | null;
+      /**
+       * Format: int64
+       * @description Serialized request-context bytes before compaction, when measurable.
+       */
+      bytes_before?: number | null;
+      /** @description Durable checkpoint installed by this compaction, when applicable. */
+      checkpoint_id?: string | null;
+      /**
+       * Format: int64
        * @description Total duration of all compaction steps in milliseconds.
        */
       duration_ms: number;
@@ -5329,15 +5341,35 @@ export interface components {
       steps?: components["schemas"]["CompactionStepData"][];
       /** @description Combined strategy description (e.g., "observation_masking+native"). */
       strategy_used: string;
+      /**
+       * Format: int64
+       * @description Provider-reported output tokens after compaction, when available.
+       */
+      tokens_after?: number | null;
+      /**
+       * Format: int64
+       * @description Estimated or provider-reported input tokens before compaction.
+       */
+      tokens_before?: number | null;
     };
     /** @description Data for context.compacting event (compaction starting). */
     ContextCompactingData: {
+      /**
+       * Format: int64
+       * @description Serialized request-context bytes before compaction, when measurable.
+       */
+      bytes_before?: number | null;
       /** @description Number of messages before compaction. */
       messages_before: number;
       /** @description Why compaction was triggered. */
       reason: components["schemas"]["CompactionReason"];
       /** @description Strategy requested (may differ from strategy_used in the completed event). */
       strategy: string;
+      /**
+       * Format: int64
+       * @description Estimated or provider-reported input tokens before compaction.
+       */
+      tokens_before?: number | null;
     };
     /**
      * @description Single-source token contribution within a `ContextReportSection` — the
@@ -6928,6 +6960,7 @@ export interface components {
       | components["schemas"]["SessionStartedData"]
       | components["schemas"]["SessionActivatedData"]
       | components["schemas"]["SessionIdledData"]
+      | components["schemas"]["SessionTitleUpdatedData"]
       | components["schemas"]["SessionTaskEventData"]
       | components["schemas"]["SessionTaskEventData"]
       | components["schemas"]["TaskMessageEventData"]
@@ -14479,6 +14512,13 @@ export interface components {
      * @enum {string}
      */
     SessionTaskState: "queued" | "running" | "awaiting_input" | "succeeded" | "failed" | "canceled";
+    /** @description Data for `session.title.updated`. */
+    SessionTitleUpdatedData: {
+      /** @description Title before the mutation. `None` means the session was untitled. */
+      previous_title?: string | null;
+      /** @description New session title. */
+      title: string;
+    };
     /** @description Request body for the `set_default_agent_version` operation. */
     SetDefaultAgentVersionRequest: {
       /**

@@ -658,9 +658,33 @@ and bypasses transcript-delta trimming and tool-structure pruning. The context
 enum supports lossless serialization for durable runtime checkpoints and uses
 a payload-redacting `Debug` implementation.
 
+If a later compact call replaces a restored checkpoint, the prior compact
+output is converted item-for-item to compact input and placed before the raw
+suffix. The compact request is standalone and omits `previous_response_id`;
+this ordering rule is identical for proactive and reactive compaction.
+
 ### ChatDriver Compact Methods
 
 The `ChatDriver` trait includes `supports_compact()` and `compact()` methods. See `crates/provider/src/driver_registry.rs` for `CompactRequest`, `CompactInputItem`, `CompactResponse`, and `CompactOutputItem` types.
+
+The trait also exposes an optional effective context-window seam. A driver
+whose runtime model aliases or profiles are not represented in Everruns'
+built-in provider/model table returns its authoritative context limit there.
+Host proactive policy prefers that value and falls back to the built-in profile
+only when the driver has no override. This keeps external drivers such as
+`openai-codex` provider-neutral while preventing a guessed 128k fallback from
+driving compaction policy.
+
+The host records the raw source boundary before each proactive native call.
+When a driver fails or returns a result without material token/byte reduction,
+the host suppresses another call for that session/provider/model until estimated
+input grows by at least 4,096 tokens and 5%. The source boundary remains the
+monotonic identity, while an input-prefix fingerprint rejects watermarks from an
+abandoned branch. Drivers do not need to implement this negative backoff
+themselves. Attempt watermark I/O is advisory and fails open; an unavailable
+external store must not prevent either compaction or the subsequent model call.
+Material reduction means at least 5% and 32 measured tokens/bytes, providing
+useful headroom instead of accepting any merely smaller response.
 
 ### Provider Support
 

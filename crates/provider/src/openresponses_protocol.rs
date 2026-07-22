@@ -1833,6 +1833,20 @@ pub enum CompactInputItem {
     Compaction { encrypted_content: String },
 }
 
+impl From<&CompactOutputItem> for CompactInputItem {
+    fn from(item: &CompactOutputItem) -> Self {
+        match item {
+            CompactOutputItem::Message { role, content } => Self::Message {
+                role: role.clone(),
+                content: content.clone(),
+            },
+            CompactOutputItem::Compaction { encrypted_content } => Self::Compaction {
+                encrypted_content: encrypted_content.clone(),
+            },
+        }
+    }
+}
+
 /// Content for compact input items
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]

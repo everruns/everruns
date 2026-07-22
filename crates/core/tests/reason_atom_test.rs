@@ -22,7 +22,7 @@ use everruns_core::runtime_agent::RuntimeAgent;
 use everruns_core::session::{Session, SessionStatus};
 use everruns_core::traits::{NoopEventEmitter, ResolvedModel};
 use everruns_core::typed_id::{HarnessId, MessageId, PrincipalId, SessionId, TurnId};
-use everruns_core::{Controls, Message, ToolCall};
+use everruns_core::{CompactionCheckpointStore, Controls, Message, ToolCall};
 use futures::stream;
 use serde_json::json;
 use std::sync::Arc;
@@ -212,6 +212,270 @@ struct NativeCompactFailureDriver {
     attempts: Arc<AtomicUsize>,
 }
 
+#[derive(Clone, Debug)]
+struct ProactiveCompactDriver {
+    compact_attempts: Arc<AtomicUsize>,
+    compact_requests: Arc<Mutex<Vec<everruns_core::CompactRequest>>>,
+    chat_attempts: Arc<AtomicUsize>,
+    request_too_large_attempt: Arc<Mutex<Option<usize>>>,
+    calls: Arc<Mutex<Vec<CapturedLlmCall>>>,
+    context_window: usize,
+    stateful: bool,
+    fail_compact: bool,
+    usage: (u32, u32),
+}
+
+#[async_trait]
+impl everruns_core::ChatDriver for ProactiveCompactDriver {
+    async fn chat_completion_stream(
+        &self,
+        messages: Vec<everruns_core::LlmMessage>,
+        config: &everruns_core::LlmCallConfig,
+    ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
+        self.calls.lock().await.push((messages, config.clone()));
+        let attempt = self.chat_attempts.fetch_add(1, Ordering::SeqCst);
+        if *self.request_too_large_attempt.lock().await == Some(attempt) {
+            return Err(everruns_core::AgentLoopError::request_too_large(
+                "forced reactive compaction",
+            ));
+        }
+        Ok(Box::pin(stream::iter(vec![
+            Ok(everruns_core::LlmStreamEvent::TextDelta("ok".to_string())),
+            Ok(everruns_core::LlmStreamEvent::Done(Box::default())),
+        ])))
+    }
+
+    fn supports_compact(&self) -> bool {
+        true
+    }
+
+    fn supports_stateful_responses(&self) -> bool {
+        self.stateful
+    }
+
+    fn effective_context_window(&self, _model: &str) -> Option<usize> {
+        Some(self.context_window)
+    }
+
+    async fn compact(
+        &self,
+        request: everruns_core::CompactRequest,
+    ) -> everruns_core::Result<Option<everruns_core::CompactResponse>> {
+        self.compact_attempts.fetch_add(1, Ordering::SeqCst);
+        self.compact_requests.lock().await.push(request);
+        if self.fail_compact {
+            return Err(everruns_core::AgentLoopError::llm("compact failed"));
+        }
+        Ok(Some(everruns_core::CompactResponse {
+            output: vec![everruns_core::CompactOutputItem::Compaction {
+                encrypted_content: "proactive-opaque-payload".to_string(),
+            }],
+            usage: Some(everruns_core::CompactUsage {
+                input_tokens: Some(self.usage.0),
+                output_tokens: Some(self.usage.1),
+                total_tokens: Some(self.usage.0.saturating_add(self.usage.1)),
+            }),
+        }))
+    }
+}
+
+struct ProactiveTestRig {
+    harness_store: InMemoryHarnessStore,
+    agent_store: InMemoryAgentStore,
+    session_store: InMemorySessionStore,
+    message_retriever: InMemoryMessageRetriever,
+    provider_store: InMemoryProviderStore,
+    capability_registry: CapabilityRegistry,
+    driver_registry: DriverRegistry,
+    event_emitter: everruns_core::in_memory::InMemoryEventEmitter,
+    checkpoint_store: Arc<everruns_core::InMemoryCompactionCheckpointStore>,
+    harness_id: HarnessId,
+    agent_id: Uuid,
+    session_id: Uuid,
+    compact_attempts: Arc<AtomicUsize>,
+    compact_requests: Arc<Mutex<Vec<everruns_core::CompactRequest>>>,
+    request_too_large_attempt: Arc<Mutex<Option<usize>>>,
+    calls: Arc<Mutex<Vec<CapturedLlmCall>>>,
+    provider_type: DriverId,
+    model: String,
+}
+
+impl ProactiveTestRig {
+    async fn new(
+        provider_type: DriverId,
+        context_window: usize,
+        usage: (u32, u32),
+        stateful: bool,
+        fail_compact: bool,
+    ) -> Self {
+        use everruns_core::AgentCapabilityConfig;
+        use everruns_core::capabilities::{COMPACTION_CAPABILITY_ID, CompactionCapability};
+        use everruns_core::traits::SessionStore;
+
+        let (
+            harness_store,
+            agent_store,
+            session_store,
+            message_retriever,
+            provider_store,
+            harness_id,
+            agent_id,
+            session_id,
+        ) = setup_test_environment().await;
+        let model = "external-model-profile".to_string();
+        provider_store
+            .set_default_model(ResolvedModel {
+                model: model.clone(),
+                provider_type: provider_type.clone(),
+                api_key: None,
+                base_url: None,
+                provider_metadata: None,
+            })
+            .await;
+        let mut session = session_store
+            .get_session(session_id.into())
+            .await
+            .unwrap()
+            .unwrap();
+        session.capabilities = vec![AgentCapabilityConfig::with_config(
+            COMPACTION_CAPABILITY_ID,
+            json!({
+                "strategy": "native",
+                "proactive": true,
+                "budget_percent": 0.5
+            }),
+        )];
+        session_store.add_session(session).await;
+        message_retriever
+            .seed(session_id.into(), vec![Message::user("x".repeat(400_000))])
+            .await;
+
+        let compact_attempts = Arc::new(AtomicUsize::new(0));
+        let compact_requests = Arc::new(Mutex::new(Vec::new()));
+        let chat_attempts = Arc::new(AtomicUsize::new(0));
+        let request_too_large_attempt = Arc::new(Mutex::new(None));
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let driver = ProactiveCompactDriver {
+            compact_attempts: compact_attempts.clone(),
+            compact_requests: compact_requests.clone(),
+            chat_attempts,
+            request_too_large_attempt: request_too_large_attempt.clone(),
+            calls: calls.clone(),
+            context_window,
+            stateful,
+            fail_compact,
+            usage,
+        };
+        let mut driver_registry = DriverRegistry::new();
+        driver_registry.register(provider_type.clone(), move |_| Box::new(driver.clone()));
+        let mut capability_registry = CapabilityRegistry::new();
+        capability_registry.register(CompactionCapability);
+
+        Self {
+            harness_store,
+            agent_store,
+            session_store,
+            message_retriever,
+            provider_store,
+            capability_registry,
+            driver_registry,
+            event_emitter: everruns_core::in_memory::InMemoryEventEmitter::new(),
+            checkpoint_store: Arc::new(everruns_core::InMemoryCompactionCheckpointStore::default()),
+            harness_id,
+            agent_id,
+            session_id,
+            compact_attempts,
+            compact_requests,
+            request_too_large_attempt,
+            calls,
+            provider_type,
+            model,
+        }
+    }
+
+    async fn execute(&self, previous_response_id: Option<&str>) -> everruns_core::Result<()> {
+        self.execute_with_checkpoint_store(previous_response_id, self.checkpoint_store.clone())
+            .await
+    }
+
+    async fn execute_with_checkpoint_store(
+        &self,
+        previous_response_id: Option<&str>,
+        checkpoint_store: Arc<dyn everruns_core::CompactionCheckpointStore>,
+    ) -> everruns_core::Result<()> {
+        let atom = ReasonAtom::new(
+            self.harness_store.clone(),
+            self.agent_store.clone(),
+            self.session_store.clone(),
+            self.message_retriever.clone(),
+            self.provider_store.clone(),
+            self.capability_registry.clone(),
+            self.driver_registry.clone(),
+            self.event_emitter.clone(),
+        )
+        .with_compaction_checkpoint_store(checkpoint_store);
+        atom.execute(ReasonInput {
+            context: create_context(self.session_id),
+            harness_id: self.harness_id,
+            agent_id: Some(self.agent_id.into()),
+            org_id: 0,
+            mcp_tool_definitions: vec![],
+            previous_response_id: previous_response_id.map(str::to_string),
+            iteration: 1,
+        })
+        .await
+        .map(|_| ())
+    }
+}
+
+struct FailingProactiveAttemptStore {
+    checkpoints: Arc<everruns_core::InMemoryCompactionCheckpointStore>,
+}
+
+#[async_trait]
+impl everruns_core::CompactionCheckpointStore for FailingProactiveAttemptStore {
+    async fn get_latest(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+    ) -> everruns_core::Result<Option<everruns_core::CompactionCheckpoint>> {
+        self.checkpoints
+            .get_latest(session_id, provider_type, model)
+            .await
+    }
+
+    async fn install(
+        &self,
+        checkpoint: everruns_core::CompactionCheckpoint,
+    ) -> everruns_core::Result<bool> {
+        self.checkpoints.install(checkpoint).await
+    }
+
+    async fn get_proactive_attempt(
+        &self,
+        _session_id: SessionId,
+        _provider_type: &str,
+        _model: &str,
+    ) -> everruns_core::Result<Option<everruns_core::ProactiveCompactionAttempt>> {
+        Err(everruns_core::AgentLoopError::store(
+            "attempt lookup unavailable",
+        ))
+    }
+
+    async fn record_proactive_attempt(
+        &self,
+        _session_id: SessionId,
+        _provider_type: &str,
+        _model: &str,
+        _attempt: everruns_core::ProactiveCompactionAttempt,
+    ) -> everruns_core::Result<()> {
+        Err(everruns_core::AgentLoopError::store(
+            "attempt write unavailable",
+        ))
+    }
+}
+
 #[async_trait]
 impl everruns_core::ChatDriver for NativeCompactFailureDriver {
     async fn chat_completion_stream(
@@ -336,7 +600,11 @@ impl everruns_core::ChatDriver for NativeCompactRetryDriver {
                     content: everruns_core::CompactContent::Text("last".to_string()),
                 },
             ],
-            usage: None,
+            usage: Some(everruns_core::CompactUsage {
+                input_tokens: Some(1_000),
+                output_tokens: Some(100),
+                total_tokens: Some(1_100),
+            }),
         }))
     }
 }
@@ -754,7 +1022,6 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
 #[tokio::test]
 async fn native_compact_failure_does_not_install_checkpoint() {
     use everruns_core::AgentCapabilityConfig;
-    use everruns_core::CompactionCheckpointStore;
     use everruns_core::capabilities::{COMPACTION_CAPABILITY_ID, CompactionCapability};
     use everruns_core::in_memory::InMemoryEventEmitter;
     use everruns_core::traits::SessionStore;
@@ -831,6 +1098,418 @@ async fn native_compact_failure_does_not_install_checkpoint() {
             .unwrap()
             .is_none()
     );
+}
+
+#[tokio::test]
+async fn proactive_native_compaction_installs_checkpoint_at_reason_entry_point() {
+    let rig = ProactiveTestRig::new(
+        DriverId::external("openai-codex"),
+        1_000,
+        (1_000, 100),
+        false,
+        false,
+    )
+    .await;
+    rig.execute(None).await.unwrap();
+
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
+    assert!(
+        rig.checkpoint_store
+            .get_latest(
+                rig.session_id.into(),
+                rig.provider_type.as_str(),
+                &rig.model,
+            )
+            .await
+            .unwrap()
+            .is_some()
+    );
+    let events = rig.event_emitter.events().await;
+    let compacted = events
+        .iter()
+        .find_map(|event| match &event.data {
+            everruns_core::EventData::ContextCompacted(data) => Some(data),
+            _ => None,
+        })
+        .expect("effective proactive compaction must emit success");
+    assert!(compacted.checkpoint_id.is_some());
+    assert_eq!(compacted.tokens_before, Some(1_000));
+    assert_eq!(compacted.tokens_after, Some(100));
+    assert!(
+        !serde_json::to_string(&events)
+            .unwrap()
+            .contains("proactive-opaque-payload")
+    );
+}
+
+#[tokio::test]
+async fn proactive_native_noop_retries_only_after_meaningful_source_growth() {
+    let rig = ProactiveTestRig::new(
+        DriverId::external("openai-codex"),
+        1_000,
+        (325, 325),
+        false,
+        false,
+    )
+    .await;
+    rig.execute(None).await.unwrap();
+
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
+    rig.execute(None).await.unwrap();
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
+
+    rig.message_retriever
+        .add(
+            rig.session_id.into(),
+            everruns_core::InputMessage::user("tiny growth"),
+        )
+        .await
+        .unwrap();
+    rig.execute(None).await.unwrap();
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
+
+    for suffix in 0..8 {
+        rig.message_retriever
+            .add(
+                rig.session_id.into(),
+                everruns_core::InputMessage::user(format!("suffix-{suffix}")),
+            )
+            .await
+            .unwrap();
+    }
+    rig.execute(None).await.unwrap();
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
+
+    rig.message_retriever
+        .add(
+            rig.session_id.into(),
+            everruns_core::InputMessage::user("z".repeat(40_000)),
+        )
+        .await
+        .unwrap();
+    rig.execute(None).await.unwrap();
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 2);
+
+    assert!(
+        rig.checkpoint_store
+            .get_latest(
+                rig.session_id.into(),
+                rig.provider_type.as_str(),
+                &rig.model,
+            )
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        rig.event_emitter
+            .events()
+            .await
+            .iter()
+            .all(|event| !matches!(event.data, everruns_core::EventData::ContextCompacted(_)))
+    );
+    let calls = rig.calls.lock().await;
+    assert!(calls.last().unwrap().1.provider_opaque_context.is_none());
+}
+
+#[tokio::test]
+async fn proactive_native_reduction_gate_accepts_exactly_five_percent() {
+    let below = ProactiveTestRig::new(
+        DriverId::external("openai-codex-below-threshold"),
+        1_000,
+        (1_000, 951),
+        false,
+        false,
+    )
+    .await;
+    below.execute(None).await.unwrap();
+    assert!(
+        below
+            .checkpoint_store
+            .get_latest(
+                below.session_id.into(),
+                below.provider_type.as_str(),
+                &below.model,
+            )
+            .await
+            .unwrap()
+            .is_none()
+    );
+
+    let exact = ProactiveTestRig::new(
+        DriverId::external("openai-codex-at-threshold"),
+        1_000,
+        (1_000, 950),
+        false,
+        false,
+    )
+    .await;
+    exact.execute(None).await.unwrap();
+    assert!(
+        exact
+            .checkpoint_store
+            .get_latest(
+                exact.session_id.into(),
+                exact.provider_type.as_str(),
+                &exact.model,
+            )
+            .await
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn proactive_checkpoint_stays_disarmed_for_small_following_suffix() {
+    let rig = ProactiveTestRig::new(
+        DriverId::external("openai-codex"),
+        1_000,
+        (1_000, 100),
+        false,
+        false,
+    )
+    .await;
+    rig.execute(None).await.unwrap();
+    rig.message_retriever
+        .add(
+            rig.session_id.into(),
+            everruns_core::InputMessage::user("y".repeat(4_000)),
+        )
+        .await
+        .unwrap();
+    rig.execute(None).await.unwrap();
+
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
+    let calls = rig.calls.lock().await;
+    assert!(calls.last().unwrap().1.provider_opaque_context.is_some());
+}
+
+#[tokio::test]
+async fn proactive_noop_watermark_does_not_cross_rolled_back_source_lineage() {
+    let rig = ProactiveTestRig::new(
+        DriverId::external("openai-codex"),
+        1_000,
+        (325, 325),
+        false,
+        false,
+    )
+    .await;
+    rig.execute(None).await.unwrap();
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
+
+    // Simulate selecting a different branch at the same source boundary. The
+    // sequence alone is identical, but the active transcript prefix is not.
+    rig.message_retriever
+        .seed(
+            rig.session_id.into(),
+            vec![Message::user(format!("branch-b-{}", "q".repeat(400_000)))],
+        )
+        .await;
+    rig.execute(None).await.unwrap();
+
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 2);
+}
+
+#[tokio::test]
+async fn proactive_chained_checkpoint_compacts_prior_opaque_context_then_suffix_in_order() {
+    let rig = ProactiveTestRig::new(
+        DriverId::external("openai-codex"),
+        1_000,
+        (10_000, 100),
+        false,
+        false,
+    )
+    .await;
+    rig.execute(None).await.unwrap();
+    for suffix in ["suffix-one", "suffix-two", "suffix-three", "suffix-four"] {
+        rig.message_retriever
+            .add(
+                rig.session_id.into(),
+                everruns_core::InputMessage::user(format!("{suffix}:{}", "z".repeat(4_000))),
+            )
+            .await
+            .unwrap();
+    }
+    rig.execute(None).await.unwrap();
+
+    let requests = rig.compact_requests.lock().await;
+    assert_eq!(requests.len(), 2);
+    let chained = &requests[1];
+    assert!(chained.previous_response_id.is_none());
+    assert!(matches!(
+        &chained.input[0],
+        everruns_core::CompactInputItem::Compaction { encrypted_content }
+            if encrypted_content == "proactive-opaque-payload"
+    ));
+    let suffix_texts: Vec<&str> = chained.input[1..]
+        .iter()
+        .map(|item| match item {
+            everruns_core::CompactInputItem::Message {
+                content: everruns_core::CompactContent::Text(text),
+                ..
+            } => text.as_str(),
+            other => panic!("unexpected chained suffix item: {other:?}"),
+        })
+        .collect();
+    assert_eq!(suffix_texts.len(), 4);
+    for (actual, expected) in
+        suffix_texts
+            .iter()
+            .zip(["suffix-one", "suffix-two", "suffix-three", "suffix-four"])
+    {
+        assert!(actual.starts_with(expected));
+    }
+}
+
+#[tokio::test]
+async fn reactive_compaction_composes_restored_checkpoint_with_raw_suffix() {
+    let rig = ProactiveTestRig::new(
+        DriverId::external("openai-codex"),
+        1_000,
+        (10_000, 100),
+        false,
+        false,
+    )
+    .await;
+    rig.execute(None).await.unwrap();
+    rig.message_retriever
+        .add(
+            rig.session_id.into(),
+            everruns_core::InputMessage::user("reactive-suffix"),
+        )
+        .await
+        .unwrap();
+    *rig.request_too_large_attempt.lock().await = Some(1);
+    rig.execute(None).await.unwrap();
+
+    let requests = rig.compact_requests.lock().await;
+    assert_eq!(requests.len(), 2);
+    assert!(matches!(
+        &requests[1].input[0],
+        everruns_core::CompactInputItem::Compaction { encrypted_content }
+            if encrypted_content == "proactive-opaque-payload"
+    ));
+    assert!(matches!(
+        &requests[1].input[1],
+        everruns_core::CompactInputItem::Message {
+            content: everruns_core::CompactContent::Text(text),
+            ..
+        } if text == "reactive-suffix"
+    ));
+}
+
+#[tokio::test]
+async fn external_driver_context_window_controls_proactive_policy() {
+    let rig = ProactiveTestRig::new(
+        DriverId::external("openai-codex"),
+        256_000,
+        (300_000, 10_000),
+        false,
+        false,
+    )
+    .await;
+    // The unknown external model would otherwise use ReasonAtom's 128k
+    // fallback. Its driver-provided 256k limit keeps this request below 50%.
+    rig.execute(None).await.unwrap();
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 0);
+
+    let low_limit_rig = ProactiveTestRig::new(
+        DriverId::external("openai-codex-low-limit"),
+        1_000,
+        (1_000, 100),
+        false,
+        false,
+    )
+    .await;
+    low_limit_rig.execute(None).await.unwrap();
+    assert_eq!(low_limit_rig.compact_attempts.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn stateful_delta_skips_local_proactive_pressure() {
+    let rig = ProactiveTestRig::new(
+        DriverId::external("stateful-openai"),
+        1_000,
+        (1_000, 100),
+        true,
+        false,
+    )
+    .await;
+    rig.execute(Some("resp_server_context")).await.unwrap();
+
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 0);
+    let calls = rig.calls.lock().await;
+    assert_eq!(
+        calls.last().unwrap().1.previous_response_id.as_deref(),
+        Some("resp_server_context")
+    );
+}
+
+#[tokio::test]
+async fn proactive_native_failure_is_atomic() {
+    let rig = ProactiveTestRig::new(
+        DriverId::external("openai-codex"),
+        1_000,
+        (1_000, 100),
+        false,
+        true,
+    )
+    .await;
+    rig.execute(None).await.unwrap();
+    rig.execute(None).await.unwrap();
+
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
+
+    assert!(
+        rig.checkpoint_store
+            .get_latest(
+                rig.session_id.into(),
+                rig.provider_type.as_str(),
+                &rig.model,
+            )
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        rig.calls
+            .lock()
+            .await
+            .last()
+            .unwrap()
+            .1
+            .provider_opaque_context
+            .is_none()
+    );
+    assert!(
+        rig.event_emitter
+            .events()
+            .await
+            .iter()
+            .all(|event| !matches!(event.data, everruns_core::EventData::ContextCompacted(_)))
+    );
+}
+
+#[tokio::test]
+async fn proactive_attempt_watermark_failures_do_not_abort_model_turn() {
+    let rig = ProactiveTestRig::new(
+        DriverId::external("openai-codex"),
+        1_000,
+        (325, 325),
+        false,
+        false,
+    )
+    .await;
+    let store = Arc::new(FailingProactiveAttemptStore {
+        checkpoints: rig.checkpoint_store.clone(),
+    });
+
+    rig.execute_with_checkpoint_store(None, store)
+        .await
+        .unwrap();
+
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(rig.calls.lock().await.len(), 1);
 }
 
 #[tokio::test]

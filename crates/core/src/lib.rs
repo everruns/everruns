@@ -404,7 +404,8 @@ pub use capabilities::{
 };
 pub use compaction_checkpoint::{
     COMPACTION_CHECKPOINT_FORMAT_VERSION, CompactionCheckpoint, CompactionCheckpointPayload,
-    CompactionCheckpointStore, InMemoryCompactionCheckpointStore,
+    CompactionCheckpointStore, InMemoryCompactionCheckpointStore, ProactiveCompactionAttempt,
+    ProactiveCompactionAttemptTracker,
 };
 
 // Atoms re-exports (stateless atomic operations)

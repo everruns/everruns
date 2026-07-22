@@ -1008,6 +1008,24 @@ For failed generations:
 }
 ```
 
+### Context Compaction Events
+
+`context.compacting` records that a semantic compaction attempt started and
+includes its reason, requested strategy, message count, and optional token or
+byte size before the attempt.
+
+`context.compacted` is emitted only after a material reduction succeeds (at
+least 5%, with a 32-unit measurement floor). It
+contains the strategy actually used, before/after message counts, duration,
+optional before/after token or byte metrics, step metadata, and an optional
+durable checkpoint identifier. Optional metric fields are additive and may be
+absent when the provider cannot report them.
+
+Provider-opaque compact output, encrypted provider content, and checkpoint
+ciphertext are never event data. Observation masking alone is a model-view
+optimization and does not emit `context.compacted` because it installs no
+semantic replacement checkpoint.
+
 ### Session Events
 
 Session lifecycle events.
