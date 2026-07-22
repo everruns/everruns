@@ -34,6 +34,7 @@ later change is a deliberate one.
 | Fork point | Full history (everything up to "now") | Covers the common "branch from here" case; arbitrary-point rewind is a clean follow-up (see [Fork point](#fork-point)). |
 | Workspace/files | **Isolated copy** — new workspace, deep-copy files | True fork semantics: edits in the child never affect the parent. |
 | Conversation | Copy all persisted events as-is | Faithful snapshot; reconstruction logic is unchanged. |
+| Compaction checkpoint | Copy the latest checkpoint within the copied event range | The fork keeps the canonical model view without weakening raw-history fidelity. |
 | KV + secrets | Copy (target design; see status note) | Config/state the child is expected to reuse. |
 | SQL databases | Copy (page-level; target design) | Pure data, transparent to the agent. |
 | Leased resources, sandbox, voice, tasks, schedules | **Do not copy** | Execution-bound or externally-billed; the child re-leases on demand. |
@@ -66,6 +67,12 @@ state.
   `EventContext` (turn/input-message/exec ids) is preserved verbatim so
   intra-history correlation stays consistent. These ids are opaque history;
   new turns in the fork mint their own.
+- **Compaction checkpoint.** If the parent has a replacement checkpoint whose
+  source event boundary is at or before the fork high-water mark, copy it to the
+  child and translate the boundary to the corresponding child event sequence.
+  A checkpoint beyond the selected fork point is not copied. Compatibility is
+  still checked against the child's resolved provider/model when model input is
+  reconstructed; raw copied events remain the queryable source of truth.
 - **Workspace files.** A new workspace is created for the child and every file
   row from the parent's workspace is deep-copied: same path, content,
   `is_directory`, `is_readonly`. When object-storage offload is active, the
