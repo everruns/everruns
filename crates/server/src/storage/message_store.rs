@@ -12,8 +12,8 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use everruns_core::{
-    ContentPart, Event, EventData, InputMessage, Message, MessageFilter, MessageId, MessageQuery,
-    MessageRetriever, MessageRole, Result, SessionId, StoreResultExt,
+    ContentPart, Event, EventData, InputMessage, Message, MessageFilter, MessageHistory, MessageId,
+    MessageQuery, MessageRetriever, MessageRole, Result, SessionId, StoreResultExt,
     events::{
         EventContext, EventRequest, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
     },
@@ -119,6 +119,10 @@ impl MessageRetriever for DbMessageRetriever {
     }
 
     async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<Message>> {
+        Ok(self.load_filtered_history(query).await?.messages)
+    }
+
+    async fn load_filtered_history(&self, query: MessageQuery) -> Result<MessageHistory> {
         // Check if we have any custom filters that need in-memory processing
         let has_custom_filters = query.has_custom_filters();
         let needs_exact_filtered_count =
@@ -137,6 +141,11 @@ impl MessageRetriever for DbMessageRetriever {
             .list_message_events_filtered(&db_query)
             .await
             .store_err()?;
+        let source_sequence = events
+            .iter()
+            .map(|event| i64::from(event.sequence))
+            .max()
+            .or(query.after_sequence);
 
         // Convert events to messages
         let mut messages = Vec::with_capacity(events.len());
@@ -180,7 +189,10 @@ impl MessageRetriever for DbMessageRetriever {
             query.apply_injections(&mut messages);
         }
 
-        Ok(messages)
+        Ok(MessageHistory {
+            messages,
+            source_sequence,
+        })
     }
 
     async fn count(&self, session_id: SessionId) -> Result<usize> {

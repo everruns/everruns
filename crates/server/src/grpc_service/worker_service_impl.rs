@@ -538,12 +538,19 @@ impl WorkerService for WorkerServiceImpl {
         let session_id = parse_uuid(req.session_id.as_ref())?;
         let message_limit = req.message_limit.map(|limit| limit.max(0));
 
-        // Query events for message-related event types using EventService
+        let mut query = everruns_core::MessageQuery::new(session_id.into());
+        query.limit = message_limit.map(i64::from);
+        query.after_sequence = req.after_sequence;
         let events = self
-            .event_service
-            .list_message_events_limited(session_id, message_limit)
+            .db
+            .list_message_events_filtered(&query)
             .await
             .map_err(|e| Status::internal(format!("Failed to list messages: {}", e)))?;
+        let source_sequence = events
+            .iter()
+            .map(|event| i64::from(event.sequence))
+            .max()
+            .or(req.after_sequence);
         let total_count = self
             .db
             .count_message_events(everruns_core::SessionId::from_uuid(session_id))
@@ -554,6 +561,7 @@ impl WorkerService for WorkerServiceImpl {
         let mut proto_messages: Vec<proto::Message> = Vec::with_capacity(events.len());
 
         for event in events {
+            let event = crate::EventService::row_to_event(event);
             // Extract message from typed event data
             let message = match event_to_message(&event) {
                 Some(m) => m,
@@ -573,6 +581,79 @@ impl WorkerService for WorkerServiceImpl {
         Ok(Response::new(LoadMessagesResponse {
             messages: proto_messages,
             total_count,
+            source_sequence,
+        }))
+    }
+
+    async fn get_compaction_checkpoint(
+        &self,
+        request: Request<proto::GetCompactionCheckpointRequest>,
+    ) -> Result<Response<proto::GetCompactionCheckpointResponse>, Status> {
+        use everruns_core::CompactionCheckpointStore;
+
+        let req = request.into_inner();
+        let session_id = parse_uuid(req.session_id.as_ref())?.into();
+        let encryption = self.encryption.clone().ok_or_else(|| {
+            Status::failed_precondition("checkpoint encryption is not configured")
+        })?;
+        let store = crate::storage::DbCompactionCheckpointStore::new(self.db.clone(), encryption);
+        let checkpoint = store
+            .get_latest(session_id, &req.provider_type, &req.model)
+            .await
+            .map_err(|error| Status::internal(error.to_string()))?
+            .map(|checkpoint| {
+                let payload_json = serde_json::to_vec(&checkpoint.payload)
+                    .map_err(|error| Status::internal(error.to_string()))?;
+                Ok::<_, Status>(proto::CompactionCheckpoint {
+                    id: Some(proto::Uuid {
+                        value: checkpoint.id.to_string(),
+                    }),
+                    session_id: Some(proto::Uuid {
+                        value: checkpoint.session_id.uuid().to_string(),
+                    }),
+                    source_sequence: checkpoint.source_sequence,
+                    provider_type: checkpoint.provider_type,
+                    model: checkpoint.model,
+                    format_version: checkpoint.format_version,
+                    payload_json,
+                })
+            })
+            .transpose()?;
+        Ok(Response::new(proto::GetCompactionCheckpointResponse {
+            checkpoint,
+        }))
+    }
+
+    async fn install_compaction_checkpoint(
+        &self,
+        request: Request<proto::InstallCompactionCheckpointRequest>,
+    ) -> Result<Response<proto::InstallCompactionCheckpointResponse>, Status> {
+        use everruns_core::CompactionCheckpointStore;
+
+        let checkpoint = request
+            .into_inner()
+            .checkpoint
+            .ok_or_else(|| Status::invalid_argument("missing checkpoint"))?;
+        let payload = serde_json::from_slice(&checkpoint.payload_json)
+            .map_err(|error| Status::invalid_argument(error.to_string()))?;
+        let encryption = self.encryption.clone().ok_or_else(|| {
+            Status::failed_precondition("checkpoint encryption is not configured")
+        })?;
+        let store = crate::storage::DbCompactionCheckpointStore::new(self.db.clone(), encryption);
+        let installed = store
+            .install(everruns_core::CompactionCheckpoint {
+                id: parse_uuid(checkpoint.id.as_ref())?,
+                session_id: parse_uuid(checkpoint.session_id.as_ref())?.into(),
+                source_sequence: checkpoint.source_sequence,
+                provider_type: checkpoint.provider_type,
+                model: checkpoint.model,
+                format_version: checkpoint.format_version,
+                payload,
+            })
+            .await
+            .map_err(|error| Status::internal(error.to_string()))?;
+        Ok(Response::new(proto::InstallCompactionCheckpointResponse {
+            installed,
         }))
     }
 

@@ -220,6 +220,12 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         Arc::new(AdapterMessageRetriever::new(self.adapters.clone()))
     }
 
+    fn compaction_checkpoint_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {
+        self.adapters.compaction_checkpoint_store()
+    }
+
     fn event_emitter(&self) -> Arc<dyn EventEmitter> {
         Arc::new(
             AdapterEventEmitter::new(self.adapters.clone())

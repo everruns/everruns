@@ -614,6 +614,10 @@ impl Database {
 
         // Build parameter index tracker (starting at 3 since $1=session_id, $2=event_types)
         let mut param_idx = 3;
+        if query.after_sequence.is_some() {
+            sql.push_str(&format!(" AND sequence > ${param_idx}"));
+            param_idx += 1;
+        }
 
         // Process filters
         for filter in &query.filters {
@@ -744,6 +748,10 @@ impl Database {
         let mut db_query = sqlx::query_as::<_, EventRow>(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(query.session_id.uuid())
             .bind(&types);
+
+        if let Some(after_sequence) = query.after_sequence {
+            db_query = db_query.bind(after_sequence);
+        }
 
         // Bind parameters in order they were added to SQL
         if time_from.is_some() {

@@ -470,6 +470,12 @@ impl InMemoryDatabase {
                 if e.session_id != query.session_id {
                     return false;
                 }
+                if query
+                    .after_sequence
+                    .is_some_and(|sequence| i64::from(e.sequence) <= sequence)
+                {
+                    return false;
+                }
 
                 // Event type filter
                 if !event_types.iter().any(|t| t == &e.event_type) {

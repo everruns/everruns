@@ -11,6 +11,13 @@ use crate::message::{ContentPart, Controls, Message, MessageRole};
 use crate::message_filter::MessageQuery;
 use crate::typed_id::{MessageId, SessionId};
 
+#[derive(Debug, Clone)]
+pub struct MessageHistory {
+    pub messages: Vec<Message>,
+    /// Highest persisted message-event sequence visible when the load ran.
+    pub source_sequence: Option<i64>,
+}
+
 // ============================================================================
 // InputMessage - Input structure for message creation
 // ============================================================================
@@ -108,6 +115,13 @@ pub trait MessageRetriever: Send + Sync {
         self.load(query.session_id).await
     }
 
+    async fn load_filtered_history(&self, query: MessageQuery) -> Result<MessageHistory> {
+        Ok(MessageHistory {
+            messages: self.load_filtered(query).await?,
+            source_sequence: None,
+        })
+    }
+
     /// Load messages with pagination
     async fn load_page(
         &self,
@@ -137,6 +151,10 @@ impl<T: MessageRetriever + ?Sized> MessageRetriever for std::sync::Arc<T> {
 
     async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<Message>> {
         (**self).load_filtered(query).await
+    }
+
+    async fn load_filtered_history(&self, query: MessageQuery) -> Result<MessageHistory> {
+        (**self).load_filtered_history(query).await
     }
 
     async fn load_page(

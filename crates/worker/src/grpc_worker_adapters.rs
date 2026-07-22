@@ -18,8 +18,8 @@ use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
 use everruns_core::{
-    Agent, DriverRegistry, EgressService, Harness, Message, PlatformDefinition, Session,
-    UtilityLlmService,
+    Agent, DriverRegistry, EgressService, Harness, Message, MessageHistory, MessageQuery,
+    PlatformDefinition, Session, UtilityLlmService,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -176,6 +176,11 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     async fn load_messages(&self, session_id: Uuid) -> Result<Vec<Message>> {
         let retriever = GrpcMessageRetriever::new(self.client.clone());
         everruns_core::MessageRetriever::load(&retriever, SessionId::from_uuid(session_id)).await
+    }
+
+    async fn load_message_history(&self, query: MessageQuery) -> Result<MessageHistory> {
+        let retriever = GrpcMessageRetriever::new(self.client.clone());
+        everruns_core::MessageRetriever::load_filtered_history(&retriever, query).await
     }
 
     // =========================================================================
@@ -406,6 +411,12 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     fn sqldb_store(&self) -> everruns_core::traits::SessionSqlDbStoreRef {
         Arc::new(GrpcSessionSqlDbStore::new(self.client.clone()))
+    }
+
+    fn compaction_checkpoint_store(
+        &self,
+    ) -> Option<Arc<dyn everruns_core::CompactionCheckpointStore>> {
+        Some(Arc::new(GrpcMessageRetriever::new(self.client.clone())))
     }
 
     fn storage_store(&self) -> Arc<dyn everruns_core::traits::SessionStorageStore> {

@@ -43,6 +43,8 @@ pub struct AssembledTurnContext {
     pub resolved_capability_configs: Vec<AgentCapabilityConfig>,
     /// Conversation messages after capability message filters are applied.
     pub messages: Vec<Message>,
+    /// Highest message-event sequence included in the raw context snapshot.
+    pub message_source_sequence: Option<i64>,
     /// Fully assembled runtime agent for the current turn.
     pub runtime_agent: RuntimeAgent,
     /// Resolved model/provider pair used for the turn.
@@ -191,7 +193,8 @@ async fn assemble_turn_context_with_mode(
     );
     let mut query = MessageQuery::new(session_id);
     message_filters.apply_message_filters(&mut query);
-    let mut messages = message_retriever.load_filtered(query).await?;
+    let history = message_retriever.load_filtered_history(query).await?;
+    let mut messages = history.messages;
     message_filters.apply_post_load_filters(&mut messages);
     if messages.is_empty() && matches!(mode, ContextAssemblyMode::RequireMessages) {
         return Err(AgentLoopError::NoMessages);
@@ -264,6 +267,7 @@ async fn assemble_turn_context_with_mode(
         effective_overlay,
         resolved_capability_configs,
         messages,
+        message_source_sequence: history.source_sequence,
         runtime_agent,
         model_with_provider,
         resolved_model_id,

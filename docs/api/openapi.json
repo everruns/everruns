@@ -17975,6 +17975,13 @@
           "duration_ms"
         ],
         "properties": {
+          "checkpoint_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Durable checkpoint installed by this compaction, when applicable."
+          },
           "duration_ms": {
             "type": "integer",
             "format": "int64",

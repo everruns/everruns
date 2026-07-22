@@ -371,6 +371,12 @@ pub struct EncryptedColumn {
 /// - `reencrypt-secrets` CLI tool for key rotation
 /// - Tests to ensure all encrypted columns are properly registered
 pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
+    // Provider-native compact context can contain opaque provider secrets.
+    EncryptedColumn {
+        table: "session_compaction_checkpoints",
+        column: "payload_encrypted",
+        id_column: "id",
+    },
     // LLM Provider API keys are encrypted at rest
     EncryptedColumn {
         table: "providers",

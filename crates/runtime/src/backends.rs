@@ -114,6 +114,8 @@ pub struct RuntimeBackends {
     pub session_store: Arc<dyn RuntimeSessionStore>,
     /// Conversation message persistence and retrieval.
     pub message_store: Arc<dyn RuntimeMessageStore>,
+    /// Durable replacement context used to reconstruct compacted model input.
+    pub compaction_checkpoint_store: Arc<dyn everruns_core::CompactionCheckpointStore>,
     /// Model/provider resolution and default-model configuration.
     pub provider_store: Arc<dyn RuntimeProviderStore>,
     /// Event sink (emit + optional collection).
@@ -153,6 +155,9 @@ impl RuntimeBackends {
             agent_store: Arc::new(InMemoryAgentStore::new()),
             session_store: Arc::new(InMemorySessionStore::new()),
             message_store: Arc::new(InMemoryMessageRetriever::new()),
+            compaction_checkpoint_store: Arc::new(
+                everruns_core::InMemoryCompactionCheckpointStore::default(),
+            ),
             provider_store: Arc::new(InMemoryProviderStore::new()),
             event_bus,
             storage_store: Arc::new(InMemorySessionStorageStore::new()),
@@ -180,6 +185,14 @@ impl RuntimeBackends {
 
     pub fn with_message_store(mut self, store: Arc<dyn RuntimeMessageStore>) -> Self {
         self.message_store = store;
+        self
+    }
+
+    pub fn with_compaction_checkpoint_store(
+        mut self,
+        store: Arc<dyn everruns_core::CompactionCheckpointStore>,
+    ) -> Self {
+        self.compaction_checkpoint_store = store;
         self
     }
 

@@ -12,6 +12,7 @@ mod apps;
 mod audit_logs;
 mod auth;
 mod budgets;
+mod compaction_checkpoints;
 pub use budgets::BudgetSubjectLookup;
 mod declarative_capabilities;
 mod evals;

@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
 use everruns_core::leased_resource::{LeasedResource, LeasedResourceStatus, UpsertLeasedResource};
-use everruns_core::message_retriever::{InputMessage, MessageRetriever};
+use everruns_core::message_retriever::{InputMessage, MessageHistory, MessageRetriever};
 use everruns_core::session_file::{
     FileInfo, FileStat, GrepContextBlock, GrepContextLine, GrepMatch, GrepOptions,
     GrepSearchResult, SessionFile,
@@ -974,7 +974,7 @@ impl MessageRetriever for GrpcAdapter {
     }
 
     async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
-        let (messages, _) = self.load_with_message_limit(session_id, None).await?;
+        let (messages, _, _) = self.load_with_message_limit(session_id, None, None).await?;
         Ok(messages)
     }
 
@@ -982,6 +982,13 @@ impl MessageRetriever for GrpcAdapter {
         &self,
         query: everruns_core::message_filter::MessageQuery,
     ) -> Result<Vec<Message>> {
+        Ok(self.load_filtered_history(query).await?.messages)
+    }
+
+    async fn load_filtered_history(
+        &self,
+        query: everruns_core::message_filter::MessageQuery,
+    ) -> Result<MessageHistory> {
         let simple_window_query =
             query.filters.is_empty() && query.offset.is_none() && query.limit.is_some();
         let message_limit = if simple_window_query {
@@ -991,8 +998,8 @@ impl MessageRetriever for GrpcAdapter {
         } else {
             None
         };
-        let (mut messages, total_count) = self
-            .load_with_message_limit(query.session_id, message_limit)
+        let (mut messages, total_count, source_sequence) = self
+            .load_with_message_limit(query.session_id, message_limit, query.after_sequence)
             .await?;
 
         for filter in &query.filters {
@@ -1043,7 +1050,10 @@ impl MessageRetriever for GrpcAdapter {
             query.apply_injections(&mut messages);
         }
 
-        Ok(messages)
+        Ok(MessageHistory {
+            messages,
+            source_sequence,
+        })
     }
 }
 
@@ -1052,12 +1062,14 @@ impl GrpcAdapter {
         &self,
         session_id: SessionId,
         message_limit: Option<i32>,
-    ) -> Result<(Vec<Message>, usize)> {
+        after_sequence: Option<i64>,
+    ) -> Result<(Vec<Message>, usize, Option<i64>)> {
         let mut client = self.client.inner.lock().await;
 
         let request = proto::LoadMessagesRequest {
             session_id: Some(uuid_to_proto(session_id.uuid())),
             message_limit,
+            after_sequence,
         };
 
         let response = client
@@ -1077,7 +1089,66 @@ impl GrpcAdapter {
             .map(proto_message_to_message)
             .collect::<Result<Vec<_>>>()?;
 
-        Ok((messages, total_count))
+        Ok((messages, total_count, response.source_sequence))
+    }
+}
+
+#[async_trait]
+impl everruns_core::CompactionCheckpointStore for GrpcAdapter {
+    async fn get_latest(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+    ) -> Result<Option<everruns_core::CompactionCheckpoint>> {
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .get_compaction_checkpoint(proto::GetCompactionCheckpointRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                provider_type: provider_type.to_string(),
+                model: model.to_string(),
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+        response
+            .checkpoint
+            .map(|checkpoint| {
+                Ok(everruns_core::CompactionCheckpoint {
+                    id: proto_uuid_to_uuid(checkpoint.id.as_ref())?,
+                    session_id: proto_uuid_to_uuid(checkpoint.session_id.as_ref())?.into(),
+                    source_sequence: checkpoint.source_sequence,
+                    provider_type: checkpoint.provider_type,
+                    model: checkpoint.model,
+                    format_version: checkpoint.format_version,
+                    payload: serde_json::from_slice(&checkpoint.payload_json).map_err(|error| {
+                        AgentLoopError::store(format!("invalid checkpoint payload: {error}"))
+                    })?,
+                })
+            })
+            .transpose()
+    }
+
+    async fn install(&self, checkpoint: everruns_core::CompactionCheckpoint) -> Result<bool> {
+        let mut client = self.client.inner.lock().await;
+        let payload_json = serde_json::to_vec(&checkpoint.payload)
+            .map_err(|error| AgentLoopError::store(error.to_string()))?;
+        Ok(client
+            .install_compaction_checkpoint(proto::InstallCompactionCheckpointRequest {
+                checkpoint: Some(proto::CompactionCheckpoint {
+                    id: Some(uuid_to_proto(checkpoint.id)),
+                    session_id: Some(uuid_to_proto(checkpoint.session_id.uuid())),
+                    source_sequence: checkpoint.source_sequence,
+                    provider_type: checkpoint.provider_type,
+                    model: checkpoint.model,
+                    format_version: checkpoint.format_version,
+                    payload_json,
+                }),
+            })
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner()
+            .installed)
     }
 }
 

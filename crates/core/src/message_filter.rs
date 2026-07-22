@@ -274,6 +274,9 @@ pub struct MessageQuery {
     /// history grows. Used by `infinity_context`'s `keep_first_messages`.
     pub keep_head: Option<usize>,
 
+    /// Internal event cursor used to load the raw suffix after a checkpoint.
+    pub after_sequence: Option<i64>,
+
     /// Optional transform to prepend a message based on filter results.
     /// Applied after filtering, receives context about excluded messages.
     pub prepend_transform: Option<Arc<dyn PrependTransform>>,
@@ -288,6 +291,7 @@ impl Default for MessageQuery {
             limit: None,
             offset: None,
             keep_head: None,
+            after_sequence: None,
             prepend_transform: None,
         }
     }
@@ -302,6 +306,7 @@ impl std::fmt::Debug for MessageQuery {
             .field("limit", &self.limit)
             .field("offset", &self.offset)
             .field("keep_head", &self.keep_head)
+            .field("after_sequence", &self.after_sequence)
             .field("prepend_transform", &self.prepend_transform.is_some())
             .finish()
     }
@@ -317,6 +322,7 @@ impl MessageQuery {
             limit: None,
             offset: None,
             keep_head: None,
+            after_sequence: None,
             prepend_transform: None,
         }
     }
@@ -373,6 +379,11 @@ impl MessageQuery {
     /// addition to the latest `limit` tail. See [`MessageQuery::keep_head`].
     pub fn with_keep_head(mut self, keep_head: usize) -> Self {
         self.keep_head = Some(keep_head);
+        self
+    }
+
+    pub fn after_sequence(mut self, sequence: i64) -> Self {
+        self.after_sequence = Some(sequence);
         self
     }
 

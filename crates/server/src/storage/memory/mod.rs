@@ -18,6 +18,7 @@ mod apps;
 mod audit_logs;
 mod auth;
 mod budgets;
+mod compaction_checkpoints;
 mod declarative_capabilities;
 mod evals;
 mod events;
@@ -110,6 +111,8 @@ pub struct InMemoryDatabase {
     sessions: RwLock<HashMap<SessionId, SessionRow>>,
     session_participants: RwLock<HashMap<SessionParticipantId, SessionParticipantRow>>,
     events: RwLock<HashMap<EventId, EventRow>>,
+    compaction_checkpoints:
+        RwLock<HashMap<(SessionId, String, String, i32), CompactionCheckpointRow>>,
     providers: RwLock<HashMap<ProviderId, ProviderRow>>,
     models: RwLock<HashMap<ModelId, ModelRow>>,
     agent_capabilities: RwLock<HashMap<(AgentId, String), AgentCapabilityRow>>,
@@ -275,6 +278,7 @@ impl Default for InMemoryDatabase {
             sessions: RwLock::new(HashMap::new()),
             session_participants: RwLock::new(HashMap::new()),
             events: RwLock::new(HashMap::new()),
+            compaction_checkpoints: RwLock::new(HashMap::new()),
             providers: RwLock::new(HashMap::new()),
             models: RwLock::new(HashMap::new()),
             agent_capabilities: RwLock::new(HashMap::new()),

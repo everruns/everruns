@@ -1863,6 +1863,45 @@ impl StorageBackend {
         dispatch!(self, list_message_events_filtered, query)
     }
 
+    pub async fn get_compaction_checkpoint(
+        &self,
+        session_id: SessionId,
+        provider_type: &str,
+        model: &str,
+        format_version: i32,
+    ) -> Result<Option<CompactionCheckpointRow>> {
+        dispatch!(
+            self,
+            get_compaction_checkpoint,
+            session_id,
+            provider_type,
+            model,
+            format_version
+        )
+    }
+
+    pub async fn install_compaction_checkpoint(
+        &self,
+        input: InstallCompactionCheckpointRow,
+    ) -> Result<bool> {
+        dispatch!(self, install_compaction_checkpoint, input)
+    }
+
+    pub async fn copy_compaction_checkpoints(
+        &self,
+        source_session_id: SessionId,
+        target_session_id: SessionId,
+        through_sequence: i32,
+    ) -> Result<u64> {
+        dispatch!(
+            self,
+            copy_compaction_checkpoints,
+            source_session_id,
+            target_session_id,
+            through_sequence
+        )
+    }
+
     /// Get preview text for multiple sessions (first user message)
     pub async fn get_session_previews(
         &self,
