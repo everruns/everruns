@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.17.16] - 2026-07-22
+
+### Highlights
+
+- **Automatic session titles** — Sessions now generate titles automatically via title events, with a policy enforcing consistent automatic titling ([#2867](https://github.com/everruns/everruns/pull/2867), [#2869](https://github.com/everruns/everruns/pull/2869)).
+- **Durable context checkpoints** — Compaction persists durable context checkpoints, improving reliability of long-running sessions across compaction ([#2868](https://github.com/everruns/everruns/pull/2868), [#2870](https://github.com/everruns/everruns/pull/2870), [#2866](https://github.com/everruns/everruns/pull/2866)).
+
+### What's Changed
+
+- feat(runtime): surface structured turn stop reasons ([#2864](https://github.com/everruns/everruns/pull/2864)) by [@chaliy](https://github.com/chaliy)
+- feat(session): add automatic title events ([#2867](https://github.com/everruns/everruns/pull/2867)) by [@chaliy](https://github.com/chaliy)
+- feat(compaction): persist durable context checkpoints ([#2868](https://github.com/everruns/everruns/pull/2868)) by [@chaliy](https://github.com/chaliy)
+- fix(compaction): preserve native compact context ([#2866](https://github.com/everruns/everruns/pull/2866)) by [@chaliy](https://github.com/chaliy)
+- fix(session): enforce automatic title policy ([#2869](https://github.com/everruns/everruns/pull/2869)) by [@chaliy](https://github.com/chaliy)
+- fix(compaction): persist effective proactive checkpoints ([#2870](https://github.com/everruns/everruns/pull/2870)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump the cargo group with 6 updates ([#2863](https://github.com/everruns/everruns/pull/2863))
+- chore(deps): bump the npm_and_yarn group across 1 directory with 2 updates ([#2856](https://github.com/everruns/everruns/pull/2856))
+- chore(deps): bump rust to 1.97.1-slim across server, worker, and docker ([#2858](https://github.com/everruns/everruns/pull/2858), [#2860](https://github.com/everruns/everruns/pull/2860), [#2862](https://github.com/everruns/everruns/pull/2862))
+- chore(deps): bump distroless/cc-debian12 across server, worker, and docker ([#2857](https://github.com/everruns/everruns/pull/2857), [#2859](https://github.com/everruns/everruns/pull/2859), [#2861](https://github.com/everruns/everruns/pull/2861))
+
 ## [0.17.15] - 2026-07-20
 
 ### Highlights
