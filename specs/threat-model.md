@@ -832,7 +832,7 @@ if self.current_iteration >= self.max_iterations {
 Default: 100 iterations. Each Reason→Act cycle counts as one iteration. Configurable per agent.
 
 **TM-AGENT-008 — Context Window Poisoning (MITIGATED):**
-When the message history exceeds the LLM's context window, the `ReasonAtom` catches `RequestTooLarge` errors and calls `llm_driver.compact()` to compress older messages. This prevents unbounded context growth. Adversarial early messages are still present but may be summarized during compaction.
+When the message history exceeds the LLM's context window, the `ReasonAtom` catches `RequestTooLarge` errors and calls `llm_driver.compact()` to compress older messages. This prevents unbounded context growth. Adversarial early messages are still present but may be summarized during compaction. Native encrypted compact output remains typed provider transport state: it is reused only on the matching provider request, its `Debug` representation redacts payloads, and public compaction/generation events expose metadata rather than encrypted content.
 
 **TM-AGENT-013 — Exfiltration via web_fetch (ACCEPTED):**
 An agent with `web_fetch` capability can:

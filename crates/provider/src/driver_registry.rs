@@ -16,7 +16,7 @@
 
 use crate::credential_schema::CredentialFormSchema;
 use crate::error::{AgentLoopError, LlmErrorKind, Result};
-use crate::openresponses_protocol::{CompactRequest, CompactResponse};
+use crate::openresponses_protocol::{CompactOutputItem, CompactRequest, CompactResponse};
 use crate::tool_types::{ToolCall, ToolDefinition};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -32,6 +32,29 @@ use std::sync::Arc;
 
 /// Type alias for the LLM response stream
 pub type LlmResponseStream = Pin<Box<dyn Stream<Item = Result<LlmStreamEvent>> + Send>>;
+
+/// Ordered provider-owned context returned by a native compaction operation.
+///
+/// The runtime carries this value without interpreting or exposing its opaque
+/// payload. The matching provider driver is responsible for putting the items
+/// back on the wire exactly as returned.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ProviderOpaqueContext {
+    /// Standalone `output` returned by OpenAI `/responses/compact`.
+    OpenResponsesCompact { output: Vec<CompactOutputItem> },
+}
+
+impl std::fmt::Debug for ProviderOpaqueContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::OpenResponsesCompact { output } => f
+                .debug_struct("OpenResponsesCompact")
+                .field("item_count", &output.len())
+                .finish_non_exhaustive(),
+        }
+    }
+}
 
 /// Structured provider error emitted inside an accepted response stream.
 ///
@@ -1292,6 +1315,12 @@ pub struct LlmCallConfig {
     /// Previous response ID for stateful continuation (OpenAI Responses API).
     /// When set, the provider can skip re-encoding cached context.
     pub previous_response_id: Option<String>,
+    /// Standalone, ordered native compact output for this request.
+    ///
+    /// This is mutually exclusive with `previous_response_id`. Provider
+    /// drivers must serialize it as the request input without transcript-delta
+    /// trimming or structural pruning.
+    pub provider_opaque_context: Option<ProviderOpaqueContext>,
     /// Tool search configuration for deferred tool loading
     pub tool_search: Option<ToolSearchConfig>,
     /// Prompt caching configuration for provider-specific cache controls.
@@ -1426,6 +1455,12 @@ impl LlmCallConfigBuilder {
     /// Set previous response ID for stateful continuation
     pub fn previous_response_id(mut self, id: Option<String>) -> Self {
         self.config.previous_response_id = id;
+        self
+    }
+
+    /// Set standalone provider-owned compact context for the request.
+    pub fn provider_opaque_context(mut self, context: Option<ProviderOpaqueContext>) -> Self {
+        self.config.provider_opaque_context = context;
         self
     }
 

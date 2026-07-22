@@ -50,7 +50,7 @@ The most recent N tool outputs are always kept verbatim (default: 5).
 
 ### Native Provider Compaction
 
-Delegates compaction to the LLM provider's own endpoint. Currently supported by OpenAI's Responses API (`/responses/compact`). When available, this can be more intelligent than generic strategies since the provider understands its own tokenization.
+Delegates compaction to the LLM provider's own endpoint. Currently supported by OpenAI's Responses API (`/responses/compact`). When available, this can be more intelligent than generic strategies since the provider understands its own tokenization. Everruns sends either a stateful response handle or a standalone transcript to the compact endpoint, never both. The returned ordered context is then reused directly as the next Responses API input.
 
 ### Summarization
 
@@ -257,6 +257,7 @@ Compaction emits two SSE events:
 | `context.compacted` | Cascade completes | `strategy_used`, `messages_before`, `messages_after`, `duration_ms`, `steps[]` |
 
 Each step in the cascade is recorded with its strategy name, resulting message count, and duration.
+Provider-encrypted native compact content is never included in these public events.
 
 ## Best Practices
 

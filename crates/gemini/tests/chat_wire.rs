@@ -31,6 +31,7 @@ fn config(model: &str) -> LlmCallConfig {
         reasoning_effort: None,
         metadata: std::collections::HashMap::new(),
         previous_response_id: None,
+        provider_opaque_context: None,
         tool_search: None,
         prompt_cache: None,
         openrouter_routing: None,

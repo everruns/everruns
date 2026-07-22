@@ -120,6 +120,8 @@ construction, streaming parse logic, retry classification, and error mapping.
    - `verbosity`: Optional verbosity selector (low, medium, high), sent as OpenAI `verbosity`
    - `metadata`: Optional request metadata for provider-side correlation
    - `previous_response_id`: Optional OpenAI Responses continuation handle
+   - `provider_opaque_context`: Optional losslessly serializable, ordered native
+     compact output; mutually exclusive with `previous_response_id`
    - `tool_search`: Optional deferred tool-loading config
    - `prompt_cache`: Optional provider-agnostic prompt-cache config
 
@@ -641,6 +643,20 @@ The `/v1/responses/compact` endpoint is a context-compression feature for the Op
    - All prior **user messages** are kept verbatim
    - Prior assistant messages, tool calls/results, and encrypted reasoning are replaced by one encrypted **compaction item**
 3. Use the returned `output` array as the `input` for the next `/v1/responses` call
+
+The two request modes are intentionally disjoint:
+
+- Compact by stateful handle: `previous_response_id` is present and `input` is
+  empty.
+- Compact by standalone transcript: `input` is present and
+  `previous_response_id` is absent.
+
+After either mode succeeds, the returned `output` is carried in
+`ProviderOpaqueContext::OpenResponsesCompact` and reused, in its original
+order, as the next Responses `input`. That retry omits `previous_response_id`
+and bypasses transcript-delta trimming and tool-structure pruning. The context
+enum supports lossless serialization for durable runtime checkpoints and uses
+a payload-redacting `Debug` implementation.
 
 ### ChatDriver Compact Methods
 

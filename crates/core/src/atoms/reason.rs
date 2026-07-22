@@ -49,9 +49,7 @@ use crate::llm_retry::{
 };
 use crate::message::{Message, MessageRole};
 use crate::message_retriever::MessageRetriever;
-use crate::openresponses_protocol::{
-    CompactInputItem, CompactRequest, compact_output_to_messages, messages_to_compact_input,
-};
+use crate::openresponses_protocol::{CompactRequest, messages_to_compact_input};
 use crate::output_guardrail::{
     ArmedGuardrail, OutputGuardrailContext, PostGenerationOutputContext, PostGenerationProvider,
     TrippedGuardrail, evaluate_guardrails, evaluate_post_generation_guardrails,
@@ -1772,7 +1770,7 @@ impl ReasonAtom {
             llm_config_builder = llm_config_builder.with_metadata("model_id", model_id.to_string());
         }
 
-        let llm_config = llm_config_builder
+        let mut llm_config = llm_config_builder
             .previous_response_id(previous_response_id.clone())
             .volatile_suffix_len(volatile_suffix_len)
             .build();
@@ -2162,11 +2160,17 @@ impl ReasonAtom {
 
                         let compact_input = messages_to_compact_input(messages_to_compact);
                         let input_count = compact_input.len();
+                        let (compact_input, compact_previous_response_id) =
+                            if stateful_response_continuation {
+                                (Vec::new(), previous_response_id.clone())
+                            } else {
+                                (compact_input, None)
+                            };
 
                         let compact_request = CompactRequest {
                             model: runtime_agent.model.clone(),
                             input: compact_input,
-                            previous_response_id: previous_response_id.clone(),
+                            previous_response_id: compact_previous_response_id,
                             instructions: if has_system_prompt {
                                 Some(runtime_agent.system_prompt.clone())
                             } else {
@@ -2176,9 +2180,6 @@ impl ReasonAtom {
 
                         match chat_driver.compact(compact_request).await {
                             Ok(Some(compact_response)) => {
-                                let (compacted_messages, compaction_items) =
-                                    compact_output_to_messages(&compact_response.output);
-
                                 let input_tokens_after = compact_response
                                     .usage
                                     .as_ref()
@@ -2190,46 +2191,26 @@ impl ReasonAtom {
                                     Some(step_start.elapsed().as_millis() as u64),
                                 ));
 
-                                let mut compacted_llm_messages = Vec::new();
-                                if has_system_prompt {
-                                    compacted_llm_messages.push(llm_messages_for_call[0].clone());
-                                }
-                                compacted_llm_messages.extend(compacted_messages);
-
-                                for item in compaction_items {
-                                    if let CompactInputItem::Compaction { encrypted_content } = item
-                                    {
-                                        compacted_llm_messages.push(LlmMessage {
-                                            role: LlmMessageRole::System,
-                                            content: LlmMessageContent::Text(format!(
-                                                "[COMPACTED_CONTEXT:{encrypted_content}]"
-                                            )),
-                                            tool_calls: None,
-                                            tool_call_id: None,
-                                            phase: None,
-                                            thinking: None,
-                                            thinking_signature: None,
-                                        });
-                                    }
-                                }
-
-                                llm_messages_for_call =
-                                    crate::tool_call_integrity::retain_complete_llm_tool_exchanges(
-                                        compacted_llm_messages,
-                                    );
+                                let messages_after = compact_response.output.len();
+                                llm_config.previous_response_id = None;
+                                llm_config.provider_opaque_context = Some(
+                                    crate::driver_registry::ProviderOpaqueContext::OpenResponsesCompact {
+                                        output: compact_response.output,
+                                    },
+                                );
 
                                 let step_duration = step_start.elapsed().as_millis() as u64;
                                 strategies_used.push("native".to_string());
                                 steps.push(CompactionStepData {
                                     strategy: "native".to_string(),
-                                    messages_after: llm_messages_for_call.len(),
+                                    messages_after,
                                     duration_ms: step_duration,
                                 });
 
                                 tracing::info!(
                                     session_id = %session_id,
                                     duration_ms = step_duration,
-                                    messages_after = llm_messages_for_call.len(),
+                                    messages_after,
                                     "ReasonAtom: native compaction applied"
                                 );
                             }
@@ -2303,6 +2284,7 @@ impl ReasonAtom {
                                 reasoning_effort: None,
                                 metadata: HashMap::new(),
                                 previous_response_id: None,
+                                provider_opaque_context: None,
                                 tool_search: None,
                                 prompt_cache: None,
                                 openrouter_routing: None,
@@ -4000,6 +3982,7 @@ mod tests {
             reasoning_effort: None,
             metadata: HashMap::new(),
             previous_response_id: Some("resp_123".to_string()),
+            provider_opaque_context: None,
             tool_search: None,
             prompt_cache: Some(PromptCacheConfig {
                 enabled: true,
@@ -4036,6 +4019,7 @@ mod tests {
             reasoning_effort: None,
             metadata: HashMap::new(),
             previous_response_id: None,
+            provider_opaque_context: None,
             tool_search: None,
             prompt_cache: Some(PromptCacheConfig {
                 enabled: true,
@@ -4072,6 +4056,7 @@ mod tests {
             reasoning_effort: None,
             metadata: HashMap::new(),
             previous_response_id: None,
+            provider_opaque_context: None,
             tool_search: None,
             prompt_cache: Some(PromptCacheConfig {
                 enabled: false,

@@ -14,8 +14,9 @@
 use everruns_core::OpenResponsesProtocolChatDriver;
 use everruns_core::driver_registry::{
     ChatDriver, LlmCallConfig, LlmCompletionMetadata, LlmMessage, LlmMessageRole,
-    LlmResponseStream, LlmStreamEvent,
+    LlmResponseStream, LlmStreamEvent, ProviderOpaqueContext,
 };
+use everruns_core::{CompactContent, CompactOutputItem};
 use futures::StreamExt;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -31,6 +32,7 @@ fn config(model: &str) -> LlmCallConfig {
         reasoning_effort: None,
         metadata: std::collections::HashMap::new(),
         previous_response_id: None,
+        provider_opaque_context: None,
         tool_search: None,
         prompt_cache: None,
         openrouter_routing: None,
@@ -208,5 +210,73 @@ async fn fragmented_function_call_golden_events() {
                 finish: Some("tool_calls".into()),
             },
         ]
+    );
+}
+
+#[tokio::test]
+async fn native_compact_context_is_the_exact_ordered_responses_input() {
+    let server = MockServer::start().await;
+    let body = [
+        r#"data: {"type":"response.completed","response":{"id":"resp_compact_retry","status":"completed","output":[],"usage":{"input_tokens":4,"output_tokens":1}}}"#,
+        "",
+        "data: [DONE]",
+        "",
+        "",
+    ]
+    .join("\n");
+    mount_sse(&server, body).await;
+
+    let output = vec![
+        CompactOutputItem::Message {
+            role: "user".to_string(),
+            content: CompactContent::Text("first".to_string()),
+        },
+        CompactOutputItem::Compaction {
+            encrypted_content: "opaque-native-context".to_string(),
+        },
+        CompactOutputItem::Message {
+            role: "user".to_string(),
+            content: CompactContent::Text("last".to_string()),
+        },
+    ];
+    let context = ProviderOpaqueContext::OpenResponsesCompact {
+        output: output.clone(),
+    };
+    let debug = format!("{context:?}");
+    assert!(debug.contains("item_count"));
+    assert!(!debug.contains("opaque-native-context"));
+    let encoded = serde_json::to_value(&context).expect("context should serialize");
+    assert_eq!(encoded["type"], "open_responses_compact");
+    assert_eq!(
+        serde_json::from_value::<ProviderOpaqueContext>(encoded).unwrap(),
+        context
+    );
+
+    let mut call_config = config("gpt-5-mini");
+    call_config.previous_response_id = Some("resp_must_not_be_mixed".to_string());
+    call_config.provider_opaque_context = Some(context);
+    let stream = driver(&server)
+        .chat_completion_stream(
+            vec![
+                LlmMessage::text(LlmMessageRole::System, "instructions"),
+                LlmMessage::text(LlmMessageRole::User, "reconstructed transcript"),
+            ],
+            &call_config,
+        )
+        .await
+        .expect("stream should start");
+    let _ = drain_golden(stream).await;
+
+    let requests = server.received_requests().await.unwrap();
+    let request: serde_json::Value = requests[0].body_json().unwrap();
+    assert!(request.get("previous_response_id").is_none());
+    assert_eq!(request["instructions"], "instructions");
+    assert_eq!(
+        request["input"],
+        serde_json::json!([
+            { "type": "message", "role": "user", "content": "first" },
+            { "type": "compaction", "encrypted_content": "opaque-native-context" },
+            { "type": "message", "role": "user", "content": "last" }
+        ])
     );
 }

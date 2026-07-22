@@ -181,6 +181,7 @@ pub fn llm_call_config_from_agent(runtime_agent: &RuntimeAgent) -> LlmCallConfig
         verbosity: None,
         metadata: HashMap::new(),
         previous_response_id: None,
+        provider_opaque_context: None,
         tool_search: runtime_agent.tool_search.clone(),
         prompt_cache: runtime_agent.prompt_cache.clone(),
         openrouter_routing: runtime_agent.openrouter_routing.clone(),
