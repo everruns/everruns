@@ -18,9 +18,11 @@ Tools to read and update session metadata like title and agent information.
 
 Automatic title maintenance is opt-in. Set `auto_title` to `true` in the
 capability configuration to have the agent create a concise 3–7 word title
-after the first substantive request. The agent updates it later only when the
-conversation's primary theme materially changes, not for minor follow-ups or
-subtopics.
+before handling the first substantive request. The title is a required pre-work
+update. The agent updates it later, also before other work or a response, only
+when the conversation's primary theme materially changes—not for minor
+follow-ups or subtopics. Title writes update session metadata and do not count
+as project or workspace file changes.
 
 Title changes emit `session.title.updated` with the previous and new title. A
 repeated write of the current title is a no-op and emits no event.

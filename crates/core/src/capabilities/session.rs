@@ -149,7 +149,7 @@ impl Capability for SessionCapability {
                 "auto_title": {
                     "type": "boolean",
                     "title": "Automatic session titles",
-                    "description": "Set a concise title after the first substantive request and update it only when the conversation's primary theme materially changes.",
+                    "description": "Require a concise title before handling the first substantive request and update it only when the conversation's primary theme materially changes.",
                     "default": false
                 }
             },
@@ -176,7 +176,7 @@ impl Capability for SessionCapability {
         }
 
         Some(format!(
-            "<capability id=\"{}\">\nAfter the first substantive user request, call `write_session_title` with a concise 3–7 word title for the conversation's primary theme. Ignore greetings, acknowledgements, and other non-substantive messages. On later turns, update the title only when the primary theme materially changes; do not update it for minor subtopics, follow-ups, or implementation details.\n</capability>",
+            "<capability id=\"{}\">\nTitle maintenance is mandatory when automatic titles are enabled. On the first substantive user request, you MUST call `write_session_title` with a concise 3–7 word title for the conversation's primary theme before using any other tool, doing substantive work, or giving a substantive response. Ignore greetings, acknowledgements, and other non-substantive messages. On later turns, if the primary theme materially changes, you MUST call `write_session_title` before using any other tool, doing substantive work, or responding. You MUST NOT update the title for minor subtopics, follow-ups, or implementation details. Calling `write_session_title` updates session metadata only; it does not change project or workspace files and must not be treated as a project-file change.\n</capability>",
             self.id()
         ))
     }
@@ -542,7 +542,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn auto_title_policy_is_opt_in() {
+    async fn auto_title_policy_is_opt_in_and_mandatory_when_enabled() {
         let capability = SessionCapability;
         let ctx = super::super::SystemPromptContext::without_file_store(SessionId::new());
 
@@ -556,9 +556,10 @@ mod tests {
             .system_prompt_contribution_with_config(&ctx, &json!({"auto_title": true}))
             .await
             .expect("auto-title prompt");
-        assert!(prompt.contains("3–7 word title"));
-        assert!(prompt.contains("primary theme materially changes"));
-        assert!(prompt.contains("minor subtopics"));
+        assert_eq!(
+            prompt,
+            "<capability id=\"session\">\nTitle maintenance is mandatory when automatic titles are enabled. On the first substantive user request, you MUST call `write_session_title` with a concise 3–7 word title for the conversation's primary theme before using any other tool, doing substantive work, or giving a substantive response. Ignore greetings, acknowledgements, and other non-substantive messages. On later turns, if the primary theme materially changes, you MUST call `write_session_title` before using any other tool, doing substantive work, or responding. You MUST NOT update the title for minor subtopics, follow-ups, or implementation details. Calling `write_session_title` updates session metadata only; it does not change project or workspace files and must not be treated as a project-file change.\n</capability>"
+        );
     }
 
     #[tokio::test]

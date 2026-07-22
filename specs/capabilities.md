@@ -173,6 +173,12 @@ model sets a concise 3–7 word title after the first substantive request and
 changes it later only when the conversation's primary theme materially changes,
 not for follow-ups or minor subtopics.
 
+Title maintenance is a required pre-work action while automatic titles are
+enabled: the initial title and any material primary-theme update happen before
+other tools, substantive work, or a substantive response. Session-title writes
+change session metadata only and do not count as project or workspace file
+changes.
+
 All participating title mutation paths suppress no-ops and emit the typed
 `session.title.updated` semantic event after an actual change. Tool-originated
 mutations preserve the current turn correlation. Embedders can reuse the core
