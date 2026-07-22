@@ -2,6 +2,16 @@
 # can compute public-API reachability. See https://github.com/astral-sh/hawk
 # Anything not reachable from these entry points is a candidate for
 # tighter visibility (pub -> pub(crate) -> private) or removal.
+#
+# CAVEAT: hawk treats the workspace as a closed world and has no way to declare
+# a published library crate as an API root. everruns publishes 23 library crates
+# (see .github/workflows/publish-crates.yml). Their public API is an external
+# contract hawk cannot see, so hawk findings against those crates are expected,
+# not defects. Only findings on the internal `publish = false` crates (server,
+# worker, durable, container-sandbox, session-sqldb, internal-protocol, ...) —
+# which feed only the binaries below — reflect hawk's model correctly. The
+# `unnecessary_restricted_visibility` lint is safe everywhere (pub(crate)->private
+# never affects the external API).
 
 [[production]]
 package = "everruns-server"
