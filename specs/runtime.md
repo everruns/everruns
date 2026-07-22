@@ -223,6 +223,12 @@ embedded runtime needs for:
 - persisting assistant and tool-result messages from emitted events
 - configuring the runtime default model
 
+The event bus is also the projection seam for semantic session mutations. For
+example, automatic or explicit title changes emit `session.title.updated` with
+the originating turn context when available. An embedder such as a desktop host
+can observe that event and update its own session index without replacing or
+forking the `session` capability.
+
 `RuntimeSessionStore` also inherits the live capability mutation methods from
 `SessionMutator`. A custom backend that wants to support
 `InProcessRuntime::{activate_capability, deactivate_capability}` implements

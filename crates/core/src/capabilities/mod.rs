@@ -313,7 +313,9 @@ pub use research::{RESEARCH_CAPABILITY_ID, ResearchCapability};
 pub use sample_data::{SAMPLE_DATA_CAPABILITY_ID, SampleDataCapability};
 pub use self_budget::{SELF_BUDGET_CAPABILITY_ID, SelfBudgetCapability};
 pub use session::{
-    GetSessionInfoTool, SESSION_CAPABILITY_ID, SessionCapability, WriteSessionTitleTool,
+    GetSessionInfoTool, SESSION_CAPABILITY_ID, SessionCapability, SessionCapabilityConfig,
+    SessionTitleMutation, WriteSessionTitleTool, session_title_updated_event,
+    update_session_title_with_event,
 };
 pub use session_sandbox::{
     SESSION_SANDBOX_CAPABILITY_ID, SandboxExecTool, SandboxManageTool, SandboxReadFileTool,

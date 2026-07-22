@@ -165,6 +165,23 @@ without rebuilding the runtime or replacing the session:
 host-storage seam. Its default implementation fails closed, while the bundled
 in-memory runtime store implements both mutations atomically.
 
+### Automatic session titles
+
+The built-in `session` capability may opt into automatic title maintenance.
+The default remains manual-only for backward compatibility. When enabled, the
+model sets a concise 3–7 word title after the first substantive request and
+changes it later only when the conversation's primary theme materially changes,
+not for follow-ups or minor subtopics.
+
+All participating title mutation paths suppress no-ops and emit the typed
+`session.title.updated` semantic event after an actual change. Tool-originated
+mutations preserve the current turn correlation. Embedders can reuse the core
+title-mutation helpers and project events through the runtime event bus without
+replacing the capability. See
+[`crates/core/src/capabilities/session.rs`](../crates/core/src/capabilities/session.rs)
+for the public config and helper APIs, and [`specs/events.md`](events.md) for the
+event contract.
+
 #### Deployment Availability (session creation)
 
 Some built-in capabilities are feature-gated (e.g. `container_sandbox` behind

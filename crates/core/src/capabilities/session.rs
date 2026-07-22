@@ -5,18 +5,110 @@
 //! - `get_session_info`: return session id, title, agent name, and cumulative usage
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
-use crate::events::TokenUsage;
+use crate::error::{AgentLoopError, Result};
+use crate::events::{EventContext, EventRequest, SessionTitleUpdatedData, TokenUsage};
+use crate::session::Session;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
+use crate::traits::{EventEmitter, SessionMutator, SessionStore, ToolContext};
+use crate::typed_id::SessionId;
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 pub const SESSION_CAPABILITY_ID: &str = "session";
 
+/// Per-agent/session settings for the session capability.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SessionCapabilityConfig {
+    /// Ask the model to maintain a concise title as the conversation evolves.
+    #[serde(default)]
+    pub auto_title: bool,
+}
+
+impl SessionCapabilityConfig {
+    fn from_value(config: &Value) -> Self {
+        serde_json::from_value(config.clone()).unwrap_or_default()
+    }
+}
+
+/// Result of a semantic session-title mutation.
+#[derive(Debug, Clone)]
+pub struct SessionTitleMutation {
+    /// Current session snapshot.
+    pub session: Session,
+    /// Whether the stored title changed and an event was emitted.
+    pub changed: bool,
+}
+
+/// Build the semantic event for an actual title change.
+///
+/// Returns `None` when `title` is already current, giving tool and non-tool
+/// mutation paths one source of truth for no-op suppression and payload shape.
+pub fn session_title_updated_event(
+    session_id: SessionId,
+    event_context: EventContext,
+    previous_title: Option<String>,
+    title: String,
+) -> Option<EventRequest> {
+    if previous_title.as_deref() == Some(title.as_str()) {
+        return None;
+    }
+    Some(EventRequest::new(
+        session_id,
+        event_context,
+        SessionTitleUpdatedData {
+            previous_title,
+            title,
+        },
+    ))
+}
+
+/// Update a session title and emit the corresponding semantic event.
+///
+/// Embedders and non-tool mutation paths can use this helper to share the same
+/// change detection, typed payload, and correlation semantics as
+/// [`WriteSessionTitleTool`]. The event is emitted only after an actual change;
+/// an unchanged title is a successful no-op.
+pub async fn update_session_title_with_event(
+    session_id: SessionId,
+    title: String,
+    event_context: EventContext,
+    session_store: &dyn SessionStore,
+    session_mutator: &dyn SessionMutator,
+    event_emitter: &dyn EventEmitter,
+) -> Result<SessionTitleMutation> {
+    let current = session_store
+        .get_session(session_id)
+        .await?
+        .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+    let previous_title = current.title.clone();
+
+    let Some(event) =
+        session_title_updated_event(session_id, event_context, previous_title, title.clone())
+    else {
+        return Ok(SessionTitleMutation {
+            session: current,
+            changed: false,
+        });
+    };
+
+    let session = session_mutator
+        .update_session_title(session_id, title.clone())
+        .await?;
+    event_emitter.emit(event).await?;
+
+    Ok(SessionTitleMutation {
+        session,
+        changed: true,
+    })
+}
+
 /// Session capability - read/update session metadata.
 pub struct SessionCapability;
 
+#[async_trait]
 impl Capability for SessionCapability {
     fn id(&self) -> &str {
         SESSION_CAPABILITY_ID
@@ -48,6 +140,45 @@ impl Capability for SessionCapability {
 
     fn category(&self) -> Option<&str> {
         Some("Session")
+    }
+
+    fn config_schema(&self) -> Option<Value> {
+        Some(json!({
+            "type": "object",
+            "properties": {
+                "auto_title": {
+                    "type": "boolean",
+                    "title": "Automatic session titles",
+                    "description": "Set a concise title after the first substantive request and update it only when the conversation's primary theme materially changes.",
+                    "default": false
+                }
+            },
+            "additionalProperties": false
+        }))
+    }
+
+    fn validate_config(&self, config: &Value) -> std::result::Result<(), String> {
+        if config.is_null() {
+            return Ok(());
+        }
+        serde_json::from_value::<SessionCapabilityConfig>(config.clone())
+            .map(|_| ())
+            .map_err(|error| format!("invalid session config: {error}"))
+    }
+
+    async fn system_prompt_contribution_with_config(
+        &self,
+        _ctx: &super::SystemPromptContext,
+        config: &Value,
+    ) -> Option<String> {
+        if !SessionCapabilityConfig::from_value(config).auto_title {
+            return None;
+        }
+
+        Some(format!(
+            "<capability id=\"{}\">\nAfter the first substantive user request, call `write_session_title` with a concise 3–7 word title for the conversation's primary theme. Ignore greetings, acknowledgements, and other non-substantive messages. On later turns, update the title only when the primary theme materially changes; do not update it for minor subtopics, follow-ups, or implementation details.\n</capability>",
+            self.id()
+        ))
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
@@ -109,20 +240,32 @@ impl Tool for WriteSessionTitleTool {
             _ => return ToolExecutionResult::tool_error("Missing required parameter: title"),
         };
 
+        let Some(session_store) = &context.session_store else {
+            return ToolExecutionResult::tool_error("Session store not available in this context");
+        };
         let Some(mutator) = &context.session_mutator else {
             return ToolExecutionResult::tool_error(
                 "Session mutator not available in this context",
             );
         };
+        let Some(event_emitter) = &context.event_emitter else {
+            return ToolExecutionResult::tool_error("Event emitter not available in this context");
+        };
 
-        match mutator
-            .update_session_title(context.session_id, title.clone())
-            .await
+        match update_session_title_with_event(
+            context.session_id,
+            title,
+            context.event_context.clone().unwrap_or_default(),
+            session_store.as_ref(),
+            mutator.as_ref(),
+            event_emitter.as_ref(),
+        )
+        .await
         {
-            Ok(session) => ToolExecutionResult::success(json!({
-                "session_id": session.id.to_string(),
-                "title": session.title,
-                "updated": true,
+            Ok(outcome) => ToolExecutionResult::success(json!({
+                "session_id": outcome.session.id.to_string(),
+                "title": outcome.session.title,
+                "updated": outcome.changed,
             })),
             Err(e) => ToolExecutionResult::internal_error(e),
         }
@@ -217,9 +360,9 @@ fn usage_json(usage: &TokenUsage) -> Value {
 mod tests {
     use super::*;
     use crate::agent::{Agent, AgentStatus};
-    use crate::error::Result;
+    use crate::events::{Event, EventRequest};
     use crate::session::{Session, SessionStatus};
-    use crate::typed_id::{AgentId, HarnessId, ModelId, SessionId};
+    use crate::typed_id::{AgentId, EventId, HarnessId, MessageId, ModelId, SessionId, TurnId};
     use crate::{AgentCapabilityConfig, Tool};
     use async_trait::async_trait;
     use chrono::Utc;
@@ -257,6 +400,22 @@ mod tests {
 
     struct MockAgentStore {
         agent: Option<Agent>,
+    }
+
+    #[derive(Clone, Default)]
+    struct RecordingEventEmitter {
+        requests: Arc<Mutex<Vec<EventRequest>>>,
+    }
+
+    #[async_trait]
+    impl crate::traits::EventEmitter for RecordingEventEmitter {
+        async fn emit(&self, request: EventRequest) -> Result<Event> {
+            self.requests
+                .lock()
+                .expect("poisoned")
+                .push(request.clone());
+            Ok(request.into_event(EventId::new(), 1))
+        }
     }
 
     #[async_trait]
@@ -318,10 +477,17 @@ mod tests {
     async fn write_session_title_updates_title() {
         let session = build_session(None);
         let session_id = session.id;
+        let stored = Arc::new(Mutex::new(Some(session.clone())));
+        let emitter = RecordingEventEmitter::default();
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::new();
         let mut context = ToolContext::new(session_id);
+        context.session_store = Some(Arc::new(MockSessionStore { session: stored }));
         context.session_mutator = Some(Arc::new(MockSessionMutator {
             session: Arc::new(Mutex::new(session)),
         }));
+        context.event_emitter = Some(Arc::new(emitter.clone()));
+        context.event_context = Some(EventContext::turn(turn_id, input_message_id));
 
         let tool = WriteSessionTitleTool;
         let result = tool
@@ -335,6 +501,64 @@ mod tests {
             }
             _ => panic!("expected success"),
         }
+
+        let requests = emitter.requests.lock().expect("poisoned");
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].event_type, crate::events::SESSION_TITLE_UPDATED);
+        assert_eq!(requests[0].context.turn_id, Some(turn_id));
+        assert_eq!(requests[0].context.input_message_id, Some(input_message_id));
+        match &requests[0].data {
+            crate::events::EventData::SessionTitleUpdated(data) => {
+                assert_eq!(data.previous_title.as_deref(), Some("Old title"));
+                assert_eq!(data.title, "New title");
+            }
+            data => panic!("unexpected event data: {data:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn write_session_title_is_noop_when_title_is_unchanged() {
+        let session = build_session(None);
+        let session_id = session.id;
+        let emitter = RecordingEventEmitter::default();
+        let mut context = ToolContext::new(session_id);
+        context.session_store = Some(Arc::new(MockSessionStore {
+            session: Arc::new(Mutex::new(Some(session.clone()))),
+        }));
+        context.session_mutator = Some(Arc::new(MockSessionMutator {
+            session: Arc::new(Mutex::new(session)),
+        }));
+        context.event_emitter = Some(Arc::new(emitter.clone()));
+
+        let result = WriteSessionTitleTool
+            .execute_with_context(json!({"title": "Old title"}), &context)
+            .await;
+
+        match result {
+            ToolExecutionResult::Success(value) => assert_eq!(value["updated"], false),
+            _ => panic!("expected success"),
+        }
+        assert!(emitter.requests.lock().expect("poisoned").is_empty());
+    }
+
+    #[tokio::test]
+    async fn auto_title_policy_is_opt_in() {
+        let capability = SessionCapability;
+        let ctx = super::super::SystemPromptContext::without_file_store(SessionId::new());
+
+        assert!(
+            capability
+                .system_prompt_contribution_with_config(&ctx, &json!({}))
+                .await
+                .is_none()
+        );
+        let prompt = capability
+            .system_prompt_contribution_with_config(&ctx, &json!({"auto_title": true}))
+            .await
+            .expect("auto-title prompt");
+        assert!(prompt.contains("3–7 word title"));
+        assert!(prompt.contains("primary theme materially changes"));
+        assert!(prompt.contains("minor subtopics"));
     }
 
     #[tokio::test]

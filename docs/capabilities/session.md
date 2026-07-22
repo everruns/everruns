@@ -14,6 +14,17 @@ sidebar:
 
 Tools to read and update session metadata like title and agent information.
 
+## Automatic titles
+
+Automatic title maintenance is opt-in. Set `auto_title` to `true` in the
+capability configuration to have the agent create a concise 3–7 word title
+after the first substantive request. The agent updates it later only when the
+conversation's primary theme materially changes, not for minor follow-ups or
+subtopics.
+
+Title changes emit `session.title.updated` with the previous and new title. A
+repeated write of the current title is a no-op and emits no event.
+
 ## Tools
 
 ### `get_session_info`

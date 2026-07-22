@@ -353,6 +353,9 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::SessionIdled(d) => {
             serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
         }
+        EventData::SessionTitleUpdated(d) => {
+            serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
+        }
         EventData::TaskCreated(d) => {
             serde_json::to_value(d).unwrap_or_else(event_data_serialize_fallback)
         }
