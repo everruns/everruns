@@ -1,0 +1,19 @@
+# hawk.toml — declares the workspace's shipped binaries so `cargo hawk`
+# can compute public-API reachability. See https://github.com/astral-sh/hawk
+# Anything not reachable from these entry points is a candidate for
+# tighter visibility (pub -> pub(crate) -> private) or removal.
+
+[[production]]
+package = "everruns-server"
+bin = "everruns-server"
+reason = "primary API/server binary"
+
+[[production]]
+package = "everruns-worker"
+bin = "everruns-worker"
+reason = "background worker binary"
+
+[[production]]
+package = "everruns-cli"
+bin = "everruns"
+reason = "shipped CLI binary"
