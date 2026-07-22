@@ -37,6 +37,7 @@ async fn openrouter_chat_with_session_id_and_routing_succeeds() {
         reasoning_effort: None,
         metadata,
         previous_response_id: None,
+        provider_opaque_context: None,
         tool_search: None,
         prompt_cache: None,
         // Exercise the routing-decoration path alongside session_id forwarding.

@@ -52,7 +52,7 @@ pub use driver_registry::{
     EmbedResponse, EmbeddingsDriver, EmbeddingsDriverError, EmbeddingsDriverFactory, LlmCallConfig,
     LlmCallConfigBuilder, LlmCompletionMetadata, LlmContentPart, LlmMessage, LlmMessageContent,
     LlmMessageRole, LlmResponse, LlmResponseStream, LlmStreamError, LlmStreamEvent, ProviderConfig,
-    ServiceKind, fold_system_messages,
+    ProviderOpaqueContext, ServiceKind, fold_system_messages,
 };
 pub use error::{
     AgentLoopError, FileSystemError, FileSystemErrorClass, LlmError, LlmErrorKind, Result,
@@ -69,7 +69,7 @@ pub use openai_protocol::{AuthHeaderProvider, OpenAIProtocolChatDriver};
 pub use openresponses_protocol::{
     CompactContent, CompactContentPart, CompactInputItem, CompactOutputItem, CompactRequest,
     CompactResponse, CompactUsage, OpenResponsesProtocolChatDriver, OpenResponsesRequestExtension,
-    compact_output_to_messages, messages_to_compact_input,
+    messages_to_compact_input,
 };
 pub use provider::{Provider, ProviderStatus, ProviderTraceConfig};
 pub use tool_types::{

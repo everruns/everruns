@@ -197,6 +197,98 @@ struct FlakyStreamDriver {
     attempts: Arc<AtomicUsize>,
 }
 
+#[derive(Clone, Debug)]
+struct NativeCompactRetryDriver {
+    attempts: Arc<AtomicUsize>,
+    compact_request: Arc<Mutex<Option<everruns_core::CompactRequest>>>,
+}
+
+#[async_trait]
+impl everruns_core::ChatDriver for NativeCompactRetryDriver {
+    async fn chat_completion_stream(
+        &self,
+        _messages: Vec<everruns_core::LlmMessage>,
+        config: &everruns_core::LlmCallConfig,
+    ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
+        if self.attempts.fetch_add(1, Ordering::SeqCst) == 0 {
+            return Err(everruns_core::AgentLoopError::request_too_large(
+                "test context limit",
+            ));
+        }
+
+        assert_eq!(config.previous_response_id, None);
+        let context = config
+            .provider_opaque_context
+            .as_ref()
+            .expect("retry must carry the standalone compact output");
+        let everruns_core::ProviderOpaqueContext::OpenResponsesCompact { output } = context;
+        assert!(matches!(
+            &output[0],
+            everruns_core::CompactOutputItem::Message { role, content }
+                if role == "user"
+                    && matches!(content, everruns_core::CompactContent::Text(text) if text == "first")
+        ));
+        assert!(matches!(
+            &output[1],
+            everruns_core::CompactOutputItem::Compaction { encrypted_content }
+                if encrypted_content == "encrypted-compact-context"
+        ));
+        assert!(matches!(
+            &output[2],
+            everruns_core::CompactOutputItem::Message { role, content }
+                if role == "user"
+                    && matches!(content, everruns_core::CompactContent::Text(text) if text == "last")
+        ));
+
+        Ok(Box::pin(stream::iter(vec![
+            Ok(everruns_core::LlmStreamEvent::TextDelta(
+                "Recovered from native compact context.".to_string(),
+            )),
+            Ok(everruns_core::LlmStreamEvent::Done(Box::new(
+                everruns_core::LlmCompletionMetadata {
+                    total_tokens: Some(8),
+                    prompt_tokens: Some(5),
+                    completion_tokens: Some(3),
+                    model: Some(config.model.clone()),
+                    finish_reason: Some("stop".to_string()),
+                    ..Default::default()
+                },
+            ))),
+        ])))
+    }
+
+    fn supports_compact(&self) -> bool {
+        true
+    }
+
+    fn supports_stateful_responses(&self) -> bool {
+        true
+    }
+
+    async fn compact(
+        &self,
+        request: everruns_core::CompactRequest,
+    ) -> everruns_core::Result<Option<everruns_core::CompactResponse>> {
+        *self.compact_request.lock().await = Some(request);
+        Ok(Some(everruns_core::CompactResponse {
+            output: vec![
+                everruns_core::CompactOutputItem::Message {
+                    role: "user".to_string(),
+                    content: everruns_core::CompactContent::Text("first".to_string()),
+                },
+                everruns_core::CompactOutputItem::Compaction {
+                    encrypted_content: "encrypted-compact-context".to_string(),
+                },
+                everruns_core::CompactOutputItem::Message {
+                    role: "user".to_string(),
+                    content: everruns_core::CompactContent::Text("last".to_string()),
+                },
+            ],
+            usage: None,
+        }))
+    }
+}
+
 #[async_trait]
 impl everruns_core::ChatDriver for FlakyStreamDriver {
     async fn chat_completion_stream(
@@ -388,6 +480,124 @@ async fn test_reason_atom_with_fixed_response() {
             panic!("Expected OutputMessageCompleted data");
         }
     }
+}
+
+#[tokio::test]
+async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_response_id() {
+    use everruns_core::AgentCapabilityConfig;
+    use everruns_core::capabilities::{COMPACTION_CAPABILITY_ID, CompactionCapability};
+    use everruns_core::in_memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    provider_store
+        .set_default_model(ResolvedModel {
+            model: "gpt-5.4".to_string(),
+            provider_type: DriverId::OpenAI,
+            api_key: Some("fake-api-key".to_string()),
+            base_url: None,
+            provider_metadata: None,
+        })
+        .await;
+
+    let now = chrono::Utc::now();
+    agent_store
+        .add_agent(Agent {
+            public_id: AgentId::from_uuid(agent_id),
+            internal_id: agent_id,
+            name: "native-compact-test-agent".to_string(),
+            display_name: Some("Native Compact Test Agent".to_string()),
+            description: None,
+            system_prompt: "You are a helpful assistant.".to_string(),
+            default_model_id: None,
+            harness_id: HarnessId::from_uuid(uuid::Uuid::nil()),
+            default_version_id: None,
+            forked_from_agent_id: None,
+            forked_from_version_id: None,
+            root_agent_id: None,
+            capabilities: vec![AgentCapabilityConfig::with_config(
+                COMPACTION_CAPABILITY_ID,
+                json!({ "strategy": "native", "proactive": false }),
+            )],
+            initial_files: vec![],
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            tools: vec![],
+            mcp_servers: Default::default(),
+            tags: vec![],
+            status: AgentStatus::Active,
+            created_at: now,
+            updated_at: now,
+            archived_at: None,
+            deleted_at: None,
+            usage: None,
+        })
+        .await;
+    message_retriever
+        .seed(session_id.into(), vec![Message::user("latest delta")])
+        .await;
+
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let compact_request = Arc::new(Mutex::new(None));
+    let driver = NativeCompactRetryDriver {
+        attempts: attempts.clone(),
+        compact_request: compact_request.clone(),
+    };
+    let mut driver_registry = DriverRegistry::new();
+    driver_registry.register(DriverId::OpenAI, move |_config| Box::new(driver.clone()));
+
+    let mut capability_registry = CapabilityRegistry::new();
+    capability_registry.register(CompactionCapability);
+    let event_emitter = InMemoryEventEmitter::new();
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        capability_registry,
+        driver_registry,
+        event_emitter.clone(),
+    );
+
+    let result = atom
+        .execute(ReasonInput {
+            context: create_context(session_id),
+            harness_id,
+            agent_id: Some(agent_id.into()),
+            org_id: 0,
+            mcp_tool_definitions: vec![],
+            previous_response_id: Some("resp_before_compaction".to_string()),
+            iteration: 1,
+        })
+        .await
+        .expect("native compact retry should succeed");
+
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+    assert_eq!(result.text, "Recovered from native compact context.");
+    let compact_request = compact_request
+        .lock()
+        .await
+        .clone()
+        .expect("compact request should be captured");
+    assert!(compact_request.input.is_empty());
+    assert_eq!(
+        compact_request.previous_response_id.as_deref(),
+        Some("resp_before_compaction")
+    );
+
+    let public_events = serde_json::to_string(&event_emitter.events().await).unwrap();
+    assert!(!public_events.contains("encrypted-compact-context"));
 }
 
 #[tokio::test]
@@ -1310,6 +1520,7 @@ async fn test_driver_registry_integration() {
         reasoning_effort: None,
         metadata: std::collections::HashMap::new(),
         previous_response_id: None,
+        provider_opaque_context: None,
         tool_search: None,
         prompt_cache: None,
         openrouter_routing: None,

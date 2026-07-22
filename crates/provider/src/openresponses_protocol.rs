@@ -1006,25 +1006,31 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             .as_ref()
             .is_some_and(|profile| profile.tool_search);
 
-        let (instructions, input_items) = Self::build_input(&messages, supports_phases);
+        let (instructions, transcript_input_items) = Self::build_input(&messages, supports_phases);
 
         // Only chain via `previous_response_id` when the endpoint actually persists
         // responses server-side. Stateless OpenAI-compatible gateways (OpenRouter,
         // Gemini compat, …) accept the field but ignore it, so chaining there drops
         // the conversation from turn 2 onward (EVE-523). For those we send no
         // continuation handle and replay the full transcript in `input` below.
-        let previous_response_id = if endpoint_persists_responses(&self.api_url) {
+        let mut previous_response_id = if endpoint_persists_responses(&self.api_url) {
             config.previous_response_id.clone()
         } else {
             None
         };
 
-        // Stateful Responses continuations must not mix `previous_response_id` with
-        // the prior transcript input the provider already holds server-side. When a
-        // continuation handle is present, trim `input_items` to the delta window so
-        // the request only carries new tool results / user messages. With no handle
-        // (incl. stateless gateways), the full transcript is kept.
-        let input_items = finalize_input_for_request(input_items, &previous_response_id);
+        // Native compact output is a standalone context checkpoint: its ordered
+        // items replace transcript reconstruction and must not be trimmed. It is
+        // therefore mutually exclusive with server-side continuation state.
+        let input_items = match &config.provider_opaque_context {
+            Some(crate::driver_registry::ProviderOpaqueContext::OpenResponsesCompact {
+                output,
+            }) => {
+                previous_response_id = None;
+                output.iter().map(ResponsesInputItem::from).collect()
+            }
+            None => finalize_input_for_request(transcript_input_items, &previous_response_id),
+        };
 
         let tools = if config.tools.is_empty() {
             None
@@ -1825,7 +1831,7 @@ pub enum CompactInputItem {
 }
 
 /// Content for compact input items
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum CompactContent {
     /// Simple text content
@@ -1835,7 +1841,7 @@ pub enum CompactContent {
 }
 
 /// Content part for compact input
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum CompactContentPart {
     /// Text content
@@ -1856,7 +1862,7 @@ pub struct CompactResponse {
 }
 
 /// Output item from compact response
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum CompactOutputItem {
     /// A user message (kept verbatim)
@@ -1986,102 +1992,12 @@ impl CompactInputItem {
     }
 }
 
-impl CompactOutputItem {
-    /// Convert a CompactOutputItem to LlmMessage
-    ///
-    /// Compaction items are converted to a special system message containing
-    /// the encrypted context that will be included in subsequent requests.
-    pub fn to_llm_message(&self) -> Option<LlmMessage> {
-        match self {
-            CompactOutputItem::Message { role, content } => {
-                let llm_role = match role.as_str() {
-                    "user" => LlmMessageRole::User,
-                    "assistant" => LlmMessageRole::Assistant,
-                    "developer" | "system" => LlmMessageRole::System,
-                    "tool" => LlmMessageRole::Tool,
-                    _ => LlmMessageRole::User, // Default to user
-                };
-
-                let llm_content = match content {
-                    CompactContent::Text(text) => LlmMessageContent::Text(text.clone()),
-                    CompactContent::Parts(parts) => {
-                        let llm_parts: Vec<LlmContentPart> = parts
-                            .iter()
-                            .map(|p| match p {
-                                CompactContentPart::InputText { text } => {
-                                    LlmContentPart::Text { text: text.clone() }
-                                }
-                                CompactContentPart::InputImage { image_url } => {
-                                    // Pass the URL directly - it's already in data URL format
-                                    LlmContentPart::Image {
-                                        url: image_url.clone(),
-                                    }
-                                }
-                            })
-                            .collect();
-                        LlmMessageContent::Parts(llm_parts)
-                    }
-                };
-
-                Some(LlmMessage {
-                    role: llm_role,
-                    content: llm_content,
-                    tool_calls: None,
-                    tool_call_id: None,
-                    phase: None,
-                    thinking: None,
-                    thinking_signature: None,
-                })
-            }
-            CompactOutputItem::Compaction { .. } => {
-                // Compaction items are handled separately - they're passed as-is
-                // to the next request, not converted to messages
-                None
-            }
-        }
-    }
-}
-
 /// Convert a slice of LlmMessages to CompactInputItems
 pub fn messages_to_compact_input(messages: &[LlmMessage]) -> Vec<CompactInputItem> {
     messages
         .iter()
         .flat_map(CompactInputItem::from_llm_message)
         .collect()
-}
-
-/// Convert CompactResponse output to LlmMessages plus any compaction items
-///
-/// Returns a tuple of (regular messages, compaction items).
-/// The compaction items should be preserved and included in subsequent compact requests.
-pub fn compact_output_to_messages(
-    output: &[CompactOutputItem],
-) -> (Vec<LlmMessage>, Vec<CompactInputItem>) {
-    let mut messages = Vec::new();
-    let mut compaction_items = Vec::new();
-
-    for item in output {
-        match item {
-            CompactOutputItem::Message { role, content } => {
-                if let Some(msg) = item.to_llm_message() {
-                    messages.push(msg);
-                } else {
-                    // Re-add as compact input for next request
-                    compaction_items.push(CompactInputItem::Message {
-                        role: role.clone(),
-                        content: content.clone(),
-                    });
-                }
-            }
-            CompactOutputItem::Compaction { encrypted_content } => {
-                compaction_items.push(CompactInputItem::Compaction {
-                    encrypted_content: encrypted_content.clone(),
-                });
-            }
-        }
-    }
-
-    (messages, compaction_items)
 }
 
 // ============================================================================
@@ -2181,6 +2097,49 @@ enum ResponsesInputItem {
         /// Encrypted reasoning content (required for multi-turn conversations)
         encrypted_content: String,
     },
+    /// Opaque native context returned by `/responses/compact`.
+    Compaction {
+        r#type: String,
+        encrypted_content: String,
+    },
+}
+
+impl From<&CompactOutputItem> for ResponsesInputItem {
+    fn from(item: &CompactOutputItem) -> Self {
+        match item {
+            CompactOutputItem::Message { role, content } => Self::Message {
+                r#type: "message".to_string(),
+                role: role.clone(),
+                content: match content {
+                    CompactContent::Text(text) => ResponsesContent::Text(text.clone()),
+                    CompactContent::Parts(parts) => ResponsesContent::Parts(
+                        parts
+                            .iter()
+                            .map(|part| match part {
+                                CompactContentPart::InputText { text } => {
+                                    ResponsesContentPart::InputText {
+                                        r#type: "input_text".to_string(),
+                                        text: text.clone(),
+                                    }
+                                }
+                                CompactContentPart::InputImage { image_url } => {
+                                    ResponsesContentPart::InputImage {
+                                        r#type: "input_image".to_string(),
+                                        image_url: image_url.clone(),
+                                    }
+                                }
+                            })
+                            .collect(),
+                    ),
+                },
+                phase: None,
+            },
+            CompactOutputItem::Compaction { encrypted_content } => Self::Compaction {
+                r#type: "compaction".to_string(),
+                encrypted_content: encrypted_content.clone(),
+            },
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -2485,6 +2444,7 @@ mod tests {
             reasoning_effort: None,
             metadata,
             previous_response_id: None,
+            provider_opaque_context: None,
             tool_search: None,
             prompt_cache: Some(crate::driver_registry::PromptCacheConfig {
                 enabled: true,
@@ -2527,6 +2487,7 @@ mod tests {
             reasoning_effort: None,
             metadata,
             previous_response_id: None,
+            provider_opaque_context: None,
             tool_search: None,
             prompt_cache: Some(crate::driver_registry::PromptCacheConfig {
                 enabled: true,
@@ -2582,6 +2543,7 @@ mod tests {
             reasoning_effort: None,
             metadata,
             previous_response_id: None,
+            provider_opaque_context: None,
             tool_search: None,
             prompt_cache: Some(crate::driver_registry::PromptCacheConfig {
                 enabled: true,
@@ -2627,6 +2589,7 @@ mod tests {
             reasoning_effort: None,
             metadata: std::collections::HashMap::new(),
             previous_response_id: None,
+            provider_opaque_context: None,
             tool_search: None,
             prompt_cache: Some(crate::driver_registry::PromptCacheConfig {
                 enabled: true,
@@ -3514,6 +3477,7 @@ mod tests {
             // Continuation handle from a prior turn — must be ignored on a
             // stateless gateway.
             previous_response_id: Some("gen-turn-1".to_string()),
+            provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
             openrouter_routing: None,
@@ -3599,6 +3563,7 @@ mod tests {
             reasoning_effort: None,
             metadata: std::collections::HashMap::new(),
             previous_response_id: None,
+            provider_opaque_context: None,
             tool_search: Some(crate::driver_registry::ToolSearchConfig {
                 enabled: true,
                 threshold: 15,
@@ -3661,6 +3626,7 @@ mod tests {
             reasoning_effort: None,
             metadata,
             previous_response_id: None,
+            provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
             openrouter_routing: Some(OpenRouterRoutingConfig {
@@ -3728,6 +3694,7 @@ mod tests {
             reasoning_effort: None,
             metadata: std::collections::HashMap::new(),
             previous_response_id: None,
+            provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
             openrouter_routing: None,
@@ -4451,6 +4418,7 @@ mod tests {
             reasoning_effort: Some("none".to_string()),
             metadata: std::collections::HashMap::new(),
             previous_response_id: None,
+            provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
             openrouter_routing: None,
@@ -4487,6 +4455,7 @@ mod tests {
             reasoning_effort: Some("high".to_string()),
             metadata: std::collections::HashMap::new(),
             previous_response_id: None,
+            provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
             openrouter_routing: None,
@@ -5113,6 +5082,7 @@ mod tests {
             reasoning_effort: None,
             metadata: std::collections::HashMap::new(),
             previous_response_id: None,
+            provider_opaque_context: None,
             tool_search: None,
             prompt_cache: None,
             openrouter_routing: None,

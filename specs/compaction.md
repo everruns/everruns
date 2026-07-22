@@ -34,6 +34,24 @@ hierarchical tiers, provider-compacted output, and infinity-context composition.
 Reducers only change prompt-facing copies: stored session history remains
 lossless, and reducers never invent successful tool results.
 
+### Native compact context handoff
+
+Native compact output is a standalone, provider-owned context checkpoint. The
+runtime preserves the returned item array as an ordered typed value and does
+not translate encrypted items into messages, reorder them, or run generic
+message/tool pruning over them. The next matching provider request uses that
+array directly as `input`; `previous_response_id` is cleared because the
+standalone checkpoint replaces the earlier server-side continuation chain.
+
+The compact request itself uses exactly one source of conversation context. A
+stateful Responses continuation sends `previous_response_id` with empty
+`input`. A stateless request sends reconstructed `input` without
+`previous_response_id`. System instructions remain a separate request field in
+both cases.
+
+Opaque compact content is provider transport state, not a public event payload.
+Compaction events expose counts, strategy, duration, and usage metadata only.
+
 ## Current State
 
 ### What Exists
