@@ -86,6 +86,20 @@ impl SearchKnowledgeTool {
 
 #[async_trait]
 impl Tool for SearchKnowledgeTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_search_knowledge(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "search_knowledge"
     }

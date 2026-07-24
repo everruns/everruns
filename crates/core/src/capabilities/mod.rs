@@ -3502,6 +3502,110 @@ mod tests {
         }
     }
 
+    /// Every built-in production tool must carry backend-authored narration so
+    /// downstream clients (e.g. Yolop) render a concise status line instead of
+    /// the raw tool-call presentation. A tool is considered covered when its
+    /// owning capability's `narrate()` returns `Some` for a representative call,
+    /// or when it opts into data-driven CRUD narration via a `narration_noun`
+    /// hint. Capabilities whose generic display-name presentation is intentional
+    /// are listed in `GENERIC_NARRATION_ALLOWLIST` with a documented reason.
+    ///
+    /// This is the ratchet the tool-narration audit installs: a newly added
+    /// built-in tool that neither narrates nor is allowlisted fails here rather
+    /// than silently falling back to raw presentation.
+    #[test]
+    fn builtin_tools_have_narration_or_documented_generic_fallback() {
+        use crate::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
+        use crate::tool_types::ToolCall;
+
+        // (capability_id, reason) — whole capabilities whose tools intentionally
+        // use the generic display-name presentation. Keep the reason specific.
+        const GENERIC_NARRATION_ALLOWLIST: &[(&str, &str)] = &[
+            // Demo / eval fixtures — not a production surface.
+            ("sample_data", "demo capability with fixture mounts"),
+            (
+                "data_knowledge",
+                "demo knowledge scaffold; fixture data only",
+            ),
+            ("fake_aws", "demo/eval fixture tools"),
+            ("fake_crm", "demo/eval fixture tools"),
+            ("fake_financial", "demo/eval fixture tools"),
+            ("fake_warehouse", "demo/eval fixture tools"),
+            ("test_math", "test fixture capability"),
+            ("test_weather", "test fixture capability"),
+            // Platform-admin surface: the mutating `manage_*` tools narrate via
+            // `narration_noun` hints; the read/query/messaging tools are a
+            // low-frequency operator surface where the display-name presentation
+            // ("Read Agents", "Read Sessions") is already clear.
+            (
+                "platform_management",
+                "operator admin surface; mutations narrate via narration_noun, reads use display names",
+            ),
+            // Operator model-routing / provider-inspection tooling: specialized,
+            // low-frequency, and the display names read clearly on their own.
+            (
+                "model_scout",
+                "operator model-routing tools; display-name presentation is adequate",
+            ),
+            (
+                "openrouter_workspace",
+                "operator OpenRouter inspection tools; display-name presentation is adequate",
+            ),
+            // Arbitrary sandboxed code execution — there is no bounded, non-secret
+            // argument worth surfacing; "Run Lua" is the honest status.
+            (
+                "lua",
+                "arbitrary sandboxed code execution; display-name presentation is adequate",
+            ),
+        ];
+
+        // Exercise the fullest production registry so platform tools, session
+        // tasks/schedules, and the SQL/knowledge surfaces are all covered.
+        let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
+        let ctx = ToolNarrationContext::default();
+        let mut missing: Vec<String> = Vec::new();
+
+        for cap in registry.list() {
+            let cap_id = cap.id().to_string();
+            if GENERIC_NARRATION_ALLOWLIST
+                .iter()
+                .any(|(id, _)| *id == cap_id)
+            {
+                continue;
+            }
+
+            for tool in cap.tools() {
+                let def = tool.to_definition();
+                // Data-driven CRUD narration (operation + narration_noun) yields a
+                // meaningful line via the generic fallback path.
+                if def.hints().narration_noun.is_some() {
+                    continue;
+                }
+
+                let call = ToolCall {
+                    id: "call_narration_audit".to_string(),
+                    name: tool.name().to_string(),
+                    arguments: serde_json::json!({}),
+                };
+                // Only the Started phase needs checking: `narrate()` returns
+                // `Some`/`None` uniformly across phases for a given tool.
+                if cap
+                    .narrate(Some(&def), &call, ToolNarrationPhase::Started, None, ctx)
+                    .is_none()
+                {
+                    missing.push(format!("{cap_id}::{}", tool.name()));
+                }
+            }
+        }
+
+        assert!(
+            missing.is_empty(),
+            "These built-in tools fall back to raw tool-call presentation. Implement \
+             `Tool::narrate` (see specs/tool-narration.md), set a `narration_noun` hint, \
+             or add a documented entry to GENERIC_NARRATION_ALLOWLIST: {missing:?}"
+        );
+    }
+
     #[test]
     fn test_capability_registry_blueprint_with_capability() {
         struct BlueprintProviderCapability;

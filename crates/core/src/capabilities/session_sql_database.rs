@@ -130,6 +130,16 @@ pub struct SqlExecuteTool;
 
 #[async_trait]
 impl Tool for SqlExecuteTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        crate::tool_narration::narrate_sql(self.name(), &tool_call.arguments, phase, locale)
+    }
+
     fn name(&self) -> &str {
         "sql_execute"
     }
@@ -223,6 +233,16 @@ pub struct SqlQueryTool;
 
 #[async_trait]
 impl Tool for SqlQueryTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        crate::tool_narration::narrate_sql(self.name(), &tool_call.arguments, phase, locale)
+    }
+
     fn name(&self) -> &str {
         "sql_query"
     }
@@ -319,6 +339,16 @@ pub struct SqlSchemaTool;
 
 #[async_trait]
 impl Tool for SqlSchemaTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        crate::tool_narration::narrate_sql(self.name(), &tool_call.arguments, phase, locale)
+    }
+
     fn name(&self) -> &str {
         "sql_schema"
     }

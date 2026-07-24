@@ -194,6 +194,20 @@ pub struct WriteSessionTitleTool;
 
 #[async_trait]
 impl Tool for WriteSessionTitleTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_write_session_title(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "write_session_title"
     }
@@ -277,6 +291,18 @@ pub struct GetSessionInfoTool;
 
 #[async_trait]
 impl Tool for GetSessionInfoTool {
+    fn narrate(
+        &self,
+        _tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_get_session_info(
+            phase, locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "get_session_info"
     }
@@ -471,6 +497,55 @@ mod tests {
             blueprint_id: None,
             blueprint_config: None,
         }
+    }
+
+    #[test]
+    fn session_tools_narrate_all_phases() {
+        use crate::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
+        use crate::tool_types::ToolCall;
+
+        let ctx = ToolNarrationContext::default();
+        let title_call = ToolCall {
+            id: "c1".to_string(),
+            name: "write_session_title".to_string(),
+            arguments: json!({ "title": "Improve tool narration" }),
+        };
+        assert_eq!(
+            WriteSessionTitleTool.narrate(&title_call, ToolNarrationPhase::Started, None, ctx),
+            Some("Update session title: Improve tool narration".to_string())
+        );
+        assert_eq!(
+            WriteSessionTitleTool.narrate(&title_call, ToolNarrationPhase::Completed, None, ctx),
+            Some("Updated session title: Improve tool narration".to_string())
+        );
+        assert_eq!(
+            WriteSessionTitleTool.narrate(&title_call, ToolNarrationPhase::Failed, None, ctx),
+            Some("Failed to update session title: Improve tool narration".to_string())
+        );
+
+        // The capability surfaces the tool's narration via the default dispatch.
+        let cap = SessionCapability;
+        let def = WriteSessionTitleTool.to_definition();
+        assert_eq!(
+            cap.narrate(
+                Some(&def),
+                &title_call,
+                ToolNarrationPhase::Started,
+                None,
+                ctx
+            ),
+            Some("Update session title: Improve tool narration".to_string())
+        );
+
+        let info_call = ToolCall {
+            id: "c2".to_string(),
+            name: "get_session_info".to_string(),
+            arguments: json!({}),
+        };
+        assert_eq!(
+            GetSessionInfoTool.narrate(&info_call, ToolNarrationPhase::Completed, None, ctx),
+            Some("Read session info".to_string())
+        );
     }
 
     #[tokio::test]

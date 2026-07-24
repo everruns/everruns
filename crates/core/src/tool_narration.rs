@@ -753,6 +753,13 @@ pub fn narrate_skill(
             value,
             phase,
         ),
+        "write_skill" => labeled_phrase(
+            "Write skill",
+            "Wrote skill",
+            "Could not write skill",
+            value,
+            phase,
+        ),
         "list_skills" => generic_phrase(
             "Listing skills",
             "Listed skills",
@@ -763,6 +770,424 @@ pub fn narrate_skill(
         _ => return None,
     };
     Some(phrase)
+}
+
+/// `write_session_title` narration. The proposed title is shown as bounded
+/// detail (truncated), never an unbounded echo.
+pub fn narrate_write_session_title(
+    arguments: &Value,
+    phase: ToolNarrationPhase,
+    locale: Option<&str>,
+) -> String {
+    let title = safe_arg_str(arguments, &["title"]).map(|title| truncate(title, 48));
+    let verbs = pick(
+        locale,
+        (
+            "Update session title",
+            "Updated session title",
+            "Failed to update session title",
+        ),
+        (
+            "Оновлюю назву сесії",
+            "Оновив назву сесії",
+            "Не вдалося оновити назву сесії",
+        ),
+    );
+    labeled_phrase(verbs.0, verbs.1, verbs.2, title, phase)
+}
+
+/// `get_session_info` narration.
+pub fn narrate_get_session_info(phase: ToolNarrationPhase, locale: Option<&str>) -> String {
+    let verbs = pick(
+        locale,
+        (
+            "Reading session info",
+            "Read session info",
+            "Failed to read session info",
+        ),
+        (
+            "Читаю інформацію про сесію",
+            "Прочитав інформацію про сесію",
+            "Не вдалося прочитати інформацію про сесію",
+        ),
+    );
+    phrase3(verbs, None, phase)
+}
+
+/// Session-schedule family narration: `create_schedule`, `cancel_schedule`,
+/// `list_schedules`. Returns `None` for names outside the family.
+pub fn narrate_session_schedule(
+    tool_name: &str,
+    arguments: &Value,
+    phase: ToolNarrationPhase,
+    locale: Option<&str>,
+) -> Option<String> {
+    let phrase = match tool_name {
+        "create_schedule" => {
+            let detail = safe_arg_str(arguments, &["description"]).map(|value| truncate(value, 48));
+            let verbs = pick(
+                locale,
+                (
+                    "Create schedule",
+                    "Created schedule",
+                    "Failed to create schedule",
+                ),
+                (
+                    "Створюю розклад",
+                    "Створив розклад",
+                    "Не вдалося створити розклад",
+                ),
+            );
+            labeled_phrase(verbs.0, verbs.1, verbs.2, detail, phase)
+        }
+        "cancel_schedule" => {
+            let verbs = pick(
+                locale,
+                (
+                    "Cancelling schedule",
+                    "Cancelled schedule",
+                    "Failed to cancel schedule",
+                ),
+                (
+                    "Скасовую розклад",
+                    "Скасував розклад",
+                    "Не вдалося скасувати розклад",
+                ),
+            );
+            phrase3(verbs, None, phase)
+        }
+        "list_schedules" => {
+            let verbs = pick(
+                locale,
+                (
+                    "Listing schedules",
+                    "Listed schedules",
+                    "Failed to list schedules",
+                ),
+                (
+                    "Переглядаю розклади",
+                    "Переглянув розклади",
+                    "Не вдалося переглянути розклади",
+                ),
+            );
+            phrase3(verbs, None, phase)
+        }
+        _ => return None,
+    };
+    Some(phrase)
+}
+
+/// Session-task family narration: `list_tasks`, `get_task`, `message_task`,
+/// `cancel_task`, `wait_task`. Returns `None` for names outside the family.
+pub fn narrate_session_task(
+    tool_name: &str,
+    arguments: &Value,
+    phase: ToolNarrationPhase,
+    locale: Option<&str>,
+) -> Option<String> {
+    // `task_id` is a stable, non-secret identifier; show it as bounded detail.
+    let task = safe_arg_str(arguments, &["task_id"]).map(|id| truncate(id, 32));
+    let phrase = match tool_name {
+        "list_tasks" => {
+            let verbs = pick(
+                locale,
+                ("Listing tasks", "Listed tasks", "Failed to list tasks"),
+                (
+                    "Переглядаю завдання",
+                    "Переглянув завдання",
+                    "Не вдалося переглянути завдання",
+                ),
+            );
+            phrase3(verbs, None, phase)
+        }
+        "get_task" => {
+            let verbs = pick(
+                locale,
+                ("Read task", "Read task", "Could not read task"),
+                (
+                    "Читаю завдання",
+                    "Прочитав завдання",
+                    "Не вдалося прочитати завдання",
+                ),
+            );
+            labeled_phrase(verbs.0, verbs.1, verbs.2, task, phase)
+        }
+        "message_task" => {
+            let verbs = pick(
+                locale,
+                ("Message task", "Messaged task", "Could not message task"),
+                (
+                    "Надсилаю повідомлення завданню",
+                    "Надіслав повідомлення завданню",
+                    "Не вдалося надіслати повідомлення завданню",
+                ),
+            );
+            labeled_phrase(verbs.0, verbs.1, verbs.2, task, phase)
+        }
+        "cancel_task" => {
+            let verbs = pick(
+                locale,
+                ("Cancel task", "Cancelled task", "Could not cancel task"),
+                (
+                    "Скасовую завдання",
+                    "Скасував завдання",
+                    "Не вдалося скасувати завдання",
+                ),
+            );
+            labeled_phrase(verbs.0, verbs.1, verbs.2, task, phase)
+        }
+        "wait_task" => {
+            let verbs = pick(
+                locale,
+                ("Wait for task", "Task finished", "Could not wait for task"),
+                (
+                    "Очікую на завдання",
+                    "Завдання завершено",
+                    "Не вдалося дочекатися завдання",
+                ),
+            );
+            labeled_phrase(verbs.0, verbs.1, verbs.2, task, phase)
+        }
+        _ => return None,
+    };
+    Some(phrase)
+}
+
+/// `sandbox_status` narration.
+pub fn narrate_sandbox_status(phase: ToolNarrationPhase, locale: Option<&str>) -> String {
+    let verbs = pick(
+        locale,
+        (
+            "Checking sandbox status",
+            "Checked sandbox status",
+            "Failed to check sandbox status",
+        ),
+        (
+            "Перевіряю стан пісочниці",
+            "Перевірив стан пісочниці",
+            "Не вдалося перевірити стан пісочниці",
+        ),
+    );
+    phrase3(verbs, None, phase)
+}
+
+/// `sandbox_manage` narration; the lifecycle `action` (pause/resume/delete) is
+/// shown as bounded detail.
+pub fn narrate_sandbox_manage(
+    arguments: &Value,
+    phase: ToolNarrationPhase,
+    locale: Option<&str>,
+) -> String {
+    let action = arg_str(arguments, &["action"]).map(|action| truncate(action, 24));
+    let verbs = pick(
+        locale,
+        (
+            "Manage sandbox",
+            "Managed sandbox",
+            "Failed to manage sandbox",
+        ),
+        (
+            "Керую пісочницею",
+            "Виконав дію над пісочницею",
+            "Не вдалося виконати дію над пісочницею",
+        ),
+    );
+    labeled_phrase(verbs.0, verbs.1, verbs.2, action, phase)
+}
+
+/// Session SQL family narration: `sql_execute`, `sql_query`, `sql_schema`.
+/// SQL text is shown truncated (like a shell command); never the full body.
+pub fn narrate_sql(
+    tool_name: &str,
+    arguments: &Value,
+    phase: ToolNarrationPhase,
+    locale: Option<&str>,
+) -> Option<String> {
+    let statement = arg_str(arguments, &["sql"]).map(|sql| format!("`{}`", truncate(sql, 48)));
+    let phrase = match tool_name {
+        "sql_execute" => {
+            let verbs = pick(
+                locale,
+                ("Running SQL", "Ran SQL", "Failed to run SQL"),
+                ("Виконую SQL", "Виконав SQL", "Не вдалося виконати SQL"),
+            );
+            phrase3(verbs, statement, phase)
+        }
+        "sql_query" => {
+            let verbs = pick(
+                locale,
+                ("Querying SQL", "Queried SQL", "Failed to query SQL"),
+                (
+                    "Запитую SQL",
+                    "Виконав SQL-запит",
+                    "Не вдалося виконати SQL-запит",
+                ),
+            );
+            phrase3(verbs, statement, phase)
+        }
+        "sql_schema" => {
+            let verbs = pick(
+                locale,
+                (
+                    "Reading database schema",
+                    "Read database schema",
+                    "Failed to read database schema",
+                ),
+                (
+                    "Читаю схему бази даних",
+                    "Прочитав схему бази даних",
+                    "Не вдалося прочитати схему бази даних",
+                ),
+            );
+            phrase3(verbs, None, phase)
+        }
+        _ => return None,
+    };
+    Some(phrase)
+}
+
+/// `search_knowledge` / `search_index` narration ("Searched knowledge: orders").
+pub fn narrate_search_knowledge(
+    arguments: &Value,
+    phase: ToolNarrationPhase,
+    locale: Option<&str>,
+) -> String {
+    let query = safe_arg_str(arguments, &["query", "q", "search"]).map(|query| truncate(query, 48));
+    let verbs = pick(
+        locale,
+        (
+            "Search knowledge",
+            "Searched knowledge",
+            "Could not search knowledge",
+        ),
+        (
+            "Шукаю у знаннях",
+            "Знайшов у знаннях",
+            "Не вдалося знайти у знаннях",
+        ),
+    );
+    labeled_phrase(verbs.0, verbs.1, verbs.2, query, phase)
+}
+
+/// `get_current_time` narration.
+pub fn narrate_current_time(phase: ToolNarrationPhase, locale: Option<&str>) -> String {
+    let verbs = pick(
+        locale,
+        (
+            "Checking current time",
+            "Checked current time",
+            "Failed to check current time",
+        ),
+        (
+            "Перевіряю поточний час",
+            "Перевірив поточний час",
+            "Не вдалося перевірити поточний час",
+        ),
+    );
+    phrase3(verbs, None, phase)
+}
+
+/// `check_budget` narration.
+pub fn narrate_check_budget(phase: ToolNarrationPhase, locale: Option<&str>) -> String {
+    let verbs = pick(
+        locale,
+        (
+            "Checking budget",
+            "Checked budget",
+            "Failed to check budget",
+        ),
+        (
+            "Перевіряю бюджет",
+            "Перевірив бюджет",
+            "Не вдалося перевірити бюджет",
+        ),
+    );
+    phrase3(verbs, None, phase)
+}
+
+/// `query_history` narration ("Searched history: deploy").
+pub fn narrate_query_history(
+    arguments: &Value,
+    phase: ToolNarrationPhase,
+    locale: Option<&str>,
+) -> String {
+    let query = safe_arg_str(arguments, &["query", "q", "search"]).map(|query| truncate(query, 48));
+    let verbs = pick(
+        locale,
+        (
+            "Search history",
+            "Searched history",
+            "Could not search history",
+        ),
+        (
+            "Шукаю в історії",
+            "Знайшов в історії",
+            "Не вдалося знайти в історії",
+        ),
+    );
+    labeled_phrase(verbs.0, verbs.1, verbs.2, query, phase)
+}
+
+/// `spawn_background` narration; the target tool name (a safe, bounded
+/// identifier) is shown as detail.
+pub fn narrate_spawn_background(
+    arguments: &Value,
+    phase: ToolNarrationPhase,
+    locale: Option<&str>,
+) -> String {
+    let target = safe_arg_str(arguments, &["tool"]).map(|tool| truncate(tool, 40));
+    let verbs = pick(
+        locale,
+        (
+            "Start background run",
+            "Started background run",
+            "Failed to start background run",
+        ),
+        (
+            "Запускаю фоновий процес",
+            "Запустив фоновий процес",
+            "Не вдалося запустити фоновий процес",
+        ),
+    );
+    labeled_phrase(verbs.0, verbs.1, verbs.2, target, phase)
+}
+
+/// Delegation-result family narration: `report_result`, `report_task_progress`.
+pub fn narrate_delegation_result(
+    tool_name: &str,
+    phase: ToolNarrationPhase,
+    locale: Option<&str>,
+) -> Option<String> {
+    let verbs = match tool_name {
+        "report_result" => pick(
+            locale,
+            (
+                "Reporting result",
+                "Reported result",
+                "Failed to report result",
+            ),
+            (
+                "Повідомляю результат",
+                "Повідомив результат",
+                "Не вдалося повідомити результат",
+            ),
+        ),
+        "report_task_progress" => pick(
+            locale,
+            (
+                "Reporting progress",
+                "Reported progress",
+                "Failed to report progress",
+            ),
+            (
+                "Повідомляю про прогрес",
+                "Повідомив про прогрес",
+                "Не вдалося повідомити про прогрес",
+            ),
+        ),
+        _ => return None,
+    };
+    Some(phrase3(verbs, None, phase))
 }
 
 /// Map a CRUD operation to (started, completed, failed) verb forms.
@@ -1210,6 +1635,219 @@ mod tests {
         assert_eq!(
             render_tool_narration(Some(&def), &tool_call, ToolNarrationPhase::Failed),
             "Failed to create agent: Neon Cartographer"
+        );
+    }
+
+    #[test]
+    fn write_session_title_all_phases_and_bounded_detail() {
+        let a = args(json!({ "title": "Improve tool narration" }));
+        assert_eq!(
+            narrate_write_session_title(&a, ToolNarrationPhase::Started, None),
+            "Update session title: Improve tool narration"
+        );
+        assert_eq!(
+            narrate_write_session_title(&a, ToolNarrationPhase::Completed, None),
+            "Updated session title: Improve tool narration"
+        );
+        assert_eq!(
+            narrate_write_session_title(&a, ToolNarrationPhase::Failed, None),
+            "Failed to update session title: Improve tool narration"
+        );
+        // Ukrainian must not mix languages.
+        assert_eq!(
+            narrate_write_session_title(&a, ToolNarrationPhase::Completed, Some("uk")),
+            "Оновив назву сесії: Improve tool narration"
+        );
+    }
+
+    #[test]
+    fn write_session_title_truncates_long_title_and_drops_missing() {
+        let long = "x".repeat(120);
+        let a = args(json!({ "title": long }));
+        let narration = narrate_write_session_title(&a, ToolNarrationPhase::Started, None);
+        // 48-char cap + ellipsis, plus the "Update session title: " label.
+        assert!(narration.starts_with("Update session title: "));
+        assert!(narration.ends_with("..."));
+        assert!(
+            narration.chars().count() <= "Update session title: ".chars().count() + 48 + 3,
+            "narration too long: {narration}"
+        );
+
+        // No title → bare verb, no dangling separator.
+        let empty = args(json!({}));
+        assert_eq!(
+            narrate_write_session_title(&empty, ToolNarrationPhase::Started, None),
+            "Update session title"
+        );
+    }
+
+    #[test]
+    fn get_session_info_all_phases() {
+        assert_eq!(
+            narrate_get_session_info(ToolNarrationPhase::Started, None),
+            "Reading session info"
+        );
+        assert_eq!(
+            narrate_get_session_info(ToolNarrationPhase::Completed, None),
+            "Read session info"
+        );
+        assert_eq!(
+            narrate_get_session_info(ToolNarrationPhase::Failed, None),
+            "Failed to read session info"
+        );
+    }
+
+    #[test]
+    fn session_schedule_family_labels_and_detail() {
+        let a = args(json!({ "description": "Run nightly backup" }));
+        assert_eq!(
+            narrate_session_schedule("create_schedule", &a, ToolNarrationPhase::Completed, None),
+            Some("Created schedule: Run nightly backup".to_string())
+        );
+        assert_eq!(
+            narrate_session_schedule(
+                "cancel_schedule",
+                &json!({}),
+                ToolNarrationPhase::Started,
+                None
+            ),
+            Some("Cancelling schedule".to_string())
+        );
+        assert_eq!(
+            narrate_session_schedule(
+                "list_schedules",
+                &json!({}),
+                ToolNarrationPhase::Failed,
+                None
+            ),
+            Some("Failed to list schedules".to_string())
+        );
+        assert_eq!(
+            narrate_session_schedule(
+                "not_a_schedule",
+                &json!({}),
+                ToolNarrationPhase::Started,
+                None
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn session_task_family_labels_and_detail() {
+        let a = args(json!({ "task_id": "task_abc" }));
+        assert_eq!(
+            narrate_session_task("get_task", &a, ToolNarrationPhase::Completed, None),
+            Some("Read task: task_abc".to_string())
+        );
+        assert_eq!(
+            narrate_session_task("list_tasks", &json!({}), ToolNarrationPhase::Started, None),
+            Some("Listing tasks".to_string())
+        );
+        // No task_id → bare verb.
+        assert_eq!(
+            narrate_session_task("cancel_task", &json!({}), ToolNarrationPhase::Started, None),
+            Some("Cancel task".to_string())
+        );
+        assert_eq!(
+            narrate_session_task("wait_task", &a, ToolNarrationPhase::Failed, None),
+            Some("Could not wait for task: task_abc".to_string())
+        );
+        assert_eq!(
+            narrate_session_task("nope", &json!({}), ToolNarrationPhase::Started, None),
+            None
+        );
+    }
+
+    #[test]
+    fn sandbox_status_and_manage() {
+        assert_eq!(
+            narrate_sandbox_status(ToolNarrationPhase::Completed, None),
+            "Checked sandbox status"
+        );
+        let a = args(json!({ "action": "pause" }));
+        assert_eq!(
+            narrate_sandbox_manage(&a, ToolNarrationPhase::Started, None),
+            "Manage sandbox: pause"
+        );
+        assert_eq!(
+            narrate_sandbox_manage(&json!({}), ToolNarrationPhase::Failed, None),
+            "Failed to manage sandbox"
+        );
+    }
+
+    #[test]
+    fn sql_family_truncates_statement() {
+        let a = args(json!({ "sql": "SELECT 1" }));
+        assert_eq!(
+            narrate_sql("sql_query", &a, ToolNarrationPhase::Completed, None),
+            Some("Queried SQL `SELECT 1`".to_string())
+        );
+        assert_eq!(
+            narrate_sql("sql_execute", &json!({}), ToolNarrationPhase::Started, None),
+            Some("Running SQL".to_string())
+        );
+        assert_eq!(
+            narrate_sql("sql_schema", &json!({}), ToolNarrationPhase::Started, None),
+            Some("Reading database schema".to_string())
+        );
+        let long = args(json!({ "sql": "SELECT ".to_string() + &"col, ".repeat(40) }));
+        let narration = narrate_sql("sql_query", &long, ToolNarrationPhase::Started, None).unwrap();
+        assert!(
+            narration.contains("..."),
+            "expected truncation: {narration}"
+        );
+        assert_eq!(
+            narrate_sql("other", &json!({}), ToolNarrationPhase::Started, None),
+            None
+        );
+    }
+
+    #[test]
+    fn search_knowledge_and_history_never_leak_secret() {
+        let query = args(json!({ "query": "orders" }));
+        assert_eq!(
+            narrate_search_knowledge(&query, ToolNarrationPhase::Completed, None),
+            "Searched knowledge: orders"
+        );
+        assert_eq!(
+            narrate_query_history(&query, ToolNarrationPhase::Completed, None),
+            "Searched history: orders"
+        );
+        // A secret-named field is never rendered even if it is the only arg.
+        let secret = args(json!({ "api_key": "sk-live-123" }));
+        assert_eq!(
+            narrate_search_knowledge(&secret, ToolNarrationPhase::Started, None),
+            "Search knowledge"
+        );
+    }
+
+    #[test]
+    fn skill_helper_covers_write_skill() {
+        assert_eq!(
+            narrate_skill(
+                "write_skill",
+                &json!({ "name": "pdf" }),
+                ToolNarrationPhase::Completed,
+                None
+            ),
+            Some("Wrote skill: pdf".to_string())
+        );
+    }
+
+    #[test]
+    fn delegation_result_family() {
+        assert_eq!(
+            narrate_delegation_result("report_result", ToolNarrationPhase::Completed, None),
+            Some("Reported result".to_string())
+        );
+        assert_eq!(
+            narrate_delegation_result("report_task_progress", ToolNarrationPhase::Started, None),
+            Some("Reporting progress".to_string())
+        );
+        assert_eq!(
+            narrate_delegation_result("other", ToolNarrationPhase::Started, None),
+            None
         );
     }
 

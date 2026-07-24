@@ -25,6 +25,10 @@ use everruns_core::resource_ownership::{
     list_owned_external_resource_ids, ownership_tracking_unavailable_error,
     require_owned_external_resource,
 };
+use everruns_core::tool_narration::{
+    arg_str, generic_phrase, labeled_phrase, narrate_read_file, narrate_write_file, safe_arg_str,
+    truncate, url_display,
+};
 use everruns_core::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_binary_read_file_result, build_text_read_file_result,
     parse_read_file_window_args,
@@ -181,6 +185,22 @@ pub struct DaytonaCreateSandboxTool;
 
 #[async_trait]
 impl Tool for DaytonaCreateSandboxTool {
+    fn narrate(
+        &self,
+        _tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(generic_phrase(
+            "Creating Daytona sandbox",
+            "Created Daytona sandbox",
+            "Failed to create Daytona sandbox",
+            None,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "daytona_create_sandbox"
     }
@@ -603,6 +623,16 @@ pub struct DaytonaReadFileTool;
 
 #[async_trait]
 impl Tool for DaytonaReadFileTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(narrate_read_file(&tool_call.arguments, phase, locale))
+    }
+
     fn name(&self) -> &str {
         "daytona_read_file"
     }
@@ -721,6 +751,16 @@ pub struct DaytonaWriteFileTool;
 
 #[async_trait]
 impl Tool for DaytonaWriteFileTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(narrate_write_file(&tool_call.arguments, phase, locale))
+    }
+
     fn name(&self) -> &str {
         "daytona_write_file"
     }
@@ -822,6 +862,22 @@ pub struct DaytonaDownloadWorkspaceTool;
 
 #[async_trait]
 impl Tool for DaytonaDownloadWorkspaceTool {
+    fn narrate(
+        &self,
+        _tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(generic_phrase(
+            "Downloading workspace",
+            "Downloaded workspace",
+            "Failed to download workspace",
+            None,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "daytona_download_workspace"
     }
@@ -1009,6 +1065,22 @@ pub struct DaytonaListSnapshotsTool;
 
 #[async_trait]
 impl Tool for DaytonaListSnapshotsTool {
+    fn narrate(
+        &self,
+        _tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(generic_phrase(
+            "Listing snapshots",
+            "Listed snapshots",
+            "Failed to list snapshots",
+            None,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "daytona_list_snapshots"
     }
@@ -1106,6 +1178,22 @@ pub struct DaytonaListSandboxesTool;
 
 #[async_trait]
 impl Tool for DaytonaListSandboxesTool {
+    fn narrate(
+        &self,
+        _tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(generic_phrase(
+            "Listing sandboxes",
+            "Listed sandboxes",
+            "Failed to list sandboxes",
+            None,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "daytona_list_sandboxes"
     }
@@ -1176,6 +1264,22 @@ pub struct DaytonaManageSandboxTool;
 
 #[async_trait]
 impl Tool for DaytonaManageSandboxTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(labeled_phrase(
+            "Managing sandbox",
+            "Managed sandbox",
+            "Failed to manage sandbox",
+            arg_str(&tool_call.arguments, &["action"]).map(str::to_string),
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "daytona_manage_sandbox"
     }
@@ -1288,6 +1392,30 @@ pub struct DaytonaGitCloneTool;
 
 #[async_trait]
 impl Tool for DaytonaGitCloneTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        // Schema key is `repo_url`; also accept common aliases. Rendered via
+        // url_display so any embedded credentials/userinfo are stripped.
+        let target = safe_arg_str(
+            &tool_call.arguments,
+            &["repo_url", "url", "repo", "repository"],
+        )
+        .map(url_display)
+        .filter(|value| !value.is_empty());
+        Some(labeled_phrase(
+            "Cloning repository",
+            "Cloned repository",
+            "Failed to clone repository",
+            target,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "daytona_git_clone"
     }
@@ -1489,6 +1617,23 @@ pub struct DaytonaGitCredentialsTool;
 
 #[async_trait]
 impl Tool for DaytonaGitCredentialsTool {
+    fn narrate(
+        &self,
+        _tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        // Never render arguments: this tool handles secret credentials.
+        Some(generic_phrase(
+            "Configuring git credentials",
+            "Configured git credentials",
+            "Failed to configure git credentials",
+            None,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "daytona_git_credentials"
     }
@@ -1863,6 +2008,25 @@ pub struct DaytonaApiCallTool;
 
 #[async_trait]
 impl Tool for DaytonaApiCallTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        // Show only the endpoint path; never render the request body.
+        let endpoint = safe_arg_str(&tool_call.arguments, &["path", "endpoint"])
+            .map(|value| truncate(value, 48));
+        Some(labeled_phrase(
+            "Calling Daytona API",
+            "Called Daytona API",
+            "Failed to call Daytona API",
+            endpoint,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "daytona_api_call"
     }
@@ -3461,5 +3625,119 @@ mod tests {
     #[test]
     fn test_openapi_mount_path_constant() {
         assert_eq!(DAYTONA_OPENAPI_MOUNT_PATH, "/daytona/openapi.yaml");
+    }
+
+    // ========================================================================
+    // Tool narration
+    // ========================================================================
+
+    use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
+    use everruns_core::tool_types::ToolCall;
+
+    fn narrate(tool: &dyn Tool, arguments: Value, phase: ToolNarrationPhase) -> Option<String> {
+        let call = ToolCall {
+            id: "call-1".to_string(),
+            name: tool.name().to_string(),
+            arguments,
+        };
+        tool.narrate(&call, phase, None, ToolNarrationContext::default())
+    }
+
+    #[test]
+    fn test_narrate_create_sandbox_all_phases() {
+        let tool = DaytonaCreateSandboxTool;
+        assert_eq!(
+            narrate(&tool, json!({}), ToolNarrationPhase::Started).as_deref(),
+            Some("Creating Daytona sandbox")
+        );
+        assert_eq!(
+            narrate(&tool, json!({}), ToolNarrationPhase::Completed).as_deref(),
+            Some("Created Daytona sandbox")
+        );
+        assert_eq!(
+            narrate(&tool, json!({}), ToolNarrationPhase::Failed).as_deref(),
+            Some("Failed to create Daytona sandbox")
+        );
+    }
+
+    #[test]
+    fn test_narrate_read_file_uses_basename() {
+        let tool = DaytonaReadFileTool;
+        assert_eq!(
+            narrate(
+                &tool,
+                json!({"sandbox_id": "s", "path": "/home/daytona/main.py"}),
+                ToolNarrationPhase::Completed
+            )
+            .as_deref(),
+            Some("Read main.py")
+        );
+    }
+
+    #[test]
+    fn test_narrate_manage_sandbox_labels_action() {
+        let tool = DaytonaManageSandboxTool;
+        assert_eq!(
+            narrate(
+                &tool,
+                json!({"sandbox_id": "s", "action": "stop"}),
+                ToolNarrationPhase::Started
+            )
+            .as_deref(),
+            Some("Managing sandbox: stop")
+        );
+        // No action arg -> bare verb fallback.
+        assert_eq!(
+            narrate(&tool, json!({}), ToolNarrationPhase::Failed).as_deref(),
+            Some("Failed to manage sandbox")
+        );
+    }
+
+    #[test]
+    fn test_narrate_git_clone_strips_credentials() {
+        let tool = DaytonaGitCloneTool;
+        // url_display strips scheme + userinfo, keeping host/path.
+        assert_eq!(
+            narrate(
+                &tool,
+                json!({"sandbox_id": "s", "repo_url": "https://oauth2:secret@github.com/owner/repo.git"}),
+                ToolNarrationPhase::Started
+            )
+            .as_deref(),
+            Some("Cloning repository: github.com/owner/repo.git")
+        );
+        // No url arg -> bare verb fallback.
+        assert_eq!(
+            narrate(&tool, json!({}), ToolNarrationPhase::Completed).as_deref(),
+            Some("Cloned repository")
+        );
+    }
+
+    #[test]
+    fn test_narrate_git_credentials_never_renders_args() {
+        let tool = DaytonaGitCredentialsTool;
+        assert_eq!(
+            narrate(
+                &tool,
+                json!({"sandbox_id": "super-secret"}),
+                ToolNarrationPhase::Started
+            )
+            .as_deref(),
+            Some("Configuring git credentials")
+        );
+    }
+
+    #[test]
+    fn test_narrate_api_call_truncates_path() {
+        let tool = DaytonaApiCallTool;
+        let long_path = format!("/toolbox/{}/files", "x".repeat(80));
+        let narration = narrate(
+            &tool,
+            json!({"method": "GET", "path": long_path}),
+            ToolNarrationPhase::Started,
+        )
+        .unwrap();
+        assert!(narration.starts_with("Calling Daytona API: /toolbox/"));
+        assert!(narration.ends_with("..."));
     }
 }

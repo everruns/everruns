@@ -143,6 +143,16 @@ impl ReportResultTool {
 
 #[async_trait]
 impl Tool for ReportResultTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        crate::tool_narration::narrate_delegation_result(&tool_call.name, phase, locale)
+    }
+
     fn name(&self) -> &str {
         "report_result"
     }
@@ -280,6 +290,16 @@ impl ReportTaskProgressTool {
 
 #[async_trait]
 impl Tool for ReportTaskProgressTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        crate::tool_narration::narrate_delegation_result(&tool_call.name, phase, locale)
+    }
+
     fn name(&self) -> &str {
         "report_task_progress"
     }
