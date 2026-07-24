@@ -5,199 +5,41 @@ metadata:
   internal: true
 ---
 
-# UI Screenshots Skill
+# UI Screenshots
 
-Capture UI screenshots for visual verification.
+Capture UI state for review evidence with [agent-browser](https://github.com/vercel-labs/agent-browser).
+Screenshots are never committed — they are uploaded to Cloudinary and embedded in a PR comment.
 
-Uses [agent-browser](https://github.com/vercel-labs/agent-browser) for screenshots (fast Rust CLI with Node.js fallback).
+## Scripts
 
-## Prerequisites
-
-1. **agent-browser**: Install the browser automation CLI:
-   ```bash
-   npm install -g agent-browser
-   agent-browser install  # Download Chromium
-   ```
-
-   For Linux with missing dependencies:
-   ```bash
-   agent-browser install --with-deps
-   ```
-
-2. **Cloudinary Account** (free tier available):
-   - Create account at [cloudinary.com](https://cloudinary.com)
-   - Get your `CLOUDINARY_URL` from the dashboard (format: `cloudinary://API_KEY:API_SECRET@CLOUD_NAME`)
-   - Set environment variable: `CLOUDINARY_URL`
-
-3. **GitHub Token**: `GITHUB_TOKEN` environment variable for PR comments.
-
-## Usage
-
-### Taking Screenshots
-
-Use the take-screenshot script:
+Each script documents its own usage and requirements in its header; read it if the flags matter.
 
 ```bash
-.claude/skills/ui-screenshots/scripts/take-screenshot.sh [URL] [OUTPUT_PATH]
+.agents/skills/ui-screenshots/scripts/check-config.sh                       # GITHUB_TOKEN, CLOUDINARY_URL, agent-browser
+.agents/skills/ui-screenshots/scripts/take-screenshot.sh <URL> <OUTPUT>
+.agents/skills/ui-screenshots/scripts/upload-screenshot.sh <PATH> <PR> [DESCRIPTION]
 ```
 
-Example:
-```bash
-.claude/skills/ui-screenshots/scripts/take-screenshot.sh \
-  http://localhost:9300/dev/components \
-  screenshot.png
-```
+For anything the scripts do not cover, drive `agent-browser` directly (`open`, `screenshot --full`,
+`snapshot -i -c`, `scroll`, `--session <name>` to isolate instances).
 
-### Using agent-browser directly
+## Setup
 
-For more control, use agent-browser CLI commands:
-
-```bash
-# Open a page
-agent-browser open http://localhost:9300/dev/components
-
-# Take full-page screenshot
-agent-browser screenshot screenshot.png --full
-
-# Get accessibility snapshot (useful for AI agents)
-agent-browser snapshot -i -c
-```
-
-### Attaching Screenshots to PR
-
-Screenshots are NOT committed to the repo. They are uploaded to Cloudinary and embedded in PR comments:
-
-```bash
-.claude/skills/ui-screenshots/scripts/upload-screenshot.sh \
-  screenshot.png \
-  195  # PR number
-```
-
-## Integration with Smoke Tests
-
-The smoke test skill can call this skill to capture UI state:
-
-1. Run screenshot capture as part of smoke testing
-2. If a PR branch is detected, upload screenshots and add PR comment
-3. Screenshots help reviewers verify visual changes
-
-## Troubleshooting
-
-### agent-browser not found
-
-Install globally:
 ```bash
 npm install -g agent-browser
-agent-browser install
+agent-browser install            # add --with-deps on Linux when system libs are missing
 ```
 
-### Missing browser dependencies on Linux
+Uploading needs `CLOUDINARY_URL` (`cloudinary://API_KEY:API_SECRET@CLOUD_NAME`) and `GITHUB_TOKEN`.
 
-```bash
-agent-browser install --with-deps
-# Or manually:
-npx playwright install-deps chromium
-```
+## Non-obvious failures
 
-### Browser version mismatch
-
-If agent-browser reports a missing browser version (e.g., `chromium_headless_shell-1208`) but you have a similar version installed (e.g., `chromium_headless_shell-1200`), and network issues prevent downloading the correct version:
-
-```bash
-# Check available versions
-ls /root/.cache/ms-playwright/
-
-# Create symlinks to use a nearby version
-cd /root/.cache/ms-playwright
-ln -s chromium_headless_shell-1200 chromium_headless_shell-1208
-ln -s chromium-1200 chromium-1208
-```
-
-Note: This is a workaround when storage.googleapis.com is unreachable. Minor version differences (1200 vs 1208) are usually compatible.
-
-### Page hangs on localhost
-
-The dev server may not be running. Start it first:
-
-```bash
-cd apps/ui && pnpm run dev &
-sleep 10  # Wait for server
-```
-
-### Session conflicts
-
-agent-browser uses sessions to isolate browser instances:
-```bash
-# Use a named session
-agent-browser --session screenshots open http://localhost:9300
-
-# List sessions
-agent-browser session list
-```
-
-### Cloudinary upload fails
-
-Verify `CLOUDINARY_URL` is set correctly:
-- Format: `cloudinary://API_KEY:API_SECRET@CLOUD_NAME`
-- Get from Cloudinary dashboard
-
-## Script Reference
-
-### take-screenshot.sh
-
-Take a screenshot of a URL using agent-browser:
-
-```bash
-.claude/skills/ui-screenshots/scripts/take-screenshot.sh [URL] [OUTPUT_PATH]
-```
-
-Example:
-```bash
-.claude/skills/ui-screenshots/scripts/take-screenshot.sh \
-  http://localhost:9300/dev/components \
-  /tmp/screenshot.png
-```
-
-### upload-screenshot.sh
-
-Upload screenshot to Cloudinary and add PR comment:
-
-```bash
-.claude/skills/ui-screenshots/scripts/upload-screenshot.sh <SCREENSHOT_PATH> <PR_NUMBER> [DESCRIPTION]
-```
-
-Example:
-```bash
-.claude/skills/ui-screenshots/scripts/upload-screenshot.sh \
-  /tmp/screenshot.png \
-  195 \
-  "Dev components page showing message and tool call rendering"
-```
-
-### check-config.sh
-
-Check if cloud agent environment is configured:
-
-```bash
-.claude/skills/ui-screenshots/scripts/check-config.sh
-```
-
-Verifies: `GITHUB_TOKEN`, `CLOUDINARY_URL`, and agent-browser availability.
-
-## agent-browser Commands Reference
-
-Common commands for screenshot workflows:
-
-| Command | Description |
-|---------|-------------|
-| `agent-browser open <url>` | Navigate to a URL |
-| `agent-browser screenshot [path]` | Capture screenshot |
-| `agent-browser screenshot path --full` | Full page screenshot |
-| `agent-browser snapshot` | Get accessibility tree (for AI) |
-| `agent-browser snapshot -i -c` | Interactive elements only, compact |
-| `agent-browser click <selector>` | Click element |
-| `agent-browser wait <selector>` | Wait for element |
-| `agent-browser scroll down` | Scroll page |
-| `agent-browser --json ...` | JSON output for automation |
-
-See [agent-browser docs](https://github.com/vercel-labs/agent-browser) for full reference.
+- **Missing browser build** (e.g. `chromium_headless_shell-1208`) with `storage.googleapis.com`
+  unreachable: symlink a nearby version in `/root/.cache/ms-playwright/` — minor version drift
+  (1200 vs 1208) is normally compatible.
+  ```bash
+  cd /root/.cache/ms-playwright && ln -s chromium_headless_shell-1200 chromium_headless_shell-1208 && ln -s chromium-1200 chromium-1208
+  ```
+- **Page hangs on localhost**: the dev server is not up. See the local dev commands in
+  [`AGENTS.md`](../../../AGENTS.md).
+- **Blank screenshot**: wait for `networkidle` before capturing.

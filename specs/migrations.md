@@ -57,8 +57,5 @@ Migration numbers must be strictly sequential with no gaps and no duplicates. `j
 
 Migrations are the most common source of merge conflicts because multiple branches often claim the same next number. The fix is always: renumber your migration to the next available number after rebase.
 
-This is called out in:
-- `AGENTS.md` (Branch Base section)
-- `specs/shipping.md` (Required Outcomes, item 1)
-- `.agents/skills/ship/SKILL.md`
-- `crates/server/migrations/AGENTS.md`
+`scripts/lib/check-migration-ordering.sh` is the enforcement point — run after every rebase and
+again immediately before merge. It is wired into `just pre-push`, `just pre-pr`, and `/ship`.
