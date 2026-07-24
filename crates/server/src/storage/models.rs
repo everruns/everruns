@@ -2348,9 +2348,7 @@ impl SessionTaskRow {
         Ok(Self {
             id: task.id.clone(),
             session_id: task.session_id,
-            // Populated at the storage insert from the owning session's root;
-            // the core task carries no root, so default to None here.
-            root_session_id: None,
+            root_session_id: task.root_session_id,
             kind: task.kind.clone(),
             display_name: task.display_name.clone(),
             spec: task.spec.clone(),
