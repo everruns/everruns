@@ -273,8 +273,8 @@ impl ProviderResolverService {
     /// Selection order:
     /// 1. An explicit `binding` (a provider public id supplied by the consumer,
     ///    e.g. a voice connection's provider) wins — but only when that
-    ///    provider's driver declares the service.
-    /// 2. *(org default provider per service — not yet implemented.)*
+    ///    provider is active and its driver declares the service.
+    /// 2. An org default provider pinned for this service.
     /// 3. Otherwise the first active provider whose driver declares the service.
     ///
     /// Returns a structured "no provider configured for {service}" error when
@@ -290,8 +290,8 @@ impl ProviderResolverService {
     ) -> Result<ResolvedServiceProvider> {
         let providers = self.db.list_providers(org_id).await?;
 
-        // Tier 1: an explicit provider binding wins, but only if its driver
-        // actually declares the requested service.
+        // Tier 1: an explicit provider binding wins, but only if the provider is
+        // active and its driver actually declares the requested service.
         if let Some(binding) = binding {
             let binding_id: ProviderId = binding
                 .parse()
@@ -300,6 +300,9 @@ impl ProviderResolverService {
                 .iter()
                 .find(|provider| provider.id == binding_id)
                 .ok_or_else(|| anyhow::anyhow!("provider {binding} not found for org"))?;
+            if !provider.status.eq_ignore_ascii_case("active") {
+                return Err(anyhow::anyhow!("provider {binding} is not active"));
+            }
             if !self.driver_supports(&provider.provider_type, service) {
                 return Err(anyhow::anyhow!(
                     "provider {binding} does not provide the {service} service"
@@ -1212,6 +1215,34 @@ mod tests {
             .await
             .expect_err("bound provider's driver lacks Realtime");
         assert!(err.to_string().contains("does not provide"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn resolve_service_binding_fails_closed_when_provider_disabled() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let encryption = test_encryption();
+        let provider = seed_active_provider(&db, &encryption, "openai").await;
+        db.update_provider(
+            DEFAULT_ORG_ID,
+            provider.uuid(),
+            crate::storage::models::UpdateProvider {
+                status: Some("disabled".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let resolver = service_resolver(db, Some(encryption));
+
+        let err = resolver
+            .resolve_service(
+                DEFAULT_ORG_ID,
+                ServiceKind::Realtime,
+                Some(&provider.to_string()),
+            )
+            .await
+            .expect_err("disabled explicit binding fails closed");
+        assert!(err.to_string().contains("not active"), "got: {err}");
     }
 
     #[tokio::test]
