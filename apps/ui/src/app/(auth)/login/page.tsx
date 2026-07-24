@@ -26,6 +26,7 @@ import {
   buildSignupHref,
   RETURN_TO_STORAGE_KEY,
   persistReturnTo,
+  persistSignupEmail,
 } from "@/lib/auth-redirect";
 import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 
@@ -291,7 +292,8 @@ export default function LoginPage() {
           <p className="mt-5 text-[13px] text-muted-foreground">
             New to Everruns?{" "}
             <Link
-              href={buildSignupHref(returnTo, email)}
+              href={buildSignupHref(returnTo)}
+              onClick={() => persistSignupEmail(email)}
               className="font-medium text-primary hover:underline"
             >
               Create an account
