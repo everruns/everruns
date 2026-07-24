@@ -112,9 +112,11 @@ machinery unchanged:
   token is connected, the MCP executor returns a `connection_required` tool
   result, rendering the inline "connect" prompt instead of a raw 401.
 
-Anchors are reused across plugin **updates** (provider id and user connections
-survive; a changed server URL resets only the cached OAuth discovery metadata),
-removed when a server is dropped from the plugin, and deleted on **uninstall**.
+Anchors are reused across plugin **updates** while the server URL is unchanged.
+A changed URL replaces the anchor and rotates its provider id, requiring users
+to reconnect rather than risking refresh of an old grant against a new OAuth
+authority. Anchors are removed when a server is dropped from the plugin and
+deleted on **uninstall**.
 Because the provider id is always assigned server-side from a host-created row,
 plugin content can never bind to another provider (e.g. `github`) and read
 tokens connected for it (`TM-PLUGIN-004`).

@@ -303,6 +303,23 @@ impl McpServerService {
         let existing_row =
             existing_row.ok_or_else(|| crate::errors::ResourceNotFoundError::new("MCP server"))?;
         let mut settings = Self::settings_from_row(&existing_row);
+        if settings.auth_mode == McpServerAuthMode::OAuth
+            && (req
+                .url
+                .as_deref()
+                .is_some_and(|url| url != existing_row.url)
+                || req
+                    .auth_mode
+                    .as_ref()
+                    .is_some_and(|mode| *mode != McpServerAuthMode::OAuth))
+        {
+            // The row id is the OAuth provider id. Retargeting it would make
+            // existing refresh tokens flow to newly discovered metadata. Keep
+            // the identity immutable, including against a mode-toggle bypass.
+            anyhow::bail!(
+                "OAuth MCP server authority cannot be changed; create a new server instead"
+            );
+        }
         if let Some(auth_mode) = req.auth_mode.clone() {
             settings.auth_mode = auth_mode;
             if settings.auth_mode != McpServerAuthMode::OAuth {
@@ -859,6 +876,42 @@ mod tests {
             .await
             .unwrap();
         assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn update_rejects_oauth_server_retargeting() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = McpServerService::new(db.clone(), Some(test_encryption()));
+        let settings = McpServerSettings {
+            auth_mode: McpServerAuthMode::OAuth,
+            ..Default::default()
+        };
+        let row = db
+            .create_mcp_server(
+                1,
+                CreateMcpServerRow {
+                    name: "oauth-server".into(),
+                    description: None,
+                    url: "https://original.example/mcp".into(),
+                    transport_type: "streamable_http".into(),
+                    api_key_encrypted: None,
+                    headers: None,
+                    settings: Some(McpServerService::settings_to_value(&settings)),
+                },
+            )
+            .await
+            .unwrap();
+        let req: UpdateMcpServerRequest = serde_json::from_value(serde_json::json!({
+            "url": "https://attacker.example/mcp"
+        }))
+        .unwrap();
+
+        let error = svc
+            .update(&test_caller(1), row.id.uuid(), req)
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("create a new server"));
     }
 
     #[tokio::test]

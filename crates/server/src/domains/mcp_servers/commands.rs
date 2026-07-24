@@ -252,6 +252,22 @@ pub struct UpdateMcpServerCmd {
     pub req: UpdateMcpServerRequest,
 }
 
+/// OAuth authority is immutable. The MCP server row id doubles as the OAuth
+/// provider id, so changing an OAuth server's URL — or toggling it out of OAuth
+/// mode — would let a stored refresh token be replayed against a newly
+/// discovered token endpoint. Returns true when an update tries to retarget an
+/// OAuth server's authority and must therefore be rejected.
+fn oauth_authority_retargeted(
+    existing_auth_mode: &McpServerAuthMode,
+    existing_url: &str,
+    req_url: Option<&str>,
+    req_auth_mode: Option<&McpServerAuthMode>,
+) -> bool {
+    *existing_auth_mode == McpServerAuthMode::OAuth
+        && (req_url.is_some_and(|url| url != existing_url)
+            || req_auth_mode.is_some_and(|mode| *mode != McpServerAuthMode::OAuth))
+}
+
 impl Command for UpdateMcpServerCmd {
     type Output = McpServer;
 
@@ -310,6 +326,19 @@ impl Command for UpdateMcpServerCmd {
 
         // Build settings
         let mut settings = q::settings_from_row(&existing_row);
+        // OAuth authority is immutable: reject retargeting the server URL or
+        // toggling it out of OAuth so a stored refresh token cannot flow to a
+        // newly discovered token endpoint. (This is the live PATCH path.)
+        if oauth_authority_retargeted(
+            &settings.auth_mode,
+            &existing_row.url,
+            req.url.as_deref(),
+            req.auth_mode.as_ref(),
+        ) {
+            return Err(CommandError::bad_request(
+                "OAuth MCP server authority cannot be changed; create a new server instead",
+            ));
+        }
         if let Some(auth_mode) = req.auth_mode.clone() {
             settings.auth_mode = auth_mode;
             if settings.auth_mode != McpServerAuthMode::OAuth {
@@ -496,3 +525,49 @@ impl Command for DestroyMcpServer {
 }
 
 inventory::submit! { CommandDescriptor::of::<DestroyMcpServer>() }
+
+#[cfg(test)]
+mod oauth_authority_tests {
+    use super::*;
+
+    #[test]
+    fn rejects_url_change_on_oauth_server() {
+        assert!(oauth_authority_retargeted(
+            &McpServerAuthMode::OAuth,
+            "https://original.example/mcp",
+            Some("https://attacker.example/mcp"),
+            None,
+        ));
+    }
+
+    #[test]
+    fn rejects_toggling_oauth_server_out_of_oauth() {
+        assert!(oauth_authority_retargeted(
+            &McpServerAuthMode::OAuth,
+            "https://original.example/mcp",
+            None,
+            Some(&McpServerAuthMode::ApiKey),
+        ));
+    }
+
+    #[test]
+    fn allows_unrelated_update_on_oauth_server() {
+        // Same URL, no auth-mode change (e.g. name/description/header edit).
+        assert!(!oauth_authority_retargeted(
+            &McpServerAuthMode::OAuth,
+            "https://original.example/mcp",
+            Some("https://original.example/mcp"),
+            None,
+        ));
+    }
+
+    #[test]
+    fn allows_url_change_on_non_oauth_server() {
+        assert!(!oauth_authority_retargeted(
+            &McpServerAuthMode::ApiKey,
+            "https://original.example/mcp",
+            Some("https://new.example/mcp"),
+            None,
+        ));
+    }
+}
