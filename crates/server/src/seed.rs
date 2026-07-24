@@ -124,6 +124,7 @@ mod seed_ids {
     pub const O1_PREVIEW: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021e);
 
     // Anthropic Models (0x300-0x3FF)
+    pub const CLAUDE_OPUS_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030e);
     pub const CLAUDE_SONNET_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030c);
     pub const CLAUDE_OPUS_4_8: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000030d);
     pub const CLAUDE_OPUS_4_7: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000309);
@@ -138,6 +139,7 @@ mod seed_ids {
     pub const CLAUDE_3_5_SONNET: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000307);
     pub const CLAUDE_3_5_HAIKU: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000308);
     // 1M-context variants (`[1m]` model ids), 0x3a0+ sub-range.
+    pub const CLAUDE_OPUS_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a8);
     pub const CLAUDE_OPUS_4_7_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a7);
     pub const CLAUDE_SONNET_5_1M: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_0000000003a5);
 
@@ -2031,7 +2033,28 @@ const SEED_MODELS: &[SeedModel] = &[
         enabled: false,
         is_favorite: false,
     },
-    // Anthropic current-gen (Opus 4.8, Sonnet 5)
+    // Anthropic current-gen (Opus 5, Sonnet 5, Opus 4.8)
+    SeedModel {
+        // Platform default model (see `DEFAULT_MODEL_ID`). Opus 5 is the current
+        // Opus flagship — the recommended Anthropic model.
+        id: seed_ids::CLAUDE_OPUS_5,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-opus-5",
+        display_name: "Claude Opus 5",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        // 1M-context twin of the 200K base above (driver sends the `context-1m`
+        // beta header for `[1m]` ids). Keeps a 1M Opus in the default picker
+        // alongside the bare `claude-opus-5` 200K variant.
+        id: seed_ids::CLAUDE_OPUS_5_1M,
+        provider_id: seed_ids::ANTHROPIC_PROVIDER,
+        model_id: "claude-opus-5[1m]",
+        display_name: "Claude Opus 5 (1M)",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
     SeedModel {
         id: seed_ids::CLAUDE_OPUS_4_8,
         provider_id: seed_ids::ANTHROPIC_PROVIDER,
@@ -2249,8 +2272,8 @@ const SEED_MODELS: &[SeedModel] = &[
     },
 ];
 
-/// Default model ID for org settings seeding (GPT-5.6 Sol)
-const DEFAULT_MODEL_ID: Uuid = seed_ids::GPT_5_6_SOL;
+/// Default model ID for org settings seeding (Claude Opus 5)
+const DEFAULT_MODEL_ID: Uuid = seed_ids::CLAUDE_OPUS_5;
 
 /// Seed organization settings (default model, etc.)
 async fn seed_organization_settings(db: &StorageBackend) -> anyhow::Result<SeedResult> {
@@ -3403,13 +3426,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_seed_all_sets_default_and_seeds_opus_48() {
+    async fn test_seed_all_sets_default_and_seeds_opus_5() {
         let db = make_db();
         seed_all(&db, DeploymentGrade::Dev, &SeedAuthContext::default())
             .await
             .unwrap();
 
-        // Platform default model is GPT-5.6 Sol.
+        // Platform default model is Claude Opus 5.
         let settings = db
             .get_organization_settings(DEFAULT_ORG_ID)
             .await
@@ -3417,19 +3440,28 @@ mod tests {
             .unwrap();
         assert_eq!(
             settings.default_model_id,
-            Some(everruns_core::ModelId::from_uuid(seed_ids::GPT_5_6_SOL)),
+            Some(everruns_core::ModelId::from_uuid(seed_ids::CLAUDE_OPUS_5)),
         );
 
-        // Claude Opus 4.8 is seeded for the Anthropic provider, enabled and
-        // marked favorite (the recommended Anthropic model).
+        // Claude Opus 5 is seeded for the Anthropic provider, enabled and marked
+        // favorite (the recommended Anthropic model, and the platform default).
         let opus = db
-            .get_model(DEFAULT_ORG_ID, seed_ids::CLAUDE_OPUS_4_8)
+            .get_model(DEFAULT_ORG_ID, seed_ids::CLAUDE_OPUS_5)
             .await
             .unwrap()
-            .expect("claude-opus-4-8 should be seeded");
-        assert_eq!(opus.model_id, "claude-opus-4-8");
-        assert!(opus.enabled, "claude-opus-4-8 should be enabled");
-        assert!(opus.is_favorite, "claude-opus-4-8 should be favorite");
+            .expect("claude-opus-5 should be seeded");
+        assert_eq!(opus.model_id, "claude-opus-5");
+        assert!(opus.enabled, "claude-opus-5 should be enabled");
+        assert!(opus.is_favorite, "claude-opus-5 should be favorite");
+
+        // The 1M-context twin is seeded and enabled alongside the 200K base.
+        let opus_1m = db
+            .get_model(DEFAULT_ORG_ID, seed_ids::CLAUDE_OPUS_5_1M)
+            .await
+            .unwrap()
+            .expect("claude-opus-5[1m] should be seeded");
+        assert_eq!(opus_1m.model_id, "claude-opus-5[1m]");
+        assert!(opus_1m.enabled, "claude-opus-5[1m] should be enabled");
     }
 
     #[tokio::test]
@@ -3644,6 +3676,16 @@ mod tests {
             .await
             .unwrap();
         let anthropic = by_id(&anthropic);
+        assert_eq!(
+            anthropic.get("claude-opus-5"),
+            Some(&(true, true)),
+            "Opus 5 must be the enabled favorite Opus (platform default)"
+        );
+        assert_eq!(
+            anthropic.get("claude-opus-5[1m]"),
+            Some(&(true, true)),
+            "Opus 5 (1M) twin must be seeded and enabled"
+        );
         assert_eq!(
             anthropic.get("claude-sonnet-5"),
             Some(&(true, true)),
