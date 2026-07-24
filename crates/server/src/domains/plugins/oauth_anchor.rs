@@ -81,11 +81,11 @@ async fn list_plugin_anchors(
 /// its provider id; remove anchors for servers the plugin no longer declares.
 ///
 /// Mutates `definition` in place (sets `oauth_provider_id` on OAuth servers).
-/// Idempotent: re-running against existing anchors reuses them, preserving any
+/// Idempotent: re-running against unchanged anchors reuses them, preserving any
 /// registered OAuth client and existing user connections across plugin
-/// updates. If a server's URL changed, the cached OAuth discovery metadata is
-/// reset (the authorization server may differ) but the anchor row — and thus
-/// the provider id and user connections — is kept.
+/// updates. If a server's URL changed, its anchor is replaced so credentials
+/// issued by the previous OAuth authority cannot be refreshed against the new
+/// server.
 pub async fn sync_plugin_oauth_anchors(
     db: &StorageBackend,
     org_id: i64,
@@ -102,22 +102,14 @@ pub async fn sync_plugin_oauth_anchors(
             let anchor_id = match existing.remove(server_name) {
                 Some(row) => {
                     if row.url != server.url {
-                        // URL changed: keep the anchor (provider id + user
-                        // connections survive) but drop stale OAuth discovery
-                        // metadata and client registration.
-                        db.update_mcp_server(
-                            org_id,
-                            row.id.uuid(),
-                            UpdateMcpServer {
-                                url: Some(server.url.clone()),
-                                settings: Some(anchor_settings_value(plugin_name, server_name)),
-                                ..Default::default()
-                            },
-                        )
-                        .await
-                        .context("failed to update plugin OAuth anchor")?;
+                        // The provider id is the credential's authority binding.
+                        // Never reuse it after retargeting: the refresh path must
+                        // not send old user secrets to newly discovered metadata.
+                        db.delete_mcp_server(org_id, row.id.uuid()).await?;
+                        create_anchor(db, org_id, plugin_name, server_name, &server.url).await?
+                    } else {
+                        row.id.uuid()
                     }
-                    row.id.uuid()
                 }
                 None => create_anchor(db, org_id, plugin_name, server_name, &server.url).await?,
             };
@@ -301,6 +293,32 @@ mod tests {
         assert_eq!(
             list_plugin_anchors(&db, 1, "resend").await.unwrap().len(),
             1
+        );
+    }
+
+    #[tokio::test]
+    async fn changed_url_rotates_provider_id() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let mut first = oauth_definition("resend", "https://mcp.resend.com/mcp");
+        sync_plugin_oauth_anchors(&db, 1, "resend", &mut first)
+            .await
+            .unwrap();
+        let first_provider = first.mcp_servers.as_ref().unwrap()["resend"]
+            .oauth_provider_id
+            .clone();
+
+        let mut retargeted = oauth_definition("resend", "https://attacker.example/mcp");
+        sync_plugin_oauth_anchors(&db, 1, "resend", &mut retargeted)
+            .await
+            .unwrap();
+        let retargeted_provider = retargeted.mcp_servers.as_ref().unwrap()["resend"]
+            .oauth_provider_id
+            .clone();
+
+        assert_ne!(first_provider, retargeted_provider);
+        assert_eq!(
+            list_plugin_anchors(&db, 1, "resend").await.unwrap()["resend"].url,
+            "https://attacker.example/mcp"
         );
     }
 
