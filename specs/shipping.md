@@ -30,11 +30,11 @@ Relevant references:
 
 ## Required Outcomes
 
-**Every shipped change MUST satisfy ALL of these outcomes. These are mandatory requirements, not optional suggestions. Do not skip or weaken any requirement.**
+Every shipped change satisfies all of these outcomes. They are the success bar, not a menu.
 
 1. Safe branch state: no shipping from `main` or `master`; working tree clean before final push; prefer rebasing onto the latest `origin/main` before merge. Merging without the latest rebase is allowed when saving another CI cycle is more valuable and migration risk is absent: fetch `origin/main`, verify neither `origin/main` nor the PR changed `crates/server/migrations/` since their merge base, and monitor main CI after merge. If either side changed migrations, rebase and run `bash scripts/lib/check-migration-ordering.sh` to verify migration numbers are strictly sequential. Re-run the same check immediately before `gh pr merge`, since other PRs may have merged a colliding number while yours was in review. Renumber your migration if a conflict exists.
 2. Goal achieved with evidence: the requested behavior is implemented and validated with proof that matches the risk.
-3. Merge-ready code: touched code is reviewed for avoidable complexity and performance risk. A structured security review is performed against the relevant threat model categories from `specs/threat-model.md` (see the Security Review section in the ship skill). Issues found during review are addressed or explicitly blocked.
+3. Merge-ready code: touched code is reviewed for avoidable complexity and performance risk. A structured security review is performed against the relevant threat model categories from `specs/threat-model.md` (procedure: [`.agents/skills/ship/references/security-review.md`](../.agents/skills/ship/references/security-review.md)). Issues found during review are addressed or explicitly blocked.
 4. Synced artifacts: only the affected artifacts are updated, including specs, threat model, docs, OpenAPI, test cases, and agent instructions when relevant. Specs touched by the change must not contain implementation details that duplicate code (struct fields, enum variants, exhaustive tables, code snippets) — replace with links to source files per the spec hygiene guidance in `specs/README.md`.
 5. Smoke test impacted functionality: always smoke test the flows affected by the change end-to-end. This is mandatory, not conditional on risk assessment. Docs-only or config-only changes that do not affect runtime behavior may skip smoke testing with explicit justification.
 6. Follow-ups surfaced: the agent actively looks for in-scope work that risks being silently dropped (TODOs, partial fixes, declined suggestions, missed edge cases, spec/doc drift) and prefers to implement them in this PR. Anything deferred is listed under a **Follow-ups** section in the PR body with a one-line rationale; if nothing is deferred, the PR body must explicitly state "No follow-ups." so readers can distinguish completeness from omission.
@@ -53,23 +53,16 @@ Relevant references:
 - Auto-merge must not bypass the final review pass; shipping should give async reviewer bots time to comment after the last push and after CI turns green, then re-check before merge.
 - If a blocker cannot be resolved safely by the agent alone, shipping must stop and report the blocker rather than guess.
 
-## Validation Menu
+## Evidence
 
-Use the smallest set that gives high confidence. The ship skill should pick from this menu based on the changed surface, not run every item mechanically.
+The command menu lives in the ship skill; it picks the smallest set that fits the changed surface
+rather than running every check mechanically. Whatever set is chosen, the evidence must show that:
 
-1. `just pre-push` before `git push`.
-2. `just pre-pr` for a full local quality pass.
-3. `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all-features` for Rust changes.
-4. `pnpm run lint` and `pnpm run build` in `apps/ui/` for UI changes.
-5. `./scripts/export-openapi.sh` when API surface changes.
-6. `pnpm run build` in `apps/docs/` when docs change.
-7. Prefer `git fetch origin main && git rebase origin/main` before merge; if skipping the final rebase, verify no migration changes exist on either side since the merge base and monitor main CI after merge.
-8. Smoke test impacted flows in `just start-dev` or `just start-all` as risk dictates.
-9. Review performance impact: indexes, scans, N+1 patterns, pagination, and bounded result sets.
-10. Capture UI screenshots for UI changes in validation or PR comments only.
-11. Ensure test coverage proves the fix or acceptance criteria, including important negative paths.
-12. Update relevant specs, docs, test cases, threat model, OpenAPI, and `AGENTS.md`.
-13. Merge only with green CI and a final clean PR comment sweep, including async reviewer bots.
+- the changed surface built, linted, and tested cleanly, including important negative paths
+- impacted flows were smoke tested against `just start-dev` or `just start-all` as risk dictates
+- performance impact was considered where relevant: indexes, scans, N+1 patterns, pagination, and
+  bounded result sets
+- UI changes were captured as screenshots in validation or PR comments — never committed to the repo
 
 ## CI Opt-Out Labels
 

@@ -1,22 +1,57 @@
-## Coding-agent guidance
+## Everruns
 
-### Required workflow
+Agentic runtime and control plane: Rust workspace in `crates/` (edition 2024), Next.js UI in
+`apps/ui/`, docs site in `apps/docs/` (content in `docs/`), embeddable examples in `examples/`.
+`just --list` shows every dev command.
+
+### Where guidance lives
+
+Keep each fact in exactly one layer, and read the layer that owns it.
+
+| Layer | Owns |
+|---|---|
+| `AGENTS.md` (this file, plus per-subtree ones) | repo gotchas that are not discoverable from the code |
+| `specs/` | why and what: design intent, contracts, success bars — start at `specs/README.md` |
+| `.agents/skills/` | how: workflows loaded on demand (`/ship`, `/maintenance`, `/process-issues`, `/manual-ui-testing`) |
+| source, `justfile`, `.github/workflows/` | exact commands, fields, shapes, and checks |
+
+Extend the owning layer instead of restating it here. When working in a subtree, check for a
+closer `AGENTS.md` (`apps/ui/`, `crates/server/migrations/`, `plugins/`, `.deepsec/`).
+
+### Norms
 
 - Telegraph. Drop filler. Keep updates short and factual.
-- Fix root cause. If unsure, read more code/specs; if still stuck, ask with short options.
-- Unrecognized working-tree changes are probably from another agent or the user. Work with them. Stop only if they make the task unsafe.
-- Start from latest main by default: `git fetch origin main`, then branch from or rebase onto `origin/main`.
-- In worktrees, verify state with `git status --branch` or `git worktree list`; do not assume `HEAD` tracks a branch.
-- When working in a subtree, check for a closer `AGENTS.md` and follow it.
-- After every rebase, check `crates/server/migrations/` for duplicate version numbers. If migrations changed, run `bash scripts/lib/check-migration-ordering.sh`.
+- Start from latest `origin/main` unless the task says otherwise.
 - Keep changes small, PR-sized, testable, and runnable locally.
 - For bug fixes, write or update a failing test before the fix when practical.
-- Important decisions belong as concise comments near the relevant code, not in scratch docs.
-- No backward compatibility required for internal code unless a spec says otherwise.
+- Record important decisions as concise comments near the relevant code, not in scratch docs.
+- Internal code needs no backward compatibility unless a spec says otherwise.
 
-### Cloud and secrets
+### Gotchas
 
-Use Doppler for all secret-backed commands in cloud agents.
+- Working-tree changes you did not make are probably another agent's or the user's. Work with
+  them, and stage files by name rather than `git add -A`.
+- Rebases silently keep colliding migration numbers. After a rebase that touches
+  `crates/server/migrations/`, run `bash scripts/lib/check-migration-ordering.sh` and renumber.
+- Run `just pre-push` before pushing.
+- Specs capture why/what; link to source instead of copying fields, enum variants, SQL DDL, or API
+  shapes. `docs/` holds public product documentation only — proposals and investigations belong in
+  `specs/` or `proposals/`.
+- Linear: OSS project, EVE team.
+
+### Local dev
+
+```bash
+PORT_PREFIX=271 just start-dev   # in-memory, no external services
+PORT_PREFIX=271 just start-all   # PostgreSQL + Valkey + NATS
+cd apps/ui && ./node_modules/.bin/next dev --port 9120   # UI only
+```
+
+Use a distinct `PORT_PREFIX` per worktree so parallel stacks do not collide.
+
+### Cloud agents and secrets
+
+`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, and `LINEAR_API_KEY` come from Doppler:
 
 ```bash
 ./scripts/init-cloud-env.sh
@@ -24,92 +59,17 @@ export CARGO_INCREMENTAL=0
 doppler run -- just start-dev --no-watch
 ```
 
-Secrets live in Doppler: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `LINEAR_API_KEY`.
-
-If GitHub auth fails, do not tell the user the token expired. Use:
+Failing GitHub auth means the token was not passed through, not that it expired:
 
 ```bash
 doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" <command>'
 ```
 
-### Specs and docs
+### Commits
 
-- `specs/` contains durable feature specifications and design intent. Use `rg`, `find`, and direct reads to consult relevant specs when changing behavior.
-- Start with `specs/README.md`; it is the specs index and map. For integrations, also read `specs/integrations.md`.
-- To find relevant specs, use `rg -n "<topic>" specs` and read the linked specs before changing behavior.
-- Specs capture why/what, not exhaustive how. Do not duplicate fields, enum variants, SQL DDL, or exact API shapes already readable from source.
-- Public product documentation lives in `docs/`. Internal proposals, durable design intent, and temporary investigations do not belong there.
-- UI design system (Slate): `apps/ui/src/app/design-system.css` is the runtime source of truth; `apps/ui/DESIGN.md` is its agent-readable companion in the [DESIGN.md format](https://github.com/google-labs-code/design.md). When changing design tokens, update both together and run `pnpm run design:lint` in `apps/ui`. See `specs/brand.md`.
-
-### Local dev and tests
-
-```bash
-just start-dev          # in-memory dev mode
-just start-all          # PostgreSQL + Valkey + NATS as local processes
-just --list             # all commands
-```
-
-Use a per-worktree `PORT_PREFIX` when running services:
-
-```bash
-PORT_PREFIX=271 just start-dev
-PORT_PREFIX=271 just start-all
-```
-
-UI-only iteration:
-
-```bash
-cd apps/ui
-./node_modules/.bin/next dev --port 9120
-```
-
-Rust uses stable edition 2024. For touched Rust crates, run focused tests plus formatting/linting as needed:
-
-```bash
-cargo fmt --check
-cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-features
-```
-
-Before pushing, always run `just pre-push`. If it fails, run `just fmt` when appropriate, fix root causes, and rerun it.
-
-### Git and commits
-
-- Conventional Commits: `type(scope): description`.
-- Types: `feat`, `fix`, `docs`, `refactor`, `test`, `chore`.
-- Use `chore` for updates to `specs/` and `AGENTS.md`.
-- Never add Claude/session/AI attribution links in commits, PRs, docs, or code comments, except the standard yolop attribution trailer/footer for work performed by yolop.
-- Stage files explicitly by name. Avoid broad `git add .` / `git add -A`.
-
-Commit attribution must be the real human user.
-
-- If current `git config user.name` and `user.email` resolve to a real human, use them as-is.
-- If git identity is missing or agent-like, set `GIT_USER_NAME` and `GIT_USER_EMAIL`, then configure git before committing.
-- If those env vars are missing when needed, stop and ask the user. Do not commit with a bot identity.
-- Do not use AI/bot names, AI `Co-authored-by` trailers, or "generated by" metadata, except the standard yolop `Co-Authored-By` commit trailer and `Generated with yolop` PR footer for work performed by yolop.
-
-### PRs and CI
-
-- Use `.github/pull_request_template.md`.
-- PR descriptions center on functional change and impact, not a code-location
-  walkthrough (the diff shows that). Keep code-level notes short and specific, and
-  add a Before / After with proof — output, logs, metrics, or screenshots for UI —
-  whenever behavior changes.
-- PR titles must be Conventional Commits and under 70 characters.
-- Squash and Merge.
-- GitHub Actions is the CI source of truth; check with `gh`.
-- Never merge red CI.
-- Before merge, prefer rebasing onto latest `origin/main`.
-- CI opt-out labels are documented in `specs/shipping.md`; use only when skipped checks are low-signal for the diff.
-
-### Shipping and maintenance
-
-- "Ship" means implement, gather evidence, perform security review, open a mergeable PR, address all review comments, and merge only after CI is green.
-- When asked to ship, use `.agents/skills/ship/SKILL.md` and `specs/shipping.md`.
-- When asked for maintenance or release readiness, use `.agents/skills/maintenance/SKILL.md` and `specs/maintenance.md`.
-- Security review for code/config/infrastructure changes uses `specs/threat-model.md`.
-- Manual UI tests live in `test_cases/`; follow `specs/test-cases.md` and `.agents/skills/manual-ui-testing/SKILL.md`.
-
-### Linear
-
-Linear project: OSS, team: EVE. Token is `LINEAR_API_KEY` in Doppler. Use `.agents/skills/process-issues/SKILL.md` for backlog processing.
+- Conventional Commits (`type(scope): description`); use `chore` for `specs/` and `AGENTS.md`.
+- Commit as the real human user. If `git config user.name`/`user.email` are missing or agent-like,
+  set them from `GIT_USER_NAME`/`GIT_USER_EMAIL`; if those are absent, ask instead of committing
+  with a bot identity.
+- No AI attribution anywhere — commits, PRs, docs, code comments. The sole exception is yolop's
+  standard `Co-Authored-By` trailer and `Generated with yolop` PR footer for work yolop performed.
