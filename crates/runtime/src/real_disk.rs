@@ -207,7 +207,11 @@ impl SessionFileSystem for RealDiskFileStore {
     }
 
     fn display_path(&self, path: &str) -> String {
-        match self.paths.parse_input(path) {
+        // `display_path` receives canonical backend keys, not fresh user input.
+        // Keep a literal top-level `workspace` directory distinct from the
+        // `/workspace` input alias; routing still accepts that alias via
+        // `parse_input` for read/write/list operations.
+        match rel_from_str(path.trim()) {
             Ok(rel) => self.paths.to_display(&rel),
             Err(_) => path.to_string(),
         }
