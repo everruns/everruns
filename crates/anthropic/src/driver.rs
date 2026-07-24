@@ -1366,6 +1366,7 @@ struct AnthropicOutputConfig {
 /// adaptive-thinking profiles in `everruns_provider::model_profiles`.
 const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
     "claude-fable-5",
+    "claude-opus-5",
     "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",
@@ -1380,6 +1381,7 @@ const ADAPTIVE_THINKING_FAMILIES: &[&str] = &[
 /// thinking, or vice versa) cannot silently mis-gate either path.
 const MILLION_CONTEXT_FAMILIES: &[&str] = &[
     "claude-fable-5",
+    "claude-opus-5",
     "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-opus-4-6",
@@ -2080,6 +2082,8 @@ mod tests {
         // dated suffixes.
         assert!(uses_adaptive_thinking("claude-fable-5"));
         assert!(uses_adaptive_thinking("claude-fable-5-20260601"));
+        assert!(uses_adaptive_thinking("claude-opus-5"));
+        assert!(uses_adaptive_thinking("claude-opus-5-20260101"));
         assert!(uses_adaptive_thinking("claude-opus-4-8"));
         assert!(uses_adaptive_thinking("claude-opus-4-7-20260416"));
         assert!(uses_adaptive_thinking("claude-opus-4-6"));
@@ -2899,6 +2903,10 @@ mod tests {
         assert_eq!(
             split_million_context("claude-fable-5[1m]"),
             ("claude-fable-5", true)
+        );
+        assert_eq!(
+            split_million_context("claude-opus-5[1m]"),
+            ("claude-opus-5", true)
         );
         assert_eq!(
             split_million_context("claude-opus-4-6[1m]"),
