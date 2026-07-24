@@ -218,7 +218,11 @@ Use the `query_history` tool to search or retrieve earlier messages.]
 `query_history` requires the runtime's `MessageRetriever` ToolContext service.
 Runtime host assembly validates that requirement before exposing the tool, and
 the same session-scoped retriever is used for fresh, resumed, and automatic
-turns.
+turns. When a `user_prompt_submit` hook is configured, the runtime does not
+expose `query_history`: persisted messages are immutable audit records and can
+contain text that the hook removed from the provider-visible prompt. This
+fail-closed boundary remains necessary until provider-visible history has a
+separate durable representation.
 
 ```json
 {
