@@ -149,3 +149,16 @@ to a generic localized verb phrase rather than mixing languages.
    field.
 4. Add a unit test asserting `Started`, `Completed`, and `Failed`, including the
    no-argument fallback.
+
+## Regression guard
+
+`builtin_tools_have_narration_or_documented_generic_fallback` (in
+`crates/core/src/capabilities/mod.rs`) walks every tool of every built-in
+production capability and fails unless the tool is **covered** — its capability
+`narrate()` returns `Some`, or it carries a `narration_noun` hint (data-driven
+CRUD narration). A capability whose generic display-name presentation is
+deliberate is listed in that test's `GENERIC_NARRATION_ALLOWLIST` with a
+documented reason (demo/eval fixtures, operator-only admin surfaces, arbitrary
+code execution). A newly added built-in tool that neither narrates nor is
+allowlisted trips this test rather than silently falling back to the raw
+tool-call presentation.

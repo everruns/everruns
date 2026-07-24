@@ -13,6 +13,9 @@ use everruns_core::capabilities::{
     Capability, CapabilityLocalization, CapabilityStatus, RiskLevel,
 };
 use everruns_core::payment::{MachinePaymentRequest, PaymentMethod, PaymentRail};
+use everruns_core::tool_narration::{
+    generic_phrase, labeled_phrase, safe_arg_str, truncate, url_display,
+};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 use serde::Deserialize;
@@ -96,6 +99,24 @@ pub struct ParallelSearchTool;
 
 #[async_trait]
 impl Tool for ParallelSearchTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        let query = safe_arg_str(&tool_call.arguments, &["query", "q", "objective"])
+            .map(|value| truncate(value, 48));
+        Some(labeled_phrase(
+            "Searching Parallel",
+            "Searched Parallel",
+            "Could not search Parallel",
+            query,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "parallel_search"
     }
@@ -173,6 +194,38 @@ pub struct ParallelExtractTool;
 
 #[async_trait]
 impl Tool for ParallelExtractTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        // The schema arg `urls` is an array; fall back to its first element
+        // (also accept a scalar `url` alias). Rendered via url_display so any
+        // embedded credentials/query strings are stripped.
+        let url = safe_arg_str(&tool_call.arguments, &["url"])
+            .map(str::to_string)
+            .or_else(|| {
+                tool_call
+                    .arguments
+                    .get("urls")
+                    .and_then(Value::as_array)
+                    .and_then(|items| items.first())
+                    .and_then(Value::as_str)
+                    .map(str::to_string)
+            })
+            .map(|value| url_display(&value))
+            .filter(|value| !value.is_empty());
+        Some(labeled_phrase(
+            "Extracting URL",
+            "Extracted URL",
+            "Could not extract URL",
+            url,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "parallel_extract"
     }
@@ -256,6 +309,24 @@ pub struct ParallelTaskTool;
 
 #[async_trait]
 impl Tool for ParallelTaskTool {
+    fn narrate(
+        &self,
+        tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        let objective = safe_arg_str(&tool_call.arguments, &["input", "objective"])
+            .map(|value| truncate(value, 48));
+        Some(labeled_phrase(
+            "Running Parallel task",
+            "Ran Parallel task",
+            "Failed to run Parallel task",
+            objective,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "parallel_task"
     }
@@ -334,6 +405,23 @@ pub struct ParallelTaskStatusTool;
 
 #[async_trait]
 impl Tool for ParallelTaskStatusTool {
+    fn narrate(
+        &self,
+        _tool_call: &everruns_core::tool_types::ToolCall,
+        phase: everruns_core::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+        _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        // Bare: the run id is not user-friendly.
+        Some(generic_phrase(
+            "Checking task status",
+            "Checked task status",
+            "Failed to check task status",
+            None,
+            phase,
+        ))
+    }
+
     fn name(&self) -> &str {
         "parallel_task_status"
     }
@@ -462,5 +550,106 @@ mod tests {
             .execute(json!({ "query": "hello" }))
             .await;
         assert!(result.is_error());
+    }
+
+    // ========================================================================
+    // Tool narration
+    // ========================================================================
+
+    use everruns_core::tool_narration::{ToolNarrationContext, ToolNarrationPhase};
+    use everruns_core::tool_types::ToolCall;
+
+    fn narrate(tool: &dyn Tool, arguments: Value, phase: ToolNarrationPhase) -> Option<String> {
+        let call = ToolCall {
+            id: "call-1".to_string(),
+            name: tool.name().to_string(),
+            arguments,
+        };
+        tool.narrate(&call, phase, None, ToolNarrationContext::default())
+    }
+
+    #[test]
+    fn narrate_search_all_phases_and_truncation() {
+        let tool = ParallelSearchTool;
+        assert_eq!(
+            narrate(
+                &tool,
+                json!({"query": "rust async"}),
+                ToolNarrationPhase::Started
+            )
+            .as_deref(),
+            Some("Searching Parallel: rust async")
+        );
+        assert_eq!(
+            narrate(
+                &tool,
+                json!({"query": "rust async"}),
+                ToolNarrationPhase::Completed
+            )
+            .as_deref(),
+            Some("Searched Parallel: rust async")
+        );
+        assert_eq!(
+            narrate(
+                &tool,
+                json!({"query": "rust async"}),
+                ToolNarrationPhase::Failed
+            )
+            .as_deref(),
+            Some("Could not search Parallel: rust async")
+        );
+        // Long query is truncated to 48 chars + ellipsis.
+        let long = "a".repeat(80);
+        let narration =
+            narrate(&tool, json!({ "query": long }), ToolNarrationPhase::Started).unwrap();
+        assert!(narration.starts_with("Searching Parallel: "));
+        assert!(narration.ends_with("..."));
+        // No query arg -> bare verb fallback.
+        assert_eq!(
+            narrate(&tool, json!({}), ToolNarrationPhase::Started).as_deref(),
+            Some("Searching Parallel")
+        );
+    }
+
+    #[test]
+    fn narrate_extract_uses_first_url_and_strips_scheme() {
+        let tool = ParallelExtractTool;
+        assert_eq!(
+            narrate(
+                &tool,
+                json!({"urls": ["https://example.com/a?x=1", "https://example.com/b"], "objective": "facts"}),
+                ToolNarrationPhase::Started
+            )
+            .as_deref(),
+            Some("Extracting URL: example.com/a")
+        );
+        // No urls -> bare verb fallback.
+        assert_eq!(
+            narrate(&tool, json!({}), ToolNarrationPhase::Failed).as_deref(),
+            Some("Could not extract URL")
+        );
+    }
+
+    #[test]
+    fn narrate_task_status_is_bare() {
+        let tool = ParallelTaskStatusTool;
+        assert_eq!(
+            narrate(
+                &tool,
+                json!({"run_id": "abc123"}),
+                ToolNarrationPhase::Started
+            )
+            .as_deref(),
+            Some("Checking task status")
+        );
+        assert_eq!(
+            narrate(
+                &tool,
+                json!({"run_id": "abc123"}),
+                ToolNarrationPhase::Completed
+            )
+            .as_deref(),
+            Some("Checked task status")
+        );
     }
 }

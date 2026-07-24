@@ -810,6 +810,20 @@ impl SpawnAgentHandoffTool {
 
 #[async_trait]
 impl Tool for SpawnAgentHandoffTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_subagent_spawn(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "spawn_agent"
     }

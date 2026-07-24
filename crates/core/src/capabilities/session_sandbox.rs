@@ -396,6 +396,20 @@ impl SandboxReadFileTool {
 
 #[async_trait]
 impl Tool for SandboxReadFileTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_read_file(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "sandbox_read_file"
     }
@@ -489,6 +503,20 @@ impl SandboxWriteFileTool {
 
 #[async_trait]
 impl Tool for SandboxWriteFileTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_write_file(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "sandbox_write_file"
     }
@@ -573,6 +601,16 @@ impl SandboxStatusTool {
 
 #[async_trait]
 impl Tool for SandboxStatusTool {
+    fn narrate(
+        &self,
+        _tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_sandbox_status(phase, locale))
+    }
+
     fn name(&self) -> &str {
         "sandbox_status"
     }
@@ -656,6 +694,20 @@ impl SandboxManageTool {
 
 #[async_trait]
 impl Tool for SandboxManageTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_sandbox_manage(
+            &tool_call.arguments,
+            phase,
+            locale,
+        ))
+    }
+
     fn name(&self) -> &str {
         "sandbox_manage"
     }

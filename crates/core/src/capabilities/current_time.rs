@@ -69,6 +69,16 @@ pub struct GetCurrentTimeTool;
 
 #[async_trait]
 impl Tool for GetCurrentTimeTool {
+    fn narrate(
+        &self,
+        _tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        Some(crate::tool_narration::narrate_current_time(phase, locale))
+    }
+
     fn name(&self) -> &str {
         "get_current_time"
     }

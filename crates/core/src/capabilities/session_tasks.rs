@@ -150,6 +150,21 @@ pub struct ListTasksTool;
 
 #[async_trait]
 impl Tool for ListTasksTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        crate::tool_narration::narrate_session_task(
+            self.name(),
+            &tool_call.arguments,
+            phase,
+            locale,
+        )
+    }
+
     fn name(&self) -> &str {
         "list_tasks"
     }
@@ -254,6 +269,21 @@ pub struct GetTaskTool;
 
 #[async_trait]
 impl Tool for GetTaskTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        crate::tool_narration::narrate_session_task(
+            self.name(),
+            &tool_call.arguments,
+            phase,
+            locale,
+        )
+    }
+
     fn name(&self) -> &str {
         "get_task"
     }
@@ -339,6 +369,21 @@ pub struct MessageTaskTool;
 
 #[async_trait]
 impl Tool for MessageTaskTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        crate::tool_narration::narrate_session_task(
+            self.name(),
+            &tool_call.arguments,
+            phase,
+            locale,
+        )
+    }
+
     fn name(&self) -> &str {
         "message_task"
     }
@@ -462,6 +507,21 @@ pub struct CancelTaskTool;
 
 #[async_trait]
 impl Tool for CancelTaskTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        crate::tool_narration::narrate_session_task(
+            self.name(),
+            &tool_call.arguments,
+            phase,
+            locale,
+        )
+    }
+
     fn name(&self) -> &str {
         "cancel_task"
     }
@@ -563,6 +623,21 @@ pub struct WaitTaskTool;
 
 #[async_trait]
 impl Tool for WaitTaskTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        crate::tool_narration::narrate_session_task(
+            self.name(),
+            &tool_call.arguments,
+            phase,
+            locale,
+        )
+    }
+
     fn name(&self) -> &str {
         "wait_task"
     }

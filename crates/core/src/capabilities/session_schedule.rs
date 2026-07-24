@@ -77,6 +77,21 @@ pub struct CreateScheduleTool;
 
 #[async_trait]
 impl Tool for CreateScheduleTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        crate::tool_narration::narrate_session_schedule(
+            self.name(),
+            &tool_call.arguments,
+            phase,
+            locale,
+        )
+    }
+
     fn name(&self) -> &str {
         "create_schedule"
     }
@@ -198,6 +213,21 @@ pub struct CancelScheduleTool;
 
 #[async_trait]
 impl Tool for CancelScheduleTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        crate::tool_narration::narrate_session_schedule(
+            self.name(),
+            &tool_call.arguments,
+            phase,
+            locale,
+        )
+    }
+
     fn name(&self) -> &str {
         "cancel_schedule"
     }
@@ -277,6 +307,21 @@ pub struct ListSchedulesTool;
 
 #[async_trait]
 impl Tool for ListSchedulesTool {
+    fn narrate(
+        &self,
+        tool_call: &crate::tool_types::ToolCall,
+        phase: crate::tool_narration::ToolNarrationPhase,
+        locale: Option<&str>,
+        _ctx: crate::tool_narration::ToolNarrationContext<'_>,
+    ) -> Option<String> {
+        crate::tool_narration::narrate_session_schedule(
+            self.name(),
+            &tool_call.arguments,
+            phase,
+            locale,
+        )
+    }
+
     fn name(&self) -> &str {
         "list_schedules"
     }
