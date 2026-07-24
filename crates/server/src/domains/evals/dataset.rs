@@ -81,6 +81,24 @@ const CONTENT_KEYS: [&str; 7] = [
     "base64",
 ];
 
+/// Structured JSON keys whose values are credentials even when the value itself
+/// does not match a standalone token pattern.
+/// Substrings (matched against the normalized, separator-stripped, lowercased
+/// key) that mark a JSON field as carrying a credential. `contains` matching is
+/// used so compound names like `openai_api_key`, `client_secret`, or `x-api-key`
+/// are covered, not just the bare words.
+const SECRET_KEY_SUBSTRINGS: [&str; 9] = [
+    "apikey",
+    "accesskey",
+    "secretkey",
+    "privatekey",
+    "secret",
+    "password",
+    "passwd",
+    "credential",
+    "authorization",
+];
+
 /// High-signal credential patterns scrubbed from every exported string, always.
 /// Deliberately conservative to avoid mangling legitimate content.
 static SECRET_PATTERNS: LazyLock<Vec<Regex>> = LazyLock::new(|| {
@@ -112,6 +130,21 @@ pub fn scrub_secrets(input: &str) -> String {
     out
 }
 
+fn is_secret_key(key: &str) -> bool {
+    let normalized = key.to_ascii_lowercase().replace(['-', '_'], "");
+    if SECRET_KEY_SUBSTRINGS
+        .iter()
+        .any(|needle| normalized.contains(needle))
+    {
+        return true;
+    }
+    // Redact `token` and any `*token` suffix (accesstoken, refreshtoken,
+    // idtoken, sessiontoken, apitoken, ...) while leaving token *count* fields
+    // like `input_tokens` / `output_tokens` (plural, `*tokens`) intact so we do
+    // not corrupt exported usage metadata.
+    normalized.ends_with("token")
+}
+
 /// Recursively scrub secrets in every string leaf of `value`. When
 /// `redact_content` is set, content-bearing fields are first replaced wholesale
 /// with a placeholder (structure is preserved). Shared with the ATIF exporter
@@ -126,7 +159,7 @@ pub(crate) fn sanitize_value(value: &mut Value, redact_content: bool) {
         }
         Value::Object(map) => {
             for (key, val) in map.iter_mut() {
-                if redact_content && CONTENT_KEYS.contains(&key.as_str()) {
+                if is_secret_key(key) || (redact_content && CONTENT_KEYS.contains(&key.as_str())) {
                     *val = Value::String(REDACTED.to_string());
                 } else {
                     sanitize_value(val, redact_content);
@@ -441,6 +474,57 @@ mod tests {
         assert!(scrubbed.contains(REDACTED));
         assert!(!scrubbed.contains("sk-abcdef0123456789"));
         assert!(!scrubbed.contains("AKIAABCDEFGHIJKLMNOP"));
+    }
+
+    #[test]
+    fn sanitize_value_redacts_structured_secret_fields() {
+        let mut value = json!({
+            "messages": [{
+                "content": [{
+                    "type": "tool_call",
+                    "arguments": {
+                        "api_key": "hunter2",
+                        "access-key": "shorttok",
+                        "nested": { "password": "p@ssw0rd" }
+                    }
+                }],
+                "metadata": {
+                    "secret": "metasecret",
+                    "openai_api_key": "raw-openai-value",
+                    "client_secret": "raw-client-secret",
+                    "refresh_token": "raw-refresh-token",
+                    "authorization": "Basic dXNlcjpwYXNz",
+                    "input_tokens": 1234,
+                    "safe": "keep me"
+                }
+            }],
+            "token": "bearer-token-value"
+        });
+
+        sanitize_value(&mut value, false);
+
+        let serialized = serde_json::to_string(&value).unwrap();
+        assert!(!serialized.contains("hunter2"));
+        assert!(!serialized.contains("shorttok"));
+        assert!(!serialized.contains("p@ssw0rd"));
+        assert!(!serialized.contains("metasecret"));
+        assert!(!serialized.contains("bearer-token-value"));
+        // Compound credential key names must also be redacted.
+        assert!(!serialized.contains("raw-openai-value"));
+        assert!(!serialized.contains("raw-client-secret"));
+        assert!(!serialized.contains("raw-refresh-token"));
+        assert!(!serialized.contains("dXNlcjpwYXNz"));
+        assert!(serialized.contains("keep me"));
+        // Token *count* metadata must survive (not a credential).
+        assert_eq!(
+            value["messages"][0]["metadata"]["input_tokens"],
+            json!(1234)
+        );
+        assert_eq!(value["messages"][0]["metadata"]["secret"], json!(REDACTED));
+        assert_eq!(
+            value["messages"][0]["metadata"]["openai_api_key"],
+            json!(REDACTED)
+        );
     }
 
     #[test]
