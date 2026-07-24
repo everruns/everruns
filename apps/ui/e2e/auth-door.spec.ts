@@ -15,9 +15,7 @@ const AUTH_CONFIG = {
 };
 
 async function mockAuthConfig(page: Page, config: Record<string, unknown> = AUTH_CONFIG) {
-  await page.route("**/v1/auth/config", (route) =>
-    route.fulfill({ json: config }),
-  );
+  await page.route("**/v1/auth/config", (route) => route.fulfill({ json: config }));
 }
 
 test.describe("Unified auth door", () => {
@@ -42,9 +40,7 @@ test.describe("Unified auth door", () => {
     );
   });
 
-  test("email continue moves to the password phase with the email locked in", async ({
-    page,
-  }) => {
+  test("email continue moves to the password phase with the email locked in", async ({ page }) => {
     await page.goto("/login");
     await page.getByLabel("Email").fill("eli@acme.com");
     await page.getByRole("button", { name: "Continue with email" }).click();
@@ -60,7 +56,9 @@ test.describe("Unified auth door", () => {
     await expect(page.getByLabel("Email")).toBeFocused();
   });
 
-  test("password phase offers signup with the typed address carried over", async ({ page }) => {
+  test("password phase offers signup with the typed address carried over outside the URL", async ({
+    page,
+  }) => {
     await page.goto("/login");
     await page.getByLabel("Email").fill("newcomer@acme.com");
     await page.getByRole("button", { name: "Continue with email" }).click();
@@ -69,8 +67,9 @@ test.describe("Unified auth door", () => {
     ).toBeVisible();
     // A new user who mistook login for signup is never stuck here.
     const signup = page.getByRole("link", { name: "Create an account" });
-    await expect(signup).toHaveAttribute("href", "/signup?email=newcomer%40acme.com");
+    await expect(signup).toHaveAttribute("href", "/signup");
     await signup.click();
+    await expect(page).toHaveURL(/\/signup$/);
     await expect(
       page.getByRole("heading", { level: 1, name: "Create your account" }),
     ).toBeVisible();
@@ -197,7 +196,9 @@ test.describe("Unified auth door", () => {
     });
     // No token, no email = the former dead end ("sign in to request…").
     await page.goto("/verify-email");
-    await expect(page.getByRole("heading", { level: 1, name: "Verification failed" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { level: 1, name: "Verification failed" }),
+    ).toBeVisible();
     // Now self-serve: enter an email and get a new link without leaving.
     await page.getByLabel(/Enter your email/).fill("stuck@acme.com");
     await page.getByRole("button", { name: /Resend/ }).click();

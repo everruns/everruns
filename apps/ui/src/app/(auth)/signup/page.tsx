@@ -21,6 +21,7 @@ import { useAuthConfig, useRegister } from "@/hooks/use-auth";
 import { getOAuthUrl } from "@/lib/api/auth";
 import {
   buildLoginHref,
+  consumeSignupEmail,
   getPostAuthTarget,
   isBackendNavigationPath,
   persistReturnTo,
@@ -42,9 +43,9 @@ export default function SignupPage() {
   const { data: config, isLoading: configLoading } = useAuthConfig();
   const registerMutation = useRegister();
 
-  // Prefilled when arriving from the login door's password screen, where the
-  // address was already typed.
-  const [email, setEmail] = useState(() => searchParams.get("email") ?? "");
+  // Prefilled when arriving from the login door's password screen. The value is
+  // a one-time sessionStorage handoff so email PII is not written into URLs.
+  const [email, setEmail] = useState(() => consumeSignupEmail());
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);

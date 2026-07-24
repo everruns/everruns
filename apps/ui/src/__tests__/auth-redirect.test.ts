@@ -1,13 +1,16 @@
 import {
   buildLoginHref,
   buildSignupHref,
+  consumeSignupEmail,
   consumeReturnTo,
   getLoginRedirectPath,
   getPostAuthTarget,
   isFullPageLoginRedirect,
   navigateToLogin,
   persistReturnTo,
+  persistSignupEmail,
   RETURN_TO_STORAGE_KEY,
+  SIGNUP_EMAIL_STORAGE_KEY,
   sanitizeReturnTo,
 } from "@/lib/auth-redirect";
 
@@ -118,16 +121,12 @@ describe("sanitizeReturnTo", () => {
 });
 
 describe("buildSignupHref", () => {
-  it("includes sanitized return_to and email when provided", () => {
-    expect(buildSignupHref("/invite/abc123", "new@example.com")).toBe(
-      "/signup?email=new%40example.com&return_to=%2Finvite%2Fabc123",
-    );
+  it("includes sanitized return_to when provided", () => {
+    expect(buildSignupHref("/invite/abc123")).toBe("/signup?return_to=%2Finvite%2Fabc123");
   });
 
   it("omits unsafe return_to values", () => {
-    expect(buildSignupHref("https://evil.com", "new@example.com")).toBe(
-      "/signup?email=new%40example.com",
-    );
+    expect(buildSignupHref("https://evil.com")).toBe("/signup");
   });
 });
 
@@ -177,5 +176,23 @@ describe("getPostAuthTarget", () => {
 
   it("falls back to dashboard when no safe target exists", () => {
     expect(getPostAuthTarget("https://evil.com")).toBe("/dashboard");
+  });
+});
+
+describe("signup email session storage", () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  it("persists and consumes a typed signup email without a URL parameter", () => {
+    persistSignupEmail(" new@example.com ");
+    expect(sessionStorage.getItem(SIGNUP_EMAIL_STORAGE_KEY)).toBe("new@example.com");
+    expect(consumeSignupEmail()).toBe("new@example.com");
+    expect(sessionStorage.getItem(SIGNUP_EMAIL_STORAGE_KEY)).toBeNull();
+  });
+
+  it("ignores blank signup email values", () => {
+    persistSignupEmail("   ");
+    expect(sessionStorage.getItem(SIGNUP_EMAIL_STORAGE_KEY)).toBeNull();
   });
 });

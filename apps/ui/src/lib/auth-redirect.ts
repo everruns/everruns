@@ -5,6 +5,8 @@
 
 /** Session storage key for preserving return_to across OAuth and signup flows. */
 export const RETURN_TO_STORAGE_KEY = "everruns_return_to";
+/** One-time client-side handoff for signup prefill; keep email PII out of URLs. */
+export const SIGNUP_EMAIL_STORAGE_KEY = "everruns_signup_email";
 
 type SearchInput = URLSearchParams | string | null | undefined;
 
@@ -111,12 +113,8 @@ export function isBackendNavigationPath(path: string): boolean {
 function buildAuthPath(
   basePath: "/login" | "/signup",
   returnTo: string | null | undefined,
-  email?: string | null,
 ): string {
   const params = new URLSearchParams();
-  if (email) {
-    params.set("email", email);
-  }
   const sanitized = sanitizeReturnTo(returnTo);
   if (sanitized) {
     params.set("return_to", sanitized);
@@ -125,17 +123,14 @@ function buildAuthPath(
   return query ? `${basePath}?${query}` : basePath;
 }
 
-/** Build a signup href that preserves a sanitized return_to and optional email. */
-export function buildSignupHref(
-  returnTo: string | null | undefined,
-  email?: string | null,
-): string {
-  return buildAuthPath("/signup", returnTo, email);
+/** Build a signup href that preserves a sanitized return_to. */
+export function buildSignupHref(returnTo: string | null | undefined): string {
+  return buildAuthPath("/signup", returnTo);
 }
 
-/** Build a login href that preserves a sanitized return_to and optional email. */
-export function buildLoginHref(returnTo: string | null | undefined, email?: string | null): string {
-  return buildAuthPath("/login", returnTo, email);
+/** Build a login href that preserves a sanitized return_to. */
+export function buildLoginHref(returnTo: string | null | undefined): string {
+  return buildAuthPath("/login", returnTo);
 }
 
 /** Persist a sanitized return_to in sessionStorage for post-auth resume. */
@@ -162,4 +157,23 @@ export function getPostAuthTarget(returnTo: string | null | undefined): string {
   const sanitized = sanitizeReturnTo(returnTo);
   const stored = consumeReturnTo();
   return sanitized || stored || "/dashboard";
+}
+
+/** Persist a typed login email for the next signup page without serializing PII into the URL. */
+export function persistSignupEmail(value: string): void {
+  const trimmed = value.trim();
+  if (!trimmed || typeof sessionStorage === "undefined") {
+    return;
+  }
+  sessionStorage.setItem(SIGNUP_EMAIL_STORAGE_KEY, trimmed);
+}
+
+/** Read and clear the one-time signup email prefill. */
+export function consumeSignupEmail(): string {
+  if (typeof sessionStorage === "undefined") {
+    return "";
+  }
+  const stored = sessionStorage.getItem(SIGNUP_EMAIL_STORAGE_KEY) ?? "";
+  sessionStorage.removeItem(SIGNUP_EMAIL_STORAGE_KEY);
+  return stored;
 }
