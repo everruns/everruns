@@ -1,421 +1,158 @@
-# Agent Blueprints Specification
+# Agent Blueprints
+
+## Purpose
+
+Agent blueprints are code-defined specialist agents contributed by
+capabilities. A blueprint encapsulates a prompt, private tools, model-selection
+strategy, execution bound, and narrow configuration surface. A host delegates
+through the normal subagent task interface without gaining access to the
+blueprint's private internals.
+
+Blueprints solve work that should use different tools, instructions, or model
+economics from the parent agent. They are not persisted user-created agents and
+do not introduce a second execution engine.
+
+## Sources of truth
 
+- [`crates/core/src/capabilities/mod.rs`](../crates/core/src/capabilities/mod.rs)
+  owns the blueprint model, capability contribution hook, and registry lookup.
+- [`crates/core/src/capabilities/subagents.rs`](../crates/core/src/capabilities/subagents.rs)
+  owns discovery, invocation schema, config validation, task creation, and
+  governed-depth behavior.
+- [`crates/core/src/session.rs`](../crates/core/src/session.rs) owns persisted
+  session blueprint references.
+- [`crates/runtime/src/`](../crates/runtime/src/) owns runtime-agent assembly
+  and execution for blueprint sessions.
+- [`integrations/github/`](../integrations/github/) and
+  [`crates/core/src/capabilities/model_scout.rs`](../crates/core/src/capabilities/model_scout.rs)
+  are current concrete examples. Their source, not this spec, owns prompts,
+  tool lists, model names, and config schemas.
+- [`crates/server/migrations/`](../crates/server/migrations/) owns exact
+  persistence columns.
 
-<!-- Design Decisions:
-  - AgentBlueprint: code-defined agent template with private tools, baked-in prompt, fixed/default model
-  - Contributed by capabilities via new `agent_blueprints()` trait method
-  - Spawned via `spawn_agent` with `target.type = "subagent"` plus `blueprint` + `config`
-  - Child session stores `blueprint_id` — reason_activity and act_activity branch on it
-  - Private tools: blueprint tools never leak to host agent's tool list
-  - Fixed model: blueprint can hardcode model (e.g. Haiku for cheap scout work)
-  - Config surface is narrow and typed: JSON Schema for allowed overrides
-  - Runs on the same durable execution engine, same agentic loop, same event stream
-  - First implementation: GitHubScout (read-only GitHub search, hardcoded to fast model)
--->
+Do not copy Rust definitions, current registry entries, or JSON schemas into
+this file. They are implementation details and change as new blueprints land.
 
-## Abstract
+## Design
 
-Agent Blueprints are pre-built agent definitions contributed by capabilities. Unlike subagents (which inherit the parent's harness + agent config), blueprints encapsulate a complete agent — prompt, private tools, model selection — behind a simple invocation interface. The host agent spawns a blueprint via `spawn_agent` with a subagent target, but the blueprint controls its own internals.
+Blueprints are contributed by capabilities rather than stored as a new
+database entity. Enabling the contributing capability makes its blueprints
+available to the parent session, subject to ordinary capability and subagent
+policy.
+
+A spawned blueprint session is a real durable session. It participates in the
+same message, event, task, workspace, cancellation, recovery, and follow-up
+infrastructure as an ordinary subagent. The difference is runtime-agent
+assembly:
+
+- an ordinary subagent inherits the parent's execution configuration;
+- a blueprint session assembles its prompt, tools, model strategy, and
+  iteration bound from the registered blueprint.
 
-Inspired by Claude Code's built-in subagents (Explore, Plan, Claude Code Guide) and AmpCode's Librarian pattern.
+The session persists the blueprint identity and validated configuration so a
+worker can reconstruct the same runtime after retry or handoff. Ephemeral
+in-memory selection is insufficient.
+
+## Model selection
 
-## Motivation and Design Principles
-
-Current subagents inherit parent's tools, model, and prompt. Blueprints solve specialist delegation where the child needs different tools, a cheaper model, specialist instructions, or tool privacy.
-
-Key design principles:
-- **Blueprints are capabilities, not a new DB entity** -- contributed via `Capability` trait; session gains `blueprint_id` to signal alternate assembly
-- **Same durable execution infrastructure** -- same agentic loop and event stream; only RuntimeAgent assembly differs
-- **Private tools** -- blueprint tools never appear in the host's tool list
-- **Fixed model is first-class** -- cheap work should not burn expensive models
-- **Narrow config surface** -- host passes structured JSON Schema config; cannot override prompt or tools
-- **Discovery via system prompt** -- available blueprints listed upfront for LLM delegation
-
-## Data Model
-
-### AgentBlueprint
-
-Returned by `Capability::agent_blueprints()`. Defined in code, not persisted.
-
-See `crates/core/src/capabilities/mod.rs` for the trait definition.
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | `&'static str` | Unique identifier (e.g. `"github_scout"`) |
-| `name` | `&'static str` | Human-readable display name |
-| `description` | `&'static str` | When to use this blueprint (LLM reads this for delegation decisions) |
-| `model` | `BlueprintModel` | Model selection strategy |
-| `system_prompt` | `&'static str` | Baked-in system prompt for the child agent |
-| `tools` | `Vec<Box<dyn Tool>>` | Private tools — only available inside the blueprint's session |
-| `max_turns` | `Option<usize>` | Iteration limit (default: 20) |
-| `config_schema` | `Option<Value>` | JSON Schema for allowed host-provided config. `None` = no config accepted. |
-
-### BlueprintModel
-
-```rust
-pub enum BlueprintModel {
-    /// Always use this model. Host cannot override.
-    Fixed(&'static str),
-    /// Use this model unless host provides override via config.
-    Default(&'static str),
-    /// Use whatever model the host agent uses.
-    Inherit,
-}
-```
-
-`Fixed` — scout/lookup work uses cheap models regardless of host context. `Default` — power users can upgrade via config. `Inherit` — blueprints that need the host's reasoning level.
-
-### Session Model Extension
-
-New field on `Session`:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `blueprint_id` | `Option<String>` | Blueprint ID. When set, `reason_activity` and `act_activity` build RuntimeAgent from the blueprint instead of from `harness_id`/`agent_id`. |
-| `blueprint_config` | `Option<Value>` | Validated config passed by host at spawn time. |
-
-This is the **key integration point** with the durable execution engine. The blueprint_id travels through the workflow — it's stored on the session row, not passed ephemerally.
-
-## Capability Trait Extension
-
-New method on the `Capability` trait with a default empty implementation:
-
-```rust
-/// Agent blueprints contributed by this capability.
-/// Blueprints are pre-built agents with private tools and baked-in prompts.
-fn agent_blueprints(&self) -> Vec<AgentBlueprint> {
-    vec![]
-}
-```
-
-Additive — existing capabilities unaffected.
-
-### Blueprint Registration
-
-`CapabilityRegistry` collects blueprints from all registered capabilities:
-
-```rust
-impl CapabilityRegistry {
-    /// All blueprints from all registered capabilities.
-    pub fn blueprints(&self) -> Vec<&AgentBlueprint> { ... }
-
-    /// Find a blueprint by ID across all capabilities.
-    pub fn blueprint(&self, id: &str) -> Option<&AgentBlueprint> { ... }
-}
-```
-
-Duplicate IDs across capabilities rejected at registration time.
-
-## Execution: How It Actually Works
-
-### Spawn (in `spawn_agent` with `target.type = "subagent"`)
-
-The subagent target implementation handles blueprint parameters:
-
-```
-if blueprint param present:
-    1. Look up blueprint in CapabilityRegistry
-    2. Validate config against blueprint.config_schema
-    3. Create child session with:
-       - parent_session_id = current session
-       - harness_id = parent's harness_id (for infrastructure, not for RuntimeAgent)
-       - agent_id = None (blueprint replaces the agent)
-       - blueprint_id = blueprint.id
-       - blueprint_config = validated config
-       - lifecycle tracked via a SessionTask record (kind = subagent)
-    4. PlatformStore.send_message(child_session_id, task)
-    5. wait_for_idle(300s)
-    6. Return result
-```
-
-Key difference: child session has `blueprint_id` set and `agent_id` cleared. This signals to the worker that RuntimeAgent assembly should use the blueprint path.
-
-### RuntimeAgent Assembly (in `reason_activity`)
-
-Currently `reason_activity` builds RuntimeAgent unconditionally from harness + agent. This changes:
-
-```rust
-// In reason_activity, after loading the session:
-let runtime_agent = if let Some(ref blueprint_id) = session.blueprint_id {
-    // Blueprint path: build from blueprint definition
-    let blueprint = capability_registry.blueprint(blueprint_id)
-        .ok_or_else(|| anyhow!("unknown blueprint: {}", blueprint_id))?;
-
-    let model = match blueprint.model {
-        BlueprintModel::Fixed(m) => m.to_string(),
-        BlueprintModel::Default(m) => {
-            // Check if config overrides model
-            session.blueprint_config
-                .as_ref()
-                .and_then(|c| c.get("model"))
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| m.to_string())
-        }
-        BlueprintModel::Inherit => parent_model.clone(),
-    };
-
-    let mut prompt = blueprint.system_prompt.to_string();
-    if let Some(ref config) = session.blueprint_config {
-        // Inject config into prompt context
-        prompt.push_str(&format!("\n<config>\n{}\n</config>", config));
-    }
-
-    RuntimeAgentBuilder::new()
-        .system_prompt(&prompt)
-        .tools(blueprint.tool_definitions())
-        .model(&model)
-        .max_iterations(blueprint.max_turns.unwrap_or(20))
-        .build()
-} else {
-    // Standard path: build from harness + agent (unchanged)
-    RuntimeAgentBuilder::new()
-        .with_harness(harness, &registry, &ctx).await
-        .with_agent(agent, &registry, &ctx).await
-        .build()
-};
-```
-
-### Tool Execution (in `act_activity`)
-
-`act_activity` currently loads tools from harness + agent capabilities. For blueprint sessions, it loads tools from the blueprint instead:
-
-```rust
-// In act_activity, after loading the session:
-let tools: Vec<Box<dyn Tool>> = if let Some(ref blueprint_id) = session.blueprint_id {
-    let blueprint = capability_registry.blueprint(blueprint_id)?;
-    blueprint.tools()  // Private tools only
-} else {
-    // Standard: load from harness + agent capabilities (unchanged)
-    load_capability_tools(harness, agent, &registry)
-};
-```
-
-This is where tool privacy is enforced. Blueprint tools are instantiated only inside the child's `act_activity`. The host's `act_activity` never sees them.
-
-### Event Stream
-
-Blueprint sessions emit the same events as any session:
-- `task.created`, `task.updated`, `task.message.sent`, `task.message.received` (Session Task lifecycle; replaced the retired `subagent.*` events — see `specs/events.md`)
-- `turn.started`, `turn.completed` (agentic loop)
-- `output.message.*` (LLM output)
-- `tool.started`, `tool.completed` (tool execution)
-
-No new event types needed. The subagent task's snapshot (carried on the `task.created`/`task.updated` events) includes `spec.blueprint_id`, so the UI can display the blueprint name/icon.
-
-### Statefulness and Follow-ups
-
-The spawned session is **fully stateful** — real session with messages, events, durable workflow state. The host can:
-- `message_task(task_id, "also check the auth middleware tests")` — sends a follow-up
-- `get_task(task_id)` or `list_tasks(kind="subagent")` — checks status and reads messages
-
-The `AgentBlueprint` definition is stateless (code template). The session instance is stateful.
-
-## Invocation: `spawn_agent` Blueprint Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | Yes | Human-readable name (same as today) |
-| `instructions` | string | Yes | Instructions for the subagent (renamed from `task`) |
-| `target.type` | string | Yes | Must be `subagent` |
-| `blueprint` | string | No | Blueprint ID. When set, child uses blueprint's RuntimeAgent. |
-| `config` | object | No | Blueprint-specific config. Validated against `config_schema`. |
-
-## Discovery: System Prompt Contribution
-
-The `SubagentCapability` system prompt contribution expands to include available blueprints:
-
-```
-<available-blueprints>
-Specialized agents you can delegate to via spawn_agent(target.type="subagent", blueprint: "<id>"):
-
-- github_scout: Search GitHub repositories for code, issues, and discussions.
-  Fast read-only agent. Use for codebase exploration, finding patterns,
-  understanding unfamiliar repos. Config: { "repos": ["owner/repo"] }
-
-- openrouter_model_scout: Benchmark OpenRouter models/providers using small
-  probe tasks and recommend model-router updates. Use when evaluating which
-  models best suit a task profile for cost, latency, or quality.
-  Config: { "max_candidates": 10, "max_spend_usd": 0.10, "probe_timeout_ms": 10000,
-            "probe_tasks": [...], "target_route_key": "base" }
-</available-blueprints>
-```
-
-Generated dynamically from `CapabilityRegistry::blueprints()`. Each entry shows `id`, `description`, and a summary of `config_schema`.
-
-## Security Considerations
-
-| Concern | Mitigation |
-|---------|------------|
-| Capability escalation | Blueprint tools cannot exceed the contributing capability's permissions. Scoped by API keys/connections. |
-| Prompt injection via config | Config validated against typed JSON Schema. No free-form prompt override. |
-| Model cost | `Fixed` prevents host from running expensive models for cheap work. |
-| Tool leakage | Blueprint tools only instantiated in child's `act_activity`. Host's `act_activity` never loads them. |
-| Nesting | Same governed-depth constraint as subagents. |
-| Resource exhaustion | `max_turns` limit on blueprint. Same 300s timeout as subagents. |
-| Blueprint impersonation | `blueprint_id` validated against registry at spawn time. Invalid IDs rejected. |
-
-## Concrete Example: GitHub Scout
-
-First blueprint implementation. Integration crate: `integrations/github/`. The GitHub integration contributes the `github_scout` capability and `github_scout` blueprint, depends on `subagents`, and keeps host-facing GitHub tools empty unless a separate GitHub capability surface is intentionally added.
-
-### Capability
-
-```rust
-pub struct GitHubScoutCapability;
-
-impl Capability for GitHubScoutCapability {
-    fn id(&self) -> &str { "github_scout" }
-    fn name(&self) -> &str { "GitHub Scout" }
-    fn description(&self) -> &str {
-        "Blueprint-only GitHub repository scout."
-    }
-
-    // No host tools — all tools are private to the blueprint
-    fn tools(&self) -> Vec<Box<dyn Tool>> { vec![] }
-
-    fn dependencies(&self) -> Vec<&'static str> { vec!["subagents"] }
-
-    fn agent_blueprints(&self) -> Vec<AgentBlueprint> {
-        vec![AgentBlueprint {
-            id: "github_scout",
-            name: "GitHub Scout",
-            description: "Search GitHub repositories for code, issues, and discussions. \
-                          Fast read-only agent for codebase exploration and pattern discovery.",
-            model: BlueprintModel::Fixed("claude-haiku-4-5-20251001"),
-            system_prompt: GITHUB_SCOUT_PROMPT,
-            tools: vec![
-                Box::new(SearchGitHubCodeTool),
-                Box::new(ReadGitHubFileTool),
-                Box::new(SearchGitHubIssuesTool),
-            ],
-            max_turns: Some(15),
-            config_schema: Some(json!({
-                "type": "object",
-                "properties": {
-                    "repos": {
-                        "type": "array",
-                        "items": { "type": "string" },
-                        "description": "Repository list to scope searches (owner/repo format)"
-                    }
-                }
-            })),
-        }]
-    }
-}
-```
-
-### Private Tools
-
-| Tool | Description |
-|------|-------------|
-| `search_github_code` | Search code across repos using GitHub code search API |
-| `read_github_file` | Read a specific file from a GitHub repo (by path + ref) |
-| `search_github_issues` | Search issues and pull requests with filters |
-
-These use the GitHub token from User Connections. They are private to the blueprint session and never visible to the host agent.
-
-### Host Usage
-
-```json
-{
-  "name": "spawn_agent",
-  "arguments": {
-    "name": "Scout",
-    "instructions": "Find how authentication middleware is implemented in the fastify repo.",
-    "target": { "type": "subagent" },
-    "blueprint": "github_scout",
-    "config": { "repos": ["fastify/fastify"] }
-  }
-}
-```
-
-Child session runs with Haiku, 3 GitHub tools, scout prompt. Host gets back a summary.
-
-## Relationship to Subagents
-
-| Aspect | Subagent | Blueprint |
-|--------|----------|-----------|
-| RuntimeAgent source | Inherited from parent's `harness_id` + `agent_id` | Built from blueprint definition |
-| Session fields | `agent_id` = parent's, `blueprint_id` = None | `agent_id` = None, `blueprint_id` = set |
-| Prompt | Parent's prompt + task as user message | Blueprint's baked-in prompt + task as user message |
-| Tools | Parent's tools (same `act_activity` path) | Blueprint's private tools (alternate `act_activity` path) |
-| Model | Parent's model | Fixed/Default/Inherit per blueprint |
-| Config | None (host controls via task text) | Narrow, typed, validated JSON Schema |
-| Agentic loop | Same (InputAtom → ReasonAtom → ActAtom) | Same |
-| Durable execution | Same (PostgreSQL workflow) | Same |
-| Event stream | Same (SSE events on child session) | Same |
-| Lifecycle | Same (spawn/get/message tools) | Same |
-| Nesting governance | Same `max_subagent_depth` policy | Same |
-| Use case | Parallel work with same capabilities | Specialist delegation with different capabilities |
-
-## Changes Required
-
-### Session Model (`crates/core/src/session.rs`)
-
-Add two fields:
-
-```rust
-/// Blueprint ID. When set, reason_activity/act_activity use blueprint
-/// for RuntimeAgent assembly instead of harness_id/agent_id.
-pub blueprint_id: Option<String>,
-
-/// Blueprint config passed at spawn time. Validated against blueprint's config_schema.
-pub blueprint_config: Option<serde_json::Value>,
-```
-
-Migration: add nullable columns `blueprint_id TEXT` and `blueprint_config JSONB` to sessions table.
-
-### Capability Trait (`crates/core/src/capabilities/mod.rs`)
-
-Add `agent_blueprints()` default method returning `Vec<AgentBlueprint>`.
-
-Add `AgentBlueprint` and `BlueprintModel` structs.
-
-### CapabilityRegistry (`crates/core/src/capabilities/mod.rs`)
-
-Add `blueprints()` and `blueprint(id)` methods that aggregate across all registered capabilities.
-
-### SpawnSubagentAsAgentTool (`crates/core/src/capabilities/subagents.rs`)
-
-- Add `blueprint` and `config` params to schema
-- New branch: when blueprint is set, validate config, create session with `blueprint_id`/`blueprint_config`/`agent_id=None`
-- System prompt contribution includes `<available-blueprints>` section
-
-### reason_activity (`crates/worker/src/activities.rs`)
-
-Branch on `session.blueprint_id`:
-- If set: build RuntimeAgent from blueprint (prompt, model, tool definitions)
-- If not: existing path (harness + agent)
-
-### act_activity (`crates/worker/src/activities.rs`)
-
-Branch on `session.blueprint_id`:
-- If set: load tools from blueprint
-- If not: existing path (harness + agent capabilities)
-
-### Subagent Task Snapshot
-
-The subagent task snapshot (on `task.created`/`task.updated`) carries
-`spec.blueprint_id` so consumers can resolve the blueprint name/icon. (The
-legacy `subagent.*` events were retired — see `specs/events.md`.)
-
-## Implementation Path
-
-### Phase 1: Core Infrastructure
-
-1. `AgentBlueprint`, `BlueprintModel` structs
-2. `Capability::agent_blueprints()` trait method
-3. `CapabilityRegistry::blueprints()` / `blueprint(id)`
-4. Session model: `blueprint_id`, `blueprint_config` fields + migration
-5. `reason_activity` blueprint branch
-6. `act_activity` blueprint branch
-7. `spawn_agent` subagent blueprint parameter handling
-8. System prompt blueprint discovery
-
-### Phase 2: GitHub Scout
-
-1. `integrations/github/` crate with 3 private tools
-2. Wire GitHub API via User Connections
-3. Register via `inventory::submit!`
-4. Enable the `github_scout` capability wherever the `github_scout` blueprint should be available
+Blueprints choose one of three strategies:
+
+- fixed: the blueprint selects a model and the host cannot override it;
+- default: the blueprint selects a default that its validated config may
+  override;
+- inherit: the blueprint uses the parent model.
+
+The current enum representation and owned string types live in
+`crates/core/src/capabilities/mod.rs`. Concrete model identifiers belong to each
+blueprint implementation.
+
+Fixed selection is useful when specialist work has a known cost/quality target.
+Default selection supports controlled operator choice. Inheritance is for work
+that genuinely needs the parent's model characteristics.
+
+## Configuration
+
+Blueprint configuration is structured and validated against the blueprint's
+schema before a child session is created. Config without a blueprint is
+rejected. A blueprint with no schema accepts no arbitrary config.
+
+Configuration may select only behavior intentionally exposed by the blueprint.
+It cannot replace the system prompt, inject new tools, bypass model policy, or
+expand capability permissions.
+
+Invalid, unavailable, or unauthorized blueprint IDs fail before creating a
+child session or task.
+
+## Discovery and invocation
+
+The subagent capability contributes the available blueprint descriptions and
+config summaries to the parent agent's instructions. Discovery is generated
+from the active capability registry; this document does not keep a current
+blueprint list.
+
+Invocation uses the existing subagent target with optional blueprint and config
+arguments. The exact tool schema is generated by the subagent capability and is
+the authoritative caller contract.
+
+When a blueprint is requested, the spawn path:
+
+1. resolves it from the active capability registry;
+2. verifies that its contributing capability is applied to the parent;
+3. validates configuration;
+4. creates a child session carrying blueprint identity and config;
+5. records a subagent session task;
+6. sends the initial instructions and follows normal foreground/background
+   task behavior.
+
+Follow-ups address the durable task/session. The blueprint definition remains a
+stateless template; the spawned session owns conversation state.
+
+## Tool privacy
+
+Blueprint tools are instantiated only for the blueprint child's runtime. They
+do not appear in the host's tool definitions and cannot be called directly by
+the host.
+
+Private does not mean privileged. A blueprint's tools cannot exceed the
+permissions, connections, network policy, or secrets available through its
+contributing capability and child execution context.
+
+Tool definitions used for model inference and tool implementations used for
+execution must come from the same fresh blueprint registration so they cannot
+drift across retries.
+
+## Events and tasks
+
+Blueprint sessions emit the ordinary session, turn, assistant-message, and tool
+events. No blueprint-specific event family is required.
+
+The owning session task carries enough blueprint identity for clients to label
+the specialist. Current snapshot fields are defined by the session-task source
+and event payload types. Legacy `subagent.*` events are not part of this
+contract; see [`events.md`](events.md).
+
+## Security invariants
+
+- Config is schema-validated and cannot override prompt or tools.
+- Blueprint lookup is restricted to capabilities active for the parent.
+- Private tools never enter the parent runtime.
+- Model selection follows the blueprint strategy.
+- Subagent depth, concurrency, timeout, cancellation, and resource governance
+  apply unchanged.
+- Child connections and secrets are resolved through normal scoped facilities.
+- Durable retry reconstructs from persisted blueprint identity and validated
+  config.
+
+## Adding a blueprint
+
+A new blueprint should:
+
+1. live with the capability or integration that owns its tools and policy;
+2. expose a focused description and the smallest useful config schema;
+3. choose model strategy and iteration bounds intentionally;
+4. keep host-facing tools empty when the capability is blueprint-only;
+5. include registry, config-validation, runtime-assembly, and privacy tests;
+6. document product-specific usage beside the integration when users need it.
+
+The GitHub integration and model-scout capability linked above demonstrate two
+current patterns without freezing their implementation into this spec.

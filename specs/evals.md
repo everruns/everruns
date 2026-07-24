@@ -1,401 +1,222 @@
 # Evals
 
-<!-- Design Decisions:
-  - Evals are user-facing: org-scoped, visible in UI, not internal testing infrastructure
-  - Each eval case creates a real session — same behavior as production, debuggable
-  - Scorers return 0.0–1.0 (not binary) to support nuanced grading
-  - Eval runs are durable workflows — reuse existing engine, no parallel infra
-  - Multi-turn cases supported via sequential InputMessage delivery
-  - LLM-as-judge scorer deferred to Phase 2 (requires model call inside scoring)
-  - No dataset management — evals are small, curated collections
-  - No cross-org visibility — evals are org-scoped like all other entities
-  - EvalTarget replaces harness_id + agent_id — unified session setup contract
-  - EvalTarget::Session mirrors CreateSessionRequest; EvalTarget::App references a deployed app
-  - Resolution order: EvalRun.target → EvalCase.target → Eval.target → org default harness
-  - EvalCaseResult stores both target (live reference) and target_snapshot (frozen copy at execution time)
-  - Concurrency and volume limits bound fan-out without throttling legitimate use (EVE-509)
--->
+## Purpose
 
-## Abstract
+Evals are org-scoped, user-facing behavioral tests. An eval groups curated
+cases; each internal case runs against a real Everruns session and records
+scores, artifacts, efficiency data, and a link back to the debuggable
+conversation.
 
-Evals let users define, run, and track behavioral tests for their agents. An Eval is a named collection of cases — each case sends messages to a fresh session and scores the result. Users compare runs across models, track regressions after prompt changes, and gate App publishes on pass rates.
+This spec owns evaluation semantics and product intent. It does not repeat
+Rust models, scorer variants, database columns, identifier prefixes, route
+tables, or UI component inventories.
 
-Each eval case creates a real session with the target agent and harness. Failed cases are debuggable by clicking into the session and seeing the full conversation, tool calls, and events.
+## Sources of truth
 
-## Concepts
+- [`crates/core/src/eval.rs`](../crates/core/src/eval.rs) owns eval targets,
+  statuses, scorer variants, score/result models, summaries, datasets, and
+  serialized field shapes.
+- [`crates/server/src/domains/evals/`](../crates/server/src/domains/evals/)
+  owns validation, commands, limits, execution, import, scoring, datasets, and
+  persistence orchestration.
+- [`crates/server/src/api/evals.rs`](../crates/server/src/api/evals.rs) owns
+  HTTP routes and OpenAPI annotations.
+- [`docs/api/openapi.json`](../docs/api/openapi.json) is the exact external
+  request/response contract.
+- [`crates/server/migrations/`](../crates/server/migrations/) owns eval tables,
+  indexes, share tokens, and later schema evolution.
+- Eval integration tests under [`crates/server/tests/`](../crates/server/tests/)
+  are the executable contract for runs, import, sharing, datasets, and org
+  isolation.
 
-### EvalTarget
+## Core concepts
 
-Defines how to instantiate a session for eval cases. Two variants:
+### Target
 
-- **`session`**: Mirrors `CreateSessionRequest` — `harness_id` and `harness_name` are optional but mutually exclusive (if both are provided, validation fails; if neither, the org default harness is used). Other fields: `agent_id`, `model_id`, `system_prompt`, `max_iterations`. Full control over session setup.
-- **`app`**: Reference to a deployed App — `app_id`. Session created via the app's configuration.
+An eval target defines how a case creates a session. It either describes
+session setup or references a deployed app.
 
-**Resolution order**: `EvalRun.target` → `EvalCase.target` → `Eval.target` → org default harness.
+Target resolution is most-specific first: run override, case override, eval
+default, then the organization's default session setup. Validation follows the
+same rules as ordinary session creation so evals do not become a bypass around
+session policy.
 
-All three levels (Eval, EvalCase, EvalRun) have an optional `target` field. The first non-null target in the resolution chain is used. This allows running the same eval cases against different targets per run, or defining per-case overrides for heterogeneous test suites.
-
-### Eval
-
-Top-level entity. Contains cases that define expected behaviors.
-
-- Org-scoped, follows standard building-block lifecycle (`active → archived → deleted`)
-- Optional `target` (EvalTarget) — the default session setup for all cases
-- Optional `model_override` for baseline model selection
-- Tagged for organization and filtering
-
-### EvalCase
-
-A single test within an eval. Defines input messages, scoring criteria, execution bounds, and optional artifact collection.
-
-- Each case has a `description` explaining what behavior it measures (self-documenting)
-- Optional `target` (EvalTarget) — per-case override
-- `conversation`: one or more input messages sent sequentially (multi-turn support)
-- `post`: optional verification messages sent after conversation completes and session idles, before scoring (e.g. running test scripts for SWE-bench)
-- `artifacts`: optional named session-file reads captured after post messages and scoring complete
-- `scorers`: list of scoring rules applied after execution completes
-- `max_turns`: optional bound on agent turns (default: 10)
-- `timeout_seconds`: per-case timeout (default: 120)
-- Tagged independently from parent eval for subset runs
-
-### EvalRun
-
-A single execution of all (or a tagged subset of) cases in an eval.
-
-- Creates one session per case
-- Optional `target` (EvalTarget) — per-run override (e.g., test same cases against a different app)
-- Supports model override per run (compare models without editing the eval)
-- Tracks aggregate metrics: pass rate, average score, turns, latency, tokens
-- Triggered by user action, API call, or scheduled task
-- Status: `pending → running → completed | failed | cancelled`
-
-### EvalCaseResult
-
-The outcome of a single case within a run.
-
-- Links to the actual session created for this case (browsable in UI)
-- `target`: resolved EvalTarget at execution time (always concrete, never NULL)
-- `target_snapshot`: identical frozen copy for immutability (both set at run creation, both equal initially; `target_snapshot` must never be overwritten)
-- Contains per-scorer scores with pass/fail, value (0.0–1.0), and reason
-- Optional `metadata` records external scorer provenance for deferred write-back (scorer name, version, timestamps, raw output, reviewer notes)
-- Stores collected artifact contents keyed by the case's artifact names
-- Captures efficiency metrics: turn count, latency, token usage
-
-### Scorer
-
-A rule that grades agent output after execution. Embedded in EvalCase, not a standalone entity.
-
-- Returns `{ pass: bool, value: f64, reason: String }` where value is 0.0–1.0
-- Case passes when ALL scorers pass
-- Case-level score = weighted average of scorer values
-
-## Scorer Types
-
-| Type | Config | What It Checks |
-|------|--------|----------------|
-| `contains` | `{ text: String }` | Final assistant message contains substring |
-| `not_contains` | `{ text: String }` | Final assistant message does NOT contain substring |
-| `regex` | `{ pattern: String }` | Final assistant message matches regex pattern |
-| `tool_called` | `{ tool: String, min: Option<u32> }` | Agent called named tool at least `min` times (default 1) |
-| `tool_not_called` | `{ tool: String }` | Agent did NOT call named tool |
-| `tool_call_count` | `{ min: Option<u32>, max: Option<u32> }` | Total tool calls within range |
-| `turns_within` | `{ max: u32 }` | Completed within N turns |
-| `file_contains` | `{ path: String, text: String }` | Session filesystem file contains substring |
-| `json_schema` | `{ schema: Value }` | Final assistant message parses as JSON matching schema |
-| `llm_judge` | `{ rubric: String, model: Option<String> }` | LLM grades output against rubric (**planned; no Scorer variant yet**) |
-
-## Data Model
+The exact target variants and fields live in `crates/core/src/eval.rs`.
 
 ### Eval
 
-See `crates/core/src/eval.rs` for full field definitions.
+An eval is a named, tagged collection of cases with lifecycle state and optional
+default target/model behavior. It is isolated to one organization and follows
+the normal archive/delete conventions for building blocks.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` / `public_id` | UUID / EvalId | Dual-ID pattern (`eval_` prefix) |
-| `org_id` | i64 | Owning organization |
-| `name` | String | Display name |
-| `description` | Option\<String\> | Optional description |
-| `target` | Option\<EvalTarget\> | Session setup target (JSONB) |
-| `model_override` | Option\<String\> | Optional default model for runs |
-| `tags` | Vec\<String\> | Organization tags |
-| `status` | EvalStatus | `active`, `archived`, `deleted` |
-| `created_at` | DateTime | Creation timestamp |
-| `updated_at` | DateTime | Last update timestamp |
-| `archived_at` | Option\<DateTime\> | Archive timestamp |
-| `deleted_at` | Option\<DateTime\> | Deletion timestamp |
+### Case
 
-### EvalCase
+A case defines:
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` / `public_id` | UUID / EvalCaseId | Dual-ID pattern (`evalcase_` prefix) |
-| `eval_id` | UUID | FK to parent eval |
-| `name` | String | Case name |
-| `description` | Option\<String\> | What behavior this measures |
-| `target` | Option\<EvalTarget\> | Per-case target override (JSONB) |
-| `tags` | Vec\<String\> | Tags for subset runs |
-| `conversation` | Vec\<InputMessage\> | Input messages (sequential) |
-| `post` | Option\<Vec\<InputMessage\>\> | Post-conversation verification messages (sent after session idles, before scoring) |
-| `artifacts` | Option\<Vec\<ArtifactSpec\>\> | Named session files to collect after the case finishes |
-| `scorers` | Vec\<Scorer\> | Scoring rules (JSONB) |
-| `max_turns` | Option\<u32\> | Turn limit (default: 10) |
-| `timeout_seconds` | Option\<u32\> | Timeout (default: 120) |
-| `position` | i32 | Display order |
-| `created_at` | DateTime | Creation timestamp |
-| `updated_at` | DateTime | Last update timestamp |
+- one or more input messages sent sequentially;
+- optional verification messages sent after the main conversation idles;
+- scoring rules;
+- execution bounds;
+- optional session files to collect as named artifacts;
+- an optional target override.
 
-### EvalRun
+Each internal case gets a fresh session. This preserves production behavior and
+makes failures inspectable rather than simulating the agent loop in a separate
+test harness.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` / `public_id` | UUID / EvalRunId | Dual-ID pattern (`evalrun_` prefix) |
-| `eval_id` | UUID | FK to parent eval |
-| `org_id` | i64 | Owning organization |
-| `target` | Option\<EvalTarget\> | Per-run target override (JSONB) |
-| `model_override` | Option\<String\> | Model override for this run |
-| `filter_tags` | Option\<Vec\<String\>\> | Only run cases matching these tags |
-| `status` | EvalRunStatus | `pending`, `running`, `completed`, `failed`, `cancelled` |
-| `triggered_by` | String | `user`, `schedule`, `publish_gate` |
-| `started_at` | Option\<DateTime\> | When execution started |
-| `completed_at` | Option\<DateTime\> | When execution finished |
-| `summary` | Option\<RunSummary\> | Aggregate metrics (JSONB, set on completion) |
-| `created_at` | DateTime | Creation timestamp |
-| `updated_at` | DateTime | Last update timestamp |
+### Run
 
-### RunSummary (embedded JSONB)
+A run executes all selected cases under one resolved configuration. It records
+source, trigger, lifecycle, aggregate metrics, and results.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `total` | u32 | Total cases in run |
-| `passed` | u32 | Cases that passed |
-| `failed` | u32 | Cases that failed |
-| `errored` | u32 | Cases that errored or timed out |
-| `pass_rate` | f64 | passed / total |
-| `avg_score` | f64 | Average case score |
-| `avg_turns` | f64 | Average turns per case |
-| `avg_latency_ms` | u64 | Average case latency |
-| `total_input_tokens` | u64 | Total input tokens |
-| `total_output_tokens` | u64 | Total output tokens |
+Internal runs create sessions and score them. External runs are imported
+observations and are never re-executed or silently rescored by Everruns.
 
-### EvalCaseResult
+A run is terminal when completed, failed, or cancelled. Cancellation prevents
+new case work and propagates through the durable runner according to current
+execution state.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` / `public_id` | UUID / EvalResultId | Dual-ID pattern (`evalresult_` prefix) |
-| `eval_run_id` | UUID | FK to parent run |
-| `eval_case_id` | UUID | FK to the case |
-| `session_id` | Option\<UUID\> | FK to session created for this case |
-| `target` | EvalTarget | Resolved target at execution time (JSONB, always concrete) |
-| `target_snapshot` | EvalTarget | Frozen copy of resolved target (JSONB, immutable) |
-| `status` | CaseResultStatus | `pending`, `running`, `passed`, `failed`, `errored`, `timeout` |
-| `scores` | Option\<JSON\> | Per-scorer results (JSONB) |
-| `metadata` | Option\<JSON\> | External scorer provenance and audit details (JSONB) |
-| `artifacts` | Option\<Map\<String, String\>\> | Collected session file contents (JSONB) |
-| `turns` | Option\<u32\> | Turn count |
-| `latency_ms` | Option\<u64\> | Execution time |
-| `tokens` | Option\<TokenUsage\> | Token usage |
-| `error_message` | Option\<String\> | Error details if errored |
-| `created_at` | DateTime | Creation timestamp |
-| `updated_at` | DateTime | Last update timestamp |
+### Result
 
-### Score (embedded JSONB)
+A result captures one case outcome, including its session when internally
+executed, resolved target state, scores, artifacts, timing, token counts,
+metadata, and safe error information.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `pass` | bool | Whether this scorer passed |
-| `value` | f64 | Score 0.0–1.0 |
-| `reason` | String | Human-readable explanation |
+Target information is frozen for audit at run creation. The exact optionality
+and storage representation are defined by the current source; consumers must
+use the generated API rather than a copied field table.
 
-## ID Schema
+## Scoring
 
-| Entity | Prefix | Example |
-|--------|--------|---------|
-| Eval | `eval` | `eval_01933b5a000070008000000000000001` |
-| EvalCase | `evalcase` | `evalcase_01933b5a000070008000000000000001` |
-| EvalRun | `evalrun` | `evalrun_01933b5a000070008000000000000001` |
-| EvalCaseResult | `evalresult` | `evalresult_01933b5a000070008000000000000001` |
+A scorer returns pass/fail, a normalized value from zero to one, and a
+human-readable reason. A case passes only when every required scorer passes.
+The case score is the weighted average of scorer values.
 
-## API
+The exhaustive scorer set and configuration are defined by the tagged `Scorer`
+enum in `crates/core/src/eval.rs`. Adding a scorer requires:
 
-All endpoints under `/v1/evals`. See `crates/server/src/api/evals.rs`.
+- a serialized variant and validation;
+- execution logic;
+- API/OpenAPI exposure;
+- focused tests;
+- UI authoring/rendering support where applicable.
 
-### Eval CRUD
+Do not keep an exhaustive scorer list here. The source currently includes
+output, tool-use, filesystem, schema, and citation-oriented scoring families;
+the enum and tests are authoritative as that set evolves.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/v1/evals` | Create eval |
-| `GET` | `/v1/evals` | List evals (paginated, filterable by status) |
-| `GET` | `/v1/evals/{eval_id}` | Get eval with case count and last run summary |
-| `PATCH` | `/v1/evals/{eval_id}` | Update eval |
-| `DELETE` | `/v1/evals/{eval_id}` | Archive eval |
+External score write-back is allowed only through the explicit result/run
+commands. Provenance belongs in result metadata so a score can be audited
+without pretending Everruns computed it.
 
-### Case Management
+## Internal execution
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/v1/evals/{eval_id}/cases` | Add case |
-| `GET` | `/v1/evals/{eval_id}/cases` | List cases |
-| `GET` | `/v1/evals/{eval_id}/cases/{case_id}` | Get case |
-| `PATCH` | `/v1/evals/{eval_id}/cases/{case_id}` | Update case |
-| `DELETE` | `/v1/evals/{eval_id}/cases/{case_id}` | Remove case |
-| `POST` | `/v1/evals/{eval_id}/atif_import` | Upsert cases from ATIF trajectories (NDJSON or JSON body; see `specs/atif-adoption.md`) |
+Triggering an internal run:
 
-### Run Management
+1. validates org scope, limits, target overrides, and selected cases;
+2. creates the run and pending results with frozen resolved targets;
+3. schedules durable bounded-concurrency case work;
+4. creates one session per case;
+5. sends conversation and verification messages in order, waiting for idle
+   between messages;
+6. reads canonical session outcomes and configured artifacts;
+7. evaluates scorers and records result metrics;
+8. aggregates the terminal run summary.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/v1/evals/{eval_id}/runs` | Trigger run (body: optional `model_override`, `filter_tags`) |
-| `GET` | `/v1/evals/{eval_id}/runs` | List runs with summaries |
-| `GET` | `/v1/evals/{eval_id}/runs/{run_id}` | Get run with case results |
-| `GET` | `/v1/evals/{eval_id}/runs/{run_id}/artifacts` | Export run artifacts as NDJSON (`instance_id` plus artifact fields, with `patch` exported as `model_patch`) |
-| `POST` | `/v1/evals/{eval_id}/runs/{run_id}/cancel` | Cancel running eval |
-| `PATCH` | `/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores` | Write external scores back to a completed result |
-| `PATCH` | `/v1/evals/{eval_id}/runs/{run_id}/scores` | Bulk write external scores back to a completed run |
+Eval sessions use ordinary session capabilities, events, authorization, and
+resource limits. Eval execution must not call storage or tools through a
+special privileged path.
 
-### Import (external eval results)
+The runner owns exact concurrency, timeout, tag-filter behavior, and error
+classification. Operator configuration and defaults live in the eval limits
+source rather than this spec.
 
-Everruns also hosts and visualizes runs it did **not** execute, so external eval
-systems (e.g. Mira) can publish results without onboarding into the session
-system. See `proposals/mira-results-publishing.md`.
+## Limits
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/v1/evals/import` | Ingest a full external run group (one run → one EvalRun per eval) |
-| `GET` | `/v1/evals/import/preflight` | Report `{ evals_enabled, can_import }` so optional-feature clients check before publishing |
+Run creation is bounded by per-organization concurrent-run and per-run case
+limits. Limits are checked before fan-out so one request cannot create
+unbounded durable work.
 
-- An imported `EvalRun` carries `source = external` plus `attribution` (system,
-  version, url, run id, labels); internal runs are unchanged (`source =
-  internal`). Evals and cases are upserted **by name** within the org (no
-  namespacing — name collisions merge; see proposal). External cases are
-  identity-only: everruns never re-executes or re-scores them.
-- Idempotent on the external `source.run_id`: re-publishing replaces the prior
-  run for each eval in the group.
-- Scores are stored opaque (named, attributed) — everruns trusts the external
-  verdict. Per-result transcript and an open-vocab metrics bag ride in the
-  result `metadata` envelope rather than dedicated columns.
-- Gated by `EVAL_IMPORT` (`OrgAgentsManage` only — no sessions are created, so
-  unlike `EVAL_RUN` it does not require `OrgSessionsManage`).
+Exact environment variable names, defaults, and injectable test configuration
+live in [`crates/server/src/domains/evals/limits.rs`](../crates/server/src/domains/evals/limits.rs).
 
-### Share links (read-only public views)
+## External import
 
-A run can be shared read-only via an unguessable token, so results (matrix,
-transcript, comparison-friendly data) can be shown to people without an org
-seat. General-purpose and OSS-native; no separate public domain is required.
+Everruns can host and visualize runs produced by external evaluation systems.
+Import is org-scoped and permission-gated.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/v1/evals/{eval_id}/runs/{run_id}/share` | Mint a link (returns the raw token once); revokes any prior active link |
-| `GET` | `/v1/evals/{eval_id}/runs/{run_id}/share` | Whether the run has an active link |
-| `DELETE` | `/v1/evals/{eval_id}/runs/{run_id}/share` | Revoke all links for the run |
-| `GET` | `/v1/public/eval-runs/{token}` | **Unauthenticated** read of the shared run (sanitized) |
+External import semantics are:
 
-- Tokens (`evr_share_…`) are stored SHA-256-hashed like PATs — the raw token is
-  surfaced once. `revoked_at`/`expires_at` disable a link without deleting the
-  row (migration 091). At most one active link per run.
-- Mint/revoke require `EVAL_MANAGE`; the public read takes no auth extractor —
-  the token is the authorization (see `specs/public-endpoints.md`). The public
-  DTO is sanitized: no org/internal/session ids, no internal (session/app)
-  targets, no attribution env labels; unknown/revoked/expired ⇒ uniform 404.
+- source attribution identifies the external system and run;
+- evals and cases use the documented org-local identity strategy;
+- publishing the same external run identity is idempotent and replaces its
+  prior imported representation;
+- transcripts, opaque metrics, and scorer provenance remain attributed data;
+- imported cases are not eligible for internal re-execution merely because
+  they now appear in Everruns.
 
-#### Run Limits (EVE-509)
+Preflight lets optional-feature clients determine whether import is available
+before publishing. Exact payloads and routes live in the command source and
+OpenAPI.
 
-`POST /runs` enforces two limits at trigger time, returning HTTP 400 on violation:
+ATIF case import is a separate operation for turning trajectories into
+executable eval cases. See [`atif-adoption.md`](atif-adoption.md).
 
-- **Concurrent runs per org**: at most `EVAL_MAX_CONCURRENT_RUNS_PER_ORG` runs may be in `pending` or `running` state simultaneously (default: 5).
-- **Cases per run**: a run may not execute more than `EVAL_MAX_CASES_PER_RUN` cases (default: 500). Checked at trigger time against total cases in the eval (tag-filtered runs are Phase 2).
+## Artifacts and datasets
 
-Both limits are read from environment variables at service startup and are injectable via `EvalService::with_limits` for test isolation.
+Cases may collect named session files after conversation and verification work.
+Run artifact export provides the external evaluation-oriented record format
+defined by the command implementation.
 
-## Execution Flow
+Dataset export is durable and may have its own lifecycle and stored body. The
+current dataset commands and models are defined in the eval domain and core
+model. This spec intentionally does not copy their routes or fields.
 
-```
-POST /v1/evals/{eval_id}/runs
-  │
-  ├─ Create EvalRun (status: pending, target from request body)
-  ├─ For each case:
-  │    ├─ Resolve target: run.target → case.target → eval.target → org default
-  │    └─ Create EvalCaseResult (status: pending, target + target_snapshot = resolved target)
-  ├─ Spawn background execution task
-  │
-  │  For each case (bounded concurrency = 5):
-  │    1. Update CaseResult status → running
-  │    2. Create session from resolved EvalTarget (tags: ["eval"])
-  │    3. For each message in case.conversation:
-  │       a. POST message to session
-  │       b. Wait for session idle
-  │    4. For each message in case.post (if present):
-  │       a. POST message to session
-  │       b. Wait for session idle
-  │    5. Fetch session events (tool.completed, turn.completed)
-  │    6. Fetch final assistant messages
-  │    7. Run scorers → produce Score per scorer
-  │    8. Collect configured session files into CaseResult.artifacts
-  │    9. Update CaseResult (status, scores, artifacts, turns, latency, tokens)
-  │
-  ├─ Aggregate results → RunSummary
-  ├─ Update EvalRun (status: completed, summary)
-  └─ Return
-```
+See [`dataset-export.md`](dataset-export.md) for trajectory/reward dataset
+semantics.
 
-Sessions created by eval runs are tagged `eval` and reference the eval run for filtering.
+## Public share links
 
-## UI
+A completed run may be shared through an unguessable read-only token.
 
-### Navigation
+- Only a hash is stored; the raw token is returned once.
+- Minting replaces prior active access according to the share command.
+- Revoked, expired, malformed, and unknown tokens produce a uniform
+  non-enumerating response.
+- Public DTOs omit organization internals, private session/app targets,
+  environment labels, and other non-public metadata.
+- The token is authorization for the public read; management still requires
+  normal eval permission.
 
-Add "Evals" to the Building Blocks section in the sidebar, between "Skills" and "Capabilities". Icon: `FlaskConical` from lucide-react.
+Exact token format, lifecycle columns, public DTO, and routes belong to source,
+migrations, and OpenAPI. Public-boundary rules also follow
+[`public-endpoints.md`](public-endpoints.md).
 
-### Evals List Page (`/evals`)
+## UI intent
 
-Card grid layout (matching agents page pattern):
-- Each card shows: name, agent name, harness name, tags, last run status (pass/fail badge), last run pass rate, last run date
-- "New Eval" button in header
-- Filter: status (active/archived), tags
+The product supports:
 
-### Eval Detail Page (`/evals/[evalId]`)
+- browsing active and archived evals;
+- authoring cases, targets, messages, artifacts, and scorers;
+- triggering and cancelling runs;
+- inspecting aggregate and per-case outcomes;
+- navigating from an internal result to its session;
+- viewing imported and shared results without implying they were executed
+  locally;
+- comparing runs and identifying regressions.
 
-Two tabs: **Cases** and **Runs**.
+Exact page structure, component names, table columns, and navigation placement
+belong to the UI source and design system.
 
-**Cases tab:**
-- Table: name, tags, description (truncated), last result (pass/fail/score badge)
-- "Add Case" button
-- Click row → case detail dialog or inline expand
+## Security and isolation
 
-**Runs tab:**
-- Table: date, model, status, pass rate, avg score, avg turns, total tokens
-- "Run Eval" button (with optional model override dropdown)
-- Click row → run detail page
-
-### Run Detail Page (`/evals/[evalId]/runs/[runId]`)
-
-Header: run metadata (model, status, triggered by, duration).
-
-Summary cards row: pass rate (large number), avg score, avg turns, avg latency, total tokens.
-
-Results table: case name, status (pass/fail/error badge), score, turns, latency, tokens, session link (icon button → opens session in new tab).
-
-Click case row → expand to show per-scorer results with pass/value/reason.
-
-### Run Comparison (Phase 2)
-
-Select two runs from the runs tab → side-by-side view:
-- Summary metrics with delta indicators (green up / red down)
-- Per-case comparison table with score deltas
-- Highlights regressions (cases that passed before but fail now)
-
-### Create Eval Form (`/evals/new`)
-
-Fields: name, description, target type selector (session / app), target fields (varies by type), model override (optional), tags.
-
-Target type selector:
-- **Session**: harness (optional select, defaults to org default), agent (optional select), model (optional), system prompt (optional textarea)
-- **App**: app ID (text input)
-
-Cases added after creation on the detail page (simpler flow, avoids complex nested form).
-
-### Add Case Dialog
-
-Fields: name, description, tags, messages (textarea per message, add more button), max turns, timeout.
-
-Scorers section: add scorer dropdown → type-specific config form. Each scorer shows a card with type, config, weight, remove button.
+- Every eval, case, run, result, artifact, dataset, and management token is
+  scoped to its owning organization.
+- Internal execution uses ordinary session permissions and cannot smuggle
+  capabilities through a target.
+- Public shares expose only sanitized read-only data.
+- Raw share tokens and external credentials are never logged or persisted.
+- Imported attribution is untrusted display data and must be sanitized.
+- Artifact paths are resolved through the session filesystem boundary.
+- Scorer failures do not expose internal provider or storage errors to public
+  consumers.

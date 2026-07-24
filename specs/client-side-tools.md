@@ -1,407 +1,173 @@
-# Client-Side Tools Specification
-
-## Abstract
-
-Client-side tools let API/SDK consumers define tools that execute on the client, not the server. When the LLM requests a client-side tool call, the server pauses execution, emits a `tool.call_requested` event, and waits for the client to submit results via API. This enables integrations where tool logic lives outside Everruns (e.g., browser actions, local file access, proprietary APIs).
-
-## Requirements
-
-### Concept
-
-Standard (server-side) tools execute within the Everruns worker process. Client-side tools invert this: the server advertises the tool to the LLM, but delegates execution to the calling client. The agent loop pauses until the client submits results or the wait is cancelled.
-
-```
-┌────────┐       ┌──────────┐       ┌─────┐       ┌────────┐
-│ Client │       │  Server  │       │ LLM │       │ Client │
-└───┬────┘       └────┬─────┘       └──┬──┘       └───┬────┘
-    │  POST message    │                │              │
-    │─────────────────>│                │              │
-    │                  │  LLM call      │              │
-    │                  │───────────────>│              │
-    │                  │  tool_call     │              │
-    │                  │<───────────────│              │
-    │                  │                │              │
-    │  SSE: tool.call_requested        │              │
-    │<─────────────────│                │              │
-    │                  │ (paused, waiting_for_tool_results)
-    │                  │                │              │
-    │  POST tool-results               │              │
-    │─────────────────>│                │              │
-    │                  │  LLM call      │              │
-    │                  │───────────────>│              │
-    │                  │  final text    │              │
-    │                  │<───────────────│              │
-    │  SSE: output.message.completed   │              │
-    │<─────────────────│                │              │
-```
-
-### Tool Definition
-
-Client-side tools are defined on the **agent** using `type: "client"`. They follow the same JSON Schema format as server-side tools but are not backed by a server implementation.
-
-```json
-{
-  "type": "client",
-  "name": "lookup_crm",
-  "description": "Look up a customer record in the CRM system",
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "customer_id": {
-        "type": "string",
-        "description": "The customer ID to look up"
-      }
-    },
-    "required": ["customer_id"]
-  }
-}
-```
-
-**Fields:**
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `type` | string | Yes | Must be `"client"` |
-| `name` | string | Yes | Tool name (sent to LLM) |
-| `description` | string | Yes | Tool description (sent to LLM) |
-| `parameters` | object | Yes | JSON Schema for tool arguments |
-
-Client-side tools are registered on the agent alongside capabilities. They are included in the LLM tool definitions but have no server-side executor.
-
-### API Flow
-
-#### 1. Create Agent with Client-Side Tools
-
-```http
-POST /v1/agents
-Content-Type: application/json
-
-{
-  "name": "CRM Assistant",
-  "system_prompt": "You help users look up customer information.",
-  "capabilities": [
-    { "ref": "current_time" }
-  ],
-  "client_tools": [
-    {
-      "type": "client",
-      "name": "lookup_crm",
-      "description": "Look up a customer record in the CRM system",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "customer_id": {
-            "type": "string",
-            "description": "The customer ID to look up"
-          }
-        },
-        "required": ["customer_id"]
-      }
-    }
-  ]
-}
-```
-
-#### 2. Create Session
-
-```http
-POST /v1/sessions
-Content-Type: application/json
-
-{
-  "agent_id": "agent_01234567-..."
-}
-```
-
-#### 3. Send Message (Triggers Turn)
-
-```http
-POST /v1/sessions/{session_id}/messages
-Content-Type: application/json
-
-{
-  "message": {
-    "content": [
-      { "type": "text", "text": "Look up customer CUST-42" }
-    ]
-  }
-}
-```
-
-#### 4. Receive `tool.call_requested` Event via SSE
-
-The server calls the LLM, which returns a tool call for `lookup_crm`. Since this is a client-side tool, the server does **not** execute it. Instead, it emits a `tool.call_requested` event and pauses.
-
-```
-event: tool.call_requested
-data: {
-  "id": "01937abc-...",
-  "type": "tool.call_requested",
-  "ts": "2024-01-15T10:30:01.000Z",
-  "session_id": "session_01234567-...",
-  "context": {
-    "turn_id": "turn_01234567-...",
-    "input_message_id": "message_01234567-..."
-  },
-  "data": {
-    "tool_calls": [
-      {
-        "id": "call_abc123",
-        "name": "lookup_crm",
-        "arguments": { "customer_id": "CUST-42" }
-      }
-    ],
-    "tool_summaries": [
-      {
-        "id": "call_abc123",
-        "name": "lookup_crm",
-        "display_name": "Lookup CRM",
-        "narration": "Looking up customer CUST-42"
-      }
-    ],
-    "headline": "Looking up customer CUST-42"
-  }
-}
-```
-
-At this point, the session status transitions to `waiting_for_tool_results`.
-
-#### 5. Submit Tool Results
-
-```http
-POST /v1/sessions/{session_id}/tool-results
-Content-Type: application/json
-
-{
-  "tool_results": [
-    {
-      "tool_call_id": "call_abc123",
-      "result": {
-        "name": "Alice Johnson",
-        "email": "alice@example.com",
-        "plan": "enterprise",
-        "since": "2022-03-15"
-      }
-    }
-  ]
-}
-```
-
-**Response:** `200 OK`
-
-```json
-{
-  "status": "accepted",
-  "tool_results_count": 1
-}
-```
-
-The server resumes the agent loop: it feeds the tool results back to the LLM, which produces a final text response streamed via `output.message.completed`.
-
-#### 6. Receive Final Response via SSE
-
-```
-event: output.message.completed
-data: {
-  "type": "output.message.completed",
-  ...
-  "data": {
-    "message": {
-      "role": "agent",
-      "content": [
-        { "type": "text", "text": "Customer CUST-42 is Alice Johnson (alice@example.com), on the enterprise plan since March 2022." }
-      ]
-    }
-  }
-}
-```
-
-### Event Types
-
-#### `tool.call_requested`
-
-Emitted when the LLM requests one or more client-side tool calls. The agent loop pauses until results are submitted.
-
-```json
-{
-  "id": "...",
-  "type": "tool.call_requested",
-  "ts": "...",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "tool_calls": [
-      {
-        "id": "call_abc123",
-        "name": "lookup_crm",
-        "arguments": { "customer_id": "CUST-42" }
-      }
-    ]
-  }
-}
-```
-
-**Fields (data):**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `tool_calls` | array | Client-side tool calls requested by the LLM |
-| `tool_calls[].id` | string | Unique tool call ID (from LLM response) |
-| `tool_calls[].name` | string | Tool name |
-| `tool_calls[].arguments` | object | Tool arguments (parsed JSON) |
-| `tool_summaries` | array | Optional server-authored display summaries for timeline UIs |
-| `headline` | string | Optional server-authored readable summary for the requested batch |
-
-### Session Status: `waiting_for_tool_results`
-
-When a client-side tool call is requested, the session transitions to `waiting_for_tool_results`. This is a new status in addition to the existing `started`, `active`, `idle` states.
-
-```
-Status transitions:
-  started → active → waiting_for_tool_results → active → idle
-                            │
-                            └──→ idle  (if user sends a new message, cancelling the wait)
-```
-
-**Visibility:** The `GET /v1/sessions/{session_id}` response includes this status so clients can determine whether to show a "waiting for tool results" indicator.
-
-### Tool Results Endpoint
-
-#### `POST /v1/sessions/{session_id}/tool-results`
-
-Submit results for pending client-side tool calls. Resumes the agent loop.
-
-**Request:**
-
-```json
-{
-  "tool_results": [
-    {
-      "tool_call_id": "call_abc123",
-      "result": { "key": "value" },
-      "error": null
-    }
-  ]
-}
-```
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `tool_results` | array | Yes | One result per requested tool call |
-| `tool_results[].tool_call_id` | string | Yes | Must match an `id` from `tool.call_requested` |
-| `tool_results[].result` | any | No | Tool execution result (JSON value). Required if `error` is null. |
-| `tool_results[].error` | string | No | Error message if tool execution failed on client side |
-
-**Response (success):**
-
-```json
-{
-  "status": "accepted",
-  "tool_results_count": 1
-}
-```
-
-**Error responses:**
-
-| Status | Condition |
-|--------|-----------|
-| `400` | Session is not in `waiting_for_tool_results` status |
-| `400` | Missing or extra tool call IDs (must match exactly) |
-| `404` | Session not found |
-
-### Graceful Handling: User Message While Waiting
-
-If the user sends a new message via `POST /v1/sessions/{session_id}/messages` while the session is in `waiting_for_tool_results` status, the pending tool wait is **cancelled**:
-
-1. The pending client-side tool calls are discarded
-2. Tool results are synthesized as `{"error": "Cancelled: user sent a new message"}`
-3. The new user message starts a fresh turn
-4. Session status transitions: `waiting_for_tool_results` → `active`
-
-This prevents sessions from getting stuck if the client abandons the tool call flow.
-
-### Mixed Tool Calls (Server + Client)
-
-An LLM response may contain both server-side and client-side tool calls in the same response. The server handles this as follows:
-
-1. **Execute server-side tools immediately** - All server-side tools run as normal
-2. **Collect client-side tool calls** - Set aside for the `tool.call_requested` event
-3. **Emit events for both**:
-   - `tool.started` / `tool.completed` for each server-side tool (as today)
-   - `tool.call_requested` for the batch of client-side tool calls
-4. **Pause** - Wait for client to submit results for client-side tools
-5. **Resume** - Feed all results (server + client) to the LLM in the next iteration
-
-**Ordering:** Server-side tools execute first. Client-side tools pause after server-side tools complete. This ensures deterministic behavior and avoids partial result submission.
-
-### Agent Model Changes
-
-The `Agent` model gains a new optional field:
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `client_tools` | ClientToolDef[] | Client-side tool definitions (default: empty) |
-
-Client tools are stored in the `agents` table as a JSONB column:
-
-```sql
-ALTER TABLE agents ADD COLUMN client_tools JSONB NOT NULL DEFAULT '[]';
-```
-
-**Input Validation:**
-
-| Field | Max Size | Notes |
-|-------|----------|-------|
-| `client_tools` | 50 items | Maximum client-side tools per agent |
-| `client_tools[].name` | 64 chars | Tool name |
-| `client_tools[].description` | 1 KB | Tool description |
-| `client_tools[].parameters` | 10 KB | JSON Schema |
-
-### Timeout Behavior
-
-Client-side tool waits have a configurable timeout (default: 5 minutes). If no results are submitted within the timeout:
-
-1. Tool results are synthesized as `{"error": "Timed out waiting for client tool results"}`
-2. The agent loop resumes with the error results
-3. The LLM can interpret the timeout and respond accordingly
-4. Session status transitions: `waiting_for_tool_results` → `active` → `idle`
-
-### Security Considerations
-
-1. **Tool call ID validation**: Submitted `tool_call_id` values must exactly match pending requests. Extra or missing IDs are rejected.
-2. **Session scoping**: Tool results can only be submitted by clients with access to the session (same auth as other session endpoints).
-3. **Result size limits**: Tool result payloads are limited to 100 KB per result to prevent abuse.
-4. **No server-side execution**: Client-side tool definitions never trigger server-side code. They are metadata only.
-
-### Tools-Field Deprecation Window
-
-`CreateSessionRequest.tools`, `CreateAgentRequest.tools`, and `UpdateAgentRequest.tools` only accept `client_side` definitions — they are documented as "executed by the client, not the server". Older SDK/CLI clients that still send `{"type": "builtin", ...}` entries in this field need a migration window before the server hard-rejects them.
-
-**Current behavior (deprecation window):** the deserializer drops any non-`client_side` entry from the request and emits a `tracing::warn!` with `target = "client_tools_deprecation"`, `dropped_count`, and `dropped_kinds` (e.g. `["builtin"]`). The request still succeeds. Operators can monitor the warning to detect clients that still need to migrate.
-
-**Operator opt-in to hard-reject:** set `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS=1` (also accepts `true` / `yes` / `on`). The deserializer then returns the original `tools must contain only client_side definitions` error, surfacing as `400 Bad Request`.
-
-**Update-request semantics:** `UpdateAgentRequest.tools` is documented as "replaces existing tools if provided". To prevent legacy clients from accidentally clearing an agent's tools during the deprecation window, the deserializer treats the field as **absent** (`None`) when *every* entry was non-`client_side` and got dropped. An explicit `"tools": []` from a modern client still clears the agent's tools (replacement semantics preserved). A mixed list keeps the surviving `client_side` entries and replaces the agent's tools with that subset.
-
-**Migration timeline:**
-
-1. **Today (deprecation window):** soft-drop with structured warning. Default behavior; existing SDK/CLI clients keep working.
-2. **Next release:** OpenAPI schema annotates the field with the cutoff date. CHANGELOG warns operators to flip the hard-reject env var in dev/staging to surface remaining offenders.
-3. **Cutoff release (planned):** flip the default to strict; `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS=0` becomes the legacy escape hatch (and is removed one release later).
-
-**Logging contract:** the warning logs only the discriminator (`builtin`, `client_side`, etc.) and counts — never the payload — so request bodies (prompts, tool arguments) cannot leak into logs from this path. This is enforced by `tool_definition_kind_name` in `crates/server/src/api/sessions.rs`.
-
-### Design Decisions
-
-| Question | Decision |
-|----------|----------|
-| Where are client tools defined? | On the Agent, in `client_tools` JSONB column |
-| How does the LLM see them? | Merged with server-side tools in the tool definitions sent to LLM |
-| What happens on tool call? | Server emits `tool.call_requested`, pauses until results submitted |
-| Mixed server+client calls? | Server tools execute first, then pause for client tools |
-| User message while waiting? | Cancels the wait, starts new turn |
-| Timeout? | 5 minute default, synthesized error result on expiry |
-| Can session capabilities add client tools? | Not in initial version; agent-level only |
+# Client-Side Tools
+
+## Purpose
+
+Client-side tools let an API or SDK consumer provide tool definitions whose
+implementation runs outside Everruns. The server exposes the definition to the
+model, pauses when the model calls it, emits a request event, and resumes only
+after the client submits results or the wait is resolved another way.
+
+This spec owns the pause/resume semantics and security invariants. It does not
+copy tool JSON, event payloads, endpoint bodies, database columns, limits, or
+status-code tables.
+
+## Sources of truth
+
+- [`crates/provider/src/tool_types.rs`](../crates/provider/src/tool_types.rs)
+  owns the tagged tool-definition model and exact client-side tool fields.
+- [`crates/server/src/domains/agents/types.rs`](../crates/server/src/domains/agents/types.rs)
+  owns agent create/update request validation and deprecation behavior.
+- [`crates/core/src/atoms/act_hooks.rs`](../crates/core/src/atoms/act_hooks.rs)
+  owns client-call detection, request-event emission, output limiting, and
+  pause signaling.
+- [`crates/core/src/events.rs`](../crates/core/src/events.rs) owns the exact
+  tool-request event payload.
+- [`crates/server/src/api/tool_results.rs`](../crates/server/src/api/tool_results.rs)
+  owns result submission, response shape, status validation, event persistence,
+  and workflow resume.
+- [`crates/server/src/tool_result_timeout.rs`](../crates/server/src/tool_result_timeout.rs)
+  owns timeout recovery.
+- [`docs/api/openapi.json`](../docs/api/openapi.json) is the exact SDK/wire
+  contract.
+- [`crates/server/tests/client_side_tools_test.rs`](../crates/server/tests/client_side_tools_test.rs)
+  and strict-mode tests cover serialization and compatibility behavior.
+
+Wire examples belong in OpenAPI and contract tests, not in this spec.
+
+## Definition and ownership
+
+Client-side definitions are stored with agent/session configuration and sent to
+the model alongside executable server tools. Their tagged discriminator and
+fields are defined by `ToolDefinition` and `ClientSideTool`; consumers must not
+infer them from an old example.
+
+The server has no implementation for a client-side tool. A matching model tool
+call cannot fall through to a same-named server implementation. Reserved naming
+rules prevent collisions with generated tool families.
+
+Definitions may include display metadata, category, schema-defer policy, and
+semantic hints as supported by the source type. Exact current fields and
+validation limits are generated into OpenAPI.
+
+## Lifecycle
+
+The normal lifecycle is:
+
+1. a client configures an agent or session with client-side definitions;
+2. the model requests one or more of those tools;
+3. Everruns emits the typed client-tool request event;
+4. the session enters the waiting-for-tool-results state;
+5. the client executes every requested call and submits correlated results;
+6. Everruns records tool completion events, restores active execution, and
+   resumes the durable turn;
+7. the model receives the results and continues normally.
+
+The request event is the authoritative list of pending calls. Clients correlate
+by tool-call ID and should use optional server-authored display summaries rather
+than inventing user-facing narration when present.
+
+The exact event envelope and payload live in `crates/core/src/events.rs`; see
+[`events.md`](events.md) for compatibility rules.
+
+## Result submission
+
+Result submission is accepted only when the caller can access the session and
+the session is currently waiting for client results.
+
+Each submitted item identifies the pending tool call and carries either a JSON
+result or a safe client error. The API source and OpenAPI own exact optionality,
+validation, response fields, and status codes.
+
+Accepted results become ordinary tool-completion events before execution
+resumes. This keeps replay and later model context consistent with server-side
+tool execution.
+
+Clients should submit the complete current batch and preserve every tool-call ID
+exactly. The current endpoint accepts a non-empty list while the session is in
+the waiting state and records the supplied IDs; it does not promise
+set-equality validation against the last request event. If stronger correlation
+validation is added, it must land in the endpoint and contract tests before
+this spec claims it.
+
+## Mixed batches
+
+A model response may contain server-side and client-side calls together.
+Server-side calls execute through the normal scheduler. Client-side calls are
+collected into the request event, and the turn pauses after server work reaches
+the established boundary.
+
+On resume, the next model step sees both result families in their original
+logical batch. Client submission does not re-execute completed server tools.
+
+Ordering and concurrency details belong to the act atom and scheduler tests.
+
+## Abandonment, cancellation, and timeout
+
+A new user message while waiting abandons the pending client-tool request under
+the session lifecycle contract. The runtime synthesizes interrupted results as
+needed to keep the transcript valid, then starts the new turn.
+
+If the client never responds, the timeout worker resolves the wait with safe
+error results and resumes execution so the session does not remain stuck.
+Exact timeout configuration and wording belong to
+`tool_result_timeout.rs`.
+
+Explicit session/turn cancellation follows the ordinary cancellation contract.
+All recovery paths must leave a well-formed assistant-tool transcript; see the
+repair rules in [`events.md`](events.md).
+
+## Result content
+
+Client results are untrusted tool output. The submission endpoint currently
+relies on shared HTTP request limits and does not define a separate per-result
+size contract. A dedicated limit must be implemented and covered by endpoint
+tests before product or SDK documentation promises one.
+
+The server must not execute, interpolate into a shell, or otherwise treat
+client result JSON as trusted code. It is model-visible content plus durable
+tool history.
+
+## Compatibility window for legacy tool definitions
+
+Agent and session `tools` fields are client-side-only public configuration.
+Older clients may still send obsolete non-client variants.
+
+During the compatibility window, request deserialization may drop unsupported
+entries and emit a structured warning. An operator-controlled strict mode turns
+that into request rejection. Update semantics distinguish an explicit empty
+list from a list whose every entry was dropped, preventing an old client from
+accidentally clearing valid tools.
+
+Warnings include only safe discriminator/count information, never the request
+payload. The exact environment switch, accepted values, cutoff policy, and
+deserializer implementation live in the agent/session request source. Remove
+the compatibility path when the release policy permits; do not extend it by
+adding more copied examples here.
+
+## Client requirements
+
+Clients integrating this feature must:
+
+- generate or consume definitions from the current OpenAPI model;
+- subscribe to typed session events and recognize the waiting state;
+- execute only calls present in the latest request event;
+- preserve tool-call IDs exactly;
+- submit JSON-safe results or concise errors;
+- tolerate additive event fields;
+- handle timeout, cancellation, reconnect, and duplicate UI delivery without
+  executing a call twice.
+
+SDK guides may show end-to-end examples, but those examples should be generated
+or tested against OpenAPI.
+
+## Security invariants
+
+- Session authorization applies to event streaming and result submission.
+- Client-side definitions never select server code.
+- Clients preserve pending tool-call IDs; the server gates submission by
+  session ownership and waiting state.
+- Result content is treated as untrusted and remains subject to transport
+  request limits.
+- New user input, cancellation, and timeout cannot leave the session stuck.
+- Warnings and errors do not log tool arguments, results, prompts, or secrets.
+- Mixed batches do not permit client callers to overwrite server-tool results.

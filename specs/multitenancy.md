@@ -1,726 +1,212 @@
-# Multitenancy Specification
-
-## Abstract
-
-This document defines the multitenancy model for Everruns, enabling organization-based resource isolation. Organizations are the administrative unit for ownership, membership, and billing. Users can belong to multiple organizations.
-
-## Decisions Log
-
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| Membership model | Members only (no roles) | Simplicity; roles can be added later |
-| Multi-org support | Yes | Users switch between orgs in UI |
-| Personal namespace | No | Org-only model; SaaS auto-creates org on signup |
-| API org identifier | Auth-derived (cookie or personal access token) | Cleaner URLs, org derived from auth context |
-| Org ID format | BIGINT internal + TEXT public_id | Performance + security |
-| Resource sharing | No cross-org sharing | Isolation by default |
-| Personal access tokens | User-scoped | Org resolved per-request via header/cookie |
-| Session org selection | Cookie-based | Consistent for all requests including SSE |
-| InMemory storage | Supports multitenancy | Consistency across modes |
-| Default org | Seeded on startup | No "first boot" concept |
-| Migration | Reset (no backward compat) | Clean slate |
-
-### Why Auth-Derived Org Instead of Path-Based
-
-**Previous approach:** `/v1/orgs/{org}/agents` - org was explicit in every API path.
-
-**Current approach:** `/v1/agents` - org is derived from authentication context:
-- **Personal access token auth:** Org from `X-Org-Id` header, `everruns_org` cookie, or single-org auto-resolve
-- **Session auth (UI):** Org stored in `everruns_org` cookie
-
-**Rationale:**
-1. **Cleaner URLs** - Paths like `/v1/agents` are simpler than `/v1/orgs/{org}/agents`
-2. **Better DX** - Single-org users need no extra headers; multi-org users set `X-Org-Id`
-3. **Security** - Org is always validated against user membership, preventing org enumeration
-4. **Consistency** - Cookie works uniformly for all requests including SSE (EventSource)
-
-### Cookie-Based Org Selection (Session Auth)
-
-When using session/JWT authentication (UI), the selected organization is stored in a cookie.
-
-**Cookie specification:**
-```
-Name: everruns_org
-Value: org_xxx (organization public_id)
-Path: /
-HttpOnly: true (not accessible via JavaScript)
-SameSite: Lax
-Secure: true (in production)
-```
-
-**Switching organizations:**
-```
-POST /v1/users/me/switch-org
-Content-Type: application/json
-
-{"org_id": "org_xxx"}
-
-Response:
-200 OK
-Set-Cookie: everruns_org=org_xxx; Path=/; HttpOnly; SameSite=Lax
-```
-
-**Benefits over header-based approach:**
-- Works automatically with EventSource (SSE) - no query param workaround needed
-- No client-side header management required
-- Cookie sent automatically with all requests
-- HttpOnly prevents XSS attacks from reading org context
-
-**Server resolution order:**
-1. Personal access token auth → read `X-Org-Id` header or `everruns_org` cookie; single-org users auto-resolve
-2. Session auth → read `everruns_org` cookie
-3. No org found → return 400 (for multi-org personal access token) or 401 (missing auth)
-
-## Requirements
-
-### Organization Entity
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `org_id` | BIGINT | Internal primary key (auto-increment) |
-| `public_id` | TEXT | External identifier: `org_<uuid-hex-32>` |
-| `name` | TEXT | Display name |
-| `external_id` | TEXT? | External provider org ID (NULL for OSS, populated by SaaS auth backend sync) |
-| `created_at` | TIMESTAMPTZ | Creation time |
-| `updated_at` | TIMESTAMPTZ | Last modification time |
-
-**Public ID Format:**
-- Pattern: `^org_[0-9a-f]{32}$`
-- Example: `org_2f3c1b3e6a9d4c6f8a1d4e9c9b7f21a0`
-- Generated at creation time (UUIDv4, lowercase hex, no dashes)
-- Not derived from `org_id`
-
-**Security Rules:**
-- `org_id` MUST NOT appear in APIs, URLs, logs, or error messages
-- APIs accept and return only `public_id`
-- Authorization enforced using resolved `org_id`
-
-### Organization Membership
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `org_id` | BIGINT | Organization reference |
-| `user_id` | UUID | User reference |
-| `created_at` | TIMESTAMPTZ | Join time |
-
-**Constraints:**
-- Primary key: `(org_id, user_id)`
-- User can belong to multiple organizations
-- Role (`owner` > `admin` > `member`) governs management permissions
-
-### Organization Invitations
-
-Everruns owns the full org membership lifecycle — including pending invites and
-acceptance — so a deployment never has to mirror organizations into an external
-identity provider. **Membership is local-DB authoritative and does not depend on
-any external identity-provider org claims.** Wrappers (e.g. SaaS) may keep an
-external IdP for login/identity/JWT only; org creation, membership, roles, and
-invites stay in OSS.
-
-Invitations live in an `org_invitations` table (migration `081`):
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `public_id` | TEXT | Stable public invite id (`orginv_<32-hex>`) |
-| `org_id` | BIGINT | Organization reference |
-| `email` | TEXT | Invited email, normalized (trim + lowercase) for comparison |
-| `role` | TEXT | Role granted on acceptance (`owner`/`admin`/`member`) |
-| `invited_by` | UUID | Creator user id |
-| `token_hash` | TEXT | SHA-256 of the raw token; the raw token is never stored |
-| `expires_at` / `accepted_at` / `accepted_by` / `revoked_at` | TIMESTAMPTZ/UUID | Lifecycle |
-
-Status is derived from the timestamp columns (pending / accepted / revoked /
-expired). A partial unique index enforces at most one outstanding invite per
-`(org_id, email)`.
-
-**API** (org-scoped routes require admin/owner; only owners may invite owners,
-mirroring member management):
-
-- `POST /v1/orgs/{org}/invites` — create a pending invite; returns metadata, the
-  one-time `invite_url`, and an `email_delivery` status.
-- `GET /v1/orgs/{org}/invites` — list outstanding (pending/expired) invites.
-- `DELETE /v1/orgs/{org}/invites/{invite_id}` — revoke a pending invite.
-- `POST /v1/invites/{token}/accept` — authenticated; validates token hash,
-  status, expiry, and email match, then creates local membership.
-
-**Security:**
-- Token material is generated securely and only the SHA-256 hash is persisted.
-  The raw token is returned **once** as `invite_url` and is never logged or
-  stored, so listing cannot re-expose a link (rotation, not recovery, is the
-  future path for re-sharing).
-- Acceptance requires an authenticated principal whose normalized email matches
-  the invited email under the same normalization used at creation.
-- Expired, revoked, already-accepted, malformed, and wrong-email tokens return
-  distinct, safe error codes (`invite_expired`, `invite_revoked`,
-  `invite_already_accepted`, `invite_invalid`, `invite_email_mismatch`) without
-  leaking token secrets.
-
-**Optional email delivery.** Email is never hard-required. The platform's
-`EmailSender` (specs/email.md) is consulted at creation and the outcome is
-classified, leaving the invite pending regardless:
-
-| Sender outcome | `email_delivery` | UX |
-|----------------|------------------|----|
-| `Ok` | `sent` | Email delivered; link also available |
-| `Err(Configuration)` (disabled/unconfigured) | `not_configured` | Copy-link only |
-| `Err(_)` (transport/provider) | `failed` | Copy-link; invite still pending |
-
-Concrete email providers are deployment-owned (`EMAIL_PROVIDER`), not hardcoded
-into org logic. With no provider configured, invite creation still succeeds and
-returns a copyable `invite_url`.
-
-The accept UI route (`/invite/{token}`) works for authenticated and
-unauthenticated users: unauthenticated links preserve the target through
-login/signup via `return_to` (specs/authentication.md) and resume acceptance.
-
-### Resource Scoping
-
-| Resource | Scope | Implementation |
-|----------|-------|----------------|
-| Agent | Per-org | `org_id` FK on `agents` table |
-| Session | Inherits from Agent | No direct FK; scoped via agent join |
-| Messages/Events | Inherits from Session | No direct FK; scoped via session→agent join |
-| LLM Provider | Per-org | `org_id` FK on `llm_providers` table |
-| LLM Model | Per-org | `org_id` FK on `llm_models` table |
-| Personal Access Token | Per-user | `user_id` FK on `personal_access_tokens` table (org resolved per-request) |
-| Capabilities | Global | No `org_id`; system-defined |
-| MCP Servers | Per-org | `org_id` FK (future) |
-| Usage Tracking | Per-org | Aggregated by `org_id` |
-
-**Query Rules:**
-- ALL database queries for org-scoped resources MUST include `WHERE org_id = $org_id`
-- No exceptions, even for UUID lookups
-- Returns 404 (not 403) when resource exists but belongs to different org
-
-### Database Schema
-
-The org tables and org-scoping columns live in the migrations
-(`crates/server/migrations/`): `organizations` and `organization_members` are
-created in `001_base_schema.sql`; `org_id` FK columns and their composite
-indexes are added to the org-scoped tables (`agents`, `providers`, `models`, …)
-in `003_v0.8.0.sql`; the `llm_providers`/`llm_models` → `providers`/`models`
-rename lands in `061_rename_providers_models.sql`. Shape in brief:
-
-- `organizations` — `org_id BIGSERIAL` PK, `public_id` (`org_<32-hex>`), `name`, timestamps.
-- `organization_members` — `(org_id, user_id)` PK join table.
-- Every org-scoped table carries a non-null `org_id` FK to `organizations(org_id)` with a composite `idx_<table>_org_id` index for the mandatory `WHERE org_id = $org_id` query rule.
-
-### API Design
-
-**Path Structure (org derived from auth context):**
-```
-/v1/agents
-/v1/agents/{agent_id}
-/v1/sessions
-/v1/sessions/{session_id}
-/v1/sessions/{session_id}/messages
-/v1/sessions/{session_id}/sse
-/v1/providers
-/v1/providers/{provider_id}
-/v1/models
-```
-
-**Org Resolution:**
-- **Personal access token auth:** Org from `X-Org-Id` header, `everruns_org` cookie, or single-org auto-resolve
-- **Session auth:** Org read from `everruns_org` cookie
-
-**Global Endpoints (no org scope):**
-```
-/health
-/v1/auth/*
-/v1/users/me
-/v1/users/me/switch-org  (sets org cookie)
-/v1/capabilities
-/v1/orgs  (org CRUD - uses auth context)
-```
-
-**User Info Response Enhancement:**
-```json
-// GET /v1/users/me (or /v1/auth/me)
-{
-  "id": "...",
-  "email": "user@example.com",
-  "name": "User Name",
-  "organizations": [
-    {
-      "public_id": "org_2f3c1b3e6a9d4c6f8a1d4e9c9b7f21a0",
-      "name": "Acme Corp"
-    },
-    {
-      "public_id": "org_00000000000000000000000000000001",
-      "name": "Default Organization"
-    }
-  ]
-}
-```
-
-### Authentication Context
-
-**Enhanced AuthUser:**
-```rust
-pub struct AuthUser {
-    pub id: Uuid,
-    pub email: String,
-    pub name: String,
-    pub roles: Vec<String>,
-    pub auth_method: AuthMethod,
-    pub organizations: Vec<OrgMembership>,  // NEW
-}
-
-pub struct OrgMembership {
-    pub org_id: i64,        // Internal, for DB queries
-    pub public_id: String,  // External, for API responses
-    pub name: String,
-}
-```
-
-**ResolvedOrg Extractor:**
-```rust
-/// Extracts organization from authentication context.
-/// - Personal access token auth: X-Org-Id header, everruns_org cookie, or single-org auto-resolve
-/// - Session auth: reads everruns_org cookie
-/// Returns 401/404 if org not found or user is not a member.
-pub struct ResolvedOrg {
-    pub org_id: i64,        // For DB queries
-    pub public_id: String,  // For API responses
-    pub name: String,
-}
-
-impl<S> FromRequestParts<S> for ResolvedOrg {
-    // 1. Extract AuthUser from request
-    // 2. For personal access token auth: X-Org-Id header, cookie, or single-org fallback
-    // 3. For session auth: read org from everruns_org cookie
-    // 4. Validate user is member of requested org
-    // 5. Return ResolvedOrg or error
-}
-```
-
-**Personal Access Token Context:**
-```rust
-// Personal access tokens are user-scoped; org resolved per-request via header/cookie
-pub struct PersonalAccessTokenContext {
-    pub user_id: Uuid,
-    pub scopes: Vec<String>,
-}
-```
-
-### Storage Layer Changes
-
-**Repository Method Signatures:**
-```rust
-// All org-scoped methods require org_id as first parameter
-
-// AgentRepository
-fn list_agents(&self, org_id: i64, pagination: Pagination) -> Result<(Vec<AgentRow>, u32)>;
-fn get_agent(&self, org_id: i64, agent_id: Uuid) -> Result<Option<AgentRow>>;
-fn create_agent(&self, org_id: i64, input: CreateAgentRow) -> Result<AgentRow>;
-fn update_agent(&self, org_id: i64, agent_id: Uuid, input: UpdateAgent) -> Result<AgentRow>;
-fn delete_agent(&self, org_id: i64, agent_id: Uuid) -> Result<()>;
-
-// SessionRepository (org via agent join)
-fn list_sessions(&self, org_id: i64, agent_id: Uuid, pagination: Pagination) -> Result<...>;
-fn get_session(&self, org_id: i64, session_id: Uuid) -> Result<Option<SessionRow>>;
-
-// LlmProviderRepository
-fn list_providers(&self, org_id: i64) -> Result<Vec<LlmProviderRow>>;
-fn get_provider(&self, org_id: i64, provider_id: Uuid) -> Result<Option<LlmProviderRow>>;
-
-// LlmModelRepository
-fn list_models(&self, org_id: i64) -> Result<Vec<LlmModelRow>>;
-fn get_model(&self, org_id: i64, model_id: Uuid) -> Result<Option<LlmModelRow>>;
-
-// PersonalAccessTokenRepository (user-scoped; no org_id)
-fn list_personal_access_tokens_for_user(&self, user_id: Uuid) -> Result<Vec<PersonalAccessTokenRow>>;
-fn create_personal_access_token(&self, input: CreatePersonalAccessTokenRow) -> Result<PersonalAccessTokenRow>;
-```
-
-**Query Examples:**
-```sql
--- List agents for org
-SELECT * FROM agents WHERE org_id = $1 ORDER BY created_at DESC;
-
--- Get agent (must match both org_id and agent_id)
-SELECT * FROM agents WHERE org_id = $1 AND id = $2;
-
--- Get session (join to verify org ownership)
-SELECT s.* FROM sessions s
-JOIN agents a ON s.agent_id = a.id
-WHERE a.org_id = $1 AND s.id = $2;
-
--- Get events (join through session and agent)
-SELECT e.* FROM events e
-JOIN sessions s ON e.session_id = s.id
-JOIN agents a ON s.agent_id = a.id
-WHERE a.org_id = $1 AND e.session_id = $2
-ORDER BY e.sequence;
-```
-
-### Seeds
-
-**Default Organization:**
-```rust
-// Well-known IDs for seeded data
-pub const DEFAULT_ORG_ID: i64 = 1;
-pub const DEFAULT_ORG_PUBLIC_ID: &str = "org_00000000000000000000000000000001";
-
-pub async fn seed_default_organization(db: &Database) -> Result<()> {
-    // Insert default organization (idempotent)
-    sqlx::query!(
-        r#"
-        INSERT INTO organizations (org_id, public_id, name)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (org_id) DO NOTHING
-        "#,
-        DEFAULT_ORG_ID,
-        DEFAULT_ORG_PUBLIC_ID,
-        "Default Organization"
-    ).execute(db).await?;
-    Ok(())
-}
-```
-
-**Seeded Resources:**
-- Default organization is created first
-- All seeded providers, models, agents belong to default org
-- In auth mode `none`, anonymous user is auto-added to default org
-
-**Seed Order:**
-1. `seed_default_organization()`
-2. `seed_llm_providers()` (with `org_id = DEFAULT_ORG_ID`)
-3. `seed_llm_models()` (with `org_id = DEFAULT_ORG_ID`)
-4. `seed_agents()` (with `org_id = DEFAULT_ORG_ID`)
-
-### InMemory Storage
-
-InMemory storage (DEV_MODE) supports multitenancy:
-- Default organization pre-created on initialization
-- All org-scoped methods require `org_id` parameter
-- Same API contract as PostgreSQL storage
-
-```rust
-impl InMemoryStorage {
-    pub fn new() -> Self {
-        let storage = Self::default();
-        // Pre-create default organization
-        storage.organizations.insert(DEFAULT_ORG_ID, Organization {
-            org_id: DEFAULT_ORG_ID,
-            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
-            name: "Default Organization".to_string(),
-            ..
-        });
-        storage
-    }
-}
-```
-
-### External Identity Storage Methods
-
-For SaaS auth backends that map external provider IDs to internal entities:
-
-```rust
-// Look up user by external provider ID (PropelAuth, Auth0, etc.)
-fn get_user_by_external_id(&self, external_id: &str) -> Result<Option<UserRow>>;
-
-// Look up org by external provider ID
-fn get_organization_by_external_id(&self, external_id: &str) -> Result<Option<OrganizationRow>>;
-
-// Create or update org by external ID (upsert on external_id conflict)
-fn upsert_org_by_external_id(&self, external_id: &str, name: &str) -> Result<OrganizationRow>;
-
-// Idempotent membership creation (no-op if already exists)
-fn ensure_membership(&self, org_id: i64, user_id: Uuid) -> Result<()>;
-```
-
-These are unused in OSS (external_id is always NULL) but available for SaaS auth backend implementations.
-
-### Worker Integration
-
-**gRPC Context:**
-- Worker requests include `org_id` in metadata
-- Control plane validates org ownership before returning context
-- Turn context (`GetTurnContext`) scoped to org
-
-```protobuf
-message GetTurnContextRequest {
-    string session_id = 1;
-    int64 org_id = 2;  // NEW: Required for validation
-}
-```
-
-### UI Changes
-
-**Organization Selector:**
-- Dropdown in sidebar/header showing current org
-- Lists all organizations user belongs to
-- Selection persisted in localStorage
-- API calls include selected org in path
-
-**State Management:**
-```typescript
-interface OrgState {
-  currentOrg: Organization | null;
-  organizations: Organization[];
-  setCurrentOrg: (org: Organization) => void;
-}
-
-// All API calls use current org
-const agents = useAgents(currentOrg.public_id);
-```
-
-**URL Structure:**
-```
-/orgs/{org_public_id}/agents
-/orgs/{org_public_id}/agents/{agent_id}
-/orgs/{org_public_id}/settings
-```
-
-### Usage Tracking
-
-Usage is aggregated per organization:
-```sql
--- Add org_id to usage tracking
-ALTER TABLE usage_records ADD COLUMN org_id BIGINT NOT NULL;
-
--- Query usage by org
-SELECT
-    org_id,
-    SUM(input_tokens) as total_input,
-    SUM(output_tokens) as total_output
-FROM usage_records
-WHERE org_id = $1 AND created_at >= $2
-GROUP BY org_id;
-```
-
-### Error Handling
-
-**404 vs 403:**
-- Resource exists but wrong org → 404 (prevents enumeration)
-- User not member of org → 404 (prevents org discovery)
-- Invalid public_id format → 400 Bad Request
-
-**Error Messages:**
-```rust
-// Good - no information leakage
-ApiError::NotFound("Agent not found")
-ApiError::NotFound("Organization not found")
-
-// Bad - reveals existence
-ApiError::Forbidden("You don't have access to this agent")
-```
-
-## Implementation Notes
-
-### Anonymous Auth Mode (AUTH_MODE=none)
-When auth is disabled, the system uses the default organization:
-- `public_id`: `org_00000000000000000000000000000001`
-- `name`: "Default Organization"
-
-The backend `AuthUser::anonymous()` returns a user with the default org in their organizations list. The `ResolvedOrg` extractor uses this directly (no cookie needed for `AuthMethod::None`).
-
-### Org Cookie Initialization
-
-**Problem:** Race condition where UI components try to fetch org-scoped data before the org cookie is set.
-
-**Solution:** The org cookie is set automatically during authentication:
-
-1. **Login/Register/OAuth/Refresh endpoints:** `generate_token_response()` sets `everruns_org` cookie to user's first org
-2. **GET /v1/auth/me:** Sets `everruns_org` cookie if missing (fallback for edge cases)
-3. **Anonymous mode:** No cookie needed - `ResolvedOrg` uses default org from `AuthUser.organizations`
-
-**Cookie specification:**
-```
-Name: everruns_org
-Value: org_xxx (organization public_id)
-Path: /
-HttpOnly: false (allows JS to read for UI state sync)
-SameSite: Lax
-Secure: true
-```
-
-### UI Initialization Lifecycle
-
-**Problem:** Pages showing empty states instead of loading skeletons when org context isn't ready yet.
-
-**Root cause:** React Query returns `isLoading: false` when query is disabled (`enabled: false`). If org isn't ready, queries are disabled, and pages render empty states.
-
-**Solution:** Two-part fix:
-
-1. **Hooks include org loading state:**
-   ```typescript
-   export function useAgents() {
-     const { currentOrg, isLoading: orgLoading } = useOrg();
-     const query = useQuery({
-       queryKey: [...queryKeys.agents.list(), currentOrg?.public_id],
-       queryFn: () => listAgents(),
-       enabled: !!currentOrg,
-     });
-     // Return isLoading=true while org is initializing
-     return {
-       ...query,
-       isLoading: orgLoading || query.isLoading,
-     };
-   }
-   ```
-
-2. **Main layout shows global loader:**
-   ```typescript
-   // apps/ui/src/app/(main)/layout.tsx
-   const { isLoading: authLoading } = useAuth();
-   const { isLoading: orgLoading } = useOrg();
-   
-   if (authLoading || orgLoading) {
-     return <Loader />; // Spinner while initializing
-   }
-   ```
-
-**Affected hooks (all updated to include org loading):**
-- `useAgents`, `useAgent`
-- `useSessions`, `useSession`
-- `useCapabilities`, `useCapability`
-- `useLlmProviders`, `useLlmProvider`, `useLlmModels`, `useLlmProviderModels`, `useLlmModel`
-- `useMcpServers`, `useMcpServer`
-- `useOrganization`
-- `useFiles`, `useFile`, `useFileStat`
-
-**OrgProvider initialization flow:**
-1. `AuthProvider` fetches `/v1/auth/config` and `/v1/auth/me`
-2. `/v1/auth/me` returns user with organizations list (and sets org cookie if missing)
-3. `OrgProvider` waits for `authLoading` to become false
-4. `OrgProvider` initializes `currentOrg` from user's organizations
-5. Data hooks become enabled and fetch org-scoped data
-
-**Post-login flow:**
-1. Login API succeeds, sets auth + org cookies
-2. `useLogin` calls `refetchQueries` for user data
-3. `OrgProvider` sees organizations change, sets `currentOrg`
-4. Dashboard queries fire with org context ready
-
-### System-Wide Resources
-Some resources remain system-wide (not org-scoped):
-- `/v1/durable/*` - Durable execution workers and workflows (infrastructure-level)
-- `/health` - Health check endpoint
-- `/v1/auth/*` - Authentication endpoints
-
-### UI Organization Selector
-Located in sidebar (`apps/ui/src/components/layout/sidebar.tsx`). Shows current org with dropdown to switch between user's organizations. Uses Base UI's `DropdownMenu` component. Includes a "Create Organization" button at the bottom of the dropdown.
-
-### UI Organization Creation
-Two entry points for creating organizations:
-1. **Sidebar dropdown:** "Create Organization" menu item opens a dialog
-2. **Settings > Organization page:** "Create Organization" button in the "Your Organizations" section
-
-Both use the `useCreateOrganization` hook (`hooks/use-organizations.ts`) which calls `POST /v1/orgs`. On success, the new org is auto-selected as the current org via `setCurrentOrg()`.
-
-### UI Settings Navigation
-
-The settings sidebar (`/settings/*`) is organized into two labeled sections:
-
-**Organization** (org-scoped settings):
-- **General** (`/settings/organization`) — Org name, ID, "Your Organizations" list
-- **LLM Providers** (`/settings/providers`) — Provider configs and API keys
-- **Members** (`/settings/members`) — Team member list
-
-**Personal** (user-scoped settings):
-- **Connections** (`/settings/connections`) — External account links (GitHub, etc.)
-- **Personal access tokens** (`/settings/personal-access-tokens`) — User-scoped tokens for programmatic access
-
-Section labels are rendered as uppercase headers (`text-xs font-semibold uppercase tracking-wider`). Active nav item highlighted with accent left border.
-
-### UI Organization Management
-The settings page (`/settings/organization`) has two sections:
-1. **Current Organization:** Edit name, view org ID (existing)
-2. **Your Organizations:** Lists all orgs the user belongs to with switch buttons. Current org highlighted with a "Current" badge.
-
-## Cross-Org Resource Resolution
-
-Users who belong to multiple organizations routinely follow direct links
-(shared URLs, bookmarks, external notifications) that point at a resource
-owned by one of their orgs but not the one currently selected. With strict
-org scoping (see the Query Rules above) the entity API returns 404 for that
-resource and the UI shows a "not found" screen — a recurring papercut.
-
-### Contract
-
-| Layer                | Behaviour                                                                                                                |
-|----------------------|--------------------------------------------------------------------------------------------------------------------------|
-| Entity APIs          | UNCHANGED — still return 404 for resources in other orgs. Preserves the enumeration guarantee on lines 127–128.          |
-| `GET /v1/resolve-org`| Authenticated endpoint. Given a prefixed public ID, returns the owning org ONLY when the caller is a member of that org. |
-| UI                   | On 404 from an entity detail fetch, suppresses final "not found" UI while checking the resolver; if a member-owned org is returned, switches and retries. |
-
-Because the resolver reveals only orgs the caller already belongs to, the
-set of answers it can produce is a subset of the information the caller can
-learn by manually switching between their own orgs. No new information
-leaks across org boundaries.
-
-### Endpoint
-
-```
-GET /v1/resolve-org?id=<prefixed_public_id>
-→ 200 { "org_id": "org_xxx", "org_name": "Acme Corp" }
-→ 404 — unknown id, unknown prefix, or owning org is not a caller membership
-```
-
-### Domain trait (`ResourceOrgResolver`)
-
-Every top-level entity with a dedicated UI detail route MUST register an
-`inventory::submit! { ResourceOrgResolver { ... } }` block in
-`crates/server/src/domains/org_resolver.rs`. Each entry pairs an ID prefix
-(e.g. `"session"`) with a function that looks up the owning `org_id`. The
-endpoint dispatches by prefix; adding a new top entity requires:
-
-1. A storage method `get_<entity>_organization_id(public_id: &str) -> Result<Option<i64>>`
-   on the PG and in-memory backends (no caller-side org scoping).
-2. One `inventory::submit!` block in `domains/org_resolver.rs`.
-3. Nothing else on the backend — the resolver endpoint picks up the new
-   prefix on startup.
-
-Existing registrations cover: `session`, `agent`, `harness`, `app`,
-`skill`, `mcp`, `identity`, `eval`. Virtual capability IDs (`mcp:<uuid>` and
-`skill:<uuid>`) resolve through their underlying MCP server or skill rows.
-
-### UI integration
-
-- `lib/api/resolver.ts::resolveOrgForResource(id)` wraps the endpoint.
-- `hooks/use-resource-org-fallback.ts` is the single React hook that reacts
-  to a 404 on a detail query, calls the resolver, and invokes
-  `setCurrentOrg(target, { stayOnPage: true })` when the owner is a
-  membership. The `stayOnPage` option skips the default org-switch redirect
-  that would otherwise send the user back to the list page.
-- While the resolver check or resulting org switch is pending, the hook
-  exposes `isCheckingOtherOrgs`. Detail hooks MUST fold that into their
-  loading state so users see loading/checking UI instead of a brief red 404.
-  Render final "not found" only after the fallback is exhausted.
-- For ordinary CRUD-style entities, `hooks/create-crud-hooks.ts::useDetail`
-  is the generic integration point. Agents, harnesses, apps, skills, MCP
-  servers, and evals inherit the fallback through this helper.
-- Bespoke detail hooks that do not use `createCrudHooks` MUST call
-  `useResourceOrgFallback` themselves and include `isCheckingOtherOrgs` in
-  their returned loading state. Current bespoke integrations: `useSession`,
-  `useAgentIdentity`, and `useCapability`.
-
-### Invariants
-
-- The fallback fires **at most once per resource id + current org pair**
-  (tracked via a ref inside the hook) to avoid ping-pong when the new org
-  also 404s.
-- The entity API's 404 behaviour is never relaxed. The only cross-org
-  information disclosure happens through `GET /v1/resolve-org`, which is
-  membership-gated.
-- The resolver endpoint MUST NOT be reached before authentication; it
-  requires an `AuthUser` extractor.
-
-### When to add a new entity to the resolver
-
-If you add a new top-level entity with a dedicated UI detail route
-(`apps/ui/src/app/(main)/<entity>/[id]/...`), add it to the resolver
-registry. Entities without a detail route do not need to register.
-
-## Future Considerations
-
-**Not in scope for v1:**
-- Organization roles (admin, member, viewer)
-- Invitations and onboarding flow
-- Org-level settings (allowed providers, limits)
-- Cross-org resource sharing
-- Organization deletion (with cascade)
-- Audit logging per org
+# Multitenancy
+
+## Purpose
+
+Organizations are Everruns' administrative and isolation boundary. They own
+resources, memberships, roles, invitations, policy context, and usage. A user
+may belong to several organizations and selects one organization for each
+org-scoped request.
+
+This spec owns the isolation model and security invariants. It does not copy
+database columns, request structs, repository signatures, protobuf messages, or
+route payloads.
+
+## Sources of truth
+
+- [`crates/core/src/organization.rs`](../crates/core/src/organization.rs) owns
+  organization identifiers, membership DTOs, and role ordering.
+- [`crates/server/src/auth/middleware.rs`](../crates/server/src/auth/middleware.rs)
+  owns authenticated organization resolution and membership checks.
+- [`crates/server/src/api/users.rs`](../crates/server/src/api/users.rs) owns
+  organization switching and the browser selection cookie.
+- [`crates/server/src/api/organizations.rs`](../crates/server/src/api/organizations.rs)
+  and
+  [`crates/server/src/domains/organizations/`](../crates/server/src/domains/organizations/)
+  own organization, membership, and invitation behavior.
+- [`crates/server/src/domains/org_resolver.rs`](../crates/server/src/domains/org_resolver.rs)
+  owns the cross-org resource resolver registry.
+- [`crates/server/migrations/`](../crates/server/migrations/) owns table
+  definitions, foreign keys, indexes, role storage, and invitation lifecycle.
+- [`docs/api/openapi.json`](../docs/api/openapi.json) owns exact public HTTP
+  shapes.
+- [`crates/server/tests/org_isolation_test.rs`](../crates/server/tests/org_isolation_test.rs)
+  and
+  [`crates/server/tests/org_invitations_test.rs`](../crates/server/tests/org_invitations_test.rs)
+  are executable isolation and invitation contracts.
+
+## Core decisions
+
+### Organization-only ownership
+
+There is no personal resource namespace. Org-scoped resources always resolve to
+an organization, including in auth-disabled development mode.
+
+The seeded default organization and anonymous development user keep the same
+membership and query paths as authenticated deployments. Well-known IDs and
+seed behavior belong to the source and migrations linked above.
+
+### Multiple organizations
+
+Users may belong to multiple organizations. Membership carries a hierarchical
+role: owner, admin, or member. The source enum and policy definitions are
+authoritative for the exact permission mapping.
+
+Membership, roles, organizations, and invitations are local-database
+authoritative. Hosted wrappers may use an external identity provider for login
+and user identity, but provider organization claims do not replace Everruns'
+membership checks.
+
+### Auth-derived scope
+
+Ordinary resource URLs do not contain the organization. The server derives
+scope from the authenticated principal plus explicit request selection:
+
+- personal access tokens may select an organization with the supported header
+  or browser cookie; a single membership can be resolved automatically;
+- browser sessions use the selected-organization cookie;
+- auth-disabled mode uses the default organization.
+
+Every selected organization is validated against the principal's memberships.
+Multi-org token callers that omit an explicit selection receive an error rather
+than an arbitrary organization.
+
+The browser cookie is server-set and readable by the UI so client state can
+stay synchronized. Exact cookie flags, resolution precedence, and error status
+codes are security-sensitive implementation details owned by the auth
+middleware and users API; do not duplicate them here.
+
+## Isolation invariants
+
+Every org-scoped read and mutation must include organization scope, even when a
+public resource identifier is globally unique. A lookup that finds a resource
+in another organization is indistinguishable from a missing resource to the
+ordinary entity API.
+
+Internal numeric organization IDs are storage and authorization details. Public
+APIs, URLs, client logs, and user-facing errors use public prefixed IDs.
+
+These rules apply across all storage implementations. The in-memory backend is
+not allowed to weaken isolation for convenience.
+
+Sessions and their dependent records may inherit organization through their
+owning resource or may store organization directly as the schema evolves. The
+actual join path and foreign keys belong to migrations and repositories; the
+invariant is that no access path bypasses organization scope.
+
+Global infrastructure and authentication endpoints are explicitly exempt where
+their owning specs require it. A resource is not global merely because it lacks
+an organization field in an old document.
+
+## Organizations and membership
+
+Organization creation establishes an owner membership. Role changes and member
+removal enforce the hierarchy and preserve at least the required administrative
+ownership. Exact request types and allowed transitions live in the
+organizations domain and permission policy.
+
+Callers cannot use role management to grant a role above their own authority.
+Entity APIs return non-enumerating failures when the target organization is not
+a caller membership.
+
+## Invitations
+
+Invitations create pending local membership grants without requiring an email
+provider.
+
+The invitation contract is:
+
+- the invited email is normalized consistently at creation and acceptance;
+- the raw token is generated securely, returned only where the create flow
+  requires it, and never stored or logged;
+- only a cryptographic hash is persisted;
+- acceptance requires an authenticated principal whose normalized email
+  matches the invitation;
+- expiry, revocation, prior acceptance, malformed tokens, and email mismatch
+  produce stable safe error classifications without disclosing token material;
+- at most one pending invitation exists for an organization/email pair;
+- accepting is transactional and cannot create duplicate membership.
+
+Email delivery is optional and deployment-owned. Failure or absence of an email
+provider leaves the invitation pending and the create operation usable through
+copy-link UX. See [`email.md`](email.md).
+
+The invite landing page preserves the destination through authentication and
+continues acceptance afterward. Authentication return-path safety is defined in
+[`authentication.md`](authentication.md).
+
+## Query and API policy
+
+All org-scoped commands receive organization context from the authenticated
+extractor and pass it into storage. HTTP, MCP, gRPC, background work, and
+platform capabilities must converge on the same domain policy rather than
+constructing an unscoped repository call.
+
+Wrong-organization entity access remains a not-found response to prevent
+enumeration. Membership management may return authorization failures only
+after the organization itself has been established as visible to the caller.
+
+Public identifiers are validated before storage lookup. Exact formats and
+error bodies are defined by typed-ID source and OpenAPI.
+
+## Cross-org direct links
+
+A user who belongs to several organizations may open a direct link for a
+resource outside the currently selected organization. Ordinary entity APIs
+still return not found; they never search all organizations.
+
+The authenticated resource resolver may map a public resource ID to an owning
+organization only when the caller is already a member of that organization.
+Therefore it reveals no organization outside the caller's existing membership
+set.
+
+Top-level entities with dedicated UI detail routes register a resolver by
+public-ID prefix in `crates/server/src/domains/org_resolver.rs`. The registry is
+the source of truth for current supported prefixes. Do not keep a copied list
+here.
+
+The UI handles a detail-page not-found response by:
+
+1. checking the membership-gated resolver;
+2. switching to the returned membership without navigating away;
+3. retrying the original detail query;
+4. rendering the final not-found state only after fallback is exhausted.
+
+The fallback runs at most once for a resource/current-organization pair to
+avoid ping-pong. Generic CRUD hooks own the common integration; bespoke detail
+hooks must use the same fallback and fold resolver work into loading state.
+
+Adding a new top-level detail entity requires a storage lookup for its owning
+organization, a resolver registration, and UI fallback coverage.
+
+## UI selection
+
+The UI initializes organization context from the authenticated user's
+memberships, keeps it synchronized through the switch endpoint, and delays
+org-scoped queries until selection is ready. Disabled queries alone do not
+represent a loading state, so page-level hooks must include organization
+initialization in their loading result.
+
+Switching organizations invalidates or rekeys org-scoped caches. It must not
+reuse data fetched under the previous organization.
+
+## Usage and billing
+
+Usage records are attributable to an organization at capture time. Aggregation,
+limits, and billing must not infer organization later from mutable user
+membership. Exact storage fields and aggregation queries live in the usage
+domain and migrations. See [`usage-tracking.md`](usage-tracking.md) and
+[`budgeting.md`](budgeting.md).
+
+## Security review checklist
+
+- Every resource lookup is scoped before returning existence or content.
+- Internal organization IDs do not cross public boundaries.
+- Cookie/header selection is validated against current membership.
+- In-memory and PostgreSQL backends implement the same isolation behavior.
+- Background and worker paths carry authenticated organization context.
+- Invitation tokens, hashes, and email-provider errors do not leak.
+- Cross-org resolution returns only caller memberships.
+- UI caches include organization identity and clear correctly on switch.
+
+The repository threat register remains in [`threat-model.md`](threat-model.md);
+it is intentionally not duplicated here.
