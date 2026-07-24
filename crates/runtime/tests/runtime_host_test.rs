@@ -2336,6 +2336,7 @@ async fn user_prompt_submit_hook_allow_does_not_block() {
 #[tokio::test]
 async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
     use everruns_core::atoms::ReasonInput;
+    use everruns_core::capabilities::InfinityContextCapability;
     use everruns_core::llmsim_driver::{LlmSimConfig, register_driver_with_config};
     use everruns_core::user_hook_types::HookEvent;
     use everruns_runtime::execute_reason_activity;
@@ -2350,13 +2351,19 @@ async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
             command: r#"echo '{"decision":"mutate","patch":{"message":"sanitized prompt"}}'"#
                 .into(),
         });
+    adapter
+        .capability_registry
+        .register(InfinityContextCapability);
 
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());
     let session_id = SessionId::from_uuid(Uuid::now_v7());
     adapter
         .harness_store
         .add_harness(Harness {
-            capabilities: vec![AgentCapabilityConfig::new("lifecycle_hook_test")],
+            capabilities: vec![
+                AgentCapabilityConfig::new("lifecycle_hook_test"),
+                AgentCapabilityConfig::new("infinity_context"),
+            ],
             ..harness(harness_id)
         })
         .await;
@@ -2389,6 +2396,13 @@ async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
 
     assert!(result.success, "mutated turn should reach the LLM");
     assert_eq!(result.text, "Echo: sanitized prompt");
+    assert!(
+        result
+            .tool_definitions
+            .iter()
+            .all(|definition| definition.name() != "query_history"),
+        "raw persisted history must not be exposed when prompt hooks can rewrite user text"
+    );
 
     let stored_message = adapter
         .message_store

@@ -528,6 +528,16 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     // every event finalizes specs identically.
     let user_hook_specs =
         finalize_specs_from_configs(&resolved.resolved_capability_configs, &capability_registry);
+    // Persisted messages remain the immutable audit record, so they can contain
+    // text removed by a provider-bound user_prompt_submit hook. Until there is a
+    // durable provider-visible history view, fail closed rather than let
+    // query_history bypass that enforcement boundary.
+    if user_hook_specs
+        .iter()
+        .any(|spec| spec.event == everruns_core::user_hook_types::HookEvent::UserPromptSubmit)
+    {
+        registry.unregister("query_history");
+    }
     // Capability-contributed pre-tool hooks run first (e.g. approval gating),
     // then user-hook (`PreToolUse`) specs. The first hook to block wins.
     let mut pre_tool_hooks: Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>> = resolved
@@ -1208,6 +1218,10 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
         validation_session.blueprint_id.as_deref(),
     )
     .await?;
+    let query_history_allowed = validation_capabilities
+        .tool_registry
+        .get("query_history")
+        .is_some();
     let validation_services = runtime_tool_context_services(
         adapter,
         org_id,
@@ -1246,13 +1260,17 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
         }
     }
 
+    let mut reason_capability_registry = adapter.capability_registry();
+    if !query_history_allowed {
+        reason_capability_registry.unregister("infinity_context");
+    }
     let mut atom = ReasonAtom::new(
         adapter.harness_store(org_id),
         adapter.agent_store(org_id),
         adapter.session_store(org_id),
         adapter.message_store(),
         adapter.provider_store(org_id),
-        adapter.capability_registry(),
+        reason_capability_registry.clone(),
         adapter.driver_registry(),
         adapter.event_emitter(),
     )
@@ -1299,7 +1317,7 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
             adapter.session_store(org_id).as_ref(),
             adapter.message_store().as_ref(),
             adapter.provider_store(org_id).as_ref(),
-            &adapter.capability_registry(),
+            &reason_capability_registry,
             input.context.session_id,
             input.harness_id,
             input.agent_id,
