@@ -277,6 +277,33 @@ async fn all_surfaces_agree_on_root_across_worktree_switch() {
     assert_eq!(bash_pwd(&ctx).await, "/workspace");
 }
 
+#[test]
+fn backend_native_display_keeps_literal_workspace_segment() {
+    let root = TempDir::new().unwrap();
+    let canonical_root = std::fs::canonicalize(root.path()).unwrap();
+    let backend = Arc::new(RealDiskFileStore::new(root.path()).unwrap());
+    let store = MountFs::new(backend).with_backend_display();
+
+    assert_eq!(
+        store.display_path("/workspace/collide.txt"),
+        canonical_root
+            .join("workspace/collide.txt")
+            .display()
+            .to_string()
+    );
+    assert_eq!(
+        store.resolve_path("workspace/collide.txt"),
+        canonical_root
+            .join("workspace/collide.txt")
+            .display()
+            .to_string()
+    );
+    assert_eq!(
+        store.resolve_path("/workspace/collide.txt"),
+        canonical_root.join("collide.txt").display().to_string()
+    );
+}
+
 #[tokio::test]
 async fn multi_root_display_and_containment_contract() {
     let session = SessionId::from_seed(661);
