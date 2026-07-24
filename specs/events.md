@@ -1,1640 +1,248 @@
-# Events Specification
+# Events
+
+## Purpose
+
+Events are Everruns' durable session protocol. They are the source of truth for
+conversation reconstruction, expose execution progress to clients, and feed
+observability and reporting projections.
+
+This document owns the event protocol's intent, compatibility rules, and
+cross-event semantics. It deliberately does not repeat the event envelope,
+payload structs, type registry, HTTP query fields, or SQL schema.
+
+## Sources of truth
+
+- [`crates/core/src/events.rs`](../crates/core/src/events.rs) owns the serialized
+  event envelope, event type constants, payload structs, the type-to-payload
+  mapping, and the valid filter registry.
+- [`docs/api/openapi.json`](../docs/api/openapi.json) is the generated
+  consumer-facing schema. It is the right source for SDK model generation and
+  exact wire fields.
+- [`crates/server/src/api/events.rs`](../crates/server/src/api/events.rs) owns
+  the JSON and SSE endpoints, query validation, filtering, pagination, and
+  summary response.
+- [`crates/server/src/services/event.rs`](../crates/server/src/services/event.rs)
+  owns emission and listener notification.
+- [`crates/server/migrations/001_base_schema.sql`](../crates/server/migrations/001_base_schema.sql)
+  and later migrations own storage columns, constraints, indexes, sequence
+  allocation, and immutability triggers.
+- The tests in [`crates/core/src/events.rs`](../crates/core/src/events.rs) cover
+  serialization, round trips, forward compatibility, and the type mapping.
+  [`crates/server/tests/workflow_test.rs`](../crates/server/tests/workflow_test.rs)
+  covers API filtering of unsupported events, while
+  [`crates/server/tests/client_side_tools_test.rs`](../crates/server/tests/client_side_tools_test.rs)
+  covers the client-tool event contract.
+
+Wire examples do not live here. Exact examples belong in the generated OpenAPI
+document and contract tests, where a source change makes drift visible. Product
+or SDK guides may show task-oriented excerpts generated from that contract, but
+must not become a second schema registry.
+
+## Public contract and compatibility
+
+The event protocol is a public API contract.
+
+The top-level envelope is stable. Its exact serialized fields and types are
+defined by `Event` in `crates/core/src/events.rs`. Payload shape is selected by
+the event's `type` through the single type-to-payload mapping in the same file.
+
+The following changes are backward-compatible:
+
+- adding an event type;
+- adding an optional payload or context field;
+- adding a string-enum value;
+- relaxing a required field to optional.
+
+The following require a major compatibility change:
+
+- removing or renaming a supported event type;
+- removing or renaming a field;
+- changing a field's serialized type or meaning;
+- making an optional field required.
+
+Consumers must ignore unknown fields, tolerate new event types, and use
+`sequence` rather than an identifier or timestamp for ordering within a
+session. The server filters payloads it cannot decode into a supported typed
+event before returning API or SSE results. Historical unsupported rows may
+remain in storage for audit and aggregate queries.
+
+Adding a constant is not enough to add an event. The payload type, mapping,
+filter registry, OpenAPI export, emission path, and round-trip tests must stay
+coherent. Tests in `crates/core/src/events.rs` are the executable contract for
+that coherence.
+
+## Correlation and tracing
+
+Turn-scoped events carry correlation context. A turn is the trace root;
+reasoning, acting, LLM, and tool activity form child spans. Started/completed
+pairs for one operation share a span identity so tracing backends can merge
+them.
+
+Correlation identifiers use Everruns' public prefixed identifier format. The
+exact optional context fields live on `EventContext`; emitters should populate
+the strongest context they possess without fabricating missing ancestry.
+Session-level events may have empty turn context.
+
+## Lifecycle conventions
+
+Long-running operations use paired lifecycle events where useful:
+
+- `started` establishes identity and lets clients show provisional state;
+- zero or more `delta` or `progress` events provide ephemeral updates;
+- `completed`, `failed`, `cancelled`, or `sealed` establishes the durable
+  outcome.
+
+Not every operation needs a separate failure event. A completed payload may
+carry a failure status when that is the established contract. The source
+registry is authoritative for the current type set.
+
+Delta and progress events are informational. Consumers accumulate them only for
+live rendering; the durable completion event is authoritative. The
+`is_ephemeral_event_type` function is the single source of truth for which
+events may be omitted from durable storage.
 
-## Abstract
+### Assistant messages
 
-Events are the core communication protocol in Everruns. They provide observability into session execution, enable SSE streaming, and serve as the source of truth for conversation data. All events follow a standard schema and are persisted to the events table.
+One assistant message is identified by its message ID across started, delta,
+replacement, and completed events. A turn may contain several assistant
+messages, so consumers must never group streamed text by turn alone.
 
-Events may also be projected into reporting facts for analytical queries. That
-projection is asynchronous and backend-neutral; see
-[specs/reporting.md](reporting.md).
+Completion is authoritative for message content and phase. A guardrail
+replacement discards only the accumulated text for the affected message ID;
+the subsequent completed event persists the replacement as the canonical
+assistant message. Suppressed model text must not be persisted or replayed.
+
+Streamed phase is a best-effort hint. It may refine once from unknown to
+commentary or final answer, but must not flip between phases or regress to
+unknown. Missing or unknown phase always falls back to ordinary assistant text,
+never to reasoning.
 
-## Contract & Compatibility
+### Turn terminal states
 
-Events are a **public API contract**. Consumers can rely on the guarantees defined here when building integrations. The server is responsible for ensuring only well-defined events reach consumers.
+A completed turn succeeded. A failed turn ended because of an error. A
+cancelled turn stopped at user request. A sealed turn was deliberately stopped
+to prevent waste, such as repeated recovery without progress or exhausted work
+budget.
+
+Sealing is terminal and non-retryable, but it does not create a separate
+session status. A user-visible assistant completion and an idle session
+transition accompany the sealed event. See
+[`durable-execution-engine.md`](durable-execution-engine.md) for forward-progress
+and dead-letter behavior.
 
-### Compatibility Guarantees
+User-facing failure events carry stable error classification and interpolation
+fields when available. Clients localize from those fields rather than matching
+English fallback text. Disclosure policy is defined in
+[`error-disclosure.md`](error-disclosure.md).
 
-#### Non-Breaking Changes
+### Session tasks
 
-These changes are safe and may happen in any release:
+Session-task events carry full task snapshots for reconciliation. Message
+events carry the task identifier and stored task message. The task contract
+lives in [`session-tasks.md`](session-tasks.md).
 
-- **Adding new event types** - New event types may be added. Server filters unknown types internally.
-- **Adding optional fields** - New optional fields may be added to existing event data types.
-- **Adding enum values** - New values may be added to string enums (e.g., new status values).
-- **Relaxing validation** - Required fields may become optional.
-
-#### Breaking Changes
-
-These changes require a major version bump:
-
-- **Removing event types** - Existing event types will not be removed without major version.
-- **Removing fields** - Existing fields will not be removed without major version.
-- **Renaming fields** - Field names are stable.
-- **Changing field types** - Field types are stable (e.g., string stays string).
-- **Making optional fields required** - Optional fields will not become required.
-- **Changing field semantics** - The meaning of fields is stable.
-
-### Server Responsibilities
-
-The server ensures consumers receive only well-defined events:
-
-1. **Filter unsupported events** - Events with unknown types are filtered before API responses (handled internally as `EventData::Unsupported`).
-2. **Log warnings** - Unknown event types trigger warning logs for debugging.
-3. **Emit only defined types** - API responses contain only documented event types.
-4. **Validate on emission** - Events are validated before storage and transmission.
-
-### Consumer Guidelines
-
-Consumers should follow these practices for robust integrations:
-
-1. **No unknown type handling needed** - All events in API responses have documented types.
-2. **Ignore unknown fields** - Deserialize with `#[serde(deny_unknown_fields)]` disabled.
-3. **Handle optional fields** - Check for presence before accessing optional fields.
-4. **Don't rely on field ordering** - JSON field order is not guaranteed.
-
-### Versioning
-
-Events follow semantic versioning aligned with the API version:
-
-- **Patch** (0.0.x): Bug fixes, no schema changes
-- **Minor** (0.x.0): New event types, new optional fields
-- **Major** (x.0.0): Breaking changes (removals, type changes)
-
-### Contract Testing
-
-Contract tests validate these guarantees:
-
-1. **Snapshot tests** - JSON structure for each event type
-2. **Round-trip tests** - Serialize/deserialize equality
-3. **Forward compatibility** - Unknown fields are ignored
-4. **API filtering** - Unsupported events never reach consumers
-
-## Standard Event Schema
-
-The core event structure is **frozen** — the top-level fields (`id`, `type`, `ts`, `session_id`, `sequence`, `context`, `data`) will not change. The `data` field follows per-type schemas documented below.
-
-Every event MUST conform to this schema:
-
-```json
-{
-  "id": "01937abc-def0-7000-8000-000000000001",
-  "type": "input.message",
-  "ts": "2024-01-15T10:30:00.000Z",
-  "session_id": "01937abc-def0-7000-8000-000000000002",
-  "context": {
-    "turn_id": "01937abc-def0-7000-8000-000000000003",
-    "input_message_id": "01937abc-def0-7000-8000-000000000004",
-    "exec_id": "01937abc-def0-7000-8000-000000000005",
-    "trace_id": "turn_01937abc",
-    "span_id": "exec_01937abc",
-    "parent_span_id": "turn_01937abc"
-  },
-  "data": {
-    // Event-specific payload
-  },
-  "metadata": { /* Optional arbitrary metadata */ },
-  "tags": ["tag1", "tag2"]
-}
-```
-
-### Schema Fields
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `id` | UUID v7 | Yes | Unique event identifier (ordering uses `sequence`, not ID) |
-| `type` | string | Yes | Event type in dot notation (e.g., `input.message`, `reason.started`) |
-| `ts` | ISO 8601 | Yes | Event timestamp with millisecond precision |
-| `session_id` | UUID | Yes | Session this event belongs to |
-| `context` | object | Yes | Correlation context for tracing |
-| `data` | object | Yes | Event-specific payload (can be empty `{}`) |
-| `metadata` | object | No | Arbitrary metadata for the event |
-| `tags` | array | No | Tags for filtering and categorization |
-
-When `FEATURE_AGENT_VERSIONS` is enabled and a session is bound to a saved agent version, emitted events include agent version metadata:
-
-- `agent_id`
-- `agent_version_id`
-- `agent_config_hash`
-
-### Context Object
-
-The context provides correlation data for tracing and filtering. All existing context fields are **stable** — they will not be removed, renamed, or have their types changed without a major version bump. New optional fields may be added.
-
-| Field | Type | Required | Stability | Description |
-|-------|------|----------|-----------|-------------|
-| `turn_id` | UUID | No | Stable | Turn identifier (for turn-scoped events) |
-| `input_message_id` | UUID | No | Stable | User message that triggered this turn |
-| `exec_id` | UUID | No | Stable | Atom execution identifier |
-| `trace_id` | string | No | Stable | OTel-style trace ID (typically the turn_id string) |
-| `span_id` | string | No | Stable | OTel-style span ID for this event |
-| `parent_span_id` | string | No | Stable | Parent span ID for hierarchical linking |
-
-### Hierarchical Tracing (OTel-Style)
-
-Events within an agent turn form a hierarchical trace structure using OpenTelemetry-style span relationships. This enables observability tools (Braintrust, Grafana Tempo, etc.) to visualize the execution as a tree.
-
-**Trace Structure:**
-
-```
-turn (root span)
-├── reason (child of turn)
-│   └── llm.generation (child of reason)
-├── act (child of turn)
-│   ├── tool (child of act)
-│   └── tool (child of act)
-├── reason (child of turn)
-│   └── llm.generation (child of reason)
-└── ...
-```
-
-**Span ID Relationships:**
-
-| Event Type | span_id | parent_span_id | trace_id |
-|------------|---------|----------------|----------|
-| `turn.started/completed` | turn_id | `null` (root) | turn_id |
-| `reason.started/completed` | reason_span_id | turn_id | turn_id |
-| `llm.generation` | llm_span_id | reason_span_id | turn_id |
-| `act.started/completed` | act_span_id | turn_id | turn_id |
-| `tool.started/completed/output.delta` | tool_span_id | act_span_id | turn_id |
-
-**Key Properties:**
-
-1. **trace_id**: Groups all events within a single turn into one trace. Always equals the turn_id string (prefixed format, e.g., `turn_abc123`).
-
-2. **span_id**: Uniquely identifies each event within the trace. Started/completed event pairs share the same span_id so observability tools merge them into a single span with timing.
-
-3. **parent_span_id**: Links this span to its parent in the hierarchy. Root spans (turn events) have `null` parent. Child spans reference their immediate parent.
-
-**ID Format Consistency:**
-
-All IDs (`trace_id`, `span_id`, `parent_span_id`) use the prefixed string format (e.g., `turn_xyz`, `exec_abc`) rather than raw UUIDs. This ensures spans are correctly linked in observability tools.
-
-## Event Naming Patterns
-
-### Started-Completed-Failed Pattern
-
-Operations that have a lifecycle follow a consistent **Started-Completed-Failed** pattern:
-
-```
-{operation}.started   → Operation began
-{operation}.completed → Operation finished successfully
-{operation}.failed    → Operation failed (optional, some use completed with success=false)
-```
-
-This pattern provides:
-- **Observability**: Clear boundaries for timing and tracing
-- **Error handling**: Explicit failure states for error tracking
-- **UI feedback**: Start/end signals for loading indicators
-
-**Examples:**
-
-| Operation | Started | Completed | Failed |
-|-----------|---------|-----------|--------|
-| Turn | `turn.started` | `turn.completed` | `turn.failed` (also `turn.sealed` — deliberate stop, see below) |
-| Reason | `reason.started` | `reason.completed` | (uses `success=false` in completed) |
-| Act | `act.started` | `act.completed` | (uses `success=false` in completed) |
-| Tool Call | `tool.call_started` | `tool.call_completed` | (uses `status` field) |
-| Thinking | `reason.thinking.started` | `reason.thinking.completed` | (implicit via `reason.completed`) |
-
-**Note:** Some operations use a `success` or `status` field in the completed event rather than a separate failed event. This is a design choice based on the operation's semantics.
-
-### Delta Pattern for Streaming
-
-Streaming content uses a **Delta** pattern with accumulated state:
-
-```
-{operation}.delta → Incremental update with delta and accumulated fields
-```
-
-Delta events include:
-- `delta`: New content since last event
-- `accumulated`: Total content so far (convenience for UI)
-
-**Examples:**
-
-| Content Type | Delta Event |
-|--------------|-------------|
-| Response text | `text.delta` |
-| Thinking content | `reason.thinking.delta` |
-
-### Namespace Hierarchy
-
-Event types use dot notation to indicate hierarchy:
-
-```
-{category}.{subcategory}.{action}
-```
-
-Examples:
-- `message.user` - User message event
-- `reason.started` - Reasoning phase started
-- `reason.thinking.started` - Thinking within reasoning started
-- `tool.call_completed` - Tool call within tool execution completed
-
-## Event Categories
-
-### Input Events
-
-Input events represent user messages submitted to the session.
-
-#### `input.message`
-
-User message submitted to the session. Emitted when the API stores a new user message.
-
-```json
-{
-  "id": "...",
-  "type": "input.message",
-  "ts": "...",
-  "session_id": "...",
-  "context": {},
-  "data": {
-    "message": {
-      "id": "01937abc-...",
-      "role": "user",
-      "content": [
-        { "type": "text", "text": "Hello, world!" }
-      ],
-      "controls": { "max_tokens": 1000 },
-      "metadata": { "source": "web" },
-      "created_at": "2024-01-15T10:30:00.000Z"
-    }
-  }
-}
-```
-
-### Output Events
-
-Output events represent agent responses. They follow a lifecycle pattern: `started` → `delta*` → `completed`.
-
-#### `output.message.started`
-
-Emitted when the LLM starts generating a response. UI can show a "thinking" indicator until `output.message.delta` or `output.message.completed` events arrive.
-
-```json
-{
-  "id": "...",
-  "type": "output.message.started",
-  "ts": "...",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "message_id": "message_550e8400e29b41d4a716446655440000",
-    "model": "gpt-4o",
-    "iteration": 1
-  }
-}
-```
-
-**`iteration`** (optional, u32): 1-based iteration number within the current turn. Lets the UI show which iteration the agent is on during multi-step tool-calling flows. Only displayed when > 1.
-
-**`message_id`** (required, MessageId): stable random-public identifier allocated before generation begins. It scopes one assistant message within the turn and is reused by every `output.message.delta` / `output.message.replaced` event and by the completed `message.id`. This is the same public identifier, not a separate streaming id space.
-
-**`phase`** (optional, string — `"commentary"` | `"final_answer"`): best-effort streamed phase hint (EVE-774). This event is emitted *before* the LLM call, so `phase` is generally absent here. When absent it means **"not yet classified — treat as ordinary assistant text"**, NEVER "thinking". See the shared hint semantics under `output.message.delta`.
-
-#### `output.message.delta`
-
-Streaming text update during LLM generation. Events are batched (~100ms) to reduce volume while providing real-time feedback. UI should accumulate deltas or use the `accumulated` field until `output.message.completed` arrives with the final text.
-
-```json
-{
-  "id": "...",
-  "type": "output.message.delta",
-  "ts": "...",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "message_id": "message_550e8400e29b41d4a716446655440000",
-    "delta": "Hello, ",
-    "accumulated": "Hello, ",
-    "phase": "commentary"
-  }
-}
-```
-
-**`phase`** (optional, string — `"commentary"` | `"final_answer"`): best-effort streamed phase hint (EVE-774) letting consumers classify streamed assistant text as commentary vs final answer *before* `output.message.completed` arrives.
-
-Consumers group streamed assistant text by **`message_id`**, not `turn_id`: a multi-step turn may contain multiple assistant messages, each with a distinct id. All deltas for one generated message carry the id from its corresponding `output.message.started`.
-
-- **Absent = "not yet classified — treat as ordinary assistant text", NEVER "thinking".** A missing/unknown phase must fall back to the assistant-text channel, never the reasoning/thinking channel (the EVE-448 class of bug).
-- **Monotonic refinement only.** Within a single message the hint advances `absent → "commentary" | "final_answer"` at most once and then never changes: it never flip-flops between the two values and never reverts to absent (`ExecutionPhase::refine_streamed_hint` enforces this).
-- **Best-effort, not authoritative.** Only providers whose stream carries a native phase populate it mid-stream — OpenAI Responses exposes it on `response.output_item.added` and the driver surfaces it as a mid-stream stream event. Other providers (Anthropic, Gemini, …) leave it absent until completion. The authoritative classification is always the completed `output.message.completed` `Message.phase`; a consumer that needs certainty waits for that event (unchanged behavior) but may now render optimistically meanwhile.
-- **Not derived from later tool calls.** The streamed hint is never inferred from the subsequent presence of tool calls (the EVE-448 anti-pattern); `ExecutionPhase::from_has_tool_calls` stays a completion-time fallback only.
-
-#### `output.message.replaced`
-
-Streaming output was withheld by an output guardrail (see `specs/capabilities.md` § Output Guardrails). Emitted between the last (suppressed) `output.message.delta` and the final `output.message.completed`. Clients should discard only the text accumulated for `message_id` and use `replacement` as that assistant message's text. The model's original tokens are never persisted or replayed on subsequent turns.
-
-```json
-{
-  "id": "...",
-  "type": "output.message.replaced",
-  "ts": "...",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "message_id": "message_550e8400e29b41d4a716446655440000",
-    "guardrail_capability_id": "prompt_canary_guardrail",
-    "guardrail_id": "prompt_canary",
-    "reason_code": "system_prompt_leak",
-    "replacement": "[Response withheld: the model attempted to reveal protected instructions.]"
-  }
-}
-```
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `turn_id` | TurnId (string, prefixed UUIDv7 — e.g. `"turn_01933b5a..."`) | yes | Turn the replaced output belongs to |
-| `message_id` | MessageId (string, random-public prefixed UUIDv4) | yes | Assistant message being replaced; matches the started/delta and subsequent completed `message.id` |
-| `guardrail_capability_id` | string | yes | Capability that contributed the guardrail (e.g. `"prompt_canary_guardrail"`) |
-| `guardrail_id` | string | yes | Stable id of the guardrail itself (e.g. `"prompt_canary"`) |
-| `reason_code` | string | yes | Stable machine-readable reason (e.g. `"system_prompt_leak"`). Clients localize their copy from this rather than `replacement` |
-| `replacement` | string | yes | Replacement text shown to the user and persisted as the assistant message |
-
-The subsequent `output.message.completed` event carries `replacement` as the message body — it is the canonical assistant message. There is no separate "leaked" message anywhere in the event stream.
-
-#### `output.message.completed`
-
-Agent response message. Emitted when LLM generation completes.
-
-```json
-{
-  "id": "...",
-  "type": "output.message.completed",
-  "ts": "...",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "message": {
-      "id": "01937abc-...",
-      "role": "agent",
-      "content": [
-        {
-          "type": "text",
-          "text": "Budget exhausted. 12.50 usd spent reached the 10.00 usd limit. Increase the budget to continue."
-        }
-      ],
-      "metadata": {
-        "model": "gpt-4o",
-        "error_code": "budget_exhausted",
-        "error_fields": {
-          "spent": 12.5,
-          "limit": 10.0,
-          "currency": "usd"
-        }
-      },
-      "phase": "completed",
-      "created_at": "2024-01-15T10:30:01.000Z"
-    },
-    "metadata": {
-      "model": "gpt-4o",
-      "model_id": "01937abc-...",
-      "provider_id": "01937abc-..."
-    },
-    "error_code": "budget_exhausted",
-    "error_fields": {
-      "spent": 12.5,
-      "limit": 10.0,
-      "currency": "usd"
-    },
-    "usage": {
-      "input_tokens": 50,
-      "output_tokens": 20
-    }
-  }
-}
-```
-
-The completed **`message.id`** is the same `message_id` allocated by `output.message.started`. Replay reconstructs assistant-message boundaries by grouping started/delta/replaced/completed lifecycle events by this id. Partial-stream recovery preserves the persisted id when finalizing an interrupted message; a legacy in-flight start that predates this field begins a new recovery lifecycle with a freshly allocated random-public id.
-
-**`message.phase`** (optional, string): Execution phase — `"in_progress"` for intermediate messages with tool calls (agent is still working), `"completed"` for the final answer. Set by `ReasonAtom` based on whether tool calls are present. Sent as input to the OpenAI Responses API on assistant messages; other providers store it internally for consistent UI behavior. See `crates/core/src/atoms/reason.rs`.
-
-**Streaming Timeline:**
-
-```
-User sends message
-       │
-       ▼
-┌──────────────────────────┐
-│ output.message.started   │  ← UI shows thinking indicator
-└───────────┬──────────────┘
-            │
-       ┌────┴────┐
-       ▼         ▼
-output.message.delta  output.message.delta  ← UI shows streaming text (batched ~100ms)
-       │         │
-       └────┬────┘
-            │
-            ▼
-┌──────────────────────────┐
-│ output.message.completed │  ← UI shows final message, stops streaming
-└──────────────────────────┘
-```
-
-### Voice Events
-
-Voice events track an active Realtime API connection attached to the session.
-They supplement, but do not replace, canonical `input.message` and
-`output.message.completed` transcript persistence. See [voice.md](voice.md).
-
-#### `voice.session.started`
-
-Emitted after the backend creates a Voice Connection and starts provider
-bootstrap.
-
-```json
-{
-  "id": "...",
-  "type": "voice.session.started",
-  "ts": "2026-05-07T20:15:00.000Z",
-  "session_id": "...",
-  "context": {},
-  "data": {
-    "voice_connection_id": "voice_conn_01933b5a00007000800000000000001",
-    "model": "gpt-realtime-2",
-    "voice": "marin",
-    "reasoning_effort": "low",
-    "transport": "webrtc_proxy"
-  }
-}
-```
-
-#### `voice.input_transcript.delta`
-
-Streaming transcript text for user speech before the user utterance is
-committed. Clients may render it as provisional text and discard it when the
-corresponding completed event arrives.
-
-```json
-{
-  "id": "...",
-  "type": "voice.input_transcript.delta",
-  "ts": "2026-05-07T20:15:01.000Z",
-  "session_id": "...",
-  "context": {},
-  "data": {
-    "voice_connection_id": "voice_conn_...",
-    "item_id": "provider_item_id",
-    "delta": "check order",
-    "accumulated": "check order"
-  }
-}
-```
-
-#### `voice.input_transcript.completed`
-
-Final transcript text for a user utterance. The server also emits a canonical
-`input.message` with the same text and `metadata.source = "voice"`.
-
-#### `voice.output_transcript.delta`
-
-Streaming assistant transcript text for spoken output. `phase` is optional and
-may be `commentary` or `final_answer` when the provider exposes response
-phases.
-
-```json
-{
-  "id": "...",
-  "type": "voice.output_transcript.delta",
-  "ts": "2026-05-07T20:15:02.000Z",
-  "session_id": "...",
-  "context": {},
-  "data": {
-    "voice_connection_id": "voice_conn_...",
-    "response_id": "provider_response_id",
-    "phase": "commentary",
-    "delta": "I'll check that now.",
-    "accumulated": "I'll check that now."
-  }
-}
-```
-
-#### `voice.output_transcript.completed`
-
-Final transcript text for assistant speech. In the durable voice bridge, the
-agent turn's `output.message.completed` remains canonical; provider speech
-transcripts stay as `voice.output_transcript.*` observability events to avoid
-duplicating the assistant message.
-
-#### `voice.session.ended`
-
-Emitted when the browser, provider, or server closes the Voice Connection.
-
-#### `voice.session.failed`
-
-Emitted when provider bootstrap, client-secret minting, sideband connection, or
-voice event handling fails. Failure events must not include raw provider secrets,
-raw SDP, or unsanitized provider payloads.
-
-### Turn Lifecycle Events
-
-Turn events track the lifecycle of a single turn in the conversation.
-
-#### `turn.started`
-
-Turn execution started.
-
-```json
-{
-  "type": "turn.started",
-  "session_id": "...",
-  "context": {
-    "turn_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  }
-}
-```
-
-#### `turn.completed`
-
-Turn execution completed successfully.
-
-```json
-{
-  "type": "turn.completed",
-  "session_id": "...",
-  "context": {
-    "turn_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "iterations": 3,
-    "duration_ms": 1500,
-    "usage": {
-      "input_tokens": 500,
-      "output_tokens": 200
-    },
-    "final_message_id": "message_...",
-    "final_answer_preview": "Done.",
-    "time_to_first_token_ms": 120,
-    "tool_call_count": 2,
-    "llm_call_count": 3,
-    "status": "completed"
-  }
-}
-```
-
-`turn.completed` is the durable turn-level summary event. New events should
-populate the optional summary fields when available so export/review consumers
-can render duration, final answer reference/preview, token usage, and basic
-execution counts from this event alone. Older persisted events remain valid when
-these optional fields are absent.
-
-#### `turn.failed`
-
-Turn execution failed. This event is emitted when:
-- The LLM call fails (e.g., API key not configured, rate limit exceeded)
-- Max iterations exceeded
-- Other unrecoverable errors during turn execution
-
-When a turn fails, an `output.message.completed` event with a user-friendly fallback message is also emitted so users see feedback in the chat. Consumers should localize from `error_code` + `error_fields` when present instead of matching English prose.
-
-```json
-{
-  "type": "turn.failed",
-  "session_id": "...",
-  "context": {
-    "turn_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "error": "An error occurred while processing your request.",
-    "error_code": "provider_rate_limited",
-    "error_fields": {
-      "provider": "anthropic",
-      "retry_after": 8
-    }
-  }
-}
-```
-
-**Structured runtime errors:**
-- `error` remains the plain-English fallback for older clients and debugging.
-- `error_code` carries the stable user-facing classification.
-- `error_fields` carries interpolation values such as `spent`, `limit`, `soft_limit`, `currency`, `model_id`, `provider`, `retry_after`, and (detailed disclosure mode only) `detail`.
-- `error_disclosure` records the error-disclosure mode applied to `error_code`/`error_fields` (`generic` | `standard` | `detailed`, see `specs/error-disclosure.md`). Full diagnostic detail remains available to operators via `reason.completed` failure events, logs, and tracing.
-
-#### `turn.sealed`
-
-Turn was deliberately **sealed** — stopped to prevent waste — and is observably
-distinct from both `turn.completed` (success) and `turn.failed` (error). A sealed
-turn is terminal and non-retryable: the durable task is routed to the DLQ rather
-than requeued. See `specs/durable-execution-engine.md` (Forward-progress guard
-and Sealed terminal) and EVE-534.
-
-Emitted when:
-- a durable turn crashed and was reclaimed `N` times (default 3, configurable
-  via `DURABLE_NO_PROGRESS_SEAL_THRESHOLD`) without its progress token advancing
-  (`reason = "no_progress"`); or
-- the work budget was exhausted (`HardLimitStopRule` balance ≤ 0)
-  (`reason = "budget"`), instead of leaving the turn reclaimable.
-
-A user-facing `output.message.completed` event and `session.idled` are emitted
-alongside, and the session returns to `idle` (there is no dedicated `sealed`
-session status; the distinct signal is this event and its `reason`).
-
-```json
-{
-  "type": "turn.sealed",
-  "session_id": "...",
-  "context": {
-    "turn_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "reason": "no_progress",
-    "detail": "No forward progress across 3 consecutive recoveries; sealed to prevent a crash-loop.",
-    "iterations": null,
-    "usage": null
-  }
-}
-```
-
-**Fields:**
-| Field | Type | Description |
-|-------|------|-------------|
-| `turn_id` | UUID | The sealed turn identifier |
-| `reason` | string | `"no_progress"` or `"budget"` |
-| `detail` | string? | Optional human-readable explanation for operators |
-| `iterations` | number? | Iterations completed before sealing, if known |
-| `usage` | object? | Aggregated token usage before sealing, if available |
-
-#### `turn.cancelled`
-
-Turn execution was cancelled by user request. This event is emitted immediately when the cancel endpoint is called.
-
-```json
-{
-  "type": "turn.cancelled",
-  "session_id": "...",
-  "context": {
-    "turn_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "reason": "User requested cancellation",
-    "usage": {
-      "input_tokens": 150,
-      "output_tokens": 30
-    }
-  }
-}
-```
-
-**Fields:**
-| Field | Type | Description |
-|-------|------|-------------|
-| `turn_id` | UUID | The cancelled turn identifier |
-| `reason` | string | Optional reason for cancellation |
-| `usage` | TokenUsage | Optional token usage up to cancellation point |
-
-**Cancellation Flow:**
-1. User clicks cancel in UI
-2. API emits `turn.cancelled` event immediately
-3. API emits `input.message` with "User requested to cancel the work."
-4. Worker detects cancellation and stops execution
-5. Worker emits `output.message.completed` with "Work was cancelled by user."
-6. Worker emits `session.idled` event
-
-### Atom Lifecycle Events
-
-Atom events provide observability into the execution pipeline.
-
-#### `reason.started` / `reason.completed`
-
-ReasonAtom lifecycle - LLM inference.
-
-```json
-{
-  "type": "reason.started",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "agent_id": "...",
-    "metadata": {
-      "model": "gpt-4o",
-      "model_id": "...",
-      "provider_id": "..."
-    }
-  }
-}
-```
-
-```json
-{
-  "type": "reason.completed",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "success": true,
-    "text_preview": "First 200 chars...",
-    "has_tool_calls": true,
-    "tool_call_count": 2
-  }
-}
-```
-
-For failed reasoning (LLM call error):
-
-```json
-{
-  "type": "reason.completed",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "success": false,
-    "text_preview": null,
-    "has_tool_calls": false,
-    "tool_call_count": 0,
-    "error": "LLM error: API key is required"
-  }
-}
-```
-
-#### `act.started` / `act.completed`
-
-ActAtom lifecycle - tool batch execution.
-
-```json
-{
-  "type": "act.started",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "tool_calls": [
-      {
-        "id": "call_123",
-        "name": "get_weather",
-        "display_name": "Get Weather",
-        "narration": "Checking weather for Tokyo"
-      }
-    ],
-    "headline": "Checking weather for Tokyo"
-  }
-}
-```
-
-```json
-{
-  "type": "act.completed",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "completed": true,
-    "success_count": 2,
-    "error_count": 0,
-    "headline": "Checked weather for Tokyo"
-  }
-}
-```
-
-**`headline`** (optional, string): Server-authored readable summary for the tool batch. UI should render this directly when present instead of synthesizing group copy from tool names.
-
-#### `tool.started` / `tool.completed`
-
-Individual tool execution within ActAtom.
-
-```json
-{
-  "type": "tool.started",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "tool_call": {
-      "id": "call_123",
-      "name": "get_weather",
-      "arguments": { "city": "Tokyo" }
-    },
-    "display_name": "Get Weather",
-    "narration": "Checking weather for Tokyo"
-  }
-}
-```
-
-```json
-{
-  "type": "tool.completed",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "tool_call_id": "call_123",
-    "tool_name": "get_weather",
-    "display_name": "Get Weather",
-    "success": true,
-    "status": "success",
-    "narration": "Checked weather for Tokyo",
-    "result": [
-      { "type": "text", "text": "Temperature: 22C, Sunny" }
-    ]
-  }
-}
-```
-
-**`narration`** (optional, string): Server-authored readable summary for an individual tool step. Intended for transcript/timeline rendering. Clients may fall back to local formatting when absent.
-
-For failed tool calls:
-
-```json
-{
-  "type": "tool.completed",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "tool_call_id": "call_456",
-    "tool_name": "search_db",
-    "display_name": "Search Database",
-    "success": false,
-    "status": "error",
-    "error": "Connection timeout"
-  }
-}
-```
-
-#### `tool.output.delta`
-
-Streamed incremental output from a tool during execution. Emitted between `tool.started` and `tool.completed`. Generic — usable by any tool that produces streamed output (bash stdout/stderr, remote command output, subagent speech, etc.).
-
-The consumer accumulates deltas by `tool_call_id` for live rendering. The final `tool.completed` result is authoritative — deltas are informational only.
-
-```json
-{
-  "type": "tool.output.delta",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "tool_call_id": "call_789",
-    "tool_name": "bash",
-    "delta": "Installing dependencies...\n",
-    "stream": "stdout"
-  }
-}
-```
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `tool_call_id` | string | yes | References the tool call producing output |
-| `tool_name` | string | yes | Tool name |
-| `delta` | string | yes | Incremental output chunk |
-| `stream` | string | yes | Stream identifier (e.g., `"stdout"`, `"stderr"`) |
-
-### LLM Events
-
-LLM events provide visibility into the actual LLM API calls.
-
-#### `llm.generation`
-
-Emitted after each LLM API call to provide full visibility into the messages sent to the model and the response received. This is useful for debugging, auditing, and understanding the exact prompts and responses.
-
-**Metadata fields** (aligned with gen-ai OTel semantic conventions):
-- `model` - Model name used for generation
-- `provider` - LLM provider (openai, anthropic, etc.)
-- `usage` - Token usage (input_tokens, output_tokens)
-- `duration_ms` - Request duration in milliseconds
-- `time_to_first_token_ms` - Time to first token (streaming latency)
-- `success` - Whether the generation succeeded
-- `error` - Error message if failed
-- `finish_reasons` - Array of finish reasons (e.g., `["stop"]`, `["tool_calls"]`)
-- `response_id` - Provider's response ID for correlation
-- `request_options` - Optional bag of request-side driver options that were enabled for the call
-
-`request_options` captures request intent rather than provider-reported usage. Current fields:
-
-- `prompt_cache` - Whether prompt caching was enabled, which generic strategy was requested, and the provider-specific mode the driver used (`prompt_cache_key`, `cache_control`, `cached_content`, or `implicit`)
-- `tool_search` - Whether deferred tool loading was enabled and the activation threshold
-- `provider_options` - Provider-specific booleans that do not warrant dedicated top-level fields (for example `openai.previous_response_id` or `gemini.cached_content`)
-
-```json
-{
-  "type": "llm.generation",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "messages": [
-      {
-        "id": "...",
-        "role": "system",
-        "content": [{ "type": "text", "text": "You are a helpful assistant." }],
-        "created_at": "..."
-      },
-      {
-        "id": "...",
-        "role": "user",
-        "content": [{ "type": "text", "text": "What's the weather in Tokyo?" }],
-        "created_at": "..."
-      }
-    ],
-    "output": {
-      "text": "I'll check the weather for you.",
-      "tool_calls": [
-        {
-          "id": "call_123",
-          "name": "get_weather",
-          "arguments": { "city": "Tokyo" }
-        }
-      ]
-    },
-    "metadata": {
-      "model": "gpt-4o",
-      "provider": "openai",
-      "usage": {
-        "input_tokens": 150,
-        "output_tokens": 45
-      },
-      "duration_ms": 1200,
-      "time_to_first_token_ms": 180,
-      "success": true,
-      "finish_reasons": ["stop"],
-      "response_id": "chatcmpl-abc123",
-      "request_options": {
-        "prompt_cache": {
-          "enabled": true,
-          "strategy": "auto",
-          "provider_mode": "prompt_cache_key"
-        },
-        "tool_search": {
-          "enabled": true,
-          "threshold": 8
-        },
-        "provider_options": {
-          "openai": {
-            "previous_response_id": true
-          }
-        }
-      }
-    }
-  }
-}
-```
-
-For failed generations:
-
-```json
-{
-  "type": "llm.generation",
-  "session_id": "...",
-  "context": { "turn_id": "...", "exec_id": "..." },
-  "data": {
-    "messages": [...],
-    "output": {
-      "text": null,
-      "tool_calls": []
-    },
-    "metadata": {
-      "model": "gpt-4o",
-      "provider": "openai",
-      "duration_ms": 500,
-      "success": false,
-      "error": "Rate limit exceeded"
-    }
-  }
-}
-```
-
-### Context Compaction Events
-
-`context.compacting` records that a semantic compaction attempt started and
-includes its reason, requested strategy, message count, and optional token or
-byte size before the attempt.
-
-`context.compacted` is emitted only after a material reduction succeeds (at
-least 5%, with a 32-unit measurement floor). It
-contains the strategy actually used, before/after message counts, duration,
-optional before/after token or byte metrics, step metadata, and an optional
-durable checkpoint identifier. Optional metric fields are additive and may be
-absent when the provider cannot report them.
-
-Provider-opaque compact output, encrypted provider content, and checkpoint
-ciphertext are never event data. Observation masking alone is a model-view
-optimization and does not emit `context.compacted` because it installs no
-semantic replacement checkpoint.
-
-### Session Events
-
-Session lifecycle events.
-
-#### `session.started`
-
-Session execution started.
-
-```json
-{
-  "type": "session.started",
-  "session_id": "...",
-  "context": {},
-  "data": {
-    "agent_id": "...",
-    "model_id": "..."
-  }
-}
-```
-
-#### `session.activated`
-
-Session became active (turn started). Emitted when a new turn begins.
-
-```json
-{
-  "type": "session.activated",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  }
-}
-```
-
-#### `session.idled`
-
-Session became idle (turn completed). Contains cumulative session usage for real-time UI updates.
-
-```json
-{
-  "type": "session.idled",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "iterations": 3,
-    "usage": {
-      "input_tokens": 500,
-      "output_tokens": 150,
-      "cache_read_tokens": 100
-    }
-  }
-}
-```
-
-**Usage Field:** Contains cumulative session token usage at this point.
-
-#### `session.title.updated`
-
-The session's human-readable title changed. This event is emitted only for an
-actual value change. Tool-originated mutations retain the active turn and input
-message correlation; session-level mutation paths omit turn fields when no turn
-exists.
-
-```json
-{
-  "type": "session.title.updated",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "previous_title": "Untitled investigation",
-    "title": "Automatic Session Title Policy"
-  }
-}
-```
-
-`previous_title` is `null` when the session was previously untitled. Consumers
-can project the new value directly from `title`; no session re-fetch is needed.
-
-### Subagent Events (retired — superseded by Session Task Events)
-
-The `subagent.spawned`, `subagent.completed`, `subagent.failed`, and
-`subagent.cancelled` events have been **retired** (EVE-585). The subagent flow
-became Session Tasks, which model the same lifecycle with the `task.*` events
-below. As of the Session Tasks migration nothing emits `subagent.*`, and the
-event types and `SubagentEventData` were removed from `crates/core/src/events.rs`.
-
-Retirement is deliberate even though event types are otherwise a stability
-contract: the events had no in-repo consumer left after the CLI moved to `task.*`
-(#2177), and `task.*` carries the replacement information. Historical `subagent.*`
-rows in older session logs remain in storage, but — now that the typed variants
-are gone — they deserialize as `EventData::Unsupported` and are therefore
-**filtered out of the events list and SSE responses** like any unknown type (see
-Server Responsibilities above); they are not surfaced as typed or untyped event
-payloads. They are still counted by aggregate fields such as `error_count`, which
-match `subagent.failed` by type string at the query level. New integrations
-should consume `task.*`.
-
-### Session Task Events
-
-Session task lifecycle events (see `specs/session-tasks.md`) are emitted on
-the owning session whenever the task registry creates or mutates a task.
-They carry the **full task snapshot** so consumers reconcile by `task.id`
-without follow-up reads (snapshot-then-delta). See `crates/core/src/events.rs`
-for `SessionTaskEventData` and `TaskMessageEventData`.
-
-#### `task.created`
-
-Emitted when a task is created. `data.task` is the full snapshot.
-
-#### `task.updated`
-
-Emitted on every state, progress, detail, or cancel-intent change.
-`data.task` is the full snapshot.
-
-#### `task.message.sent` / `task.message.received`
-
-Emitted when a message is recorded on a task's channel (`sent` = inbound,
-session → task; `received` = outbound, task → session). `data` carries
-`task_id` and the stored `message`.
-
-### Extended Thinking Events
-
-Extended thinking events provide visibility into the model's chain-of-thought reasoning when using models with extended thinking capabilities (e.g., Anthropic Claude with `reasoning_effort` configured).
-
-#### `reason.thinking.started`
-
-Emitted when the LLM starts generating a response with extended thinking enabled (`reasoning_effort` is set). This event is only emitted when using models that support extended thinking. UI can show a "thinking" indicator until `output.message.delta` or `output.message.completed` events arrive.
-
-**Note:** This event is NOT emitted when `reasoning_effort` is not configured, even if the model supports extended thinking.
-
-```json
-{
-  "type": "reason.thinking.started",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "model": "claude-opus-4-5"
-  }
-}
-```
-
-#### `reason.thinking.delta`
-
-Streaming thinking/reasoning content from extended thinking models. These events contain the model's chain-of-thought reasoning before producing the final response. Events are batched (~100ms) similar to `output.message.delta`.
-
-```json
-{
-  "type": "reason.thinking.delta",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "delta": "Let me analyze this step by step...",
-    "accumulated": "Let me analyze this step by step..."
-  }
-}
-```
-
-#### `reason.thinking.completed`
-
-Emitted when the model finishes its chain-of-thought reasoning and transitions to producing the final response. Contains the complete thinking content.
-
-```json
-{
-  "type": "reason.thinking.completed",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "thinking": "Let me analyze this step by step...\n\n1. First consideration...\n2. Second consideration..."
-  }
-}
-```
-
-**Note:** Extended thinking events (`reason.thinking.*`) are only emitted when using models that support extended thinking mode. The thinking content is separate from the main response text and typically shown in a collapsible section in the UI. Thinking content is also persisted in the `output.message.completed` event's `thinking` field for multi-turn context.
-
-#### `reason.item`
-
-Durable record of an opaque assistant reasoning response item, distinct from `reason.thinking.*`. Emitted when a provider returns an opaque reasoning artifact (e.g., OpenAI Responses API reasoning items containing `encrypted_content`). Carries provider-supplied opaque content plus curated summary text and per-item metadata; plaintext hidden chain-of-thought is intentionally not persisted in this event.
-
-```json
-{
-  "type": "reason.item",
-  "session_id": "...",
-  "context": {
-    "turn_id": "...",
-    "input_message_id": "..."
-  },
-  "data": {
-    "turn_id": "...",
-    "provider": "openai",
-    "model": "gpt-5.5",
-    "item_id": "rs_abc",
-    "encrypted_content": "<opaque>",
-    "summary": ["safe summary segment"],
-    "token_count": 727
-  }
-}
-```
-
-**Constraints:**
-
-- Persisted reasoning artifacts must remain opaque/encrypted. Emitters strip plaintext reasoning content (e.g., OpenAI `reasoning_text` items) before constructing the event.
-- `summary` carries only provider-curated summary text (e.g., OpenAI `summary_text` parts). Other content variants are dropped.
-- `encrypted_content` and `token_count` are optional; not every provider supplies them.
-- User-visible thinking streams continue to flow through `reason.thinking.*`; `reason.item` is the durable record for opaque artifacts that cannot be safely streamed as plaintext.
-- **Projection:** the curated `summary` is a reasoning artifact and projects onto the reasoning channel (AG-UI `REASONING_*`/`THINKING_*`, ACP `agent_thought_chunk`) — visible by default, never the assistant-text channel. `encrypted_content` is never surfaced to a consumer. See the Channel Projection Matrix below.
-
-**Extended Thinking Timeline Example:**
-
-```
-User sends message
-       │
-       ▼
-┌──────────────────────────┐
-│ reason.thinking.started  │  ← UI shows thinking indicator
-└────────┬─────────────────┘
-         │
-         ▼
-  ┌────────────────────────┐
-  │ reason.thinking.delta  │  ← UI shows streaming reasoning
-  └────────┬───────────────┘
-           │
-           ▼
-  ┌──────────────────────────┐
-  │ reason.thinking.completed│  ← Thinking phase done
-  └────────┬─────────────────┘
-           │
-      ┌────┴────┐
-      ▼         ▼
-output.message.delta  output.message.delta  ← UI shows streaming text
-      │         │
-      └────┬────┘
-           │
-           ▼
-  ┌──────────────────────────┐
-  │ output.message.completed │  ← UI shows final message
-  └──────────────────────────┘
-```
-
-### Channel Projection Matrix (commentary vs. reasoning vs. tool)
-
-Downstream transports (AG-UI, ACP, the terminal example) render the runtime
-event stream onto a small set of **channels**. The load-bearing rule — the one
-that fixes the EVE-448 class of bug where deliberate progress was labeled
-"Thinking" — is that each runtime concept maps to exactly one channel, and a
-projection must never move an item across channels to fake a phase. The design
-rationale and protocol comparison (AG-UI/ACP/Codex) behind this model live in
-EVE-768 and its design-note PR (#2731); this spec is the authoritative contract.
-
-**Definitions (non-overlapping):**
-
-- **Commentary** — deliberate, user-visible assistant *text* produced as
-  progress/preamble before or between tool calls; does not end the turn
-  (`Message.phase = commentary`).
-- **Final answer** — the durable, turn-ending assistant *text*
-  (`Message.phase = final_answer`).
-- **Thinking** — model reasoning the provider *explicitly exposes* as
-  displayable reasoning, streamed via `reason.thinking.*`. Never inferred; raw
-  hidden chain-of-thought is never persisted or exposed.
-- **Reasoning summary** — the provider-curated safe summary carried on
-  `reason.item` (`summary`), alongside opaque/encrypted continuation state. The
-  summary is a *reasoning artifact* that may be surfaced on the reasoning
-  channel when a transport explicitly opts in — never relabeled as an assistant
-  answer. The opaque `encrypted_content` is never surfaced to a consumer.
-- **Tool activity** — narration/progress/output scoped to a `tool_call` id; its
-  own channel, never merged into the assistant-message channel.
-
-**Projection + fallback matrix:**
-
-| Runtime concept | Source event(s) | Assistant-text channel | Reasoning channel | Tool channel |
-|---|---|---|---|---|
-| Commentary | `output.message.delta` / `output.message.completed` (`phase = commentary`) | AG-UI `TEXT_MESSAGE_*`; ACP `agent_message_chunk` | — | — |
-| Final answer | `output.message.completed` (`phase = final_answer`) | AG-UI `TEXT_MESSAGE_*`; ACP `agent_message_chunk` | — | — |
-| Thinking | `reason.thinking.*` | — | AG-UI `REASONING_*` / `THINKING_*`; ACP `agent_thought_chunk` | — |
-| Reasoning summary | `reason.item` (`summary`) | — | AG-UI `REASONING_*` / `THINKING_*` (only when channel policy opts in); ACP `agent_thought_chunk` | — |
-| Tool narration/progress/output | `tool.started` / `tool.completed` | — | — | AG-UI `TOOL_CALL_*`; ACP `tool_call` / `tool_call_update` |
-
-**HARD fallback rule:** when a message's phase is missing or unknown (e.g. a
-stream that died before `output.message.completed`, or a transport with no phase
-concept), it falls back to the **assistant-text** channel — shown in order as
-ordinary assistant text. A missing/unknown phase must **NEVER** fall back to the
-thinking/reasoning channel. Only `reason.thinking.*` and the `reason.item`
-`summary` are ever routed to the reasoning channel; assistant messages never are,
-regardless of phase.
-
-**ACP mapping (spec-level contract).** No ACP adapter exists in-tree yet; when
-one lands it must honor this contract: commentary and final answer map to
-`session/update → agent_message_chunk` (role assistant); thinking and reasoning
-summaries map to `agent_thought_chunk`. Routing commentary to
-`agent_thought_chunk` is exactly the mis-projection that makes clients label
-progress "Thinking" and is prohibited.
-
-**Graceful degradation.** AG-UI and ACP have no native commentary/final `phase`,
-so commentary and final answer both render on the assistant-text channel and are
-simply shown in order — the transcript stays correct; only the "this was a
-preamble" affordance is lost. Replay reconstructs boundaries from the durable
-`output.message.*` lifecycle and classification from the authoritative
-`output.message.completed` `Message.phase`; a reasoning summary replayed from
-`reason.item` stays on the reasoning channel and is never reclassified as an
-assistant answer. AG-UI projection lives in `crates/server/src/api/ag_ui.rs`;
-the terminal example is `examples/coding-cli`.
-
-**Real-time Usage Tracking Pattern:**
-
-The UI uses a combination of events for real-time usage display:
-
-1. `session.idled` - Sets the baseline (cumulative from backend)
-2. `llm.generation` - Adds tokens during turn execution (real-time increments)
-3. `session.idled` - Resets to final cumulative value when turn completes
-
-```
-Timeline during a turn:
-──────────────────────────────────────────────────────────────────
-│ session.idled │ llm.generation │ llm.generation │ session.idled │
-│   (baseline)  │    (+tokens)   │    (+tokens)   │  (final set)  │
-──────────────────────────────────────────────────────────────────
-      500 in    →     650 in     →     800 in     →     800 in
-      100 out         130 out          175 out          175 out
-```
-
-This approach provides real-time feedback as tokens are consumed during LLM calls, while self-correcting to the accurate cumulative value when each turn ends.
-
-## Event Type Registry
-
-For the full list of event types and their `EventData` variants, see `crates/core/src/events.rs`. The event type constants are defined alongside their data structures.
-
-## Database Storage
-
-See `crates/server/migrations/001_base_schema.sql` for the `events` table DDL. Key columns: `data` (JSONB, event-specific payload), `event_type` (denormalized for filtering), `context` (JSONB, correlation data).
-
-## Storage Guarantees
-
-The event store provides three key guarantees:
-
-### 1. Append-Only Immutability
-
-Events are **immutable** once written. Database triggers block UPDATE and DELETE operations (see migrations for trigger DDL).
-
-**Rationale:** Event sourcing requires immutable history. Allowing mutations would break replay, audit trails, and data integrity guarantees.
-
-### 2. Atomic Per-Session Sequence Allocation
-
-Each event within a session is assigned a monotonically increasing sequence number. Sequences are allocated atomically to prevent race conditions under concurrent writes.
-
-**Implementation:** A dedicated `event_sequences` table with an atomic upsert function (`allocate_event_sequence`). See `crates/server/migrations/001_base_schema.sql` for DDL.
-
-**Guarantees:**
-- No sequence gaps within a session (barring transaction rollbacks)
-- No duplicate sequences within a session
-- Race-free under concurrent inserts (uses PostgreSQL's atomic upsert)
-- Sequences start at 1 for each session
-
-**Previous Approach (Deprecated):**
-The old `MAX(sequence)+1` approach had race conditions when multiple writers inserted events concurrently for the same session.
-
-### 3. Event Type Consistency Validation
-
-The `event_type` field must match the type indicated by the event's `data` payload. This is validated at the service layer before storage.
-
-**Validation Rule:**
-```
-request.event_type == request.data.event_type()
-```
-
-**Exemption:** Raw/legacy events (where `data.event_type() == "unknown"`) are exempt from this check to support backward compatibility.
-
-**Error on Mismatch:**
-```
-"event type mismatch: declared 'input.message' but data indicates 'output.message.completed'"
-```
-
-**Rationale:** Prevents drift between the declared event type and the actual payload, which would cause incorrect filtering, routing, and processing.
-
-## Message Reconstruction
-
-Messages are reconstructed from events for the conversation view. The following event types contribute to message reconstruction:
-
-| Event Type | Role | Content Source |
-|------------|------|----------------|
-| `input.message` | `user` | `data.message.content` |
-| `output.message.completed` | `agent` | `data.message.content` (may include tool calls) |
-| `tool.completed` | `tool` | `data.result` (tool execution results) |
-
-**Note:** Tool calls are embedded in `output.message.completed` events via `ContentPart::ToolCall`. Tool results come from `tool.completed` events, not a separate message type.
-
-## SSE Streaming
-
-Events are streamed to clients via Server-Sent Events (SSE):
-
-```
-event: input.message
-data: {"id":"...","type":"input.message","ts":"...","session_id":"...","context":{},"data":{...}}
-
-event: reason.started
-data: {"id":"...","type":"reason.started","ts":"...","session_id":"...","context":{...},"data":{...}}
-```
-
-The SSE `event` field matches the `type` field in the event payload.
-
-### SSE Connection Lifecycle
-
-SSE streams include special lifecycle events for connection management:
-
-| Event | Description |
-|-------|-------------|
-| `connected` | Sent immediately when the stream is established. Data: `{"status":"connected"}` |
-| `disconnecting` | Sent before graceful close. Data: `{"reason":"connection_cycle","retry_ms":100}` |
-
-### Heartbeat Comments
-
-All SSE streams send periodic heartbeat comments to allow clients to detect stale/half-open connections:
-
-```
-: heartbeat
-
-```
-
-Heartbeat comments are standard SSE comments (lines starting with `:`) and are **invisible to all spec-compliant event parsers** — they do not appear as events. They serve solely to reset the client's TCP read timer.
-
-| Property | Value |
-|----------|-------|
-| Format | `: heartbeat\n\n` (SSE comment) |
-| Interval | 30 seconds (configurable via `SSE_HEARTBEAT_INTERVAL_SECS`) |
-| Scope | All SSE streams (session events, durable monitoring, workflow monitoring) |
-| Activity-independent | Fires during idle, model-thinking, tool-execution, and active streaming |
-| Schema impact | None — SSE comments are not events |
-| Backward-compatible | Yes — all spec-compliant SSE parsers ignore comments |
-
-**Why 30 seconds?** The SDK default read timeout is 60s. At 30s heartbeat interval, clients have a 2x safety factor: if no heartbeat arrives within 45s (1.5x interval), the connection is almost certainly dead.
-
-**Bandwidth impact:** Each heartbeat is 14 bytes (`": heartbeat\r\n\r\n"`). At 30s intervals, this adds ~0.47 bytes/second per connection — negligible even at 10,000 concurrent connections (~4.7 KB/s total).
-
-### Connection Cycling
-
-To prevent stale connections through proxies and load balancers, SSE connections are automatically cycled:
-
-| Stream Type | Cycle Interval | Backoff Range |
-|-------------|----------------|---------------|
-| Session events (realtime) | 5 minutes ±20% jitter | 100ms → 500ms |
-| Durable monitoring | 10 minutes ±20% jitter | 1000ms → 20000ms |
-
-Each connection's cycle interval is jittered by ±20% (e.g., 5 min base → 4–6 min actual) to prevent thundering-herd reconnection storms when many clients connect simultaneously. The jittered duration is computed once at stream creation.
-
-Cycle intervals are configurable via environment variables:
-- `SSE_REALTIME_CYCLE_SECS` (default: 300) — session event streams
-- `SSE_MONITORING_CYCLE_SECS` (default: 600) — durable monitoring streams
-
-Before closing, the server sends a `disconnecting` event so clients can reconnect immediately using `since_id`. This ensures no events are missed. The SDK (v0.1.2+/main) handles `disconnecting` events transparently — they do not consume the retry budget.
-
-### Retry Hints
-
-Each SSE event includes a `retry:` field (in milliseconds) that hints reconnection timing:
-
-| Situation | Session Events | Durable Monitoring |
-|-----------|---------------|-------------------|
-| Active (new events) | 100ms | 1000ms |
-| Idle (backoff max) | 500ms | 20000ms |
-| After `disconnecting` | 100ms | 1000ms |
-
-The EventSource API automatically uses this hint.
-
-### SDK Implementation Requirements
-
-SDKs MUST:
-1. Track the last received event ID (`lastEventId`)
-2. Handle `disconnecting` event by reconnecting with `since_id` parameter
-3. Handle `onerror` with exponential backoff (EventSource default behavior)
-4. Use `retry:` hint for reconnection timing
-5. Set a read timeout of 45s (1.5x the 30s heartbeat interval) to detect stale connections
-
-**Heartbeat handling:** SDKs do NOT need to explicitly handle heartbeat comments — SSE parsers ignore them automatically. The heartbeats simply prevent the read timeout from firing on healthy connections. If no data (events or heartbeats) arrives within the read timeout, the SDK should treat the connection as stale and reconnect with `since_id`.
-
-**Read timeout rationale:** 45s = 1.5x heartbeat interval (30s). This gives a 0.5x margin for network jitter and server scheduling delays. The previous 60s timeout (2x) also works but is slower to detect stale connections.
-
-Example client implementation:
-
-```javascript
-eventSource.addEventListener('disconnecting', (event) => {
-  const data = JSON.parse(event.data);
-  eventSource.close();
-  setTimeout(() => reconnect(lastEventId), data.retry_ms);
-});
-```
-
-## Filtering
-
-Events can be filtered by:
-
-- `session_id`: Required for all queries
-- `event_type`: Filter by event type prefix (e.g., `message.*`, `reason.*`)
-- `sequence`: For pagination and replay (after sequence N)
-- `turn_id`: Filter events for a specific turn
-
-### Query Parameter Filters
-
-Both the SSE (`/v1/sessions/{id}/sse`) and JSON (`/v1/sessions/{id}/events`) endpoints accept:
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `since_id` | EventId | Resume after this event ID (resolved to sequence for ordering) |
-| `types` | string[] | **Positive filter**: only return events matching these types. Empty = all types. |
-| `exclude` | string[] | **Negative filter**: remove matching types from the result. |
-
-**Semantics when both are provided:** `types` narrows first, then `exclude` removes from that set.
-
-**Examples:**
-- Only turn lifecycle: `?types=turn.started&types=turn.completed`
-- Everything except deltas: `?exclude=output.message.delta&exclude=reason.thinking.delta&exclude=tool.output.delta&exclude=voice.input_transcript.delta&exclude=voice.output_transcript.delta`
-- Turn events but not failures: `?types=turn.started&types=turn.completed&types=turn.failed&exclude=turn.failed`
-
-**Validation:**
-- Both parameters accept only known event types (see Event Type Registry). Unknown types return 400.
-- Maximum 40 values per parameter to prevent abuse.
-
-### Debug Filters (JSON endpoint only)
-
-The `/v1/sessions/{id}/events` JSON endpoint exposes additional filters used by debugging tooling and the MCP catalog. Setting any of these routes the query to the `list_events_advanced` storage path; otherwise the default path is used (which preserves turn-boundary snapping for UI pagination).
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `after_sequence` | i32 | Forward cursor — `sequence > after_sequence`. Mutually exclusive with `before_sequence` and `around`. |
-| `around` | EventId | Anchor event id. Returns up to `window` events on each side. Mutually exclusive with `since_id`, `after_sequence`, and `before_sequence` (combinations return 400). |
-| `window` | i32 | Window size for `around` (default 50, max 500). |
-| `from_ts` / `to_ts` | RFC 3339 | Filter by `created_at` range. |
-| `turn_id` | string | Filter by `context.turn_id`. |
-| `exec_id` | string | Filter by `context.exec_id`. |
-| `trace_id` | string | Filter by `context.trace_id`. |
-| `tags` | string[] | Any-match against `events.tags` (max 20). |
-| `tool_name` | string | Match `data.tool_name` (useful for `tool.*` events). |
-| `q` | string | Full-text search via Postgres `tsvector` (substring fallback in-memory). |
-| `order_desc` | bool | Return newest first; default oldest first. |
-
-The debug path enforces the same session ownership check and event-type allowlist as the default path. Limit defaults to 1000 and is capped at 10 000 rows.
-
-### Debug Summary Endpoint
-
-`GET /v1/sessions/{id}/events/summary` (and the `events_summary` MCP command) returns a one-shot debug snapshot:
-
-| Field | Description |
-|-------|-------------|
-| `total` | Total event count for the session. |
-| `by_type` | Per-type counts, sorted by event_type. |
-| `first_ts` / `last_ts` | Earliest / latest event timestamps. |
-| `turn_count` | Convenience: count of `turn.started`. |
-| `error_count` | Convenience: sum of `turn.failed`, `tool.failed`, `subagent.failed`, and `*.error`. |
-
-### Partial Indexes
-
-Partial indexes exist for efficient queries on message events, turn events, and tool events. See `crates/server/migrations/001_base_schema.sql` for index DDL.
-
-## Event Listeners
-
-Event listeners provide a pluggable mechanism for observability backends to react to events without modifying business logic.
-
-### EventListener Trait
-
-See `crates/core/src/event_listeners.rs` for the `EventListener` trait definition. Listeners are registered with `EventService` at startup (see `crates/server/src/services/event.rs`).
-
-### Built-in Listeners
-
-| Listener | Event Types | Purpose |
-|----------|-------------|---------|
-| `OtelEventListener` | `llm.generation`, `tool.*`, `turn.*` | Generate OpenTelemetry spans |
-
-### Execution Model
-
-1. Event is persisted to database
-2. All registered listeners are notified sequentially
-3. Listeners should not block; spawn background tasks for heavy processing
-4. Listener failures do not affect event persistence
-
-### Error Isolation
-
-Listeners are executed in isolation to ensure misbehaving listeners cannot disrupt event processing:
-
-- **Panic isolation**: Each listener runs in a separate tokio task. If a listener panics, the panic is caught and logged, but other listeners continue to execute.
-- **No error propagation**: Listener errors/panics never propagate to the event emitter or affect event persistence.
-- **Logging**: Panics are logged with `tracing::error!` including the listener name for debugging.
-- **Sequential execution**: Despite isolation, listeners are awaited sequentially to preserve ordering semantics.
-
-**Rationale:** Event listeners are pluggable integrations (OTel, metrics, audit logs) that should not affect core event processing. A bug in an observability integration should never break the application.
-
-### Custom Listeners
-
-Custom listeners can be implemented for:
-- Metrics collection (Prometheus, StatsD)
-- Analytics pipelines (event forwarding to data warehouses)
-- Audit logging
-- Real-time alerting
+Legacy `subagent.*` events are retired. They are no longer emitted or parsed as
+typed events; historical rows follow the unsupported-event behavior. New
+integrations consume `task.*`.
+
+### Context compaction
+
+Compaction emits a start event and emits a completion event only after a
+material semantic reduction. Provider-opaque content, encrypted continuation
+state, and checkpoint ciphertext must never appear in compaction event data.
+Observation-only masking is not semantic compaction and does not emit a
+completion event. See [`compaction.md`](compaction.md).
+
+### Voice
+
+Voice transcript events provide provisional and observational streaming around
+the canonical message protocol. Final user speech also becomes an input
+message; the durable agent turn's completed assistant message remains
+canonical. Provider secrets, raw session descriptions, and unsanitized provider
+payloads must not enter failure events. See [`voice.md`](voice.md).
+
+## Projection channels
+
+Downstream transports project the runtime stream onto three non-overlapping
+channels:
+
+| Runtime concept | Projection |
+|---|---|
+| Commentary and final answers | Assistant-text channel |
+| Provider-exposed thinking and safe reasoning summaries | Reasoning channel |
+| Tool narration, progress, and output | Tool channel |
+
+Commentary is deliberate user-visible assistant text produced before or between
+tool calls. A final answer is turn-ending assistant text. Thinking is only
+reasoning explicitly exposed by the provider. A reasoning summary is a safe
+provider-curated artifact; opaque or encrypted reasoning is never surfaced.
+
+A projection must not move content across channels to imitate a phase. In
+particular, absent phase never makes assistant text into thinking, and tool
+activity never becomes assistant text. AG-UI projection is implemented in
+[`crates/server/src/api/ag_ui.rs`](../crates/server/src/api/ag_ui.rs).
+
+## Storage guarantees
+
+Persisted events are append-only and immutable. Each session has an atomically
+allocated, monotonically increasing sequence. Concurrent writers must not
+derive a sequence with `MAX(sequence) + 1`.
+
+The declared event type must agree with the typed payload before persistence.
+Raw historical data may use the explicit unsupported path, but ordinary
+emitters must not bypass type consistency.
+
+Messages are reconstructed from canonical input, assistant completion, and
+tool completion events. Streaming deltas are not required for replay. Tool
+calls remain part of assistant content; tool results come from tool completion
+events.
+
+Reporting projections are asynchronous and backend-neutral. They must not
+change the semantic event record. See [`reporting.md`](reporting.md).
+
+## Streaming contract
+
+The SSE event name matches the payload's event type. A connection begins with a
+connection lifecycle signal and may end with a graceful cycling signal so the
+client can reconnect without consuming its retry budget.
+
+Heartbeat comments keep idle connections observable but are not events and do
+not affect schema or replay. Connection cycling is jittered to avoid synchronized
+reconnect storms. Exact intervals, retry hints, endpoint parameters, and
+environment controls are implementation configuration owned by the streaming
+handler and exported API documentation.
+
+SDKs and clients must:
+
+1. retain the last accepted event identity;
+2. reconnect from that identity after a disconnect or stale read;
+3. preserve event order by session sequence;
+4. ignore SSE comments and unknown JSON fields;
+5. treat duplicate delivery after reconnect as harmless.
+
+Positive event filters narrow the stream; exclusion filters remove from the
+narrowed set. Unknown filter types and unbounded filter arrays are rejected.
+Exact query names and limits belong to `crates/server/src/api/events.rs` and the
+OpenAPI export.
+
+## Listeners
+
+Listeners observe persisted events without becoming part of business logic.
+They run in registration order, and one listener's failure or panic must not
+prevent persistence or later listeners from running. Heavy listener work should
+move off the emission path while preserving any ordering it requires.
+
+Built-in and future listeners may project traces, metrics, analytics, or audit
+records. Their output is derivative; it cannot mutate the source event.
+
+## Security and privacy
+
+- Event payloads are an external disclosure boundary. Do not include secrets,
+  credentials, raw provider authentication material, hidden chain of thought,
+  or unsanitized internal errors.
+- Session ownership is checked before listing, streaming, filtering, or
+  summarizing events.
+- Unknown event data is retained only where storage/audit needs it and is not
+  passed through as an untyped public payload.
+- Full-text and debug filters preserve the same authorization and supported-type
+  checks as ordinary event listing.
