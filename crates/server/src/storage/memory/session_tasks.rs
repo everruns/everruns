@@ -488,6 +488,8 @@ mod tests {
         let row = db.session_tasks.read().get("task_root").unwrap().clone();
         let task = row.to_task().expect("to_task");
         assert_eq!(task.root_session_id, Some(root));
+        let round_tripped = SessionTaskRow::from_task(&task).expect("from_task");
+        assert_eq!(round_tripped.root_session_id, Some(root));
 
         // A NULL root column surfaces as None (top-level session / unavailable).
         db.session_tasks
