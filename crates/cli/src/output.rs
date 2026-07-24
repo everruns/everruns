@@ -59,16 +59,25 @@ pub fn print_table_row(values: &[(&str, usize)]) {
     let row: String = values
         .iter()
         .map(|(val, width)| {
-            let s = if val.len() > *width {
-                format!("{}...", &val[..(width - 3)])
-            } else {
-                val.to_string()
-            };
+            let s = truncate_table_cell(val, *width);
             format!("{:<width$}", s, width = width)
         })
         .collect::<Vec<_>>()
         .join("  ");
     println!("{}", row);
+}
+
+fn truncate_table_cell(val: &str, width: usize) -> String {
+    if val.len() <= width {
+        return val.to_string();
+    }
+
+    let max_prefix_len = width.saturating_sub(3);
+    let mut end = max_prefix_len;
+    while !val.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", &val[..end])
 }
 
 /// Format a table row (returns string instead of printing)
@@ -77,11 +86,7 @@ fn format_table_row(values: &[(&str, usize)]) -> String {
     values
         .iter()
         .map(|(val, width)| {
-            let s = if val.len() > *width {
-                format!("{}...", &val[..(width - 3)])
-            } else {
-                val.to_string()
-            };
+            let s = truncate_table_cell(val, *width);
             format!("{:<width$}", s, width = width)
         })
         .collect::<Vec<_>>()
@@ -121,6 +126,18 @@ mod tests {
     fn test_format_table_row_truncation() {
         let row = format_table_row(&[("verylongtext", 8)]);
         assert_eq!(row, "veryl...");
+    }
+
+    #[test]
+    fn test_format_table_row_truncates_on_char_boundary() {
+        let row = format_table_row(&[("aaaaaaaaaaaaaaaaaaaaaaaaa😀", 28)]);
+        assert_eq!(row, "aaaaaaaaaaaaaaaaaaaaaaaaa...");
+    }
+
+    #[test]
+    fn test_format_table_row_truncates_when_boundary_is_inside_char() {
+        let row = format_table_row(&[("aaaaaaaaaaaaaaaaaaaaaaaaa😀z", 29)]);
+        assert_eq!(row, "aaaaaaaaaaaaaaaaaaaaaaaaa... ");
     }
 
     #[test]
