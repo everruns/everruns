@@ -366,6 +366,7 @@ static REGISTRY: &[ModelDescriptor] = &[
     md(&["gpt-5.6-luna"], ModelVendor::OpenAi, OPENAI),
     // Anthropic
     md(&["claude-fable-5"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-opus-5"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-8"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-7"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-6"], ModelVendor::Anthropic, ANTHROPIC),
@@ -374,6 +375,7 @@ static REGISTRY: &[ModelDescriptor] = &[
     // driver sends the `context-1m` beta header for them. See
     // `anthropic_1m_variant` for how their profiles are derived.
     md(&["claude-fable-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
+    md(&["claude-opus-5[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-8[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-7[1m]"], ModelVendor::Anthropic, ANTHROPIC),
     md(&["claude-opus-4-6[1m]"], ModelVendor::Anthropic, ANTHROPIC),
@@ -2548,6 +2550,7 @@ fn anthropic_family_supports_tool_search(family: &str) -> bool {
     matches!(
         family,
         "claude-fable-5"
+            | "claude-opus-5"
             | "claude-opus-4-8"
             | "claude-opus-4-7"
             | "claude-opus-4-6"
@@ -2603,6 +2606,52 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
             }),
             limits: Some(ModelLimits {
                 // Bare id is the 200K profile; `claude-fable-5[1m]` is the 1M twin.
+                context: 200_000,
+                input: None,
+                output: 128_000,
+                max_media: None,
+            }),
+            modalities: Some(ModelModalities {
+                input: vec![Modality::Text, Modality::Image, Modality::Pdf],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_anthropic_adaptive_thinking()),
+            speed: None,
+            verbosity: None,
+            tool_search: false,
+            supported_parameters: Vec::new(),
+            supports_phases: false,
+        }),
+
+        // Claude Opus 5 (current Opus; below Fable 5, above Opus 4.8)
+        // Source: Anthropic model card (claude-api skill `shared/models.md`) and
+        // docs.claude.com — Opus 5 is not yet in models.dev. A drop-in upgrade at
+        // Opus 4.8's pricing ($5/$25, cache-read $0.50) with the same 200K/1M-twin
+        // context and 128K output. Adaptive thinking is on by default and sampling
+        // parameters are removed (temperature returns 400, hence `temperature:
+        // false`), matching the Opus 4.8/4.7 surface. Release/knowledge dates are
+        // not published in the model card; the Models API exposes them at runtime.
+        "claude-opus-5" => Some(ModelProfile {
+            name: "Claude Opus 5".into(),
+            family: "claude-opus-5".into(),
+            description: None,
+            release_date: None,
+            last_updated: None,
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: None,
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(ModelCost {
+                input: 5.00,
+                output: 25.00,
+                cache_read: Some(0.50),
+                cost_tiers: vec![],
+            }),
+            limits: Some(ModelLimits {
+                // Bare id is the 200K profile; `claude-opus-5[1m]` is the 1M twin.
                 context: 200_000,
                 input: None,
                 output: 128_000,
@@ -2748,6 +2797,7 @@ fn anthropic_profile_data_inner(model_id: &str) -> Option<ModelProfile> {
         // 1M-context twins of the base profiles above. Same pricing and
         // capabilities; only the context limit and display name differ.
         "claude-fable-5[1m]" => anthropic_profile_data("claude-fable-5").map(anthropic_1m_variant),
+        "claude-opus-5[1m]" => anthropic_profile_data("claude-opus-5").map(anthropic_1m_variant),
         "claude-opus-4-8[1m]" => {
             anthropic_profile_data("claude-opus-4-8").map(anthropic_1m_variant)
         }
@@ -3776,6 +3826,7 @@ mod tests {
         (DriverId::OpenAI, "gpt-5.6-luna"),
         // Anthropic
         (DriverId::Anthropic, "claude-fable-5"),
+        (DriverId::Anthropic, "claude-opus-5"),
         (DriverId::Anthropic, "claude-opus-4-8"),
         (DriverId::Anthropic, "claude-opus-4-7"),
         (DriverId::Anthropic, "claude-opus-4-6"),
@@ -4848,6 +4899,26 @@ mod tests {
     }
 
     #[test]
+    fn test_claude_opus_5_1m_variant() {
+        let base = get_model_profile(&DriverId::Anthropic, "claude-opus-5").unwrap();
+        assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
+
+        let m1 = get_model_profile(&DriverId::Anthropic, "claude-opus-5[1m]").unwrap();
+        assert_eq!(m1.name, "Claude Opus 5 (1M)");
+        assert_eq!(m1.family, "claude-opus-5");
+        assert_eq!(m1.limits.as_ref().unwrap().context, 1_000_000);
+        assert_eq!(m1.limits.as_ref().unwrap().output, 128_000);
+
+        // Flat standard pricing — the 1M window carries no long-context premium,
+        // so cost matches the 200K base exactly.
+        let (base_cost, m1_cost) = (base.cost.unwrap(), m1.cost.unwrap());
+        assert_eq!(m1_cost.input, base_cost.input);
+        assert_eq!(m1_cost.output, base_cost.output);
+        assert_eq!(m1_cost.cache_read, base_cost.cache_read);
+        assert!(m1_cost.cost_tiers.is_empty());
+    }
+
+    #[test]
     fn test_claude_fable_5_1m_variant() {
         let base = get_model_profile(&DriverId::Anthropic, "claude-fable-5").unwrap();
         assert_eq!(base.limits.as_ref().unwrap().context, 200_000);
@@ -5023,6 +5094,7 @@ mod tests {
         // Claude 4-family + Fable advertise Anthropic's hosted tool_search.
         for id in [
             "claude-fable-5",
+            "claude-opus-5",
             "claude-opus-4-8",
             "claude-opus-4-7",
             "claude-opus-4-6",
