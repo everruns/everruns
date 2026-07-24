@@ -63,210 +63,48 @@ Two independent boolean frontmatter fields control who can invoke a skill:
 
 ## Requirements
 
-### Skill
+### Model
 
-A registered skill in the Everruns registry.
+A registered skill carries the parsed SKILL.md frontmatter plus its body, the org that owns it, a
+status, and — for archive uploads — the original ZIP alongside its extracted files. Archive files are
+stored individually rather than unpacked on demand, so activation and VFS mounting never pay for ZIP
+extraction at runtime.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | UUID v7 | Internal identifier |
-| `public_id` | SkillId | External identifier (`skill_{32-hex}`) |
-| `org_id` | i64 | Owning organization |
-| `name` | string | Unique skill name (from SKILL.md frontmatter) |
-| `description` | string | Skill description (from SKILL.md frontmatter) |
-| `license` | string? | License info (from frontmatter) |
-| `compatibility` | string? | Environment requirements (from frontmatter) |
-| `metadata` | json | Arbitrary key-value metadata (from frontmatter) |
-| `allowed_tools` | string? | Pre-approved tools list (from frontmatter, experimental) |
-| `instructions` | text | Full SKILL.md markdown body (after frontmatter) |
-| `source_type` | enum | `markdown` or `archive` |
-| `archive_data` | bytes? | Original ZIP archive (kept for reference/re-download, when source_type = archive) |
-| `status` | enum | `active` or `disabled` |
-| `version` | string | Version from metadata or "1.0" default |
-| `created_at` | timestamp | Creation time |
-| `updated_at` | timestamp | Last modification time |
+Fields and types: [`Skill` and `SkillFileEntry`](../crates/core/src/skill.rs). Persistence:
+`skills` and `skill_files` in [`crates/server/migrations/001_base_schema.sql`](../crates/server/migrations/001_base_schema.sql).
 
-### SkillFile
+Two source types exist: `markdown` (a pasted SKILL.md, instructions only) and `archive` (a ZIP
+holding the full skill directory with scripts, references, and assets). Statuses come from
+[`SkillStatus`](../crates/core/src/skill.rs); only `active` skills are offered to agents.
 
-Extracted files from archive-based skills. Stored individually for fast reads and VFS mounting (no ZIP extraction at runtime).
+### Limits and validation
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | UUID v7 | Internal identifier |
-| `skill_id` | UUID | FK to parent skill |
-| `path` | string | Relative path within skill directory (e.g., `scripts/extract.py`) |
-| `content` | text | File content (text files) |
-| `content_binary` | bytes? | File content (binary files, base64 in VFS) |
-| `is_binary` | boolean | Whether this is a binary file |
-| `size_bytes` | i64 | Original file size |
-| `created_at` | timestamp | Creation time |
+Names follow the agentskills.io rules exactly — 1–64 characters, `[a-z0-9-]`, no leading, trailing,
+or consecutive hyphens — and are unique per organization, which keeps capability IDs unambiguous
+across tenants.
 
-**Input Validation Limits:**
+Every other bound (field lengths, archive size, file count, decompressed size) exists to keep skills
+what they are: instructions, not binary packages. The enforced numbers live in
+[`crates/server/src/domains/skills/archive.rs`](../crates/server/src/domains/skills/archive.rs) and
+the SKILL.md parser in [`crates/core/src/skill.rs`](../crates/core/src/skill.rs).
 
-| Field | Max Size | Notes |
-|-------|----------|-------|
-| `name` | 64 chars | Must match agentskills.io spec: lowercase alphanumeric + hyphens, no leading/trailing/consecutive hyphens |
-| `description` | 1024 chars | Non-empty, from frontmatter |
-| `license` | 500 chars | Optional |
-| `compatibility` | 500 chars | Optional |
-| `instructions` | 100 KB | Markdown body (recommended <500 lines) |
-| `archive_data` | 10 MB | ZIP archive with skill directory |
-| `metadata` | 10 KB | JSON object |
-| `allowed_tools` | 1 KB | Space-delimited tool list |
+### API surface
 
-### Source Types
+Routes and their request/response types live in
+[`crates/server/src/api/skills.rs`](../crates/server/src/api/skills.rs) and are published in the
+OpenAPI export; that is the contract, not this list. What the endpoints must preserve:
 
-| Type | Description |
-|------|-------------|
-| `markdown` | Single SKILL.md file upload (instructions only, no scripts/assets) |
-| `archive` | ZIP archive containing full skill directory (SKILL.md + optional scripts/, references/, assets/) |
-
-### Status Values
-
-| Status | Description |
-|--------|-------------|
-| `active` | Skill is available for agent use |
-| `disabled` | Skill is disabled and hidden from capability listing |
-
-### Name Validation Rules
-
-Following the agentskills.io specification exactly:
-
-1. Must be 1-64 characters
-2. Lowercase letters, numbers, and hyphens only (`[a-z0-9-]`)
-3. Must not start or end with `-`
-4. Must not contain consecutive hyphens (`--`)
-5. Must be unique per organization
-
-### API Endpoints
-
-#### POST /v1/skills
-
-Create a new skill from a SKILL.md file (markdown body with frontmatter).
-
-**Request Body (JSON):**
-```json
-{
-  "skill_md": "---\nname: pdf-processing\ndescription: Extract text from PDFs.\n---\n\n# PDF Processing\n\n## Steps\n1. Use pdfplumber..."
-}
-```
-
-**Response:** `201 Created` with Skill object
-
-**Validation:**
-- Parses YAML frontmatter from `skill_md`
-- Validates `name` field against naming rules
-- Validates `description` is non-empty and within limits
-- Checks for duplicate name within org
-- Sets `source_type = "markdown"`
-
-#### POST /v1/skills/upload
-
-Create a skill from a ZIP archive containing a skill directory.
-
-**Request:** `multipart/form-data` with `file` field containing ZIP archive
-
-**Response:** `201 Created` with Skill object
-
-**Processing:**
-- Extracts ZIP archive in memory
-- Locates SKILL.md in archive root (or single top-level directory)
-- Parses and validates SKILL.md frontmatter
-- Validates archive structure (no path traversal, size limits)
-- Validates `name` matches directory name (if present)
-- Stores parsed metadata + original ZIP archive in `skills` table
-- Extracts all files individually into `skill_files` table (for fast VFS mounting)
-- Sets `source_type = "archive"`
-
-#### GET /v1/skills
-
-List all skills.
-
-**Response:** `200 OK`
-```json
-{
-  "data": [Skill, ...]
-}
-```
-
-#### GET /v1/skills/{skill_id}
-
-Get a specific skill by ID.
-
-**Response:** `200 OK` with Skill object, or `404 Not Found`
-
-#### GET /v1/skills/{skill_id}/content
-
-Get the full SKILL.md content for a skill (used during skill activation).
-
-**Response:** `200 OK`
-```json
-{
-  "skill_md": "---\nname: ...\n---\n\n# Instructions...",
-  "files": [
-    {
-      "path": "scripts/extract.py",
-      "content": "#!/usr/bin/env python3\n..."
-    },
-    {
-      "path": "references/REFERENCE.md",
-      "content": "# Detailed Reference\n..."
-    }
-  ]
-}
-```
-
-For `source_type = "markdown"`: Returns `skill_md` only, `files` is empty.
-For `source_type = "archive"`: Returns `skill_md` and file listing from `skill_files` table.
-
-#### PATCH /v1/skills/{skill_id}
-
-Update a skill. Only provided fields are updated.
-
-**Request Body:**
-```json
-{
-  "skill_md": "---\nname: pdf-processing\ndescription: Updated description.\n---\n\nUpdated instructions...",
-  "status": "disabled"
-}
-```
-
-**Response:** `200 OK` with updated Skill object
-
-#### DELETE /v1/skills/{skill_id}
-
-Delete a skill.
-
-**Response:** `204 No Content` on success, `404 Not Found` if not exists
-
-#### POST /v1/skills/validate
-
-Validate a SKILL.md without creating a skill. Useful for client-side validation.
-
-**Request Body:**
-```json
-{
-  "skill_md": "---\nname: my-skill\ndescription: Does something.\n---\n\nInstructions..."
-}
-```
-
-**Response:** `200 OK`
-```json
-{
-  "valid": true,
-  "name": "my-skill",
-  "description": "Does something.",
-  "warnings": ["Instructions exceed 500 lines (recommended max). Consider splitting into references."]
-}
-```
-
-Or:
-```json
-{
-  "valid": false,
-  "errors": ["name: consecutive hyphens not allowed", "description: must not be empty"]
-}
-```
+- **Two creation paths.** JSON `skill_md` for a pasted SKILL.md (`source_type = markdown`), and a
+  multipart ZIP upload for a full skill directory (`source_type = archive`). Both parse and validate
+  the frontmatter before anything is stored, and reject duplicate names within the org.
+- **Archive intake is validated at the boundary**: SKILL.md located in the archive root or in a
+  single top-level directory, frontmatter name matching the directory name, and the structural
+  limits above enforced before extraction. The original ZIP is retained for re-download while the
+  extracted files land in `skill_files` for VFS mounting.
+- **Content retrieval is activation's data path.** Fetching a skill's content returns the SKILL.md
+  body plus its bundled files, so activation is a read rather than a runtime unpack.
+- **Validation without side effects.** A skill can be checked before it is created, returning
+  structured errors and warnings, so clients can validate SKILL.md as the user types.
 
 ## Skills as Virtual Capabilities
 
@@ -316,11 +154,10 @@ Skills provide a virtual tool for activation:
 |------|-----------|-------------|
 | `activate_skill` | `{ "name": "skill-name" }` | Loads the full SKILL.md instructions into the agent's context |
 
-When the agent calls `activate_skill`:
-1. Worker resolves skill by name from the registry (via gRPC)
-2. Full SKILL.md body returned as tool result
-3. Agent uses the loaded instructions to perform the task
-4. For archive-based skills, file paths in instructions can be resolved via additional tool calls
+Activation resolves the skill by name and returns its full SKILL.md body as the tool result, which
+the agent then follows. For archive-based skills, the instructions reference companion files by
+relative path and the agent reads them with ordinary filesystem tools. Because registry skills are
+already mounted into the session VFS before the tool runs, activation is a read — not a fetch.
 
 #### Idempotence
 
@@ -344,12 +181,12 @@ Example: A skill named `pdf-processing` with files `scripts/extract.py` and `ref
 
 The agent can then read these files using existing session filesystem tools (`read_file`), no special `read_skill_file` tool needed.
 
-**Mounting strategy**:
-1. On `activate_skill` call, the worker fetches skill files from the `skill_files` table via gRPC
-2. Files are mounted into the session VFS at `/.agents/skills/{skill-name}/`
-3. The `activate_skill` tool result includes instructions and metadata (`skill`, `description`, and fork-mode fields when applicable), but does not include a separate companion-file listing
-4. Text files become `MountSource::InlineFile` with `encoding: "text"`
-5. Binary files become `MountSource::InlineFile` with `encoding: "base64"`
+**Mounting strategy**: registry skills become read-only `MountPoint`s carrying each file inline —
+text or base64 for binaries — built by
+[`AttachSkillCapability`](../crates/core/src/capabilities/attach_skill.rs) during capability
+collection, before any tool runs. The `activate_skill` result carries instructions and metadata
+(`skill`, `description`, fork-mode fields where applicable) and deliberately no companion-file
+listing.
 
 This approach:
 - Reuses existing VFS infrastructure (no new tool needed)
@@ -372,50 +209,11 @@ The mount's `capability_id` is set to the contributing capability's ID so the VF
 
 ## Database Schema
 
-```sql
-CREATE TABLE skills (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    public_id TEXT NOT NULL,
-    org_id BIGINT NOT NULL REFERENCES organizations(org_id) DEFAULT 1,
-    name VARCHAR(64) NOT NULL,
-    description VARCHAR(1024) NOT NULL,
-    license TEXT,
-    compatibility VARCHAR(500),
-    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
-    allowed_tools TEXT,
-    instructions TEXT NOT NULL,
-    source_type VARCHAR(20) NOT NULL DEFAULT 'markdown'
-        CHECK (source_type IN ('markdown', 'archive')),
-    archive_data BYTEA,
-    status VARCHAR(50) NOT NULL DEFAULT 'active'
-        CHECK (status IN ('active', 'disabled')),
-    version VARCHAR(50) NOT NULL DEFAULT '1.0',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT skills_public_id_format CHECK (public_id ~ '^skill_[0-9a-f]{32}$')
-);
-
-CREATE UNIQUE INDEX idx_skills_org_public_id ON skills(org_id, public_id);
-CREATE UNIQUE INDEX idx_skills_org_name ON skills(org_id, name);
-CREATE INDEX idx_skills_status ON skills(status);
-CREATE INDEX idx_skills_org_id ON skills(org_id);
-
--- Extracted files from archive-based skills
--- Stored individually for fast reads and VFS mounting (no ZIP extraction at runtime)
-CREATE TABLE skill_files (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    skill_id UUID NOT NULL REFERENCES skills(id) ON DELETE CASCADE,
-    path VARCHAR(500) NOT NULL,
-    content TEXT,
-    content_binary BYTEA,
-    is_binary BOOLEAN NOT NULL DEFAULT FALSE,
-    size_bytes BIGINT NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE(skill_id, path)
-);
-
-CREATE INDEX idx_skill_files_skill_id ON skill_files(skill_id);
-```
+`skills` and `skill_files` are defined in
+[`crates/server/migrations/001_base_schema.sql`](../crates/server/migrations/001_base_schema.sql).
+Two shapes carry design intent worth stating here: skills are unique per `(org_id, name)` so
+capability IDs cannot collide across tenants, and archive files are rows rather than a blob to unpack,
+because every activation mounts them into the session VFS.
 
 ## Activation Substitution Pipeline
 
@@ -450,21 +248,14 @@ Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_wi
 
 ## Security Considerations
 
-1. **Archive Validation**: ZIP archives must be validated for:
-   - Path traversal attacks (no `../` in file paths)
-   - Zip bombs (decompressed size limits)
-   - File count limits (max 100 files)
-   - Individual file size limits (1 MB per file)
-   - Total decompressed size limit (10 MB)
-
-2. **Script Execution**: Skills may contain scripts. Execution should be:
-   - Sandboxed (via bashkit_shell capability)
-   - Logged for auditing
-   - Subject to existing session filesystem permissions
-
-3. **Content Sanitization**: SKILL.md content is rendered as markdown to agents, not to browsers. No HTML sanitization needed for the agent path, but the UI should sanitize any skill content rendered in the browser.
-
-4. **Name Uniqueness**: Per-organization uniqueness prevents capability ID conflicts.
+1. **Archive intake is hostile input.** ZIP handling must reject path traversal and bound file count,
+   individual file size, and total decompressed size so an upload cannot become a zip bomb. The
+   enforced bounds live in [`archive.rs`](../crates/server/src/domains/skills/archive.rs).
+2. **Script execution stays sandboxed.** Skills may ship scripts; they run through `bashkit_shell`
+   under existing session filesystem permissions, and are logged for auditing.
+3. **Content sanitization is a UI concern.** SKILL.md reaches agents as markdown, not a browser, so
+   the agent path needs no HTML sanitization — but anything the UI renders does.
+4. **Per-organization name uniqueness** prevents capability ID conflicts across tenants.
 
 ## Implementation Details
 
@@ -478,67 +269,16 @@ Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_wi
 
 ### Key Components
 
-**SkillMdParser** (`crates/core/src/skill.rs`):
-- Parses YAML frontmatter from SKILL.md content
-- Validates name, description, and optional fields
-- Returns structured `ParsedSkillMd` with metadata and body
+| Concern | Source |
+|---|---|
+| SKILL.md parsing, name validation, `Skill` types | [`crates/core/src/skill.rs`](../crates/core/src/skill.rs) |
+| `skills` capability: VFS scan, `list_skills`, `activate_skill` | [`crates/core/src/capabilities/skills.rs`](../crates/core/src/capabilities/skills.rs) |
+| `skill:{uuid}` mount-only capability for registry skills | [`crates/core/src/capabilities/attach_skill.rs`](../crates/core/src/capabilities/attach_skill.rs) |
+| CRUD, archive extraction, capability listing | [`crates/server/src/domains/skills/`](../crates/server/src/domains/skills/) |
 
-**SkillsCapability** (`crates/core/src/capabilities/skills.rs`):
-- Built-in capability (ID: `"skills"`) included in the Generic harness
-- Scans `/.agents/skills/` in session VFS for SKILL.md files
-- Provides `list_skills` and `activate_skill` tools
-- System prompt explains skills system and lists discovered skills
-- Discovers both user-uploaded skills and registry-attached skills (via VFS mounts)
-
-**AttachSkillCapability** (`crates/core/src/capabilities/attach_skill.rs`):
-- Virtual capability (ID: `"skill:{uuid}"`) for database-registered skills
-- Mount-only: reconstructs SKILL.md and mounts to `/.agents/skills/{name}/`
-- Does NOT contribute to system prompt or provide tools
-- `SkillsCapability` discovers mounted skills at runtime via VFS scan
-- `from_registry(skill_id, name, description, instructions, files)` — constructs from DB fields
-- Dependencies: `["session_file_system"]` (for VFS mounting)
-- `discover_skills_from_entries()` helper parses SKILL.md files from `.agents/skills/` path
-- `is_skill` flag on `CapabilityInfo` DTO for UI badge rendering
-
-**SkillService** (`crates/server/src/domains/skills/`):
-- Business logic for CRUD operations
-- SKILL.md parsing and validation
-- ZIP archive extraction and validation
-- Integration with capability listing
-
-**ActivateSkillFromVfsTool** (`crates/core/src/capabilities/skills.rs`):
-- Backs the `activate_skill` tool, executed in-process by `everruns-core` (no worker-side executor, no gRPC fetch)
-- Reads the skill's `SKILL.md` body from the session VFS at `/.agents/skills/{name}/` and returns it as the tool result
-- Registry skills are mounted into the VFS beforehand by `AttachSkillCapability`, so activation is a pure VFS read
-
-### gRPC Protocol
-
-```protobuf
-message SkillInfo {
-    string id = 1;
-    string name = 2;
-    string description = 3;
-    string instructions = 4;
-    string source_type = 5;
-    repeated SkillFileInfo files = 6;  // Extracted files for VFS mounting
-}
-
-message SkillFileInfo {
-    string path = 1;
-    string content = 2;         // Text content (empty for binary)
-    bytes content_binary = 3;   // Binary content (empty for text)
-    bool is_binary = 4;
-}
-
-message GetSkillByNameRequest {
-    string name = 1;
-    int64 org_id = 2;
-}
-
-message GetSkillByNameResponse {
-    optional SkillInfo skill = 1;
-}
-```
+The division that matters: `AttachSkillCapability` only mounts — it contributes no prompt text and no
+tools — while `SkillsCapability` owns discovery and activation for every source. Activation is
+therefore a VFS read, with no worker-side executor and no gRPC fetch in the path.
 
 ### Error Handling
 
@@ -574,17 +314,7 @@ In the agent capability selector, skills appear with:
 
 ## Seed Data
 
-No skills are seeded by default. The registry starts empty, and users add skills as needed.
-
-Optional: A "getting started" skill could be provided:
-
-| Name | Description |
-|------|-------------|
-| `hello-world` | A simple example skill that demonstrates the Agent Skills format |
-
-## Migration Strategy
-
-New migration file: `NNN_add_skills.sql` (next available number after current migrations).
+No skills are seeded. The registry starts empty; `examples/skills/` carries the reference examples.
 
 ## Filesystem Discovery
 

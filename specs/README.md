@@ -2,7 +2,26 @@
 
 `specs/` contains durable design intent, constraints, and feature contracts. Use this map to find the relevant spec before changing behavior. Integration specs live near their crates; see `specs/integrations.md`.
 
-Specs capture the "why" and "what", not exhaustive source detail. Link to code for full fields, enum variants, exact API shapes, or SQL DDL instead of duplicating them.
+## Spec hygiene
+
+A spec owns the **why** and the **what**: intent, rationale, constraints, contracts, success bars,
+and the options that were rejected. Everything else has a better home — see the layering table in
+[`AGENTS.md`](../AGENTS.md).
+
+Link to the source of truth instead of copying it. Copies drift silently, and a stale copy is worse
+than no copy:
+
+| Content | Belongs in |
+|---|---|
+| struct fields, enum variants, exhaustive tables (permissions, event types, flags, ID prefixes) | the Rust source, linked |
+| SQL DDL, indexes, triggers | `crates/server/migrations/`, linked |
+| request/response bodies, status codes | the handler plus the OpenAPI export, linked |
+| protobuf messages | `crates/internal-protocol/proto/`, linked |
+| commands, flags, and step-by-step procedure | the `justfile`, scripts, or the owning skill in `.agents/skills/` |
+
+Keep specs readable in one sitting. When a spec grows past what a reader can hold, split it by
+audience or subsystem and link the parts from here, rather than letting one file accumulate every
+detail. Stale "current" lists (current flags, current statuses) should become links or be deleted.
 
 ## Core
 

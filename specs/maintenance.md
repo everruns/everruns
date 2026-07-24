@@ -65,15 +65,9 @@ The expected outcome is either a small fix that reconnects the surfaces or a cri
 
 ## Spec Hygiene
 
-Specs must follow the spec hygiene guidance from `specs/README.md`: they preserve design intent, rationale, and constraints — not implementation details readable from code. During maintenance, review specs in the changed surface for:
-
-- **Struct field tables** that duplicate Rust struct definitions — replace with a link to the source file
-- **Enum variant lists** that duplicate code — replace with a link
-- **Exhaustive tables** (permissions, event types, feature flags, entity prefixes) that will drift as code evolves — replace with a link to the source of truth
-- **Code snippets** that restate already-implemented logic (SQL DDL, macro expansions, error detection patterns) — replace with a link
-- **Stale "current" lists** (e.g., "Current Flags" tables) — remove or replace with a link
-
-The pattern: keep the "why" and constraints, link to code for the "what".
+Specs in the changed surface must still meet the hygiene rules in [`specs/README.md`](./README.md),
+which owns them. Copied implementation detail is a maintenance finding: replace it with a link to the
+source of truth rather than re-syncing it.
 
 ## Release Readiness Standard
 
@@ -86,7 +80,7 @@ Before a release, maintenance should cover:
 - Linear issues already marked `In Progress` whose `updatedAt` is older than 1 day, signaling execution drift; use that `updatedAt` threshold as the default review threshold unless the task sets a stricter bar
 - GitHub Security tab: security overview, Dependabot alerts, and open secret scanning alerts
 - threat model and security testing in sync per `specs/security-testing.md`: every `MITIGATED` threat has coverage where feasible, durable failpoint tests pass (`cargo test -p everruns-durable --test failure_injection_test --features "failpoints,postgres-tests" -- --test-threads=1`), and the `cargo deny check licenses` gate (`deny.toml`) passes; advisories are tracked via Dependabot alerts in the GitHub Security tab
-- DeepSec scan run for the changed surface: `cd .deepsec && pnpm deepsec scan --project-id everruns`, `pnpm deepsec process --project-id everruns`, then review `pnpm deepsec report --project-id everruns` and file issues for any deferred true-positive findings. The `.deepsec/` scanner is local dev-only tooling, exempt from the runtime seven-day dependency-maturity floor; when bumping it, update `.deepsec` in its own commit (`pnpm update deepsec@latest`) rather than as part of a product dependency bump
+- DeepSec scan run for the changed surface, with deferred true-positive findings filed as issues (commands: [`.agents/skills/maintenance/references/surfaces.md`](../.agents/skills/maintenance/references/surfaces.md)). The `.deepsec/` scanner is local dev-only tooling, exempt from the runtime seven-day dependency-maturity floor; bump it in its own commit rather than inside a product dependency bump
 - dependency versions across all packages (Cargo workspace crates, pnpm-managed UI/docs packages, CLI) checked for outdated major versions and deprecated crates
   - `cargo outdated --root-deps-only --workspace` currently fails with a `libsqlite3-sys` `links` conflict because its temporary solve combines the workspace `sqlx 0.8` pin with the latest `rusqlite`. The real lockfile builds, so treat that failure as a tooling artifact and inspect `Cargo.toml` plus `cargo tree -i sqlx` / `cargo tree -i rusqlite` instead until `sqlx` and `rusqlite` are upgraded together
   - pnpm-managed packages enforce the seven-day release-age floor with `minimumReleaseAge: 10080`; do not bypass that gate for routine dependency maintenance

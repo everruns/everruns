@@ -90,24 +90,10 @@ enrichment, aggregation, and backend-specific writes happen asynchronously.
 
 ## Async Projection
 
-Add a durable outbox:
-
-```sql
-CREATE TABLE reporting_outbox (
-    id UUID PRIMARY KEY,
-    org_id BIGINT NOT NULL,
-    source_type TEXT NOT NULL,
-    source_id TEXT NOT NULL,
-    source_version TEXT,
-    reason TEXT NOT NULL,
-    status TEXT NOT NULL,
-    attempts INTEGER NOT NULL DEFAULT 0,
-    next_attempt_at TIMESTAMPTZ NOT NULL,
-    last_error TEXT,
-    created_at TIMESTAMPTZ NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL
-);
-```
+Add a durable outbox — `reporting_outbox`, defined in
+[`crates/server/migrations/040_reporting_foundation.sql`](../crates/server/migrations/040_reporting_foundation.sql).
+It records what changed (source type, id, version), why (reason), and the retry state (status,
+attempts, next attempt, last error) so projection can be retried without re-reading the world.
 
 `source_type` is one of `event`, `session`, `usage_journal`, `usage_ledger`,
 `budget`, `agent_capabilities`, `harness_capabilities`, or future durable

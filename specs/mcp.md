@@ -375,52 +375,13 @@ Acting-as-user is preserved (claims still carry the user's identity and roles); 
 
 ### Database Schema
 
-#### oauth_clients
+The OAuth tables — `oauth_clients`, `oauth_authorization_codes`, `oauth_refresh_tokens` — are defined
+in [`crates/server/migrations/009_v0.8.8.sql`](../crates/server/migrations/009_v0.8.8.sql).
 
-```sql
-CREATE TABLE oauth_clients (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    client_id TEXT NOT NULL UNIQUE,
-    client_secret_hash TEXT NOT NULL,
-    client_name TEXT NOT NULL,
-    redirect_uris JSONB NOT NULL DEFAULT '[]',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
-
-#### oauth_authorization_codes
-
-```sql
-CREATE TABLE oauth_authorization_codes (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    code_hash TEXT NOT NULL UNIQUE,
-    client_id TEXT NOT NULL,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    org_id BIGINT NOT NULL,
-    redirect_uri TEXT NOT NULL,
-    code_challenge TEXT NOT NULL,
-    code_challenge_method TEXT NOT NULL DEFAULT 'S256',
-    scope TEXT NOT NULL DEFAULT 'mcp',
-    consumed BOOLEAN NOT NULL DEFAULT FALSE,
-    expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
-
-#### oauth_refresh_tokens
-
-```sql
-CREATE TABLE oauth_refresh_tokens (
-    id UUID PRIMARY KEY DEFAULT uuidv7(),
-    token_hash TEXT NOT NULL UNIQUE,
-    client_id TEXT NOT NULL,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    org_id BIGINT NOT NULL,
-    scope TEXT NOT NULL DEFAULT 'mcp',
-    expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-```
+The shapes that carry security intent: secrets and codes are stored **hashed**, never in plaintext;
+authorization codes are single-use (`consumed`) and carry the PKCE challenge and method; and both
+codes and refresh tokens expire. Authorization codes and refresh tokens cascade on user deletion, so
+revoking a user revokes their grants.
 
 ### Route Mounting
 
