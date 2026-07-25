@@ -2,7 +2,10 @@ packages: []
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
 # Security patches adopted before the maturity window (Dependabot GHSA fixes):
-# form-data 4.0.6 (GHSA-hmw2-7cc7-3qxx), esbuild 0.28.1 (GHSA-g7r4-m6w7-qqqr).
+# form-data 4.0.6 (GHSA-hmw2-7cc7-3qxx), esbuild 0.28.1 (GHSA-g7r4-m6w7-qqqr),
+# fast-uri 3.1.4 (GHSA-v2hh-gcrm-f6hx — host confusion via literal IPv6; only
+# patched release, still inside the 7-day window). Exact-pinned via overrides.
 minimumReleaseAgeExclude:
   - form-data
   - esbuild
+  - fast-uri
