@@ -79,9 +79,11 @@
   "pnpm": {
     "overrides": {
       "@babel/core": "7.29.6",
+      "brace-expansion@1": "1.1.16",
+      "brace-expansion@2": "2.1.2",
       "dompurify": "3.4.12",
       "fast-uri": "3.1.4",
-      "js-yaml": "4.2.0",
+      "js-yaml": "4.3.0",
       "postcss": "8.5.18",
       "prismjs": "1.30.0",
       "sharp": "0.35.3",
