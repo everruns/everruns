@@ -1,10 +1,12 @@
 packages: []
 overrides:
   '@babel/core': 7.29.6
-  dompurify: 3.4.11
+  dompurify: 3.4.12
+  fast-uri: 3.1.4
   js-yaml: 4.2.0
-  postcss: 8.5.14
+  postcss: 8.5.18
   prismjs: 1.30.0
+  sharp: 0.35.3
   uuid: 11.1.1
   ws: ^8.21.0
 onlyBuiltDependencies:
@@ -14,13 +16,15 @@ onlyBuiltDependencies:
   - unrs-resolver
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
-# Security patches adopted before the maturity window (Dependabot GHSA fixes):
-# dompurify 3.4.11 (GHSA-cmwh-pvxp-8882, Dependabot alert #114 — ALLOWED_ATTR
-# pollution via setConfig bypass). Pinned to the exact version via
-# pnpm.overrides, so this exemption cannot pull any other freshly-published
-# version; it only lets the fix land before the 7-day release-age window.
+# Security fixes for GHSA advisories, pinned to exact patched versions via the
+# overrides above: dompurify 3.4.12 (GHSA-c2j3-45gr-mqc4), postcss 8.5.18
+# (GHSA-r28c-9q8g-f849), sharp 0.35.3 — all matured past the 7-day window.
+# fast-uri 3.1.4 (GHSA-v2hh-gcrm-f6hx — host confusion via literal IPv6) is the
+# only patched release for that advisory and is still inside the 7-day window,
+# so it needs an exemption. Exact-pinned, so this cannot pull any other freshly
+# published version; it only lets the security fix land before maturity.
 minimumReleaseAgeExclude:
-  - dompurify
+  - fast-uri
 allowBuilds:
   sharp: true
   unrs-resolver: true
