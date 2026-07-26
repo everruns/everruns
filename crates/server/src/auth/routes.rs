@@ -546,29 +546,15 @@ pub async fn login(
         ));
     }
 
-    // TM-AUTH-001: per-account throttle across ALL source IPs — the per-IP
-    // middleware alone leaves a single account open to distributed credential
-    // stuffing. Keyed on the submitted email (no DB read, so unknown emails
-    // are throttled identically — no enumeration signal).
-    if state
+    // Check the cross-IP account budget before password verification, but only
+    // enforce it after credentials fail. An unauthenticated caller can exhaust
+    // this budget, so it must never prevent the account owner from logging in
+    // with the correct password.
+    let account_rate_limited = state
         .rate_limiter
         .check_account_login(&req.email.trim().to_lowercase())
         .await
-        .is_err()
-    {
-        audit::emit(
-            state.db.clone(),
-            DEFAULT_ORG_ID,
-            None,
-            "auth.login.rate_limited",
-            ip,
-            serde_json::json!({"scope": "account"}),
-        );
-        return Err(AuthError::too_many_requests(
-            "Too many attempts. Please try again later.",
-        ));
-    }
-
+        .is_err();
     // Cap pre-hash work: no legitimate password exceeds PASSWORD_MAX_LENGTH
     // (register enforces it), so never feed oversized inputs to Argon2.
     // Same generic failure as any bad credential — no oracle.
@@ -578,10 +564,10 @@ pub async fn login(
             DEFAULT_ORG_ID,
             None,
             "auth.login.failure",
-            ip,
+            ip.clone(),
             serde_json::json!({"reason": "password_too_long"}),
         );
-        return Err(AuthError::unauthorized("Invalid email or password"));
+        return Err(invalid_credentials_error(&state, ip, account_rate_limited).await);
     }
 
     // Find user by email
@@ -596,10 +582,10 @@ pub async fn login(
             DEFAULT_ORG_ID,
             None,
             "auth.login.failure",
-            ip,
+            ip.clone(),
             serde_json::json!({"reason": "user_not_found"}),
         );
-        return Err(AuthError::unauthorized("Invalid email or password"));
+        return Err(invalid_credentials_error(&state, ip, account_rate_limited).await);
     };
 
     // EVE-452 / TM-AUTH-019: account-enumeration via login error differences.
@@ -615,10 +601,10 @@ pub async fn login(
             DEFAULT_ORG_ID,
             Some(user.id),
             "auth.login.failure",
-            ip,
+            ip.clone(),
             serde_json::json!({"reason": "no_password_hash"}),
         );
-        return Err(AuthError::unauthorized("Invalid email or password"));
+        return Err(invalid_credentials_error(&state, ip, account_rate_limited).await);
     };
 
     let valid = verify_password(&req.password, password_hash).map_err(|e| {
@@ -632,10 +618,10 @@ pub async fn login(
             DEFAULT_ORG_ID,
             Some(user.id),
             "auth.login.failure",
-            ip,
+            ip.clone(),
             serde_json::json!({"reason": "invalid_password"}),
         );
-        return Err(AuthError::unauthorized("Invalid email or password"));
+        return Err(invalid_credentials_error(&state, ip, account_rate_limited).await);
     }
 
     let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
@@ -667,6 +653,26 @@ pub async fn login(
     );
 
     generate_token_response(&state, jar, &auth_user).await
+}
+
+async fn invalid_credentials_error(
+    state: &BuiltinAuthBackend,
+    ip: Option<String>,
+    account_rate_limited: bool,
+) -> AuthError {
+    if !account_rate_limited {
+        return AuthError::unauthorized("Invalid email or password");
+    }
+
+    audit::emit(
+        state.db.clone(),
+        DEFAULT_ORG_ID,
+        None,
+        "auth.login.rate_limited",
+        ip,
+        serde_json::json!({"scope": "account"}),
+    );
+    AuthError::too_many_requests("Too many attempts. Please try again later.")
 }
 
 /// Minimum password length enforced on `/v1/auth/register`. Matches the
@@ -3226,8 +3232,8 @@ mod oauth_state_tests {
     }
 
     // Per-account throttle: after the cross-IP budget is exhausted for one
-    // email, login returns 429 regardless of credentials; other accounts are
-    // unaffected.
+    // email, failed logins return 429, correct credentials still work, and
+    // other accounts are unaffected.
     #[tokio::test]
     async fn login_per_account_throttle_returns_429() {
         let state = full_mode_backend();
@@ -3252,6 +3258,19 @@ mod oauth_state_tests {
             Some(StatusCode::TOO_MANY_REQUESTS),
             "per-account budget must trip after repeated failures"
         );
+
+        let _response = login(
+            State(state.clone()),
+            None,
+            HeaderMap::new(),
+            CookieJar::new(),
+            Json(LoginRequest {
+                email: "stuffed@example.com".to_string(),
+                password: "password12345".to_string(),
+            }),
+        )
+        .await
+        .expect("an exhausted account budget must not lock out valid credentials");
 
         // A different account still gets the normal generic 401.
         seed_local_user(&state.db, "fresh@example.com", "password12345").await;

@@ -269,8 +269,9 @@ Beyond the per-IP limiter (TM-AUTH-001), the auth surface enforces:
 
 - **Per-account login throttle** — login attempts are additionally keyed on
   the submitted email (lowercased) across all source IPs, so distributed
-  credential stuffing against one account is capped. Over-limit returns a
-  generic 429.
+  credential stuffing against one account is capped. Over-limit failed
+  credentials return a generic 429; correct credentials remain usable so an
+  unauthenticated attacker cannot lock out the account owner.
 - **Per-address email budget** — forgot-password and resend-verification
   share a per-address send budget (1/minute plus a small daily cap). Over
   budget the endpoints return the normal enumeration-safe success without
