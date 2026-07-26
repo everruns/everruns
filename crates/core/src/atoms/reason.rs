@@ -54,6 +54,7 @@ use crate::openresponses_protocol::{CompactRequest, messages_to_compact_input};
 use crate::output_guardrail::{
     ArmedGuardrail, OutputGuardrailContext, PostGenerationOutputContext, PostGenerationProvider,
     TrippedGuardrail, evaluate_guardrails, evaluate_post_generation_guardrails,
+    post_generation_guardrail_text,
 };
 use crate::runtime_context::{AssembledTurnContext, assemble_turn_context};
 use crate::tool_types::{ToolCall, ToolDefinition};
@@ -3192,26 +3193,10 @@ impl ReasonAtom {
         let (mut text, mut thinking, thinking_signature, mut tool_calls) =
             (text, thinking, thinking_signature, tool_calls);
 
-        // End-of-message output guardrail seam (EVE-573). Runs once on the
-        // finalized assistant text after streaming completes, before the
-        // message is built into context. Async, time-bounded, and fail-open
-        // (each provider owns its own timeout). Skipped when the streaming seam
-        // already tripped (the message is already a replacement), when there
-        // are no post-generation providers, or when there is no assistant text.
-        // A trip here reuses the same replacement/emit path as the streaming
-        // seam below, so the original tokens are never persisted.
-        if tripped.is_none() && !post_output_providers.is_empty() && !text.is_empty() {
-            let ctx = PostGenerationOutputContext {
-                system_prompt: &runtime_agent.system_prompt,
-                message_text: &text,
-                utility_llm_service: self.utility_llm_service.as_ref(),
-            };
-            tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
-        }
-
         // End-of-message citation annotation seam (see specs/citations.md). Runs
-        // once on the finalized final-answer text after guardrails allow it, to
-        // attach claim-level citations. Skipped when a guardrail already tripped,
+        // once on the finalized final-answer text to attach claim-level citations
+        // before guardrails inspect the complete client-visible payload. Skipped
+        // when a guardrail already tripped,
         // when there are no citation providers, when there is no text, or while
         // the message still carries tool calls (citations attach to answer
         // prose, not intermediate tool-calling turns). The built-in feeds do not
@@ -3239,9 +3224,24 @@ impl ReasonAtom {
             text = collected.text;
             citation_annotations = collected.annotations;
 
+            // Post-generation guardrails must inspect citation metadata as well
+            // as prose because annotations are persisted and rendered to clients.
+            if !citation_annotations.is_empty() && !post_output_providers.is_empty() {
+                let guarded_output = post_generation_guardrail_text(&text, &citation_annotations);
+                let ctx = PostGenerationOutputContext {
+                    system_prompt: &runtime_agent.system_prompt,
+                    message_text: &guarded_output,
+                    utility_llm_service: self.utility_llm_service.as_ref(),
+                };
+                tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
+            }
+
             // Verification pass: stamp faithfulness verdicts on the collected
             // citations (no-op when no citation_verification capability is on).
-            if !citation_annotations.is_empty() && !citation_verifiers.is_empty() {
+            if tripped.is_none()
+                && !citation_annotations.is_empty()
+                && !citation_verifiers.is_empty()
+            {
                 citation_annotations = verify_annotations(
                     &citation_verifiers,
                     &text,
@@ -3250,6 +3250,25 @@ impl ReasonAtom {
                 )
                 .await;
             }
+        }
+
+        // Messages without citation annotations still cross the same
+        // post-generation output seam once.
+        if tripped.is_none()
+            && citation_annotations.is_empty()
+            && !post_output_providers.is_empty()
+            && !text.is_empty()
+        {
+            let ctx = PostGenerationOutputContext {
+                system_prompt: &runtime_agent.system_prompt,
+                message_text: &text,
+                utility_llm_service: self.utility_llm_service.as_ref(),
+            };
+            tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
+        }
+
+        if tripped.is_some() {
+            citation_annotations.clear();
         }
 
         // Release buffered text only after post-generation guardrails allow it.
