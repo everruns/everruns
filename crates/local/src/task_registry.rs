@@ -84,8 +84,13 @@ impl LocalSessionTaskRegistry {
     }
 
     fn store_task(&self, task: &SessionTask) -> Result<()> {
-        let snapshot =
-            serde_json::to_string(task).map_err(|e| AgentLoopError::from(LocalError::from(e)))?;
+        // SessionTask's public serializer redacts webhook secrets. Local snapshots
+        // are persistence, not presentation, so restore the raw spec before storage.
+        let mut snapshot =
+            serde_json::to_value(task).map_err(|e| AgentLoopError::from(LocalError::from(e)))?;
+        snapshot["spec"] = task.spec.clone();
+        let snapshot = serde_json::to_string(&snapshot)
+            .map_err(|e| AgentLoopError::from(LocalError::from(e)))?;
         let id = task.id.clone();
         let session_id = task.session_id.to_string();
         let kind = task.kind.clone();
