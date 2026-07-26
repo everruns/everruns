@@ -616,7 +616,6 @@ async fn try_apply_native_compaction(
     model: &str,
     system_prompt: Option<&str>,
     stateful_response_continuation: bool,
-    previous_response_id: Option<String>,
     llm_messages: &mut Vec<LlmMessage>,
     llm_config: &mut crate::driver_registry::LlmCallConfig,
 ) -> Result<Option<AppliedNativeCompaction>> {
@@ -650,13 +649,10 @@ async fn try_apply_native_compaction(
                 .map(|value| value.len() as u64)
         })
         .flatten();
-    let (input, compact_previous_response_id) = if has_prior_opaque_context {
-        (standalone_input, None)
-    } else if stateful_response_continuation {
-        (Vec::new(), previous_response_id)
-    } else {
-        (standalone_input, None)
-    };
+    // Reconstruct standalone input even for a stateful continuation. Compacting
+    // only the previous response handle would omit the fresh request delta, then
+    // clearing that handle for the retry would make the omission permanent.
+    let (input, compact_previous_response_id) = (standalone_input, None);
 
     let compact_response = match chat_driver
         .compact(CompactRequest {
@@ -2289,7 +2285,6 @@ impl ReasonAtom {
                     &model_with_provider.model,
                     has_system_prompt.then_some(runtime_agent.system_prompt.as_str()),
                     false,
-                    None,
                     &mut llm_messages_for_call,
                     &mut llm_config,
                 )
@@ -2512,7 +2507,6 @@ impl ReasonAtom {
                             &model_with_provider.model,
                             has_system_prompt.then_some(runtime_agent.system_prompt.as_str()),
                             stateful_response_continuation,
-                            previous_response_id.clone(),
                             &mut llm_messages_for_call,
                             &mut llm_config,
                         )
