@@ -69,16 +69,10 @@ impl Command for CreateMessage {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Session"))?;
-        let session_row = ctx
-            .db
-            .get_session(ctx.org_id(), session_id)
-            .await
-            .map_err(classify_anyhow)?
-            .ok_or_else(|| CommandError::not_found("Session"))?;
         let responder_agent_id = resolve_responder_agent_id(
             ctx,
             session_id,
-            session_row.agent_id,
+            session.agent_id,
             req.addressed_participant_id,
         )
         .await?;
@@ -146,7 +140,16 @@ async fn resolve_responder_agent_id(
         ));
     }
 
-    Ok(Some(agent_id))
+    let public_id = ctx
+        .db
+        .get_agent_public_id(ctx.org_id(), agent_id)
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::internal(anyhow::anyhow!("participant agent not found")))?
+        .parse::<AgentId>()
+        .map_err(|err| CommandError::internal(anyhow::anyhow!(err)))?;
+
+    Ok(Some(public_id))
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -616,7 +619,16 @@ mod tests {
             .expect("create message");
 
         wait_for_runner_calls(&fixture.runner, 1).await;
-        assert_eq!(fixture.runner.calls(), vec![Some(fixture.host_agent.id)]);
+        assert_eq!(
+            fixture.runner.calls(),
+            vec![Some(
+                fixture
+                    .host_agent
+                    .public_id
+                    .parse()
+                    .expect("host public id")
+            )]
+        );
     }
 
     #[tokio::test]
@@ -629,7 +641,16 @@ mod tests {
             .expect("create message");
 
         wait_for_runner_calls(&fixture.runner, 1).await;
-        assert_eq!(fixture.runner.calls(), vec![Some(fixture.guest_agent.id)]);
+        assert_eq!(
+            fixture.runner.calls(),
+            vec![Some(
+                fixture
+                    .guest_agent
+                    .public_id
+                    .parse()
+                    .expect("guest public id")
+            )]
+        );
     }
 
     #[tokio::test]
