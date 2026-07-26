@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.17] - 2026-07-25
+
+### Highlights
+
+- **Claude Opus 5** - Adds model support and makes it the platform default ([#2885](https://github.com/everruns/everruns/pull/2885)).
+- **Tool narration** - Adds narration for session and built-in tool activity ([#2878](https://github.com/everruns/everruns/pull/2878)).
+- **Security and reliability fixes** - Hardens prompt rewriting, MCP OAuth grants, provider bindings, secret redaction, and signup URLs ([#2876](https://github.com/everruns/everruns/pull/2876), [#2877](https://github.com/everruns/everruns/pull/2877), [#2879](https://github.com/everruns/everruns/pull/2879), [#2880](https://github.com/everruns/everruns/pull/2880), [#2882](https://github.com/everruns/everruns/pull/2882)).
+- **Citations by default** - Enables citations in the generic harness ([#2865](https://github.com/everruns/everruns/pull/2865)).
+
+### What's Changed
+
+- chore(deps): bump fast-uri to 3.1.4 in apps/docs ([#2889](https://github.com/everruns/everruns/pull/2889)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump vulnerable ui transitive deps ([#2888](https://github.com/everruns/everruns/pull/2888)) by [@chaliy](https://github.com/chaliy)
+- chore(specs): remove duplicated implementation detail ([#2887](https://github.com/everruns/everruns/pull/2887)) by [@chaliy](https://github.com/chaliy)
+- chore(agents): apply Claude 5 context engineering to agent docs ([#2886](https://github.com/everruns/everruns/pull/2886)) by [@chaliy](https://github.com/chaliy)
+- feat(models): add Claude Opus 5 and make it the platform default ([#2885](https://github.com/everruns/everruns/pull/2885)) by [@chaliy](https://github.com/chaliy)
+- feat(core): add tool narration for session and built-in tools ([#2878](https://github.com/everruns/everruns/pull/2878)) by [@chaliy](https://github.com/chaliy)
+- fix(runtime): prevent prompt rewrite history bypass ([#2876](https://github.com/everruns/everruns/pull/2876)) by [@chaliy](https://github.com/chaliy)
+- fix(evals): redact structured dataset secrets ([#2880](https://github.com/everruns/everruns/pull/2880)) by [@chaliy](https://github.com/chaliy)
+- fix(server): bind MCP OAuth grants to provider authority ([#2877](https://github.com/everruns/everruns/pull/2877)) by [@chaliy](https://github.com/chaliy)
+- fix(session-tasks): preserve root session on updates ([#2884](https://github.com/everruns/everruns/pull/2884)) by [@chaliy](https://github.com/chaliy)
+- fix(providers): reject disabled service bindings ([#2879](https://github.com/everruns/everruns/pull/2879)) by [@chaliy](https://github.com/chaliy)
+- fix(runtime): preserve literal workspace display paths ([#2883](https://github.com/everruns/everruns/pull/2883)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): keep signup email out of urls ([#2882](https://github.com/everruns/everruns/pull/2882)) by [@chaliy](https://github.com/chaliy)
+- fix(cli): truncate table cells on UTF-8 boundaries ([#2881](https://github.com/everruns/everruns/pull/2881)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): upgrade docs and security tooling ([`80a0085`](https://github.com/everruns/everruns/commit/80a0085e53a8a9c26090481506d5bce703f3cccd))
+- chore(deps): bump next from 16.2.10 to 16.2.11 in apps/ui ([#2874](https://github.com/everruns/everruns/pull/2874)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump the npm_and_yarn group across 1 directory with 2 updates ([#2871](https://github.com/everruns/everruns/pull/2871)) by [@app/dependabot](https://github.com/apps/dependabot)
+- feat(harness): enable citations by default in the generic harness ([#2865](https://github.com/everruns/everruns/pull/2865)) by [@chaliy](https://github.com/chaliy)
+
+
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
 ## [0.17.16] - 2026-07-22
