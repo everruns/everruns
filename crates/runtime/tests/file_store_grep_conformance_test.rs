@@ -133,14 +133,44 @@ async fn assert_regex_contract(store: Arc<dyn SessionFileSystem>) {
     );
 }
 
+async fn assert_grep_limits(store: Arc<dyn SessionFileSystem>) {
+    let session = SessionId::from_seed(777);
+    let error = store
+        .grep_files(session, &"a".repeat(1_001), None)
+        .await
+        .expect_err("oversized regex must fail before scanning");
+    assert!(error.to_string().contains("Regex pattern too long"));
+
+    let error = store
+        .grep_files(session, "needle", Some(&"a".repeat(1_001)))
+        .await
+        .expect_err("oversized path pattern must fail before scanning");
+    assert!(error.to_string().contains("Path pattern too long"));
+
+    store
+        .write_file(session, "/large.txt", &"needle".repeat(100_000), "text")
+        .await
+        .unwrap();
+    assert!(
+        store
+            .grep_files(session, "needle", None)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}
+
 #[tokio::test]
 async fn in_memory_store_honors_grep_regex_contract() {
-    assert_regex_contract(Arc::new(InMemorySessionFileStore::new())).await;
+    let store = Arc::new(InMemorySessionFileStore::new());
+    assert_regex_contract(store.clone()).await;
+    assert_grep_limits(store).await;
 }
 
 #[tokio::test]
 async fn real_disk_store_honors_grep_regex_contract() {
     let root = TempDir::new().unwrap();
     let store = Arc::new(RealDiskFileStore::new(root.path()).unwrap());
-    assert_regex_contract(store).await;
+    assert_regex_contract(store.clone()).await;
+    assert_grep_limits(store).await;
 }

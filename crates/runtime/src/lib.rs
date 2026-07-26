@@ -100,6 +100,7 @@
 mod backends;
 mod builders;
 mod file_store_decorators;
+mod grep_limits;
 mod host;
 mod in_memory;
 mod mcp;
