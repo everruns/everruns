@@ -3842,7 +3842,7 @@ async fn test_user_preferences_crud_and_isolation() {
 
     // Set creates the row.
     let created = db
-        .set_user_preference(user_a, "theme", "\"dark\"")
+        .set_user_preference(user_a, "theme", "\"dark\"", 100)
         .await
         .unwrap();
     assert_eq!(created.key, "theme");
@@ -3850,17 +3850,28 @@ async fn test_user_preferences_crud_and_isolation() {
 
     // Set again upserts (updates value, keeps identity, no duplicate row).
     let updated = db
-        .set_user_preference(user_a, "theme", "\"light\"")
+        .set_user_preference(user_a, "theme", "\"light\"", 100)
         .await
         .unwrap();
     assert_eq!(updated.id, created.id, "upsert must reuse the same row");
     assert_eq!(updated.value, "\"light\"");
-    assert_eq!(db.list_user_preferences(user_a).await.unwrap().len(), 1);
+    assert_eq!(
+        db.list_user_preferences(user_a, 100).await.unwrap().len(),
+        1
+    );
 
     // Preferences are isolated per user.
-    db.set_user_preference(user_b, "theme", "\"system\"")
+    db.set_user_preference(user_b, "theme", "\"system\"", 100)
         .await
         .unwrap();
+    let quota_error = db
+        .set_user_preference(user_b, "locale", "\"en\"", 1)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        quota_error.to_string(),
+        super::super::backend::USER_PREFERENCE_LIMIT_EXCEEDED
+    );
     assert_eq!(
         db.get_user_preference(user_a, "theme")
             .await
@@ -3869,7 +3880,10 @@ async fn test_user_preferences_crud_and_isolation() {
             .value,
         "\"light\""
     );
-    assert_eq!(db.list_user_preferences(user_b).await.unwrap().len(), 1);
+    assert_eq!(
+        db.list_user_preferences(user_b, 100).await.unwrap().len(),
+        1
+    );
 
     // Delete removes only the targeted key and reports whether a row was hit.
     assert!(db.delete_user_preference(user_a, "theme").await.unwrap());
@@ -3881,7 +3895,10 @@ async fn test_user_preferences_crud_and_isolation() {
             .is_none()
     );
     // user_b is unaffected by user_a's delete.
-    assert_eq!(db.list_user_preferences(user_b).await.unwrap().len(), 1);
+    assert_eq!(
+        db.list_user_preferences(user_b, 100).await.unwrap().len(),
+        1
+    );
 }
 
 // Account linking: signing in with an OAuth provider whose verified email

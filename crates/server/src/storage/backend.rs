@@ -15,6 +15,8 @@ use everruns_core::typed_id::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
+pub const USER_PREFERENCE_LIMIT_EXCEEDED: &str = "user preference limit exceeded";
+
 use super::memory::InMemoryDatabase;
 use super::models::*;
 use super::reporting::models::ReportingOutboxRow;
@@ -3290,8 +3292,12 @@ impl StorageBackend {
         dispatch!(self, delete_user_connection, user_id, provider)
     }
 
-    pub async fn list_user_preferences(&self, user_id: Uuid) -> Result<Vec<UserPreferenceRow>> {
-        dispatch!(self, list_user_preferences, user_id)
+    pub async fn list_user_preferences(
+        &self,
+        user_id: Uuid,
+        limit: usize,
+    ) -> Result<Vec<UserPreferenceRow>> {
+        dispatch!(self, list_user_preferences, user_id, limit)
     }
 
     pub async fn get_user_preference(
@@ -3307,8 +3313,16 @@ impl StorageBackend {
         user_id: Uuid,
         key: &str,
         value: &str,
+        max_preferences: usize,
     ) -> Result<UserPreferenceRow> {
-        dispatch!(self, set_user_preference, user_id, key, value)
+        dispatch!(
+            self,
+            set_user_preference,
+            user_id,
+            key,
+            value,
+            max_preferences
+        )
     }
 
     pub async fn delete_user_preference(&self, user_id: Uuid, key: &str) -> Result<bool> {

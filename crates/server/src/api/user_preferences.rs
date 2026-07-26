@@ -7,7 +7,7 @@
 // flag).
 
 use crate::auth::middleware::{AuthState, AuthUser};
-use crate::storage::StorageBackend;
+use crate::storage::{StorageBackend, backend::USER_PREFERENCE_LIMIT_EXCEEDED};
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -21,6 +21,19 @@ use utoipa::ToSchema;
 
 use super::common::impl_auth_state;
 use crate::storage::models::UserPreferenceRow;
+
+const MAX_PREFERENCES_PER_USER: usize = 100;
+const MAX_PREFERENCE_VALUE_BYTES: usize = 4 * 1024;
+
+fn validate_preference(key: &str, value: &str) -> Result<(), StatusCode> {
+    if key.is_empty() || key.len() > 255 {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+    if value.len() > MAX_PREFERENCE_VALUE_BYTES {
+        return Err(StatusCode::PAYLOAD_TOO_LARGE);
+    }
+    Ok(())
+}
 
 /// App state for user preference routes.
 #[derive(Clone)]
@@ -82,10 +95,14 @@ pub async fn list_preferences(
     State(state): State<AppState>,
     auth: AuthUser,
 ) -> Result<Json<Vec<PreferenceResponse>>, StatusCode> {
-    let rows = state.db.list_user_preferences(auth.id).await.map_err(|e| {
-        tracing::error!("Failed to list user preferences: {}", e);
-        StatusCode::INTERNAL_SERVER_ERROR
-    })?;
+    let rows = state
+        .db
+        .list_user_preferences(auth.id, MAX_PREFERENCES_PER_USER)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to list user preferences: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
 
     Ok(Json(rows.into_iter().map(row_to_response).collect()))
 }
@@ -121,11 +138,16 @@ pub async fn set_preference(
         StatusCode::BAD_REQUEST
     })?;
 
+    validate_preference(&key, &serialized)?;
+
     let row = state
         .db
-        .set_user_preference(auth.id, &key, &serialized)
+        .set_user_preference(auth.id, &key, &serialized, MAX_PREFERENCES_PER_USER)
         .await
         .map_err(|e| {
+            if e.to_string() == USER_PREFERENCE_LIMIT_EXCEEDED {
+                return StatusCode::CONFLICT;
+            }
             tracing::error!("Failed to set user preference: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
@@ -152,5 +174,27 @@ pub async fn delete_preference(
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(StatusCode::NOT_FOUND)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn validates_preference_key_and_value_limits() {
+        assert_eq!(
+            validate_preference("", "true"),
+            Err(StatusCode::BAD_REQUEST)
+        );
+        assert_eq!(
+            validate_preference(&"k".repeat(256), "true"),
+            Err(StatusCode::BAD_REQUEST)
+        );
+        assert!(validate_preference("key", &"x".repeat(4096)).is_ok());
+        assert_eq!(
+            validate_preference("key", &"x".repeat(4097)),
+            Err(StatusCode::PAYLOAD_TOO_LARGE)
+        );
     }
 }
