@@ -305,6 +305,7 @@ pub struct AppState {
     pub budget_service: Arc<BudgetService>,
     pub runner: Arc<dyn AgentRunner>,
     pub auth: AuthState,
+    pub org_rate_limiter: crate::auth::rate_limit::OrgRateLimiter,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
     pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub fallback_base_harness_name: Option<String>,
@@ -364,6 +365,7 @@ impl AppState {
             db,
             runner,
             auth,
+            org_rate_limiter: crate::auth::rate_limit::OrgRateLimiter::default(),
             encryption,
             workflow_store,
             fallback_base_harness_name: platform_definition
@@ -388,6 +390,14 @@ impl AppState {
 
     pub fn with_resource_metadata_url(mut self, url: impl Into<String>) -> Self {
         self.resource_metadata_url = Some(url.into());
+        self
+    }
+
+    pub fn with_org_rate_limiter(
+        mut self,
+        limiter: crate::auth::rate_limit::OrgRateLimiter,
+    ) -> Self {
+        self.org_rate_limiter = limiter;
         self
     }
 
@@ -764,6 +774,7 @@ fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
         state.auth.permission_resolver.clone(),
     )
     .with_feature_flags(org.feature_flags.clone())
+    .with_org_rate_limiter(state.org_rate_limiter.clone())
     .with_utility_llm_service(state.utility_llm_service.clone());
     if let Some(service) = &state.health_check_service {
         ctx = ctx.with_health_check_service(service.clone());

@@ -62,6 +62,7 @@ impl CatalogContext {
             self.state.encryption.clone(),
             self.state.auth.permission_resolver.clone(),
         )
+        .with_org_rate_limiter(self.state.org_rate_limiter.clone())
         .with_session_service(self.state.session_service.clone())
         .with_message_service(self.state.message_service.clone())
         .with_event_service(self.state.event_service.clone())

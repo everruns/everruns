@@ -1382,6 +1382,7 @@ impl ServerAppBuilder {
             capability_service.clone(),
             Some(sqldb_store.clone()),
         )
+        .with_org_rate_limiter(org_rate_limiter.clone())
         .with_virtual_registry(virtual_registry.clone())
         .with_resource_metadata_url(mcp_resource_metadata_url)
         .with_mcp_resource(mcp_resource);

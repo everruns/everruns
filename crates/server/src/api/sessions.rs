@@ -441,6 +441,7 @@ impl AppState {
         .with_fallback_harness_name(self.fallback_default_harness_name.clone())
         .with_chat_harness_name(self.chat_harness_name.clone())
         .with_chat_session_title(self.chat_session_title.clone())
+        .with_org_rate_limiter(self.org_rate_limiter.clone())
     }
 }
 
@@ -569,7 +570,6 @@ pub async fn create_session(
     State(state): State<AppState>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Session>>), (StatusCode, Json<ErrorResponse>)> {
-    check_session_create_rate_limit(&state, org.org_id).await?;
     let mut req = req;
     strip_internal_only_fields(&mut req);
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
@@ -626,7 +626,8 @@ pub async fn fork_session(
             .map_err(|e| crate::domains::common::CommandError::forbidden(e.message))?;
     }
 
-    check_session_create_rate_limit(&state, org.org_id).await?;
+    // Per-org session-create throttle is enforced inside `ForkSession::execute`
+    // (shared across REST and MCP dispatch), so no separate pre-check here.
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     let session = ForkSession {
@@ -637,27 +638,6 @@ pub async fn fork_session(
     .await?;
 
     Ok((StatusCode::CREATED, Json(urls.wrap(session))))
-}
-
-async fn check_session_create_rate_limit(
-    state: &AppState,
-    org_id: i64,
-) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    if state
-        .org_rate_limiter
-        .check_session_create(org_id)
-        .await
-        .is_err()
-    {
-        return Err(
-            ErrorResponse::new("Too many requests. Please try again later.")
-                .with_code("rate_limited")
-                .with_retry_after(60)
-                .into_response(StatusCode::TOO_MANY_REQUESTS),
-        );
-    }
-
-    Ok(())
 }
 
 /// Guard the Platform Chat feature behind the org-effective `global_chat` flag.
