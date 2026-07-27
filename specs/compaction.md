@@ -101,11 +101,11 @@ message/tool pruning over them. The next matching provider request uses that
 array directly as `input`; `previous_response_id` is cleared because the
 standalone checkpoint replaces the earlier server-side continuation chain.
 
-The compact request itself uses exactly one source of conversation context. A
-stateful Responses continuation sends `previous_response_id` with empty
-`input`. A stateless request sends reconstructed `input` without
-`previous_response_id`. System instructions remain a separate request field in
-both cases.
+The compact request itself uses reconstructed standalone `input` without
+`previous_response_id`, including for a stateful Responses continuation. This
+preserves the fresh request delta when the retry replaces the server-side
+continuation chain with the compact output. System instructions remain a
+separate request field.
 
 Opaque compact content is provider transport state, not a public event payload.
 Compaction events expose counts, strategy, duration, and usage metadata only.
@@ -114,7 +114,8 @@ Stateful `previous_response_id` requests are deltas over provider-held context.
 The reconstructed lossless transcript is therefore not a valid local pressure
 measurement for proactive policy. In the absence of authoritative provider
 usage for that server-side context, the runtime skips local proactive
-compaction and retains reactive `RequestTooLarge` recovery by stateful handle.
+compaction and retains reactive `RequestTooLarge` recovery using reconstructed
+standalone input.
 
 Observation masking remains a model-view cost optimization. It may reduce an
 outbound request without replacing semantic history, and by itself does not

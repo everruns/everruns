@@ -916,11 +916,14 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
         .await
         .clone()
         .expect("compact request should be captured");
-    assert!(compact_request.input.is_empty());
-    assert_eq!(
-        compact_request.previous_response_id.as_deref(),
-        Some("resp_before_compaction")
-    );
+    assert!(compact_request.previous_response_id.is_none());
+    assert_eq!(compact_request.input.len(), 1);
+    assert!(matches!(
+        &compact_request.input[0],
+        everruns_core::CompactInputItem::Message { role, content }
+            if role == "user"
+                && matches!(content, everruns_core::CompactContent::Text(text) if text == "latest delta")
+    ));
 
     let public_events = serde_json::to_string(&event_emitter.events().await).unwrap();
     assert!(!public_events.contains("encrypted-compact-context"));
