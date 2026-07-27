@@ -326,7 +326,9 @@ The following behaviors hold across all implementations:
 5. **`grep_files`** searches text files only. The content `pattern` uses Rust
    [`regex`](https://docs.rs/regex) syntax and is compiled once before scanning;
    an invalid pattern returns an explicit error. Implementations are free to
-   skip binary content, oversized files, and explicitly excluded directories.
+   skip binary content and explicitly excluded directories. All implementations
+   cap content and path patterns at 1,000 bytes, compiled regex size at 512 KiB,
+   skip files above 512 KiB, and reject scans exceeding 5 MiB in total.
    `path_pattern` filters canonical workspace paths using globs:
    `*` and `?` match within one path segment, `**` crosses directories, and
    bracket classes and brace alternation are supported. A basename-only glob

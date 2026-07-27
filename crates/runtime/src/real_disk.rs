@@ -22,7 +22,6 @@ use everruns_core::traits::{
 use everruns_core::typed_id::SessionId;
 use everruns_core::{MountFs, WorkspaceRootSet};
 use ignore::WalkBuilder;
-use regex::Regex;
 use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -519,8 +518,8 @@ impl SessionFileSystem for RealDiskFileStore {
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
         let root = self.root();
-        let regex = Regex::new(pattern)
-            .map_err(|error| AgentLoopError::tool(format!("Invalid regex pattern: {error}")))?;
+        let regex = crate::grep_limits::build_regex(pattern)?;
+        crate::grep_limits::validate_path_pattern(path_pattern)?;
         let path_pattern = match path_pattern {
             Some(path) => Some(everruns_core::session_path::GrepPathPattern::new(
                 self.paths.parse_input(path)?.as_relative(),
@@ -533,6 +532,7 @@ impl SessionFileSystem for RealDiskFileStore {
         // block the executor on large trees.
         tokio::task::spawn_blocking(move || -> Result<Vec<GrepMatch>> {
             let mut out = Vec::new();
+            let mut total_scanned = 0;
             let walker = WalkBuilder::new(&root)
                 .hidden(false)
                 .git_ignore(true)
@@ -584,6 +584,15 @@ impl SessionFileSystem for RealDiskFileStore {
                 {
                     continue;
                 }
+                let Ok(metadata) = entry.metadata() else {
+                    continue;
+                };
+                let Ok(file_bytes) = usize::try_from(metadata.len()) else {
+                    continue;
+                };
+                if !crate::grep_limits::account_scan(&mut total_scanned, file_bytes)? {
+                    continue;
+                }
                 let bytes = match std::fs::read(path) {
                     Ok(b) => b,
                     Err(_) => continue,
@@ -619,8 +628,8 @@ impl SessionFileSystem for RealDiskFileStore {
         options: &GrepOptions,
     ) -> Result<GrepSearchResult> {
         let root = self.root();
-        let regex = Regex::new(pattern)
-            .map_err(|error| AgentLoopError::tool(format!("Invalid regex pattern: {error}")))?;
+        let regex = crate::grep_limits::build_regex(pattern)?;
+        crate::grep_limits::validate_path_pattern(options.path_pattern.as_deref())?;
         let path_pattern = match options.path_pattern.as_deref() {
             Some(path) => Some(everruns_core::session_path::GrepPathPattern::new(
                 self.paths.parse_input(path)?.as_relative(),
@@ -631,6 +640,7 @@ impl SessionFileSystem for RealDiskFileStore {
 
         tokio::task::spawn_blocking(move || -> Result<GrepSearchResult> {
             let mut text_files = Vec::new();
+            let mut total_scanned = 0;
             let walker = WalkBuilder::new(&root)
                 .hidden(false)
                 .git_ignore(true)
@@ -652,6 +662,15 @@ impl SessionFileSystem for RealDiskFileStore {
                     .as_ref()
                     .is_some_and(|matcher| !matcher.is_match(&rel_str))
                 {
+                    continue;
+                }
+                let Ok(metadata) = entry.metadata() else {
+                    continue;
+                };
+                let Ok(file_bytes) = usize::try_from(metadata.len()) else {
+                    continue;
+                };
+                if !crate::grep_limits::account_scan(&mut total_scanned, file_bytes)? {
                     continue;
                 }
                 let Ok(bytes) = std::fs::read(entry.path()) else {
