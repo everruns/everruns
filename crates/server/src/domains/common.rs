@@ -317,6 +317,10 @@ pub struct Ctx {
     pub feature_flags: FeatureFlags,
     pub capability_service: Arc<crate::services::CapabilityService>,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
+    /// Cross-transport resource-creation throttles. Commands that enforce a
+    /// throttle use this shared instance so HTTP, MCP, and other adapters
+    /// consume the same bucket.
+    pub org_rate_limiter: Option<crate::auth::rate_limit::OrgRateLimiter>,
     pub session_service: Option<Arc<crate::domains::sessions::SessionService>>,
     pub message_service: Option<Arc<crate::domains::messages::MessageService>>,
     pub event_service: Option<Arc<crate::services::EventService>>,
@@ -381,6 +385,7 @@ impl Ctx {
             feature_flags: FeatureFlags::current(),
             capability_service,
             encryption,
+            org_rate_limiter: None,
             session_service: None,
             message_service: None,
             event_service: None,
@@ -445,6 +450,14 @@ impl Ctx {
 
     pub fn with_feature_flags(mut self, feature_flags: FeatureFlags) -> Self {
         self.feature_flags = feature_flags;
+        self
+    }
+
+    pub fn with_org_rate_limiter(
+        mut self,
+        limiter: crate::auth::rate_limit::OrgRateLimiter,
+    ) -> Self {
+        self.org_rate_limiter = Some(limiter);
         self
     }
 

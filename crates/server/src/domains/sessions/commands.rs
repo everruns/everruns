@@ -71,6 +71,16 @@ impl Command for CreateSession {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Session, CommandError> {
+        if let Some(limiter) = &ctx.org_rate_limiter
+            && limiter.check_session_create(ctx.org_id()).await.is_err()
+        {
+            return Err(
+                CommandError::rate_limited("Too many requests. Please try again later.")
+                    .with_code("rate_limited")
+                    .with_retry_after(60),
+            );
+        }
+
         let mut req = self.0;
         req.locale =
             crate::api::validation::normalize_locale(req.locale).map_err(limit_validation_error)?;
@@ -491,6 +501,21 @@ impl Command for ForkSession {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Session, CommandError> {
+        // Fork creates a new session (and deep-copies parent state), so it
+        // shares the same per-org velocity bucket as CreateSession. Enforce it
+        // here in the transport-independent command so MCP/inventory dispatch
+        // cannot bypass the limit the REST handler previously enforced alone
+        // (TM-DOS-016).
+        if let Some(limiter) = &ctx.org_rate_limiter
+            && limiter.check_session_create(ctx.org_id()).await.is_err()
+        {
+            return Err(
+                CommandError::rate_limited("Too many requests. Please try again later.")
+                    .with_code("rate_limited")
+                    .with_retry_after(60),
+            );
+        }
+
         let parent_id = q::parse_session_id(&self.session_id)?;
 
         // Existence + active-status checks here so callers get precise HTTP
@@ -845,6 +870,52 @@ mod tests {
         .await
         .expect("seed harness")
         .id
+    }
+
+    #[tokio::test]
+    async fn create_session_enforces_shared_org_rate_limit() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let limiter = crate::auth::rate_limit::OrgRateLimiter::for_test_with_session_rpm(1);
+        limiter
+            .check_session_create(DEFAULT_ORG_ID)
+            .await
+            .expect("initial permit");
+        let ctx = test_ctx(db, 100).with_org_rate_limiter(limiter);
+
+        let err = CreateSession(create_request(HarnessId::new()))
+            .execute(&ctx)
+            .await
+            .expect_err("exhausted per-org bucket must reject command dispatch");
+
+        assert!(matches!(err.kind, CommandErrorKind::RateLimited(_)));
+        assert_eq!(err.code.as_deref(), Some("rate_limited"));
+        assert_eq!(err.retry_after_seconds, Some(60));
+    }
+
+    #[tokio::test]
+    async fn fork_session_enforces_shared_org_rate_limit() {
+        // Fork must consume the same per-org bucket as create so MCP dispatch
+        // cannot bypass it. The limiter is checked before parent lookup, so an
+        // exhausted bucket rejects the fork regardless of the parent id.
+        let db = Arc::new(StorageBackend::in_memory());
+        let limiter = crate::auth::rate_limit::OrgRateLimiter::for_test_with_session_rpm(1);
+        limiter
+            .check_session_create(DEFAULT_ORG_ID)
+            .await
+            .expect("initial permit");
+        let ctx = test_ctx(db, 100).with_org_rate_limiter(limiter);
+
+        let err = ForkSession {
+            session_id: SessionId::new().to_string(),
+            overrides: Default::default(),
+        }
+        .execute(&ctx)
+        .await
+        .expect_err("exhausted per-org bucket must reject fork dispatch");
+
+        assert!(matches!(err.kind, CommandErrorKind::RateLimited(_)));
+        assert_eq!(err.code.as_deref(), Some("rate_limited"));
+        assert_eq!(err.retry_after_seconds, Some(60));
     }
 
     // Minimal runner whose `cancel_run` succeeds without a real durable backend,
