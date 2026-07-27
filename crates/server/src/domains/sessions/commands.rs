@@ -872,6 +872,33 @@ mod tests {
         .id
     }
 
+    async fn chat_test_ctx(session_rpm: u32) -> (Ctx, crate::auth::rate_limit::OrgRateLimiter) {
+        let db = Arc::new(StorageBackend::in_memory());
+        crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+            .await
+            .expect("initialize built-in harnesses");
+        let user = db
+            .create_user(crate::storage::models::CreateUserRow {
+                email: format!("chat-owner-{}@example.com", Uuid::now_v7()),
+                name: "Chat Owner".to_string(),
+                avatar_url: None,
+                roles: vec!["user".to_string()],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: None,
+                auth_provider_id: None,
+                external_id: None,
+            })
+            .await
+            .expect("create chat owner");
+        let limiter =
+            crate::auth::rate_limit::OrgRateLimiter::for_test_with_session_rpm(session_rpm);
+        let ctx = external_test_ctx(db, user.id)
+            .with_chat_harness_name(Some("platform-chat".to_string()))
+            .with_org_rate_limiter(limiter.clone());
+        (ctx, limiter)
+    }
+
     #[tokio::test]
     async fn create_session_enforces_shared_org_rate_limit() {
         let db = Arc::new(StorageBackend::in_memory());
@@ -916,6 +943,48 @@ mod tests {
         assert!(matches!(err.kind, CommandErrorKind::RateLimited(_)));
         assert_eq!(err.code.as_deref(), Some("rate_limited"));
         assert_eq!(err.retry_after_seconds, Some(60));
+    }
+
+    #[tokio::test]
+    async fn get_or_create_chat_session_enforces_rate_limit_when_creating() {
+        let (ctx, limiter) = chat_test_ctx(1).await;
+        limiter
+            .check_session_create(DEFAULT_ORG_ID)
+            .await
+            .expect("initial permit");
+
+        let err = GetOrCreateChatSession { locale: None }
+            .execute(&ctx)
+            .await
+            .expect_err("exhausted per-org bucket must reject chat session creation");
+
+        assert!(
+            matches!(err.kind, CommandErrorKind::RateLimited(_)),
+            "unexpected error: {err:?}"
+        );
+        assert_eq!(err.code.as_deref(), Some("rate_limited"));
+        assert_eq!(err.retry_after_seconds, Some(60));
+    }
+
+    #[tokio::test]
+    async fn get_or_create_chat_session_reuse_does_not_consume_rate_limit() {
+        let (ctx, limiter) = chat_test_ctx(1).await;
+
+        let created = GetOrCreateChatSession { locale: None }
+            .execute(&ctx)
+            .await
+            .expect("first request creates within the available permit");
+        assert!(
+            limiter.check_session_create(DEFAULT_ORG_ID).await.is_err(),
+            "create branch must consume the shared bucket"
+        );
+
+        let reused = GetOrCreateChatSession { locale: None }
+            .execute(&ctx)
+            .await
+            .expect("reuse must not check or consume the exhausted bucket");
+
+        assert_eq!(reused.id, created.id);
     }
 
     // Minimal runner whose `cancel_run` succeeds without a real durable backend,
@@ -1495,9 +1564,23 @@ impl Command for GetOrCreateChatSession {
             .unwrap_or(chat_harness_name.as_str());
 
         q::session_service(ctx)?
-            .get_or_create_chat_session(&ctx.caller, user_id, chat_harness_id.uuid(), title, locale)
+            .get_or_create_chat_session(
+                &ctx.caller,
+                user_id,
+                chat_harness_id.uuid(),
+                title,
+                locale,
+                ctx.org_rate_limiter.as_ref(),
+            )
             .await
-            .map_err(classify_anyhow)
+            .map_err(|error| match error {
+                super::service::GetOrCreateChatSessionError::RateLimited => {
+                    CommandError::rate_limited("Too many requests. Please try again later.")
+                        .with_code("rate_limited")
+                        .with_retry_after(60)
+                }
+                super::service::GetOrCreateChatSessionError::Other(error) => classify_anyhow(error),
+            })
     }
 }
 

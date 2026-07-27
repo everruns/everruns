@@ -7,6 +7,7 @@
 // (additive behavior).
 
 use crate::api::common::Pagination;
+use crate::auth::rate_limit::OrgRateLimiter;
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
 use crate::domains::session_files::{CreateFileInput, WorkspaceFileService};
 use crate::domains::session_sandbox::SessionSandboxService;
@@ -85,6 +86,14 @@ pub struct SessionStats {
     pub idle: u32,
     pub started: u32,
     pub waiting_for_tool_results: u32,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum GetOrCreateChatSessionError {
+    #[error("chat session creation rate limit exceeded")]
+    RateLimited,
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }
 
 pub struct SessionService {
@@ -1711,7 +1720,8 @@ impl SessionService {
         harness_id: Uuid,
         title: &str,
         locale: Option<String>,
-    ) -> Result<Session> {
+        org_rate_limiter: Option<&OrgRateLimiter>,
+    ) -> std::result::Result<Session, GetOrCreateChatSessionError> {
         let org_id = caller.org_id;
         let org_public_id = &caller.org_public_id;
         let user_tag = format!("user:{}", user_id);
@@ -1778,6 +1788,15 @@ impl SessionService {
             self.populate_features(caller.org_id, &mut session).await?;
             self.resolve_session_agent_id(org_id, &mut session).await?;
             return Ok(session);
+        }
+
+        // THREAT[TM-DOS-016]: Only a cache miss creates a resource. Charge the
+        // shared per-org session bucket here so transport-independent callers
+        // are covered without throttling ordinary global-chat reuse.
+        if let Some(limiter) = org_rate_limiter
+            && limiter.check_session_create(org_id).await.is_err()
+        {
+            return Err(GetOrCreateChatSessionError::RateLimited);
         }
 
         // Create a new chat session
