@@ -253,7 +253,8 @@ pub use file_system::{
 pub use guardrails::{GUARDRAILS_CAPABILITY_ID, GuardrailsCapability};
 pub use human_intent::{HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability};
 pub use infinity_context::{
-    INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, QueryHistoryTool,
+    INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, InfinityContextFilterOnlyCapability,
+    QueryHistoryTool,
 };
 pub use knowledge_base::{
     KNOWLEDGE_BASE_CAPABILITY_ID, KnowledgeBaseCapability, KnowledgeBaseConfig,

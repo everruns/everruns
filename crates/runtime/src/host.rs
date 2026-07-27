@@ -1262,7 +1262,11 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
 
     let mut reason_capability_registry = adapter.capability_registry();
     if !query_history_allowed {
-        reason_capability_registry.unregister("infinity_context");
+        // Keep Infinity Context's message filter active: persisted history may
+        // contain raw text removed by earlier prompt hooks. Replace only its
+        // model-visible prompt/tool contributions.
+        reason_capability_registry
+            .register(everruns_core::capabilities::InfinityContextFilterOnlyCapability);
     }
     let mut atom = ReasonAtom::new(
         adapter.harness_store(org_id),

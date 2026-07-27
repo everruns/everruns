@@ -222,7 +222,9 @@ turns. When a `user_prompt_submit` hook is configured, the runtime does not
 expose `query_history`: persisted messages are immutable audit records and can
 contain text that the hook removed from the provider-visible prompt. This
 fail-closed boundary remains necessary until provider-visible history has a
-separate durable representation.
+separate durable representation. Infinity Context's prompt-window filter stays
+active in this mode so earlier raw audit messages remain outside the live
+provider context.
 
 ```json
 {

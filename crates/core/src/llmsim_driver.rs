@@ -55,6 +55,12 @@ pub struct LlmSimConfig {
     /// in `LlmCallConfig`, in call order. Tests use this to assert that a
     /// mid-turn effort change is observed by subsequent LLM steps.
     pub effort_capture: Option<Arc<std::sync::Mutex<Vec<Option<String>>>>>,
+    /// Optional capture sink for the provider-visible messages of each call.
+    /// When set, every `chat_completion_stream` call appends the exact
+    /// `LlmMessage` slice it received, in call order. Tests use this to assert
+    /// which messages actually reach the provider after context assembly and
+    /// message filtering (e.g. Infinity Context history trimming).
+    pub message_capture: Option<Arc<std::sync::Mutex<Vec<Vec<LlmMessage>>>>>,
 }
 
 impl Default for LlmSimConfig {
@@ -67,6 +73,7 @@ impl Default for LlmSimConfig {
             response_delay: None,
             response_id: None,
             effort_capture: None,
+            message_capture: None,
         }
     }
 }
@@ -168,6 +175,17 @@ impl LlmSimConfig {
         capture: Arc<std::sync::Mutex<Vec<Option<String>>>>,
     ) -> Self {
         self.effort_capture = Some(capture);
+        self
+    }
+
+    /// Set a shared capture sink for the provider-visible messages of each call.
+    /// Every `chat_completion_stream` call appends the exact `LlmMessage` slice
+    /// it received, in call order.
+    pub fn with_message_capture(
+        mut self,
+        capture: Arc<std::sync::Mutex<Vec<Vec<LlmMessage>>>>,
+    ) -> Self {
+        self.message_capture = Some(capture);
         self
     }
 
@@ -620,6 +638,14 @@ impl ChatDriver for LlmSimDriver {
             && let Ok(mut efforts) = capture.lock()
         {
             efforts.push(config.reasoning_effort.clone());
+        }
+
+        // Record the provider-visible messages for tests. Captured before any
+        // error short-circuit so even error turns are observable.
+        if let Some(capture) = &self.config.message_capture
+            && let Ok(mut calls) = capture.lock()
+        {
+            calls.push(messages.clone());
         }
 
         // Check for error configs first
@@ -1373,6 +1399,7 @@ mod tests {
             response_delay: None,
             response_id: None,
             effort_capture: None,
+            message_capture: None,
         };
 
         let driver = LlmSimDriver::new(config);
@@ -1472,6 +1499,7 @@ mod tests {
             response_delay: None,
             response_id: None,
             effort_capture: None,
+            message_capture: None,
         };
 
         let driver = LlmSimDriver::new(config);
