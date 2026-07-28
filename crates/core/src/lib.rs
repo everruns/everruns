@@ -488,8 +488,8 @@ pub use leased_resource::{
 };
 pub use mcp_proxy::{McpProxyTool, McpToolInvoker, ScopedMcpToolInvoker, build_mcp_proxy_tools};
 pub use mcp_server::{
-    MCP_PROTOCOL_VERSION_LEGACY, MCP_PROTOCOL_VERSION_RC, MCP_PROTOCOL_VERSION_STABLE, McpContent,
-    McpError, McpProtocolMode, McpServer, McpServerAuthMode, McpServerStatus,
+    MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
+    McpContent, McpError, McpProtocolMode, McpServer, McpServerAuthMode, McpServerStatus,
     McpServerTransportType, McpToolAnnotations, McpToolCallParams, McpToolCallRequest,
     McpToolCallResponse, McpToolCallResult, McpToolDefinition, McpToolsListRequest,
     McpToolsListResponse, McpToolsListResult, ScopedMcpServer, ScopedMcpServers, is_mcp_tool,

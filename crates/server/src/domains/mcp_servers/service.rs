@@ -803,7 +803,7 @@ pub struct McpServerResolved {
     pub name: String,
     pub url: String,
     pub auth_mode: McpServerAuthMode,
-    /// Protocol-era adoption policy (`auto` negotiates legacy/current/RC).
+    /// Protocol-era adoption policy (`auto` negotiates every protocol era).
     pub protocol_mode: McpProtocolMode,
     pub oauth_provider_id: Option<String>,
     pub api_key: Option<String>,

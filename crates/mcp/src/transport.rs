@@ -36,7 +36,7 @@ pub struct McpConnection {
     pub name: String,
     pub endpoint: McpEndpoint,
     pub auth_mode: McpServerAuthMode,
-    /// Protocol-era policy. `Auto` (default) negotiates legacy/current/RC.
+    /// Protocol-era policy. `Auto` (default) negotiates every protocol era.
     pub protocol_mode: McpProtocolMode,
     pub oauth_provider_id: Option<String>,
     /// Set by the connection resolver when this server requires an OAuth
