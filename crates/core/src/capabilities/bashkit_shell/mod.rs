@@ -980,6 +980,18 @@ impl SessionFileSystemAdapter {
     fn store_path(path: &Path) -> String {
         path.to_string_lossy().into_owned()
     }
+
+    /// Whether `session_path` is an implicit directory — one with children but no row
+    /// of its own (virtual mounts, unmaterialized parents).
+    ///
+    /// Stores answer `list_directory` for an unknown path with `Ok(vec![])`, so only a
+    /// non-empty listing distinguishes a real directory from an absent path.
+    async fn directory_has_entries(&self, session_path: &str) -> bool {
+        self.store
+            .list_directory(self.session_id, session_path)
+            .await
+            .is_ok_and(|entries| !entries.is_empty())
+    }
 }
 
 #[async_trait]
@@ -1100,26 +1112,25 @@ impl FileSystem for SessionFileSystemAdapter {
                 })
             }
             Ok(None) => {
-                // Check if it's a directory by listing it
-                match self
-                    .store
-                    .list_directory(self.session_id, &session_path)
-                    .await
-                {
-                    Ok(_entries) => {
-                        let now = SystemTime::now();
-                        Ok(Metadata {
-                            file_type: FileType::Directory,
-                            size: 0,
-                            mode: 0o755,
-                            modified: now,
-                            created: now,
-                        })
-                    }
-                    Err(_) => Err(bashkit::Error::Io(std::io::Error::new(
+                // No row: the path can still be an implicit directory (a virtual mount,
+                // or a parent never materialized as its own row). Only a *non-empty*
+                // listing proves that. Treating any `Ok` as a directory made every
+                // absent path look like an empty directory, because stores return
+                // `Ok(vec![])` rather than an error for paths they do not know.
+                if self.directory_has_entries(&session_path).await {
+                    let now = SystemTime::now();
+                    Ok(Metadata {
+                        file_type: FileType::Directory,
+                        size: 0,
+                        mode: 0o755,
+                        modified: now,
+                        created: now,
+                    })
+                } else {
+                    Err(bashkit::Error::Io(std::io::Error::new(
                         std::io::ErrorKind::NotFound,
                         format!("Path not found: {}", path.display()),
-                    ))),
+                    )))
                 }
             }
             Err(e) => Err(bashkit::Error::Io(std::io::Error::other(e.to_string()))),
@@ -1168,22 +1179,14 @@ impl FileSystem for SessionFileSystemAdapter {
 
         let session_path = Self::store_path(path);
 
-        // Check file
+        // A row exists for both files and materialized directories.
         if let Ok(Some(_)) = self.store.read_file(self.session_id, &session_path).await {
             return Ok(true);
         }
 
-        // Check directory
-        if self
-            .store
-            .list_directory(self.session_id, &session_path)
-            .await
-            .is_ok()
-        {
-            return Ok(true);
-        }
-
-        Ok(false)
+        // Otherwise only an implicit directory counts — see `stat` for why an empty
+        // listing must not be read as existence.
+        Ok(self.directory_has_entries(&session_path).await)
     }
 
     async fn rename(&self, from: &Path, to: &Path) -> bashkit::Result<()> {
@@ -1227,6 +1230,14 @@ impl FileSystem for SessionFileSystemAdapter {
 
     async fn chmod(&self, _path: &Path, _mode: u32) -> bashkit::Result<()> {
         // chmod is a no-op - session filesystem doesn't track permissions
+        Ok(())
+    }
+
+    // THREAT[TM-BASH-017]: no-op like `chmod` (TM-BASH-014). The session store does not
+    // persist mtimes and `stat` synthesizes them, so there is nothing to spoof. The
+    // bashkit default impl errors, which made `touch` fail after it had already
+    // created the file.
+    async fn set_modified_time(&self, _path: &Path, _time: SystemTime) -> bashkit::Result<()> {
         Ok(())
     }
 
@@ -1404,6 +1415,28 @@ mod tests {
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 }))
+            } else if self
+                .directories
+                .lock()
+                .unwrap()
+                .contains_key(&(session_id, path.clone()))
+            {
+                // Production stores materialize directories as rows that `read_file`
+                // returns (see `InMemorySessionFileStore::create_directory`), so the
+                // double must too — otherwise `exists`/`stat` cannot see an empty dir.
+                Ok(Some(SessionFile {
+                    id: uuid::Uuid::new_v4(),
+                    session_id: session_id.into(),
+                    path: path.clone(),
+                    name: path.split('/').next_back().unwrap_or("").to_string(),
+                    is_directory: true,
+                    is_readonly: false,
+                    content: None,
+                    encoding: "text".to_string(),
+                    size_bytes: 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                }))
             } else {
                 Ok(None)
             }
@@ -1486,6 +1519,44 @@ mod tests {
                         updated_at: chrono::Utc::now(),
                     });
                 }
+            }
+
+            // Subdirectory entries. Production lists directory rows alongside file rows,
+            // so recursive walks (`find`, `grep -r`) can descend. Cover both explicitly
+            // created directories and ones implied by a nested file path.
+            let prefix = if is_root {
+                "/".to_string()
+            } else {
+                format!("{path}/")
+            };
+            let mut child_dirs: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
+            let descendant_paths = files
+                .keys()
+                .chain(dirs.keys())
+                .filter(|(sid, _)| *sid == session_id)
+                .map(|(_, p)| p);
+            for candidate in descendant_paths {
+                if let Some(rest) = candidate.strip_prefix(&prefix)
+                    && let Some(name) = rest.split('/').next()
+                    && rest.contains('/')
+                    && !name.is_empty()
+                {
+                    child_dirs.insert(name.to_string());
+                }
+            }
+            for name in child_dirs {
+                entries.push(FileInfo {
+                    id: uuid::Uuid::new_v4(),
+                    session_id: session_id.into(),
+                    path: format!("{prefix}{name}"),
+                    name,
+                    is_directory: true,
+                    is_readonly: false,
+                    size_bytes: 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                });
             }
 
             // Return error if directory doesn't exist (not root, not explicitly created,
@@ -1847,6 +1918,97 @@ mod tests {
             assert_eq!(output["stdout"], "test content\n");
         } else {
             panic!("Expected success result");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_recursive_walk_descends_into_subdirectories() {
+        let (context, _guard) = create_context_with_mock_store();
+        let tool = BashTool::default();
+
+        let result = tool
+            .execute_with_context(
+                json!({"commands": "mkdir -p /workspace/a/b && echo needle > /workspace/a/b/c.txt \
+                     && ls /workspace/a && find /workspace/a -name '*.txt'"}),
+                &context,
+            )
+            .await;
+
+        match result {
+            ToolExecutionResult::Success(output) => {
+                let stdout = output["stdout"].as_str().unwrap_or("");
+                assert_eq!(output["exit_code"], 0, "stderr: {}", output["stderr"]);
+                assert!(
+                    stdout.contains("b\n"),
+                    "expected subdir in ls, got {stdout:?}"
+                );
+                assert!(
+                    stdout.contains("/workspace/a/b/c.txt"),
+                    "expected find to descend, got {stdout:?}"
+                );
+            }
+            other => panic!("Expected success result, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_adapter_reports_absent_paths_as_missing() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        // Stores answer `list_directory` for unknown paths with an empty listing, so
+        // `exists`/`stat` must not read that as "an empty directory is here". When they
+        // did, `touch` skipped creation (the file already "existed") and reported success.
+        assert!(
+            !adapter
+                .exists(Path::new("/workspace/nope.txt"))
+                .await
+                .unwrap()
+        );
+        assert!(
+            adapter
+                .stat(Path::new("/workspace/nope.txt"))
+                .await
+                .is_err()
+        );
+
+        adapter
+            .mkdir(Path::new("/workspace/realdir"), false)
+            .await
+            .unwrap();
+        assert!(
+            adapter
+                .exists(Path::new("/workspace/realdir"))
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_bash_touch_creates_and_updates_files() {
+        let (context, _guard) = create_context_with_mock_store();
+        let tool = BashTool::default();
+
+        // `touch` writes the file and then sets its mtime; the session filesystem
+        // does not track mtimes, so the second step must not fail the command.
+        let result = tool
+            .execute_with_context(
+                json!({"commands": "touch /workspace/a.txt && touch /workspace/a.txt && ls /workspace"}),
+                &context,
+            )
+            .await;
+
+        match result {
+            ToolExecutionResult::Success(output) => {
+                assert_eq!(output["exit_code"], 0, "stderr: {}", output["stderr"]);
+                assert!(
+                    output["stdout"].as_str().unwrap_or("").contains("a.txt"),
+                    "expected a.txt in listing, got {:?}",
+                    output["stdout"]
+                );
+            }
+            other => panic!("Expected success result, got {other:?}"),
         }
     }
 
