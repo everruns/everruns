@@ -1230,6 +1230,13 @@ impl FileSystem for SessionFileSystemAdapter {
         Ok(())
     }
 
+    async fn set_modified_time(&self, _path: &Path, _time: SystemTime) -> bashkit::Result<()> {
+        // No-op: the session store does not persist mtimes, and `stat` synthesizes
+        // them. The bashkit default impl errors, which made `touch` fail after it
+        // had already created the file.
+        Ok(())
+    }
+
     fn as_search_capable(&self) -> Option<&dyn SearchCapable> {
         Some(self)
     }
@@ -1486,6 +1493,44 @@ mod tests {
                         updated_at: chrono::Utc::now(),
                     });
                 }
+            }
+
+            // Subdirectory entries. Production lists directory rows alongside file rows,
+            // so recursive walks (`find`, `grep -r`) can descend. Cover both explicitly
+            // created directories and ones implied by a nested file path.
+            let prefix = if is_root {
+                "/".to_string()
+            } else {
+                format!("{path}/")
+            };
+            let mut child_dirs: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
+            let descendant_paths = files
+                .keys()
+                .chain(dirs.keys())
+                .filter(|(sid, _)| *sid == session_id)
+                .map(|(_, p)| p);
+            for candidate in descendant_paths {
+                if let Some(rest) = candidate.strip_prefix(&prefix)
+                    && let Some(name) = rest.split('/').next()
+                    && rest.contains('/')
+                    && !name.is_empty()
+                {
+                    child_dirs.insert(name.to_string());
+                }
+            }
+            for name in child_dirs {
+                entries.push(FileInfo {
+                    id: uuid::Uuid::new_v4(),
+                    session_id: session_id.into(),
+                    path: format!("{prefix}{name}"),
+                    name,
+                    is_directory: true,
+                    is_readonly: false,
+                    size_bytes: 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                });
             }
 
             // Return error if directory doesn't exist (not root, not explicitly created,
@@ -1847,6 +1892,63 @@ mod tests {
             assert_eq!(output["stdout"], "test content\n");
         } else {
             panic!("Expected success result");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_recursive_walk_descends_into_subdirectories() {
+        let (context, _guard) = create_context_with_mock_store();
+        let tool = BashTool::default();
+
+        let result = tool
+            .execute_with_context(
+                json!({"commands": "mkdir -p /workspace/a/b && echo needle > /workspace/a/b/c.txt \
+                     && ls /workspace/a && find /workspace/a -name '*.txt'"}),
+                &context,
+            )
+            .await;
+
+        match result {
+            ToolExecutionResult::Success(output) => {
+                let stdout = output["stdout"].as_str().unwrap_or("");
+                assert_eq!(output["exit_code"], 0, "stderr: {}", output["stderr"]);
+                assert!(
+                    stdout.contains("b\n"),
+                    "expected subdir in ls, got {stdout:?}"
+                );
+                assert!(
+                    stdout.contains("/workspace/a/b/c.txt"),
+                    "expected find to descend, got {stdout:?}"
+                );
+            }
+            other => panic!("Expected success result, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_touch_creates_and_updates_files() {
+        let (context, _guard) = create_context_with_mock_store();
+        let tool = BashTool::default();
+
+        // `touch` writes the file and then sets its mtime; the session filesystem
+        // does not track mtimes, so the second step must not fail the command.
+        let result = tool
+            .execute_with_context(
+                json!({"commands": "touch /workspace/a.txt && touch /workspace/a.txt && ls /workspace"}),
+                &context,
+            )
+            .await;
+
+        match result {
+            ToolExecutionResult::Success(output) => {
+                assert_eq!(output["exit_code"], 0, "stderr: {}", output["stderr"]);
+                assert!(
+                    output["stdout"].as_str().unwrap_or("").contains("a.txt"),
+                    "expected a.txt in listing, got {:?}",
+                    output["stdout"]
+                );
+            }
+            other => panic!("Expected success result, got {other:?}"),
         }
     }
 
