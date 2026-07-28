@@ -25,6 +25,7 @@
 //   `initialize` for older clients since it creates no server state either way.
 // - Multi-org: org-scoped tools accept optional `organization_id` to override the default org
 
+mod caching;
 mod cards;
 mod tasks;
 mod tool_registry;
@@ -608,25 +609,71 @@ async fn handle_mcp(
         );
     }
 
+    // Result metadata (`resultType` and, where the result is cacheable, `ttlMs`
+    // / `cacheScope`) is attached here rather than inside each handler: the
+    // policy is per-method and per-era, and the handlers have many success
+    // paths. See `caching` for the TTL and scope rationale.
+    let negotiated_version = protocol_version.unwrap_or(MCP_PROTOCOL_VERSION_FALLBACK);
     let response = match req.method.as_str() {
         "initialize" => handle_initialize(req.id, req.params),
-        "tools/list" => handle_tools_list(
-            req.id,
-            protocol_version.unwrap_or(MCP_PROTOCOL_VERSION_FALLBACK),
-        ),
+        "tools/list" => {
+            let mut response = handle_tools_list(req.id, negotiated_version);
+            if let Some(result) = response.result.as_mut() {
+                caching::mark_cacheable(
+                    result,
+                    negotiated_version,
+                    caching::TOOLS_LIST_TTL_MS,
+                    // The catalog is static per protocol version — identical
+                    // for every caller — so it is safe to share across
+                    // authorization contexts.
+                    caching::CacheScope::Public,
+                );
+            }
+            response
+        }
         "tools/call" => {
-            handle_tools_call(
+            let mut response = handle_tools_call(
                 req.id.clone(),
                 req.params,
                 &auth_user,
                 &org,
                 &state,
-                protocol_version.unwrap_or(MCP_PROTOCOL_VERSION_FALLBACK),
+                negotiated_version,
             )
-            .await
+            .await;
+            // Tool results are never cacheable; they only carry `resultType`.
+            if let Some(result) = response.result.as_mut() {
+                caching::mark_complete(result, negotiated_version);
+            }
+            response
         }
-        "resources/list" => handle_resources_list(req.id),
-        "resources/read" => handle_resources_read(req.id, req.params, &org, &state).await,
+        "resources/list" => {
+            let mut response = handle_resources_list(req.id);
+            if let Some(result) = response.result.as_mut() {
+                caching::mark_cacheable(
+                    result,
+                    negotiated_version,
+                    caching::RESOURCES_LIST_TTL_MS,
+                    // Static catalog of resource URIs, same for every caller.
+                    caching::CacheScope::Public,
+                );
+            }
+            response
+        }
+        "resources/read" => {
+            let mut response = handle_resources_read(req.id, req.params, &org, &state).await;
+            if let Some(result) = response.result.as_mut() {
+                caching::mark_cacheable(
+                    result,
+                    negotiated_version,
+                    caching::RESOURCES_READ_TTL_MS,
+                    // Payloads are org-scoped; a shared cache keyed on the URI
+                    // alone would serve one org's data to another.
+                    caching::CacheScope::Private,
+                );
+            }
+            response
+        }
         // MCP 2026-07-28 Tasks extension (SEP-2663). Task handles map to
         // sessions; these methods delegate to the same session logic the
         // agent_run/session_get_status/session_send_message tools use. Gated to
