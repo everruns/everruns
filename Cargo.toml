@@ -114,7 +114,7 @@ utoipa = { version = "5.4", features = ["axum_extras", "chrono", "uuid"] }
 # Encryption
 aes-gcm = "0.11"
 rand = "0.10"
-base64 = "0.22"
+base64 = "0.23"
 
 # Object storage (optional S3-compatible blob backend, specs/object-storage.md)
 object_store = { version = "0.14", features = ["aws"] }
@@ -130,7 +130,7 @@ async-nats = "0.50"
 
 # Authentication
 argon2 = "0.5"
-jsonwebtoken = { version = "10", features = ["aws_lc_rs"] }
+jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }
 sha2 = "0.11"
 hmac = "0.13"
 hex = "0.4"
