@@ -980,6 +980,18 @@ impl SessionFileSystemAdapter {
     fn store_path(path: &Path) -> String {
         path.to_string_lossy().into_owned()
     }
+
+    /// Whether `session_path` is an implicit directory — one with children but no row
+    /// of its own (virtual mounts, unmaterialized parents).
+    ///
+    /// Stores answer `list_directory` for an unknown path with `Ok(vec![])`, so only a
+    /// non-empty listing distinguishes a real directory from an absent path.
+    async fn directory_has_entries(&self, session_path: &str) -> bool {
+        self.store
+            .list_directory(self.session_id, session_path)
+            .await
+            .is_ok_and(|entries| !entries.is_empty())
+    }
 }
 
 #[async_trait]
@@ -1100,26 +1112,25 @@ impl FileSystem for SessionFileSystemAdapter {
                 })
             }
             Ok(None) => {
-                // Check if it's a directory by listing it
-                match self
-                    .store
-                    .list_directory(self.session_id, &session_path)
-                    .await
-                {
-                    Ok(_entries) => {
-                        let now = SystemTime::now();
-                        Ok(Metadata {
-                            file_type: FileType::Directory,
-                            size: 0,
-                            mode: 0o755,
-                            modified: now,
-                            created: now,
-                        })
-                    }
-                    Err(_) => Err(bashkit::Error::Io(std::io::Error::new(
+                // No row: the path can still be an implicit directory (a virtual mount,
+                // or a parent never materialized as its own row). Only a *non-empty*
+                // listing proves that. Treating any `Ok` as a directory made every
+                // absent path look like an empty directory, because stores return
+                // `Ok(vec![])` rather than an error for paths they do not know.
+                if self.directory_has_entries(&session_path).await {
+                    let now = SystemTime::now();
+                    Ok(Metadata {
+                        file_type: FileType::Directory,
+                        size: 0,
+                        mode: 0o755,
+                        modified: now,
+                        created: now,
+                    })
+                } else {
+                    Err(bashkit::Error::Io(std::io::Error::new(
                         std::io::ErrorKind::NotFound,
                         format!("Path not found: {}", path.display()),
-                    ))),
+                    )))
                 }
             }
             Err(e) => Err(bashkit::Error::Io(std::io::Error::other(e.to_string()))),
@@ -1168,22 +1179,14 @@ impl FileSystem for SessionFileSystemAdapter {
 
         let session_path = Self::store_path(path);
 
-        // Check file
+        // A row exists for both files and materialized directories.
         if let Ok(Some(_)) = self.store.read_file(self.session_id, &session_path).await {
             return Ok(true);
         }
 
-        // Check directory
-        if self
-            .store
-            .list_directory(self.session_id, &session_path)
-            .await
-            .is_ok()
-        {
-            return Ok(true);
-        }
-
-        Ok(false)
+        // Otherwise only an implicit directory counts — see `stat` for why an empty
+        // listing must not be read as existence.
+        Ok(self.directory_has_entries(&session_path).await)
     }
 
     async fn rename(&self, from: &Path, to: &Path) -> bashkit::Result<()> {
@@ -1230,10 +1233,11 @@ impl FileSystem for SessionFileSystemAdapter {
         Ok(())
     }
 
+    // THREAT[TM-BASH-017]: no-op like `chmod` (TM-BASH-014). The session store does not
+    // persist mtimes and `stat` synthesizes them, so there is nothing to spoof. The
+    // bashkit default impl errors, which made `touch` fail after it had already
+    // created the file.
     async fn set_modified_time(&self, _path: &Path, _time: SystemTime) -> bashkit::Result<()> {
-        // No-op: the session store does not persist mtimes, and `stat` synthesizes
-        // them. The bashkit default impl errors, which made `touch` fail after it
-        // had already created the file.
         Ok(())
     }
 
@@ -1408,6 +1412,28 @@ mod tests {
                     content: Some(content.clone()),
                     encoding: encoding.clone(),
                     size_bytes: content.len() as i64,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                }))
+            } else if self
+                .directories
+                .lock()
+                .unwrap()
+                .contains_key(&(session_id, path.clone()))
+            {
+                // Production stores materialize directories as rows that `read_file`
+                // returns (see `InMemorySessionFileStore::create_directory`), so the
+                // double must too — otherwise `exists`/`stat` cannot see an empty dir.
+                Ok(Some(SessionFile {
+                    id: uuid::Uuid::new_v4(),
+                    session_id: session_id.into(),
+                    path: path.clone(),
+                    name: path.split('/').next_back().unwrap_or("").to_string(),
+                    is_directory: true,
+                    is_readonly: false,
+                    content: None,
+                    encoding: "text".to_string(),
+                    size_bytes: 0,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 }))
@@ -1923,6 +1949,40 @@ mod tests {
             }
             other => panic!("Expected success result, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_adapter_reports_absent_paths_as_missing() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        // Stores answer `list_directory` for unknown paths with an empty listing, so
+        // `exists`/`stat` must not read that as "an empty directory is here". When they
+        // did, `touch` skipped creation (the file already "existed") and reported success.
+        assert!(
+            !adapter
+                .exists(Path::new("/workspace/nope.txt"))
+                .await
+                .unwrap()
+        );
+        assert!(
+            adapter
+                .stat(Path::new("/workspace/nope.txt"))
+                .await
+                .is_err()
+        );
+
+        adapter
+            .mkdir(Path::new("/workspace/realdir"), false)
+            .await
+            .unwrap();
+        assert!(
+            adapter
+                .exists(Path::new("/workspace/realdir"))
+                .await
+                .unwrap()
+        );
     }
 
     #[tokio::test]

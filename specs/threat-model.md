@@ -939,6 +939,7 @@ Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.2.1) as a sandb
 | TM-BASH-014 | File permission bypass | Low | `chmod` is a no-op; session filesystem has no permission model | **BY DESIGN** |
 | TM-BASH-015 | Host information disclosure | Low | `hostname` → "everruns"; `whoami` → "everruns"; `uname` returns sandboxed values; mounted real-disk workspaces keep bash cwd/WORKSPACE in `/workspace` rather than the host checkout path | MITIGATED |
 | TM-BASH-016 | Write amplification via bash | Medium | Per-session and per-file byte quotas enforced in `DirectWorkerAdapters::write_file` (see TM-FS-008) | MITIGATED |
+| TM-BASH-017 | Timestamp spoofing via `touch -t` | Low | `SessionFileSystemAdapter.set_modified_time()` is a no-op, mirroring `chmod` (TM-BASH-014); the session store persists no mtimes and `stat` synthesizes them, so bash cannot backdate a file to influence anything that reads timestamps | **BY DESIGN** |
 
 ### Mitigation Details
 
