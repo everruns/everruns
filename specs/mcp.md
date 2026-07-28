@@ -36,6 +36,22 @@ The endpoint is stateless request/response per JSON-RPC call — no `Mcp-Session
 - **Client info rides in `_meta`.** Per-request client identity is read from `params._meta["io.modelcontextprotocol/clientInfo"]` (`{name, version}`) and used for telemetry only; nothing is stored.
 - **Routing headers.** `2026-07-28` Streamable HTTP adds optional `Mcp-Method` and `Mcp-Name` request headers so gateways/load-balancers/rate-limiters can route on the operation without parsing the body. They are optional and the body stays authoritative; when present they must be singular and agree with the body (`Mcp-Method` vs the JSON-RPC `method`, and `Mcp-Name` vs `params.name` on `tools/call`), otherwise the request is rejected `400 Bad Request`. See [`specs/production-deployment.md`](production-deployment.md#mcp-endpoint-scaling) for the proxy contract.
 - **The richer tool shape** (`title`, `outputSchema`, `structuredContent`, entity-card tools) introduced in `2025-06-18` applies to `2025-06-18` and every later version, including `2026-07-28`; only the `2025-03-26` fallback omits it.
+- **Result metadata.** `2026-07-28` requires every complete result to carry `resultType: "complete"`, and the listing/reading operations to carry caching hints. See [Cacheable results](#cacheable-results-2026-07-28).
+
+### Cacheable results (2026-07-28)
+
+Results are decorated at the dispatch layer, not inside each handler: the policy is per-method and per-era, and the handlers have many success paths (`crates/server/src/api/mcp_endpoint/caching.rs`).
+
+| Method | `resultType` | `ttlMs` | `cacheScope` |
+|--------|--------------|---------|--------------|
+| `tools/list` | `complete` | 5 min | `public` |
+| `resources/list` | `complete` | 5 min | `public` |
+| `resources/read` | `complete` | 30 s | `private` |
+| `tools/call` | `complete` (or `task`) | — | — |
+
+`public` is only correct where the payload is identical for every caller — both list catalogs are static per protocol version, so a shared cache cannot leak between orgs. `resources/read` returns org-scoped data (agents, capabilities, harnesses, models) and is therefore `private`, since a cache keyed on the URI alone would serve one org's data to another. Tool results are never cacheable and carry `resultType` only; the Tasks extension's `resultType: "task"` takes precedence when a task handle is issued.
+
+Hints are emitted only under the negotiated `2026-07-28` protocol. They would be ignored by 2025-era clients, but gating keeps each era's responses exactly what that era specifies.
 
 The Tasks extension (server-directed long-running `tools/call` driven by `tasks/get`/`tasks/update`/`tasks/cancel`) is implemented as optional, additive interop alignment for the existing `agent_run` → `session_get_status` poll pattern. See [Tasks extension (2026-07-28)](#tasks-extension-2026-07-28) below.
 
@@ -231,9 +247,14 @@ The `issuer` is the backend root URL (e.g. `https://app.example.com`). OAuth end
   "grant_types_supported": ["authorization_code", "refresh_token"],
   "code_challenge_methods_supported": ["S256"],
   "token_endpoint_auth_methods_supported": ["client_secret_post"],
-  "scopes_supported": ["mcp"]
+  "scopes_supported": ["mcp"],
+  "authorization_response_iss_parameter_supported": true
 }
 ```
+
+`authorization_response_iss_parameter_supported` declares RFC 9207 support: every authorization response — success *and* error — carries an `iss` parameter naming the issuer, so a client talking to several authorization servers can detect a mix-up attack before it sends the code to a token endpoint. Advertising the capability obliges the server to always send it; a client that sees the flag and no `iss` must reject the response.
+
+`registration_endpoint` stays advertised: DCR is deprecated as of `2026-07-28` in favor of Client ID Metadata Documents, but it is how every MCP client in the field registers today and the deprecation window is at least 12 months. CIMD (`client_id_metadata_document_supported`) is **not** implemented and deliberately not advertised — see [Not yet adopted](#not-yet-adopted-from-2026-07-28).
 
 #### GET /.well-known/oauth-protected-resource/mcp
 
@@ -261,9 +282,12 @@ Dynamic Client Registration (RFC 7591). No auth required.
 ```json
 {
   "client_name": "Claude Desktop",
-  "redirect_uris": ["http://localhost:12345/callback"]
+  "redirect_uris": ["http://localhost:12345/callback"],
+  "application_type": "native"
 }
 ```
+
+`application_type` (OIDC, optional) is accepted as `native` or `web`; anything else is rejected. A client that declares `web` may not register an `http://` loopback callback — it has no local process to receive one. Unlike OIDC, an **omitted** `application_type` is treated as unstated rather than defaulting to `web`: every MCP client in the field today omits it and registers a loopback URI, so defaulting would reject all of them.
 
 **Response:** `201 Created`
 ```json
@@ -518,9 +542,19 @@ known to be transient still ships `retryable: true`.
   classifier exists for forward-compat with the existing prose-string
   failures.
 
+## Not yet adopted from 2026-07-28
+
+Deliberate gaps, recorded so the next pass does not have to re-derive them:
+
+- **Client ID Metadata Documents (CIMD).** The replacement for DCR. Implementing it means the authorization server fetches an arbitrary client-supplied HTTPS URL during `/oauth/authorize`, which is a new SSRF surface on an unauthenticated-ish path and needs a decision on whether any HTTPS origin may act as a client or only an allowlisted set. DCR keeps working throughout the deprecation window, so this is a scoped follow-up rather than a blocker.
+- **MRTR on the server side.** Everruns' `/mcp` never answers `tools/call` with `resultType: "input_required"`; long-running work is expressed through the Tasks extension instead, which covers the same need for the tools we expose. (The *client* does handle receiving `input_required` — see [mcp-servers.md](mcp-servers.md).)
+- **`subscriptions/listen`.** The consolidated notification stream. Task progress is polled through `tasks/get`, so nothing currently needs server push.
+- **Roots, Sampling, Logging.** Deprecated in `2026-07-28` with a 12-month window. Everruns implements none of them, so there is nothing to remove.
+
 ## Implementation
 
 See `crates/server/src/auth/mcp_oauth.rs` for the OAuth implementation.
+See `crates/server/src/api/mcp_endpoint/caching.rs` for the cacheable-result decoration.
 See `crates/server/src/api/mcp_endpoint/mod.rs` for the MCP endpoint and multi-org tool handlers.
 See `crates/core/src/mcp_server.rs` for the `McpExecuteError` /
 `McpErrorCode` / `McpErrorCategory` types backing the structured
