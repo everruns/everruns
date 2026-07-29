@@ -114,7 +114,7 @@ utoipa = { version = "5.4", features = ["axum_extras", "chrono", "uuid"] }
 # Encryption
 aes-gcm = "0.11"
 rand = "0.10"
-base64 = "0.22"
+base64 = "0.23"
 
 # Object storage (optional S3-compatible blob backend, specs/object-storage.md)
 object_store = { version = "0.14", features = ["aws"] }
