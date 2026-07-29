@@ -549,44 +549,56 @@ fn hash_credential(credential: Option<&McpCredential>) -> u64 {
     hasher.finish()
 }
 
-/// Cache key for a `tools/list` result.
+/// Which credential scope a cached `tools/list` entry was stored under.
 ///
-/// Identical to [`NegotiationCacheKey`] except that `credential_hash` is zeroed
-/// for `cacheScope: "public"` results, which the server has declared free of
-/// caller-specific data. That is what makes a public catalog shareable across
-/// credentials; a `private` result keeps the real hash and therefore never
-/// crosses authorization contexts.
+/// A separate variant rather than a sentinel `credential_hash`: with a sentinel
+/// value, a credential that happened to hash to it would land in the shared
+/// bucket and let a `private` list be served across authorization contexts. The
+/// odds are negligible, but an enum makes the collision unrepresentable instead
+/// of merely unlikely.
+///
+/// THREAT[TM-TOOL-028]: keeps `cacheScope: "private"` results from crossing
+/// credentials.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum ToolsCacheScope {
+    /// Server declared the result free of caller-specific data, so every
+    /// credential for this server shares one entry.
+    Shared,
+    /// Result may vary per caller, so it is keyed by the credential that
+    /// fetched it.
+    Credential(u64),
+}
+
+/// Cache key for a `tools/list` result: the connection identity plus the scope
+/// the server declared for that result.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct ToolsCacheKey {
     url: String,
     server_name: String,
     protocol_mode: String,
     headers_hash: u64,
-    credential_hash: u64,
+    scope: ToolsCacheScope,
 }
 
 impl ToolsCacheKey {
-    /// Credential-independent form — matches entries stored from a `public`
-    /// result.
-    fn public(key: &NegotiationCacheKey) -> Self {
+    fn new(key: &NegotiationCacheKey, scope: ToolsCacheScope) -> Self {
         Self {
             url: key.url.clone(),
             server_name: key.server_name.clone(),
             protocol_mode: key.protocol_mode.clone(),
             headers_hash: key.headers_hash,
-            credential_hash: 0,
+            scope,
         }
     }
 
-    /// Credential-scoped form — matches entries stored from a `private` result.
-    fn private(key: &NegotiationCacheKey) -> Self {
-        Self {
-            url: key.url.clone(),
-            server_name: key.server_name.clone(),
-            protocol_mode: key.protocol_mode.clone(),
-            headers_hash: key.headers_hash,
-            credential_hash: key.credential_hash,
-        }
+    /// Key matching entries stored from a `public` result.
+    fn shared(key: &NegotiationCacheKey) -> Self {
+        Self::new(key, ToolsCacheScope::Shared)
+    }
+
+    /// Key matching entries stored from a `private` result.
+    fn credential(key: &NegotiationCacheKey) -> Self {
+        Self::new(key, ToolsCacheScope::Credential(key.credential_hash))
     }
 }
 
@@ -658,7 +670,7 @@ impl HttpTransport {
     /// once a result has been stored.
     fn cached_tools(&self, key: &NegotiationCacheKey) -> Option<Vec<McpToolDefinition>> {
         let cache = self.tools.lock().ok()?;
-        for candidate in [ToolsCacheKey::public(key), ToolsCacheKey::private(key)] {
+        for candidate in [ToolsCacheKey::shared(key), ToolsCacheKey::credential(key)] {
             if let Some(entry) = cache.get(&candidate)
                 && entry.is_fresh()
             {
@@ -681,10 +693,16 @@ impl HttpTransport {
             return;
         };
         let cache_key = match hints.scope {
-            protocol::CacheScope::Public => ToolsCacheKey::public(key),
-            protocol::CacheScope::Private => ToolsCacheKey::private(key),
+            protocol::CacheScope::Public => ToolsCacheKey::shared(key),
+            protocol::CacheScope::Private => ToolsCacheKey::credential(key),
         };
         if let Ok(mut cache) = self.tools.lock() {
+            // Drop expired entries before inserting. Tool lists are far larger
+            // than the negotiation verdicts cached alongside them, and a
+            // long-lived control plane accumulates one per (server, credential)
+            // pair, so without this the map only ever grows.
+            // THREAT[TM-DOS-031]: bounds cache growth to live entries.
+            cache.retain(|_, entry| entry.is_fresh());
             cache.insert(
                 cache_key,
                 CachedTools {
