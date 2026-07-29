@@ -1228,7 +1228,9 @@ message McpServerInfo {
     map<string, string> headers = 5;
     string auth_mode = 6;
     optional string oauth_provider_id = 7;
-    // Protocol-era adoption policy: "auto" (default), "legacy", "stable", "rc".
+    // Protocol-era adoption policy: "auto" (default) or a pinned version date
+    // ("2025-03-26", "2025-06-18", "2026-07-28"). The pre-release names
+    // "legacy"/"stable"/"rc" are still parsed for older workers.
     string protocol_mode = 8;
 }
 

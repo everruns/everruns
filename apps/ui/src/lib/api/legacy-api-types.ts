@@ -2813,13 +2813,13 @@ export type McpServerAuthMode = "none" | "api_key" | "oauth";
 export type McpServerStatus = "active" | "disabled" | "archived" | "deleted";
 
 /**
- * MCP protocol-era adoption policy.
- * - `auto`: probe and adapt (legacy/current/RC) — the default.
- * - `legacy`: pin 2025-03-26 (stateful handshake + session id).
- * - `stable`: pin 2025-06-18 (stateful handshake + session id).
- * - `rc`: pin 2026-07-28 stateless (no handshake).
+ * MCP protocol-era adoption policy. Pinned values are the spec version dates.
+ * - `auto`: probe and adapt across every era — the default.
+ * - `2025-03-26`: stateful handshake + session id.
+ * - `2025-06-18`: stateful handshake + session id.
+ * - `2026-07-28`: stateless (no handshake).
  */
-export type McpProtocolMode = "auto" | "legacy" | "stable" | "rc";
+export type McpProtocolMode = "auto" | "2025-03-26" | "2025-06-18" | "2026-07-28";
 
 /** MCP Server configuration */
 export interface McpServer {

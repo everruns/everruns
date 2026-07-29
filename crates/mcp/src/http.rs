@@ -192,9 +192,9 @@ async fn send_op(
 /// Drive one operation through protocol negotiation, returning the response
 /// body text and the negotiated protocol used (so a caller can cache it).
 ///
-/// `Auto` starts stateless (RC) and, on a failure that signals the server needs
+/// `Auto` starts stateless (2026-07-28) and, on a failure that signals the server needs
 /// a session, transparently runs the handshake and retries — this is what makes
-/// legacy, current, and RC servers all work without operator action.
+/// servers of every era all work without operator action.
 #[allow(clippy::too_many_arguments)]
 async fn negotiate_and_send(
     egress: &dyn EgressService,
@@ -204,7 +204,9 @@ async fn negotiate_and_send(
     mode: McpProtocolMode,
     method: &str,
     tool_name: Option<&str>,
-    op_body: Vec<u8>,
+    // Takes the negotiated version because `_meta` must carry the protocol
+    // version actually in force, which is only known after negotiation.
+    build_body: &(dyn Fn(&str) -> Value + Send + Sync),
     cached: Option<Negotiated>,
     timeout: Duration,
 ) -> Result<(String, Negotiated)> {
@@ -233,7 +235,7 @@ async fn negotiate_and_send(
         &negotiated,
         method,
         tool_name,
-        op_body.clone(),
+        serde_json::to_vec(&build_body(&negotiated.version))?,
         timeout,
     )
     .await?;
@@ -262,7 +264,7 @@ async fn negotiate_and_send(
         .await
         .map_err(|fallback_error| {
             anyhow!(
-                "MCP RC probe failed: {} - {}; stable fallback failed: {}",
+                "MCP 2026-07-28 probe failed: {} - {}; stateful fallback failed: {}",
                 response.status,
                 response.body,
                 fallback_error
@@ -276,13 +278,13 @@ async fn negotiate_and_send(
             &negotiated,
             method,
             tool_name,
-            op_body,
+            serde_json::to_vec(&build_body(&negotiated.version))?,
             timeout,
         )
         .await
         .map_err(|fallback_error| {
             anyhow!(
-                "MCP RC probe failed: {} - {}; stable fallback request failed: {}",
+                "MCP 2026-07-28 probe failed: {} - {}; stateful fallback request failed: {}",
                 response.status,
                 response.body,
                 fallback_error
@@ -295,7 +297,7 @@ async fn negotiate_and_send(
     if !(200..300).contains(&response.status) {
         if let Some((probe_status, probe_body)) = rejected_probe {
             return Err(anyhow!(
-                "MCP RC probe failed: {} - {}; stable fallback failed: {} - {}",
+                "MCP 2026-07-28 probe failed: {} - {}; stateful fallback failed: {} - {}",
                 probe_status,
                 probe_body,
                 response.status,
@@ -356,7 +358,6 @@ pub async fn http_list_tools(
     headers: &HashMap<String, String>,
     credential: Option<&McpCredential>,
 ) -> Result<Vec<McpToolDefinition>> {
-    let body = serde_json::to_vec(&protocol::tools_list_body(1))?;
     let (text, _negotiated) = negotiate_and_send(
         egress,
         url,
@@ -365,7 +366,7 @@ pub async fn http_list_tools(
         McpProtocolMode::Auto,
         "tools/list",
         None,
-        body,
+        &|version| protocol::tools_list_body(1, version),
         None,
         DISCOVERY_TIMEOUT,
     )
@@ -382,8 +383,7 @@ pub async fn http_call_tool(
     arguments: Value,
     credential: Option<&McpCredential>,
 ) -> Result<McpToolCallResult> {
-    let body = serde_json::to_vec(&protocol::tools_call_body(1, tool_name, &arguments))?;
-    let (text, _negotiated) = negotiate_and_send(
+    let (text, negotiated) = negotiate_and_send(
         egress,
         url,
         headers,
@@ -391,12 +391,111 @@ pub async fn http_call_tool(
         McpProtocolMode::Auto,
         "tools/call",
         Some(tool_name),
-        body,
+        &|version| protocol::tools_call_body(1, tool_name, &arguments, version),
         None,
         CALL_TIMEOUT,
     )
     .await?;
+    let text = resolve_input_required(
+        egress,
+        url,
+        headers,
+        credential,
+        &negotiated,
+        tool_name,
+        &arguments,
+        text,
+    )
+    .await?;
     parse_tool_call(&text)
+}
+
+/// Complete a multi round-trip `tools/call` (MRTR).
+///
+/// A `2026-07-28` server may answer `tools/call` with
+/// `resultType: "input_required"` instead of a result. Two cases:
+///
+/// - **No `inputRequests`** — the server just needs the round trip (it stashed
+///   context in `requestState`). Retry once, echoing `requestState` under a new
+///   JSON-RPC id, as the spec requires for an independent request.
+/// - **`inputRequests` present** — the server is asking for elicitation,
+///   sampling, or roots. It must not: this client declares none of those
+///   capabilities in `_meta`, and a server MUST NOT request an input type the
+///   client did not declare. Fail with a message that names the culprit rather
+///   than handing back an empty result the caller would read as success.
+///
+/// Retried at most once. A server may legitimately ask again, but this client
+/// has nothing new to offer on a second pass, so looping would only burn the
+/// call timeout.
+#[allow(clippy::too_many_arguments)]
+async fn resolve_input_required(
+    egress: &dyn EgressService,
+    url: &str,
+    headers: &HashMap<String, String>,
+    credential: Option<&McpCredential>,
+    negotiated: &Negotiated,
+    tool_name: &str,
+    arguments: &Value,
+    text: String,
+) -> Result<String> {
+    let Some(json) = extract_json_from_response(&text) else {
+        return Ok(text);
+    };
+    let Some(input_required) = protocol::input_required_from_result(json) else {
+        return Ok(text);
+    };
+
+    if !input_required.input_request_keys.is_empty() {
+        return Err(anyhow!(
+            "MCP server '{}' requested inputs ({}) the client does not support; \
+             everruns advertises no elicitation, sampling, or roots capability",
+            tool_name,
+            input_required.input_request_keys.join(", ")
+        ));
+    }
+
+    tracing::debug!(
+        url = %url,
+        tool = %tool_name,
+        "MCP tools/call returned input_required with no input requests; retrying"
+    );
+    // A distinct id: MRTR treats the retry as an independent request.
+    let body = serde_json::to_vec(&protocol::tools_call_retry_body(
+        2,
+        tool_name,
+        arguments,
+        &negotiated.version,
+        input_required.request_state.as_deref(),
+    ))?;
+    let response = send_op(
+        egress,
+        url,
+        headers,
+        credential,
+        negotiated,
+        "tools/call",
+        Some(tool_name),
+        body,
+        CALL_TIMEOUT,
+    )
+    .await?;
+    if !(200..300).contains(&response.status) {
+        return Err(anyhow!(
+            "MCP server returned error on input_required retry: {} - {}",
+            response.status,
+            response.body
+        ));
+    }
+    if extract_json_from_response(&response.body)
+        .and_then(protocol::input_required_from_result)
+        .is_some()
+    {
+        return Err(anyhow!(
+            "MCP tool '{tool_name}' still requires input after one retry; \
+             the client has no further input to supply"
+        ));
+    }
+    Ok(response.body)
 }
 
 /// MCP transport over the platform [`EgressService`] boundary.
@@ -450,9 +549,79 @@ fn hash_credential(credential: Option<&McpCredential>) -> u64 {
     hasher.finish()
 }
 
+/// Which credential scope a cached `tools/list` entry was stored under.
+///
+/// A separate variant rather than a sentinel `credential_hash`: with a sentinel
+/// value, a credential that happened to hash to it would land in the shared
+/// bucket and let a `private` list be served across authorization contexts. The
+/// odds are negligible, but an enum makes the collision unrepresentable instead
+/// of merely unlikely.
+///
+/// THREAT[TM-TOOL-028]: keeps `cacheScope: "private"` results from crossing
+/// credentials.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+enum ToolsCacheScope {
+    /// Server declared the result free of caller-specific data, so every
+    /// credential for this server shares one entry.
+    Shared,
+    /// Result may vary per caller, so it is keyed by the credential that
+    /// fetched it.
+    Credential(u64),
+}
+
+/// Cache key for a `tools/list` result: the connection identity plus the scope
+/// the server declared for that result.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct ToolsCacheKey {
+    url: String,
+    server_name: String,
+    protocol_mode: String,
+    headers_hash: u64,
+    scope: ToolsCacheScope,
+}
+
+impl ToolsCacheKey {
+    fn new(key: &NegotiationCacheKey, scope: ToolsCacheScope) -> Self {
+        Self {
+            url: key.url.clone(),
+            server_name: key.server_name.clone(),
+            protocol_mode: key.protocol_mode.clone(),
+            headers_hash: key.headers_hash,
+            scope,
+        }
+    }
+
+    /// Key matching entries stored from a `public` result.
+    fn shared(key: &NegotiationCacheKey) -> Self {
+        Self::new(key, ToolsCacheScope::Shared)
+    }
+
+    /// Key matching entries stored from a `private` result.
+    fn credential(key: &NegotiationCacheKey) -> Self {
+        Self::new(key, ToolsCacheScope::Credential(key.credential_hash))
+    }
+}
+
+/// A cached `tools/list` result: the tools, when they were fetched, and how
+/// long the server said they stay fresh.
+struct CachedTools {
+    tools: Vec<McpToolDefinition>,
+    fetched_at: Instant,
+    ttl: Duration,
+}
+
+impl CachedTools {
+    fn is_fresh(&self) -> bool {
+        self.fetched_at.elapsed() < self.ttl
+    }
+}
+
 pub struct HttpTransport {
     egress: Arc<dyn EgressService>,
     negotiations: Mutex<HashMap<NegotiationCacheKey, (Negotiated, Instant)>>,
+    /// `tools/list` results held for the server-declared `ttlMs`. Absent for
+    /// 2025-era servers, which send no caching hints.
+    tools: Mutex<HashMap<ToolsCacheKey, CachedTools>>,
 }
 
 impl HttpTransport {
@@ -460,6 +629,7 @@ impl HttpTransport {
         Self {
             egress,
             negotiations: Mutex::new(HashMap::new()),
+            tools: Mutex::new(HashMap::new()),
         }
     }
 
@@ -493,6 +663,56 @@ impl HttpTransport {
             cache.insert(key, (negotiated, Instant::now()));
         }
     }
+
+    /// Fresh cached tool list for this connection, honoring the TTL the server
+    /// declared. Tries the credential-independent (`public`) entry first, then
+    /// the credential-scoped (`private`) one, since the scope is only known
+    /// once a result has been stored.
+    fn cached_tools(&self, key: &NegotiationCacheKey) -> Option<Vec<McpToolDefinition>> {
+        let cache = self.tools.lock().ok()?;
+        for candidate in [ToolsCacheKey::shared(key), ToolsCacheKey::credential(key)] {
+            if let Some(entry) = cache.get(&candidate)
+                && entry.is_fresh()
+            {
+                return Some(entry.tools.clone());
+            }
+        }
+        None
+    }
+
+    /// Store a tool list under the scope the server declared. A result with no
+    /// hints (`None`) is not cached at all — per spec, a missing or zero
+    /// `ttlMs` means "immediately stale".
+    fn store_tools(
+        &self,
+        key: &NegotiationCacheKey,
+        hints: Option<protocol::CacheHints>,
+        tools: &[McpToolDefinition],
+    ) {
+        let Some(hints) = hints else {
+            return;
+        };
+        let cache_key = match hints.scope {
+            protocol::CacheScope::Public => ToolsCacheKey::shared(key),
+            protocol::CacheScope::Private => ToolsCacheKey::credential(key),
+        };
+        if let Ok(mut cache) = self.tools.lock() {
+            // Drop expired entries before inserting. Tool lists are far larger
+            // than the negotiation verdicts cached alongside them, and a
+            // long-lived control plane accumulates one per (server, credential)
+            // pair, so without this the map only ever grows.
+            // THREAT[TM-DOS-031]: bounds cache growth to live entries.
+            cache.retain(|_, entry| entry.is_fresh());
+            cache.insert(
+                cache_key,
+                CachedTools {
+                    tools: tools.to_vec(),
+                    fetched_at: Instant::now(),
+                    ttl: hints.ttl,
+                },
+            );
+        }
+    }
 }
 
 #[async_trait]
@@ -504,8 +724,10 @@ impl McpTransport for HttpTransport {
     ) -> Result<Vec<McpToolDefinition>> {
         let (url, headers) = Self::http_parts(connection)?;
         let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
+        if let Some(tools) = self.cached_tools(&cache_key) {
+            return Ok(tools);
+        }
         let cached = self.cached_negotiation(&cache_key);
-        let body = serde_json::to_vec(&protocol::tools_list_body(1))?;
         let (text, negotiated) = negotiate_and_send(
             self.egress.as_ref(),
             url,
@@ -514,13 +736,18 @@ impl McpTransport for HttpTransport {
             connection.protocol_mode,
             "tools/list",
             None,
-            body,
+            &|version| protocol::tools_list_body(1, version),
             cached,
             DISCOVERY_TIMEOUT,
         )
         .await?;
-        self.store_negotiation(cache_key, negotiated);
-        parse_tools_list(&text)
+        self.store_negotiation(cache_key.clone(), negotiated);
+        let tools = parse_tools_list(&text)?;
+        // Hints live on the JSON-RPC result, which may arrive SSE-framed like
+        // any other MCP response.
+        let hints = extract_json_from_response(&text).and_then(protocol::cache_hints_from_result);
+        self.store_tools(&cache_key, hints, &tools);
+        Ok(tools)
     }
 
     async fn call_tool(
@@ -533,7 +760,6 @@ impl McpTransport for HttpTransport {
         let (url, headers) = Self::http_parts(connection)?;
         let cache_key = NegotiationCacheKey::new(connection, url, headers, credential);
         let cached = self.cached_negotiation(&cache_key);
-        let body = serde_json::to_vec(&protocol::tools_call_body(1, tool_name, &arguments))?;
         let (text, negotiated) = negotiate_and_send(
             self.egress.as_ref(),
             url,
@@ -542,9 +768,20 @@ impl McpTransport for HttpTransport {
             connection.protocol_mode,
             "tools/call",
             Some(tool_name),
-            body,
+            &|version| protocol::tools_call_body(1, tool_name, &arguments, version),
             cached,
             CALL_TIMEOUT,
+        )
+        .await?;
+        let text = resolve_input_required(
+            self.egress.as_ref(),
+            url,
+            headers,
+            credential,
+            &negotiated,
+            tool_name,
+            &arguments,
+            text,
         )
         .await?;
         self.store_negotiation(cache_key, negotiated);

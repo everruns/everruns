@@ -20,7 +20,7 @@ pub struct McpServerInfo {
     pub api_key: Option<String>,
     pub headers: HashMap<String, String>,
     pub auth_mode: McpServerAuthMode,
-    /// Protocol-era adoption policy (`auto` negotiates legacy/current/RC).
+    /// Protocol-era adoption policy (`auto` negotiates every protocol era).
     pub protocol_mode: McpProtocolMode,
     pub oauth_provider_id: Option<String>,
 }

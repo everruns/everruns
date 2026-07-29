@@ -10840,15 +10840,19 @@ export interface components {
      * @description Per-server policy for which MCP protocol era the client uses.
      *
      *     `Auto` (the default) probes the server and adapts — it tries the stateless
-     *     RC path first and transparently falls back to the stateful handshake when a
-     *     server demands it, so a single configuration speaks to legacy, current, and
-     *     RC servers without operator action. The pinned variants skip negotiation
-     *     when an operator knows a server's era (or to work around a server that
+     *     `2026-07-28` path first and transparently falls back to the stateful
+     *     handshake when a server demands it, so a single configuration speaks to
+     *     every era without operator action. The pinned variants skip negotiation when
+     *     an operator knows a server's era (or to work around a server that
      *     mis-signals it).
+     *
+     *     Wire values are the version dates. The pre-release names (`legacy`,
+     *     `stable`, `rc`) stay accepted as deserialization aliases so stored config
+     *     keeps loading, but they are no longer emitted.
      * @example auto
      * @enum {string}
      */
-    McpProtocolMode: "auto" | "legacy" | "stable" | "rc";
+    McpProtocolMode: "auto" | "2025-03-26" | "2025-06-18" | "2026-07-28";
     /**
      * @description MCP Server configuration.
      *     Represents a remote MCP server that can provide tools and resources.

@@ -88,32 +88,40 @@ impl McpServerAuthMode {
 // Everruns' MCP *client* speaks three protocol eras. They differ in how the
 // connection is established and what metadata travels with each request:
 //
-// - Legacy `2025-03-26` / current `2025-06-18`: *stateful*. The client must run
-//   the `initialize` handshake, may receive an `Mcp-Session-Id` it has to echo
-//   on every subsequent request, and sends `notifications/initialized`.
-// - RC `2026-07-28`: *stateless*. No handshake and no session id; protocol
-//   version + client info ride in `_meta` on every request, and routable
-//   headers (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`) let edge
-//   infrastructure route without parsing the body.
+// - `2025-03-26` / `2025-06-18`: *stateful*. The client must run the
+//   `initialize` handshake, may receive an `Mcp-Session-Id` it has to echo on
+//   every subsequent request, and sends `notifications/initialized`.
+// - `2026-07-28`: *stateless*. No handshake and no session id; protocol version
+//   + client info ride in `_meta` on every request, and routable headers
+//   (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`) let edge infrastructure
+//   route without parsing the body.
+//
+// Eras are named by their version date, not by a moving label like "stable" or
+// "rc" — `2026-07-28` shipped as a final spec on 2026-07-28, and the previous
+// naming outlived its meaning within one release.
 //
 // See specs/mcp-servers.md (Multi-era protocol support) and the negotiation
 // engine in `everruns-mcp` (`protocol.rs`).
 
-/// Legacy MCP protocol version (stateful handshake).
-pub const MCP_PROTOCOL_VERSION_LEGACY: &str = "2025-03-26";
-/// Current stable MCP protocol version (stateful handshake).
-pub const MCP_PROTOCOL_VERSION_STABLE: &str = "2025-06-18";
-/// 2026 stateless release-candidate MCP protocol version.
-pub const MCP_PROTOCOL_VERSION_RC: &str = "2026-07-28";
+/// MCP `2025-03-26` (stateful handshake). Oldest era the client speaks.
+pub const MCP_PROTOCOL_VERSION_2025_03: &str = "2025-03-26";
+/// MCP `2025-06-18` (stateful handshake).
+pub const MCP_PROTOCOL_VERSION_2025_06: &str = "2025-06-18";
+/// MCP `2026-07-28` (stateless). Current era.
+pub const MCP_PROTOCOL_VERSION_2026_07: &str = "2026-07-28";
 
 /// Per-server policy for which MCP protocol era the client uses.
 ///
 /// `Auto` (the default) probes the server and adapts — it tries the stateless
-/// RC path first and transparently falls back to the stateful handshake when a
-/// server demands it, so a single configuration speaks to legacy, current, and
-/// RC servers without operator action. The pinned variants skip negotiation
-/// when an operator knows a server's era (or to work around a server that
+/// `2026-07-28` path first and transparently falls back to the stateful
+/// handshake when a server demands it, so a single configuration speaks to
+/// every era without operator action. The pinned variants skip negotiation when
+/// an operator knows a server's era (or to work around a server that
 /// mis-signals it).
+///
+/// Wire values are the version dates. The pre-release names (`legacy`,
+/// `stable`, `rc`) stay accepted as deserialization aliases so stored config
+/// keeps loading, but they are no longer emitted.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[cfg_attr(feature = "openapi", schema(example = "auto"))]
@@ -122,13 +130,16 @@ pub enum McpProtocolMode {
     /// Probe once, detect the server's era, adapt, and cache the verdict.
     #[default]
     Auto,
-    /// Pin to legacy `2025-03-26` stateful behavior (handshake + session id).
-    Legacy,
-    /// Pin to current `2025-06-18` stateful behavior (handshake + session id).
-    Stable,
-    /// Pin to the `2026-07-28` stateless release candidate (`_meta` per
-    /// request, routable headers, no handshake).
-    Rc,
+    /// Pin to `2025-03-26` stateful behavior (handshake + session id).
+    #[serde(rename = "2025-03-26", alias = "legacy")]
+    V2025March,
+    /// Pin to `2025-06-18` stateful behavior (handshake + session id).
+    #[serde(rename = "2025-06-18", alias = "stable")]
+    V2025June,
+    /// Pin to `2026-07-28` stateless behavior (`_meta` per request, routable
+    /// headers, no handshake).
+    #[serde(rename = "2026-07-28", alias = "rc")]
+    V2026July,
 }
 
 impl McpProtocolMode {
@@ -143,9 +154,9 @@ impl McpProtocolMode {
     pub fn pinned_version(&self) -> Option<&'static str> {
         match self {
             McpProtocolMode::Auto => None,
-            McpProtocolMode::Legacy => Some(MCP_PROTOCOL_VERSION_LEGACY),
-            McpProtocolMode::Stable => Some(MCP_PROTOCOL_VERSION_STABLE),
-            McpProtocolMode::Rc => Some(MCP_PROTOCOL_VERSION_RC),
+            McpProtocolMode::V2025March => Some(MCP_PROTOCOL_VERSION_2025_03),
+            McpProtocolMode::V2025June => Some(MCP_PROTOCOL_VERSION_2025_06),
+            McpProtocolMode::V2026July => Some(MCP_PROTOCOL_VERSION_2026_07),
         }
     }
 
@@ -154,8 +165,8 @@ impl McpProtocolMode {
     pub fn pinned_stateful(&self) -> Option<bool> {
         match self {
             McpProtocolMode::Auto => None,
-            McpProtocolMode::Legacy | McpProtocolMode::Stable => Some(true),
-            McpProtocolMode::Rc => Some(false),
+            McpProtocolMode::V2025March | McpProtocolMode::V2025June => Some(true),
+            McpProtocolMode::V2026July => Some(false),
         }
     }
 }
@@ -164,19 +175,22 @@ impl std::fmt::Display for McpProtocolMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             McpProtocolMode::Auto => write!(f, "auto"),
-            McpProtocolMode::Legacy => write!(f, "legacy"),
-            McpProtocolMode::Stable => write!(f, "stable"),
-            McpProtocolMode::Rc => write!(f, "rc"),
+            McpProtocolMode::V2025March => write!(f, "{MCP_PROTOCOL_VERSION_2025_03}"),
+            McpProtocolMode::V2025June => write!(f, "{MCP_PROTOCOL_VERSION_2025_06}"),
+            McpProtocolMode::V2026July => write!(f, "{MCP_PROTOCOL_VERSION_2026_07}"),
         }
     }
 }
 
 impl From<&str> for McpProtocolMode {
+    /// Parses the canonical version-date values and the pre-release aliases
+    /// (`legacy`/`stable`/`rc`) that stored config and older workers still send.
+    /// Anything unrecognized falls back to `Auto`, which negotiates anyway.
     fn from(s: &str) -> Self {
         match s {
-            "legacy" => McpProtocolMode::Legacy,
-            "stable" => McpProtocolMode::Stable,
-            "rc" => McpProtocolMode::Rc,
+            MCP_PROTOCOL_VERSION_2025_03 | "legacy" => McpProtocolMode::V2025March,
+            MCP_PROTOCOL_VERSION_2025_06 | "stable" => McpProtocolMode::V2025June,
+            MCP_PROTOCOL_VERSION_2026_07 | "rc" => McpProtocolMode::V2026July,
             _ => McpProtocolMode::Auto,
         }
     }
@@ -184,10 +198,10 @@ impl From<&str> for McpProtocolMode {
 
 /// Normalize a JSON-RPC error code across MCP eras.
 ///
-/// The RC renumbered the legacy MCP-specific `-32002` ("invalid params"-class
-/// failure) onto the standard JSON-RPC `-32602` ("Invalid params"). Callers
-/// that branch on the code should normalize first so legacy and RC servers are
-/// handled identically.
+/// `2026-07-28` renumbered the older MCP-specific `-32002` ("invalid
+/// params"-class failure) onto the standard JSON-RPC `-32602` ("Invalid
+/// params"). Callers that branch on the code should normalize first so servers
+/// on either side of that change are handled identically.
 pub fn normalize_mcp_error_code(code: i64) -> i64 {
     match code {
         -32002 => -32602,
@@ -878,12 +892,12 @@ mod tests {
     }
 
     #[test]
-    fn protocol_mode_serde_round_trips_snake_case() {
+    fn protocol_mode_serde_round_trips_version_dates() {
         for (mode, json) in [
             (McpProtocolMode::Auto, "\"auto\""),
-            (McpProtocolMode::Legacy, "\"legacy\""),
-            (McpProtocolMode::Stable, "\"stable\""),
-            (McpProtocolMode::Rc, "\"rc\""),
+            (McpProtocolMode::V2025March, "\"2025-03-26\""),
+            (McpProtocolMode::V2025June, "\"2025-06-18\""),
+            (McpProtocolMode::V2026July, "\"2026-07-28\""),
         ] {
             assert_eq!(serde_json::to_string(&mode).unwrap(), json);
             let back: McpProtocolMode = serde_json::from_str(json).unwrap();
@@ -892,24 +906,44 @@ mod tests {
     }
 
     #[test]
+    fn protocol_mode_accepts_pre_release_aliases() {
+        // Config stored before 2026-07-28 shipped still deserializes; the
+        // aliases are read-only and never emitted again.
+        for (json, expected) in [
+            ("\"legacy\"", McpProtocolMode::V2025March),
+            ("\"stable\"", McpProtocolMode::V2025June),
+            ("\"rc\"", McpProtocolMode::V2026July),
+        ] {
+            let parsed: McpProtocolMode = serde_json::from_str(json).unwrap();
+            assert_eq!(parsed, expected);
+        }
+        assert_eq!(McpProtocolMode::from("rc"), McpProtocolMode::V2026July);
+        assert_eq!(
+            McpProtocolMode::from("2026-07-28"),
+            McpProtocolMode::V2026July
+        );
+        assert_eq!(McpProtocolMode::from("nonsense"), McpProtocolMode::Auto);
+    }
+
+    #[test]
     fn protocol_mode_pinned_version_and_statefulness() {
         assert_eq!(McpProtocolMode::Auto.pinned_version(), None);
         assert_eq!(McpProtocolMode::Auto.pinned_stateful(), None);
         assert_eq!(
-            McpProtocolMode::Legacy.pinned_version(),
-            Some(MCP_PROTOCOL_VERSION_LEGACY)
+            McpProtocolMode::V2025March.pinned_version(),
+            Some(MCP_PROTOCOL_VERSION_2025_03)
         );
-        assert_eq!(McpProtocolMode::Legacy.pinned_stateful(), Some(true));
+        assert_eq!(McpProtocolMode::V2025March.pinned_stateful(), Some(true));
         assert_eq!(
-            McpProtocolMode::Stable.pinned_version(),
-            Some(MCP_PROTOCOL_VERSION_STABLE)
+            McpProtocolMode::V2025June.pinned_version(),
+            Some(MCP_PROTOCOL_VERSION_2025_06)
         );
-        assert_eq!(McpProtocolMode::Stable.pinned_stateful(), Some(true));
+        assert_eq!(McpProtocolMode::V2025June.pinned_stateful(), Some(true));
         assert_eq!(
-            McpProtocolMode::Rc.pinned_version(),
-            Some(MCP_PROTOCOL_VERSION_RC)
+            McpProtocolMode::V2026July.pinned_version(),
+            Some(MCP_PROTOCOL_VERSION_2026_07)
         );
-        assert_eq!(McpProtocolMode::Rc.pinned_stateful(), Some(false));
+        assert_eq!(McpProtocolMode::V2026July.pinned_stateful(), Some(false));
     }
 
     #[test]
@@ -928,13 +962,14 @@ mod tests {
         // A pinned mode is preserved.
         let pinned = ScopedMcpServer {
             url: "https://example.com/mcp".to_string(),
-            protocol_mode: McpProtocolMode::Legacy,
+            protocol_mode: McpProtocolMode::V2025March,
             ..Default::default()
         };
         let json = serde_json::to_value(&pinned).unwrap();
         assert_eq!(
             json.get("protocol_mode").and_then(|v| v.as_str()),
-            Some("legacy")
+            Some(MCP_PROTOCOL_VERSION_2025_03),
+            "pinned modes serialize as the version date, not the retired `legacy` alias"
         );
     }
 
@@ -947,7 +982,7 @@ mod tests {
             "protocol_mode": "rc"
         }))
         .unwrap();
-        assert_eq!(with_mode.protocol_mode, McpProtocolMode::Rc);
+        assert_eq!(with_mode.protocol_mode, McpProtocolMode::V2026July);
 
         let without_mode: ScopedMcpServer = serde_json::from_value(serde_json::json!({
             "type": "http",
@@ -974,20 +1009,20 @@ mod tests {
             "docs".to_string(),
             ScopedMcpServer {
                 url: "https://example.com/mcp".to_string(),
-                protocol_mode: McpProtocolMode::Legacy,
+                protocol_mode: McpProtocolMode::V2025March,
                 ..Default::default()
             },
         );
         let merged = merge_scoped_mcp_servers(&base, &overlay);
         assert_eq!(
             merged.get("docs").unwrap().protocol_mode,
-            McpProtocolMode::Legacy
+            McpProtocolMode::V2025March
         );
     }
 
     #[test]
     fn normalize_mcp_error_code_maps_legacy_to_rc() {
-        // RC renumbered -32002 onto the standard -32602; everything else passes through.
+        // 2026-07-28 renumbered -32002 onto the standard -32602; everything else passes through.
         assert_eq!(normalize_mcp_error_code(-32002), -32602);
         assert_eq!(normalize_mcp_error_code(-32602), -32602);
         assert_eq!(normalize_mcp_error_code(-32601), -32601);

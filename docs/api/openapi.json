@@ -18997,7 +18997,7 @@
               },
               {
                 "$ref": "#/components/schemas/McpProtocolMode",
-                "description": "Protocol-era policy. Defaults to `auto` (negotiates legacy/current/RC)."
+                "description": "Protocol-era policy. Defaults to `auto` (negotiates every protocol era)."
               }
             ]
           },
@@ -27740,12 +27740,12 @@
       },
       "McpProtocolMode": {
         "type": "string",
-        "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\nRC path first and transparently falls back to the stateful handshake when a\nserver demands it, so a single configuration speaks to legacy, current, and\nRC servers without operator action. The pinned variants skip negotiation\nwhen an operator knows a server's era (or to work around a server that\nmis-signals it).",
+        "description": "Per-server policy for which MCP protocol era the client uses.\n\n`Auto` (the default) probes the server and adapts — it tries the stateless\n`2026-07-28` path first and transparently falls back to the stateful\nhandshake when a server demands it, so a single configuration speaks to\nevery era without operator action. The pinned variants skip negotiation when\nan operator knows a server's era (or to work around a server that\nmis-signals it).\n\nWire values are the version dates. The pre-release names (`legacy`,\n`stable`, `rc`) stay accepted as deserialization aliases so stored config\nkeeps loading, but they are no longer emitted.",
         "enum": [
           "auto",
-          "legacy",
-          "stable",
-          "rc"
+          "2025-03-26",
+          "2025-06-18",
+          "2026-07-28"
         ],
         "example": "auto"
       },

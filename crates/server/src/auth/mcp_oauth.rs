@@ -97,15 +97,54 @@ fn validate_redirect_uri(raw: &str) -> Result<(), &'static str> {
     }
 }
 
+/// Whether a redirect URI is an `http://` loopback callback — the shape only a
+/// native client can serve.
+fn is_loopback_http_uri(raw: &str) -> bool {
+    let Ok(parsed) = url::Url::parse(raw) else {
+        return false;
+    };
+    if parsed.scheme() != "http" {
+        return false;
+    }
+    match parsed.host() {
+        Some(url::Host::Domain("localhost")) => true,
+        Some(url::Host::Ipv4(ip)) => ip.is_loopback(),
+        Some(url::Host::Ipv6(ip)) => ip.is_loopback(),
+        _ => false,
+    }
+}
+
 // ============================================
 // Request/Response types
 // ============================================
+
+/// OIDC Dynamic Client Registration `application_type`.
+///
+/// Everruns is not an OIDC provider, and the MCP spec notes that non-OIDC
+/// servers may ignore the parameter — but accepting it lets a client state its
+/// intent, and a client that says `web` should not then register a loopback
+/// callback. It is deliberately *not* defaulted to `web` the way OIDC does:
+/// every MCP client in the field today omits it and registers a loopback URI,
+/// so defaulting would reject all of them. Absent means "unstated", which keeps
+/// the pre-existing permissive behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum OAuthApplicationType {
+    /// Desktop, mobile, CLI, or locally-hosted client — loopback callbacks are
+    /// the norm.
+    Native,
+    /// Remote browser-based client served from a non-local host.
+    Web,
+}
 
 /// POST /oauth/register request
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct OAuthRegisterRequest {
     pub client_name: String,
     pub redirect_uris: Vec<String>,
+    /// Optional OIDC application type. See [`OAuthApplicationType`].
+    #[serde(default)]
+    pub application_type: Option<OAuthApplicationType>,
 }
 
 /// POST /oauth/register response
@@ -207,6 +246,11 @@ pub struct OAuthServerMetadata {
     pub code_challenge_methods_supported: Vec<String>,
     pub token_endpoint_auth_methods_supported: Vec<String>,
     pub scopes_supported: Vec<String>,
+    /// RFC 9207 §2.3 — declares that authorization responses carry `iss`.
+    /// Setting this obliges the server to send `iss` on every authorization
+    /// response, success and error alike, and lets clients reject a response
+    /// that omits it.
+    pub authorization_response_iss_parameter_supported: bool,
 }
 
 // ============================================
@@ -370,10 +414,16 @@ async fn oauth_server_metadata(State(state): State<McpOAuthState>) -> Json<OAuth
             "client_secret_post".to_string(),
         ],
         scopes_supported: vec!["mcp".to_string()],
+        authorization_response_iss_parameter_supported: true,
     })
 }
 
-/// POST /oauth/register — Dynamic Client Registration (RFC 7591)
+/// POST /oauth/register — Dynamic Client Registration (RFC 7591).
+///
+/// DCR is deprecated as of MCP 2026-07-28 in favor of Client ID Metadata
+/// Documents, but stays supported through the deprecation window because it is
+/// how every MCP client in the field registers today. `registration_endpoint`
+/// therefore remains advertised in server metadata.
 async fn oauth_register(
     State(state): State<McpOAuthState>,
     Json(req): Json<OAuthRegisterRequest>,
@@ -398,6 +448,21 @@ async fn oauth_register(
             return Err(OAuthErrorResponse {
                 error: "invalid_redirect_uri".to_string(),
                 error_description: Some(reason.to_string()),
+            });
+        }
+        // A client that declares itself `web` has no local process to receive a
+        // loopback callback; such a registration is a misconfiguration at best
+        // and an attempt to borrow native-client leniency at worst.
+        if req.application_type == Some(OAuthApplicationType::Web) && is_loopback_http_uri(uri) {
+            tracing::warn!(
+                client_name = %req.client_name,
+                "MCP OAuth: rejected loopback redirect_uri for a web application_type"
+            );
+            return Err(OAuthErrorResponse {
+                error: "invalid_redirect_uri".to_string(),
+                error_description: Some(
+                    "loopback redirect_uri requires application_type \"native\"".to_string(),
+                ),
             });
         }
     }
@@ -530,8 +595,13 @@ async fn oauth_authorize(
             AuthError::unauthorized("Failed to start authorization")
         })?;
 
-    let confirm_page =
-        render_authorize_confirm_page(&query, &client.client_name, &user, &csrf_token);
+    let confirm_page = render_authorize_confirm_page(
+        &query,
+        &client.client_name,
+        &user,
+        &csrf_token,
+        state.issuer_url.trim_end_matches('/'),
+    );
     audit::emit(
         state.db.clone(),
         user.organizations
@@ -673,9 +743,17 @@ async fn issue_authorization_code(
     // Use `Url::query_pairs_mut` so a redirect like `https://app/cb?next=1`
     // becomes `https://app/cb?next=1&code=...&state=...`, not the malformed
     // `...?next=1?code=...` that naive string concatenation would produce.
+    // RFC 9207 — `iss` lets the client confirm which authorization server
+    // answered, defeating mix-up attacks when it talks to several. Advertised
+    // via `authorization_response_iss_parameter_supported` in server metadata,
+    // which obliges us to send it on every authorization response.
     build_oauth_redirect_url(
         &query.redirect_uri,
-        &[("code", &code), ("state", &query.state)],
+        &[
+            ("code", &code),
+            ("state", &query.state),
+            ("iss", state.issuer_url.trim_end_matches('/')),
+        ],
     )
     .map_err(|_| AuthError::unauthorized("Invalid redirect_uri"))
 }
@@ -699,11 +777,18 @@ fn render_authorize_confirm_page(
     client_name: &str,
     user: &AuthUser,
     csrf_token: &str,
+    issuer: &str,
 ) -> String {
     let normalized_scope = normalize_scope(&query.scope);
+    // RFC 9207 applies to error responses too — a client that validates `iss`
+    // must be able to validate the denial it acts on.
     let cancel_url = build_oauth_redirect_url(
         &query.redirect_uri,
-        &[("error", "access_denied"), ("state", &query.state)],
+        &[
+            ("error", "access_denied"),
+            ("state", &query.state),
+            ("iss", issuer),
+        ],
     )
     .unwrap_or_else(|_| "#".to_string());
     let scope_chips = render_scope_chips(&normalized_scope);
@@ -1534,6 +1619,7 @@ mod tests {
             "Cursor",
             &auth_user_for_render(),
             "csrf",
+            "https://app.example.com",
         );
 
         assert!(html.contains("Authorize this MCP client?"));
@@ -1548,7 +1634,9 @@ mod tests {
         assert!(html.contains(r#"<span class="scope">mcp</span>"#));
         assert!(html.contains(r#"name="client_id" value="mcp_client_test""#));
         assert!(
-            html.contains("href=\"https://client.example/callback?next=1&amp;error=access_denied&amp;state=state+value\"")
+            html.contains(
+                "href=\"https://client.example/callback?next=1&amp;error=access_denied&amp;state=state+value&amp;iss=https%3A%2F%2Fapp.example.com\""
+            )
         );
     }
 
@@ -1568,6 +1656,7 @@ mod tests {
             "Cursor <script>alert(\"x\")</script>",
             &user,
             "csrf&token",
+            "https://app.example.com",
         );
 
         assert!(!html.contains("<script>alert"));
@@ -1576,7 +1665,9 @@ mod tests {
         assert!(html.contains("Ava &quot;Root&quot; &lt;Ops&gt;"));
         assert!(html.contains("custom&lt;scope&gt;"));
         assert!(html.contains("csrf&amp;token"));
-        assert!(html.contains("next=%3Cbad%3E&amp;ok=1&amp;error=access_denied&amp;state=a%26b"));
+        assert!(html.contains(
+            "next=%3Cbad%3E&amp;ok=1&amp;error=access_denied&amp;state=a%26b&amp;iss=https%3A%2F%2Fapp.example.com"
+        ));
     }
 
     #[test]
@@ -1584,10 +1675,62 @@ mod tests {
         let mut query = authorize_query();
         query.scope = " \t ".to_string();
 
-        let html =
-            render_authorize_confirm_page(&query, "ChatGPT", &auth_user_for_render(), "csrf");
+        let html = render_authorize_confirm_page(
+            &query,
+            "ChatGPT",
+            &auth_user_for_render(),
+            "csrf",
+            "https://app.example.com",
+        );
 
         assert!(html.contains(r#"<span class="scope">mcp</span>"#));
         assert!(html.contains(r#"name="scope" value="mcp""#));
+    }
+
+    #[test]
+    fn test_loopback_http_uri_detection() {
+        assert!(is_loopback_http_uri("http://localhost:8080/cb"));
+        assert!(is_loopback_http_uri("http://127.0.0.1:1455/cb"));
+        assert!(is_loopback_http_uri("http://[::1]:9000/cb"));
+        // https loopback is a normal web callback, not a native one.
+        assert!(!is_loopback_http_uri("https://localhost/cb"));
+        assert!(!is_loopback_http_uri("http://evil.example/cb"));
+        assert!(!is_loopback_http_uri("not a url"));
+    }
+
+    #[test]
+    fn test_application_type_deserializes_from_oidc_values() {
+        #[derive(serde::Deserialize)]
+        struct Wrapper {
+            #[serde(default)]
+            application_type: Option<OAuthApplicationType>,
+        }
+
+        let native: Wrapper = serde_json::from_str(r#"{"application_type":"native"}"#).unwrap();
+        assert_eq!(native.application_type, Some(OAuthApplicationType::Native));
+        let web: Wrapper = serde_json::from_str(r#"{"application_type":"web"}"#).unwrap();
+        assert_eq!(web.application_type, Some(OAuthApplicationType::Web));
+        // Omitted stays unstated rather than defaulting to `web`, so the MCP
+        // clients in the field today keep registering loopback callbacks.
+        let absent: Wrapper = serde_json::from_str("{}").unwrap();
+        assert_eq!(absent.application_type, None);
+        assert!(serde_json::from_str::<Wrapper>(r#"{"application_type":"desktop"}"#).is_err());
+    }
+
+    #[test]
+    fn test_authorize_redirect_carries_rfc_9207_issuer() {
+        let url = build_oauth_redirect_url(
+            "https://client.example/callback",
+            &[
+                ("code", "abc"),
+                ("state", "xyz"),
+                ("iss", "https://app.example.com"),
+            ],
+        )
+        .unwrap();
+        assert!(
+            url.contains("iss=https%3A%2F%2Fapp.example.com"),
+            "authorization response must identify the issuer: {url}"
+        );
     }
 }

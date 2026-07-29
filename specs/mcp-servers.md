@@ -38,19 +38,65 @@ Future transport types (not yet implemented):
 ### Multi-era protocol support
 
 Everruns' MCP **client** speaks three protocol eras over one HTTP code path, so
-it interoperates with legacy, current, and 2026-RC servers without operator
-action:
+it interoperates with servers of any era without operator action:
 
-| Era | Version | Connection model |
-|-----|---------|------------------|
-| Legacy | `2025-03-26` | Stateful: `initialize` handshake, `Mcp-Session-Id` echoed on every request, `notifications/initialized` |
-| Current | `2025-06-18` | Stateful (as above) |
-| RC | `2026-07-28` | Stateless: no handshake; protocol version + client info ride in `_meta` per request; routable headers let edge infra route without parsing the body |
+| Version | Status | Connection model |
+|---------|--------|------------------|
+| `2025-03-26` | Superseded | Stateful: `initialize` handshake, `Mcp-Session-Id` echoed on every request, `notifications/initialized` |
+| `2025-06-18` | Superseded | Stateful (as above) |
+| `2026-07-28` | Current | Stateless: no handshake; protocol version + client info ride in `_meta` per request; routable headers let edge infra route without parsing the body |
 
-On every request the client emits `_meta` (carrying
-`io.modelcontextprotocol/clientInfo`) and the SEP-2243 routable headers
+Eras are referred to by version date throughout. Labels like "stable" and "RC"
+were used while `2026-07-28` was in review; they outlived their meaning when it
+shipped as a final spec, so they survive only as deserialization aliases.
+
+On every request the client emits `_meta` and the SEP-2243 routable headers
 (`MCP-Protocol-Version`, `Mcp-Method`, `Mcp-Name`). These are additive and
-ignored by pre-RC servers, so the same request shape works across all eras.
+ignored by 2025-era servers, so the same request shape works across all eras.
+`_meta` carries what the `initialize` handshake used to negotiate once per
+connection:
+
+| `_meta` key | Value |
+|---|---|
+| `io.modelcontextprotocol/protocolVersion` | the negotiated version in force for this request |
+| `io.modelcontextprotocol/clientInfo` | `{name, version}` |
+| `io.modelcontextprotocol/clientCapabilities` | `{}` |
+
+The empty capabilities object is load-bearing, not a placeholder. `elicitation`,
+`sampling`, and `roots` each require a user or model to answer a server-initiated
+request mid-call, which this transport cannot reach. Under MRTR a server **MUST
+NOT** ask for an input type the client did not declare, so declaring them absent
+is what stops servers blocking on prompts nobody can answer.
+
+#### Cacheable list results
+
+A `2026-07-28` server returns `ttlMs` and `cacheScope` on `tools/list`. The
+client caches the tool list for exactly the TTL the server declared; a missing,
+zero, or negative `ttlMs` means "immediately stale" and is not cached at all, so
+2025-era servers behave as before.
+
+`cacheScope` decides the cache key. A `public` result is stored
+credential-independently and shared across authorization contexts, which is what
+the scope exists to permit. A `private` result — or one with no recognized scope,
+the conservative default — keeps the credential hash in its key and therefore
+never crosses authorization contexts.
+
+#### Multi round-trip requests (MRTR)
+
+A `2026-07-28` server may answer `tools/call` with
+`resultType: "input_required"` rather than a result. The client handles both
+shapes (`crates/mcp/src/http.rs::resolve_input_required`):
+
+- **No `inputRequests`** — the server only needs the round trip, having stashed
+  context in `requestState`. Retry once, echoing `requestState` verbatim under a
+  *different* JSON-RPC id, since MRTR treats the retry as an independent request.
+- **`inputRequests` present** — the server is asking for elicitation, sampling,
+  or roots, none of which this client declares. Fail with an error naming the
+  requested keys rather than returning the empty result a caller would misread as
+  success.
+
+Retried at most once: this client has nothing new to offer on a second pass, so
+looping would only burn the call timeout.
 
 #### `protocol_mode`
 
@@ -60,10 +106,14 @@ config when `auto`, so existing configuration is byte-identical.
 
 | Mode | Behavior |
 |------|----------|
-| `auto` (default) | Probe and adapt. Tries the stateless RC path first; on a response that signals the server needs a session (e.g. HTTP 400 mentioning `Mcp-Session-Id`, a "not initialized" JSON-RPC error, or an explicit unsupported/invalid protocol-version rejection), transparently runs the stable handshake and retries once. The verdict (era + session id) is cached per server for a short TTL so a `tools/list` + `tools/call` pair negotiates once. If the fallback also fails, the error reports both failures. |
-| `legacy` | Pin `2025-03-26`; always handshake first. |
-| `stable` | Pin `2025-06-18`; always handshake first. |
-| `rc` | Pin `2026-07-28`; never handshake. |
+| `auto` (default) | Probe and adapt. Tries the stateless `2026-07-28` path first; on a response that signals the server needs a session (e.g. HTTP 400 mentioning `Mcp-Session-Id`, a "not initialized" JSON-RPC error, or an explicit unsupported/invalid protocol-version rejection), transparently runs the stateful handshake and retries once. The verdict (era + session id) is cached per server for a short TTL so a `tools/list` + `tools/call` pair negotiates once. If the fallback also fails, the error reports both failures. |
+| `2025-03-26` | Pin `2025-03-26`; always handshake first. |
+| `2025-06-18` | Pin `2025-06-18`; always handshake first. |
+| `2026-07-28` | Pin `2026-07-28`; never handshake. |
+
+The pre-release values `legacy`, `stable`, and `rc` still deserialize onto
+`2025-03-26`, `2025-06-18`, and `2026-07-28` respectively, so stored config
+keeps loading without a migration. They are never emitted.
 
 Pinning exists to work around a server that mis-signals its era; `auto` is
 correct for essentially all servers. Layering follows the normal
@@ -75,14 +125,15 @@ Persistence: for org-managed servers `protocol_mode` lives in the existing
 the embedded `mcpServers` object and propagates to the worker over gRPC
 (`McpServerInfo.protocol_mode`).
 
-Error codes are normalized across eras: the RC renumbered the legacy MCP-specific
-`-32002` onto the standard JSON-RPC `-32602`, so the client maps `-32002 →
--32602` before surfacing or classifying an error (`normalize_mcp_error_code`).
+Error codes are normalized across eras: `2026-07-28` renumbered the older
+MCP-specific `-32002` onto the standard JSON-RPC `-32602`, so the client maps
+`-32002 → -32602` before surfacing or classifying an error
+(`normalize_mcp_error_code`).
 
 The negotiation engine lives in `everruns-mcp` (`protocol.rs` for the pure
 pieces, `http.rs` for the egress-bound orchestration); see
-[runtime-mcp.md](runtime-mcp.md). Server-side adoption of the RC on Everruns'
-own `/mcp` endpoint (accepting `_meta`/session-less requests, emitting
+[runtime-mcp.md](runtime-mcp.md). Server-side adoption of `2026-07-28` on
+Everruns' own `/mcp` endpoint (accepting `_meta`/session-less requests, emitting
 `ttlMs`/`cacheScope`) is tracked separately in [mcp.md](mcp.md).
 
 ### Scoped `mcpServers`
