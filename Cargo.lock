@@ -1095,24 +1095,7 @@ dependencies = [
  "rustversion",
  "serde",
  "serde_json",
- "smoothutf8 0.1.1",
- "thiserror 2.0.19",
-]
-
-[[package]]
-name = "buffa"
-version = "0.9.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf9e6224bc4ee1f189ad257120c156fb05f95b826f5369d620b24984476c200a"
-dependencies = [
- "bytes",
- "foldhash 0.1.5",
- "hashbrown 0.15.5",
- "once_cell",
- "rustversion",
- "serde",
- "serde_json",
- "smoothutf8 0.2.3",
+ "smoothutf8",
  "thiserror 2.0.19",
 ]
 
@@ -1122,7 +1105,7 @@ version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c6681b562b18ea719622d0d12684e88ecbdca600d517557dc7bcef7704631e28"
 dependencies = [
- "buffa 0.8.1",
+ "buffa",
  "buffa-descriptor",
  "prettyplease",
  "proc-macro2 1.0.107",
@@ -1137,7 +1120,7 @@ version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57ed423c4ecec86d1500879ce42e7e5f6def01bc632985ac756c1fd723fa21fc"
 dependencies = [
- "buffa 0.8.1",
+ "buffa",
  "rustversion",
  "serde",
  "serde_json",
@@ -1474,7 +1457,7 @@ dependencies = [
  "async-compression",
  "async-trait",
  "base64 0.22.1",
- "buffa 0.8.1",
+ "buffa",
  "bytes",
  "flate2",
  "futures",
@@ -1507,7 +1490,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8cdec2dacacd00437898dad38f98105c82d51086a78baa62cee6dc66c031070"
 dependencies = [
  "anyhow",
- "buffa 0.8.1",
+ "buffa",
  "buffa-codegen",
  "connectrpc-codegen",
  "tempfile",
@@ -1520,7 +1503,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "36c6e3bb62a4a77f41d5cd3d290a488bf529dc7e26b444cda67a3e5544c97542"
 dependencies = [
  "anyhow",
- "buffa 0.8.1",
+ "buffa",
  "buffa-codegen",
  "heck",
  "prettyplease",
@@ -2947,7 +2930,7 @@ name = "everruns-integrations-e2b"
 version = "0.17.17"
 dependencies = [
  "async-trait",
- "buffa 0.9.1",
+ "buffa",
  "chrono",
  "connectrpc",
  "connectrpc-build",
@@ -5057,9 +5040,9 @@ dependencies = [
 
 [[package]]
 name = "jsonwebtoken"
-version = "11.0.0"
+version = "10.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "881733cbc631fc9e472e24447ce32a64bedf2da498d6d8570b08edc87de71f65"
+checksum = "eba32bfb4ffdeaca3e34431072faf01745c9b26d25504aa7a6cf5684334fc4fc"
 dependencies = [
  "aws-lc-rs",
  "base64 0.22.1",
@@ -8522,15 +8505,6 @@ name = "smoothutf8"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "36358427d32ecdb1624616deed99eccfef0a167fe5bf40ddb51efe6980bc1ec8"
-dependencies = [
- "simdutf8",
-]
-
-[[package]]
-name = "smoothutf8"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6b4ec95892483d6d94284caccfddb9b77111a4dcac33ed25d624248def0fa5f1"
 dependencies = [
  "simdutf8",
 ]
