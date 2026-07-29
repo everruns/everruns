@@ -968,7 +968,8 @@ mod tests {
         let json = serde_json::to_value(&pinned).unwrap();
         assert_eq!(
             json.get("protocol_mode").and_then(|v| v.as_str()),
-            Some("legacy")
+            Some(MCP_PROTOCOL_VERSION_2025_03),
+            "pinned modes serialize as the version date, not the retired `legacy` alias"
         );
     }
 
