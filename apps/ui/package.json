@@ -1,6 +1,6 @@
 {
   "name": "everruns-ui",
-  "version": "0.17.17",
+  "version": "0.17.18",
   "private": true,
   "packageManager": "pnpm@10.33.0",
   "exports": {

@@ -2557,11 +2557,11 @@ dependencies = [
 
 [[package]]
 name = "everruns-a2ui"
-version = "0.17.17"
+version = "0.17.18"
 
 [[package]]
 name = "everruns-anthropic"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2579,7 +2579,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-ard"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2596,7 +2596,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-bedrock"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "aws-sdk-bedrockruntime",
@@ -2613,7 +2613,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "anyhow",
  "base64 0.23.0",
@@ -2667,7 +2667,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-container-sandbox"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "base64 0.23.0",
@@ -2687,7 +2687,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -2748,7 +2748,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2773,7 +2773,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-fireworks"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2789,7 +2789,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-gemini"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2805,7 +2805,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-brave-search"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2821,7 +2821,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-browserless"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "base64 0.23.0",
@@ -2842,7 +2842,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-cursor"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2857,7 +2857,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-daytona"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2874,7 +2874,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-deno"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "base64 0.23.0",
@@ -2897,7 +2897,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-docker"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "base64 0.23.0",
@@ -2912,7 +2912,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-duckduckgo"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2927,7 +2927,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-e2b"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "buffa",
@@ -2954,7 +2954,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-github"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "base64 0.23.0",
@@ -2971,7 +2971,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-openai-image"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2990,7 +2990,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-parallel"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -3003,7 +3003,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-sprites"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3019,7 +3019,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-internal-protocol"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "chrono",
  "everruns-core",
@@ -3037,7 +3037,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llm-tests"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3061,7 +3061,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-local"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3084,7 +3084,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-mai"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3101,7 +3101,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-mcp"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3115,7 +3115,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-observability"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3133,7 +3133,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openai"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3149,7 +3149,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openrouter"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3165,11 +3165,11 @@ dependencies = [
 
 [[package]]
 name = "everruns-openui"
-version = "0.17.17"
+version = "0.17.18"
 
 [[package]]
 name = "everruns-provider"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3198,7 +3198,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-runtime"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3239,7 +3239,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-server"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -3337,7 +3337,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-session-sqldb"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "async-trait",
  "base64 0.23.0",
@@ -3354,7 +3354,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-turbopuffer"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3370,7 +3370,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-worker"
-version = "0.17.17"
+version = "0.17.18"
 dependencies = [
  "anyhow",
  "async-trait",
