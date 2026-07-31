@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.18] - 2026-07-31
+
+### Highlights
+
+- **MCP 2026-07-28 specification** - Adopts the final MCP 2026-07-28 specification ([#2906](https://github.com/everruns/everruns/pull/2906)).
+- **Security and reliability fixes** - Throttles chat session creation, enforces session rate limits in commands, bounds file grep and user-preference resource usage, and hardens citation, harness-dispatch, and snapshot handling ([#2902](https://github.com/everruns/everruns/pull/2902), [#2899](https://github.com/everruns/everruns/pull/2899), [#2895](https://github.com/everruns/everruns/pull/2895), [#2898](https://github.com/everruns/everruns/pull/2898), [#2893](https://github.com/everruns/everruns/pull/2893), [#2894](https://github.com/everruns/everruns/pull/2894), [#2900](https://github.com/everruns/everruns/pull/2900)).
+
+### What's Changed
+
+- fix(deps): force @hono/node-server >=2.0.5 in .deepsec (GHSA-frvp-7c67-39w9) ([#2909](https://github.com/everruns/everruns/pull/2909)) by [@chaliy](https://github.com/chaliy)
+- fix(deps): patch critical/high npm security advisories (astro, node-tar) ([#2908](https://github.com/everruns/everruns/pull/2908)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): upgrade jsonwebtoken 10.4.0 to 11.0.0 ([#2907](https://github.com/everruns/everruns/pull/2907)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): adopt the final MCP 2026-07-28 specification ([#2906](https://github.com/everruns/everruns/pull/2906)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump the cargo group with 7 updates ([#2905](https://github.com/everruns/everruns/pull/2905)) by [@app/dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump @hono/node-server from 1.19.15 to 1.19.17 in /.deepsec in the npm_and_yarn group across 1 directory ([#2904](https://github.com/everruns/everruns/pull/2904)) by [@app/dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump bashkit to 0.14.4 and fix touch in the session filesystem ([#2903](https://github.com/everruns/everruns/pull/2903)) by [@chaliy](https://github.com/chaliy)
+- fix(security): throttle chat session creation ([#2902](https://github.com/everruns/everruns/pull/2902)) by [@chaliy](https://github.com/chaliy)
+- fix(files): scope glob grep content scans ([#2896](https://github.com/everruns/everruns/pull/2896)) by [@chaliy](https://github.com/chaliy)
+- fix(runtime): preserve filtered history with prompt hooks ([#2891](https://github.com/everruns/everruns/pull/2891)) by [@chaliy](https://github.com/chaliy)
+- fix(api): bound user preference storage ([#2898](https://github.com/everruns/everruns/pull/2898)) by [@chaliy](https://github.com/chaliy)
+- fix(agent-triggers): preserve harness during dispatch ([#2894](https://github.com/everruns/everruns/pull/2894)) by [@chaliy](https://github.com/chaliy)
+- fix(security): enforce session rate limits in commands ([#2899](https://github.com/everruns/everruns/pull/2899)) by [@chaliy](https://github.com/chaliy)
+- fix(messages): route turns with public agent IDs ([#2901](https://github.com/everruns/everruns/pull/2901)) by [@chaliy](https://github.com/chaliy)
+- fix(citations): guard citation metadata output ([#2893](https://github.com/everruns/everruns/pull/2893)) by [@chaliy](https://github.com/chaliy)
+- fix(compaction): preserve stateful request delta ([#2892](https://github.com/everruns/everruns/pull/2892)) by [@chaliy](https://github.com/chaliy)
+- fix(local): preserve task webhook secrets in snapshots ([#2900](https://github.com/everruns/everruns/pull/2900)) by [@chaliy](https://github.com/chaliy)
+- fix(runtime): bound file grep resource usage ([#2895](https://github.com/everruns/everruns/pull/2895)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.17] - 2026-07-25
 
 ### Highlights
