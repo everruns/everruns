@@ -28,22 +28,40 @@ use sha2::{Digest, Sha256};
 use similar::TextDiff;
 use std::sync::Arc;
 
-/// Image MIME types recognized by LLM vision APIs (OpenAI, Anthropic)
-const IMAGE_EXTENSIONS: &[(&str, &str)] = &[
-    (".png", "image/png"),
-    (".jpg", "image/jpeg"),
-    (".jpeg", "image/jpeg"),
-    (".gif", "image/gif"),
-    (".webp", "image/webp"),
-];
+/// Detect the MIME type of an image format supported by model providers.
+fn image_media_type(content: &str) -> Option<&'static str> {
+    use base64::Engine as _;
 
-/// Get the image MIME type if the path has a known image extension
-fn image_media_type(path: &str) -> Option<&'static str> {
-    let lower = path.to_lowercase();
-    IMAGE_EXTENSIONS
-        .iter()
-        .find(|(ext, _)| lower.ends_with(ext))
-        .map(|(_, mime)| *mime)
+    // Decode only the prefix needed by supported formats. This avoids trusting an
+    // attacker-controlled extension and avoids decoding large image payloads twice.
+    let encoded = content.as_bytes();
+    let prefix_len = encoded.len().min(16);
+    let prefix_len = prefix_len - (prefix_len % 4);
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&encoded[..prefix_len])
+        .ok()?;
+
+    match bytes.as_slice() {
+        [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, ..] => Some("image/png"),
+        [0xff, 0xd8, 0xff, ..] => Some("image/jpeg"),
+        [b'G', b'I', b'F', b'8', b'7' | b'9', b'a', ..] => Some("image/gif"),
+        [
+            b'R',
+            b'I',
+            b'F',
+            b'F',
+            _,
+            _,
+            _,
+            _,
+            b'W',
+            b'E',
+            b'B',
+            b'P',
+            ..,
+        ] => Some("image/webp"),
+        _ => None,
+    }
 }
 
 /// Workspace prefix used in file paths
@@ -1005,30 +1023,28 @@ impl Tool for ReadFileTool {
                     ));
                 }
 
-                // Check if this is an image file that should be returned as native image content
-                if let Some(media_type) = image_media_type(resolved_path) {
-                    // For base64-encoded files, return as image
-                    if file.encoding == "base64"
-                        && let Some(ref content) = file.content
-                    {
-                        let content_hash = match file_content_hash(content, &file.encoding) {
-                            Ok(hash) => hash,
-                            Err(e) => return ToolExecutionResult::internal_error(e),
-                        };
-                        return ToolExecutionResult::success_with_images(
-                            json!({
-                                "path": display_path,
-                                "media_type": media_type,
-                                "size_bytes": file.size_bytes,
-                                "content_hash": content_hash
-                            }),
-                            vec![ToolResultImage {
-                                base64: content.clone(),
-                                media_type: media_type.to_string(),
-                            }],
-                        );
-                    }
-                    // Text-encoded image paths still get returned as text (unusual case)
+                // Return supported image formats as native image content. Detect the format from
+                // bytes rather than the path so extensionless and mislabeled files work safely.
+                if file.encoding == "base64"
+                    && let Some(ref content) = file.content
+                    && let Some(media_type) = image_media_type(content)
+                {
+                    let content_hash = match file_content_hash(content, &file.encoding) {
+                        Ok(hash) => hash,
+                        Err(e) => return ToolExecutionResult::internal_error(e),
+                    };
+                    return ToolExecutionResult::success_with_images(
+                        json!({
+                            "path": display_path,
+                            "media_type": media_type,
+                            "size_bytes": file.size_bytes,
+                            "content_hash": content_hash
+                        }),
+                        vec![ToolResultImage {
+                            base64: content.clone(),
+                            media_type: media_type.to_string(),
+                        }],
+                    );
                 }
 
                 let content_hash = match session_file_content_hash(&file) {
@@ -3500,13 +3516,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_read_file_non_image_binary_omits_base64_content() {
+    async fn test_read_file_detects_image_from_content_without_extension() {
+        use base64::Engine as _;
+
         let store = Arc::new(MockFileStore::default());
-        store.add_base64_file("/archive.zip", "UEsDBAoAAAAAAA==");
+        let png = b"\x89PNG\r\n\x1a\nimage data";
+        let encoded = base64::engine::general_purpose::STANDARD.encode(png);
+        store.add_base64_file("/diagram", &encoded);
         let context = make_context(store);
 
         let result = ReadFileTool
-            .execute_with_context(json!({"path": "/workspace/archive.zip"}), &context)
+            .execute_with_context(json!({"path": "/workspace/diagram"}), &context)
+            .await;
+
+        match result {
+            ToolExecutionResult::SuccessWithImages { result, images } => {
+                assert_eq!(result["media_type"], "image/png");
+                assert_eq!(images.len(), 1);
+                assert_eq!(images[0].media_type, "image/png");
+                assert_eq!(images[0].base64, encoded);
+            }
+            other => panic!("Expected image success, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_read_file_non_image_binary_omits_base64_content() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_base64_file("/archive.png", "UEsDBAoAAAAAAA==");
+        let context = make_context(store);
+
+        let result = ReadFileTool
+            .execute_with_context(json!({"path": "/workspace/archive.png"}), &context)
             .await;
         let value = expect_success(result);
 
@@ -3704,44 +3745,40 @@ mod tests {
         );
     }
 
+    fn encoded_prefix(bytes: &[u8]) -> String {
+        use base64::Engine as _;
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    }
+
     #[test]
-    fn test_image_media_type_png() {
+    fn test_image_media_type_supported_formats() {
         assert_eq!(
-            image_media_type("/workspace/screenshot.png"),
+            image_media_type(&encoded_prefix(b"\x89PNG\r\n\x1a\nrest")),
             Some("image/png")
         );
-    }
-
-    #[test]
-    fn test_image_media_type_jpeg() {
-        assert_eq!(image_media_type("/workspace/photo.jpg"), Some("image/jpeg"));
         assert_eq!(
-            image_media_type("/workspace/photo.jpeg"),
+            image_media_type(&encoded_prefix(b"\xff\xd8\xff\xe0rest")),
             Some("image/jpeg")
+        );
+        assert_eq!(
+            image_media_type(&encoded_prefix(b"GIF87arest")),
+            Some("image/gif")
+        );
+        assert_eq!(
+            image_media_type(&encoded_prefix(b"GIF89arest")),
+            Some("image/gif")
+        );
+        assert_eq!(
+            image_media_type(&encoded_prefix(b"RIFF\x04\x00\x00\x00WEBPrest")),
+            Some("image/webp")
         );
     }
 
     #[test]
-    fn test_image_media_type_gif() {
-        assert_eq!(image_media_type("/data/anim.gif"), Some("image/gif"));
-    }
-
-    #[test]
-    fn test_image_media_type_webp() {
-        assert_eq!(image_media_type("/images/art.webp"), Some("image/webp"));
-    }
-
-    #[test]
-    fn test_image_media_type_case_insensitive() {
-        assert_eq!(image_media_type("/workspace/PHOTO.PNG"), Some("image/png"));
-        assert_eq!(image_media_type("/workspace/image.JPG"), Some("image/jpeg"));
-    }
-
-    #[test]
-    fn test_image_media_type_not_image() {
-        assert_eq!(image_media_type("/workspace/readme.txt"), None);
-        assert_eq!(image_media_type("/workspace/data.json"), None);
-        assert_eq!(image_media_type("/workspace/script.py"), None);
+    fn test_image_media_type_rejects_non_images_and_invalid_base64() {
+        assert_eq!(image_media_type(&encoded_prefix(b"not an image")), None);
+        assert_eq!(image_media_type("not base64!"), None);
+        assert_eq!(image_media_type(""), None);
     }
 
     // EVE-249: Content-type detection tests
