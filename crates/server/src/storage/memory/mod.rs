@@ -103,6 +103,7 @@ pub struct InMemoryDatabase {
     #[allow(dead_code)]
     organization_members: RwLock<HashMap<(i64, Uuid), OrganizationMemberRow>>,
     users: RwLock<HashMap<Uuid, UserRow>>,
+    user_oauth_identities: RwLock<HashMap<(String, String), Uuid>>,
     personal_access_tokens: RwLock<HashMap<Uuid, PersonalAccessTokenRow>>,
     cli_auth_sessions: RwLock<HashMap<Uuid, CliAuthSessionRow>>,
     refresh_tokens: RwLock<HashMap<Uuid, RefreshTokenRow>>,
@@ -270,6 +271,7 @@ impl Default for InMemoryDatabase {
             organizations: RwLock::new(organizations),
             organization_members: RwLock::new(HashMap::new()),
             users: RwLock::new(HashMap::new()),
+            user_oauth_identities: RwLock::new(HashMap::new()),
             personal_access_tokens: RwLock::new(HashMap::new()),
             cli_auth_sessions: RwLock::new(HashMap::new()),
             refresh_tokens: RwLock::new(HashMap::new()),

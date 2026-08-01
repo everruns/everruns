@@ -13,6 +13,10 @@ impl InMemoryDatabase {
     pub async fn create_user(&self, input: CreateUserRow) -> Result<UserRow> {
         let now = Self::now();
         let id = Uuid::now_v7();
+        let oauth_identity = input
+            .auth_provider
+            .clone()
+            .zip(input.auth_provider_id.clone());
         let row = UserRow {
             id,
             // EVE-704: canonicalize email so identity is case-insensitive, matching
@@ -29,6 +33,9 @@ impl InMemoryDatabase {
             created_at: now,
             updated_at: now,
         };
+        if let Some((provider, provider_id)) = oauth_identity {
+            self.insert_oauth_identity(id, provider, provider_id)?;
+        }
         self.users.write().insert(id, row.clone());
         Ok(row)
     }
@@ -45,6 +52,10 @@ impl InMemoryDatabase {
         if users.contains_key(&id) {
             return Ok(None);
         }
+        let oauth_identity = input
+            .auth_provider
+            .clone()
+            .zip(input.auth_provider_id.clone());
         let row = UserRow {
             id,
             // EVE-704: canonicalize email on the seeding path too.
@@ -60,6 +71,9 @@ impl InMemoryDatabase {
             created_at: now,
             updated_at: now,
         };
+        if let Some((provider, provider_id)) = oauth_identity {
+            self.insert_oauth_identity(id, provider, provider_id)?;
+        }
         users.insert(id, row.clone());
         Ok(Some(row))
     }
@@ -85,15 +99,11 @@ impl InMemoryDatabase {
         provider: &str,
         provider_id: &str,
     ) -> Result<Option<UserRow>> {
-        Ok(self
-            .users
-            .read()
-            .values()
-            .find(|u| {
-                u.auth_provider.as_deref() == Some(provider)
-                    && u.auth_provider_id.as_deref() == Some(provider_id)
-            })
-            .cloned())
+        let key = (provider.to_string(), provider_id.to_string());
+        let Some(user_id) = self.user_oauth_identities.read().get(&key).copied() else {
+            return Ok(None);
+        };
+        Ok(self.users.read().get(&user_id).cloned())
     }
 
     pub async fn link_oauth_identity(
@@ -102,14 +112,46 @@ impl InMemoryDatabase {
         provider: &str,
         provider_id: &str,
     ) -> Result<Option<UserRow>> {
-        let mut users = self.users.write();
-        if let Some(user) = users.get_mut(&id) {
-            user.auth_provider = Some(provider.to_string());
-            user.auth_provider_id = Some(provider_id.to_string());
-            user.updated_at = Self::now();
-            return Ok(Some(user.clone()));
+        let Some(user) = self.users.read().get(&id).cloned() else {
+            return Ok(None);
+        };
+
+        let key = (provider.to_string(), provider_id.to_string());
+        let mut identities = self.user_oauth_identities.write();
+        if let Some(linked_id) = identities.get(&key) {
+            return Ok((*linked_id == id).then_some(user));
         }
-        Ok(None)
+        if identities.iter().any(|((linked_provider, _), linked_id)| {
+            linked_provider == provider && *linked_id == id
+        }) {
+            return Ok(None);
+        }
+
+        identities.insert(key, id);
+        Ok(Some(user))
+    }
+
+    fn insert_oauth_identity(
+        &self,
+        user_id: Uuid,
+        provider: String,
+        provider_id: String,
+    ) -> Result<()> {
+        let mut identities = self.user_oauth_identities.write();
+        let key = (provider.clone(), provider_id);
+        if let Some(linked_id) = identities.get(&key) {
+            if *linked_id == user_id {
+                return Ok(());
+            }
+            anyhow::bail!("OAuth identity is already linked to another user");
+        }
+        if identities.iter().any(|((linked_provider, _), linked_id)| {
+            linked_provider == &provider && *linked_id == user_id
+        }) {
+            anyhow::bail!("User already has an identity for this OAuth provider");
+        }
+        identities.insert(key, user_id);
+        Ok(())
     }
 
     pub async fn update_user(&self, id: Uuid, input: UpdateUser) -> Result<Option<UserRow>> {
@@ -160,6 +202,9 @@ impl InMemoryDatabase {
     pub async fn delete_user_account(&self, user_id: Uuid) -> Result<bool> {
         let removed = self.users.write().remove(&user_id).is_some();
         if removed {
+            self.user_oauth_identities
+                .write()
+                .retain(|_, linked_user_id| *linked_user_id != user_id);
             // Cascade: remove personal access tokens
             self.personal_access_tokens
                 .write()
