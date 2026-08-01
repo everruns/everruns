@@ -233,7 +233,7 @@ internally.
 2. **Delete cascade vs archive:** `DELETE /v1/workspaces/{id}` is a soft-delete that flips the workspace to `archived` and **keeps** its files (archived workspaces are read-only — the workspace fs HTTP layer rejects POST/PUT/DELETE on non-`active` workspaces). The `workspace_files.workspace_id` FK has `ON DELETE CASCADE`, so a hard row removal in `workspaces` (today only reachable through an out-of-band SQL deletion or a future hard-delete API) does cascade and removes all files.
 3. **Encoding detection:** Files with null bytes in first 8KB are base64 encoded.
 4. **Readonly protection:** Cannot modify or delete readonly files; recursive delete of a directory fails if it contains any readonly files.
-5. **Hash-based freshness:** `read_file` and `write_file` return a `content_hash` (`sha256:...`). `edit_file` requires that hash and rejects stale edits.
+5. **Hash-based freshness:** `read_file` and `write_file` return a `content_hash` (`sha256:...`). `edit_file` requires that hash. A stale edit safely rebases only when every exact replacement remains unique and non-overlapping in the current content; conflicts and write races fail without modifying the file.
 6. **Text-only edit tool:** `edit_file` only operates on text files. Binary/base64 files must be replaced via `write_file`.
 7. **Memory mounts:** Sessions can mount org Memories (`specs/memory.md`) into the workspace, read-only by default or read-write where trust permits.
 
