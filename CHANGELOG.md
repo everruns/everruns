@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.19] - 2026-07-31
+
+### Highlights
+
+- **Safer coding-agent file edits** - Exact multi-hunk edits can now rebase over unrelated concurrent changes while conflicts remain atomic and leave files untouched ([#2912](https://github.com/everruns/everruns/pull/2912)).
+
+### What's Changed
+
+- fix(fs): safely rebase exact stale edits ([#2912](https://github.com/everruns/everruns/pull/2912)) by [@chaliy](https://github.com/chaliy)
+- fix(core): detect read_file images by content ([#2911](https://github.com/everruns/everruns/pull/2911)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.18] - 2026-07-31
 
 ### Highlights
