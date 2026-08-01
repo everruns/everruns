@@ -424,6 +424,15 @@ pub fn is_transient_error_message(message: &str) -> bool {
 
     let msg = message.trim().to_ascii_lowercase();
 
+    // EVE-806: the runtime's stream-liveness watchdog aborts a stream that
+    // produced no tokens within its window with "provider stream stall: no
+    // tokens for Ns". A stall before any output is equivalent to a dropped
+    // connection, so it is transient and safe for the shared bounded retry path
+    // to recover.
+    if msg.contains("provider stream stall") {
+        return true;
+    }
+
     [
         "server_error",
         "internal server error",
@@ -853,6 +862,21 @@ mod tests {
             Some("insufficient_quota"),
             Some(429),
             "rate limit",
+        )));
+    }
+
+    #[test]
+    fn test_provider_stream_stall_is_transient() {
+        // EVE-806: the runtime stream-liveness watchdog message must be
+        // classified transient so the shared bounded retry path recovers it.
+        assert!(is_transient_error_message(
+            "provider stream stall: no tokens for 120s"
+        ));
+        // Untyped stream error carrying the stall message routes through the
+        // message fallback in is_transient_stream_error.
+        use crate::driver_registry::LlmStreamError;
+        assert!(is_transient_stream_error(&LlmStreamError::new(
+            "provider stream stall: no tokens for 120s"
         )));
     }
 
