@@ -1470,16 +1470,23 @@ impl Tool for EditFileTool {
             Ok(hash) => hash,
             Err(e) => return ToolExecutionResult::internal_error(e),
         };
-        if expected_hash != current_hash {
-            return ToolExecutionResult::tool_error(format!(
-                "File '{}' changed since the last read. Expected {}, found {}. Read the file again before editing.",
-                display_path, expected_hash, current_hash
-            ));
-        }
+        let rebased = expected_hash != current_hash;
 
         let current_content = existing.content.unwrap_or_default();
+        // Plan every exact, unique hunk against one current snapshot, then commit
+        // the whole result with compare-and-swap. This safely rebases across an
+        // unrelated stale change while missing, ambiguous, overlapping, or racing
+        // hunks leave the file untouched. Fuzzy matching was rejected because it
+        // can silently select the wrong occurrence; the returned content hash
+        // invalidates caller-side workspace and validation caches after success.
         let (updated_content, applied_edits) = match apply_text_edits(&current_content, &edits) {
             Ok(result) => result,
+            Err(error) if rebased => {
+                return ToolExecutionResult::tool_error(format!(
+                    "File '{}' changed since the last read (expected {}, found {}) and the edits conflict with its current content: {}. Read the file again before editing.",
+                    display_path, expected_hash, current_hash, error
+                ));
+            }
             Err(error) => return ToolExecutionResult::tool_error(error),
         };
 
@@ -1555,6 +1562,7 @@ impl Tool for EditFileTool {
                     "content_hash": new_hash,
                     "previous_content_hash": current_hash,
                     "applied_edits": applied_edits,
+                    "rebased": rebased,
                     "first_changed_line": first_changed_line,
                     "diff": diff,
                     "diff_truncated": diff_truncated
@@ -3366,6 +3374,7 @@ mod tests {
 
         assert_eq!(store.content("/batch.txt").unwrap(), "ONE\ntwo\nTHREE\n");
         assert_eq!(value["applied_edits"], 2);
+        assert_eq!(value["rebased"], false);
         assert_eq!(value["first_changed_line"], 1);
     }
 
@@ -3473,24 +3482,93 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_edit_file_rejects_hash_mismatch() {
+    async fn test_edit_file_rebases_exact_edits_over_unrelated_stale_change() {
         let store = Arc::new(MockFileStore::default());
-        store.add_text_file("/stale.txt", "hello");
-        let context = make_context(store);
+        store.add_text_file("/stale.txt", "title\nold value\nfooter\n");
+        let context = make_context(store.clone());
+        let stale_hash = read_hash(&context, "/workspace/stale.txt").await;
+        store.add_text_file("/stale.txt", "new title\nold value\nfooter\n");
 
         let result = EditFileTool
             .execute_with_context(
                 json!({
                     "path": "/workspace/stale.txt",
-                    "expected_hash": "sha256:stale",
-                    "old_text": "hello",
-                    "new_text": "goodbye"
+                    "expected_hash": stale_hash,
+                    "edits": [
+                        {"old_text": "old value", "new_text": "new value"},
+                        {"old_text": "footer", "new_text": "new footer"}
+                    ]
                 }),
                 &context,
             )
             .await;
 
-        assert!(expect_tool_error(result).contains("changed since the last read"));
+        let value = expect_success(result);
+        assert_eq!(
+            store.content("/stale.txt").unwrap(),
+            "new title\nnew value\nnew footer\n"
+        );
+        assert_eq!(value["applied_edits"], 2);
+        assert_eq!(value["rebased"], true);
+        assert_ne!(value["previous_content_hash"], stale_hash);
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_rejects_stale_target_conflict_without_changes() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/stale-conflict.txt", "title\nold value\n");
+        let context = make_context(store.clone());
+        let stale_hash = read_hash(&context, "/workspace/stale-conflict.txt").await;
+        store.add_text_file("/stale-conflict.txt", "title\nother writer value\n");
+
+        let result = EditFileTool
+            .execute_with_context(
+                json!({
+                    "path": "/workspace/stale-conflict.txt",
+                    "expected_hash": stale_hash,
+                    "edits": [
+                        {"old_text": "title", "new_text": "new title"},
+                        {"old_text": "old value", "new_text": "new value"}
+                    ]
+                }),
+                &context,
+            )
+            .await;
+
+        assert!(expect_tool_error(result).contains("Could not find an exact match"));
+        assert_eq!(
+            store.content("/stale-conflict.txt").unwrap(),
+            "title\nother writer value\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_rejects_stale_ambiguity_without_changes() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/stale-ambiguous.txt", "header\nunique target\n");
+        let context = make_context(store.clone());
+        let stale_hash = read_hash(&context, "/workspace/stale-ambiguous.txt").await;
+        store.add_text_file(
+            "/stale-ambiguous.txt",
+            "header\nunique target\nunique target\n",
+        );
+
+        let result = EditFileTool
+            .execute_with_context(
+                json!({
+                    "path": "/workspace/stale-ambiguous.txt",
+                    "expected_hash": stale_hash,
+                    "edits": [{"old_text": "unique target", "new_text": "replacement"}]
+                }),
+                &context,
+            )
+            .await;
+
+        assert!(expect_tool_error(result).contains("matched multiple locations"));
+        assert_eq!(
+            store.content("/stale-ambiguous.txt").unwrap(),
+            "header\nunique target\nunique target\n"
+        );
     }
 
     #[tokio::test]

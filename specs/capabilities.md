@@ -601,7 +601,7 @@ When writing a file like `/a/b/c.txt`, parent directories `/a` and `/a/b` are au
 
 ##### Design Decision: Hash-Gated Text Edits
 
-`edit_file` is intentionally narrower than `write_file`: it only edits existing text files, requires the current `content_hash` from `read_file` or `write_file`, applies one or more exact replacements against the original file content, and commits via compare-and-set semantics so concurrent writes fail instead of clobbering newer content. This keeps the tool model-friendly while preventing stale writes, ambiguous snippet matches, and accidental binary corruption.
+`edit_file` is intentionally narrower than `write_file`: it only edits existing text files, requires a `content_hash` from `read_file` or `write_file`, and applies one or more exact replacements atomically. If the hash is stale, all replacements are preflighted as unique and non-overlapping against the current content, allowing an unrelated concurrent change to survive; a missing, ambiguous, overlapping, or racing hunk fails without modifying the file. The final write uses compare-and-set semantics so later concurrent writes are never clobbered. This keeps the tool model-friendly while preventing conflicted writes and accidental binary corruption.
 
 #### BashkitShell
 
