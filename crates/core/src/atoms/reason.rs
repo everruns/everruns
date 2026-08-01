@@ -2774,16 +2774,47 @@ impl ReasonAtom {
                         None => break,
                     },
                     _ = &mut stall_sleep => {
+                        // EVE-806: a stream that produced no tokens within the
+                        // liveness window is equivalent to a dropped connection.
+                        // Route it through the same bounded transient-retry path
+                        // as an in-stream provider error (everruns-provider
+                        // classifies this message as transient) instead of
+                        // failing the turn immediately. Retrying re-issues the
+                        // same request with no artificial history messages; a
+                        // stall after partial output is not retried, and repeated
+                        // stalls stay bounded by retry_config.max_retries.
+                        let stall_error =
+                            crate::driver_registry::LlmStreamError::new(format!(
+                                "provider stream stall: no tokens for {}s",
+                                stall_timeout.as_secs()
+                            ));
                         tracing::warn!(
                             session_id = %session_id,
                             turn_id = %context.turn_id,
                             stall_secs = stall_timeout.as_secs(),
                             "ReasonAtom: provider stream stall timeout"
                         );
-                        return Err(AgentLoopError::llm(format!(
-                            "provider stream stall: no tokens for {}s",
-                            stall_timeout.as_secs()
-                        )));
+                        if should_retry_stream_error(
+                            &stall_error,
+                            stream_retry_metadata.attempts,
+                            retry_config.max_retries,
+                            stream_has_output,
+                        ) {
+                            let wait_duration = retry_config
+                                .calculate_backoff(stream_retry_metadata.attempts);
+                            tracing::warn!(
+                                session_id = %session_id,
+                                turn_id = %context.turn_id,
+                                attempt = stream_retry_metadata.attempts + 1,
+                                max_retries = retry_config.max_retries,
+                                wait_secs = wait_duration.as_secs_f64(),
+                                "ReasonAtom: provider stream stall, retrying"
+                            );
+                            stream_retry_metadata.record_retry(wait_duration, None);
+                            tokio::time::sleep(wait_duration).await;
+                            continue 'stream_attempt;
+                        }
+                        return Err(AgentLoopError::llm(stall_error.message));
                     },
                     _ = keepalive_ticker.tick() => {
                         if let Some(ref hb) = self.stream_heartbeater {

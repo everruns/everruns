@@ -602,6 +602,13 @@ Authentication, invalid-request, and exhausted billing/quota errors fail fast.
 Once output exists, the runtime preserves it as a partial success instead of
 replaying the generation and risking duplicate visible output.
 
+A provider stream stall — the runtime's stream-liveness watchdog aborting a
+stream that produced no tokens within its window — is treated the same way as an
+in-band transient error: before any output it is classified transient and routed
+through the same bounded retry path, re-issuing the identical request with no
+artificial history; after output, or once the retry budget is exhausted, it
+fails the turn. See `crates/core/src/atoms/reason.rs`.
+
 ### Rate Limit Header Support
 
 Drivers parse provider-specific headers to determine retry timing:
