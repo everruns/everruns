@@ -187,7 +187,11 @@ When configured, supports OAuth2 with:
 - **Google**: OpenID Connect with email profile
 - **GitHub**: OAuth2 with user:email and read:user scopes
 
-Account linking by email is supported (same email = same account).
+Account linking by email is supported (same verified email = same account),
+including across configured OAuth providers. Provider identities are additive:
+linking Google to an account first created through GitHub does not replace the
+GitHub login. The callback only links after the provider has verified the email
+and the existing Everruns account has already verified that same address.
 
 ### Email Identity (case-insensitive)
 
@@ -298,7 +302,7 @@ handled the same way rather than failing query extraction.
 |----------|------|-------------|
 | `oauth_cancelled` | user declined at the provider | transient — try again |
 | `oauth_not_permitted` | 403 identity gate (Google `email_verified=false`, domain allow-list) | permanent for this account — use a different one |
-| `oauth_account_exists` | 409: the verified email already has an account bound to another sign-in method (different provider, or an unverified local twin that must not be auto-linked per TM-AUTH-012) | permanent — **sign in with your original method**, not "try again" |
+| `oauth_account_exists` | 409: the verified email matches an unverified local twin that must not be auto-linked per TM-AUTH-012, or the provider identity conflicts with an existing binding | permanent — **sign in with your original method**, not "try again" |
 | `oauth_failed` | anything else | transient — try again |
 
 `oauth_account_exists` is separated from `oauth_failed` deliberately: the

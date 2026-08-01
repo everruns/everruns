@@ -80,9 +80,9 @@ impl AuthError {
 
     /// 409 for a request that is well-formed but conflicts with existing state
     /// where the caller has already proven ownership — e.g. an OAuth callback
-    /// whose verified email already has an Everruns account bound to another
-    /// sign-in method. The caller completed the provider handshake, so naming
-    /// the conflict is not account enumeration (they own the mailbox).
+    /// whose verified email matches an unsafe local account or whose provider
+    /// identity is already bound. The caller completed the provider handshake,
+    /// so naming the conflict is not account enumeration (they own the mailbox).
     pub fn conflict(message: &str) -> Self {
         Self {
             error: message.to_string(),

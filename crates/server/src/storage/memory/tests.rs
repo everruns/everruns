@@ -3964,6 +3964,103 @@ async fn link_oauth_identity_attaches_provider_and_preserves_password() {
     );
 }
 
+#[tokio::test]
+async fn link_oauth_identity_preserves_other_provider_logins() {
+    let db = InMemoryDatabase::new();
+    let user = db
+        .create_user(CreateUserRow {
+            email: format!("multi-oauth-{}@example.com", Uuid::now_v7()),
+            name: "Multi OAuth".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: Some("github".to_string()),
+            auth_provider_id: Some("github-user-1".to_string()),
+            external_id: None,
+        })
+        .await
+        .unwrap();
+
+    let linked = db
+        .link_oauth_identity(user.id, "google", "google-user-1")
+        .await
+        .unwrap()
+        .expect("second provider linked");
+    assert_eq!(linked.id, user.id);
+
+    for (provider, provider_id) in [("github", "github-user-1"), ("google", "google-user-1")] {
+        assert_eq!(
+            db.get_user_by_oauth(provider, provider_id)
+                .await
+                .unwrap()
+                .expect("provider login resolves")
+                .id,
+            user.id
+        );
+    }
+}
+
+#[tokio::test]
+async fn link_oauth_identity_does_not_replace_existing_provider_subject() {
+    let db = InMemoryDatabase::new();
+    let user = db
+        .create_user(CreateUserRow {
+            email: format!("provider-lock-{}@example.com", Uuid::now_v7()),
+            name: "Provider Lock".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: Some("google".to_string()),
+            auth_provider_id: Some("google-original".to_string()),
+            external_id: None,
+        })
+        .await
+        .unwrap();
+    let other_user = db
+        .create_user(CreateUserRow {
+            email: format!("provider-lock-other-{}@example.com", Uuid::now_v7()),
+            name: "Other User".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(
+        db.link_oauth_identity(user.id, "google", "google-replacement")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        db.get_user_by_oauth("google", "google-original")
+            .await
+            .unwrap()
+            .expect("original identity remains")
+            .id,
+        user.id
+    );
+    assert!(
+        db.get_user_by_oauth("google", "google-replacement")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        db.link_oauth_identity(other_user.id, "google", "google-original")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
 // EVE-704: user email is a case-insensitive identity. Registering `John@x.com`
 // then `john@x.com` must resolve to a single account, and login / OAuth-linking
 // lookups must find that account regardless of the casing supplied. This test
