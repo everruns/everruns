@@ -1068,6 +1068,7 @@ pub async fn get_current_user(
                 .http_only(false) // Allow JS to read for UI state
                 .secure(true)
                 .same_site(SameSite::Lax)
+                .max_age(super::middleware::ORG_COOKIE_MAX_AGE)
                 .build();
             jar.add(cookie)
         } else {
@@ -1892,13 +1893,21 @@ async fn generate_token_response(
 
     let mut jar = jar.add(access_cookie).add(refresh_cookie);
 
-    // Set org cookie to user's first org (ensures org context for subsequent API calls)
-    if let Some(org) = user.organizations.first() {
+    // Ensure org context for subsequent API calls, but never clobber a
+    // selection that still maps to one of the user's organizations: this
+    // helper runs on every login AND every silent refresh (~each access-token
+    // lifetime), so unconditional re-minting silently reset the selected org
+    // to the first (alphabetical) one.
+    let keep_existing_org = jar
+        .get(ORG_COOKIE_NAME)
+        .is_some_and(|c| user.organizations.iter().any(|o| o.public_id == c.value()));
+    if !keep_existing_org && let Some(org) = user.organizations.first() {
         let org_cookie = Cookie::build((ORG_COOKIE_NAME, org.public_id.clone()))
             .path("/")
             .http_only(false) // Allow JS to read for UI state
             .secure(true)
             .same_site(SameSite::Lax)
+            .max_age(super::middleware::ORG_COOKIE_MAX_AGE)
             .build();
         jar = jar.add(org_cookie);
     }
