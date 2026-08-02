@@ -143,7 +143,11 @@ impl Database {
                 status = COALESCE($10, status),
                 version = COALESCE($11, version),
                 archive_data = COALESCE($12, archive_data),
-                source_type = COALESCE($13, source_type)
+                source_type = COALESCE($13, source_type),
+                archived_at = CASE
+                    WHEN $10 IS NOT NULL AND $10 != 'archived' THEN NULL
+                    ELSE archived_at
+                END
             WHERE id = $1 AND org_id = $2
             RETURNING id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at, archived_at, deleted_at
             "#,
