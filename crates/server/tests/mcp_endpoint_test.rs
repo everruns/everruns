@@ -3385,6 +3385,31 @@ async fn test_oauth_authorize_confirm_needs_no_csrf_cookie() {
     );
 }
 
+/// The consent page must carry its own CSP whose `form-action` allows the
+/// client's redirect origin. Chrome checks `form-action` against every hop of
+/// the form-submission redirect chain, so the global `form-action 'self'`
+/// policy silently blocks the 302 to the client callback (e.g. a native
+/// client's `http://localhost:<port>/callback`) — the click appears to do
+/// nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_oauth_authorize_page_csp_allows_redirect_origin() {
+    let server = TestServer::in_memory().await;
+    let (client_id, _) = register_oauth_client(&server).await;
+
+    let page = server.get(&authorize_query_string(&client_id)).await;
+    assert_eq!(page.status(), StatusCode::OK);
+
+    let csp = page
+        .headers()
+        .get("content-security-policy")
+        .and_then(|v| v.to_str().ok())
+        .expect("consent page must set its own content-security-policy");
+    assert!(
+        csp.contains("form-action 'self' http://localhost:9999"),
+        "form-action must allow the validated redirect origin, got: {csp}"
+    );
+}
+
 /// A forged/garbage consent token must be rejected — the anti-CSRF guarantee
 /// must survive moving from a cookie to a signed session-bound token.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
