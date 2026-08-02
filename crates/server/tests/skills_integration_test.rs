@@ -622,3 +622,79 @@ async fn test_deleted_skill_hidden_from_usage() {
     let usage_after_body = usage_after.json_value();
     assert!(usage_after_body.get(&skill_id).is_none());
 }
+
+// Registry skills attached as `skill:{uuid}` capability refs must actually
+// mount into the session VFS under `/.agents/skills/{name}/`. The refs
+// validated and appeared in the capability catalog, but dependency resolution
+// dropped them (no registry entry), so sessions never received the skill
+// files and `list_skills` came back empty.
+#[tokio::test]
+async fn test_registry_skill_capability_mounts_into_session() {
+    let server = TestServer::in_memory().await;
+
+    let name = unique_skill_name("mount-skill");
+    server
+        .post(
+            "/v1/skills",
+            json!({ "skill_md": skill_md(&name, "Mounts into the session VFS.") }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    // Capability ref (`skill:{uuid}`) comes from the catalog, mirroring the UI.
+    let caps = server
+        .get("/v1/capabilities")
+        .await
+        .assert_success()
+        .json_value();
+    let cap_id = caps["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"].as_str() == Some(name.as_str()))
+        .expect("skill capability should be in the catalog")["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let agent_name = unique_skill_name("mount-agent");
+    let agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": agent_name,
+                "display_name": "Mount Agent",
+                "system_prompt": "You are a helpful assistant.",
+                "capabilities": [{ "ref": cap_id, "config": {} }]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+
+    let session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent["id"],
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+    let session_id = session["id"].as_str().unwrap();
+
+    let skill_file = server
+        .get(&format!(
+            "/v1/sessions/{session_id}/fs/.agents/skills/{name}/SKILL.md"
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json_value();
+    let content = skill_file["content"].as_str().unwrap_or_default();
+    assert!(
+        content.contains(&format!("name: {name}")),
+        "mounted SKILL.md must carry the skill frontmatter, got: {content}"
+    );
+}
