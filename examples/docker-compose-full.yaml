@@ -100,6 +100,10 @@ services:
       DEFAULT_GEMINI_API_KEY: ${DEFAULT_GEMINI_API_KEY:-}
       WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      AUTH_MODE: ${AUTH_MODE:-admin}
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET:?AUTH_JWT_SECRET must be set when AUTH_MODE is admin/full}
+      AUTH_ADMIN_EMAIL: ${AUTH_ADMIN_EMAIL:-}
+      AUTH_ADMIN_PASSWORD: ${AUTH_ADMIN_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -158,6 +162,7 @@ services:
     environment:
       PORT: "9305"
       HOSTNAME: 0.0.0.0
+      AUTH_MODE: ${AUTH_MODE:-admin}
     depends_on:
       server:
         condition: service_started
