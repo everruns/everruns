@@ -621,9 +621,14 @@ where
 // ResolvedOrg - Organization context from auth (not URL path)
 // ============================================================================
 
-/// Cookie name for org selection in session auth
-/// Note: Also defined in api/users.rs - keep in sync
+/// Cookie name for org selection in session auth (re-exported by api/users.rs)
 pub const ORG_COOKIE_NAME: &str = "everruns_org";
+
+/// Max-Age for the org-selection cookie. Without an explicit Max-Age the
+/// browser drops it on restart and the UI falls back to the default org.
+/// Matches the default refresh-token lifetime so the selection outlives any
+/// session it can belong to.
+pub const ORG_COOKIE_MAX_AGE: time::Duration = time::Duration::days(30);
 
 /// Organization context resolved from authentication
 ///

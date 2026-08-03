@@ -29,7 +29,16 @@ export function proxy(request: NextRequest) {
     return response;
   }
 
-  if (authDisabled() || request.cookies.has("access_token")) {
+  // A missing access token is not a missing session: the access cookie's
+  // Max-Age is the short access-token lifetime (~15 min), while the refresh
+  // cookie lives for weeks. Let refresh-only requests through so the client's
+  // silent refresh (lib/api/client.ts) can re-mint the access token instead of
+  // bouncing every idle tab to /login.
+  if (
+    authDisabled() ||
+    request.cookies.has("access_token") ||
+    request.cookies.has("refresh_token")
+  ) {
     return NextResponse.next();
   }
 
