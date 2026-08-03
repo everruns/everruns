@@ -622,3 +622,67 @@ async fn test_deleted_skill_hidden_from_usage() {
     let usage_after_body = usage_after.json_value();
     assert!(usage_after_body.get(&skill_id).is_none());
 }
+
+// DELETE is documented as "Archive a skill (soft delete). Can be restored."
+// A status-only PATCH must therefore restore an archived skill; content edits
+// stay blocked until it is restored.
+#[tokio::test]
+async fn test_archived_skill_restores_via_status_only_patch() {
+    let server = TestServer::in_memory().await;
+
+    let name = unique_skill_name("restore-skill");
+    let created = server
+        .post(
+            "/v1/skills",
+            json!({ "skill_md": skill_md(&name, "Archive and restore me.") }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+    let skill_id = created["id"].as_str().unwrap().to_string();
+
+    server
+        .delete(&format!("/v1/skills/{skill_id}"))
+        .await
+        .assert_success();
+    let archived = server
+        .get(&format!("/v1/skills/{skill_id}"))
+        .await
+        .assert_success()
+        .json_value();
+    assert_eq!(archived["status"], "archived");
+
+    // Content edits on an archived skill stay rejected.
+    server
+        .patch(
+            &format!("/v1/skills/{skill_id}"),
+            json!({ "skill_md": skill_md(&name, "Edited while archived.") }),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+
+    // Status-only PATCH restores it.
+    let restored = server
+        .patch(
+            &format!("/v1/skills/{skill_id}"),
+            json!({ "status": "active" }),
+        )
+        .await
+        .assert_success()
+        .json_value();
+    assert_eq!(restored["status"], "active");
+    assert!(
+        restored["archived_at"].is_null(),
+        "restore must clear archived_at, got: {}",
+        restored["archived_at"]
+    );
+
+    // Restored skill is editable again.
+    server
+        .patch(
+            &format!("/v1/skills/{skill_id}"),
+            json!({ "skill_md": skill_md(&name, "Edited after restore.") }),
+        )
+        .await
+        .assert_success();
+}
