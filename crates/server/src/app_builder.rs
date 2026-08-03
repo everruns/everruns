@@ -276,6 +276,15 @@ fn apply_personal_access_token_routes_wrap(
     }
 }
 
+// TM-WEB-004/005: baseline CSP stamped on every response that does not set its
+// own. `frame-src 'self' data:` lets the file-preview UI embed PDFs via a
+// `data:application/pdf` iframe (sandboxed viewers don't render in Chromium)
+// and keeps `about:srcdoc` previews (SVG/HTML/MCP cards) working under 'self'.
+// `form-action` must remain the LAST directive: the MCP OAuth consent page
+// extends it by appending the validated client redirect origin to this string
+// (see `auth::mcp_oauth::oauth_authorize`).
+pub(crate) const BASE_CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+
 fn permissions_policy_header_value(voice_enabled: bool) -> axum::http::HeaderValue {
     let value = format!(
         "camera=(), {}, geolocation=()",
@@ -1701,13 +1710,7 @@ impl ServerAppBuilder {
             ))
             .layer(SetResponseHeaderLayer::if_not_present(
                 axum::http::header::HeaderName::from_static("content-security-policy"),
-                axum::http::HeaderValue::from_static(
-                    // `frame-src 'self' data:` lets the file-preview UI embed
-                    // PDFs via a `data:application/pdf` iframe (sandboxed
-                    // viewers don't render in Chromium) and keeps `about:srcdoc`
-                    // previews (SVG/HTML/MCP cards) working under 'self'.
-                    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
-                ),
+                axum::http::HeaderValue::from_static(BASE_CONTENT_SECURITY_POLICY),
             ));
 
         let app = app.layer(TraceLayer::new_for_http().make_span_with(

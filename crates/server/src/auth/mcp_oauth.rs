@@ -613,7 +613,28 @@ async fn oauth_authorize(
         ip,
         serde_json::json!({"client_id": query.client_id}),
     );
-    Ok(Html(confirm_page).into_response())
+    let mut response = Html(confirm_page).into_response();
+    // Chrome checks `form-action` against every hop of a form-submission
+    // redirect chain, so the baseline `form-action 'self'` silently blocks the
+    // confirm POST's 302 to the client callback (e.g. a native client's
+    // `http://localhost:<port>/callback`). Extend it, for this page only, with
+    // the redirect origin — already validated against the registered client.
+    if let Some(csp) = url::Url::parse(&query.redirect_uri)
+        .ok()
+        .map(|u| u.origin().ascii_serialization())
+        .and_then(|origin| {
+            axum::http::HeaderValue::from_str(&format!(
+                "{} {origin}",
+                crate::app_builder::BASE_CONTENT_SECURITY_POLICY
+            ))
+            .ok()
+        })
+    {
+        response
+            .headers_mut()
+            .insert(axum::http::header::CONTENT_SECURITY_POLICY, csp);
+    }
+    Ok(response)
 }
 
 async fn oauth_authorize_confirm(
