@@ -207,6 +207,14 @@ pub fn is_quota_exhausted(err: &str) -> bool {
         return true;
     }
 
+    // OpenAI's explicit out-of-credits machine code / phrasing. Returned as a
+    // 429 with body `credit_balance_exhausted: You have no credits remaining.`
+    // — no "quota" word, and "no credits remaining" isn't an exhaustion phrase
+    // below, so match it directly here.
+    if e.contains("credit_balance_exhausted") {
+        return true;
+    }
+
     let quota_signal = e.contains("quota") || e.contains("out of quota");
     let billing_signal = e.contains("billing") || e.contains("credit");
     let exceeded_signal = e.contains("exceeded");
@@ -224,6 +232,7 @@ pub fn is_quota_exhausted(err: &str) -> bool {
         || e.contains("run out")
         || e.contains("ran out")
         || e.contains("out of credit")
+        || e.contains("no credit") // "you have no credits remaining" (OpenAI)
         || e.contains("purchase credit")
         || e.contains("depleted");
     if billing_signal && exhaustion_phrase {
@@ -398,6 +407,13 @@ mod quota_detector_tests {
             "HTTP 429 Too Many Requests: insufficient_quota"
         ));
         assert!(is_quota_exhausted("429: quota exceeded for project"));
+        // OpenAI real-world out-of-credits: 429 with `credit_balance_exhausted`
+        // machine code and "You have no credits remaining." (no "quota" word,
+        // no exhaustion phrase like "too low"). This is the exact message that
+        // red main CI until matched here.
+        assert!(is_quota_exhausted(
+            "LLM error: credit_balance_exhausted: You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/."
+        ));
         // Case-insensitive.
         assert!(is_quota_exhausted("INSUFFICIENT_QUOTA"));
     }
