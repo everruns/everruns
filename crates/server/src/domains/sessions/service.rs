@@ -2175,8 +2175,13 @@ impl SessionService {
     ///
     /// Each active skill is reconstructed into `/.agents/skills/{name}/`
     /// (SKILL.md + bundled text files) so the built-in `SkillsCapability`
-    /// discovers it alongside workspace skills. Missing or non-active skills
-    /// fail session creation loudly, matching the workspace-memory behavior.
+    /// discovers it alongside workspace skills.
+    ///
+    /// A skill that is missing or not active is skipped with a warning rather
+    /// than failing session creation: `validate_capability_refs` accepts a
+    /// `skill:{uuid}` ref at any status, so archiving or disabling a skill must
+    /// not take down every agent that references it. A session missing one
+    /// skill is still runnable — unlike a missing memory mount, which is fatal.
     async fn collect_registry_skill_mounts(
         &self,
         org_id: i64,
@@ -2195,12 +2200,21 @@ impl SessionService {
             if !seen.insert(skill_uuid) {
                 continue;
             }
-            let row = self
-                .db
-                .get_skill(org_id, skill_uuid)
-                .await?
-                .filter(|row| row.status == "active")
-                .ok_or_else(|| ResourceNotFoundError::new("Skill"))?;
+            let Some(row) = self.db.get_skill(org_id, skill_uuid).await? else {
+                tracing::warn!(
+                    skill_id = %skill_uuid,
+                    "Referenced skill not found; skipping session mount"
+                );
+                continue;
+            };
+            if row.status != "active" {
+                tracing::warn!(
+                    skill_id = %skill_uuid,
+                    status = %row.status,
+                    "Referenced skill is not active; skipping session mount"
+                );
+                continue;
+            }
             let skill = crate::domains::skills::queries::row_to_skill(&row);
 
             // Bundled files: text only. SKILL.md is reconstructed from the

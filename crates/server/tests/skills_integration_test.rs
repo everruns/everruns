@@ -761,3 +761,78 @@ async fn test_registry_skill_capability_mounts_into_session() {
         "mounted SKILL.md must carry the skill frontmatter, got: {content}"
     );
 }
+
+// Archiving a skill must not break agents that still reference it: capability
+// validation accepts a `skill:{uuid}` ref at any status, so mount collection
+// degrades (skip + warn) instead of failing session creation.
+#[tokio::test]
+async fn test_archived_skill_capability_skips_mount_without_failing_session() {
+    let server = TestServer::in_memory().await;
+
+    let name = unique_skill_name("archived-mount-skill");
+    let created = server
+        .post(
+            "/v1/skills",
+            json!({ "skill_md": skill_md(&name, "Archived before session creation.") }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+    let skill_id = created["id"].as_str().unwrap().to_string();
+
+    let caps = server
+        .get("/v1/capabilities")
+        .await
+        .assert_success()
+        .json_value();
+    let cap_id = caps["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"].as_str() == Some(name.as_str()))
+        .expect("skill capability should be in the catalog")["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let agent_name = unique_skill_name("archived-mount-agent");
+    let agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": agent_name,
+                "display_name": "Archived Mount Agent",
+                "system_prompt": "You are a helpful assistant.",
+                "capabilities": [{ "ref": cap_id, "config": {} }]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+
+    server
+        .delete(&format!("/v1/skills/{skill_id}"))
+        .await
+        .assert_success();
+
+    // Session still creates; the archived skill simply is not mounted.
+    let session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent["id"],
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+    let session_id = session["id"].as_str().unwrap();
+
+    server
+        .get(&format!(
+            "/v1/sessions/{session_id}/fs/.agents/skills/{name}/SKILL.md"
+        ))
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
+}
