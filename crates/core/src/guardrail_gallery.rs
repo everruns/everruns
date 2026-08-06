@@ -13,27 +13,33 @@
 //    harness-examples pattern.
 //  - Every preset must `compile()` (enforced by a test) so an adopted preset
 //    is always valid against the engine's limits.
-//  - Presets are deterministic-only in this phase: nothing a preset does
-//    leaves the platform (see `data_egress`). Model-based and MCP-served
-//    presets will carry a different egress marker when those check types land.
+//  - Presets may be deterministic (in-process, no egress) or model-backed
+//    (`llm_judge` sends a bounded content excerpt to the utility LLM). Each
+//    preset's `data_egress` is derived from its check types so a UI can warn
+//    before adoption. MCP-served presets will add another marker when a preset
+//    uses that check type.
 
 use crate::guardrail_checks::{
     GuardrailCheck, GuardrailOnFail, GuardrailRule, GuardrailStage, GuardrailsConfig,
 };
 
-/// Where a preset's checks send data when they run. Deterministic checks run
-/// in-process and send nothing; future model-based / MCP-served presets will
-/// use other variants so a UI can warn before adoption.
+/// Where a preset's checks send data when they run. Derived from the preset's
+/// check types (see [`GuardrailGalleryItem::data_egress`]), not hand-authored,
+/// so it stays correct as presets mix deterministic and model-backed checks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DataEgress {
     /// Runs entirely in-process; no data leaves the platform.
     None,
+    /// Sends a bounded content excerpt to the org's configured utility LLM
+    /// (`llm_judge` / `moderation` checks) for evaluation.
+    UtilityLlm,
 }
 
 impl DataEgress {
     pub fn as_str(&self) -> &'static str {
         match self {
             DataEgress::None => "none",
+            DataEgress::UtilityLlm => "utility_llm",
         }
     }
 }
@@ -78,11 +84,21 @@ impl GuardrailGalleryItem {
         seen
     }
 
-    /// Where this preset sends data. Deterministic presets never leave the
-    /// platform; derived from check types so it stays correct as new types
-    /// (model/MCP) are added.
+    /// Where this preset sends data, derived from its check types so it stays
+    /// correct as new types (model/MCP) are added. A check that sends content
+    /// to the utility LLM (`llm_judge` / `moderation`) marks the preset as
+    /// utility-LLM egress; otherwise everything runs in-process.
     pub fn data_egress(&self) -> DataEgress {
-        DataEgress::None
+        let uses_utility_llm = self
+            .config
+            .checks
+            .iter()
+            .any(|c| matches!(c.rule.rule_type(), "llm_judge" | "moderation"));
+        if uses_utility_llm {
+            DataEgress::UtilityLlm
+        } else {
+            DataEgress::None
+        }
     }
 }
 
@@ -122,6 +138,21 @@ fn tool_pattern(tools: &[&str]) -> GuardrailRule {
         tools: tools.iter().map(|t| t.to_string()).collect(),
     }
 }
+
+fn llm_judge(prompt: &str) -> GuardrailRule {
+    GuardrailRule::LlmJudge {
+        prompt: prompt.to_string(),
+    }
+}
+
+/// Natural-language policy for the secret-leak judge. Describes the *class* of
+/// content to block (secret material rendered in cleartext) rather than any
+/// specific value, so it catches opaque secrets not known at config time.
+const SECRET_LEAK_JUDGE_POLICY: &str = "Block any tool call whose arguments would print, echo, log, \
+    diff, display, or transmit secret or credential material in cleartext — API keys, access tokens, \
+    passwords, private keys, connection strings, or values read from a secrets manager. Allow \
+    comparisons that only reveal a hash, fingerprint, length, or redacted form. Allow reads or \
+    writes that store or move a secret without displaying its value.";
 
 fn config(checks: Vec<GuardrailCheck>) -> GuardrailsConfig {
     GuardrailsConfig {
@@ -168,6 +199,39 @@ pub fn guardrail_gallery() -> Vec<GuardrailGalleryItem> {
                     Block,
                     Some("[Tool output withheld: appears to contain a credential.]"),
                     regex(secret_patterns),
+                ),
+            ]),
+        },
+        GuardrailGalleryItem {
+            name: "secret-leak-judge",
+            display_name: "Secret Leak Prevention (LLM judge)",
+            description: "Model-backed guardrail that blocks tool calls (and tool results) revealing \
+                 secret or credential material in cleartext, without the value being known in \
+                 advance. Complements `secret-detection`: that catches known credential formats by \
+                 pattern; this catches opaque secrets by intent. Evaluated by the utility LLM (a \
+                 bounded content excerpt leaves the generating path); async and fail-open. Blocked \
+                 tool calls are recoverable — the model self-corrects to a safe form (e.g. comparing \
+                 a hash). Run advisory first to tune false positives before enforcing.",
+            tags: vec!["security", "secrets"],
+            config: config(vec![
+                check(
+                    "secret-leak-tool-use",
+                    ToolUse,
+                    Block,
+                    Some(
+                        "This tool call was blocked: it would reveal secret or credential material. \
+                         Retry without printing the secret — compare a hash or redacted form instead.",
+                    ),
+                    llm_judge(SECRET_LEAK_JUDGE_POLICY),
+                ),
+                check(
+                    "secret-leak-tool-output",
+                    ToolOutput,
+                    Block,
+                    Some(
+                        "[Tool output withheld: appears to reveal secret or credential material.]",
+                    ),
+                    llm_judge(SECRET_LEAK_JUDGE_POLICY),
                 ),
             ]),
         },
@@ -314,6 +378,13 @@ mod tests {
         assert_eq!(secret.check_types(), vec!["regex"]);
         assert_eq!(secret.stages(), vec!["output", "tool_output"]);
         assert_eq!(secret.data_egress(), DataEgress::None);
+
+        // The model-backed secret-leak judge derives utility-LLM egress from
+        // its check types, not from a hand-authored marker.
+        let judge = find_guardrail_gallery_item("secret-leak-judge").expect("present");
+        assert_eq!(judge.check_types(), vec!["llm_judge"]);
+        assert_eq!(judge.stages(), vec!["tool_use", "tool_output"]);
+        assert_eq!(judge.data_egress(), DataEgress::UtilityLlm);
 
         let shell = find_guardrail_gallery_item("block-shell-access").expect("present");
         assert_eq!(shell.check_types(), vec!["tool_pattern"]);
