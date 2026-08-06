@@ -378,6 +378,55 @@ ServerAppBuilder::new(config)
 
 This is the org-creation counterpart to the invitation surface moved into OSS by EVE-602; member management and invitations use the OSS surfaces directly.
 
+## Org Initialization Extension Point
+
+`OrgCreatePolicy` gates creation *before* an org exists; `OrgInitializer` provisions resources *after* one is created. Per-tenant provisioning is the normal shape of an embedded control plane — a managed provider, a default budget, a tenant row in an external system, a per-org key in a secret store. Without a hook, an embedder must reimplement every org-creation path or ship a background reconciler that repairs new orgs after the fact, leaving a window where the org is missing the resource.
+
+`everruns-server` defines (in `org_init`):
+
+- `OrgInitializer` — async trait with `on_org_created(OrgInitContext) -> anyhow::Result<()>`, plus `required(&self) -> bool` (default `true`) and `name(&self) -> &str` for diagnostics
+- `OrgInitContext` — carries the storage backend (`db`), the new `org_id`, and `created_by: Option<Uuid>` (the requesting user, `None` for system-created orgs)
+- `OrgInitializerError` — names the failed required initializer and wraps its source error
+
+`ServerAppBuilder::org_initializer(Arc<dyn OrgInitializer>)` registers an initializer; it may be called multiple times and initializers run in registration order. OSS invokes them inside the create-org handler **after built-in harnesses and the default marketplace are provisioned**, so an initializer sees a fully set-up org. Failure policy is per-initializer:
+
+- **Required** (default): a failure aborts creation — OSS rolls the org back best-effort (`delete_organization`) and returns `500`, so a caller never sees a "created" org missing host-mandated resources.
+- **Optional** (`required() == false`): a failure is logged and creation proceeds.
+
+When no initializer is registered, default OSS create-org behavior is unchanged.
+
+```rust,ignore
+use everruns_server::{OrgInitContext, OrgInitializer};
+use everruns_server::app_builder::ServerAppBuilder;
+use async_trait::async_trait;
+use std::sync::Arc;
+
+struct ProvisionManagedProvider;
+
+#[async_trait]
+impl OrgInitializer for ProvisionManagedProvider {
+    async fn on_org_created(&self, ctx: OrgInitContext<'_>) -> anyhow::Result<()> {
+        // Wrapper-owned: create the host-managed provider row (its credential is
+        // a per-org gateway token) for ctx.org_id via ctx.db.
+        provision_gateway_provider(ctx.db, ctx.org_id).await
+    }
+
+    fn name(&self) -> &str {
+        "managed-provider"
+    }
+}
+
+ServerAppBuilder::new(config)
+    .org_initializer(Arc::new(ProvisionManagedProvider))
+    .run()
+    .await?;
+```
+
+- **OSS owns**: the `OrgInitializer` trait, `OrgInitContext` / `OrgInitializerError` types, the single post-provision call-site in the create-org handler (with best-effort rollback), and the builder hook.
+- **Wrappers own**: the concrete initializer, the resources it provisions, and its required/optional failure policy. Required initializers should stay idempotent so a retried creation converges.
+
+This is the post-create counterpart to `OrgCreatePolicy`; both hook the same OSS create-org handler, keeping OSS the owning boundary for org lifecycle.
+
 ## Zero-Org Onboarding Surface
 
 OSS owns the first screen a user sees after login when they have no organizations. Wrappers compose it instead of forking a full onboarding page plus the main-layout redirect.

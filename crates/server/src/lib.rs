@@ -141,6 +141,7 @@ pub use app_builder::{ServerAppBuilder, ServerContext};
 // Org creation policy extension point (EVE-607) — wrappers gate org creation
 // before any DB write without forking the OSS handler. See `specs/embedding.md`.
 pub use api::organizations::{OrgCreateContext, OrgCreatePolicy, OrgCreateRejection};
+pub use org_init::{OrgInitContext, OrgInitializer, OrgInitializerError, run_org_initializers};
 
 #[cfg(test)]
 mod tests {
