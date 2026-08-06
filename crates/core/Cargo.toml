@@ -34,6 +34,8 @@ async-trait.workspace = true
 # Async runtime
 # Note: "rt" is needed for tokio::spawn in event listener isolation
 tokio = { workspace = true, features = ["sync", "rt", "process", "time", "net"] }
+# `CancellationToken` for cooperative tool-call cancellation (ToolContext).
+tokio-util = { version = "0.7", default-features = false }
 futures.workspace = true
 
 # Serialization

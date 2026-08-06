@@ -1936,6 +1936,17 @@ pub struct ToolContext {
     /// change the reasoning effort mid-turn; subsequent LLM steps in the same
     /// `run_turn` re-read it and use the new effort.
     pub reasoning_effort_handle: Option<ReasoningEffortHandle>,
+
+    /// Cooperative cancellation for this tool call.
+    ///
+    /// The act atom cancels it when the call ends *by any means* — the turn was
+    /// cancelled, the act future was dropped, or the tool simply returned. A
+    /// tool that only awaits inside its own future needs nothing here: dropping
+    /// the future already stops it. This exists for work a tool starts and
+    /// leaves running — a child process, a detached watcher task, a prompt
+    /// waiting on an answer — which would otherwise outlive the call that
+    /// created it. Clone the token into that work and let it die with the call.
+    pub cancellation: Option<tokio_util::sync::CancellationToken>,
 }
 
 impl ToolContext {
@@ -1993,6 +2004,7 @@ impl ToolContext {
             subagent_spawn_store: None,
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
+            cancellation: None,
         }
     }
 
@@ -2036,6 +2048,7 @@ impl ToolContext {
             subagent_spawn_store: services.subagent_spawn_store.clone(),
             subagent_nesting_policy: services.subagent_nesting_policy,
             reasoning_effort_handle: services.reasoning_effort_handle.clone(),
+            cancellation: None,
         }
     }
 
@@ -2079,6 +2092,7 @@ impl ToolContext {
             subagent_spawn_store: None,
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
+            cancellation: None,
         }
     }
 
@@ -2125,6 +2139,7 @@ impl ToolContext {
             subagent_spawn_store: None,
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
+            cancellation: None,
         }
     }
 
@@ -2172,6 +2187,7 @@ impl ToolContext {
             subagent_spawn_store: None,
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
+            cancellation: None,
         }
     }
 
@@ -2205,6 +2221,21 @@ impl ToolContext {
     /// Add a live reasoning-effort handle (EVE-595). Tools can call
     /// [`ReasoningEffortHandle::set`] on it to change the effort used by
     /// subsequent LLM steps within the same turn.
+    /// Attach a cancellation token to this context (see
+    /// [`ToolContext::cancellation`]).
+    pub fn with_cancellation(mut self, token: tokio_util::sync::CancellationToken) -> Self {
+        self.cancellation = Some(token);
+        self
+    }
+
+    /// Whether this call has already been cancelled. A context with no token
+    /// never reports cancellation.
+    pub fn is_cancelled(&self) -> bool {
+        self.cancellation
+            .as_ref()
+            .is_some_and(|token| token.is_cancelled())
+    }
+
     pub fn with_reasoning_effort_handle(mut self, handle: ReasoningEffortHandle) -> Self {
         self.reasoning_effort_handle = Some(handle);
         self
@@ -2265,6 +2296,7 @@ impl ToolContext {
             subagent_spawn_store: None,
             subagent_nesting_policy: SubagentNestingPolicy::default(),
             reasoning_effort_handle: None,
+            cancellation: None,
         }
     }
 

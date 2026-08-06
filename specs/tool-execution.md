@@ -264,6 +264,19 @@ V1 limitation:
 - Background runs are best-effort and worker-local. They are started with `tokio::spawn` inside the worker process and are not yet durable across worker restarts.
 - This is intentional for the first iteration; durable resumption can be layered later without changing the tool contract.
 
+### Tool-Call Cancellation
+
+Dropping the act future is how a cancelled turn stops tool work, and for a tool
+that only awaits inside its own future that is enough — a dropped future is
+never polled again. It says nothing to work the tool *left running*: a child
+process, a detached watcher task, a prompt waiting on an answer.
+
+`ToolContext.cancellation` is the signal that reaches those. The act atom mints
+a token per call and cancels it when the call ends by any means — turn
+cancelled, act future dropped, or the tool simply returned — so the contract a
+tool sees is "this call is over; stop what you started for it". Cloning the
+token into detached work is what keeps it from outliving the call.
+
 ### Tool-Side Service Stores
 
 `ToolContext` may carry worker-backed service stores in addition to filesystem and session metadata handles. These stores let tools perform org-scoped operations without bypassing worker authorization boundaries.
