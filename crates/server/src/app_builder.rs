@@ -18,7 +18,7 @@ use crate::pg_listener_config::resolve_pg_listener_database_url;
 use crate::server::{ServerConfig, build_router_with_prefix};
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::supervised_task::{RestartPolicy, TaskSupervisor};
-use crate::{api, seed, services};
+use crate::{api, org_init, seed, services};
 
 use crate::middleware::RequestIdLayer;
 use crate::middleware::request_id::RequestId;
@@ -387,6 +387,7 @@ pub struct ServerAppBuilder {
     background_tasks: Vec<BackgroundTaskFn>,
     personal_access_token_routes_wrap: Option<PersonalAccessTokenRoutesWrapFn>,
     org_create_policy: Option<Arc<dyn api::organizations::OrgCreatePolicy>>,
+    org_initializers: Vec<Arc<dyn org_init::OrgInitializer>>,
 }
 
 impl ServerAppBuilder {
@@ -403,6 +404,7 @@ impl ServerAppBuilder {
             background_tasks: Vec::new(),
             personal_access_token_routes_wrap: None,
             org_create_policy: None,
+            org_initializers: Vec::new(),
         }
     }
 
@@ -503,6 +505,25 @@ impl ServerAppBuilder {
         policy: Arc<dyn api::organizations::OrgCreatePolicy>,
     ) -> Self {
         self.org_create_policy = Some(policy);
+        self
+    }
+
+    /// Register a post-create organization initializer (EVE-811).
+    ///
+    /// The initializer runs inside the OSS `POST /v1/orgs` handler after the new
+    /// org's built-in harnesses and default marketplace are provisioned, with
+    /// access to the storage backend, the new org id, and the creating user. It
+    /// lets a wrapper provision per-org resources — a managed provider, a default
+    /// budget, an external tenant record — as part of org creation rather than via
+    /// a follow-up reconciler, closing the window where a new org has no working
+    /// provider.
+    ///
+    /// May be called multiple times; initializers run in registration order. A
+    /// required initializer that fails aborts creation (the org is rolled back);
+    /// an optional one only logs. When none are registered, default OSS behavior
+    /// is unchanged. See `specs/embedding.md`.
+    pub fn org_initializer(mut self, initializer: Arc<dyn org_init::OrgInitializer>) -> Self {
+        self.org_initializers.push(initializer);
         self
     }
 
@@ -1322,6 +1343,7 @@ impl ServerAppBuilder {
         );
         organizations_state.org_rate_limiter = org_rate_limiter.clone();
         organizations_state.org_create_policy = self.org_create_policy;
+        organizations_state.org_initializers = self.org_initializers;
         let org_invitations_state = api::org_invitations::AppState::new(
             db.clone(),
             auth_state.clone(),

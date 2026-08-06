@@ -98,6 +98,10 @@ pub struct AppState {
     /// Optional wrapper-supplied pre-create policy (EVE-607). Runs before any
     /// org/membership row is written; `None` keeps default OSS behavior.
     pub org_create_policy: Option<Arc<dyn OrgCreatePolicy>>,
+    /// Wrapper-supplied post-create initializers (EVE-811). Run after built-in
+    /// harnesses and the default marketplace are provisioned for a new org; empty
+    /// keeps default OSS behavior.
+    pub org_initializers: Vec<Arc<dyn crate::org_init::OrgInitializer>>,
 }
 
 impl AppState {
@@ -109,6 +113,7 @@ impl AppState {
             resource_limits: crate::server::ResourceLimitsConfig::from_env(),
             org_rate_limiter: OrgRateLimiter::default(),
             org_create_policy: None,
+            org_initializers: Vec::new(),
         }
     }
 
@@ -124,6 +129,7 @@ impl AppState {
             resource_limits: crate::server::ResourceLimitsConfig::from_env(),
             org_rate_limiter: OrgRateLimiter::default(),
             org_create_policy: None,
+            org_initializers: Vec::new(),
         }
     }
 }
@@ -390,6 +396,43 @@ pub async fn create_organization(
     // Seed the default plugin marketplace (everruns/everruns) for the new org.
     // Non-fatal: if it fails (e.g. name conflict), org creation still succeeds.
     crate::org_init::seed_default_plugin_marketplace(&state.db, row.org_id).await;
+
+    // Post-create org initializers (EVE-811). Runs after built-in harnesses and
+    // the default marketplace are provisioned, so embedder-provisioned per-org
+    // resources (a managed provider, a default budget, an external tenant record)
+    // are set up as part of org creation instead of by a follow-up reconciler.
+    // No-op when no initializer is registered (default OSS behavior).
+    //
+    // A required initializer that fails aborts creation: the org row is rolled
+    // back best-effort and a 500 is returned, so a caller never sees a "created"
+    // org missing host-mandated resources. Optional initializers only log.
+    if let Err(e) = crate::org_init::run_org_initializers(
+        &state.org_initializers,
+        &state.db,
+        row.org_id,
+        Some(user.id),
+    )
+    .await
+    {
+        tracing::error!(
+            org_id = row.org_id,
+            initializer = %e.initializer,
+            error = %e.source,
+            "Required org initializer failed; rolling back org creation"
+        );
+        // Best-effort rollback so a failed provisioning does not leave a dangling
+        // org the user owns. Cleanup failure is logged but the request still fails.
+        match state.db.delete_organization(row.org_id).await {
+            Ok(_) => {}
+            Err(cleanup_err) => tracing::error!(
+                org_id = row.org_id,
+                error = %cleanup_err,
+                "Failed to roll back org after initializer failure"
+            ),
+        }
+        return Err(ErrorResponse::new("Failed to initialize organization")
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR));
+    }
 
     // Seed agents are available as examples (GET /v1/agent-examples) and adopted
     // on demand via POST /v1/agent-examples/{slug}/use. No automatic seeding —
@@ -1263,6 +1306,136 @@ mod tests {
 
         let response = app.oneshot(create_org_request("Acme Corp")).await.unwrap();
         assert_eq!(response.status(), StatusCode::CREATED);
+        let count = db.count_user_created_organizations(user_id).await.unwrap();
+        assert_eq!(count, 1);
+    }
+
+    // ------------------------------------------------------------------------
+    // Post-create org initializers (EVE-811)
+    // ------------------------------------------------------------------------
+
+    use crate::org_init::{OrgInitContext, OrgInitializer};
+
+    /// Build a create-org router with the given post-create initializers.
+    fn create_org_app_with_initializers(
+        initializers: Vec<Arc<dyn OrgInitializer>>,
+    ) -> (Router, Arc<StorageBackend>, Uuid) {
+        let user_id = Uuid::now_v7();
+        let db = Arc::new(StorageBackend::in_memory());
+        let config = AuthConfig {
+            mode: AuthMode::Full,
+            jwt: JwtConfig {
+                secret: "test-secret-for-unit-tests-only".to_string(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let auth = AuthState::new(config, Arc::new(MockAuthBackend { user_id }));
+        let mut state = AppState::new(db.clone(), auth);
+        state.org_initializers = initializers;
+        (routes(state), db, user_id)
+    }
+
+    #[tokio::test]
+    async fn org_initializer_runs_after_org_created() {
+        use std::sync::Mutex;
+
+        /// (org_id, created_by) recorded by the initializer.
+        type SeenOrg = Arc<Mutex<Option<(i64, Option<Uuid>)>>>;
+
+        /// Records the org id and creating user it was invoked with.
+        struct RecordingInitializer {
+            seen: SeenOrg,
+        }
+        #[async_trait]
+        impl OrgInitializer for RecordingInitializer {
+            async fn on_org_created(&self, ctx: OrgInitContext<'_>) -> anyhow::Result<()> {
+                // The org exists by the time the initializer runs, and its
+                // built-in harnesses are already provisioned.
+                let harnesses = ctx.db.list_harnesses(ctx.org_id, None, false).await?;
+                assert!(
+                    !harnesses.is_empty(),
+                    "harnesses should be provisioned before initializers run"
+                );
+                *self.seen.lock().unwrap() = Some((ctx.org_id, ctx.created_by));
+                Ok(())
+            }
+        }
+
+        let seen = Arc::new(Mutex::new(None));
+        let init: Arc<dyn OrgInitializer> = Arc::new(RecordingInitializer { seen: seen.clone() });
+        let (app, db, user_id) = create_org_app_with_initializers(vec![init]);
+
+        let response = app.oneshot(create_org_request("Acme Corp")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+
+        let recorded = seen.lock().unwrap().expect("initializer must have run");
+        assert_eq!(
+            recorded.1,
+            Some(user_id),
+            "created_by is the requesting user"
+        );
+        // The org persisted and the recorded id matches it.
+        let orgs = db.list_user_organizations(user_id).await.unwrap();
+        assert_eq!(orgs.len(), 1);
+        assert_eq!(recorded.0, orgs[0].org_id);
+    }
+
+    #[tokio::test]
+    async fn required_org_initializer_failure_aborts_and_rolls_back() {
+        struct FailingRequired;
+        #[async_trait]
+        impl OrgInitializer for FailingRequired {
+            async fn on_org_created(&self, _ctx: OrgInitContext<'_>) -> anyhow::Result<()> {
+                anyhow::bail!("provisioning failed")
+            }
+            fn name(&self) -> &str {
+                "failing-required"
+            }
+        }
+
+        let init: Arc<dyn OrgInitializer> = Arc::new(FailingRequired);
+        let (app, db, user_id) = create_org_app_with_initializers(vec![init]);
+
+        let response = app.oneshot(create_org_request("Acme Corp")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        // The org was rolled back: no user-owned org survives.
+        let count = db.count_user_created_organizations(user_id).await.unwrap();
+        assert_eq!(
+            count, 0,
+            "failed required initializer must roll back the org"
+        );
+        assert!(
+            db.list_user_organizations(user_id)
+                .await
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[tokio::test]
+    async fn optional_org_initializer_failure_is_non_fatal() {
+        struct FailingOptional;
+        #[async_trait]
+        impl OrgInitializer for FailingOptional {
+            async fn on_org_created(&self, _ctx: OrgInitContext<'_>) -> anyhow::Result<()> {
+                anyhow::bail!("best-effort provisioning failed")
+            }
+            fn required(&self) -> bool {
+                false
+            }
+            fn name(&self) -> &str {
+                "failing-optional"
+            }
+        }
+
+        let init: Arc<dyn OrgInitializer> = Arc::new(FailingOptional);
+        let (app, db, user_id) = create_org_app_with_initializers(vec![init]);
+
+        let response = app.oneshot(create_org_request("Acme Corp")).await.unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+        // Org still created despite the optional initializer failing.
         let count = db.count_user_created_organizations(user_id).await.unwrap();
         assert_eq!(count, 1);
     }
