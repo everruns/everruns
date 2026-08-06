@@ -130,6 +130,7 @@ mod openrouter_workspace;
 mod openui;
 mod parallel_tool_calls;
 mod platform_management;
+mod progress_guard;
 mod prompt_caching;
 mod prompt_canary_guardrail;
 mod research;
@@ -305,6 +306,7 @@ pub use platform_management::{
     PlatformManagementCapability, ReadAgentsTool, ReadCapabilitiesTool, ReadHarnessesTool,
     ReadSessionsTool, SessionReadMessagesTool, SessionReadResponseTool, SessionSendMessageTool,
 };
+pub use progress_guard::{PROGRESS_GUARD_CAPABILITY_ID, ProgressGuardCapability};
 pub use prompt_caching::{PROMPT_CACHING_CAPABILITY_ID, PromptCachingCapability};
 pub use prompt_canary_guardrail::{
     DEFAULT_REPLACEMENT as PROMPT_CANARY_DEFAULT_REPLACEMENT,
@@ -1383,6 +1385,7 @@ impl CapabilityRegistry {
         registry.register(tool_output_persistence::ToolOutputPersistenceCapability);
         registry.register(tool_output_distillation::ToolOutputDistillationCapability);
         registry.register(LoopDetectionCapability);
+        registry.register(ProgressGuardCapability::new());
         registry.register(ToolCallRepairCapability);
         registry.register(PromptCanaryGuardrailCapability);
         registry.register(GuardrailsCapability);
@@ -1482,6 +1485,11 @@ impl CapabilityRegistry {
 
         // Loop detection (EVE-227: detect repeated identical tool calls)
         registry.register(LoopDetectionCapability);
+
+        // Progress guard: warns when tool traffic is investigation without
+        // edits or validation. Complements loop detection, which only catches
+        // literal repeats. Behavior-only (no tools), opt-in per agent.
+        registry.register(ProgressGuardCapability::new());
 
         // Auto-continue after an LLM usage limit resets: resumes interrupted
         // work once the provider limit clears. Behavior-only (no tools).
@@ -3257,6 +3265,7 @@ mod tests {
             "fake_crm",
             "fake_financial",
             "loop_detection",
+            "progress_guard",
             "usage_limit_auto_continue",
             "tool_call_repair",
             "error_disclosure",
@@ -3305,6 +3314,7 @@ mod tests {
             "tool_output_persistence",
             "tool_output_distillation",
             "loop_detection",
+            "progress_guard",
             "tool_call_repair",
             "error_disclosure",
             "prompt_canary_guardrail",
