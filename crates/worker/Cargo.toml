@@ -39,6 +39,7 @@ everruns-openai = { path = "../openai" }
 everruns-openrouter = { path = "../openrouter" }
 everruns-mai = { path = "../mai" }
 everruns-fireworks = { path = "../fireworks" }
+everruns-meta = { path = "../meta" }
 everruns-anthropic = { path = "../anthropic" }
 everruns-gemini = { path = "../gemini" }
 everruns-bedrock = { path = "../bedrock" }

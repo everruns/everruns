@@ -3381,7 +3381,8 @@ export type DriverId =
   | "gemini"
   | "bedrock"
   | "mai"
-  | "fireworks";
+  | "fireworks"
+  | "meta";
 
 export type ProviderStatus = "active" | "disabled";
 
@@ -3393,6 +3394,7 @@ export type ModelVendor =
   | "nvidia"
   | "qwen"
   | "microsoft"
+  | "meta"
   | "minimax"
   | "moonshot"
   | "xai"

@@ -6740,7 +6740,7 @@ export interface components {
       /** @description Whether the driver declares an interactive "Connect with …" OAuth flow. */
       supports_oauth: boolean;
     };
-    /** @description LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks. Any other string is treated as an embedder-defined external provider. */
+    /** @description LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta. Any other string is treated as an embedder-defined external provider. */
     DriverId: string;
     /** @description Options for enqueuing a standalone task */
     EnqueueTaskOptions: {
@@ -11412,6 +11412,7 @@ export interface components {
       | "nvidia"
       | "qwen"
       | "microsoft"
+      | "meta"
       | "minimax"
       | "moonshot"
       | "xai"

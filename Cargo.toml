@@ -14,6 +14,7 @@ members = [
     "crates/openrouter",
     "crates/mai",
     "crates/fireworks",
+    "crates/meta",
     "crates/anthropic",
     "crates/gemini",
     "crates/turbopuffer",

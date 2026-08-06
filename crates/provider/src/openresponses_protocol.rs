@@ -1008,6 +1008,7 @@ fn is_missing_tool_output_continuation_error(error: &AgentLoopError) -> bool {
 fn endpoint_persists_responses(api_url: &str) -> bool {
     crate::openai_protocol::is_openai_api_url(api_url)
         || crate::openai_protocol::is_azure_openai_api_url(api_url)
+        || crate::openai_protocol::url_host_eq(api_url, "api.meta.ai")
 }
 
 #[async_trait]

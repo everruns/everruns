@@ -341,6 +341,7 @@ For development, you can set default API keys via environment variables on the *
 | `DEFAULT_OPENAI_API_KEY` | Fallback API key for OpenAI providers |
 | `DEFAULT_ANTHROPIC_API_KEY` | Fallback API key for Anthropic providers |
 | `DEFAULT_GEMINI_API_KEY` | Fallback API key for Google Gemini providers |
+| `DEFAULT_META_API_KEY` | Fallback API key for Meta Model API providers |
 
 **Example:**
 
@@ -349,6 +350,7 @@ For development, you can set default API keys via environment variables on the *
 DEFAULT_OPENAI_API_KEY=sk-...
 DEFAULT_ANTHROPIC_API_KEY=sk-ant-...
 DEFAULT_GEMINI_API_KEY=AIza...
+DEFAULT_META_API_KEY=...
 ```
 
 **Notes:**
