@@ -96,7 +96,7 @@ cargo test -p everruns-server --test integration_test test_full_agent_session_wo
 
 ## API Endpoints
 
-See [specs/apis.md](../../specs/apis.md) for the complete API reference.
+See [knowledge/execution/apis.md](../../knowledge/execution/apis.md) for the complete API reference.
 
 ### Core Resources
 

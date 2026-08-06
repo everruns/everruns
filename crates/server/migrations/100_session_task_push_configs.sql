@@ -8,7 +8,7 @@
 -- owning session, so callers are authorized via the session's org (the same
 -- boundary the notifier already resolves). The FK to session_tasks(id) ON
 -- DELETE CASCADE reuses the task lifecycle for cleanup (prune drops configs
--- with their task). See specs/session-tasks.md.
+-- with their task). See knowledge/runtime-resources/session-tasks.md.
 
 CREATE TABLE session_task_push_configs (
     id           BIGSERIAL PRIMARY KEY,

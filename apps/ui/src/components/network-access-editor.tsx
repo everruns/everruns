@@ -58,7 +58,7 @@ interface NetworkAccessEditorProps {
 }
 
 /**
- * Editor for a `NetworkAccessList` (see specs/network-access.md): allowed and
+ * Editor for a `NetworkAccessList` (see knowledge/operations/network-access.md): allowed and
  * blocked host/URL patterns, one per line. Layers (harness → agent → session)
  * can only narrow access, never widen it; blocked always wins over allowed.
  */

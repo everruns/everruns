@@ -7,7 +7,7 @@
 //! [`VerificationVerdict`]. Because it is separate from the feeds, any feed
 //! (`citation_retrieval`, a native provider feed, …) can be paired with it, and
 //! evals can hold the feed fixed while varying the verifier. See
-//! `specs/citations.md`.
+//! `knowledge/runtime-resources/citations.md`.
 //!
 //! Two modes:
 //! * `heuristic` (default) — lexical entailment (token overlap between the claim

@@ -1,17 +1,17 @@
 -- Knowledge Indexes
--- See specs/knowledge-indexes.md for full design intent.
+-- See knowledge/runtime-resources/knowledge-indexes.md for full design intent.
 --
 -- A Knowledge Index is an org-scoped, named collection that connects an
 -- external knowledge source (a GitHub repository in v1), syncs its documents,
 -- chunks and embeds them, and exposes semantic + hybrid search with citations.
 -- It is the search-optimized, source-backed sibling of curated Knowledge Bases
--- (specs/knowledge-bases.md) and reuses the source-sync pattern from
--- source-backed Memory (specs/memory.md).
+-- (knowledge/runtime-resources/knowledge-bases.md) and reuses the source-sync pattern from
+-- source-backed Memory (knowledge/runtime-resources/memory.md).
 --
 -- Embedding VECTORS are NOT stored here: Postgres is the management source of
 -- truth, while vectors + BM25 text live in an external vector store
 -- (Turbopuffer reference backend), one namespace per index, org-prefixed for
--- multitenant isolation. See specs/knowledge-indexes.md#vector-store.
+-- multitenant isolation. See knowledge/runtime-resources/knowledge-indexes.md#vector-store.
 --
 -- This migration adds the foundational schema:
 --   - knowledge_indexes:           the index entity (lifecycle + sync_status)
@@ -46,7 +46,7 @@ CREATE TABLE knowledge_indexes (
     -- Embedding dimension, recorded on first successful sync.
     vector_dim INT,
     -- External vector-store namespace, assigned at creation and never reused.
-    -- Naming: org_{org_id}__{public_id}. See specs/knowledge-indexes.md.
+    -- Naming: org_{org_id}__{public_id}. See knowledge/runtime-resources/knowledge-indexes.md.
     vector_namespace TEXT,
 
     -- Owner principal (creator). Resolution to a concrete user happens at the
@@ -86,7 +86,7 @@ CREATE UNIQUE INDEX idx_knowledge_indexes_org_name_active
 CREATE TRIGGER update_knowledge_indexes_updated_at BEFORE UPDATE ON knowledge_indexes
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-COMMENT ON TABLE knowledge_indexes IS 'Knowledge Indexes — org-scoped source-backed embedded collections. See specs/knowledge-indexes.md.';
+COMMENT ON TABLE knowledge_indexes IS 'Knowledge Indexes — org-scoped source-backed embedded collections. See knowledge/runtime-resources/knowledge-indexes.md.';
 
 -- ============================================
 -- Index Documents (one ingested source document)

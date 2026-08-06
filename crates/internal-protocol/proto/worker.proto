@@ -166,7 +166,7 @@ service WorkerService {
     rpc DeregisterSessionResource(DeregisterSessionResourceRequest) returns (DeregisterSessionResourceResponse);
 
     // === Session task registry ===
-    // Background work owned by a session (specs/session-tasks.md).
+    // Background work owned by a session (knowledge/runtime-resources/session-tasks.md).
     // Task and message payloads travel as native protobuf messages (EVE-642):
     // serialized once by protobuf framing, consumed directly on the worker.
     // Lifecycle invariants stay defined in one place (everruns-core).

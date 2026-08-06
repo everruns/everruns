@@ -1,4 +1,4 @@
-// Async dataset export job. See `specs/dataset-export.md` (Phase 2).
+// Async dataset export job. See `knowledge/evaluation/dataset-export.md` (Phase 2).
 //
 // Phase 1 built the reward-labeled NDJSON synchronously inside the export
 // command. Phase 2 makes the export a handle: the command persists a dataset
@@ -39,7 +39,7 @@ pub async fn build_dataset_ndjson(
     // training rows never contain content the model did not read (masked/dropped
     // tool results). Only the whole-session export (`?format=atif`) still folds
     // the raw event log, which is a debug/backup surface. See
-    // specs/dataset-export.md (Model-view faithfulness) and specs/atif-adoption.md.
+    // knowledge/evaluation/dataset-export.md (Model-view faithfulness) and knowledge/evaluation/atif-adoption.md.
     let retriever = DbMessageRetriever::new(db.clone());
     let compaction = CompactionConfig::default();
 

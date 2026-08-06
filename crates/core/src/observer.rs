@@ -9,7 +9,7 @@
 // Design Decision: Scores are derived data with their own lifecycle and live in
 // their own table; they are never appended to the immutable session event log.
 //
-// See specs/online-evals.md for full specification.
+// See knowledge/evaluation/online-evals.md for full specification.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -120,7 +120,7 @@ impl ObserverMatch {
 // ============================================
 
 /// What slice of the trace a scorer grades. Phase 1 implements `turn` only;
-/// `session` and `tool` scopes are specced in specs/online-evals.md.
+/// `session` and `tool` scopes are specced in knowledge/evaluation/online-evals.md.
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "lowercase")]

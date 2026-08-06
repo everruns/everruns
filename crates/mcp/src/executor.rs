@@ -5,7 +5,7 @@
 //! register MCP tools as first-class [`everruns_core::tools::Tool`] entries in
 //! the regular `ToolRegistry` (via `everruns_core::build_mcp_proxy_tools`),
 //! instead of routing `mcp_*` calls through a separate executor
-//! (specs/runtime-mcp.md D5).
+//! (knowledge/integrations/runtime-mcp.md D5).
 
 use crate::client::McpClient;
 use crate::transport::McpConnection;

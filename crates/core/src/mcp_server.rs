@@ -1,6 +1,6 @@
 // MCP Server domain types
 //
-// Spec: specs/mcp.md (umbrella), specs/mcp-servers.md (detail)
+// Spec: knowledge/integrations/mcp.md (umbrella), knowledge/integrations/mcp-servers.md (detail)
 //
 // These types represent the MCP (Model Context Protocol) server configuration.
 // Used by both API and worker crates.
@@ -28,7 +28,7 @@ pub enum McpServerTransportType {
     Http,
     /// Local-process transport over stdio. Only usable by single-tenant
     /// runtime/CLI hosts (e.g. the example coding CLI); the hosted product
-    /// rejects it during scoped-config validation (see specs/runtime-mcp.md).
+    /// rejects it during scoped-config validation (see knowledge/integrations/runtime-mcp.md).
     Stdio,
 }
 
@@ -100,7 +100,7 @@ impl McpServerAuthMode {
 // "rc" — `2026-07-28` shipped as a final spec on 2026-07-28, and the previous
 // naming outlived its meaning within one release.
 //
-// See specs/mcp-servers.md (Multi-era protocol support) and the negotiation
+// See knowledge/integrations/mcp-servers.md (Multi-era protocol support) and the negotiation
 // engine in `everruns-mcp` (`protocol.rs`).
 
 /// MCP `2025-03-26` (stateful handshake). Oldest era the client speaks.
@@ -750,7 +750,7 @@ pub enum McpErrorCategory {
 /// error responses so the legacy `content[0].text` channel stays
 /// backward-compatible; new SDKs prefer the typed envelope.
 ///
-/// See `specs/mcp.md` for the error contract.
+/// See `knowledge/integrations/mcp.md` for the error contract.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct McpExecuteError {
@@ -837,7 +837,7 @@ pub fn classify_mcp_execute_error(message: &str) -> McpExecuteError {
     let lower = message.to_ascii_lowercase();
     // Catalog-backed query/execute tools format their dispatch errors as
     // `<kind>: <message>` (see `crates/server/src/api/mcp_endpoint/catalog.rs::format_dispatch_error`
-    // and the public contract in `specs/domains.md`). Map those prefixes
+    // and the public contract in `knowledge/foundations/domains.md`). Map those prefixes
     // first so the most common real-world MCP failures get a precise code
     // rather than landing in the `Internal` catch-all.
     let code = if lower.starts_with("bad_request:") || lower.starts_with("unprocessable:") {
@@ -1243,7 +1243,7 @@ mod tests {
     fn classify_recognises_catalog_dispatch_prefixes() {
         // `crates/server/src/api/mcp_endpoint/catalog.rs::format_dispatch_error`
         // emits `<kind>: <message>` for inventory-backed query/execute
-        // tools. These are the public MCP contract per specs/domains.md,
+        // tools. These are the public MCP contract per knowledge/foundations/domains.md,
         // so the classifier must route them to precise codes rather than
         // the catch-all `Internal` bucket.
         for (prefix, expected) in [

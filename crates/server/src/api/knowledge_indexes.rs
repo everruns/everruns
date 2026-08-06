@@ -1,4 +1,4 @@
-// Knowledge Index CRUD HTTP routes. See specs/knowledge-indexes.md.
+// Knowledge Index CRUD HTTP routes. See knowledge/runtime-resources/knowledge-indexes.md.
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};

@@ -110,5 +110,5 @@ This test exercises the `/mcp` endpoint's catalog search path plus the bashkit-b
 
 ## Notes
 
-- This is intentionally an MCP-client workflow, not a browser-chat flow. It covers the Tier 2 surface described in `specs/apis.md` and `specs/mcp.md`.
+- This is intentionally an MCP-client workflow, not a browser-chat flow. It covers the Tier 2 surface described in `knowledge/execution/apis.md` and `knowledge/integrations/mcp.md`.
 - Exact `discover` wording may change. Match on the presence of relevant operation names and a non-error response rather than exact prose.

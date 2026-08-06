@@ -1,4 +1,4 @@
--- Org-configurable agent check rules (specs/agent-checks.md, phase 4).
+-- Org-configurable agent check rules (knowledge/evaluation/agent-checks.md, phase 4).
 --
 -- One row per (org, rule_id). Two purposes:
 --   * builtin_override — toggles/severity-overrides a built-in rule by its id

@@ -716,8 +716,8 @@ pub fn substitute_activation_vars(content: &str, session_id: &str, skill_dir: &s
 // the session virtual filesystem rather than the worker. Flipping the trust
 // gate without that replacement would still be RCE against the worker host.
 //
-// See `specs/skills-registry.md` ("Activation Substitution Pipeline") and
-// `specs/threat-model.md` entry TM-TOOL-020 for the rationale.
+// See `knowledge/project/skills-registry.md` ("Activation Substitution Pipeline") and
+// `knowledge/security/threat-model.md` entry TM-TOOL-020 for the rationale.
 
 /// Result of executing a shell command during skill preprocessing.
 pub struct CommandResult {

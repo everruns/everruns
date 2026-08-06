@@ -1,6 +1,6 @@
 // Agent domain types
 //
-// Design Decision: Dual-ID pattern (see specs/id-schema.md)
+// Design Decision: Dual-ID pattern (see knowledge/foundations/id-schema.md)
 // - public_id: AgentId (external, API-facing, client-supplied or auto-generated)
 // - internal_id: Uuid (internal PK, used for FK references, never exposed in API)
 //

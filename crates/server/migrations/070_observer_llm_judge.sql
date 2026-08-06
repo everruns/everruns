@@ -1,4 +1,4 @@
--- LLM-judge scoring for Observers. See specs/online-evals.md.
+-- LLM-judge scoring for Observers. See knowledge/evaluation/online-evals.md.
 --
 -- Adds the judge output (categorical label) and judge token/cost accounting to
 -- trace_scores. Rule scores leave these NULL.

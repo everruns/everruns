@@ -1,4 +1,4 @@
-// Tier-1 deterministic agent config checks (specs/agent-checks.md).
+// Tier-1 deterministic agent config checks (knowledge/evaluation/agent-checks.md).
 //
 // Pure functions over the authored prompt and the resolved preview shape.
 // Advisory only: findings never block any operation. LLM-backed checks
@@ -14,7 +14,7 @@ use serde::Serialize;
 use utoipa::ToSchema;
 
 /// Advisory severity. There is deliberately no `error`: checks never gate
-/// save/publish (specs/agent-checks.md, Non-Goals).
+/// save/publish (knowledge/evaluation/agent-checks.md, Non-Goals).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum FindingSeverity {
@@ -473,7 +473,7 @@ fn check_duplicate_tool_names(tools: &[ToolDefinition], findings: &mut Vec<Findi
 }
 
 // ============================================================================
-// Org-configurable rules (specs/agent-checks.md, phase 4)
+// Org-configurable rules (knowledge/evaluation/agent-checks.md, phase 4)
 // ============================================================================
 
 /// Static metadata about a built-in rule, for the admin catalog so orgs can

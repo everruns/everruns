@@ -1,4 +1,4 @@
--- Read-only share links for eval runs (specs/evals.md, specs/public-endpoints.md).
+-- Read-only share links for eval runs (knowledge/evaluation/evals.md, knowledge/execution/public-endpoints.md).
 --
 -- A share token unlocks an anonymous, read-only view of exactly one eval run via
 -- `GET /v1/public/eval-runs/{token}`. Like personal access tokens, the raw token

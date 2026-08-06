@@ -200,12 +200,12 @@ pub struct ErrorResponse {
 ///   prose.
 ///
 /// The shape is intentionally identical across both contexts; the closed
-/// `rel` vocabulary documented in `specs/api-conventions.md` distinguishes
+/// `rel` vocabulary documented in `knowledge/execution/api-conventions.md` distinguishes
 /// them.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Default)]
 pub struct AllowedAction {
     /// Link relation describing the action. Closed vocabulary documented
-    /// in `specs/api-conventions.md` — examples: `self`, `cancel`, `pause`,
+    /// in `knowledge/execution/api-conventions.md` — examples: `self`, `cancel`, `pause`,
     /// `resume`, `events`, `retry`, `retry-later`, `unarchive`,
     /// `get-existing`, `delete`, `update`.
     pub rel: String,
@@ -1126,7 +1126,7 @@ pub trait ResourceUrlable {
     /// **without the `/v1` resource prefix** (e.g.
     /// `https://app.everruns.com/api`, not `…/api/v1`). The resolver is
     /// responsible for the versioned path. See
-    /// `specs/api-conventions.md` for the closed `rel` vocabulary.
+    /// `knowledge/execution/api-conventions.md` for the closed `rel` vocabulary.
     fn allowed_actions(&self, _api_base: &str) -> Vec<AllowedAction> {
         Vec::new()
     }
@@ -1219,10 +1219,10 @@ impl<T: ResourceUrlable + Serialize> ListResponse<T> {
 // One pure resolver per cluster, kept here so the (state → rel set)
 // mapping is testable without constructing a full entity. The
 // `ResourceUrlable` impl delegates to the resolver. New `rel`s must
-// also be documented in `specs/api-conventions.md`.
+// also be documented in `knowledge/execution/api-conventions.md`.
 // ---------------------------------------------------------------
 
-/// Hypermedia actions for an `Agent`. See `specs/api-conventions.md`.
+/// Hypermedia actions for an `Agent`. See `knowledge/execution/api-conventions.md`.
 pub fn agent_allowed_actions(
     id: &str,
     status: &everruns_core::AgentStatus,
@@ -1281,7 +1281,7 @@ impl ResourceUrlable for everruns_core::Agent {
     }
 }
 
-/// Hypermedia actions for a `Harness`. See `specs/api-conventions.md`.
+/// Hypermedia actions for a `Harness`. See `knowledge/execution/api-conventions.md`.
 pub fn harness_allowed_actions(
     id: &str,
     status: &everruns_core::HarnessStatus,
@@ -1335,7 +1335,7 @@ impl ResourceUrlable for everruns_core::Harness {
     }
 }
 
-/// Hypermedia actions for an `App`. See `specs/api-conventions.md`.
+/// Hypermedia actions for an `App`. See `knowledge/execution/api-conventions.md`.
 pub fn app_allowed_actions(
     id: &str,
     status: &everruns_core::AppStatus,
@@ -1509,7 +1509,7 @@ impl ResourceUrlable for everruns_core::Session {
     /// Sessions hypermedia: pilot for EVE-493. Delegates to
     /// [`session_allowed_actions`] so the state → action mapping stays
     /// testable independently of the full `Session` struct. Closed
-    /// `rel` vocabulary documented in `specs/api-conventions.md`.
+    /// `rel` vocabulary documented in `knowledge/execution/api-conventions.md`.
     fn allowed_actions(&self, api_base: &str) -> Vec<AllowedAction> {
         session_allowed_actions(
             &self.id.to_string(),
@@ -1559,7 +1559,7 @@ impl ResourceUrlable for everruns_core::McpServer {
     }
 }
 
-/// Hypermedia actions for a `Skill`. See `specs/api-conventions.md`.
+/// Hypermedia actions for a `Skill`. See `knowledge/execution/api-conventions.md`.
 pub fn skill_allowed_actions(
     id: &str,
     status: &everruns_core::SkillStatus,

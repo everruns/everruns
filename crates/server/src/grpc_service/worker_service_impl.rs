@@ -102,7 +102,7 @@ impl WorkerService for WorkerServiceImpl {
             })?
             .ok_or_else(|| Status::not_found("Session not found"))?;
 
-        // Fold any runtime ARD attachments (specs/integrations.md, resource_discovery)
+        // Fold any runtime ARD attachments (knowledge/integrations/integrations.md, resource_discovery)
         // into the session config layer before scoped MCP servers / capabilities
         // are resolved, so attached MCP servers and A2A agents become usable on
         // the next turn with no change to the agent loop.

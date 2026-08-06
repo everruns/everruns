@@ -1,4 +1,4 @@
-// Command host facilities (see specs/commands.md, EVE-543).
+// Command host facilities (see knowledge/project/commands.md, EVE-543).
 //
 // Decisions:
 // - /btw-style commands (out-of-band LLM call over the session's assembled

@@ -70,14 +70,14 @@ const devPages = [
   },
   {
     title: "MCP Cards",
-    description: "Sandboxed iframe renderer for ui:// MCP-Apps resources (specs/mcp-cards.md)",
+    description: "Sandboxed iframe renderer for ui:// MCP-Apps resources (knowledge/ui/mcp-cards.md)",
     href: "/dev/mcp-cards",
     icon: IdCard,
   },
   {
     title: "OpenUI Blocks",
     description:
-      "OpenUI Lang renderer smoke surface (specs/openui.md) — Cards, charts, error boundary",
+      "OpenUI Lang renderer smoke surface (knowledge/ui/openui.md) — Cards, charts, error boundary",
     href: "/dev/openui-blocks",
     icon: Sparkles,
   },

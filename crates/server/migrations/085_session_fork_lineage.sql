@@ -1,4 +1,4 @@
--- Record fork provenance on sessions (specs/forking-sessions.md).
+-- Record fork provenance on sessions (knowledge/runtime-resources/forking-sessions.md).
 --
 -- Forking is a user-initiated "branch from here" relationship and is distinct
 -- from subagent nesting (`parent_session_id`, the recursion guard). These two

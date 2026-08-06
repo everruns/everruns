@@ -326,7 +326,7 @@ async fn test_install_plugin_and_capability_listing() {
 }
 
 // ============================================================
-// OAuth MCP plugin: anchor + provider wiring (specs/plugins.md)
+// OAuth MCP plugin: anchor + provider wiring (knowledge/integrations/plugins.md)
 // ============================================================
 
 /// Collect the set of `mcp_oauth_*` provider ids from the connections API.
@@ -685,7 +685,7 @@ async fn test_install_rejects_unsafe_mcp_server_url() {
 }
 
 // ============================================================
-// Default marketplace seeding (specs/plugins.md)
+// Default marketplace seeding (knowledge/integrations/plugins.md)
 // ============================================================
 
 /// The default "everruns" marketplace is seeded at org creation (here: the

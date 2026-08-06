@@ -164,7 +164,7 @@ impl PostToolExecHook for PostToolUseHookAdapter {
 
 /// Apply a `post_tool_use` `Mutate` patch to a `ToolResult` in place.
 ///
-/// Patch shape (any subset, see `specs/user-hooks.md`):
+/// Patch shape (any subset, see `knowledge/runtime-resources/user-hooks.md`):
 ///   { "result": …, "error": …, "additional_context": "..." }
 fn apply_post_tool_use_patch(result: &mut ToolResult, patch: &serde_json::Value) {
     if let Some(new_result) = patch.get("result") {

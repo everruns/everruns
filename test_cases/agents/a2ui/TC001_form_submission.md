@@ -106,4 +106,4 @@ Use the submit label "Send feedback". When the user submits, echo back a summary
 - Deterministic LLM output is not guaranteed; the model may add extra fields, reorder, or emit a slightly different JSON shape. Check rendered semantics (fields present, labels match, submission round-trips) rather than exact JSON.
 - Run the test on at least one OpenAI and one Anthropic model; catalog-in-prompt capabilities behave differently per provider.
 - If the LLM emits both ```openui and ```a2ui blocks, that indicates a prompt-ordering issue — only one generative-UI capability should be enabled per agent.
-- The A2UI capability ships the `message` and `open_url` action types only; full server-side form round-trips (typed responses via tool call) are a v2 non-goal (see `specs/a2ui.md`).
+- The A2UI capability ships the `message` and `open_url` action types only; full server-side form round-trips (typed responses via tool call) are a v2 non-goal (see `knowledge/ui/a2ui.md`).

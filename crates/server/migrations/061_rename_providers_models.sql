@@ -1,4 +1,4 @@
--- Providers domain model rename (specs/providers.md):
+-- Providers domain model rename (knowledge/foundations/providers.md):
 -- llm_providers -> providers, llm_models -> models.
 --
 -- Tables and their indexes are renamed in place; data, constraints, and FKs

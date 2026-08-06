@@ -1,7 +1,7 @@
 // Decision: keep login redirect URL generation in one place so middleware and
 // the client-side auth fallback preserve identical return_to behavior.
 // `return_to` is the single public login-page contract for auth resume — see
-// specs/authentication.md. Paths must be relative to the frontend origin.
+// knowledge/security/authentication.md. Paths must be relative to the frontend origin.
 
 /** Session storage key for preserving return_to across OAuth and signup flows. */
 export const RETURN_TO_STORAGE_KEY = "everruns_return_to";

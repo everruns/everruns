@@ -316,7 +316,7 @@ pub struct AppState {
     pub sqldb_store: Option<Arc<dyn SessionSqlDbStore>>,
     /// System utility LLM for sanctioned internal analysis commands.
     pub utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
-    /// Agent health check service (specs/agent-checks.md, tier-3), so the
+    /// Agent health check service (knowledge/evaluation/agent-checks.md, tier-3), so the
     /// health-check commands work over MCP, not just HTTP.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     /// Absolute URL of `/.well-known/oauth-protected-resource/mcp`, used to
@@ -984,7 +984,7 @@ async fn handle_tools_call(
 
     // Card tools return an MCP content array directly (resource + summary
     // text) and skip the JSON-string wrapping path used by other tools.
-    // See specs/mcp-cards.md.
+    // See knowledge/ui/mcp-cards.md.
     if tool_name == "agent_get_card" {
         let card_result = tokio::time::timeout(
             std::time::Duration::from_millis(tool_def.timeout_ms()),
@@ -1299,7 +1299,7 @@ async fn handle_tasks_update(
 /// that predate the structured envelope keep working; when an envelope
 /// is supplied, also emits `structuredContent` carrying the typed
 /// [`McpExecuteError`] so newer SDKs can branch on a machine-readable
-/// `code`/`category`/`retryable` triple. See `specs/mcp.md`.
+/// `code`/`category`/`retryable` triple. See `knowledge/integrations/mcp.md`.
 fn error_result_payload(message: &str, envelope: Option<&McpExecuteError>) -> Value {
     let mut payload = json!({
         "content": [{ "type": "text", "text": message }],
@@ -1721,7 +1721,7 @@ async fn tool_session_get_status(
 
 // ============================================================================
 // Tier 1: agent_get_card — MCP-Apps card resource for an agent
-// See specs/mcp-cards.md for the card standard.
+// See knowledge/ui/mcp-cards.md for the card standard.
 // ============================================================================
 
 async fn tool_agent_get_card(

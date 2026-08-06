@@ -1,5 +1,5 @@
 // Typed ID module - provides type-safe, prefixed identifiers
-// See specs/id-schema.md for the full specification
+// See knowledge/foundations/id-schema.md for the full specification
 //
 // Design decisions:
 // - Uses marker traits to differentiate ID types at compile time
@@ -53,7 +53,7 @@ pub trait IdMarker: Clone + Copy + Send + Sync + 'static {
     /// locality and sortability (events, sessions, agents, …). Id classes that
     /// are purely *public/correlation* identifiers with no DB sort/index
     /// dependency override this to a random UUIDv4 so no creation timestamp
-    /// leaks into a client-visible id. See `specs/id-schema.md`.
+    /// leaks into a client-visible id. See `knowledge/foundations/id-schema.md`.
     fn generate_uuid() -> Uuid {
         Uuid::now_v7()
     }
@@ -387,7 +387,7 @@ impl IdMarker for MessageIdMarker {
     // the *public* identifier serialized to clients (`output.message.completed`,
     // `EventContext.input_message_id`). UUIDv7's time-ordering does no work here
     // and would leak a creation timestamp into a client-visible id, so message
-    // ids are random UUIDv4. See EVE-771 and `specs/id-schema.md`.
+    // ids are random UUIDv4. See EVE-771 and `knowledge/foundations/id-schema.md`.
     fn generate_uuid() -> Uuid {
         Uuid::new_v4()
     }
@@ -491,14 +491,14 @@ impl IdMarker for NotificationIdMarker {
     const PREFIX: &'static str = "notification";
 }
 
-/// Marker for Memory IDs (org-scoped named Memories — see `specs/memory.md`)
+/// Marker for Memory IDs (org-scoped named Memories — see `knowledge/runtime-resources/memory.md`)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct MemoryIdMarker;
 impl IdMarker for MemoryIdMarker {
     const PREFIX: &'static str = "mem";
 }
 
-/// Marker for Workspace IDs (org-scoped named working areas — see `specs/workspace.md`)
+/// Marker for Workspace IDs (org-scoped named working areas — see `knowledge/runtime-resources/workspace.md`)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct WorkspaceIdMarker;
 impl IdMarker for WorkspaceIdMarker {
@@ -527,7 +527,7 @@ impl IdMarker for EvalRunIdMarker {
 }
 
 /// Marker for Eval Run Dataset IDs (async dataset export handles — see
-/// `specs/dataset-export.md`)
+/// `knowledge/evaluation/dataset-export.md`)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct EvalDatasetIdMarker;
 impl IdMarker for EvalDatasetIdMarker {
@@ -548,7 +548,7 @@ impl IdMarker for EvalResultIdMarker {
     const PREFIX: &'static str = "evalresult";
 }
 
-/// Marker for Observer IDs (online scoring of production sessions — see `specs/online-evals.md`)
+/// Marker for Observer IDs (online scoring of production sessions — see `knowledge/evaluation/online-evals.md`)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ObserverIdMarker;
 impl IdMarker for ObserverIdMarker {
@@ -597,7 +597,7 @@ impl IdMarker for LedgerEntryIdMarker {
     const PREFIX: &'static str = "ledger";
 }
 
-/// Marker for Knowledge Base IDs (curated org knowledge — see `specs/knowledge-bases.md`)
+/// Marker for Knowledge Base IDs (curated org knowledge — see `knowledge/runtime-resources/knowledge-bases.md`)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct KnowledgeBaseIdMarker;
 impl IdMarker for KnowledgeBaseIdMarker {
@@ -611,7 +611,7 @@ impl IdMarker for KnowledgeEntryIdMarker {
     const PREFIX: &'static str = "kbe";
 }
 
-/// Marker for Knowledge Index IDs (source-backed embedded collections — see `specs/knowledge-indexes.md`)
+/// Marker for Knowledge Index IDs (source-backed embedded collections — see `knowledge/runtime-resources/knowledge-indexes.md`)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct KnowledgeIndexIdMarker;
 impl IdMarker for KnowledgeIndexIdMarker {
@@ -632,21 +632,21 @@ impl IdMarker for KnowledgeIndexChunkIdMarker {
     const PREFIX: &'static str = "kchk";
 }
 
-/// Marker for Model Router IDs (semantic LLM selection — see `specs/model-router.md`)
+/// Marker for Model Router IDs (semantic LLM selection — see `knowledge/integrations/model-router.md`)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ModelRouterIdMarker;
 impl IdMarker for ModelRouterIdMarker {
     const PREFIX: &'static str = "mrtr";
 }
 
-/// Marker for Plugin Marketplace IDs (see `specs/plugins.md`)
+/// Marker for Plugin Marketplace IDs (see `knowledge/integrations/plugins.md`)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PluginMarketplaceIdMarker;
 impl IdMarker for PluginMarketplaceIdMarker {
     const PREFIX: &'static str = "plgmkt";
 }
 
-/// Marker for Plugin Install IDs (see `specs/plugins.md`)
+/// Marker for Plugin Install IDs (see `knowledge/integrations/plugins.md`)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PluginInstallIdMarker;
 impl IdMarker for PluginInstallIdMarker {
@@ -705,9 +705,9 @@ pub type AppId = TypedId<AppIdMarker>;
 pub type AppChannelId = TypedId<AppChannelIdMarker>;
 /// Notification ID
 pub type NotificationId = TypedId<NotificationIdMarker>;
-/// Memory ID (org-scoped named Memory — see `specs/memory.md`)
+/// Memory ID (org-scoped named Memory — see `knowledge/runtime-resources/memory.md`)
 pub type MemoryId = TypedId<MemoryIdMarker>;
-/// Workspace ID (org-scoped named Workspace — see `specs/workspace.md`)
+/// Workspace ID (org-scoped named Workspace — see `knowledge/runtime-resources/workspace.md`)
 pub type WorkspaceId = TypedId<WorkspaceIdMarker>;
 /// Eval ID
 pub type EvalId = TypedId<EvalIdMarker>;
@@ -715,13 +715,13 @@ pub type EvalId = TypedId<EvalIdMarker>;
 pub type EvalCaseId = TypedId<EvalCaseIdMarker>;
 /// Eval Run ID
 pub type EvalRunId = TypedId<EvalRunIdMarker>;
-/// Eval Run Dataset ID (async dataset export handle — see `specs/dataset-export.md`)
+/// Eval Run Dataset ID (async dataset export handle — see `knowledge/evaluation/dataset-export.md`)
 pub type EvalDatasetId = TypedId<EvalDatasetIdMarker>;
 /// Agent Health Check Run ID
 pub type HealthCheckRunId = TypedId<HealthCheckRunIdMarker>;
 /// Eval Case Result ID
 pub type EvalResultId = TypedId<EvalResultIdMarker>;
-/// Observer ID (online scoring — see `specs/online-evals.md`)
+/// Observer ID (online scoring — see `knowledge/evaluation/online-evals.md`)
 pub type ObserverId = TypedId<ObserverIdMarker>;
 /// Trace Score ID (observer scoring output)
 pub type TraceScoreId = TypedId<TraceScoreIdMarker>;
@@ -735,21 +735,21 @@ pub type PaymentPolicyId = TypedId<PaymentPolicyIdMarker>;
 pub type PaymentAttemptId = TypedId<PaymentAttemptIdMarker>;
 /// Budget Ledger Entry ID
 pub type LedgerEntryId = TypedId<LedgerEntryIdMarker>;
-/// Knowledge Base ID (curated org knowledge — see `specs/knowledge-bases.md`)
+/// Knowledge Base ID (curated org knowledge — see `knowledge/runtime-resources/knowledge-bases.md`)
 pub type KnowledgeBaseId = TypedId<KnowledgeBaseIdMarker>;
 /// Knowledge Entry ID (entry inside a Knowledge Base)
 pub type KnowledgeEntryId = TypedId<KnowledgeEntryIdMarker>;
-/// Knowledge Index ID (source-backed embedded collection — see `specs/knowledge-indexes.md`)
+/// Knowledge Index ID (source-backed embedded collection — see `knowledge/runtime-resources/knowledge-indexes.md`)
 pub type KnowledgeIndexId = TypedId<KnowledgeIndexIdMarker>;
 /// Knowledge Index Document ID (an ingested source document)
 pub type KnowledgeIndexDocumentId = TypedId<KnowledgeIndexDocumentIdMarker>;
 /// Knowledge Index Chunk ID (the citable retrieval unit)
 pub type KnowledgeIndexChunkId = TypedId<KnowledgeIndexChunkIdMarker>;
-/// Model Router ID (semantic LLM selection — see `specs/model-router.md`)
+/// Model Router ID (semantic LLM selection — see `knowledge/integrations/model-router.md`)
 pub type ModelRouterId = TypedId<ModelRouterIdMarker>;
-/// Plugin Marketplace ID (see `specs/plugins.md`)
+/// Plugin Marketplace ID (see `knowledge/integrations/plugins.md`)
 pub type PluginMarketplaceId = TypedId<PluginMarketplaceIdMarker>;
-/// Plugin Install ID (see `specs/plugins.md`)
+/// Plugin Install ID (see `knowledge/integrations/plugins.md`)
 pub type PluginInstallId = TypedId<PluginInstallIdMarker>;
 
 // ============================================================================

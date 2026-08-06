@@ -385,7 +385,7 @@ fn command_error_kind(err: &CommandError) -> &'static str {
 /// builtin name on its own (e.g. `update_model: …`), so we deliberately do
 /// not duplicate it here. The result is the structured error contract for
 /// MCP-facing builtins; see the "Structured dispatch errors" section in
-/// `specs/domains.md` for the canonical contract and the kind token table.
+/// `knowledge/foundations/domains.md` for the canonical contract and the kind token table.
 ///
 /// Agent-actionable extensions (`code`, `allowed_actions`, `retry_after_seconds`)
 /// flow through `CommandError` but are intentionally not appended here — the

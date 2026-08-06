@@ -25,7 +25,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_org_action_created
     WHERE action != '';
 
 ----------------------------------------------------------------------
--- 011: Extensible budgeting system (specs/budgeting.md)
+-- 011: Extensible budgeting system (knowledge/security/budgeting.md)
 ----------------------------------------------------------------------
 
 -- Add 'paused' to session status CHECK constraint
@@ -102,7 +102,7 @@ ALTER TABLE agents ADD COLUMN max_iterations INTEGER;
 ALTER TABLE sessions ADD COLUMN max_iterations INTEGER;
 
 ----------------------------------------------------------------------
--- 013: Network access list (specs/network-access.md)
+-- 013: Network access list (knowledge/operations/network-access.md)
 ----------------------------------------------------------------------
 
 -- Merge semantics: allowed=intersect, blocked=union across layers

@@ -1,11 +1,11 @@
 -- Knowledge Bases (EVE-423)
--- See specs/knowledge-bases.md for full design intent.
+-- See knowledge/runtime-resources/knowledge-bases.md for full design intent.
 --
 -- A Knowledge Base is an org-scoped, named collection of curated text entries
 -- (table docs, business rules, validated SQL templates, runbooks, etc.) that
 -- agents search through a `search_knowledge` tool. Knowledge Bases sit
--- alongside Memory (specs/memory.md, agent-written facts) and Workspace
--- Volumes (specs/volumes.md, file trees mounted into /workspace).
+-- alongside Memory (knowledge/runtime-resources/memory.md, agent-written facts) and Workspace
+-- Volumes (superseded by Memory; see knowledge/runtime-resources/memory.md).
 --
 -- This migration adds the foundational schema:
 --   - knowledge_bases:    the KB entity (lifecycle: active/archived/deleted)
@@ -54,7 +54,7 @@ CREATE UNIQUE INDEX idx_knowledge_bases_org_name_active
 CREATE TRIGGER update_knowledge_bases_updated_at BEFORE UPDATE ON knowledge_bases
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-COMMENT ON TABLE knowledge_bases IS 'Knowledge Bases — org-scoped curated entry collections. See specs/knowledge-bases.md.';
+COMMENT ON TABLE knowledge_bases IS 'Knowledge Bases — org-scoped curated entry collections. See knowledge/runtime-resources/knowledge-bases.md.';
 
 -- ============================================
 -- Knowledge Entries (curated docs inside a KB)

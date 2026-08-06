@@ -1,4 +1,4 @@
--- Async dataset-export handles (specs/dataset-export.md, Phase 2).
+-- Async dataset-export handles (knowledge/evaluation/dataset-export.md, Phase 2).
 --
 -- Phase 1 exported a completed eval run to reward-labeled NDJSON synchronously
 -- from `POST .../dataset`. Phase 2 makes the export a handle: the POST enqueues

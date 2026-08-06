@@ -1,4 +1,4 @@
-// Model entity and model-profile types (specs/providers.md)
+// Model entity and model-profile types (knowledge/foundations/providers.md)
 //
 // A Model is a specific model via a specific provider (provider FK + wire
 // model id). ModelProfile is the model's identity and metadata; profile data
@@ -339,7 +339,7 @@ pub enum ModelVendor {
 
 impl ModelVendor {
     /// Stable lowercase slug, the first segment of a model-profile key
-    /// (`"{vendor}/{canonical_id}"`, see specs/providers.md). Matches the
+    /// (`"{vendor}/{canonical_id}"`, see knowledge/foundations/providers.md). Matches the
     /// serde `lowercase` representation.
     pub fn slug(&self) -> &'static str {
         match self {

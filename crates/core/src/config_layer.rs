@@ -1,6 +1,6 @@
 // Composable configuration overlay for Harness → Agent → Session merging.
 //
-// See specs/concepts.md#AgentConfigOverlay for design rationale and diagrams.
+// See knowledge/foundations/concepts.md#AgentConfigOverlay for design rationale and diagrams.
 //
 // Harness, Agent, and Session share additive fields (system_prompt, capabilities,
 // initial_files, network_access, tools, max_iterations, default_model_id).

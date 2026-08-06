@@ -94,7 +94,7 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        // Reporting outbox enqueue is best-effort per specs/reporting.md:
+        // Reporting outbox enqueue is best-effort per knowledge/evaluation/reporting.md:
         // "If an outbox write fails after canonical state commits, a periodic
         // reconciler must be able to discover and enqueue missing projection
         // work from canonical tables." Never fail the canonical event write

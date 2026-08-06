@@ -7,7 +7,7 @@
  * alternating markdown, openui, and a2ui segments so the renderer can
  * dispatch each to its own component.
  *
- * @see specs/a2ui.md
+ * @see knowledge/ui/a2ui.md
  */
 
 export type A2UISegmentKind = "markdown" | "openui" | "a2ui";

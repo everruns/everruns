@@ -1,5 +1,5 @@
 -- Allow `fcp` (Free Communication Protocol) app channels.
--- See specs/fcp-channel.md.
+-- See knowledge/integrations/fcp-channel.md.
 
 ALTER TABLE apps
     DROP CONSTRAINT IF EXISTS apps_channel_type_check;

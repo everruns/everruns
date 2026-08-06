@@ -3,11 +3,11 @@
 //! Lifted from `worker/src/mcp_executor.rs::call_mcp_tool` and
 //! `server/.../service.rs::fetch_mcp_tools` so the DNS-pinned SSRF contract
 //! (TM-TOOL-018) and SSE/JSON handling are shared, not duplicated
-//! (specs/runtime-mcp.md D1/D5). The free functions let callers that only hold
+//! (knowledge/integrations/runtime-mcp.md D1/D5). The free functions let callers that only hold
 //! a `&dyn EgressService` (e.g. the control plane) reuse the exact same path.
 //!
 //! The transport speaks all three MCP eras through one code path
-//! (specs/mcp-servers.md "Multi-era protocol support"): it emits `_meta` and
+//! (knowledge/integrations/mcp-servers.md "Multi-era protocol support"): it emits `_meta` and
 //! routable headers on every request (additive for older servers), and for
 //! `Auto`/stateful servers it runs the `initialize` handshake and echoes the
 //! `Mcp-Session-Id`. See [`crate::protocol`] for the pure pieces.

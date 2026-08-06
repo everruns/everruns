@@ -1,5 +1,5 @@
 -- Sidecar tables for the optional S3-compatible blob backend
--- (specs/object-storage.md).
+-- (knowledge/runtime-resources/object-storage.md).
 --
 -- When STORAGE_BLOB_BACKEND=s3, file/image *bytes* live in the object store and
 -- these tables hold the object pointer plus a content hash for compare-and-set.

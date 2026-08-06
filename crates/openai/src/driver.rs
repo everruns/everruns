@@ -334,8 +334,8 @@ fn supports_model_listing(api_url: &str) -> bool {
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
     // Register OpenAI with Open Responses API (recommended). OpenAI providers
-    // also power realtime voice sessions (specs/voice.md) and text embeddings
-    // (specs/providers.md phase 6), so the descriptor declares those services
+    // also power realtime voice sessions (knowledge/operations/voice.md) and text embeddings
+    // (knowledge/foundations/providers.md phase 6), so the descriptor declares those services
     // alongside Chat.
     let openai_embeddings_factory: EmbeddingsDriverFactory = std::sync::Arc::new(|config| {
         let api_key = config.api_key.as_deref().unwrap_or("");

@@ -20,7 +20,7 @@ name = "export-openapi"
 path = "src/bin/export_openapi.rs"
 
 [features]
-# Experimental sandboxed Lua execution capability (specs/lua-execution.md).
+# Experimental sandboxed Lua execution capability (knowledge/execution/lua-execution.md).
 # Off by default; `lua` compiles the mlua engine into core. Also runtime-gated
 # by FEATURE_LUA.
 lua = ["everruns-core/lua"]

@@ -1,5 +1,5 @@
 -- Session tasks — unified registry of background work owned by a session.
--- See specs/session-tasks.md. Replaces the work half of session_resources
+-- See knowledge/runtime-resources/session-tasks.md. Replaces the work half of session_resources
 -- (subagents, agent runs, background runs); leased infrastructure stays in
 -- session_resources.
 
@@ -33,7 +33,7 @@ CREATE TABLE session_tasks (
 
 COMMENT ON TABLE session_tasks IS
     'Background work owned by a session (subagents, external agents, background tools). '
-    'One uniform lifecycle per specs/session-tasks.md.';
+    'One uniform lifecycle per knowledge/runtime-resources/session-tasks.md.';
 
 CREATE INDEX session_tasks_session_state_idx ON session_tasks (session_id, state);
 

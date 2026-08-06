@@ -1604,7 +1604,7 @@ impl ReasonAtom {
             .flatten()
             .collect();
 
-        // End-of-message citation annotation hooks (see specs/citations.md).
+        // End-of-message citation annotation hooks (see knowledge/runtime-resources/citations.md).
         // Collected here alongside the guardrail providers; evaluated once on
         // the finalized final-answer message to attach claim-level citations.
         // Empty unless a citation capability is configured.
@@ -1630,7 +1630,7 @@ impl ReasonAtom {
             .flatten()
             .collect();
 
-        // Citation verifiers (see specs/citations.md). Decoupled from the feeds:
+        // Citation verifiers (see knowledge/runtime-resources/citations.md). Decoupled from the feeds:
         // run once over the collected annotations to stamp faithfulness verdicts.
         // Empty unless the citation_verification capability is configured.
         let citation_verifiers: Vec<VerifierProvider> = resolved_capability_configs
@@ -3325,7 +3325,7 @@ impl ReasonAtom {
         let (mut text, mut thinking, thinking_signature, mut tool_calls) =
             (text, thinking, thinking_signature, tool_calls);
 
-        // End-of-message citation annotation seam (see specs/citations.md). Runs
+        // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md). Runs
         // once on the finalized final-answer text to attach claim-level citations
         // before guardrails inspect the complete client-visible payload. Skipped
         // when a guardrail already tripped,
@@ -3639,7 +3639,7 @@ impl ReasonAtom {
         }
         .with_id(output_message_id);
         // Attach citation annotations produced by the annotation seam above to
-        // the message's text part (see specs/citations.md).
+        // the message's text part (see knowledge/runtime-resources/citations.md).
         if !citation_annotations.is_empty() {
             for part in assistant_message.content.iter_mut() {
                 if let crate::message::ContentPart::Text(t) = part {

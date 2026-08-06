@@ -1,6 +1,6 @@
 // MCP OAuth 2.1 endpoints (backend-agnostic)
 //
-// Spec: specs/mcp.md
+// Spec: knowledge/integrations/mcp.md
 //
 // Decision: Same pattern as CLI auth — authorize endpoint uses AuthUser extractor,
 // works with any auth backend (builtin, PropelAuth, Auth0, etc.).
