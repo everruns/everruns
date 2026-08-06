@@ -1278,9 +1278,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "4.6.5"
+version = "4.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "301b56658598e48f3648647ac6fc887be7e7108eddfa4e9b63fcf3ec58c0cadf"
+checksum = "473c7e07f409a8d772161724aa8db6a765a2532a70f9667eeb7b49d3d02fbdca"
 dependencies = [
  "clap_builder",
  "clap_derive",
@@ -1288,9 +1288,9 @@ dependencies = [
 
 [[package]]
 name = "clap_builder"
-version = "4.6.5"
+version = "4.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94a65403d1a1bd28f7dc68eb8506e8874808ee5eecb59298de588e2e1407a078"
+checksum = "7b48fea5a88e9ae728a2dcbedbfc0e730f7d60da42e1cb049a83c9fb8b789889"
 dependencies = [
  "anstream",
  "anstyle",
@@ -2547,11 +2547,11 @@ dependencies = [
 
 [[package]]
 name = "everruns-a2ui"
-version = "0.17.22"
+version = "0.17.23"
 
 [[package]]
 name = "everruns-anthropic"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2569,7 +2569,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-ard"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2586,7 +2586,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-bedrock"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "aws-sdk-bedrockruntime",
@@ -2603,7 +2603,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "anyhow",
  "base64 0.23.1",
@@ -2657,7 +2657,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-container-sandbox"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2677,7 +2677,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -2739,7 +2739,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2764,7 +2764,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-fireworks"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2780,7 +2780,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-gemini"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2796,7 +2796,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-brave-search"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2812,7 +2812,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-browserless"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2833,7 +2833,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-cursor"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2848,7 +2848,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-daytona"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2865,7 +2865,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-deno"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2888,7 +2888,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-docker"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2903,7 +2903,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-duckduckgo"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2918,7 +2918,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-e2b"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "buffa",
@@ -2945,7 +2945,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-github"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -2962,7 +2962,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-openai-image"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2981,7 +2981,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-parallel"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2994,7 +2994,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-sprites"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3010,7 +3010,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-internal-protocol"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "chrono",
  "everruns-core",
@@ -3028,7 +3028,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llm-tests"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3053,7 +3053,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-local"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3076,7 +3076,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-mai"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3093,7 +3093,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-mcp"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3107,7 +3107,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-meta"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3121,7 +3121,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-observability"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3139,7 +3139,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openai"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3155,7 +3155,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openrouter"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3171,11 +3171,11 @@ dependencies = [
 
 [[package]]
 name = "everruns-openui"
-version = "0.17.22"
+version = "0.17.23"
 
 [[package]]
 name = "everruns-provider"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3204,7 +3204,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-runtime"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "chrono",
@@ -3245,7 +3245,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-server"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -3343,7 +3343,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-session-sqldb"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "async-trait",
  "base64 0.23.1",
@@ -3360,7 +3360,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-turbopuffer"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3376,7 +3376,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-worker"
-version = "0.17.22"
+version = "0.17.23"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -5000,9 +5000,9 @@ dependencies = [
 
 [[package]]
 name = "jsonschema"
-version = "0.49.5"
+version = "0.49.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8da60094fc1968bbd091e2cfa004415cb7b19e25e592376e66a64aa832bb6039"
+checksum = "7e17384278234b10419a63c93fc85695ac9fc2da0833e3c59167f9986499590c"
 dependencies = [
  "ahash",
  "bytecount",
@@ -5029,18 +5029,18 @@ dependencies = [
 
 [[package]]
 name = "jsonschema-regex"
-version = "0.49.5"
+version = "0.49.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "36539f34ef9e5da418433fbbf7294522d8f930ecf6a540ccd1ec6481c9ff9056"
+checksum = "ac634e339e73bf9629f6fb207f7b064d872253ae3b3f5c6e0ce8fd762b16e40f"
 dependencies = [
  "regex-syntax",
 ]
 
 [[package]]
 name = "jsonschema-value"
-version = "0.49.5"
+version = "0.49.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8bc513dfee68c6fe29498451df95a32951ea227801b476f4a1f236433986c891"
+checksum = "92b8e258eb4515a3fc912a9c46e3987040dc07280592280097ea2085527870b8"
 dependencies = [
  "ahash",
  "bytecount",
@@ -7489,9 +7489,9 @@ dependencies = [
 
 [[package]]
 name = "referencing"
-version = "0.49.5"
+version = "0.49.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05915176d843da9ec5c925e5e2631be9aa61b27430acfdd562e79cae8f559725"
+checksum = "42902112f88a27e9afd5683e2ba31956fed2a5d43395f166dd26775ae9c0dedb"
 dependencies = [
  "ahash",
  "fluent-uri",
@@ -10814,18 +10814,18 @@ dependencies = [
 
 [[package]]
 name = "zerocopy"
-version = "0.8.55"
+version = "0.8.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b5a105cd7b140f6eeec8acff2ea38135d3cab283ada58540f629fe51e46696eb"
+checksum = "556764e583adb45a9f8d413c2a147fa7e8d821e48e12b14fd560b607998b75eb"
 dependencies = [
  "zerocopy-derive",
 ]
 
 [[package]]
 name = "zerocopy-derive"
-version = "0.8.55"
+version = "0.8.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fe976fb70c78cd64cccfe3a6fc142244e8a77b70959b30faf9d0ac37ee228eb"
+checksum = "f2ab42fc20575779bd240faa45f94a74256f755c0fa9e89f0ede20d91d0cdfc1"
 dependencies = [
  "proc-macro2 1.0.107",
  "quote 1.0.47",
