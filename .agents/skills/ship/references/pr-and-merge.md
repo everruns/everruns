@@ -7,6 +7,9 @@
 - Body: copy the headings from [`.github/pull_request_template.md`](../../../../.github/pull_request_template.md)
   exactly and fill every applicable section — including Before/After proof, risk, the security
   review, and **Follow-ups**. Do not substitute ad-hoc headings, even for small changes.
+- For the Before/After, attach evidence a skeptical reviewer can check, not just a claim — CLI/API
+  output, logs, or metrics, and screenshots for UI changes (`apps/ui`). State explicitly when a
+  change has no observable behavior.
 
 ## CI
 
