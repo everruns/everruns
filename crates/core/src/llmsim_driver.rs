@@ -244,6 +244,8 @@ pub enum SimTurn {
     },
     /// Simulate an API/transport error on this turn.
     Error(SimError),
+    /// Return a stream that never produces an event.
+    StreamStall,
 }
 
 /// A single tool call inside a scripted turn.
@@ -259,25 +261,50 @@ pub struct SimToolCall {
 pub enum SimError {
     RateLimit,
     Timeout,
+    Transport,
+    Overloaded,
+    Authentication,
+    QuotaExhausted,
+    UnsupportedModel(String),
     InvalidResponse(String),
     Other(String),
 }
 
 impl SimError {
-    fn status_code(&self) -> u16 {
-        match self {
-            SimError::RateLimit => 429,
-            SimError::Timeout => 504,
-            SimError::InvalidResponse(_) => 400,
-            SimError::Other(_) => 500,
-        }
-    }
-
     fn message(&self) -> String {
         match self {
             SimError::RateLimit => "Rate limit exceeded. Please retry after some time.".to_string(),
             SimError::Timeout => "Request timed out".to_string(),
+            SimError::Transport => "Transport connection failed".to_string(),
+            SimError::Overloaded => "Provider overloaded".to_string(),
+            SimError::Authentication => "Invalid provider credentials".to_string(),
+            SimError::QuotaExhausted => "Provider quota exhausted".to_string(),
+            SimError::UnsupportedModel(model) => format!("Model not available: {model}"),
             SimError::InvalidResponse(message) | SimError::Other(message) => message.clone(),
+        }
+    }
+
+    fn agent_error(&self) -> AgentLoopError {
+        use crate::error::LlmErrorKind;
+
+        match self {
+            SimError::RateLimit => {
+                AgentLoopError::llm_kind(LlmErrorKind::RateLimited, self.message())
+            }
+            SimError::Timeout | SimError::Transport | SimError::Overloaded => {
+                AgentLoopError::llm_kind(LlmErrorKind::Unavailable, self.message())
+            }
+            SimError::Other(_) => AgentLoopError::llm_kind(LlmErrorKind::Other, self.message()),
+            SimError::Authentication => {
+                AgentLoopError::llm_kind(LlmErrorKind::Authentication, self.message())
+            }
+            SimError::QuotaExhausted => {
+                AgentLoopError::llm_kind(LlmErrorKind::QuotaExhausted, self.message())
+            }
+            SimError::UnsupportedModel(model) => AgentLoopError::model_not_available(model),
+            SimError::InvalidResponse(_) => {
+                AgentLoopError::llm_kind(LlmErrorKind::InvalidRequest, self.message())
+            }
         }
     }
 }
@@ -393,6 +420,7 @@ pub struct LlmSimDriver {
 struct GeneratedTurn {
     text: String,
     tool_calls: Option<Vec<ToolCall>>,
+    stream_stall: bool,
 }
 
 impl LlmSimDriver {
@@ -516,6 +544,7 @@ impl LlmSimDriver {
         Ok(GeneratedTurn {
             text: self.generate_response(messages),
             tool_calls: self.get_tool_calls(messages),
+            stream_stall: false,
         })
     }
 
@@ -547,20 +576,24 @@ impl LlmSimDriver {
             SimTurn::Assistant(text) => Ok(GeneratedTurn {
                 text,
                 tool_calls: None,
+                stream_stall: false,
             }),
             SimTurn::ToolCalls(calls) => Ok(GeneratedTurn {
                 text: String::new(),
                 tool_calls: materialize_scripted_tool_calls(turn_index, calls),
+                stream_stall: false,
             }),
             SimTurn::Mixed { text, tool_calls } => Ok(GeneratedTurn {
                 text,
                 tool_calls: materialize_scripted_tool_calls(turn_index, tool_calls),
+                stream_stall: false,
             }),
-            SimTurn::Error(error) => Err(AgentLoopError::llm(format!(
-                "LlmSim scripted error ({}): {}",
-                error.status_code(),
-                error.message()
-            ))),
+            SimTurn::Error(error) => Err(error.agent_error()),
+            SimTurn::StreamStall => Ok(GeneratedTurn {
+                text: String::new(),
+                tool_calls: None,
+                stream_stall: true,
+            }),
         }
     }
 
@@ -669,6 +702,9 @@ impl ChatDriver for LlmSimDriver {
         }
 
         let generated_turn = self.generate_turn(&messages)?;
+        if generated_turn.stream_stall {
+            return Ok(Box::pin(futures::stream::pending()));
+        }
         let response_text = generated_turn.text;
         let tool_calls = generated_turn.tool_calls;
         let model_name = config.model.clone();
