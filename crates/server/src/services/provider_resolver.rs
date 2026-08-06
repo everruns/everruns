@@ -55,6 +55,7 @@ where
         "anthropic" => env_lookup("DEFAULT_ANTHROPIC_API_KEY").filter(|s| !s.is_empty()),
         "gemini" => env_lookup("DEFAULT_GEMINI_API_KEY").filter(|s| !s.is_empty()),
         "fireworks" => env_lookup("DEFAULT_FIREWORKS_API_KEY").filter(|s| !s.is_empty()),
+        "meta" => env_lookup("DEFAULT_META_API_KEY").filter(|s| !s.is_empty()),
         "bedrock" => {
             // Construct JSON credentials from Bedrock-specific or generic AWS env vars.
             let access_key_id = env_lookup("AWS_BEDROCK_ACCESS_KEY_ID")
@@ -561,6 +562,15 @@ mod tests {
         assert_eq!(
             get_default_api_key_with_lookup("openrouter", &env),
             Some("sk-or-test".to_string())
+        );
+    }
+
+    #[test]
+    fn test_get_default_api_key_meta() {
+        let explicit = mock_env(&[("DEFAULT_META_API_KEY", "meta-default")]);
+        assert_eq!(
+            get_default_api_key_with_lookup("meta", explicit),
+            Some("meta-default".to_string())
         );
     }
 

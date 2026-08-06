@@ -3039,6 +3039,7 @@ dependencies = [
  "everruns-fireworks",
  "everruns-gemini",
  "everruns-local",
+ "everruns-meta",
  "everruns-openai",
  "everruns-openrouter",
  "everruns-runtime",
@@ -3101,6 +3102,20 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+ "wiremock",
+]
+
+[[package]]
+name = "everruns-meta"
+version = "0.17.22"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "everruns-provider",
+ "reqwest 0.13.4",
+ "serde",
+ "serde_json",
+ "tokio",
  "wiremock",
 ]
 
@@ -3390,6 +3405,7 @@ dependencies = [
  "everruns-internal-protocol",
  "everruns-mai",
  "everruns-mcp",
+ "everruns-meta",
  "everruns-openai",
  "everruns-openrouter",
  "everruns-runtime",

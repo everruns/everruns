@@ -57,7 +57,7 @@ graph TD
 
 2. **Streaming Response**: Drivers return a stream of `LlmStreamEvent` (TextDelta, ToolCalls, ThinkingDelta, ThinkingSignature, Done, Error). In-band provider failures use `LlmStreamError` so stable provider code and HTTP status survive the driver boundary.
 
-3. **Provider Types**: `OpenAI` (Responses API), `OpenAICompletions` (Chat Completions), `Anthropic`, `Gemini`, `Bedrock` (AWS Bedrock ConverseStream), `Mai` (Microsoft MAI via Azure AI Foundry, OpenAI-compatible Chat Completions), `Fireworks` (Fireworks AI open models, OpenAI-compatible Chat Completions), `LlmSim` (testing).
+3. **Provider Types**: `OpenAI` (Responses API), `OpenAICompletions` (Chat Completions), `Anthropic`, `Gemini`, `Bedrock` (AWS Bedrock ConverseStream), `Mai` (Microsoft MAI via Azure AI Foundry, OpenAI-compatible Chat Completions), `Fireworks` (Fireworks AI open models, OpenAI-compatible Chat Completions), `Meta` (Muse models via Meta Model API, OpenAI-compatible Responses), `LlmSim` (testing).
 
 ### Error Types (Contract)
 
@@ -325,6 +325,7 @@ re-executes a completed tool.
 | Bedrock driver | `crates/bedrock/src/driver.rs` |
 | Microsoft MAI driver | `crates/mai/src/driver.rs` |
 | Fireworks AI driver | `crates/fireworks/src/driver.rs` |
+| Meta Model API driver | `crates/meta/src/driver.rs` |
 | Error handling | `crates/core/src/atoms/reason.rs` |
 
 ## OpenAI Driver Variants
@@ -349,6 +350,15 @@ The OpenAI crate provides three driver implementations:
 The Responses drivers share the same base URL handling and can work with
 OpenAI-compatible endpoints while keeping provider-specific request features
 gated by the resolved provider type.
+
+## Meta Model API Driver (`everruns-meta`)
+
+Meta Model API serves Muse models at `https://api.meta.ai/v1`. The dedicated
+driver uses the shared Responses protocol, preserves server-managed continuation
+through `previous_response_id`, and discovers models from the host-gated
+`/v1/models` endpoint. Profile gating enables Meta's native message phases and
+hosted tool search only on the direct `meta` surface; gateway aliases fall back
+to client-side transcript replay and tool search.
 
 ## Microsoft MAI Driver (`everruns-mai`)
 

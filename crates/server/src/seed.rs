@@ -46,6 +46,7 @@ mod seed_ids {
     pub const OPENROUTER_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000006);
     pub const MAI_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000007);
     pub const FIREWORKS_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000008);
+    pub const META_PROVIDER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000009);
 
     // Agents (0x100-0x1FF)
     pub const DAD_JOKES_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000101);
@@ -1481,6 +1482,11 @@ const SEED_PROVIDERS: &[SeedProvider] = &[
         id: seed_ids::FIREWORKS_PROVIDER,
         name: "Fireworks AI",
         provider_type: "fireworks",
+    },
+    SeedProvider {
+        id: seed_ids::META_PROVIDER,
+        name: "Meta Model API",
+        provider_type: "meta",
     },
 ];
 

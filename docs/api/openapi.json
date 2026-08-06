@@ -20299,7 +20299,7 @@
       },
       "DriverId": {
         "type": "string",
-        "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks. Any other string is treated as an embedder-defined external provider."
+        "description": "LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta. Any other string is treated as an embedder-defined external provider."
       },
       "EnqueueTaskOptions": {
         "type": "object",
@@ -28827,6 +28827,7 @@
           "nvidia",
           "qwen",
           "microsoft",
+          "meta",
           "minimax",
           "moonshot",
           "xai",

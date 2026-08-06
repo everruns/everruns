@@ -1,6 +1,6 @@
 // Extended thinking tests against real LLM endpoints.
 //
-// Thinking/reasoning is provider-specific (Anthropic, Gemini, some OpenAI models).
+// Thinking/reasoning is provider-specific (Anthropic, Meta, Gemini, and some OpenAI models).
 // Uses rstest so new thinking-capable providers can be added as cases.
 //
 // Run with:
@@ -9,6 +9,7 @@
 // Required environment variables:
 //   - ANTHROPIC_API_KEY: For Anthropic tests
 //   - OPENAI_API_KEY: For OpenAI reasoning tests (GPT-5.2)
+//   - MODEL_API_KEY: For Meta Muse Spark Contributor tests
 #![cfg(feature = "llm-tests")]
 
 mod llm_test_matrix;
@@ -31,6 +32,7 @@ use everruns_core::message_retriever::InputMessage;
 #[case::anthropic_sonnet(ANTHROPIC_SONNET)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
+#[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
 #[tokio::test]
 async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
     if config.model().is_none() {
@@ -173,6 +175,7 @@ async fn test_extended_thinking(#[case] config: ProviderModelConfig) {
 #[case::anthropic_sonnet(ANTHROPIC_SONNET)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
+#[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
 #[tokio::test]
 async fn test_thinking_with_tool_call(#[case] config: ProviderModelConfig) {
     if config.model().is_none() {

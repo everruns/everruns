@@ -125,6 +125,15 @@ pub const OPENAI_GPT55: ProviderModelConfig =
 pub const GEMINI_FLASH: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Gemini, "gemini-2.5-flash", "GEMINI_API_KEY");
 
+// Use Meta's lower-cost Contributor tier for the live matrix. Its data-use
+// terms are acceptable for these synthetic test prompts.
+pub const META_MUSE_SPARK_CONTRIBUTOR: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::Meta,
+    "muse-spark-1.2-contributor",
+    "MODEL_API_KEY",
+)
+.reasoning_as_text();
+
 // OpenRouter routes to upstream providers; gpt-4o-mini is cheap and reliably
 // available. Exercises the Open Responses streaming path (incl. the `[DONE]`
 // terminator) and the OpenRouter request decoration (session_id, routing).
@@ -371,6 +380,7 @@ pub fn all_providers_registry() -> DriverRegistry {
     everruns_fireworks::register_driver(&mut registry);
     everruns_gemini::register_driver(&mut registry);
     everruns_bedrock::register_driver(&mut registry);
+    everruns_meta::register_driver(&mut registry);
     registry
 }
 

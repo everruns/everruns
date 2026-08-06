@@ -1,0 +1,29 @@
+# Meta Model API Provider Implementation
+# Decision: Meta serves Muse models through an OpenAI-compatible Responses API.
+
+[package]
+name = "everruns-meta"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-meta"
+description = "Meta Model API provider for Everruns agents"
+readme = "README.md"
+keywords = ["agent", "llm", "ai", "meta", "muse"]
+categories = ["api-bindings", "asynchronous"]
+
+[dependencies]
+async-trait.workspace = true
+chrono.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+everruns-provider = { path = "../provider", version = "0.17.20" }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"
+serde_json.workspace = true
