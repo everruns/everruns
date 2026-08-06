@@ -236,6 +236,10 @@ pub struct Provider {
     pub api_key_set: bool,
     /// Current lifecycle status of this provider.
     pub status: ProviderStatus,
+    /// Whether this provider is host-managed (EVE-810). A managed provider is
+    /// provisioned by the host/embedder; the OSS API rejects tenant PATCH/DELETE
+    /// on it (403). Read-only to org admins. Defaults to `false`.
+    pub managed: bool,
     /// Timestamp of the most recent successful model sync from the provider's API (RFC 3339).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_synced_at: Option<DateTime<Utc>>,

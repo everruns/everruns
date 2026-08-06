@@ -85,8 +85,30 @@ Org-scoped row in the `providers` table (renamed from `llm_providers`):
 | `base_url` | Optional endpoint override, as before. |
 | `settings` | JSONB, driver-specific settings, as before. |
 | `last_synced_at` | Model-sync tracking, as before. |
+| `managed` | Boolean, default false. Host-managed row (EVE-810): the OSS API rejects tenant `PATCH`/`DELETE` on it with `403`; only the host provisions or mutates it. |
 
 Multiple providers per driver are first-class: two Azure OpenAI providers in different regions are two rows with `driver = 'azure_openai'`.
+
+#### Host-managed providers (EVE-810)
+
+An embedder that provisions a provider on an org's behalf — a built-in LLM
+offering, a shared internal gateway, a compliance-mandated endpoint — marks the
+row `managed = true` (written directly through storage, e.g. from an
+`OrgInitializer`; never settable through the OSS create/update API). The OSS
+providers service then enforces:
+
+- `PATCH /v1/providers/{id}` and `DELETE /v1/providers/{id}` return `403` (a
+  `PolicyError`) for a managed row, so a user with `provider.manage` cannot edit
+  its credentials, repoint its `base_url`, or delete it.
+- `GET`/`list` continue to work and expose the `managed` flag (credentials are
+  never returned regardless).
+- Model sync (`POST /v1/providers/{id}/sync-models`) stays allowed: it is
+  host-triggered and does not mutate provider configuration.
+- Per-org model enablement (enable/disable, favorite) stays tenant-editable: the
+  catalog is the host's, but which models an org turns on is a tenant preference.
+
+The UI renders a managed provider read-only in Settings → Providers (a "Managed"
+badge, no credential form, no delete affordance).
 
 #### Trace links
 

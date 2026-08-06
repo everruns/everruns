@@ -3420,6 +3420,8 @@ export interface Provider {
   base_url?: string;
   api_key_set: boolean;
   status: ProviderStatus;
+  /** Whether this provider is host-managed (read-only to org admins). */
+  managed: boolean;
   created_at: string;
   updated_at: string;
   /** Resolved trace/observability link configuration (driver defaults + overrides). */

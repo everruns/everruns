@@ -26608,6 +26608,7 @@
                     "provider_type",
                     "api_key_set",
                     "status",
+                    "managed",
                     "created_at",
                     "updated_at"
                   ],
@@ -26640,6 +26641,10 @@
                       ],
                       "format": "date-time",
                       "description": "Timestamp of the most recent successful model sync from the provider's API (RFC 3339)."
+                    },
+                    "managed": {
+                      "type": "boolean",
+                      "description": "Whether this provider is host-managed (EVE-810). A managed provider is\nprovisioned by the host/embedder; the OSS API rejects tenant PATCH/DELETE\non it (403). Read-only to org admins. Defaults to `false`."
                     },
                     "name": {
                       "type": "string",
@@ -31308,6 +31313,7 @@
           "provider_type",
           "api_key_set",
           "status",
+          "managed",
           "created_at",
           "updated_at"
         ],
@@ -31340,6 +31346,10 @@
             ],
             "format": "date-time",
             "description": "Timestamp of the most recent successful model sync from the provider's API (RFC 3339)."
+          },
+          "managed": {
+            "type": "boolean",
+            "description": "Whether this provider is host-managed (EVE-810). A managed provider is\nprovisioned by the host/embedder; the OSS API rejects tenant PATCH/DELETE\non it (403). Read-only to org admins. Defaults to `false`."
           },
           "name": {
             "type": "string",
@@ -39194,6 +39204,7 @@
               "provider_type",
               "api_key_set",
               "status",
+              "managed",
               "created_at",
               "updated_at"
             ],
@@ -39226,6 +39237,10 @@
                 ],
                 "format": "date-time",
                 "description": "Timestamp of the most recent successful model sync from the provider's API (RFC 3339)."
+              },
+              "managed": {
+                "type": "boolean",
+                "description": "Whether this provider is host-managed (EVE-810). A managed provider is\nprovisioned by the host/embedder; the OSS API rejects tenant PATCH/DELETE\non it (403). Read-only to org admins. Defaults to `false`."
               },
               "name": {
                 "type": "string",

@@ -10263,6 +10263,12 @@ export interface components {
          * @description Timestamp of the most recent successful model sync from the provider's API (RFC 3339).
          */
         last_synced_at?: string | null;
+        /**
+         * @description Whether this provider is host-managed (EVE-810). A managed provider is
+         *     provisioned by the host/embedder; the OSS API rejects tenant PATCH/DELETE
+         *     on it (403). Read-only to org admins. Defaults to `false`.
+         */
+        managed: boolean;
         /** @description Human-readable provider name. Safe to render in user-facing messages. */
         name: string;
         /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
@@ -12938,6 +12944,12 @@ export interface components {
        * @description Timestamp of the most recent successful model sync from the provider's API (RFC 3339).
        */
       last_synced_at?: string | null;
+      /**
+       * @description Whether this provider is host-managed (EVE-810). A managed provider is
+       *     provisioned by the host/embedder; the OSS API rejects tenant PATCH/DELETE
+       *     on it (403). Read-only to org admins. Defaults to `false`.
+       */
+      managed: boolean;
       /** @description Human-readable provider name. Safe to render in user-facing messages. */
       name: string;
       /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
@@ -17391,6 +17403,12 @@ export interface components {
        * @description Timestamp of the most recent successful model sync from the provider's API (RFC 3339).
        */
       last_synced_at?: string | null;
+      /**
+       * @description Whether this provider is host-managed (EVE-810). A managed provider is
+       *     provisioned by the host/embedder; the OSS API rejects tenant PATCH/DELETE
+       *     on it (403). Read-only to org admins. Defaults to `false`.
+       */
+      managed: boolean;
       /** @description Human-readable provider name. Safe to render in user-facing messages. */
       name: string;
       /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
