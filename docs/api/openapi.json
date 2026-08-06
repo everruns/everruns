@@ -35321,6 +35321,9 @@
             ],
             "description": "Tool may take significant time to complete (> ~5s typical).\nUseful for clients to show progress indicators and set timeouts."
           },
+          "metadata": {
+            "description": "Host-owned annotations that core does not interpret.\n\nThe typed hints above are the vocabulary core itself reasons about. This\nis the escape hatch for everything a *host* wants to carry alongside a\ntool — risk tiers for an approval UI, presentation hints, an embedder's\nrouting keys — without adding a field to core for each one. Core reads\nnothing here and no driver sends it to a provider; it travels with the\ndefinition so a consumer sees it at the point of decision (e.g. a\n`PreToolUseHook` gating on what the tool declared).\n\nThe schema belongs to whoever writes it. Never put credentials or other\nsensitive payload here: like the rest of the definition, it is persisted\nand surfaced to clients."
+          },
           "narration_noun": {
             "type": [
               "string",

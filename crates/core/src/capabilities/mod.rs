@@ -621,6 +621,21 @@ pub trait Capability: Send + Sync {
         None
     }
 
+    /// Host-owned annotations that core does not interpret.
+    ///
+    /// The typed accessors above (`category`, `status`, `is_guardrail`, …) are
+    /// the vocabulary core itself reasons about. This is the escape hatch for
+    /// everything a *host* wants to carry alongside a capability — a UI icon,
+    /// an embedder's grouping key, deployment provenance — without adding a
+    /// field to core for each one. Core reads nothing here.
+    ///
+    /// The schema belongs to whoever writes it. Never put credentials or other
+    /// sensitive payload here: it is surfaced to clients alongside the rest of
+    /// the capability descriptor.
+    fn metadata(&self) -> Option<serde_json::Value> {
+        None
+    }
+
     /// Whether this capability is a guardrail — a constraint on agent
     /// behavior (content checks, tool restrictions) rather than a grant of
     /// new abilities. Structural marker for UI sections and catalog
@@ -3218,6 +3233,35 @@ mod tests {
     /// Test helper: dummy context with no file store
     fn test_ctx() -> SystemPromptContext {
         SystemPromptContext::without_file_store(SessionId::new())
+    }
+
+    /// A host-defined capability carrying annotations core knows nothing about.
+    struct HostAnnotatedCapability;
+
+    #[async_trait]
+    impl Capability for HostAnnotatedCapability {
+        fn id(&self) -> &str {
+            "host_annotated"
+        }
+        fn name(&self) -> &str {
+            "Host Annotated"
+        }
+        fn description(&self) -> &str {
+            "Test capability with host-owned metadata."
+        }
+        fn metadata(&self) -> Option<serde_json::Value> {
+            Some(serde_json::json!({"icon": "sparkles", "group": "host"}))
+        }
+    }
+
+    #[test]
+    fn capability_metadata_is_an_opt_in_host_hatch() {
+        // Core capabilities carry none, so nothing changes for them.
+        assert!(NoopCapability.metadata().is_none());
+
+        let metadata = HostAnnotatedCapability.metadata().expect("metadata");
+        assert_eq!(metadata["icon"], "sparkles");
+        assert_eq!(metadata["group"], "host");
     }
 
     /// Base set of built-in capabilities present in all environments (no experimental delegation).
