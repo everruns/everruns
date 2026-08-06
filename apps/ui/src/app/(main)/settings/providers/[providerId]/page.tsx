@@ -104,7 +104,11 @@ export default function ProviderDetailPage({
             <ProviderIcon providerType={provider.provider_type} size="md" />
             {provider.name}
             {provider.managed && (
-              <Badge variant="outline" className="bg-blue-100 text-blue-800" title="Managed by the host">
+              <Badge
+                variant="outline"
+                className="bg-blue-100 text-blue-800"
+                title="Managed by the host"
+              >
                 Managed
               </Badge>
             )}

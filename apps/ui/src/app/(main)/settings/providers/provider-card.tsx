@@ -50,7 +50,11 @@ export function ProviderCard({
       headerActions={
         <div className="flex items-center gap-2">
           {provider.managed && (
-            <Badge variant="outline" className="bg-blue-100 text-blue-800" title="Managed by the host">
+            <Badge
+              variant="outline"
+              className="bg-blue-100 text-blue-800"
+              title="Managed by the host"
+            >
               Managed
             </Badge>
           )}
