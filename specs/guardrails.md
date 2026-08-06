@@ -227,11 +227,18 @@ capability reads.
 ## Gallery
 
 The guardrail gallery is a read-only catalogue of ready-made `GuardrailsConfig`
-presets (secret detection, PII detection, a profanity starter, dangerous-shell
-blocking, shell-access blocking, prompt-injection heuristics). It mirrors the
-harness-examples pattern: presets live in code
-(`everruns_core::guardrail_gallery`), not the DB, and are served read-only via
-`GET /v1/capabilities/guardrails/examples` (gated by `capability.view`).
+presets (secret detection, a model-backed secret-leak judge, PII detection, a
+profanity starter, dangerous-shell blocking, shell-access blocking,
+prompt-injection heuristics). It mirrors the harness-examples pattern: presets
+live in code (`everruns_core::guardrail_gallery`), not the DB, and are served
+read-only via `GET /v1/capabilities/guardrails/examples` (gated by
+`capability.view`).
+
+The `secret-leak-judge` preset is the model-backed complement to the
+deterministic `secret-detection` regex preset: it evaluates an `llm_judge`
+policy on `tool_use` and `tool_output` that blocks a call or result revealing
+secret/credential material in cleartext, catching opaque secrets whose value is
+not known at config time. It reports `data_egress = utility_llm` (see below).
 
 Adoption is client-side config composition: each listing carries a full
 `config`, and a client drops it into an agent's `guardrails` capability config
@@ -240,12 +247,14 @@ import endpoint — guardrail configs already live in agent capability config.
 
 Each listing carries trust metadata so a picker can show what a preset does
 before adoption: `check_types` (the rule-type composition), `stages`, and
-`data_egress`. Deterministic presets report `data_egress = none` (everything
-runs in-process); model-based and MCP-served presets will report other egress
-markers when those check types land, derived from the check types rather than
-hand-authored. Presets that are inherently noisy (PII, prompt-injection
-heuristics) ship `log`-only so they are safe to adopt active and tuned before
-switching individual checks to `block`.
+`data_egress`. `data_egress` is derived from the check types rather than
+hand-authored: deterministic presets report `none` (everything runs
+in-process), while a preset with a model-backed check (`llm_judge` /
+`moderation`) reports `utility_llm` because it sends a bounded content excerpt
+to the org's configured utility LLM. MCP-served presets will report another
+marker when a preset uses that check type. Presets that are inherently noisy
+(PII, prompt-injection heuristics) ship `log`-only so they are safe to adopt
+active and tuned before switching individual checks to `block`.
 
 ## Composition and removal
 

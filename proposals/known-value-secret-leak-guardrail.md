@@ -158,9 +158,10 @@ positives before it goes active.
 
 ## Phasing
 
-1. **Ship-now, no code:** document an `llm_judge`-on-`tool_use`/`tool_output`
-   secret-leak preset (the policy prompt above) as a gallery entry. Reproduces the
-   screenshot for tool calls today; advisory-first.
+1. **Shipped:** the `secret-leak-judge` gallery preset — an `llm_judge` policy on
+   `tool_use` + `tool_output` (`guardrail_gallery.rs`). Reproduces the screenshot
+   for tool calls today; the gallery's `data_egress` is now derived from check
+   types (`utility_llm` for model-backed presets). Run advisory-first to tune.
 2. **Dedicated `secret_leak` classifier** (a `moderation` sibling), enable-able on
    all three stages — cheaper, more consistent, and covers prose echo on `output`.
 3. **Deterministic `SecretValues` redactor** + `redact` action, sourced from
