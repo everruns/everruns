@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.21] - 2026-08-06
+
+### Highlights
+
+- **Cumulative-cost context checkpoints** - Long tool trajectories now compact before context-window pressure when cumulative uncached input or raw tool results become costly, while preserving lossless history and query access ([#2933](https://github.com/everruns/everruns/pull/2933)).
+- **Lower tool context overhead** - Deferred tools now keep compact permissive schemas until revealed, reducing the production tool-list payload by 65% while preserving provider-agnostic structured tool calling ([#2935](https://github.com/everruns/everruns/pull/2935)).
+
+### What's Changed
+
+- feat(compaction): trigger checkpoints from cumulative cost ([#2933](https://github.com/everruns/everruns/pull/2933)) by [@chaliy](https://github.com/chaliy)
+- perf(tool-search): compact deferred schemas ([#2935](https://github.com/everruns/everruns/pull/2935)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.20] - 2026-08-06
 
 ### Highlights
