@@ -1078,6 +1078,9 @@ pub struct ProviderRow {
     pub api_key_set: bool,
     pub status: String,
     pub settings: sqlx::types::JsonValue,
+    /// Host-managed flag (EVE-810). When true, the OSS providers API refuses
+    /// PATCH/DELETE on this row; the host owns it.
+    pub managed: bool,
     /// When models were last synced from provider API
     pub last_synced_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,

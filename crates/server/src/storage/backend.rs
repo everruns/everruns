@@ -1968,6 +1968,11 @@ impl StorageBackend {
         dispatch!(self, delete_provider, org_id, id)
     }
 
+    /// Mark (or unmark) a provider as host-managed (EVE-810).
+    pub async fn set_provider_managed(&self, org_id: i64, id: Uuid, managed: bool) -> Result<bool> {
+        dispatch!(self, set_provider_managed, org_id, id, managed)
+    }
+
     /// Update provider's last_synced_at timestamp
     pub async fn update_provider_last_synced(
         &self,

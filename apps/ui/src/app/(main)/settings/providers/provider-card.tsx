@@ -48,16 +48,23 @@ export function ProviderCard({
         </span>
       }
       headerActions={
-        <Badge
-          variant="outline"
-          className={
-            provider.status === "active"
-              ? "bg-green-100 text-green-800"
-              : "bg-gray-100 text-gray-800"
-          }
-        >
-          {provider.status}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {provider.managed && (
+            <Badge variant="outline" className="bg-blue-100 text-blue-800" title="Managed by the host">
+              Managed
+            </Badge>
+          )}
+          <Badge
+            variant="outline"
+            className={
+              provider.status === "active"
+                ? "bg-green-100 text-green-800"
+                : "bg-gray-100 text-gray-800"
+            }
+          >
+            {provider.status}
+          </Badge>
+        </div>
       }
       footer={
         <EntityCardFooter
@@ -76,18 +83,24 @@ export function ProviderCard({
                   {isSyncing ? "Syncing..." : "Sync Models"}
                 </Button>
               )}
-              <Button variant="outline" size="sm" onClick={() => onSetApiKey(provider)}>
-                <Key className="h-4 w-4 mr-1" />
-                {provider.api_key_set ? "Update Key" : "Set Key"}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-destructive"
-                onClick={() => onDelete(provider.id)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              {/* Host-managed providers are read-only to org admins (EVE-810):
+                  no credential edits, no deletion. Model sync stays available. */}
+              {!provider.managed && (
+                <>
+                  <Button variant="outline" size="sm" onClick={() => onSetApiKey(provider)}>
+                    <Key className="h-4 w-4 mr-1" />
+                    {provider.api_key_set ? "Update Key" : "Set Key"}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive"
+                    onClick={() => onDelete(provider.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
             </div>
           }
         />

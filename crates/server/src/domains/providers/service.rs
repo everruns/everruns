@@ -146,6 +146,18 @@ impl ProviderService {
             None => return Ok(None),
         };
 
+        // EVE-810 / TM-AUTHZ: a host-managed provider is owned by the embedder.
+        // Refuse tenant edits (credentials, base_url, status) with a 403 so a
+        // user with `provider.manage` cannot break a row the host is responsible
+        // for. `PolicyError` maps to Forbidden at the command boundary.
+        if existing.managed {
+            return Err(everruns_core::PolicyError::denied(
+                "provider_managed",
+                "This provider is managed by the host and cannot be modified.",
+            )
+            .into());
+        }
+
         let provider_type = req
             .provider_type
             .clone()
@@ -197,6 +209,20 @@ impl ProviderService {
     }
 
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
+        // EVE-810 / TM-AUTHZ: refuse deletion of a host-managed provider. Fetch
+        // first so the managed check runs before any mutation; a missing row
+        // falls through to `delete_provider` returning false (404 at the command
+        // boundary), preserving existing not-found semantics.
+        if let Some(existing) = self.db.get_provider(caller.org_id, id).await?
+            && existing.managed
+        {
+            return Err(everruns_core::PolicyError::denied(
+                "provider_managed",
+                "This provider is managed by the host and cannot be deleted.",
+            )
+            .into());
+        }
+
         let deleted = self.db.delete_provider(caller.org_id, id).await?;
         if deleted {
             self.invalidate_resolver_cache(caller.org_id).await;
@@ -226,6 +252,7 @@ impl ProviderService {
                 "active" => ProviderStatus::Active,
                 _ => ProviderStatus::Disabled,
             },
+            managed: row.managed,
             last_synced_at: row.last_synced_at,
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -625,5 +652,118 @@ mod tests {
             err.to_string()
                 .contains("/openai/v1 or /openai/v1/responses")
         );
+    }
+
+    // ---- Host-managed provider enforcement (EVE-810) ----
+
+    mod managed {
+        use crate::api::providers::UpdateProviderRequest;
+        use crate::domains::providers::ProviderService;
+        use crate::storage::StorageBackend;
+        use crate::storage::models::CreateProviderRow;
+        use everruns_core::{Caller, OrgRole, PolicyError};
+        use std::sync::Arc;
+        use uuid::Uuid;
+
+        fn caller(org_id: i64) -> Caller {
+            Caller {
+                org_id,
+                org_public_id: format!("org_{org_id:032}"),
+                user_id: None,
+                role: OrgRole::Owner,
+                is_platform_user: false,
+                is_internal: false,
+            }
+        }
+
+        fn name_update(name: &str) -> UpdateProviderRequest {
+            UpdateProviderRequest {
+                name: Some(name.to_string()),
+                provider_type: None,
+                base_url: None,
+                api_key: None,
+                credentials: None,
+                status: None,
+                trace: None,
+            }
+        }
+
+        async fn seed_provider(db: &StorageBackend, org_id: i64, managed: bool) -> Uuid {
+            let row = db
+                .create_provider(
+                    org_id,
+                    CreateProviderRow {
+                        name: "Gateway".to_string(),
+                        provider_type: "openai".to_string(),
+                        base_url: None,
+                        api_key_encrypted: None,
+                        settings: None,
+                    },
+                )
+                .await
+                .unwrap();
+            let id = row.id.uuid();
+            if managed {
+                assert!(db.set_provider_managed(org_id, id, true).await.unwrap());
+            }
+            id
+        }
+
+        #[tokio::test]
+        async fn update_of_managed_provider_is_forbidden() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let org_id = 1;
+            let id = seed_provider(&db, org_id, true).await;
+            let service = ProviderService::new(db.clone(), None);
+
+            let err = service
+                .update(&caller(org_id), id, name_update("renamed"))
+                .await
+                .unwrap_err();
+            assert!(
+                err.downcast_ref::<PolicyError>().is_some(),
+                "expected PolicyError (403), got: {err}"
+            );
+            // GET still works and exposes the managed flag.
+            let got = service.get(&caller(org_id), id).await.unwrap().unwrap();
+            assert!(got.managed);
+            // The name was not changed.
+            assert_eq!(got.name, "Gateway");
+        }
+
+        #[tokio::test]
+        async fn delete_of_managed_provider_is_forbidden() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let org_id = 1;
+            let id = seed_provider(&db, org_id, true).await;
+            let service = ProviderService::new(db.clone(), None);
+
+            let err = service.delete(&caller(org_id), id).await.unwrap_err();
+            assert!(
+                err.downcast_ref::<PolicyError>().is_some(),
+                "expected PolicyError (403), got: {err}"
+            );
+            // Row survives the rejected delete.
+            assert!(db.get_provider(org_id, id).await.unwrap().is_some());
+        }
+
+        #[tokio::test]
+        async fn unmanaged_provider_stays_editable_and_deletable() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let org_id = 1;
+            let id = seed_provider(&db, org_id, false).await;
+            let service = ProviderService::new(db.clone(), None);
+
+            let updated = service
+                .update(&caller(org_id), id, name_update("renamed"))
+                .await
+                .unwrap()
+                .expect("provider exists");
+            assert_eq!(updated.name, "renamed");
+            assert!(!updated.managed);
+
+            assert!(service.delete(&caller(org_id), id).await.unwrap());
+            assert!(db.get_provider(org_id, id).await.unwrap().is_none());
+        }
     }
 }
