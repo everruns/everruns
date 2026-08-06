@@ -27,6 +27,7 @@ detail. Stale "current" lists (current flags, current statuses) should become li
 
 - `specs/concepts.md` - Core entities, relationships, and concept diagram
 - `specs/architecture.md` - System architecture, crate structure, infrastructure
+- `specs/sans-io-turn-state.md` - Converging the two turn-loop implementations on one serializable state with pure transitions (staged)
 - `specs/code-organization.md` - Developer conventions: formatting, testing, error handling, UI patterns
 - `specs/models.md` - Data models (Agent, Session, Message, etc.)
 - `specs/id-schema.md` - Standardized prefixed ID format

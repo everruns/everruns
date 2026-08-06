@@ -201,6 +201,7 @@ pub mod in_memory_loop;
 // Turn orchestration (state machine, context, outcomes)
 pub mod turn;
 pub mod turn_completion;
+pub mod turn_state;
 
 // Note: Chat Driver implementations (AnthropicChatDriver, OpenAIChatDriver) are now in
 // separate crates (everruns-anthropic, everruns-openai) that depend on everruns-core.
