@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.20] - 2026-08-06
+
+### Highlights
+
+- **Linked OAuth accounts** - Verified OAuth sign-ins now link to an existing account with a matching email instead of creating a duplicate ([#2914](https://github.com/everruns/everruns/pull/2914)).
+- **Operator SSRF allowlist** - Self-hosted deployments can exempt specific CIDR ranges from SSRF blocking (`EVERRUNS_SSRF_ALLOW_CIDRS`), making in-cluster MCP servers reachable without exposing them publicly ([#2923](https://github.com/everruns/everruns/pull/2923)).
+- **Auth reliability** - Sessions and org selection now persist across token refresh, and MCP OAuth consent redirects pass the CSP form-action policy ([#2919](https://github.com/everruns/everruns/pull/2919), [#2918](https://github.com/everruns/everruns/pull/2918)).
+
+### What's Changed
+
+- fix(sessions): mount registry skills referenced as skill capabilities ([#2927](https://github.com/everruns/everruns/pull/2927)) by [@chaliy](https://github.com/chaliy)
+- feat(security): operator CIDR allowlist for SSRF validation ([#2923](https://github.com/everruns/everruns/pull/2923)) by [@shbodya](https://github.com/shbodya)
+- chore(deps): bump the npm_and_yarn group across 1 directory with 2 updates ([#2925](https://github.com/everruns/everruns/pull/2925)) by [@app/dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump the cargo group with 3 updates ([#2926](https://github.com/everruns/everruns/pull/2926)) by [@app/dependabot](https://github.com/apps/dependabot)
+- fix(deps): bump fast-uri and postcss to clear security advisories ([#2924](https://github.com/everruns/everruns/pull/2924)) by [@chaliy](https://github.com/chaliy)
+- fix(integrations): fall back to Azure OpenAI credentials for image generation ([#2922](https://github.com/everruns/everruns/pull/2922)) by [@shbodya](https://github.com/shbodya)
+- fix(skills): allow restoring archived skills via status-only update ([#2921](https://github.com/everruns/everruns/pull/2921)) by [@shbodya](https://github.com/shbodya)
+- fix(auth): keep session and org selection across token refresh ([#2919](https://github.com/everruns/everruns/pull/2919)) by [@shbodya](https://github.com/shbodya)
+- fix(server): allow MCP OAuth consent redirect through CSP form-action ([#2918](https://github.com/everruns/everruns/pull/2918)) by [@shbodya](https://github.com/shbodya)
+- feat(docker): add authentication environment variables to docker-compose ([#2917](https://github.com/everruns/everruns/pull/2917)) by [@shbodya](https://github.com/shbodya)
+- chore: green main CI (OpenAI credit-exhaustion skip) + patch brace-expansion DoS (GHSA-mh99-v99m-4gvg) ([#2916](https://github.com/everruns/everruns/pull/2916)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): retry provider stream stalls via shared transient path ([#2915](https://github.com/everruns/everruns/pull/2915)) by [@chaliy](https://github.com/chaliy)
+- feat(auth): link verified OAuth accounts ([#2914](https://github.com/everruns/everruns/pull/2914)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.19] - 2026-07-31
 
 ### Highlights
