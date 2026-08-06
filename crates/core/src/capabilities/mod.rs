@@ -149,6 +149,7 @@ mod subagents;
 mod system_commands;
 mod test_math;
 mod test_weather;
+mod tool_approval;
 mod tool_call_repair;
 mod tool_output_distillation;
 mod tool_output_persistence;
@@ -361,6 +362,10 @@ pub use test_math::{
 };
 pub use test_weather::{
     GetForecastTool, GetWeatherTool, TEST_WEATHER_CAPABILITY_ID, TestWeatherCapability,
+};
+pub use tool_approval::{
+    ApprovalDecision, ApprovalMode, TOOL_APPROVAL_CAPABILITY_ID, ToolApprovalCapability,
+    ToolApprover,
 };
 pub use tool_call_repair::{
     DEFAULT_MAX_REPROMPTS, MAX_SALVAGE_INPUT_BYTES, RepairOutcome, SalvageResult,

@@ -825,6 +825,16 @@ Following the agentskills.io specification:
 - **Config**: `{"threshold": N}` — number of repeated identical results, identical tool-call batches, or read ranges before warning (default 3)
 - **Source**: `crates/core/src/capabilities/loop_detection.rs`
 
+#### ToolApproval
+
+- **ID**: `tool_approval`
+- **Purpose**: Suspends the turn and asks a human before a risky tool runs
+- **Status**: Not registered by default — it needs a host that can service an interactive prompt. Hosts construct `ToolApprovalCapability::new(approver)` and register it through their `PlatformDefinition`.
+- **Tools**: None (contributes a `PreToolUseHook`)
+- **Config**: `{"mode": "off" | "normal" | "protective"}` (default `normal`)
+- **Source**: `crates/core/src/capabilities/tool_approval.rs`
+- **Behavior**: Classifies each call by the risk the tool *declares* through `ToolHints` — `readonly` is never gated, `destructive`/`open_world` always can be, and an un-annotated tool fails safe as mutating. `normal` asks before destructive/outward calls; `protective` asks before anything that is not read-only; `off` never asks. "Always" answers are remembered per (session, tool). A host that cannot be reached answers `Unavailable`, which allows the call — a client with no permission UI keeps working autonomously instead of deadlocking on every mutating tool. Ported from yolop, where the ACP server backs the approver with the client's `session/request_permission`.
+
 #### ProgressGuard
 
 - **ID**: `progress_guard`
