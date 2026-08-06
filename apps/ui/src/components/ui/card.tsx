@@ -6,7 +6,10 @@ function Card({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card"
-      className={cn("bg-card text-card-foreground flex flex-col gap-4 border py-4", className)}
+      className={cn(
+        "@container/card bg-card text-card-foreground flex flex-col gap-4 border py-4",
+        className,
+      )}
       {...props}
     />
   );
@@ -69,4 +72,36 @@ function CardFooter({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-export { Card, CardHeader, CardFooter, CardTitle, CardAction, CardDescription, CardContent };
+function CardActions({
+  primary,
+  expanded,
+  collapsed,
+  className,
+}: {
+  /** Actions that remain visible at every card width. */
+  primary?: React.ReactNode;
+  /** Actions shown inline when the card is wide enough. */
+  expanded: React.ReactNode;
+  /** Compact replacement for expanded actions, typically an overflow menu. */
+  collapsed: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <div data-slot="card-actions" className={cn("flex items-center justify-end gap-2", className)}>
+      {primary}
+      <div className="hidden items-center gap-2 @min-[22rem]/card:flex">{expanded}</div>
+      <div className="@min-[22rem]/card:hidden">{collapsed}</div>
+    </div>
+  );
+}
+
+export {
+  Card,
+  CardHeader,
+  CardFooter,
+  CardTitle,
+  CardAction,
+  CardActions,
+  CardDescription,
+  CardContent,
+};

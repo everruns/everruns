@@ -3,9 +3,23 @@
 import { useState } from "react";
 import { inferMarketplaceSourceType, marketplaceSourceLabel } from "@/lib/api/plugins";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardActions,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuPositioner,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -52,6 +66,7 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronRight,
+  Ellipsis,
 } from "lucide-react";
 import { pluralize } from "@/lib/formatting";
 import type {
@@ -124,31 +139,67 @@ function MarketplaceCard({
             <p>Never synced</p>
           )}
         </div>
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={() => onBrowse(marketplace)}>
-            Browse
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => syncMutation.mutate(marketplace.id)}
-            disabled={syncMutation.isPending}
-          >
-            <RefreshCw className={`h-4 w-4 mr-1 ${syncMutation.isPending ? "animate-spin" : ""}`} />
-            Sync now
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleToggle}
-            disabled={updateMutation.isPending}
-          >
-            {isDisabled ? "Enable" : "Disable"}
-          </Button>
-          <Button variant="destructive" size="sm" onClick={() => onRemove(marketplace)}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        <CardActions
+          primary={
+            <Button variant="outline" size="sm" onClick={() => onBrowse(marketplace)}>
+              Browse
+            </Button>
+          }
+          expanded={
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => syncMutation.mutate(marketplace.id)}
+                disabled={syncMutation.isPending}
+              >
+                <RefreshCw
+                  className={`h-4 w-4 mr-1 ${syncMutation.isPending ? "animate-spin" : ""}`}
+                />
+                Sync now
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleToggle}
+                disabled={updateMutation.isPending}
+              >
+                {isDisabled ? "Enable" : "Disable"}
+              </Button>
+              <Button variant="destructive" size="sm" onClick={() => onRemove(marketplace)}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          }
+          collapsed={
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={<Button variant="outline" size="icon-sm" />}
+                aria-label="More marketplace actions"
+              >
+                <Ellipsis />
+              </DropdownMenuTrigger>
+              <DropdownMenuPositioner align="end">
+                <DropdownMenuContent>
+                  <DropdownMenuItem
+                    onClick={() => syncMutation.mutate(marketplace.id)}
+                    disabled={syncMutation.isPending}
+                  >
+                    <RefreshCw className={syncMutation.isPending ? "animate-spin" : ""} />
+                    {syncMutation.isPending ? "Syncing…" : "Sync now"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleToggle} disabled={updateMutation.isPending}>
+                    {isDisabled ? "Enable" : "Disable"}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem variant="destructive" onClick={() => onRemove(marketplace)}>
+                    <Trash2 />
+                    Remove
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenuPositioner>
+            </DropdownMenu>
+          }
+        />
       </CardContent>
     </Card>
   );
