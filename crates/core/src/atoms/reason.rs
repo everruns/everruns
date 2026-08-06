@@ -1866,6 +1866,7 @@ impl ReasonAtom {
             &context.turn_id.to_string(),
         )
         .await;
+        let raw_tool_result_bytes = crate::capabilities::total_tool_result_bytes(&patched_messages);
 
         // 9b. Let enabled capabilities build a prompt-facing model view from
         // lossless stored messages. Storage remains unchanged.
@@ -2213,13 +2214,20 @@ impl ReasonAtom {
             } else {
                 true
             };
+            let window_pressure = crate::capabilities::should_compact_proactively(
+                &llm_messages_for_call,
+                config,
+                context_window,
+            );
+            let cost_pressure = crate::capabilities::should_compact_for_cost(
+                estimated_tokens_before as usize,
+                raw_tool_result_bytes,
+                config,
+                prior_usage.as_ref(),
+            );
             let local_pressure = !stateful_response_continuation
                 && checkpoint_rearmed
-                && crate::capabilities::should_compact_proactively(
-                    &llm_messages_for_call,
-                    config,
-                    context_window,
-                );
+                && (window_pressure || cost_pressure);
             let should_attempt = native_strategy
                 && chat_driver.supports_compact()
                 && durable_source_available

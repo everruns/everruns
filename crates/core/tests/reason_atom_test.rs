@@ -393,16 +393,50 @@ impl ProactiveTestRig {
         }
     }
 
-    async fn execute(&self, previous_response_id: Option<&str>) -> everruns_core::Result<()> {
+    async fn execute(
+        &self,
+        previous_response_id: Option<&str>,
+    ) -> everruns_core::Result<everruns_core::atoms::ReasonResult> {
         self.execute_with_checkpoint_store(previous_response_id, self.checkpoint_store.clone())
             .await
+    }
+
+    async fn configure_cost_pressure(&self, messages: Vec<Message>) {
+        use everruns_core::AgentCapabilityConfig;
+        use everruns_core::capabilities::COMPACTION_CAPABILITY_ID;
+        use everruns_core::traits::SessionStore;
+
+        self.message_retriever
+            .seed(self.session_id.into(), messages)
+            .await;
+        let mut session = self
+            .session_store
+            .get_session(self.session_id.into())
+            .await
+            .unwrap()
+            .unwrap();
+        session.usage = Some(everruns_core::TokenUsage::new(100_000, 1_000));
+        session.capabilities = vec![AgentCapabilityConfig::with_config(
+            COMPACTION_CAPABILITY_ID,
+            json!({
+                "strategy": "native",
+                "proactive": true,
+                "budget_percent": 0.85,
+                "cost_control": {
+                    "max_uncached_input_tokens": 100_000,
+                    "compact_min_input_tokens": 1_000,
+                    "compact_after_tool_result_bytes": 1_000_000
+                }
+            }),
+        )];
+        self.session_store.add_session(session).await;
     }
 
     async fn execute_with_checkpoint_store(
         &self,
         previous_response_id: Option<&str>,
         checkpoint_store: Arc<dyn everruns_core::CompactionCheckpointStore>,
-    ) -> everruns_core::Result<()> {
+    ) -> everruns_core::Result<everruns_core::atoms::ReasonResult> {
         let atom = ReasonAtom::new(
             self.harness_store.clone(),
             self.agent_store.clone(),
@@ -424,7 +458,6 @@ impl ProactiveTestRig {
             iteration: 1,
         })
         .await
-        .map(|_| ())
     }
 }
 
@@ -1190,6 +1223,173 @@ async fn proactive_native_compaction_installs_checkpoint_at_reason_entry_point()
         !serde_json::to_string(&events)
             .unwrap()
             .contains("proactive-opaque-payload")
+    );
+}
+
+#[tokio::test]
+async fn cumulative_cost_compacts_below_window_budget_and_preserves_raw_history() {
+    let rig = ProactiveTestRig::new(
+        DriverId::external("openai-codex-cost-pressure"),
+        1_000_000,
+        (10_000, 100),
+        false,
+        false,
+    )
+    .await;
+    let mut trajectory = vec![Message::user(
+        "Find the decisive evidence and complete the task without losing it.",
+    )];
+    for index in 0..12 {
+        let call_id = format!("call_{index}");
+        trajectory.push(Message::assistant_with_tools(
+            "",
+            vec![ToolCall {
+                id: call_id.clone(),
+                name: "read_file".to_string(),
+                arguments: json!({ "path": format!("evidence/{index}.txt") }),
+            }],
+        ));
+        let marker = (index == 3).then_some("DECISIVE-EVIDENCE=WREN-5081\n");
+        trajectory.push(Message::tool_result(
+            call_id,
+            Some(json!({
+                "output": format!("{}{}", marker.unwrap_or_default(), "x".repeat(24_000))
+            })),
+            None,
+        ));
+        if index == 3 {
+            trajectory.push(Message::assistant(
+                "Decision recorded from DECISIVE-EVIDENCE: use WREN-5081.",
+            ));
+        }
+    }
+    trajectory.push(Message::user("Use WREN-5081 and finish now."));
+    let baseline_bytes = serde_json::to_vec(&trajectory).unwrap().len();
+    rig.configure_cost_pressure(trajectory.clone()).await;
+
+    let result = rig.execute(None).await.unwrap();
+
+    assert!(result.success);
+    assert_eq!(result.text, "ok");
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
+    let calls = rig.calls.lock().await;
+    let model_view_bytes =
+        everruns_core::capabilities::estimate_total_tokens(&calls.last().unwrap().0) * 4;
+    let reduction_percent = 100usize.saturating_sub(model_view_bytes * 100 / baseline_bytes);
+    println!(
+        "context_cost_ab baseline_prompt_bytes={baseline_bytes} candidate_prompt_bytes={model_view_bytes} reduction_percent={reduction_percent} task_success={}",
+        result.success
+    );
+    assert!(
+        model_view_bytes * 4 < baseline_bytes,
+        "durable replacement should reduce the next model view by at least 75%: {model_view_bytes} vs {}",
+        baseline_bytes
+    );
+    drop(calls);
+
+    let raw = rig
+        .message_retriever
+        .load(rig.session_id.into())
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(&raw).unwrap(),
+        serde_json::to_value(&trajectory).unwrap()
+    );
+    let queryable = rig
+        .message_retriever
+        .load_filtered(
+            everruns_core::MessageQuery::new(rig.session_id.into()).with_filter(
+                everruns_core::message_filter::MessageFilter::Search(
+                    "DECISIVE-EVIDENCE".to_string(),
+                ),
+            ),
+        )
+        .await
+        .unwrap();
+    assert_eq!(queryable.len(), 1);
+    assert!(
+        queryable[0]
+            .text()
+            .is_some_and(|text| text.contains("WREN-5081"))
+    );
+
+    rig.message_retriever
+        .add(
+            rig.session_id.into(),
+            everruns_core::InputMessage::user(
+                "Latest validation passed; keep this visible and finish.",
+            ),
+        )
+        .await
+        .unwrap();
+    let resumed = rig.execute(None).await.unwrap();
+    assert!(resumed.success);
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
+    let calls = rig.calls.lock().await;
+    let (messages, config) = calls.last().unwrap();
+    assert!(config.provider_opaque_context.is_some());
+    assert!(messages.iter().any(|message| {
+        matches!(
+            &message.content,
+            everruns_core::LlmMessageContent::Text(text)
+                if text.contains("Latest validation passed")
+        )
+    }));
+}
+
+#[tokio::test]
+async fn cumulative_cost_does_not_compact_a_short_prompt() {
+    let rig = ProactiveTestRig::new(
+        DriverId::external("openai-codex-short-cost-pressure"),
+        1_000_000,
+        (10_000, 100),
+        false,
+        false,
+    )
+    .await;
+    rig.configure_cost_pressure(vec![Message::user("short follow-up")])
+        .await;
+
+    rig.execute(None).await.unwrap();
+
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn cumulative_cost_compaction_failure_falls_back_to_raw_model_view() {
+    let rig = ProactiveTestRig::new(
+        DriverId::external("openai-codex-cost-failure"),
+        1_000_000,
+        (10_000, 100),
+        false,
+        true,
+    )
+    .await;
+    rig.configure_cost_pressure(vec![Message::user("x".repeat(400_000))])
+        .await;
+
+    rig.execute(None).await.unwrap();
+    rig.execute(None).await.unwrap();
+
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
+    assert!(
+        rig.checkpoint_store
+            .get_latest(
+                rig.session_id.into(),
+                rig.provider_type.as_str(),
+                &rig.model,
+            )
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        rig.calls
+            .lock()
+            .await
+            .iter()
+            .all(|(_, config)| config.provider_opaque_context.is_none())
     );
 }
 

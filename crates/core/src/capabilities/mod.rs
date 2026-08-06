@@ -204,7 +204,8 @@ pub use compaction::{
     apply_hierarchical_memory, apply_observation_masking, build_model_view_messages,
     build_summarization_prompt, build_summary_message, classify_memory_tiers,
     compose_summary_with_recent, estimate_tokens, estimate_total_tokens,
-    format_messages_for_summarization, should_compact_proactively,
+    format_messages_for_summarization, should_compact_for_cost, should_compact_proactively,
+    total_tool_result_bytes,
 };
 pub use current_time::{CURRENT_TIME_CAPABILITY_ID, CurrentTimeCapability, GetCurrentTimeTool};
 pub use data_knowledge::{DATA_KNOWLEDGE_CAPABILITY_ID, DataKnowledgeCapability};

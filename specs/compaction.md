@@ -20,6 +20,15 @@ The model view applies generic cost-control masking according to the configured 
 
 Provider cache telemetry feeds this same model-view step. If the previous call reports high uncached input or a low cache-read ratio, the model view may mask older tool results earlier so repeated full-history prompts do not keep paying for cache misses.
 
+For native-capable drivers, proactive policy also treats cumulative uncached
+input and the raw bytes of tool results accumulated since the latest durable
+checkpoint as cost pressure. Either signal can request a checkpoint before the
+model view reaches the context-window threshold, but only when the current
+prompt is itself non-trivial. This marginal floor avoids spending a compact
+call on short follow-ups after a long session. The same checkpoint re-arming,
+lineage-aware retry watermark, and failure fallback used by window pressure
+apply; cost pressure does not create a second compaction lifecycle.
+
 ### Durable replacement checkpoints
 
 Compaction that replaces a history prefix MUST survive later turns and durable
@@ -336,6 +345,7 @@ When the `compaction` capability is present with no config (or `{}`):
 | `budget_percent` | `0.85` | 15% headroom |
 | `keep_recent_tool_outputs` | `2` | Recent context stays verbatim |
 | Cost-control masking | Enabled | Prevent stale bulky tool results from being resent verbatim in every request |
+| Cost-control durable checkpoint | 100,000 cumulative uncached input tokens or 256 KiB raw tool results, with an 8,192-token current-prompt floor | Bound repeated prompt cost before 85% occupancy without compacting trivial turns |
 | `summarization.model` | `null` (same model) | Simplest default |
 | `summarization.preserve` | `["decisions", "files_modified", "errors", "current_plan"]` | Key agent context |
 
