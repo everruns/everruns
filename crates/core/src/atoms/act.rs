@@ -1488,6 +1488,17 @@ where
         tool_context.event_context = Some(event_context.clone());
         tool_context.tool_call_id = Some(tool_call.id.clone());
 
+        // Cooperative cancellation for this call. The guard fires when this
+        // future is dropped — which is what a cancelled turn looks like from
+        // here — and also on normal return, so the contract a tool sees is
+        // simply "this call is over". Work the tool leaves running (a child
+        // process, a detached watcher) can hold a clone and die with the call
+        // instead of outliving it; dropping the future alone cannot tell it
+        // anything, because a dropped future is never polled again.
+        let call_cancellation = tokio_util::sync::CancellationToken::new();
+        tool_context.cancellation = Some(call_cancellation.clone());
+        let _cancel_on_call_end = call_cancellation.drop_guard();
+
         let execution_tool_call = self.transform_tool_call_for_execution(tool_call.clone());
 
         // Run pre-tool-use hooks (capability-contributed). They can mutate
@@ -2348,6 +2359,142 @@ mod tests {
             "independent tool should run concurrently with the class group (global_max={})",
             obs.global_max
         );
+    }
+
+    /// A tool that leaves work running past its own future: it hands the
+    /// call's cancellation token to a detached task and returns immediately.
+    /// That task is the thing a dropped future cannot reach.
+    struct DetachedWorkTool {
+        cancelled_tx: Arc<std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
+    }
+
+    impl DetachedWorkTool {
+        fn new(cancelled_tx: tokio::sync::oneshot::Sender<()>) -> Self {
+            Self {
+                cancelled_tx: Arc::new(std::sync::Mutex::new(Some(cancelled_tx))),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl crate::tools::Tool for DetachedWorkTool {
+        fn name(&self) -> &str {
+            "detached_work"
+        }
+
+        fn description(&self) -> &str {
+            "spawns work that outlives the call unless cancelled"
+        }
+
+        fn parameters_schema(&self) -> serde_json::Value {
+            json!({ "type": "object", "properties": {} })
+        }
+
+        fn requires_context(&self) -> bool {
+            true
+        }
+
+        async fn execute(&self, _arguments: serde_json::Value) -> crate::ToolExecutionResult {
+            crate::ToolExecutionResult::tool_error("requires context")
+        }
+
+        async fn execute_with_context(
+            &self,
+            _arguments: serde_json::Value,
+            context: &crate::traits::ToolContext,
+        ) -> crate::ToolExecutionResult {
+            let token = context
+                .cancellation
+                .clone()
+                .expect("act must supply a cancellation token");
+            assert!(!token.is_cancelled(), "token is live during the call");
+            let tx = self.cancelled_tx.clone();
+            tokio::spawn(async move {
+                token.cancelled().await;
+                if let Ok(mut guard) = tx.lock()
+                    && let Some(tx) = guard.take()
+                {
+                    let _ = tx.send(());
+                }
+            });
+            crate::ToolExecutionResult::success(json!({ "spawned": true }))
+        }
+    }
+
+    /// Work a tool leaves running must learn that its call ended. Dropping the
+    /// act future cannot tell it — a dropped future is never polled again — so
+    /// the token on `ToolContext` is the only signal that reaches it.
+    #[tokio::test]
+    async fn test_act_atom_cancels_detached_tool_work_when_the_call_ends() {
+        let (cancelled_tx, cancelled_rx) = tokio::sync::oneshot::channel();
+
+        let mut executor = ToolRegistry::new();
+        executor.register(DetachedWorkTool::new(cancelled_tx));
+
+        let atom = ActAtom::new(executor, NoopEventEmitter);
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let input = ActInput {
+            org_id: Some(1),
+            context,
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
+            tool_calls: vec![ToolCall {
+                id: "call_1".to_string(),
+                name: "detached_work".to_string(),
+                arguments: json!({}),
+            }],
+            tool_definitions: vec![recording_tool_def("detached_work", None, false)],
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        };
+
+        atom.execute(input).await.expect("act should succeed");
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), cancelled_rx)
+            .await
+            .expect("detached work should be cancelled once the call ends")
+            .expect("cancellation signal should be sent");
+    }
+
+    #[tokio::test]
+    async fn test_act_atom_cancels_detached_tool_work_when_the_turn_is_cancelled() {
+        let started = Arc::new(tokio::sync::Notify::new());
+        let (dropped_tx, dropped_rx) = tokio::sync::oneshot::channel();
+
+        let mut executor = ToolRegistry::new();
+        executor.register(CancellationProbeTool::new(started.clone(), dropped_tx));
+
+        let atom = ActAtom::new(executor, NoopEventEmitter);
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let input = ActInput {
+            org_id: Some(1),
+            context,
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
+            tool_calls: vec![ToolCall {
+                id: "call_1".to_string(),
+                name: "cancellation_probe".to_string(),
+                arguments: json!({}),
+            }],
+            tool_definitions: vec![recording_tool_def("cancellation_probe", None, true)],
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        };
+
+        let act_task = tokio::spawn(async move { atom.execute(input).await });
+        started.notified().await;
+        act_task.abort();
+        assert!(act_task.await.unwrap_err().is_cancelled());
+
+        // The existing abort path still holds: the tool future itself is dropped.
+        tokio::time::timeout(std::time::Duration::from_secs(1), dropped_rx)
+            .await
+            .expect("tool future should be dropped when the turn is cancelled")
+            .expect("drop signal should be sent");
     }
 
     #[tokio::test]
