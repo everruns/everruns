@@ -825,6 +825,16 @@ Following the agentskills.io specification:
 - **Config**: `{"threshold": N}` — number of repeated identical results, identical tool-call batches, or read ranges before warning (default 3)
 - **Source**: `crates/core/src/capabilities/loop_detection.rs`
 
+#### ProgressGuard
+
+- **ID**: `progress_guard`
+- **Purpose**: Interrupts investigation that is not producing progress — many exploration tools without an edit or a validation run, repeated identical searches, zero-evidence searches, re-reading unchanged files, re-running a validation against an unchanged workspace, and poll-loops waiting on external events
+- **Status**: Registered, opt-in per agent. Behavior-only.
+- **Tools**: None (contributes a `PostToolExecHook`)
+- **Config**: None
+- **Source**: `crates/core/src/capabilities/progress_guard.rs`
+- **Behavior**: Observes tool traffic per session and appends a warning to the *next* tool result when a threshold trips, naming the situation and the required next action. Runtime-enforced rather than prompt-only, and contributes no system prompt text: a warning that usually never fires should not be paid for on every turn. Complements `loop_detection`, which catches literal repeats of the same call; this catches activity that varies but goes nowhere. Ported from yolop.
+
 #### ToolCallRepair
 
 - **ID**: `tool_call_repair`
