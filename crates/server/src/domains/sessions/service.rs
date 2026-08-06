@@ -33,13 +33,13 @@ use everruns_core::{
     PrincipalSummary, Rule, Session, SessionFile, SessionId, SessionSeedMode, SessionStatus,
     TokenUsage, WorkspaceId,
     capabilities::{
-        MEMORY_CAPABILITY_ID, RiskLevel, SystemPromptContext, collect_capabilities_with_configs,
-        compute_features, resolve_capability_configs,
+        AttachSkillCapability, MEMORY_CAPABILITY_ID, RiskLevel, SystemPromptContext,
+        collect_capabilities_with_configs, compute_features, resolve_capability_configs,
     },
     is_declarative_capability, is_mcp_capability, is_plugin_capability, is_skill_capability,
     memory::{MemoryConfig, MemoryMountAccess},
     merge_capabilities, merge_initial_files, normalize_initial_file_path,
-    parse_declarative_capability_id,
+    parse_declarative_capability_id, parse_skill_capability_id,
     typed_id::MemoryId,
 };
 use everruns_durable::UpdateField;
@@ -1107,6 +1107,14 @@ impl SessionService {
             self.collect_workspace_memory_mounts(org_id, &resolved_configs)
                 .await?,
         );
+        // `skill:{uuid}` refs have no registry entry, so dependency resolution
+        // drops them from `resolved_configs` — resolve them from org data
+        // against the raw config list instead (same pattern as declarative and
+        // plugin refs, which carry their definition in the config payload).
+        mounts.extend(
+            self.collect_registry_skill_mounts(org_id, &capability_configs)
+                .await?,
+        );
         ensure_no_reserved_memory_mounts(&mounts)?;
         if let Some(scoped_memory) = scoped_memory {
             mounts.extend(
@@ -2160,6 +2168,87 @@ impl SessionService {
             ));
         }
 
+        Ok(mounts)
+    }
+
+    /// Mount registry skills referenced as `skill:{uuid}` capability refs.
+    ///
+    /// Each active skill is reconstructed into `/.agents/skills/{name}/`
+    /// (SKILL.md + bundled text files) so the built-in `SkillsCapability`
+    /// discovers it alongside workspace skills.
+    ///
+    /// A skill that is missing or not active is skipped with a warning rather
+    /// than failing session creation: `validate_capability_refs` accepts a
+    /// `skill:{uuid}` ref at any status, so archiving or disabling a skill must
+    /// not take down every agent that references it. A session missing one
+    /// skill is still runnable — unlike a missing memory mount, which is fatal.
+    async fn collect_registry_skill_mounts(
+        &self,
+        org_id: i64,
+        capability_configs: &[AgentCapabilityConfig],
+    ) -> Result<Vec<MountPoint>> {
+        let mut seen = HashSet::new();
+        let mut mounts = Vec::new();
+        for config in capability_configs {
+            let cap_id = config.capability_id();
+            if !is_skill_capability(cap_id) {
+                continue;
+            }
+            let skill_uuid = parse_skill_capability_id(cap_id).ok_or_else(|| {
+                BadRequestError::new(format!("Invalid skill capability reference: {cap_id}"))
+            })?;
+            if !seen.insert(skill_uuid) {
+                continue;
+            }
+            let Some(row) = self.db.get_skill(org_id, skill_uuid).await? else {
+                tracing::warn!(
+                    skill_id = %skill_uuid,
+                    "Referenced skill not found; skipping session mount"
+                );
+                continue;
+            };
+            if row.status != "active" {
+                tracing::warn!(
+                    skill_id = %skill_uuid,
+                    status = %row.status,
+                    "Referenced skill is not active; skipping session mount"
+                );
+                continue;
+            }
+            let skill = crate::domains::skills::queries::row_to_skill(&row);
+
+            // Bundled files: text only. SKILL.md is reconstructed from the
+            // stored fields, so drop any archived copy to keep it canonical.
+            let files: Vec<(String, String)> = self
+                .db
+                .list_skill_files(skill_uuid)
+                .await?
+                .into_iter()
+                .filter(|file| file.path != "SKILL.md")
+                .filter_map(|file| {
+                    if file.is_binary {
+                        tracing::warn!(
+                            skill = %skill.name,
+                            path = %file.path,
+                            "Skipping binary skill file in session mount"
+                        );
+                        return None;
+                    }
+                    file.content.map(|content| (file.path, content))
+                })
+                .collect();
+
+            let capability = AttachSkillCapability::from_registry_with_options(
+                skill_uuid,
+                skill.name,
+                skill.description,
+                row.instructions.clone(),
+                files,
+                skill.user_invocable,
+                skill.disable_model_invocation,
+            );
+            mounts.extend(everruns_core::capabilities::Capability::mounts(&capability));
+        }
         Ok(mounts)
     }
 

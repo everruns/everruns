@@ -188,6 +188,11 @@ collection, before any tool runs. The `activate_skill` result carries instructio
 (`skill`, `description`, fork-mode fields where applicable) and deliberately no companion-file
 listing.
 
+**Non-active references degrade, they do not fail**: a `skill:{uuid}` ref is accepted at any status
+by capability validation, so a referenced skill that is archived, disabled, or deleted is skipped
+with a warning at mount collection and the session still starts. Archiving a skill must not take
+down every agent that references it; the agent simply does not see that skill.
+
 This approach:
 - Reuses existing VFS infrastructure (no new tool needed)
 - Files are accessible via the same `read_file` / `list_files` tools the agent already has
