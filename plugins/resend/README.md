@@ -9,7 +9,8 @@ OAuth, installed into Everruns as a stable `plugin:{install_id}` capability.
 
 ## What It Includes
 
-- `.claude-plugin/plugin.json` — plugin manifest
+- `plugin.json` and `mcp.json` — portable Agent Plugins v1 metadata
+- `.claude-plugin/plugin.json` — Claude Code plugin manifest
 - `.mcp.json` — the Resend remote MCP server. The `"auth": "oauth"` field is
   an Everruns extension marking the server as OAuth-authenticated; other
   hosts (Claude Code, Cursor) ignore it and negotiate OAuth at the protocol

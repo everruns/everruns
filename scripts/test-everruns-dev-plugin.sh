@@ -94,6 +94,25 @@ def validate_plugin(config):
     codex = json.loads((plugin_dir / ".codex-plugin" / "plugin.json").read_text())
     claude = json.loads((plugin_dir / ".claude-plugin" / "plugin.json").read_text())
     cursor = json.loads((plugin_dir / ".cursor-plugin" / "plugin.json").read_text())
+    portable = json.loads((plugin_dir / "plugin.json").read_text())
+    portable_mcp = json.loads((plugin_dir / "mcp.json").read_text())
+
+    if portable.get("$schema") != "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json":
+        raise SystemExit(f"{label} portable plugin.json has the wrong schema")
+    if portable_mcp.get("$schema") != "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json":
+        raise SystemExit(f"{label} portable mcp.json has the wrong schema")
+    portable_server = portable_mcp.get("mcpServers", {}).get(name, {})
+    if portable_server.get("type") != "streamable-http" or portable_server.get("url") != expected_url:
+        raise SystemExit(f"{label} portable MCP server metadata drifted: {portable_server}")
+    portable_auth = (
+        portable.get("extensions", {})
+        .get("com.everruns", {})
+        .get("mcpServers", {})
+        .get(name, {})
+        .get("auth")
+    )
+    if portable_auth != "oauth":
+        raise SystemExit(f"{label} portable manifest must request Everruns OAuth anchoring")
 
     codex_interface = codex.get("interface")
     if not isinstance(codex_interface, dict):
@@ -115,11 +134,17 @@ def validate_plugin(config):
     codex_marketplace_plugin = marketplace_plugin("Codex", codex_marketplace, name)
     cursor_marketplace_plugin = marketplace_plugin("Cursor", cursor_marketplace, name)
 
-    for host_label, plugin in {"codex": codex, "claude": claude, "cursor": cursor}.items():
+    for host_label, plugin in {
+        "portable": portable,
+        "codex": codex,
+        "claude": claude,
+        "cursor": cursor,
+    }.items():
         if plugin["name"] != name:
             raise SystemExit(f"{label} {host_label} plugin name drifted: {plugin['name']}")
 
     versions = {
+        "portable": portable["version"],
         "codex": codex["version"],
         "claude": claude["version"],
         "cursor": cursor["version"],
@@ -286,5 +311,5 @@ def validate_plugin(config):
 for config in PLUGIN_CONFIGS:
     validate_plugin(config)
 
-print("Everruns plugin metadata checks passed (dev and production; claude, codex, cursor)")
+print("Everruns plugin metadata checks passed (dev and production; portable, claude, codex, cursor)")
 PY

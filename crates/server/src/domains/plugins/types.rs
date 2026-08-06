@@ -65,7 +65,7 @@ pub struct UpdatePluginMarketplaceRequest {
 /// A single entry in a synced marketplace catalog.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct MarketplaceCatalogEntry {
-    /// Plugin name (kebab-case).
+    /// Plugin package name.
     pub name: String,
     /// Human-readable display name.
     pub display_name: Option<String>,
@@ -90,7 +90,7 @@ pub struct InstalledPlugin {
     pub public_id: PluginInstallId,
     #[serde(skip)]
     pub internal_id: Uuid,
-    /// Kebab-case plugin name. This is display/discovery metadata, not capability identity.
+    /// Plugin package name. This is display/discovery metadata, not capability identity.
     pub name: String,
     /// Human-readable display name from the plugin manifest.
     pub display_name: Option<String>,

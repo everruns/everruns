@@ -1,7 +1,7 @@
 {
   "name": "resend",
   "displayName": "Resend",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Send transactional emails through the Resend remote MCP server. Connects with OAuth — no API key handling in the agent.",
   "author": {
     "name": "Everruns",

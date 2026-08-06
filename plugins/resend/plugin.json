@@ -1,0 +1,21 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "resend",
+  "version": "0.1.1",
+  "description": "Send transactional emails through the Resend remote MCP server with OAuth.",
+  "author": {
+    "name": "Everruns",
+    "url": "https://everruns.com"
+  },
+  "homepage": "https://resend.com",
+  "repository": "https://github.com/everruns/everruns",
+  "license": "MIT",
+  "keywords": ["email", "resend", "mcp", "oauth"],
+  "extensions": {
+    "com.everruns": {
+      "mcpServers": {
+        "resend": { "auth": "oauth" }
+      }
+    }
+  }
+}

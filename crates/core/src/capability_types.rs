@@ -26,8 +26,9 @@ use std::sync::Arc;
 // `parse_declarative_capability_id` trio in `capabilities/declarative.rs` for
 // the `plugin:` namespace.
 //
-// `plugin:` is 7 bytes; capability ref columns are VARCHAR(50), leaving 43
-// bytes for the stable plugin installation public ID.
+// Server-managed plugin refs use stable installation public IDs. Standalone
+// Agent Plugins refs use manifest names of at most 64 ASCII bytes, so persisted
+// capability reference columns reserve 71 bytes including `plugin:`.
 
 /// The `plugin:` prefix used to identify installed plugin capabilities.
 pub const PLUGIN_CAPABILITY_PREFIX: &str = "plugin:";
