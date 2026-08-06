@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.22] - 2026-08-06
+
+### Highlights
+
+- **Automatic interrupted-turn recovery** - Agent turns now classify provider failures, recover safely from transient transport, overload, 5xx, and stream-stall failures within bounded retry budgets, preserve completed tool effects, and surface permanent failures as precise resumable errors ([#2937](https://github.com/everruns/everruns/pull/2937)).
+- **Safer interactive tools** - Tool calls can now request host approval and receive cooperative cancellation through `ToolContext`, giving hosts explicit control without abandoning in-flight work ([#2931](https://github.com/everruns/everruns/pull/2931), [#2938](https://github.com/everruns/everruns/pull/2938)).
+- **Model-backed secret screening** - Gallery presets can now add a judge guardrail that catches likely secret leakage beyond deterministic pattern matching ([#2932](https://github.com/everruns/everruns/pull/2932)).
+
+### What's Changed
+
+- fix(runtime): recover interrupted provider turns ([#2937](https://github.com/everruns/everruns/pull/2937)) by [@chaliy](https://github.com/chaliy)
+- feat(tools): cooperative cancellation token on ToolContext ([#2938](https://github.com/everruns/everruns/pull/2938)) by [@chaliy](https://github.com/chaliy)
+- perf(anthropic): make prompt caching incremental ([#2934](https://github.com/everruns/everruns/pull/2934)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): interactive tool-approval gate ([#2931](https://github.com/everruns/everruns/pull/2931)) by [@chaliy](https://github.com/chaliy)
+- feat(tools): host-owned metadata hatch on tool hints and capabilities ([#2936](https://github.com/everruns/everruns/pull/2936)) by [@chaliy](https://github.com/chaliy)
+- feat(guardrails): add model-backed secret-leak judge gallery preset ([#2932](https://github.com/everruns/everruns/pull/2932)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.21] - 2026-08-06
 
 ### Highlights

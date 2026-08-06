@@ -15224,6 +15224,22 @@ export interface components {
        */
       long_running?: boolean | null;
       /**
+       * @description Host-owned annotations that core does not interpret.
+       *
+       *     The typed hints above are the vocabulary core itself reasons about. This
+       *     is the escape hatch for everything a *host* wants to carry alongside a
+       *     tool — risk tiers for an approval UI, presentation hints, an embedder's
+       *     routing keys — without adding a field to core for each one. Core reads
+       *     nothing here and no driver sends it to a provider; it travels with the
+       *     definition so a consumer sees it at the point of decision (e.g. a
+       *     `PreToolUseHook` gating on what the tool declared).
+       *
+       *     The schema belongs to whoever writes it. Never put credentials or other
+       *     sensitive payload here: like the rest of the definition, it is persisted
+       *     and surfaced to clients.
+       */
+      metadata?: unknown;
+      /**
        * @description Entity noun for operation-based narration (e.g. "agent", "harness").
        *     When set, the narration system reads the `operation` argument and
        *     produces verb-based narration like "Created agent: Neon Cartographer"
