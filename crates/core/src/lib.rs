@@ -105,6 +105,7 @@ pub use everruns_provider::model_profiles;
 pub mod model_router;
 pub mod mount_fs;
 pub mod network_access;
+pub mod oauth;
 pub mod observer;
 pub mod organization;
 pub mod payment;

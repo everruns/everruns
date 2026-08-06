@@ -133,8 +133,22 @@ trait McpAuthProvider {
   refreshes, and atomically persists refresh-token rotation before returning
   the new access token.
 - The **runtime/coding-CLI** provides simpler implementations: a static
-  bearer/header provider, an env-var provider, and (future) a device-code
-  flow. The CLI does not require a browser redirect.
+  bearer/header provider, an env-var provider, and `OAuthAuthProvider`.
+
+The OAuth half is shared rather than per-host. `everruns_core::oauth` owns the
+protocol steps — RFC 9728 protected-resource discovery, RFC 8414/OpenID
+authorization-server metadata, RFC 7591 dynamic registration, PKCE, code
+exchange, refresh, and RFC 9207 issuer validation — with no browser, no
+listener, and no storage. `everruns_mcp::oauth` binds them to MCP: discovery
+starts at the *server* (its metadata names the issuer; absent that, its origin
+is the issuer), the token is bound to the server with a `resource` indicator
+(RFC 8707), and `prepare_login`/`complete_login` split the flow so the host
+supplies only the callback leg — a loopback listener for a CLI, a redirect
+route for the control plane. Persistence is the `McpTokenStore` trait.
+
+Every OAuth request goes through `EgressService` with DNS pinning. The
+authorization-server URL is discovered *from the remote MCP server*, so it is
+attacker-influenced input and must not bypass the egress boundary.
 - `auth_mode = OAuth` no longer implies "web". "Lifetime"/refresh is owned by
   the provider implementation (e.g. a CLI provider may cache a token and
   refresh on 401), keeping the core executor stateless.
