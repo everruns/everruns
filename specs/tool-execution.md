@@ -45,7 +45,9 @@ Note: OpenAI Responses API (`function_call_output`) does not support images in t
 
 ### Tool Hints
 
-`ToolHints` provides semantic metadata about a tool's behavioral properties. See `crates/provider/src/tool_types.rs` for the struct definition. All fields are `Option<bool>` — `None` means unspecified.
+`ToolHints` provides semantic metadata about a tool's behavioral properties. See `crates/provider/src/tool_types.rs` for the struct definition. The behavioral hints are all `Option<bool>` — `None` means unspecified.
+
+Alongside them, `metadata: Option<Value>` is an opaque hatch for annotations **core does not interpret**: risk tiers for an approval UI, presentation hints, an embedder's routing keys. The typed hints are the vocabulary core reasons about; the hatch is how a host carries its own without a core patch per field. No driver sends it to a provider, and it must never carry credentials or other sensitive payload — it is persisted and surfaced to clients like the rest of the definition. `Capability::metadata()` is the same hatch one level up.
 
 Follows the [MCP tool annotations](https://spec.modelcontextprotocol.io) convention plus everruns-specific hints:
 
