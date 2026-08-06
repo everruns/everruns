@@ -125,13 +125,16 @@ impl AnthropicChatDriver {
         wants_million_context: bool,
         max_tokens_from_profile: bool,
         model: &str,
+        retries_consumed: u32,
     ) -> Result<(reqwest::Response, RetryMetadata)> {
         let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let max_tokens_fallback_attempted = Arc::new(Mutex::new(false));
         let beta_logged = Arc::new(Mutex::new(false));
+        let mut retry_config = self.retry_config.clone();
+        retry_config.max_retries = retry_config.max_retries.saturating_sub(retries_consumed);
 
         retry_request(
-            &self.retry_config,
+            &retry_config,
             "AnthropicDriver",
             || {
                 let request = Arc::clone(&request);
@@ -845,13 +848,14 @@ impl ChatDriver for AnthropicChatDriver {
         // failures, and the max_tokens fallback) are handled inside the
         // per-attempt send.
         let (event_stream, retry_metadata) =
-            connect_sse_with_reconnect(&self.retry_config, "AnthropicDriver", |_attempt| {
+            connect_sse_with_reconnect(&self.retry_config, "AnthropicDriver", |attempts| {
                 self.send_messages_request(
                     Arc::clone(&request),
                     needs_interleaved_thinking,
                     wants_million_context,
                     max_tokens_from_profile,
                     &config.model,
+                    attempts,
                 )
             })
             .await?;

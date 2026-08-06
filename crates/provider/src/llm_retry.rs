@@ -44,6 +44,9 @@ pub struct LlmRetryConfig {
     /// Jitter factor (0.0-1.0, adds randomness to avoid thundering herd)
     /// Official SDKs use 0.25 (±25%)
     pub jitter_factor: f64,
+    /// Maximum wall-clock time spent recovering after the first transient
+    /// failure. The initial request is not charged against this budget.
+    pub max_retry_elapsed: Duration,
 }
 
 impl Default for LlmRetryConfig {
@@ -55,6 +58,7 @@ impl Default for LlmRetryConfig {
             max_backoff: Duration::from_secs(60),
             backoff_multiplier: 2.0,
             jitter_factor: 0.25,
+            max_retry_elapsed: Duration::from_secs(30),
         }
     }
 }
@@ -76,6 +80,7 @@ impl LlmRetryConfig {
             max_backoff: Duration::from_secs(120),
             backoff_multiplier: 2.0,
             jitter_factor: 0.25,
+            max_retry_elapsed: Duration::from_secs(120),
         }
     }
 
@@ -101,6 +106,30 @@ impl LlmRetryConfig {
 
         Duration::from_secs_f64((capped_backoff + jitter).max(0.0))
     }
+}
+
+/// Reserve one retry wait inside the configured elapsed-time budget.
+///
+/// `started_at` is initialized on the first transient failure, so a slow but
+/// successful initial request does not consume recovery time. Returning `None`
+/// means the caller must surface the failure instead of starting another
+/// attempt that cannot finish within the strict budget.
+pub fn reserve_retry_wait(
+    config: &LlmRetryConfig,
+    started_at: &mut Option<tokio::time::Instant>,
+    wait: Duration,
+) -> Option<Duration> {
+    let started = *started_at.get_or_insert_with(tokio::time::Instant::now);
+    let remaining = config.max_retry_elapsed.checked_sub(started.elapsed())?;
+    (wait < remaining).then_some(wait)
+}
+
+/// Remaining wall-clock retry budget after recovery has started.
+pub fn remaining_retry_time(
+    config: &LlmRetryConfig,
+    started_at: Option<tokio::time::Instant>,
+) -> Option<Duration> {
+    started_at.and_then(|started| config.max_retry_elapsed.checked_sub(started.elapsed()))
 }
 
 /// Rate limit information extracted from provider response headers
@@ -318,6 +347,8 @@ pub struct RetryMetadata {
     pub attempts: u32,
     /// Total time spent waiting between retries
     pub total_retry_wait: Duration,
+    /// Wall-clock time consumed after automatic recovery began.
+    pub total_retry_elapsed: Duration,
     /// Rate limit info from the last 429 response (if any)
     pub last_rate_limit_info: Option<RateLimitInfo>,
 }
@@ -343,6 +374,18 @@ impl RetryMetadata {
         self.total_retry_wait += wait_duration;
         if rate_limit_info.is_some() {
             self.last_rate_limit_info = rate_limit_info;
+        }
+    }
+
+    /// Merge retries consumed by a nested request/reconnect layer.
+    pub fn absorb(&mut self, other: RetryMetadata) {
+        self.attempts = self.attempts.saturating_add(other.attempts);
+        self.total_retry_wait = self.total_retry_wait.saturating_add(other.total_retry_wait);
+        self.total_retry_elapsed = self
+            .total_retry_elapsed
+            .saturating_add(other.total_retry_elapsed);
+        if other.last_rate_limit_info.is_some() {
+            self.last_rate_limit_info = other.last_rate_limit_info;
         }
     }
 }
@@ -546,9 +589,28 @@ where
     E: Fn(&reqwest::Error, u32) -> AgentLoopError,
 {
     let mut retry_metadata = RetryMetadata::default();
+    let mut retry_started_at = None;
 
     let response = loop {
-        let response = match send().await {
+        let send_result = if let Some(remaining) = remaining_retry_time(config, retry_started_at) {
+            match tokio::time::timeout(remaining, send()).await {
+                Ok(result) => result,
+                Err(_) => {
+                    return Err(AgentLoopError::llm_kind(
+                        crate::error::LlmErrorKind::Unavailable,
+                        format!(
+                            "{driver_name} retry time budget exhausted after {} retries over {:.1}s",
+                            retry_metadata.attempts,
+                            config.max_retry_elapsed.as_secs_f64()
+                        ),
+                    )
+                    .with_retry_metadata(&retry_metadata));
+                }
+            }
+        } else {
+            send().await
+        };
+        let response = match send_result {
             Ok(response) => response,
             Err(SendOutcome::Fatal(err)) => return Err(err),
             Err(SendOutcome::Send(e)) => {
@@ -557,7 +619,13 @@ where
                 // stale pooled keep-alive connection, EVE-635) are transient —
                 // retry them with backoff, matching SDK `APIConnectionError`.
                 if is_transient_send_error(&e) && retry_metadata.attempts < config.max_retries {
-                    let wait_duration = config.calculate_backoff(retry_metadata.attempts);
+                    let proposed_wait = config.calculate_backoff(retry_metadata.attempts);
+                    let Some(wait_duration) =
+                        reserve_retry_wait(config, &mut retry_started_at, proposed_wait)
+                    else {
+                        return Err(send_error(&e, retry_metadata.attempts)
+                            .with_retry_metadata(&retry_metadata));
+                    };
                     tracing::warn!(
                         error = %e,
                         driver = driver_name,
@@ -570,7 +638,9 @@ where
                     tokio::time::sleep(wait_duration).await;
                     continue;
                 }
-                return Err(send_error(&e, retry_metadata.attempts));
+                return Err(
+                    send_error(&e, retry_metadata.attempts).with_retry_metadata(&retry_metadata)
+                );
             }
         };
 
@@ -585,6 +655,17 @@ where
                 wait,
                 rate_limit_info,
             } => {
+                let Some(wait) = reserve_retry_wait(config, &mut retry_started_at, wait) else {
+                    return Err(AgentLoopError::llm_kind(
+                        crate::error::LlmErrorKind::Unavailable,
+                        format!(
+                            "{driver_name} retry time budget exhausted after {} retries over {:.1}s",
+                            retry_metadata.attempts,
+                            config.max_retry_elapsed.as_secs_f64()
+                        ),
+                    )
+                    .with_retry_metadata(&retry_metadata));
+                };
                 tracing::warn!(
                     status = %status,
                     driver = driver_name,
@@ -598,11 +679,16 @@ where
                 continue;
             }
             RetryDecision::RetryNow => continue,
-            RetryDecision::Terminal(err) => return Err(err),
+            RetryDecision::Terminal(err) => {
+                return Err(err.with_retry_metadata(&retry_metadata));
+            }
         }
     };
 
     if retry_metadata.had_retries() {
+        retry_metadata.total_retry_elapsed = retry_started_at
+            .map(|started| started.elapsed())
+            .unwrap_or_default();
         tracing::info!(
             driver = driver_name,
             attempts = retry_metadata.attempts,
@@ -917,6 +1003,7 @@ mod tests {
             max_backoff: Duration::from_millis(0),
             backoff_multiplier: 1.0,
             jitter_factor: 0.0,
+            ..Default::default()
         }
     }
 

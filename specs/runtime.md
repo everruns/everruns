@@ -160,6 +160,11 @@ Required behavior:
 8. Durable/server-backed workers must use runtime-owned turn-strategy planning
    for `process_input -> reason -> act`, steering continuation,
    dependency-blocked completion, and `waiting_for_tool_results` pause/resume.
+9. Provider recovery must reuse the assembled reason input in place. It must
+   not persist a second user message, schedule another act for already-completed
+   tools, or discard provider continuation state that remains valid. Terminal
+   transient exhaustion is reported as safe to resume from persisted history;
+   permanent provider failures retain their precise classification.
 
 ## Shared Context Assembly
 

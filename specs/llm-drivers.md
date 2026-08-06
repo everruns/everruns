@@ -289,6 +289,28 @@ sequenceDiagram
     Note over R: Full error logged server-side
 ```
 
+### Automatic recovery contract
+
+Provider failures are classified at the provider boundary before the runtime
+decides whether to recover. Transport loss, a stream that makes no output
+progress, overload, ordinary rate limiting, and retryable server failures may
+be retried. Invalid credentials, exhausted billing quota, unavailable models,
+invalid/unsafe requests, and long-horizon usage limits fail fast with their
+specific classification.
+
+Recovery is bounded by both attempts and elapsed wall-clock time. Backoff is
+exponential with jitter, honors reasonable provider retry hints, and lower
+driver layers report consumed retries so the reason loop cannot multiply the
+budget. A retry is permitted only before assistant output commits. Act phases
+and completed tool results remain outside the retry boundary, preserving
+exactly-once side effects and provider-visible tool-call/output pairing.
+
+For a stateful Responses continuation rejected because provider state is
+missing a tool call or output, the driver may retry once without the opaque
+continuation handle. That fallback replays the locally persisted transcript
+through the same atomic tool-pair repair used by stateless requests; it never
+re-executes a completed tool.
+
 ## Implementation Location
 
 | Component | Location |

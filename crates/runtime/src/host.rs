@@ -259,6 +259,12 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Bounded automatic-recovery policy for provider failures.
+    /// Default: `None` (use the provider policy defaults).
+    fn provider_retry_config(&self) -> Option<everruns_core::llm_retry::LlmRetryConfig> {
+        None
+    }
+
     /// MCP executor routing `mcp_*` tool calls for this session, if the host
     /// configures MCP (specs/runtime-mcp.md D4). Default: `None`, so hosts
     /// without scoped MCP servers keep the plain tool registry unchanged.
@@ -1287,6 +1293,9 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
     }
     if let Some(timeout) = adapter.provider_stall_timeout() {
         atom = atom.with_provider_stall_timeout(timeout);
+    }
+    if let Some(config) = adapter.provider_retry_config() {
+        atom = atom.with_provider_retry_config(config);
     }
     if let Some(store) = adapter.partial_stream_store() {
         atom = atom.with_partial_stream_store(store);
