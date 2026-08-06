@@ -124,9 +124,10 @@ impl PluginFileSet {
 
     /// Resolve the plugin manifest.
     ///
-    /// Discovery order: `.claude-plugin/plugin.json`, then `.codex-plugin/plugin.json`,
-    /// then `.cursor-plugin/plugin.json`. If none is found, a minimal manifest
-    /// is synthesized from the directory name (Claude Code parity).
+    /// A canonical root `plugin.json` takes precedence when it declares the
+    /// Agent Plugins schema. Otherwise discovery falls back to the legacy
+    /// `.claude-plugin`, `.codex-plugin`, and `.cursor-plugin` manifests. If no
+    /// manifest is found, a minimal one is synthesized from the directory name.
     pub fn manifest(&self) -> Result<(PluginManifest, Vec<String>), String> {
         if let Some(bytes) = self.files.get("plugin.json") {
             let text = std::str::from_utf8(bytes)
