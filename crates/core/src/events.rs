@@ -656,7 +656,7 @@ impl TokenUsage {
 
     /// Get total tokens (input + output)
     pub fn total_tokens(&self) -> u32 {
-        self.input_tokens + self.output_tokens
+        self.input_tokens.saturating_add(self.output_tokens)
     }
 
     /// Add another TokenUsage to this one (for aggregation)
@@ -666,13 +666,15 @@ impl TokenUsage {
         // those slots when no explicit total is set, so reading it afterward
         // would fold in `other`'s just-added actual/estimated and double-count.
         let current_cost = self.effective_cost_usd();
-        self.input_tokens += other.input_tokens;
-        self.output_tokens += other.output_tokens;
+        self.input_tokens = self.input_tokens.saturating_add(other.input_tokens);
+        self.output_tokens = self.output_tokens.saturating_add(other.output_tokens);
         if let Some(cache) = other.cache_read_tokens {
-            *self.cache_read_tokens.get_or_insert(0) += cache;
+            let total = self.cache_read_tokens.get_or_insert(0);
+            *total = total.saturating_add(cache);
         }
         if let Some(cache) = other.cache_creation_tokens {
-            *self.cache_creation_tokens.get_or_insert(0) += cache;
+            let total = self.cache_creation_tokens.get_or_insert(0);
+            *total = total.saturating_add(cache);
         }
         if let Some(cost) = other.actual_cost_usd {
             *self.actual_cost_usd.get_or_insert(0.0) += cost;
@@ -735,6 +737,23 @@ mod token_usage_tests {
 
         assert_eq!(aggregate.actual_cost_usd, Some(4.0));
         assert_eq!(aggregate.effective_cost_usd(), Some(4.0));
+    }
+
+    #[test]
+    fn aggregate_token_counters_saturate_at_their_bound() {
+        let mut aggregate = TokenUsage::with_cache(
+            u32::MAX - 1,
+            u32::MAX - 1,
+            Some(u32::MAX - 1),
+            Some(u32::MAX - 1),
+        );
+        aggregate.add(&TokenUsage::with_cache(10, 10, Some(10), Some(10)));
+
+        assert_eq!(aggregate.input_tokens, u32::MAX);
+        assert_eq!(aggregate.output_tokens, u32::MAX);
+        assert_eq!(aggregate.cache_read_tokens, Some(u32::MAX));
+        assert_eq!(aggregate.cache_creation_tokens, Some(u32::MAX));
+        assert_eq!(aggregate.total_tokens(), u32::MAX);
     }
 }
 
