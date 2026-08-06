@@ -16,12 +16,20 @@ export interface WebMcpContextValue {
   requestApproval: (request: WebMcpApprovalRequest) => Promise<void>;
 }
 
-export const WebMcpContext = createContext<WebMcpContextValue | null>(null);
+const unavailableContext: WebMcpContextValue = {
+  enabled: false,
+  bindingToken: "unbound",
+  assertBinding: () => {
+    throw new DOMException("WebMCP is unavailable outside its provider", "AbortError");
+  },
+  requestApproval: () =>
+    Promise.reject(new DOMException("WebMCP is unavailable outside its provider", "AbortError")),
+};
+
+// Keep feature consumers inert when rendered in isolation (for example, component tests).
+// The provider replaces this value in the authenticated application layout.
+export const WebMcpContext = createContext<WebMcpContextValue>(unavailableContext);
 
 export function useWebMcp() {
-  const context = useContext(WebMcpContext);
-  if (!context) {
-    throw new Error("useWebMcp must be used within WebMcpProvider");
-  }
-  return context;
+  return useContext(WebMcpContext);
 }
