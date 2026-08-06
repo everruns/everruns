@@ -39,7 +39,7 @@ base64.workspace = true
 # default-features = false sheds core's heavy optional subtrees
 # (telemetry/OTLP, a2a gRPC, web-fetch/fetchkit) that this provider does not
 # need, keeping the standalone crate's dependency tree small.
-everruns-provider = { path = "../provider", version = "0.17.21" }
+everruns-provider = { path = "../provider", version = "0.17.22" }
 
 # AWS SDK for Bedrock Runtime
 # Default features include the legacy `rustls` connector (rustls 0.21 +
