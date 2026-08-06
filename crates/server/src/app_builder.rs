@@ -285,10 +285,18 @@ fn apply_personal_access_token_routes_wrap(
 // (see `auth::mcp_oauth::oauth_authorize`).
 pub(crate) const BASE_CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
-fn permissions_policy_header_value(voice_enabled: bool) -> axum::http::HeaderValue {
+fn permissions_policy_header_value(
+    voice_enabled: bool,
+    webmcp_enabled: bool,
+) -> axum::http::HeaderValue {
+    let tools = if webmcp_enabled {
+        "tools=(self)"
+    } else {
+        "tools=()"
+    };
     let value = format!(
-        "camera=(), {}, geolocation=()",
-        api::voice::microphone_permissions_policy_directive(voice_enabled)
+        "camera=(), {}, geolocation=(), {tools}",
+        api::voice::microphone_permissions_policy_directive(voice_enabled),
     );
     axum::http::HeaderValue::from_str(&value)
         .expect("permissions policy value is assembled from static directives")
@@ -1728,7 +1736,7 @@ impl ServerAppBuilder {
             ))
             .layer(SetResponseHeaderLayer::if_not_present(
                 axum::http::header::HeaderName::from_static("permissions-policy"),
-                permissions_policy_header_value(feature_flags.voice),
+                permissions_policy_header_value(feature_flags.voice, feature_flags.webmcp),
             ))
             .layer(SetResponseHeaderLayer::if_not_present(
                 axum::http::header::HeaderName::from_static("content-security-policy"),
@@ -2505,16 +2513,30 @@ mod tests {
     #[test]
     fn permissions_policy_denies_microphone_by_default() {
         assert_eq!(
-            permissions_policy_header_value(false).to_str().unwrap(),
-            "camera=(), microphone=(), geolocation=()"
+            permissions_policy_header_value(false, false)
+                .to_str()
+                .unwrap(),
+            "camera=(), microphone=(), geolocation=(), tools=()"
         );
     }
 
     #[test]
     fn permissions_policy_allows_microphone_when_voice_is_enabled() {
         assert_eq!(
-            permissions_policy_header_value(true).to_str().unwrap(),
-            "camera=(), microphone=(self), geolocation=()"
+            permissions_policy_header_value(true, false)
+                .to_str()
+                .unwrap(),
+            "camera=(), microphone=(self), geolocation=(), tools=()"
+        );
+    }
+
+    #[test]
+    fn permissions_policy_allows_same_origin_webmcp_when_enabled() {
+        assert_eq!(
+            permissions_policy_header_value(false, true)
+                .to_str()
+                .unwrap(),
+            "camera=(), microphone=(), geolocation=(), tools=(self)"
         );
     }
 

@@ -34,11 +34,14 @@ export async function createSession(request: CreateSessionRequest): Promise<Sess
  * @param agentId - Optional filter by agent ID
  */
 export async function listSessions(
-  params?: PaginationParams & { agentId?: string },
+  params?: PaginationParams & { agentId?: string; search?: string },
 ): Promise<PaginatedResponse<Session>> {
   const searchParams = new URLSearchParams();
   if (params?.agentId) {
     searchParams.set("agent_id", params.agentId);
+  }
+  if (params?.search) {
+    searchParams.set("search", params.search);
   }
   if (params?.offset !== undefined) {
     searchParams.set("offset", String(params.offset));
