@@ -100,6 +100,7 @@ pub mod mcp_proxy;
 pub mod mcp_server;
 pub mod memory;
 pub use everruns_provider::model;
+pub use everruns_provider::model_discovery;
 pub use everruns_provider::model_profiles;
 pub mod model_router;
 pub mod mount_fs;
@@ -500,6 +501,11 @@ pub use mcp_server::{
 pub use model::{
     CostTier, Modality, Model, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelSource,
     ModelVendor, ModelWithProvider, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
+};
+pub use model_discovery::{
+    DiscoveredProviderModel, RankedDiscoveredModels, discover_provider_models,
+    enrich_with_profiles, list_openai_compatible_models, normalize_and_enrich,
+    rank_discovered_models,
 };
 pub use model_profiles::{get_model_profile, get_model_vendor};
 pub use organization::{

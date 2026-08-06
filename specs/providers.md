@@ -289,6 +289,7 @@ The refactor has landed; current implementations live at:
 - `crates/provider/src/provider.rs` — `Provider` entity + `DriverId`
 - `crates/provider/src/model.rs` — `Model` / `ModelWithProvider` entity types
 - `crates/provider/src/model_profiles.rs` — built-in profile data
+- `crates/provider/src/model_discovery.rs` — host-side catalog presentation: driver `list_models` plus the OpenAI-compatible `GET <base>/models` fallback for endpoints the drivers decline, profile enrichment, and picker ranking (ported from yolop, which had reimplemented all of it)
 - `crates/provider/src/driver_registry.rs` — `ChatDriver` trait + `DriverRegistry` (string-keyed driver ids, credential schema + service factories); `DriverConfig` typed `credentials` map
 - `crates/provider/src/credential_schema.rs` — declared credential form schema (typed fields, groups, validation) + credential-document assemble/parse
 - `crates/core/src/traits.rs` — `ProviderStore` + `ResolvedModel`

@@ -23,6 +23,7 @@ pub mod error;
 pub mod execution_phase;
 pub mod llm_retry;
 pub mod model;
+pub mod model_discovery;
 pub mod model_profiles;
 pub mod openai_protocol;
 pub mod openresponses_protocol;
@@ -63,6 +64,11 @@ pub use llm_retry::{LlmRetryConfig, RateLimitInfo, RateLimitType, RetryMetadata}
 pub use model::{
     CostTier, Modality, Model, ModelCost, ModelLimits, ModelModalities, ModelProfile, ModelSource,
     ModelVendor, ModelWithProvider, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
+};
+pub use model_discovery::{
+    DiscoveredProviderModel, RankedDiscoveredModels, discover_provider_models,
+    enrich_with_profiles, list_openai_compatible_models, normalize_and_enrich,
+    rank_discovered_models,
 };
 pub use model_profiles::{get_model_profile, get_model_vendor};
 pub use openai_protocol::{AuthHeaderProvider, OpenAIProtocolChatDriver};
