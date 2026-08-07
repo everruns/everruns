@@ -18,9 +18,13 @@ use everruns_core::{
 };
 
 /// Cap on the total unpacked tarball bytes before applying plugin limits.
-/// Extra headroom so the extraction loop does not blow up on large repos
-/// where the *plugin subdirectory* itself is within limits.
-const MAX_TARBALL_UNPACK_BYTES: usize = 64 * 1024 * 1024; // 64 MB
+/// GitHub only provides whole-repository archives for relative marketplace
+/// sources. 128 MiB admits the first-party repository with bounded headroom
+/// while the much smaller plugin-specific limits still apply to retained data.
+const MAX_TARBALL_UNPACK_BYTES: usize = 128 * 1024 * 1024;
+
+/// Independent iteration cap for archives dominated by zero-length entries.
+const MAX_TARBALL_ENTRIES: usize = 100_000;
 
 /// Cap on the compressed tarball download itself (TM-PLUGIN-004). Enforced
 /// while streaming so a hostile endpoint cannot buffer unbounded bytes.
@@ -236,6 +240,22 @@ fn extract_tarball_subdir(
     plugin_prefix: &str,
     tarball_prefix: &str,
 ) -> Result<BTreeMap<String, Vec<u8>>, String> {
+    extract_tarball_subdir_with_limits(
+        tarball_bytes,
+        plugin_prefix,
+        tarball_prefix,
+        MAX_TARBALL_UNPACK_BYTES,
+        MAX_TARBALL_ENTRIES,
+    )
+}
+
+fn extract_tarball_subdir_with_limits(
+    tarball_bytes: &[u8],
+    plugin_prefix: &str,
+    tarball_prefix: &str,
+    max_unpack_bytes: usize,
+    max_entries: usize,
+) -> Result<BTreeMap<String, Vec<u8>>, String> {
     use flate2::read::GzDecoder;
     use tar::Archive;
 
@@ -245,6 +265,7 @@ fn extract_tarball_subdir(
     let mut files: BTreeMap<String, Vec<u8>> = BTreeMap::new();
     let mut plugin_total_bytes: usize = 0;
     let mut archive_unpacked_bytes: u64 = 0;
+    let mut archive_entries: usize = 0;
 
     let entries = archive
         .entries()
@@ -254,6 +275,26 @@ fn extract_tarball_subdir(
         let mut entry = entry_result.map_err(|e| format!("failed to read tarball entry: {e}"))?;
 
         let header = entry.header();
+
+        // THREAT[TM-PLUGIN-004]: Bound both decompressed bytes and entry
+        // iteration before filtering to the requested plugin subdirectory.
+        archive_entries = archive_entries
+            .checked_add(1)
+            .filter(|count| *count <= max_entries)
+            .ok_or_else(|| {
+                format!("tarball contains more than {max_entries} entries (extraction limit)")
+            })?;
+
+        let entry_size = header
+            .size()
+            .map_err(|e| format!("cannot read entry size: {e}"))?;
+        let entry_unpacked = 512u64.saturating_add(entry_size.div_ceil(512).saturating_mul(512));
+        archive_unpacked_bytes = archive_unpacked_bytes
+            .checked_add(entry_unpacked)
+            .filter(|total| *total <= max_unpack_bytes as u64)
+            .ok_or_else(|| {
+                format!("tarball unpacked size exceeds {max_unpack_bytes} bytes (extraction limit)")
+            })?;
 
         // Reject symlinks and hard links.
         let entry_type = header.entry_type();
@@ -267,30 +308,9 @@ fn extract_tarball_subdir(
             continue;
         }
 
-        let file_size_u64 = header
-            .size()
-            .map_err(|e| format!("cannot read entry size: {e}"))?;
-
-        // Charge the whole-archive budget the unpacked cost of this entry,
-        // including tar framing (a 512-byte header plus the data padded up to a
-        // 512-byte block). Counting framing stops many tiny entries from
-        // forcing unbounded decompression/iteration while staying under a
-        // content-only counter. Work in u64 with checked arithmetic so a forged
-        // oversized header can't truncate (32-bit `as usize`) or wrap past the
-        // limit.
-        let entry_unpacked = 512u64.saturating_add(file_size_u64.div_ceil(512).saturating_mul(512));
-        archive_unpacked_bytes = archive_unpacked_bytes
-            .checked_add(entry_unpacked)
-            .filter(|total| *total <= MAX_TARBALL_UNPACK_BYTES as u64)
-            .ok_or_else(|| {
-                format!(
-                    "tarball unpacked size exceeds {MAX_TARBALL_UNPACK_BYTES} bytes (extraction limit)"
-                )
-            })?;
-
         // Safe: a single entry larger than the archive budget would have
         // already tripped the check above, so this fits in usize.
-        let file_size = file_size_u64 as usize;
+        let file_size = entry_size as usize;
 
         let raw_path = entry
             .path()
@@ -544,7 +564,8 @@ mod tests {
         let enc = GzEncoder::new(Vec::new(), Compression::fast());
         let mut ar = Builder::new(enc);
 
-        let big_size = MAX_TARBALL_UNPACK_BYTES as u64 + 1;
+        let max_unpack_bytes = 1024 * 1024;
+        let big_size = max_unpack_bytes as u64 + 1;
         let mut big_header = Header::new_gnu();
         big_header
             .set_path("myrepo-abc123/outside-plugin/big.bin")
@@ -567,16 +588,110 @@ mod tests {
 
         let tarball = ar.into_inner().unwrap().finish().unwrap();
 
-        let err = extract_tarball_subdir(
+        let err = extract_tarball_subdir_with_limits(
             &tarball,
             "myrepo-abc123/plugins/my-plugin/",
             "myrepo-abc123/",
+            max_unpack_bytes,
+            MAX_TARBALL_ENTRIES,
         )
         .unwrap_err();
 
         assert!(
             err.contains("tarball unpacked size exceeds"),
             "expected archive-wide unpacked size error, got: {err}"
+        );
+    }
+
+    #[test]
+    fn extract_tarball_accepts_repo_larger_than_64_mib_when_plugin_is_small() {
+        use flate2::Compression;
+        use flate2::write::GzEncoder;
+        use std::io::Read as _;
+        use tar::{Builder, Header};
+
+        let enc = GzEncoder::new(Vec::new(), Compression::fast());
+        let mut ar = Builder::new(enc);
+
+        let unrelated_size = 65 * 1024 * 1024;
+        let mut unrelated_header = Header::new_gnu();
+        unrelated_header
+            .set_path("myrepo-abc123/unrelated/large-fixture.bin")
+            .unwrap();
+        unrelated_header.set_size(unrelated_size);
+        unrelated_header.set_mode(0o644);
+        unrelated_header.set_cksum();
+        ar.append(
+            &unrelated_header,
+            std::io::repeat(b'x').take(unrelated_size),
+        )
+        .unwrap();
+
+        let plugin_json = br#"{"name":"my-plugin","version":"1.0.0"}"#;
+        let mut plugin_header = Header::new_gnu();
+        plugin_header
+            .set_path("myrepo-abc123/plugins/my-plugin/.claude-plugin/plugin.json")
+            .unwrap();
+        plugin_header.set_size(plugin_json.len() as u64);
+        plugin_header.set_mode(0o644);
+        plugin_header.set_cksum();
+        ar.append(&plugin_header, &plugin_json[..]).unwrap();
+
+        let tarball = ar.into_inner().unwrap().finish().unwrap();
+        let previous_limit = 64 * 1024 * 1024;
+        let previous_error = extract_tarball_subdir_with_limits(
+            &tarball,
+            "myrepo-abc123/plugins/my-plugin/",
+            "myrepo-abc123/",
+            previous_limit,
+            MAX_TARBALL_ENTRIES,
+        )
+        .unwrap_err();
+        assert_eq!(
+            previous_error,
+            format!("tarball unpacked size exceeds {previous_limit} bytes (extraction limit)")
+        );
+
+        let files = extract_tarball_subdir(
+            &tarball,
+            "myrepo-abc123/plugins/my-plugin/",
+            "myrepo-abc123/",
+        )
+        .unwrap();
+
+        assert_eq!(
+            files.get(".claude-plugin/plugin.json"),
+            Some(&plugin_json.to_vec())
+        );
+    }
+
+    #[test]
+    fn extract_tarball_rejects_too_many_entries_before_plugin_filtering() {
+        let tarball = build_tarball(
+            "myrepo-abc123/",
+            &[
+                ("outside/one.txt", b"one"),
+                ("outside/two.txt", b"two"),
+                (
+                    "plugins/my-plugin/.claude-plugin/plugin.json",
+                    br#"{"name":"my-plugin"}"#,
+                ),
+            ],
+            &[],
+        );
+
+        let err = extract_tarball_subdir_with_limits(
+            &tarball,
+            "myrepo-abc123/plugins/my-plugin/",
+            "myrepo-abc123/",
+            MAX_TARBALL_UNPACK_BYTES,
+            2,
+        )
+        .unwrap_err();
+
+        assert!(
+            err.contains("more than 2 entries"),
+            "expected entry-count error, got: {err}"
         );
     }
 

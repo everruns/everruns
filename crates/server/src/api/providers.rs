@@ -478,7 +478,7 @@ pub async fn provider_config(
 ///
 /// THREAT[TM-API-021]: this binding plus the `provider.manage` re-check in the
 /// callback is the CSRF/forgery mitigation; do not relax it without updating
-/// `specs/threat-model.md`.
+/// `knowledge/security/threat-model.md`.
 #[derive(Debug, Serialize, Deserialize)]
 struct PendingProviderOAuth {
     /// CSRF token echoed via the callback URL and matched here.

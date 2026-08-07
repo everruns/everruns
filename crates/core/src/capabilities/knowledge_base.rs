@@ -1,13 +1,13 @@
 //! Knowledge Base capability (EVE-423)
 //!
 //! Binds an agent or harness to one or more org-scoped Knowledge Bases. See
-//! `specs/knowledge-bases.md` for the durable design.
+//! `knowledge/runtime-resources/knowledge-bases.md` for the durable design.
 //!
 //! This module registers the capability, validates the structural shape of its
 //! config (`bases[]`: `kb_`-prefixed Knowledge Base IDs; `kinds[]` from a fixed
 //! enum), and provides the agent-facing `search_knowledge` tool. Org scoping of
 //! the bound bases is enforced by the `KnowledgeStore` implementation at search
-//! time (cross-org ids are silently skipped). See specs/okf-adoption.md.
+//! time (cross-org ids are silently skipped). See knowledge/runtime-resources/okf-adoption.md.
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -73,7 +73,7 @@ fn is_valid_kb_id(s: &str) -> bool {
 
 /// Agent-facing tool that searches the bound Knowledge Bases. Holds the
 /// capability's config (which `bases` to search, default `kinds`), populated at
-/// collection time via `tools_with_config`. See specs/okf-adoption.md.
+/// collection time via `tools_with_config`. See knowledge/runtime-resources/okf-adoption.md.
 pub struct SearchKnowledgeTool {
     config: KnowledgeBaseConfig,
 }
@@ -213,7 +213,7 @@ impl Tool for SearchKnowledgeTool {
     fn deferrable_policy(&self) -> crate::tool_types::DeferrablePolicy {
         // "Consult-first" tool: keep its full schema directly callable so the
         // model invokes it rather than routing through tool-search. See
-        // specs/tool-search.md (never-defer) and specs/okf-adoption.md.
+        // knowledge/execution/tool-search.md (never-defer) and knowledge/runtime-resources/okf-adoption.md.
         crate::tool_types::DeferrablePolicy::Never
     }
 }
@@ -233,7 +233,7 @@ impl Capability for KnowledgeBaseCapability {
         "Bind an agent to curated org Knowledge Bases and give it the \
          `search_knowledge` tool to ground answers in human-edited table docs, \
          business rules, validated SQL templates, and runbooks. \
-         See `specs/knowledge-bases.md`."
+         See `knowledge/runtime-resources/knowledge-bases.md`."
     }
 
     fn status(&self) -> CapabilityStatus {

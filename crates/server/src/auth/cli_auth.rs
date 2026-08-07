@@ -207,7 +207,7 @@ async fn cli_auth_start(
 
     // Build auth URL — points to the server's login page with a `return_to`
     // pointing back to our CLI callback. `return_to` is the single public
-    // login-page contract for auth resume (see specs/authentication.md).
+    // login-page contract for auth resume (see knowledge/security/authentication.md).
     //
     // We derive a browser-relative path rather than leaking the full backend URL
     // into `return_to`, because `return_to` is restricted to relative paths on

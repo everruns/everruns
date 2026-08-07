@@ -7,6 +7,7 @@ import {
   createSession,
   deleteSession,
   getSession,
+  getSessionResolvedModel,
   getSessionContextReport,
   getSessionStats,
   listSessions,
@@ -89,7 +90,7 @@ export function useSession(
 
   // Cross-org fallback: auto-switch to the owning org when the user follows a
   // direct link to a session in another org they are a member of.
-  // See specs/multitenancy.md (Cross-Org Resource Resolution).
+  // See knowledge/security/multitenancy.md (Cross-Org Resource Resolution).
   const fallback = useResourceOrgFallback({
     resourceId: sessionId,
     error: query.error,
@@ -110,6 +111,22 @@ export function useSessionContextReport(sessionId: string | undefined) {
   const query = useQuery({
     queryKey: queryKeys.sessions.contextReport(org, sessionId),
     queryFn: () => getSessionContextReport(sessionId!),
+    enabled: !!org && !!sessionId,
+  });
+
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
+}
+
+export function useSessionResolvedModel(sessionId: string | undefined) {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
+
+  const query = useQuery({
+    queryKey: queryKeys.sessions.resolvedModel(org, sessionId),
+    queryFn: () => getSessionResolvedModel(sessionId!),
     enabled: !!org && !!sessionId,
   });
 

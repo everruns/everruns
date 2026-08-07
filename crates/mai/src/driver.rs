@@ -205,6 +205,7 @@ async fn list_foundry_models(
                 .into_iter()
                 .filter(FoundryModelInfo::is_chat_model)
                 .map(|m| DiscoveredModel {
+                    capabilities: vec!["chat".to_string()],
                     created_at: m
                         .created
                         .and_then(|ts| chrono::Utc.timestamp_opt(ts, 0).single()),

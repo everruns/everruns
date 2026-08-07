@@ -6,7 +6,7 @@
 //! selection between workspace (VFS) and sandbox, establishes the edit-test-fix
 //! loop, and encodes coding best practices from state-of-the-art agents.
 //!
-//! See `specs/coding-daytona-harness.md` for design rationale.
+//! See `knowledge/harnesses/coding-daytona-harness.md` for design rationale.
 
 use everruns_core::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition};
 

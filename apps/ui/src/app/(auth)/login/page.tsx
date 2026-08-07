@@ -42,7 +42,7 @@ const oauthProviders: Record<string, { name: string }> = {
 type Phase = "email" | "password";
 
 // Friendly copy for the coarse categories the OAuth callback redirects with
-// (specs/authentication.md § OAuth Callback Failure UX). Unknown values fall
+// (knowledge/security/authentication.md § OAuth Callback Failure UX). Unknown values fall
 // back to the generic line so a bad query param can't inject copy.
 const OAUTH_ERROR_COPY: Record<string, string> = {
   oauth_cancelled: "Sign-in was cancelled. You can try again anytime.",
@@ -83,7 +83,7 @@ export default function LoginPage() {
   }, [searchParams]);
 
   // Sanitize to a safe relative path — prevents open-redirect into
-  // attacker-controlled origins (see specs/authentication.md).
+  // attacker-controlled origins (see knowledge/security/authentication.md).
   const returnTo = sanitizeReturnTo(searchParams.get("return_to"));
 
   // Redirect to dashboard if auth is not required

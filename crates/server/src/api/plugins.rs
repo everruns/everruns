@@ -9,7 +9,7 @@
 //   GET/PATCH/DELETE /v1/plugins/{id}
 //   POST       /v1/plugins/{id}/update
 //
-// Spec: specs/plugins.md
+// Spec: knowledge/integrations/plugins.md
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::plugins::types::{

@@ -6,7 +6,7 @@ import { Plus, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { Badge } from "@/components/ui/badge";
-import { CopyButton } from "@/components/ui/copy-button";
+import { EntityCardIdentifier } from "@/components/ui/entity-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAgentIdentities } from "@/hooks/use-agent-identities";
 import { usePageTitle } from "@/hooks";
@@ -192,12 +192,7 @@ export default function AgentIdentitiesPage() {
                         >
                           {identity.name}
                         </h3>
-                        <div className="mt-0.5 flex items-center gap-1.5">
-                          <span className="font-mono text-xs text-muted-foreground">
-                            {identity.id}
-                          </span>
-                          <CopyButton value={identity.id} />
-                        </div>
+                        <EntityCardIdentifier value={identity.id} className="mt-0.5" />
                       </div>
                     </div>
                     <Badge variant={getEntityStatusBadgeVariant(identity.status)}>

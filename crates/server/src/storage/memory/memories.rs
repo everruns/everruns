@@ -488,14 +488,10 @@ impl InMemoryDatabase {
         path_pattern: Option<&str>,
         max_file_bytes: i64,
     ) -> Result<Vec<MemoryFileInfoRow>> {
-        // Content uses regex. Path filtering is applied by the service with the
-        // shared glob matcher, so repositories receive `None` for path_pattern.
+        // When path filtering is requested, return metadata candidates without
+        // scanning content. The service applies the shared glob matcher first.
         let content_re =
             regex::Regex::new(pattern).map_err(|e| anyhow::anyhow!("invalid pattern: {e}"))?;
-        let path_re = path_pattern
-            .map(regex::Regex::new)
-            .transpose()
-            .map_err(|e| anyhow::anyhow!("invalid path_pattern: {e}"))?;
         let mut rows: Vec<MemoryFileInfoRow> = self
             .memory_files
             .read()
@@ -504,10 +500,8 @@ impl InMemoryDatabase {
                 if f.memory_id != memory_id || f.is_directory || f.size_bytes > max_file_bytes {
                     return false;
                 }
-                if let Some(ref pr) = path_re
-                    && !pr.is_match(&f.path)
-                {
-                    return false;
+                if path_pattern.is_some() {
+                    return true;
                 }
                 let Some(ref content) = f.content else {
                     return false;

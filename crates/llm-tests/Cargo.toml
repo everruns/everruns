@@ -27,6 +27,7 @@ everruns-fireworks = { path = "../fireworks" }
 everruns-anthropic = { path = "../anthropic" }
 everruns-gemini = { path = "../gemini" }
 everruns-bedrock = { path = "../bedrock" }
+everruns-meta = { path = "../meta" }
 
 anyhow.workspace = true
 async-trait.workspace = true

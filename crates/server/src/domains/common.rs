@@ -1,20 +1,22 @@
 // Domain command infrastructure.
 //
 // The Command trait, CommandError, CommandContext (Ctx), and inventory-based
-// dispatch. See specs/domains.md for the full pattern spec.
+// dispatch. See knowledge/foundations/domains.md for the full pattern spec.
 
 use crate::storage::StorageBackend;
 use axum::Json;
 use axum::http::StatusCode;
 #[cfg(test)]
 use everruns_core::DefaultPermissionResolver;
-use everruns_core::{Caller, EgressService, FeatureFlags, PermissionResolver, Policy, PolicyError};
+use everruns_core::{
+    Caller, DriverRegistry, EgressService, FeatureFlags, PermissionResolver, Policy, PolicyError,
+};
 use everruns_durable::WorkflowEventStore;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use utoipa::ToSchema;
 
 use crate::api::common::{AllowedAction, ErrorResponse};
@@ -24,7 +26,7 @@ use crate::api::common::{AllowedAction, ErrorResponse};
 // ============================================================================
 
 /// Stable, lower-snake-case category for a command failure. The token set is
-/// part of the public MCP contract (see `specs/domains.md` "Structured
+/// part of the public MCP contract (see `knowledge/foundations/domains.md` "Structured
 /// dispatch errors"); do not rename or drop tokens without a spec update.
 #[derive(Debug, thiserror::Error)]
 pub enum CommandErrorKind {
@@ -51,7 +53,7 @@ pub enum CommandErrorKind {
 /// adapter (`From<CommandError> for (StatusCode, Json<ErrorResponse>)`)
 /// propagates every extension. MCP `execute` keeps emitting
 /// `<kind>: <message>` for bashkit compatibility; surfacing extensions over
-/// MCP is a planned additive extension (see `specs/domains.md`).
+/// MCP is a planned additive extension (see `knowledge/foundations/domains.md`).
 #[derive(Debug)]
 pub struct CommandError {
     pub kind: CommandErrorKind,
@@ -305,6 +307,9 @@ pub struct CommandMeta {
 // Ctx — shared execution context
 // ============================================================================
 
+static DEFAULT_DRIVER_REGISTRY: LazyLock<Arc<DriverRegistry>> =
+    LazyLock::new(|| Arc::new(everruns_worker::create_driver_registry()));
+
 #[derive(Clone)]
 pub struct Ctx {
     pub caller: Caller,
@@ -314,9 +319,16 @@ pub struct Ctx {
     // hardcodes `DefaultPermissionResolver`.
     pub permission_resolver: Arc<dyn PermissionResolver>,
     pub db: Arc<StorageBackend>,
+    /// Platform driver declarations used by domain validation at provider/model
+    /// trust boundaries.
+    pub driver_registry: Arc<DriverRegistry>,
     pub feature_flags: FeatureFlags,
     pub capability_service: Arc<crate::services::CapabilityService>,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
+    /// Cross-transport resource-creation throttles. Commands that enforce a
+    /// throttle use this shared instance so HTTP, MCP, and other adapters
+    /// consume the same bucket.
+    pub org_rate_limiter: Option<crate::auth::rate_limit::OrgRateLimiter>,
     pub session_service: Option<Arc<crate::domains::sessions::SessionService>>,
     pub message_service: Option<Arc<crate::domains::messages::MessageService>>,
     pub event_service: Option<Arc<crate::services::EventService>>,
@@ -341,9 +353,9 @@ pub struct Ctx {
     /// calls (e.g. plugin sync/fetch from GitHub or a URL source).
     pub egress_service: Option<Arc<dyn EgressService>>,
     /// System utility LLM for sanctioned internal analysis tasks
-    /// (specs/utility-llm.md). Not a user-configurable model surface.
+    /// (knowledge/operations/utility-llm.md). Not a user-configurable model surface.
     pub utility_llm_service: Option<Arc<dyn everruns_core::UtilityLlmService>>,
-    /// Agent health check service (specs/agent-checks.md, tier-3).
+    /// Agent health check service (knowledge/evaluation/agent-checks.md, tier-3).
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     /// Per-org/per-user resource caps enforced in create paths (harnesses,
     /// agents, sessions). Resolved from env so SaaS plan overrides apply across
@@ -378,9 +390,11 @@ impl Ctx {
             caller,
             permission_resolver,
             db,
+            driver_registry: DEFAULT_DRIVER_REGISTRY.clone(),
             feature_flags: FeatureFlags::current(),
             capability_service,
             encryption,
+            org_rate_limiter: None,
             session_service: None,
             message_service: None,
             event_service: None,
@@ -445,6 +459,19 @@ impl Ctx {
 
     pub fn with_feature_flags(mut self, feature_flags: FeatureFlags) -> Self {
         self.feature_flags = feature_flags;
+        self
+    }
+
+    pub fn with_driver_registry(mut self, driver_registry: Arc<DriverRegistry>) -> Self {
+        self.driver_registry = driver_registry;
+        self
+    }
+
+    pub fn with_org_rate_limiter(
+        mut self,
+        limiter: crate::auth::rate_limit::OrgRateLimiter,
+    ) -> Self {
+        self.org_rate_limiter = Some(limiter);
         self
     }
 
@@ -990,7 +1017,6 @@ fn dispatch_for<C: Command>(
 // ============================================================================
 
 use std::collections::HashMap;
-use std::sync::LazyLock;
 
 static DISPATCH_TABLE: LazyLock<HashMap<&'static str, &'static CommandDescriptor>> =
     LazyLock::new(|| {

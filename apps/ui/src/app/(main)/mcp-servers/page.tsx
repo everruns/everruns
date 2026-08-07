@@ -81,12 +81,10 @@ const McpIcon = capabilityIconMap.mcp;
 /** Human-readable label for the protocol-era policy. Undefined means `auto`. */
 function protocolModeLabel(mode?: McpProtocolMode): string {
   switch (mode) {
-    case "legacy":
-      return "Legacy";
-    case "stable":
-      return "Stable";
-    case "rc":
-      return "RC 2026";
+    case "2025-03-26":
+    case "2025-06-18":
+    case "2026-07-28":
+      return mode;
     default:
       return "Auto";
   }
@@ -343,14 +341,14 @@ function AddMcpServerDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="auto">Auto (negotiate)</SelectItem>
-                <SelectItem value="rc">RC 2026 — stateless</SelectItem>
-                <SelectItem value="stable">Stable 2025-06-18</SelectItem>
-                <SelectItem value="legacy">Legacy 2025-03-26</SelectItem>
+                <SelectItem value="2026-07-28">2026-07-28 — stateless</SelectItem>
+                <SelectItem value="2025-06-18">2025-06-18 — stateful</SelectItem>
+                <SelectItem value="2025-03-26">2025-03-26 — stateful</SelectItem>
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              Auto probes the server and adapts across legacy, current, and the 2026 stateless
-              release candidate. Pin an era only to work around a server that mis-signals it.
+              Auto probes the server and adapts across every protocol era. Pin a version only to
+              work around a server that mis-signals its era.
             </p>
           </div>
           {authMode === "api_key" && (
@@ -574,9 +572,9 @@ function EditMcpServerDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="auto">Auto (negotiate)</SelectItem>
-                <SelectItem value="rc">RC 2026 — stateless</SelectItem>
-                <SelectItem value="stable">Stable 2025-06-18</SelectItem>
-                <SelectItem value="legacy">Legacy 2025-03-26</SelectItem>
+                <SelectItem value="2026-07-28">2026-07-28 — stateless</SelectItem>
+                <SelectItem value="2025-06-18">2025-06-18 — stateful</SelectItem>
+                <SelectItem value="2025-03-26">2025-03-26 — stateful</SelectItem>
               </SelectContent>
             </Select>
           </div>

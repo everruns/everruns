@@ -3,7 +3,7 @@
 /**
  * Dev page: OpenUI Blocks
  *
- * Smoke surface for the OpenUI renderer integration (specs/openui.md).
+ * Smoke surface for the OpenUI renderer integration (knowledge/ui/openui.md).
  * Renders representative OpenUI Lang snippets through the production
  * <OpenUIBlock> + @openuidev/react-lang + @openuidev/react-ui pipeline so
  * upstream package bumps fail visibly during dev review.

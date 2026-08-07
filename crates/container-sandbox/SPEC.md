@@ -66,7 +66,7 @@ See `crates/container-sandbox/src/tools.rs` for full tool implementations includ
 
 ## Security
 
-See `specs/threat-model.md#20-container-sandbox-tm-sandbox` for full threat analysis (TM-SANDBOX-001 through TM-SANDBOX-010).
+See `knowledge/security/threat-model.md#20-container-sandbox-tm-sandbox` for full threat analysis (TM-SANDBOX-001 through TM-SANDBOX-010).
 
 ## Design Decisions
 

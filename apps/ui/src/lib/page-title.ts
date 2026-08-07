@@ -1,4 +1,4 @@
-// See specs/code-organization.md (Page Titles) for the format and coverage rules.
+// See knowledge/foundations/code-organization.md (Page Titles) for the format and coverage rules.
 
 export const APP_NAME = "Everruns";
 export const TITLE_SEPARATOR = " · ";

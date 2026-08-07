@@ -118,6 +118,7 @@ fn fast_retry() -> LlmRetryConfig {
         max_backoff: Duration::from_millis(0),
         backoff_multiplier: 1.0,
         jitter_factor: 0.0,
+        ..Default::default()
     }
 }
 
@@ -171,25 +172,19 @@ async fn driver_surfaces_error_after_exhausting_reconnects() {
     let driver =
         OpenAIProtocolChatDriver::with_base_url("test-key", url).with_retry_config(fast_retry());
 
-    let stream = driver
+    let result = driver
         .chat_completion_stream(
             vec![LlmMessage::text(LlmMessageRole::User, "hi")],
             &config("gpt-4o"),
         )
-        .await
-        .expect("stream object is returned even when the body ultimately fails");
-
-    let mut saw_error = false;
-    let mut stream = stream;
-    while let Some(item) = stream.next().await {
-        if let Ok(LlmStreamEvent::Error(_)) = item {
-            saw_error = true;
-        }
-    }
+        .await;
+    let error = match result {
+        Ok(_) => panic!("pre-first-event reconnect exhaustion must fail stream setup"),
+        Err(error) => error,
+    };
 
     assert_eq!(count.load(Ordering::SeqCst), 3, "1 initial + 2 reconnects");
-    assert!(
-        saw_error,
-        "exhausted reconnects should surface a stream error"
-    );
+    assert!(error.is_transient_llm_error());
+    assert_eq!(error.llm_retry_attempts(), 2);
+    assert!(error.to_string().contains("safe to resume"));
 }

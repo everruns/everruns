@@ -1,4 +1,4 @@
-//! Runtime MCP wiring (specs/runtime-mcp.md D4).
+//! Runtime MCP wiring (knowledge/integrations/runtime-mcp.md D4).
 //!
 //! Resolves the effective scoped MCP servers for a session (harness chain →
 //! agent → session, last wins), turns them into transport connections, and
@@ -69,7 +69,7 @@ fn resolve_servers(servers: &ScopedMcpServers) -> Vec<ResolvedServer> {
 
 /// Map a scoped server to a transport endpoint. Returns `None` (and logs) for
 /// servers this build cannot serve — e.g. a stdio server when the `mcp-stdio`
-/// feature is off, keeping stdio out of hosted builds (specs/runtime-mcp.md D2).
+/// feature is off, keeping stdio out of hosted builds (knowledge/integrations/runtime-mcp.md D2).
 fn endpoint_for(name: &str, server: &ScopedMcpServer) -> Option<McpEndpoint> {
     match server.transport_type {
         McpServerTransportType::Http => Some(McpEndpoint::Http {

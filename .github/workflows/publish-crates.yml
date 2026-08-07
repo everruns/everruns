@@ -161,6 +161,9 @@ jobs:
               "crates/gemini/Cargo.toml": [
                   "everruns-provider",
               ],
+              "crates/meta/Cargo.toml": [
+                  "everruns-provider",
+              ],
               "integrations/duckduckgo/Cargo.toml": [
                   "everruns-core",
               ],
@@ -227,6 +230,7 @@ jobs:
             everruns-openui
             everruns-a2ui
             everruns-provider
+            everruns-meta
             everruns-core
             everruns-mcp
             everruns-openai

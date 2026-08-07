@@ -384,7 +384,10 @@ pub enum SideEffectClass {
 ///
 /// These hints are informational — they do not enforce policy. Use `ToolPolicy`
 /// for execution gating (auto vs requires_approval).
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+// `Eq` is deliberately absent: `metadata` is an opaque `serde_json::Value`, which
+// is only `PartialEq`. Hints are compared for equality (`is_empty`), never hashed
+// or used as a map key, so `PartialEq` is sufficient.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ToolHints {
     /// Tool does not modify any state (read-only queries, lookups).
@@ -481,12 +484,34 @@ pub struct ToolHints {
     /// `None` is treated conservatively as `AtMostOnce`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub side_effect_class: Option<SideEffectClass>,
+
+    /// Host-owned annotations that core does not interpret.
+    ///
+    /// The typed hints above are the vocabulary core itself reasons about. This
+    /// is the escape hatch for everything a *host* wants to carry alongside a
+    /// tool — risk tiers for an approval UI, presentation hints, an embedder's
+    /// routing keys — without adding a field to core for each one. Core reads
+    /// nothing here and no driver sends it to a provider; it travels with the
+    /// definition so a consumer sees it at the point of decision (e.g. a
+    /// `PreToolUseHook` gating on what the tool declared).
+    ///
+    /// The schema belongs to whoever writes it. Never put credentials or other
+    /// sensitive payload here: like the rest of the definition, it is persisted
+    /// and surfaced to clients.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
 }
 
 impl ToolHints {
     /// Returns true when all fields are None (default/empty state).
     pub fn is_empty(&self) -> bool {
         *self == Self::default()
+    }
+
+    /// Builder: attach host-owned metadata (see [`ToolHints::metadata`]).
+    pub fn with_metadata(mut self, value: serde_json::Value) -> Self {
+        self.metadata = Some(value);
+        self
     }
 
     /// Builder: set readonly hint.
@@ -1208,6 +1233,35 @@ mod tests {
         assert_eq!(
             human_intent(&tool_call.arguments),
             Some("Listing all harnesses")
+        );
+    }
+
+    #[test]
+    fn tool_hints_metadata_is_an_opaque_host_owned_hatch() {
+        let hints = ToolHints::default()
+            .with_readonly(true)
+            .with_metadata(serde_json::json!({"risk_tier": "high"}));
+
+        // Core does not interpret it, but it survives the definition's
+        // serialization so a consumer sees it at the point of decision.
+        let json = serde_json::to_value(&hints).unwrap();
+        assert_eq!(json["metadata"]["risk_tier"], "high");
+        let restored: ToolHints = serde_json::from_value(json).unwrap();
+        assert_eq!(restored, hints);
+
+        // Absent metadata stays off the wire, so existing payloads are byte-identical.
+        let bare = serde_json::to_value(ToolHints::default().with_readonly(true)).unwrap();
+        assert!(bare.get("metadata").is_none());
+    }
+
+    #[test]
+    fn tool_hints_with_only_metadata_are_not_empty() {
+        assert!(ToolHints::default().is_empty());
+        assert!(
+            !ToolHints::default()
+                .with_metadata(serde_json::json!({"any": "thing"}))
+                .is_empty(),
+            "metadata alone must keep the hints serialized"
         );
     }
 }

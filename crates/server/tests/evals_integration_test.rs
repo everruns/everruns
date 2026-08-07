@@ -499,7 +499,7 @@ async fn run_completed_at(server: &TestServer, run_id: &str) -> String {
 }
 
 // ============================================================================
-// Async dataset export (specs/dataset-export.md, Phase 2)
+// Async dataset export (knowledge/evaluation/dataset-export.md, Phase 2)
 // ============================================================================
 
 use everruns_core::Caller;
@@ -858,7 +858,7 @@ async fn test_dataset_export_cross_org_returns_not_found() {
 }
 
 // ============================================================================
-// ATIF export/import (specs/atif-adoption.md)
+// ATIF export/import (knowledge/evaluation/atif-adoption.md)
 // ============================================================================
 
 #[tokio::test]

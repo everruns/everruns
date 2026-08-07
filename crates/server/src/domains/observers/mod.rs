@@ -1,5 +1,5 @@
 // Observers domain — online scoring of production sessions.
-// See specs/online-evals.md.
+// See knowledge/evaluation/online-evals.md.
 
 pub mod commands;
 pub mod judge;

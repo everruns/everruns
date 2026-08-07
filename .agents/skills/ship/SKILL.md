@@ -10,7 +10,7 @@ user-invocable: true
 
 Land the requested change with evidence, and merge only after CI is green.
 
-Read [`specs/shipping.md`](../../../specs/shipping.md) first — it owns the success bar, the
+Read [`knowledge/project/shipping.md`](../../../knowledge/project/shipping.md) first — it owns the success bar, the
 constraints, the CI opt-out labels, and the reporting standard. This skill owns execution only.
 Start from the goal and the changed risk surface, then take the shortest path that proves the
 change is ready; do not walk this file as a fixed checklist.
@@ -24,7 +24,7 @@ change is ready; do not walk this file as a fixed checklist.
    weak. Bug fixes prefer a failing test before the fix.
 4. **Security review.** Mandatory for any change touching code, config, or infrastructure. Follow
    [`references/security-review.md`](references/security-review.md).
-5. **Sync artifacts** the change actually affects: `specs/`, `specs/threat-model.md`, `AGENTS.md`,
+5. **Sync artifacts** the change actually affects: `knowledge/`, `knowledge/security/threat-model.md`, `AGENTS.md`,
    `test_cases/`, `apps/docs/`, OpenAPI exports.
 6. **Smoke test the affected flows** end to end — `just start-dev --no-watch`, or
    `just start-all --no-watch` when database, migration, infra, or API integration risk exists.

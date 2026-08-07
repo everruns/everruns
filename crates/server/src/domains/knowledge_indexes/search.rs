@@ -1,5 +1,5 @@
 //! Knowledge Index retrieval — the server-side `KnowledgeIndexSearch` impl
-//! backing the agent `search_index` tool. See specs/knowledge-indexes.md
+//! backing the agent `search_index` tool. See knowledge/runtime-resources/knowledge-indexes.md
 //! ("Retrieval and citations").
 //!
 //! Flow: for each bound `kidx_` id, load it org-scoped (silently skipping ids

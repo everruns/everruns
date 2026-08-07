@@ -20,11 +20,10 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use crate::auth::middleware::{AuthState, AuthUser, ResolvedOrg};
+use crate::auth::middleware::{AuthState, AuthUser, ORG_COOKIE_MAX_AGE, ResolvedOrg};
 use crate::storage::models::UpdateUser;
 
-/// Cookie name for storing selected organization
-pub const ORG_COOKIE_NAME: &str = "everruns_org";
+pub use crate::auth::middleware::ORG_COOKIE_NAME;
 
 /// App state for users routes
 #[derive(Clone)]
@@ -364,12 +363,15 @@ pub async fn switch_org(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    // Build the org cookie
+    // Build the org cookie. Max-Age keeps the selection across browser
+    // restarts (a session cookie is dropped and the UI falls back to the
+    // default org).
     let org_cookie = Cookie::build((ORG_COOKIE_NAME, req.org_id.clone()))
         .path("/")
         .http_only(false) // Allow JS to read for UI state
         .secure(true)
         .same_site(SameSite::Lax)
+        .max_age(ORG_COOKIE_MAX_AGE)
         .build();
 
     let jar = jar.add(org_cookie);

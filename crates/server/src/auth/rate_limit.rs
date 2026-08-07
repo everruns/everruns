@@ -253,6 +253,7 @@ impl AuthRateLimiter {
 }
 
 /// Small error type to avoid large Result<(), Response> on the stack.
+#[derive(Debug)]
 pub struct RateLimitError;
 
 impl From<RateLimitError> for Response {
@@ -536,6 +537,26 @@ enum OrgOp {
 }
 
 impl OrgRateLimiter {
+    #[cfg(test)]
+    pub(crate) fn for_test_with_session_rpm(session_rpm: u32) -> Self {
+        Self {
+            backend: OrgBackend::InMemory {
+                session_create: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                    NonZeroU32::new(session_rpm).unwrap(),
+                ))),
+                schedule_create: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                    NonZeroU32::new(100).unwrap(),
+                ))),
+                org_create: Arc::new(RateLimiter::keyed(Quota::per_hour(
+                    NonZeroU32::new(100).unwrap(),
+                ))),
+                tool_calls: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                    NonZeroU32::new(100).unwrap(),
+                ))),
+            },
+        }
+    }
+
     pub fn from_env() -> Self {
         Self::from_env_with_valkey(None)
     }

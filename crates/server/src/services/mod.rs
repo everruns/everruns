@@ -15,7 +15,7 @@
 // - `usage_tracking` — cross-domain event listener feeding budgets.
 //
 // Anything with a clear single owner belongs under `domains/<owner>/`. See
-// `specs/domains.md` for the "shared services" rule.
+// `knowledge/foundations/domains.md` for the "shared services" rule.
 
 pub mod capability;
 pub mod event;
@@ -23,6 +23,7 @@ pub mod generation_reconciler;
 pub mod model_sync;
 pub mod openrouter_generation;
 pub mod org_feature_flags;
+pub mod platform_command_surface;
 pub mod principal;
 pub mod provider_resolver;
 pub mod usage_tracking;

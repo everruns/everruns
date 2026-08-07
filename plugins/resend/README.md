@@ -4,12 +4,13 @@ Send emails through the official [Resend](https://resend.com) remote MCP
 server (`https://mcp.resend.com/mcp`) with OAuth.
 
 This plugin is the end-to-end proof for Everruns' inbound plugin support
-(`specs/plugins.md`): a cross-host plugin package whose MCP server requires
-OAuth, installed into Everruns as the `plugin:resend` capability.
+(`knowledge/integrations/plugins.md`): a cross-host plugin package whose MCP server requires
+OAuth, installed into Everruns as a stable `plugin:{install_id}` capability.
 
 ## What It Includes
 
-- `.claude-plugin/plugin.json` — plugin manifest
+- `plugin.json` and `mcp.json` — portable Agent Plugins v1 metadata
+- `.claude-plugin/plugin.json` — Claude Code plugin manifest
 - `.mcp.json` — the Resend remote MCP server. The `"auth": "oauth"` field is
   an Everruns extension marking the server as OAuth-authenticated; other
   hosts (Claude Code, Cursor) ignore it and negotiate OAuth at the protocol
@@ -20,7 +21,7 @@ OAuth, installed into Everruns as the `plugin:resend` capability.
 ## Install in Everruns
 
 Install `resend` from the default `everruns` marketplace (Settings →
-Plugins), assign the `plugin:resend` capability to an agent, then connect
+Plugins), assign the Resend capability to an agent, then connect
 Resend under **Settings → Connections**. The OAuth client is registered
 dynamically against `api.resend.com`; tokens are stored encrypted and
 refreshed automatically.

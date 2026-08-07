@@ -2,7 +2,7 @@
 //
 // Shared envelope for every tool in the reading-tool class (file readers,
 // sandbox readers, DB query, web fetch, search). The contract is documented
-// in `specs/tool-execution.md` under "Reading-tool output contract".
+// in `knowledge/execution/tool-execution.md` under "Reading-tool output contract".
 //
 // Design decisions:
 // - One struct (`TruncationInfo`) covers the three interesting cases:
@@ -52,7 +52,7 @@ impl TruncationReason {
 
 /// Structured truncation metadata for reading-tool responses.
 ///
-/// Every reading tool (see `specs/tool-execution.md`) must attach this block
+/// Every reading tool (see `knowledge/execution/tool-execution.md`) must attach this block
 /// to its response so LLM callers can:
 /// 1. Detect partial output without regex-matching human markers.
 /// 2. Know *why* the cut happened (size / line / row / budget / item cap).

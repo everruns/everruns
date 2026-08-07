@@ -54,7 +54,7 @@ pub fn tool_definitions(
         query_tool(protocol_version, org_id_description),
         execute_tool(protocol_version, org_id_description),
     ];
-    // Entity cards (specs/mcp-cards.md) require `text/html` embedded
+    // Entity cards (knowledge/ui/mcp-cards.md) require `text/html` embedded
     // resources and tool annotations introduced in MCP 2025-06-18 (and carried
     // forward in 2026-07-28). Older clients negotiate the fallback protocol and
     // don't see card tools.
@@ -336,40 +336,10 @@ fn discover_tool(protocol_version: &str, org_id_description: &str) -> McpEndpoin
         protocol_version,
         "discover",
         "Discover Operations",
-        "Search the Everruns API catalog to find available operations. Returns matching operations with input/output schemas and jq-oriented output shape hints. Use all: true to list every operation grouped by category. Read-only operations are available as bash builtins in query; the full catalog is available in execute.",
-        object_schema(
-            vec![
-                (
-                    "query",
-                    json!({
-                        "type": "string",
-                        "description": "Search query to find API operations."
-                    }),
-                ),
-                (
-                    "all",
-                    json!({
-                        "type": "boolean",
-                        "description": "List all available operations grouped by category. When true, query is ignored."
-                    }),
-                ),
-                (
-                    "include_schemas",
-                    json!({
-                        "type": "boolean",
-                        "description": "Include input_schema and output_schema in results. Defaults to true for search and false for all."
-                    }),
-                ),
-                (
-                    "organization_id",
-                    json!({
-                        "type": "string",
-                        "description": org_id_description,
-                        "pattern": "^org_[0-9a-f]{32}$"
-                    }),
-                ),
-            ],
-            vec![],
+        everruns_core::capabilities::PLATFORM_DISCOVER_DESCRIPTION,
+        with_organization_id(
+            everruns_core::capabilities::discover_input_schema(),
+            org_id_description,
         ),
         Some(discover_output_schema()),
         Some(read_only_annotations()),
@@ -382,36 +352,10 @@ fn query_tool(protocol_version: &str, org_id_description: &str) -> McpEndpointTo
         protocol_version,
         "query",
         "Query Commands",
-        "Execute a bash script in an environment where only read-only Everruns API operations are available as built-in commands. Supports pipes, variables, loops, conditionals, jq, and direct access to safe builtins. Mutating commands are intentionally unavailable.",
-        object_schema(
-            vec![
-                (
-                    "commands",
-                    json!({
-                        "type": "string",
-                        "description": "Bash script to execute. Only read-only API operations are available as built-in commands.",
-                        "minLength": 1
-                    }),
-                ),
-                (
-                    "timeout_ms",
-                    json!({
-                        "type": "integer",
-                        "description": "Execution timeout in milliseconds (default: 30000, max: 60000).",
-                        "minimum": 1,
-                        "maximum": 60000
-                    }),
-                ),
-                (
-                    "organization_id",
-                    json!({
-                        "type": "string",
-                        "description": org_id_description,
-                        "pattern": "^org_[0-9a-f]{32}$"
-                    }),
-                ),
-            ],
-            vec!["commands"],
+        everruns_core::capabilities::PLATFORM_QUERY_DESCRIPTION,
+        with_organization_id(
+            everruns_core::capabilities::query_input_schema(),
+            org_id_description,
         ),
         None,
         Some(read_only_annotations()),
@@ -424,36 +368,10 @@ fn execute_tool(protocol_version: &str, org_id_description: &str) -> McpEndpoint
         protocol_version,
         "execute",
         "Execute Commands",
-        "Execute a bash script in an environment where every Everruns API operation is a built-in command, including operations with side effects. Supports pipes, variables, loops, conditionals, jq, and direct access to the full builtin set. Prefer query for read-only inspection; use execute when you need create/update/delete or other mutating operations.",
-        object_schema(
-            vec![
-                (
-                    "commands",
-                    json!({
-                        "type": "string",
-                        "description": "Bash script to execute. API operations are available as built-in commands.",
-                        "minLength": 1
-                    }),
-                ),
-                (
-                    "timeout_ms",
-                    json!({
-                        "type": "integer",
-                        "description": "Execution timeout in milliseconds (default: 30000, max: 60000).",
-                        "minimum": 1,
-                        "maximum": 60000
-                    }),
-                ),
-                (
-                    "organization_id",
-                    json!({
-                        "type": "string",
-                        "description": org_id_description,
-                        "pattern": "^org_[0-9a-f]{32}$"
-                    }),
-                ),
-            ],
-            vec!["commands"],
+        everruns_core::capabilities::PLATFORM_EXECUTE_DESCRIPTION,
+        with_organization_id(
+            everruns_core::capabilities::execute_input_schema(),
+            org_id_description,
         ),
         None,
         Some(McpToolAnnotations {
@@ -474,7 +392,7 @@ fn agent_get_card_tool(
         protocol_version,
         "agent_get_card",
         "Get Agent Card",
-        "Render an MCP-Apps card for a single agent: a sandboxed text/html resource with name, status, description, tags, token usage, and session count. Returns an embedded resource at ui://everruns/agent/{agent_id}/card plus a short text summary. The HTML is host-rendered in a sandboxed iframe; future iterations will add interactive buttons (run, archive) routed back through tools/call. See specs/mcp-cards.md for the standard.",
+        "Render an MCP-Apps card for a single agent: a sandboxed text/html resource with name, status, description, tags, token usage, and session count. Returns an embedded resource at ui://everruns/agent/{agent_id}/card plus a short text summary. The HTML is host-rendered in a sandboxed iframe; future iterations will add interactive buttons (run, archive) routed back through tools/call. See knowledge/ui/mcp-cards.md for the standard.",
         object_schema(
             vec![
                 (
@@ -547,6 +465,15 @@ fn object_schema(properties: Vec<(&str, Value)>, required: Vec<&str>) -> Value {
         "properties": props,
         "required": required
     })
+}
+
+fn with_organization_id(mut schema: Value, description: &str) -> Value {
+    schema["properties"]["organization_id"] = json!({
+        "type": "string",
+        "description": description,
+        "pattern": "^org_[0-9a-f]{32}$"
+    });
+    schema
 }
 
 fn id_property<'a>(name: &'a str, description: &str) -> (&'a str, Value) {
@@ -664,4 +591,44 @@ fn discover_output_schema() -> Value {
         },
         "required": ["count", "include_schemas", "shape_hints"]
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn without_organization_id(mut schema: Value) -> Value {
+        schema["properties"]
+            .as_object_mut()
+            .expect("object schema properties")
+            .remove("organization_id");
+        schema
+    }
+
+    #[test]
+    fn platform_and_mcp_command_tool_contracts_match() {
+        let org_description = "organization";
+        let cases = [
+            (
+                discover_tool("2026-07-28", org_description),
+                everruns_core::capabilities::PLATFORM_DISCOVER_DESCRIPTION,
+                everruns_core::capabilities::discover_input_schema(),
+            ),
+            (
+                query_tool("2026-07-28", org_description),
+                everruns_core::capabilities::PLATFORM_QUERY_DESCRIPTION,
+                everruns_core::capabilities::query_input_schema(),
+            ),
+            (
+                execute_tool("2026-07-28", org_description),
+                everruns_core::capabilities::PLATFORM_EXECUTE_DESCRIPTION,
+                everruns_core::capabilities::execute_input_schema(),
+            ),
+        ];
+
+        for (mcp, description, platform_schema) in cases {
+            assert_eq!(mcp.description, description);
+            assert_eq!(without_organization_id(mcp.input_schema), platform_schema);
+        }
+    }
 }

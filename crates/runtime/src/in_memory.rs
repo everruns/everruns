@@ -16,7 +16,6 @@ use everruns_core::traits::{
     SessionFileSystemFactoryContext, SessionMutator, SessionStorageStore, SessionStore,
 };
 use everruns_core::typed_id::SessionId;
-use regex::Regex;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use tokio::sync::RwLock;
@@ -407,13 +406,14 @@ impl SessionFileSystem for InMemorySessionFileStore {
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
-        let regex = Regex::new(pattern)
-            .map_err(|error| AgentLoopError::tool(format!("Invalid regex pattern: {error}")))?;
+        let regex = crate::grep_limits::build_regex(pattern)?;
+        crate::grep_limits::validate_path_pattern(path_pattern)?;
         let path_pattern = path_pattern
             .map(everruns_core::session_path::GrepPathPattern::new)
             .transpose()?;
         let files = self.files.read().await;
         let mut matches = Vec::new();
+        let mut total_scanned = 0;
 
         for ((sid, path), entry) in files.iter() {
             if *sid != session_id || entry.file.is_directory || entry.file.encoding != "text" {
@@ -428,6 +428,9 @@ impl SessionFileSystem for InMemorySessionFileStore {
             let Some(content) = &entry.file.content else {
                 continue;
             };
+            if !crate::grep_limits::account_scan(&mut total_scanned, content.len())? {
+                continue;
+            }
 
             for (idx, line) in content.lines().enumerate() {
                 if regex.is_match(line) {
@@ -449,32 +452,31 @@ impl SessionFileSystem for InMemorySessionFileStore {
         pattern: &str,
         options: &GrepOptions,
     ) -> Result<GrepSearchResult> {
-        let regex = Regex::new(pattern)
-            .map_err(|error| AgentLoopError::tool(format!("Invalid regex pattern: {error}")))?;
+        let regex = crate::grep_limits::build_regex(pattern)?;
+        crate::grep_limits::validate_path_pattern(options.path_pattern.as_deref())?;
         let path_pattern = options
             .path_pattern
             .as_deref()
             .map(everruns_core::session_path::GrepPathPattern::new)
             .transpose()?;
         let files = self.files.read().await;
-        let text_files = files
-            .iter()
-            .filter(|((sid, path), entry)| {
-                *sid == session_id
-                    && !entry.file.is_directory
-                    && entry.file.encoding == "text"
-                    && path_pattern
-                        .as_ref()
-                        .is_none_or(|matcher| matcher.is_match(path))
-            })
-            .filter_map(|((_, path), entry)| {
-                entry
-                    .file
-                    .content
+        let mut total_scanned = 0;
+        let mut text_files = Vec::new();
+        for ((_, path), entry) in files.iter().filter(|((sid, path), entry)| {
+            *sid == session_id
+                && !entry.file.is_directory
+                && entry.file.encoding == "text"
+                && path_pattern
                     .as_ref()
-                    .map(|content| (path.clone(), content.clone()))
-            })
-            .collect();
+                    .is_none_or(|matcher| matcher.is_match(path))
+        }) {
+            let Some(content) = entry.file.content.as_ref() else {
+                continue;
+            };
+            if crate::grep_limits::account_scan(&mut total_scanned, content.len())? {
+                text_files.push((path.clone(), content.clone()));
+            }
+        }
         Ok(build_grep_search_result(text_files, &regex, options))
     }
 

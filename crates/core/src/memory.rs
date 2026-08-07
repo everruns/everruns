@@ -1,6 +1,6 @@
 // Memory domain types
 //
-// Design intent lives in `specs/memory.md`.
+// Design intent lives in `knowledge/runtime-resources/memory.md`.
 //
 // A Memory is an org-scoped, named store that users can mount into session
 // workspaces through the `memory` capability. This module defines the Memory
@@ -22,7 +22,7 @@ use utoipa::ToSchema;
 
 /// Memory lifecycle status.
 ///
-/// Mirrors the building-block lifecycle defined in `specs/models.md`:
+/// Mirrors the building-block lifecycle defined in `knowledge/foundations/models.md`:
 /// - `active`: assignable to mounts, editable, listed by default.
 /// - `archived`: hidden from default lists, not assignable to new mounts,
 ///   read-only.

@@ -1,0 +1,158 @@
+---
+type: Specification
+title: "Dismissed Options"
+description: "Technical options considered but dismissed."
+tags:
+  - everruns
+  - project
+---
+# Dismissed Options
+
+This document records technical options that were considered but dismissed for specific reasons. These decisions may be revisited in the future as circumstances change.
+
+## AG-UI Protocol
+
+**Status**: Revisited and implemented for Apps
+
+**What it was**: AG-UI is a protocol for streaming agent UI events, designed for compatibility with CopilotKit and other agent UI frameworks. See https://docs.ag-ui.com for the specification.
+
+**Why considered**: AG-UI provided a standardized event format for streaming agent execution events (RunStarted, TextMessageContent, ToolCallStart, etc.) to UI clients via SSE. This would enable compatibility with the CopilotKit ecosystem and other AG-UI-compatible clients.
+
+**Original reason it was dismissed**: The implementation priorities shifted away from CopilotKit compatibility. The system uses a custom PostgreSQL-backed durable execution engine for orchestration, which provides sufficient visibility into workflow execution state without a separate event streaming layer.
+
+**What changed**: Apps now support AG-UI as a first-class channel with anonymous ingress and SSE streaming translated from durable runtime events. See `knowledge/integrations/apps.md` for the active contract.
+
+**Remaining constraints**:
+- Initial rollout is app-scoped and anonymous only
+- The runtime remains the source of truth; AG-UI events are translated from internal events
+- Follow-up work may add authenticated or scoped access controls
+
+## App API key: project through the global /v1/sessions surface
+
+**Status**: Dismissed for the launch
+
+**What it was**: Making the existing `/v1/sessions/*` management endpoints accept
+the app-scoped execution key (`evr_app_...`) by threading an app-execution
+identity through the core auth middleware, the `Caller` / permission resolver,
+and every session command policy — a new `OrgSessionsExecute` permission plus a
+confinement `Rule` pinning the key to its App's sessions.
+
+**Why dismissed**: High blast radius across the shared auth and permission path
+for the same user-visible capability that app-mounted routes
+(`/v1/apps/{app_id}/api/{channel_id}/...`) deliver with near-zero blast radius,
+reusing the proven A2A / AG-UI ingress pattern. The native REST routes under the
+App are inherently execution-only (no route to management APIs), self-confining
+(tag-based ownership check), and self-redacting (reads return only completed
+assistant messages). See `knowledge/integrations/app-api-keys.md`.
+
+**What could change it**: A concrete need to expose the full management session
+surface (arbitrary agent selection, cross-App listing, raw event/SSE feeds) to
+execution keys.
+
+## Temporal Workflow Engine
+
+**Status**: Dismissed (implemented then removed)
+
+**What it was**: Temporal is a workflow orchestration platform that provides durable execution guarantees. It was used as the execution backend for agent workflows, with the Temporal SDK integrated into the worker crate.
+
+**Why considered**: Temporal provided battle-tested durable execution at scale with features like:
+- Workflow and activity orchestration
+- Automatic retry policies
+- Workflow history persistence
+- Task queues for worker distribution
+- Built-in observability and UI
+
+**Why dismissed**: After implementing Temporal integration, we found it added significant operational complexity for our use case:
+- Required running a separate Temporal server (with its own database schema)
+- SDK was in alpha state (temporal-sdk-core 0.1.0-alpha.1) with stability concerns
+- Debugging workflow issues required understanding Temporal internals
+- The protobuf compilation dependencies added build complexity
+- For our agent workloads, simpler PostgreSQL-backed durability was sufficient
+
+**What we use instead**: A custom PostgreSQL-backed durable execution engine (`everruns-durable` crate):
+- Task queue table with optimistic locking for work distribution
+- Direct database state for durability guarantees
+- Workers communicate with control-plane via gRPC
+- Simpler operational model (just PostgreSQL)
+- Faster iteration and easier debugging
+
+**May revisit when**:
+- Scale requirements exceed what PostgreSQL-based queuing can handle
+- Need for complex workflow patterns (compensation, saga, long-running timers)
+- Temporal SDK reaches stable release status
+- Multi-region deployment requires sophisticated task routing
+
+## OpenAI Platform Traces API
+
+**Status**: Dismissed (evaluated but not viable)
+
+**What it was**: OpenAI's `/v1/traces/ingest` API endpoint used by the OpenAI Agents Python SDK to export trace data to the OpenAI Platform dashboard at https://platform.openai.com/traces.
+
+**Why considered**: Would enable viewing agent execution traces (turns, LLM generations, tool calls) in OpenAI's trace visualization UI without additional infrastructure. The Agents SDK uses a hierarchical span model (trace → agent span → generation/function spans) that maps well to our event model.
+
+**Why dismissed**: After implementing a complete trace exporter, we found:
+- The API is **undocumented** and internal to the OpenAI Agents SDK
+- No evidence of successful external implementations in community discussions
+- API returns 200 OK but traces don't appear in the dashboard
+- Likely only works for traces generated by actual OpenAI API calls with the same key
+- Organizations with Zero Data Retention (ZDR) policy cannot use tracing
+
+**What we use instead**: OpenTelemetry (OTEL):
+- Industry-standard distributed tracing protocol
+- Works with any backend (Grafana Tempo, Zipkin, Datadog, etc.)
+- Already integrated via `OTEL_EXPORTER_OTLP_ENDPOINT`
+- Full control over trace data and retention
+
+**May revisit when**:
+- OpenAI officially documents the traces API for external use
+- OpenAI explicitly supports custom/third-party trace ingestion
+
+## Process-Level LLM Provider Rate Limiting (EVE-7)
+
+**Status**: Dismissed (implemented then reverted)
+
+**What it was**: Per-provider semaphore-based concurrency limiter wrapping `BoxedChatDriver`. Each LLM call would acquire a permit from a per-provider `tokio::Semaphore` (default 50 concurrent calls per provider type), held for the full streaming duration. Configured via `LLM_MAX_CONCURRENT_PER_PROVIDER` env var.
+
+**Why considered**: Workers call LLM APIs with no in-process concurrency control. 100 workers simultaneously calling the same provider could burst past rate limits, causing mass 429 errors and wasted tokens on retries.
+
+**Why dismissed**:
+- **Existing retry logic already handles 429s**: `llm_retry.rs` implements per-call exponential backoff (2 retries, 1-60s backoff) with provider-specific rate-limit header parsing (Anthropic `anthropic-ratelimit-*`, OpenAI `x-ratelimit-*`). Transient 429s are handled transparently.
+- **Durable engine bounds concurrency**: The task queue with optimistic locking already limits how many activities run concurrently. Adding a second concurrency layer inside the process is redundant.
+- **Process-level semaphore doesn't help multi-process**: In production with multiple worker processes or pods, a per-process semaphore doesn't coordinate across instances. True rate limiting needs a distributed token bucket (e.g., Redis-based), which is a much larger effort.
+- **Circuit breaker already integrated**: The durable worker wraps `reason_activity` with `DistributedCircuitBreaker` recording (success/failure), providing automatic backoff on sustained provider failures.
+- **Complexity vs. benefit**: Adding a wrapper layer around every LLM driver, threading `Arc<LlmRateLimiter>` through `ReasonAtom`, `WorkerAdapters`, and `DirectWorkerAdapters` added significant plumbing for marginal benefit.
+
+**What we use instead**:
+- Per-call retry with exponential backoff and provider rate-limit header respect (`llm_retry.rs`)
+- Durable engine activity-level circuit breaker (`DistributedCircuitBreaker`)
+- Durable task queue concurrency bounding (task claiming limits active workers)
+
+**May revisit when**:
+- Distributed rate limiting (Redis-based token bucket) becomes necessary at scale
+- Provider-specific TPM/RPM budgets need explicit coordination across workers
+- Observed 429 storms that existing retry logic cannot absorb
+
+## OpenAI WebSocket Transport
+
+**Status**: Dismissed (Phase 1 plumbing retained)
+
+**What it was**: OpenAI's Responses API supports a WebSocket transport (`wss://api.openai.com/v1/responses`) that eliminates per-request HTTP overhead and enables incremental input across multi-turn tool-calling workflows by keeping a persistent connection.
+
+**Why considered**: Could reduce latency for multi-turn agent loops by avoiding repeated HTTP connection setup, and enable `store=false` with connection-local context caching for lower cost.
+
+**Why dismissed**:
+- **Horizontal scaling conflict**: Workers are stateless (`SKIP LOCKED`, no affinity). Activities within a turn can land on different workers. WebSocket connections are inherently stateful and pinned to a single process, contradicting the architecture.
+- **`store=true` already works cross-worker**: With `previous_response_id` over HTTP (Phase 1), OpenAI hydrates cached context from disk. This gives the same latency benefit (skip re-encoding) without requiring connection affinity.
+- **Operational complexity**: Connection lifecycle management (60-min limit, reconnection, error fallback), connection pooling, and worker-affinity routing add significant complexity for marginal latency gain.
+- **Single concurrent response per connection**: Each WebSocket connection supports only one in-flight response, limiting throughput per connection.
+
+**What we use instead**: `previous_response_id` threading over standard HTTP (Responses API with `store=true`):
+- Response IDs flow through `ReasonResult` → turn loop → `ReasonInput` → `LlmCallConfig` → `ResponsesRequest`
+- Works across any worker without connection affinity
+- OpenAI server-side context caching reduces re-encoding cost
+- No additional infrastructure or connection management needed
+
+**May revisit when**:
+- Worker affinity routing is implemented for other reasons
+- WebSocket transport supports multiple concurrent responses
+- Benchmarks show HTTP connection overhead is a meaningful bottleneck

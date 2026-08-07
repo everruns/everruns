@@ -4,7 +4,7 @@
 //! [`crate::capabilities::Capability::narrate`]. everruns does not centrally
 //! narrate tools by name — a capability (including host-registered plugins)
 //! narrates its own tools, and unowned/foreign tools fall back to the generic
-//! display-name phrasing here. See `specs/tool-narration.md`.
+//! display-name phrasing here. See `knowledge/execution/tool-narration.md`.
 //!
 //! This module provides:
 //! - the [`ToolNarrationPhase`] enum and the generic fallback renderer, and
@@ -1277,35 +1277,142 @@ pub fn render_group_headline_with_locale(
 
     let tool_map: std::collections::HashMap<&str, &ToolDefinition> =
         tool_defs.iter().map(|def| (def.name(), def)).collect();
+    if let [tool_call] = tool_calls {
+        return Some(render_tool_narration_with_locale(
+            tool_map.get(tool_call.name.as_str()).copied(),
+            tool_call,
+            phase,
+            locale,
+        ));
+    }
 
-    let phrases = tool_calls
+    let actions = tool_calls
         .iter()
         .map(|tool_call| {
-            render_tool_narration_with_locale(
-                tool_map.get(tool_call.name.as_str()).copied(),
-                tool_call,
+            let tool_def = tool_map.get(tool_call.name.as_str()).copied();
+            let repeated_narration = render_tool_narration_with_locale(
+                tool_def,
+                &tool_call_for_group_summary(tool_call),
                 phase,
                 locale,
+            );
+            GroupHeadlineAction::new(
+                tool_call,
+                render_tool_narration_with_locale(tool_def, tool_call, phase, locale),
+                repeated_narration,
             )
         })
-        .take(3)
         .collect::<Vec<_>>();
 
-    Some(join_phrases(&phrases, tool_calls.len(), locale))
+    Some(summarize_group_actions(&actions, locale))
 }
 
-fn join_phrases(phrases: &[String], total_count: usize, locale: Option<&str>) -> String {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GroupHeadlineAction {
+    tool_name: String,
+    narration: String,
+    repeated_narration: String,
+}
+
+impl GroupHeadlineAction {
+    pub(crate) fn new(tool_call: &ToolCall, narration: String, repeated_narration: String) -> Self {
+        Self {
+            tool_name: tool_call.name.clone(),
+            narration,
+            repeated_narration,
+        }
+    }
+}
+
+/// Retain only arguments that distinguish operation types within a tool family.
+pub(crate) fn tool_call_for_group_summary(tool_call: &ToolCall) -> ToolCall {
+    let mut arguments = serde_json::Map::new();
+    for key in ["operation", "action"] {
+        if let Some(value) = tool_call.arguments.get(key) {
+            arguments.insert(key.to_string(), value.clone());
+        }
+    }
+    ToolCall {
+        id: tool_call.id.clone(),
+        name: tool_call.name.clone(),
+        arguments: Value::Object(arguments),
+    }
+}
+
+/// Collapse equivalent actions and bound a batch headline to two distinct summaries.
+pub(crate) fn summarize_group_actions(
+    actions: &[GroupHeadlineAction],
+    locale: Option<&str>,
+) -> String {
     let strings = backend_strings(locale);
-    match phrases {
+    if actions.is_empty() {
+        return strings.working.to_string();
+    }
+    if let [only] = actions {
+        return only.narration.clone();
+    }
+
+    let mut grouped: Vec<(&GroupHeadlineAction, usize)> = Vec::new();
+    let mut indexes = std::collections::HashMap::<(&str, &str), usize>::new();
+    for action in actions {
+        let key = (
+            action.tool_name.as_str(),
+            action.repeated_narration.as_str(),
+        );
+        if let Some(index) = indexes.get(&key).copied() {
+            grouped[index].1 += 1;
+        } else {
+            indexes.insert(key, grouped.len());
+            grouped.push((action, 1));
+        }
+    }
+
+    let phrases = grouped
+        .iter()
+        .take(2)
+        .map(|(action, count)| {
+            if *count == 1 {
+                action.narration.clone()
+            } else {
+                format_repeated_action(&action.repeated_narration, *count, locale)
+            }
+        })
+        .collect::<Vec<_>>();
+    let omitted_count = grouped
+        .iter()
+        .skip(2)
+        .map(|(_, count)| count)
+        .sum::<usize>();
+
+    match phrases.as_slice() {
         [] => strings.working.to_string(),
         [only] => only.clone(),
-        [first, second] => match resolve_backend_locale(locale) {
+        [first, second] if omitted_count == 0 => match resolve_backend_locale(locale) {
             BackendLocale::Uk => format!("{first} і {second}"),
             BackendLocale::En => format!("{first} and {second}"),
         },
         [first, second, ..] => {
-            let more = format_more_actions(locale, total_count.saturating_sub(2));
+            let more = format_more_actions(locale, omitted_count);
             format!("{first}, {second}, {more}")
+        }
+    }
+}
+
+fn format_repeated_action(action: &str, count: usize, locale: Option<&str>) -> String {
+    match resolve_backend_locale(locale) {
+        BackendLocale::En if count == 2 => format!("{action} twice"),
+        BackendLocale::En => format!("{action} {count} times"),
+        BackendLocale::Uk if count == 2 => format!("{action} двічі"),
+        BackendLocale::Uk => {
+            let suffix = if (11..=14).contains(&(count % 100)) {
+                "разів"
+            } else {
+                match count % 10 {
+                    2..=4 => "рази",
+                    _ => "разів",
+                }
+            };
+            format!("{action} {count} {suffix}")
         }
     }
 }
@@ -1854,6 +1961,102 @@ mod tests {
         assert_eq!(
             render_tool_narration(None, &tool_call, ToolNarrationPhase::Completed),
             "Ran Mystery Tool"
+        );
+    }
+
+    fn group_action(key: &str, narration: &str, repeated_narration: &str) -> GroupHeadlineAction {
+        GroupHeadlineAction {
+            tool_name: key.to_string(),
+            narration: narration.to_string(),
+            repeated_narration: repeated_narration.to_string(),
+        }
+    }
+
+    #[test]
+    fn group_headline_preserves_one_action_narration() {
+        let actions = [group_action(
+            "grep_files",
+            "Searched files for full_name",
+            "Searched files",
+        )];
+
+        assert_eq!(
+            summarize_group_actions(&actions, None),
+            "Searched files for full_name"
+        );
+    }
+
+    #[test]
+    fn group_headline_summarizes_two_repeated_actions() {
+        let actions = [
+            group_action(
+                "grep_files",
+                "Searched files for full_name",
+                "Searched files",
+            ),
+            group_action("grep_files", "Searched files for login", "Searched files"),
+        ];
+
+        assert_eq!(
+            summarize_group_actions(&actions, None),
+            "Searched files twice"
+        );
+    }
+
+    #[test]
+    fn group_headline_summarizes_more_than_two_repeated_actions() {
+        let actions = [
+            group_action("grep_files", "Searched files for one", "Searched files"),
+            group_action("grep_files", "Searched files for two", "Searched files"),
+            group_action("grep_files", "Searched files for three", "Searched files"),
+        ];
+
+        assert_eq!(
+            summarize_group_actions(&actions, None),
+            "Searched files 3 times"
+        );
+    }
+
+    #[test]
+    fn group_headline_localizes_repeated_action_counts() {
+        let three_actions = [
+            group_action("grep_files", "Шукав у файлах: один", "Шукав у файлах"),
+            group_action("grep_files", "Шукав у файлах: два", "Шукав у файлах"),
+            group_action("grep_files", "Шукав у файлах: три", "Шукав у файлах"),
+        ];
+        let twelve_actions = (0..12)
+            .map(|index| {
+                group_action(
+                    "grep_files",
+                    &format!("Шукав у файлах: {index}"),
+                    "Шукав у файлах",
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            summarize_group_actions(&three_actions, Some("uk")),
+            "Шукав у файлах 3 рази"
+        );
+        assert_eq!(
+            summarize_group_actions(&twelve_actions, Some("uk")),
+            "Шукав у файлах 12 разів"
+        );
+    }
+
+    #[test]
+    fn group_headline_preserves_mixed_actions_and_bounds_the_fallback() {
+        let actions = [
+            group_action("grep_files", "Searched files for one", "Searched files"),
+            group_action("grep_files", "Searched files for two", "Searched files"),
+            group_action("read_file", "Read AGENTS.md", "Read file"),
+            group_action("search_web", "Searched web for docs", "Searched web"),
+            group_action("search_web", "Searched web for examples", "Searched web"),
+        ];
+
+        assert_eq!(
+            summarize_group_actions(&actions, None),
+            "Searched files twice, Read AGENTS.md, and 2 more actions"
         );
     }
 }

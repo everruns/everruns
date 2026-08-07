@@ -1,6 +1,6 @@
 // Session sandbox domain — commands, queries, types.
 //
-// See specs/domains.md for the pattern.
+// See knowledge/foundations/domains.md for the pattern.
 
 pub mod commands;
 pub mod queries;

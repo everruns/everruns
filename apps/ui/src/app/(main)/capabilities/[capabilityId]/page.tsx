@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { CapabilityStatus, ToolDefinition } from "@/lib/api/types";
-import { getCapabilityIcon } from "@/lib/capability-icons";
+import { CapabilityIcon } from "@/lib/capability-icons";
 import {
   localizedCapabilityDescription,
   localizedCapabilityName,
@@ -133,8 +133,6 @@ export default function CapabilityDetailPage({
     );
   }
 
-  const IconComponent = getCapabilityIcon(capability.icon);
-
   const toolDefinitions = capability.tool_definitions || [];
 
   return (
@@ -148,7 +146,7 @@ export default function CapabilityDetailPage({
       />
 
       <PageMasthead
-        icon={<IconComponent />}
+        icon={<CapabilityIcon icon={capability.icon} />}
         title={localizedCapabilityName(capability, locale)}
         badges={
           <>

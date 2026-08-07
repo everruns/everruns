@@ -31,7 +31,7 @@ pub struct CreateMcpServerRequest {
     /// Example shape is defined on `McpServerAuthMode`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth_mode: Option<McpServerAuthMode>,
-    /// Protocol-era policy. Defaults to `auto` (negotiates legacy/current/RC).
+    /// Protocol-era policy. Defaults to `auto` (negotiates every protocol era).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub protocol_mode: Option<McpProtocolMode>,
     /// API key for authentication (optional). Sent with each request; never echoed in responses.
