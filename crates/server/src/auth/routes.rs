@@ -134,18 +134,7 @@ fn oauth_identity_rejection_reason(
 /// auto-linked to an OAuth identity. Verified OAuth proves the callback caller
 /// owns the mailbox now, but an unverified password account may have been
 /// pre-created by an attacker who never controlled that mailbox.
-fn existing_oauth_link_rejection_reason(
-    existing: &UserRow,
-    provider: &str,
-) -> Option<&'static str> {
-    let already_linked_elsewhere = matches!(
-        existing.auth_provider.as_deref(),
-        Some(p) if p != "local" && p != provider
-    );
-    if already_linked_elsewhere {
-        return Some("email_bound_to_different_provider");
-    }
-
+fn existing_oauth_link_rejection_reason(existing: &UserRow) -> Option<&'static str> {
     if !existing.email_verified {
         return Some("existing_email_unverified");
     }
@@ -670,7 +659,7 @@ pub async fn login(
 }
 
 /// Minimum password length enforced on `/v1/auth/register`. Matches the
-/// commitment in `specs/authentication.md` and the UI's `minLength={8}` on
+/// commitment in `knowledge/security/authentication.md` and the UI's `minLength={8}` on
 /// the register form (TM-AUTH-004 / EVE-453). UI validation is convenience;
 /// this server-side check is the trust boundary.
 const PASSWORD_MIN_LENGTH: usize = 12;
@@ -840,7 +829,7 @@ pub async fn register(
     // Gated on `auto_join_default_org` (off by default): in a multi-tenant
     // deployment a fresh signup must own no org so the zero-org onboarding flow
     // creates the user's own org, instead of every tenant landing in the shared
-    // default organization. See `specs/authentication.md`.
+    // default organization. See `knowledge/security/authentication.md`.
     if state.config.auto_join_default_org {
         let _ = state
             .db
@@ -859,7 +848,7 @@ pub async fn register(
         // so a custom `PlatformDefinition` is never overridden — that was the
         // security concern addressed by PR #1462. The call is idempotent: if
         // seeding has already completed, every harness is "unchanged". See
-        // EVE-390 and `specs/authentication.md`.
+        // EVE-390 and `knowledge/security/authentication.md`.
         if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
             &state.db,
             DEFAULT_ORG_ID,
@@ -1079,6 +1068,7 @@ pub async fn get_current_user(
                 .http_only(false) // Allow JS to read for UI state
                 .secure(true)
                 .same_site(SameSite::Lax)
+                .max_age(super::middleware::ORG_COOKIE_MAX_AGE)
                 .build();
             jar.add(cookie)
         } else {
@@ -1182,7 +1172,8 @@ fn oauth_failure_redirect(config: &super::config::AuthConfig, category: &str) ->
 /// so failures redirect back to `/login?error=<category>` where the UI shows
 /// a friendly generic message — a raw JSON error page here is a dead end.
 /// Categories: `oauth_cancelled` (user denied consent), `oauth_not_permitted`
-/// (identity gate: unverified email / domain not allowed), `oauth_failed`
+/// (identity gate: unverified email / domain not allowed),
+/// `oauth_account_exists` (unsafe or conflicting identity link), `oauth_failed`
 /// (everything else). The state cookie is cleared on every outcome.
 pub async fn oauth_callback(
     State(state): State<BuiltinAuthBackend>,
@@ -1366,7 +1357,7 @@ async fn oauth_callback_inner(
             // verified by this service. Otherwise an attacker could pre-create
             // a local account for a victim email and retain its password/session
             // after the real mailbox owner later completes OAuth.
-            if let Some(reason) = existing_oauth_link_rejection_reason(&existing, provider_str) {
+            if let Some(reason) = existing_oauth_link_rejection_reason(&existing) {
                 tracing::warn!(
                     provider = %provider_str,
                     existing_provider = existing.auth_provider.as_deref().unwrap_or(""),
@@ -1392,8 +1383,13 @@ async fn oauth_callback_inner(
                     AuthError::unauthorized("OAuth authentication failed")
                 })?
                 .ok_or_else(|| {
-                    tracing::error!("Account vanished while linking OAuth identity");
-                    AuthError::unauthorized("OAuth authentication failed")
+                    tracing::warn!(
+                        provider = %provider_str,
+                        "OAuth identity conflicts with an existing provider binding"
+                    );
+                    AuthError::conflict(
+                        "This OAuth identity cannot be linked to the existing account.",
+                    )
                 })?;
 
             if let Err(e) = state.db.delete_user_refresh_tokens(linked.id).await {
@@ -1442,7 +1438,7 @@ async fn oauth_callback_inner(
             // convenience only, gated on `auto_join_default_org` (off by default).
             // In a multi-tenant deployment a first-time-OAuth user must own no org
             // so zero-org onboarding creates their own. See `register` and
-            // `specs/authentication.md`.
+            // `knowledge/security/authentication.md`.
             if state.config.auto_join_default_org {
                 let _ = state
                     .db
@@ -1897,13 +1893,21 @@ async fn generate_token_response(
 
     let mut jar = jar.add(access_cookie).add(refresh_cookie);
 
-    // Set org cookie to user's first org (ensures org context for subsequent API calls)
-    if let Some(org) = user.organizations.first() {
+    // Ensure org context for subsequent API calls, but never clobber a
+    // selection that still maps to one of the user's organizations: this
+    // helper runs on every login AND every silent refresh (~each access-token
+    // lifetime), so unconditional re-minting silently reset the selected org
+    // to the first (alphabetical) one.
+    let keep_existing_org = jar
+        .get(ORG_COOKIE_NAME)
+        .is_some_and(|c| user.organizations.iter().any(|o| o.public_id == c.value()));
+    if !keep_existing_org && let Some(org) = user.organizations.first() {
         let org_cookie = Cookie::build((ORG_COOKIE_NAME, org.public_id.clone()))
             .path("/")
             .http_only(false) // Allow JS to read for UI state
             .secure(true)
             .same_site(SameSite::Lax)
+            .max_age(super::middleware::ORG_COOKIE_MAX_AGE)
             .build();
         jar = jar.add(org_cookie);
     }
@@ -2058,21 +2062,14 @@ mod tests {
         assert_eq!(OAUTH_STATE_COOKIE, "oauth_state");
     }
 
-    // EVE-632 / TM-AUTH-014: when the OAuth callback DOES refuse (an email bound
-    // to a *different* login provider than the one being used — see the
-    // cross-provider guard in `oauth_callback`), it must reuse the SAME generic
-    // failure as the password-register path. Neither may disclose that the
-    // account exists, otherwise signup becomes an account-enumeration oracle.
-    // (The common case — email matches an existing password account — now links
-    // instead of failing; see `link_oauth_identity`.) This test locks the shared
-    // message and its sanitization so that refusal branch cannot silently
-    // regress to a leaky message like "An account with this email already exists…".
+    // EVE-632 / TM-AUTH-014: password registration must not disclose that an
+    // account exists. OAuth-link conflicts are different: that caller has
+    // already proved mailbox ownership, so the callback may safely return its
+    // dedicated 409 category.
     #[tokio::test]
-    async fn oauth_signup_existing_account_message_does_not_leak_existence() {
+    async fn registration_existing_account_message_does_not_leak_existence() {
         use axum::response::IntoResponse;
 
-        // The OAuth existing-account branch and the password-register path both
-        // surface this exact error variant.
         let response = AuthError::unauthorized(GENERIC_REGISTRATION_FAILED).into_response();
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 
@@ -2117,26 +2114,23 @@ mod tests {
         let user = oauth_link_candidate(false, Some("local"));
 
         assert_eq!(
-            existing_oauth_link_rejection_reason(&user, "google"),
+            existing_oauth_link_rejection_reason(&user),
             Some("existing_email_unverified")
         );
     }
 
     #[test]
-    fn oauth_link_allows_verified_local_account_only() {
+    fn oauth_link_allows_verified_local_account() {
         let user = oauth_link_candidate(true, Some("local"));
 
-        assert_eq!(existing_oauth_link_rejection_reason(&user, "google"), None);
+        assert_eq!(existing_oauth_link_rejection_reason(&user), None);
     }
 
     #[test]
-    fn oauth_link_rejects_different_existing_provider() {
+    fn oauth_link_allows_verified_account_from_another_provider() {
         let user = oauth_link_candidate(true, Some("github"));
 
-        assert_eq!(
-            existing_oauth_link_rejection_reason(&user, "google"),
-            Some("email_bound_to_different_provider")
-        );
+        assert_eq!(existing_oauth_link_rejection_reason(&user), None);
     }
 
     #[test]

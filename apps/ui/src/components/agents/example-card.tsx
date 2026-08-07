@@ -6,7 +6,7 @@ import { EntityCard, EntityCardFooter } from "@/components/ui/entity-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Import } from "lucide-react";
 import type { AgentExample, Capability, CapabilityId } from "@/lib/api/types";
-import { getCapabilityIcon } from "@/lib/capability-icons";
+import { CapabilityIcon } from "@/lib/capability-icons";
 import {
   localizedCapabilityDescription,
   localizedCapabilityName,
@@ -65,12 +65,10 @@ export function ExampleCard({
             {example.capabilities.map((capConfig) => {
               const cap = getCapabilityInfo(capConfig.ref);
               if (!cap) return null;
-              const IconComponent = getCapabilityIcon(cap.icon);
-
               return (
                 <Tooltip key={capConfig.ref}>
                   <TooltipTrigger className="inline-flex cursor-default items-center gap-1 border bg-muted px-2 py-0.5 text-xs">
-                    <IconComponent className="icon-sharp h-3 w-3" />
+                    <CapabilityIcon icon={cap.icon} className="icon-sharp h-3 w-3" />
                     <span>{localizedCapabilityName(cap, locale)}</span>
                   </TooltipTrigger>
                   <TooltipContent>

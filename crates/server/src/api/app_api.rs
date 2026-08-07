@@ -8,7 +8,7 @@
 // routes and has no path to any management API. Every session it touches is
 // confined to the channel by routing tags (TM-APIKEY-002).
 //
-// See `specs/app-api-keys.md`.
+// See `knowledge/integrations/app-api-keys.md`.
 
 use std::sync::Arc;
 

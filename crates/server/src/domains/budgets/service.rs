@@ -3,7 +3,7 @@
 // Combines: metering (LlmTokenMeter), rules (hard stop, soft pause, warn),
 // and evaluation pipeline. Implements EventListener to hook into llm.generation events.
 //
-// See specs/budgeting.md for full specification.
+// See knowledge/security/budgeting.md for full specification.
 
 use async_trait::async_trait;
 use chrono::{DateTime, Datelike, Timelike, Utc};

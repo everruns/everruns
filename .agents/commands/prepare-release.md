@@ -3,7 +3,7 @@
 Cut a release PR: changelog entry, version bumps, lockfiles.
 `$ARGUMENTS` is the new version (e.g. `0.4.0`); ask for it if missing.
 
-[`specs/release-process.md`](../../specs/release-process.md) owns the release contract — changelog
+[`knowledge/project/release-process.md`](../../knowledge/project/release-process.md) owns the release contract — changelog
 structure, tagging, migration handling, and what happens after merge. Read it before deviating.
 
 ## 1. Collect the commits
@@ -61,7 +61,7 @@ Insert after `## [Unreleased]`, preserving the file header and versioning policy
 ```
 
 Link PRs and usernames. Add a **Migration Notes** section only when operators need upgrade guidance;
-engineering-only migration detail belongs in `crates/server/migrations/` and `specs/migrations.md`.
+engineering-only migration detail belongs in `crates/server/migrations/` and `knowledge/operations/migrations.md`.
 Include screenshot links for UI changes.
 
 ## 5. Verify migrations without rewriting them

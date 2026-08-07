@@ -53,7 +53,7 @@ function renderMenu(overrides: Partial<React.ComponentProps<typeof ModelEffortMe
 describe("ModelEffortMenu trigger", () => {
   it("summarizes just the model when reasoning is unsupported", () => {
     renderMenu({ modelTriggerLabel: "GPT-5.4" });
-    expect(screen.getByText("GPT-5.4")).toBeInTheDocument();
+    expect(screen.getByText("GPT-5.4")).not.toHaveClass("truncate");
     expect(screen.queryByText("Medium")).not.toBeInTheDocument();
   });
 

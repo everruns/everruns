@@ -896,7 +896,7 @@ fn format_event_text(
             eprintln!("[{ts}] {label}");
         }
         // Session task lifecycle: events carry a full task snapshot
-        // (specs/session-tasks.md). Render kind, name, state, and detail.
+        // (knowledge/runtime-resources/session-tasks.md). Render kind, name, state, and detail.
         "task.created" | "task.updated" => {
             *saw_task_events = true;
             eprintln!("{}", format_task_event_line(event_type, data, ts));

@@ -4,7 +4,7 @@
 // Decision: AuditLogger trait is generic enough for SaaS to extend with custom event types.
 // Decision: Fire-and-forget pattern — audit failures never block operations (TM-OBS-007).
 // Decision: Domain-specific builders enforce type safety at compile time.
-// See specs/audit-logging.md for full design.
+// See knowledge/security/audit-logging.md for full design.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

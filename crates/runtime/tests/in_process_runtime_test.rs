@@ -925,7 +925,7 @@ async fn execute_btw_command_returns_ephemeral_answer() {
 // Proves embedders can supply their own `UserConnectionResolver` through
 // `RuntimeBackends` and have it reach connection-aware tools via
 // `ToolContext.connection_resolver` (the seam used by integrations such as
-// Daytona). See specs/runtime.md and crates/server/specs/user-connections.md.
+// Daytona). See knowledge/foundations/runtime.md and crates/server/specs/user-connections.md.
 // ---------------------------------------------------------------------------
 
 struct StaticTokenResolver {

@@ -1,6 +1,6 @@
 name: Docker Publish
 
-# Trigger strategy (see specs/release-process.md#docker-image-tagging):
+# Trigger strategy (see knowledge/project/release-process.md#docker-image-tagging):
 # - Tag push (v*) / workflow_dispatch: publish multi-arch release images.
 # - Pull request: validate Docker build only when Docker-relevant files change.
 # - No main-branch push: per-commit Docker images are intentionally not

@@ -1,5 +1,5 @@
 // Capability domain — registry reads plus persisted declarative capabilities.
-// See specs/domains.md for the pattern.
+// See knowledge/foundations/domains.md for the pattern.
 
 use everruns_core::{Permission, Policy, Rule};
 

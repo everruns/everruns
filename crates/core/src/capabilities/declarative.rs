@@ -209,16 +209,16 @@ pub fn hydrate_plugin_capability_config(
     hydrate_declarative_capability_config(config, definition)
 }
 
-/// Build a `CapabilityInfo` DTO for a `plugin:{name}` capability.
+/// Build a `CapabilityInfo` DTO for a plugin capability identity.
 ///
-/// The id field uses `plugin:{name}` so the capability appears under its own
-/// namespace in the capability picker, distinct from `declarative:{name}`.
+/// Server installs pass their public ID; standalone runtime plugins pass their
+/// manifest name. Both remain distinct from `declarative:{name}`.
 pub fn plugin_capability_info(
-    name: &str,
+    identity: &str,
     definition: DeclarativeCapabilityDefinition,
 ) -> CapabilityInfo {
     CapabilityInfo {
-        id: CapabilityId::new(plugin_capability_id(name)),
+        id: CapabilityId::new(plugin_capability_id(identity)),
         name: definition
             .display_name
             .clone()

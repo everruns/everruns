@@ -518,7 +518,10 @@ impl Database {
         path_pattern: Option<&str>,
         max_file_bytes: i64,
     ) -> Result<Vec<MemoryFileInfoRow>> {
-        let rows = if let Some(path_pat) = path_pattern {
+        // The service applies the shared glob matcher. Avoid treating glob syntax
+        // as a PostgreSQL regex and, critically, avoid scanning content until the
+        // service has narrowed these metadata candidates by path.
+        let rows = if path_pattern.is_some() {
             sqlx::query_as::<_, MemoryFileInfoRow>(
                 r#"
                 SELECT id, memory_id, path, is_directory, size_bytes, content_hash, created_at, updated_at
@@ -526,15 +529,11 @@ impl Database {
                 WHERE memory_id = $1
                     AND is_directory = FALSE
                     AND size_bytes <= $2
-                    AND path ~ $3
-                    AND convert_from(content, 'UTF8') ~ $4
                 ORDER BY path ASC
                 "#,
             )
             .bind(memory_id)
             .bind(max_file_bytes)
-            .bind(path_pat)
-            .bind(pattern)
             .fetch_all(&self.pool)
             .await?
         } else {

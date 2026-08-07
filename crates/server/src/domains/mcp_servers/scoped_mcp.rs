@@ -275,7 +275,7 @@ pub fn validate_scoped_mcp_servers(servers: &ScopedMcpServers) -> Result<()> {
         }
         // Local-process (stdio) transport is hard-off in the hosted product;
         // it is only available to single-tenant runtime/CLI hosts
-        // (specs/runtime-mcp.md D2). Reject it here so it can never be
+        // (knowledge/integrations/runtime-mcp.md D2). Reject it here so it can never be
         // configured on an organization's harness/agent/session.
         if server.transport_type.is_local() {
             return Err(anyhow!(

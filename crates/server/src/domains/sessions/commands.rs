@@ -4,6 +4,7 @@ use super::types::{
     ForkSessionRequest, GetOrCreateChatSessionRequest, SessionStatsResponse, UpdateSessionRequest,
 };
 use crate::domains::common::*;
+use crate::services::PrincipalService;
 use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
 use everruns_core::events::{
     EventContext, EventData, EventRequest, InputMessageData, LLM_GENERATION, SessionIdledData,
@@ -71,6 +72,16 @@ impl Command for CreateSession {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Session, CommandError> {
+        if let Some(limiter) = &ctx.org_rate_limiter
+            && limiter.check_session_create(ctx.org_id()).await.is_err()
+        {
+            return Err(
+                CommandError::rate_limited("Too many requests. Please try again later.")
+                    .with_code("rate_limited")
+                    .with_retry_after(60),
+            );
+        }
+
         let mut req = self.0;
         req.locale =
             crate::api::validation::normalize_locale(req.locale).map_err(limit_validation_error)?;
@@ -362,13 +373,37 @@ impl Command for AddSessionParticipant {
             }
         }
 
+        let (principal_id, display_name) = if is_user_participant {
+            match ctx.caller.user_id {
+                Some(user_id) => {
+                    let principal = PrincipalService::new(ctx.db.clone())
+                        .ensure_user_principal(ctx.org_id(), user_id)
+                        .await
+                        .map_err(classify_anyhow)?;
+                    let display_name = ctx
+                        .db
+                        .get_user(user_id)
+                        .await
+                        .map_err(classify_anyhow)?
+                        .map(|user| user.name.trim().to_string())
+                        .filter(|name| !name.is_empty())
+                        .unwrap_or_else(|| "User".to_string());
+                    (principal.id, Some(display_name))
+                }
+                None => (session.owner_principal_id, Some("User".to_string())),
+            }
+        } else {
+            (session.owner_principal_id, None)
+        };
+
         let input = crate::storage::models::CreateSessionParticipantRow {
             org_id: ctx.org_id(),
             session_id,
             kind: self.req.kind,
             agent_id,
             agent_version_id,
-            principal_id: session.owner_principal_id,
+            principal_id,
+            display_name,
             role,
             joined_at: None,
         };
@@ -463,7 +498,7 @@ async fn ensure_session_exists(
         .ok_or_else(|| CommandError::not_found("Session"))
 }
 
-/// Fork a session into a new, independent session (specs/forking-sessions.md).
+/// Fork a session into a new, independent session (knowledge/runtime-resources/forking-sessions.md).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ForkSession {
     /// Session to fork (prefixed public id).
@@ -491,6 +526,21 @@ impl Command for ForkSession {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Session, CommandError> {
+        // Fork creates a new session (and deep-copies parent state), so it
+        // shares the same per-org velocity bucket as CreateSession. Enforce it
+        // here in the transport-independent command so MCP/inventory dispatch
+        // cannot bypass the limit the REST handler previously enforced alone
+        // (TM-DOS-016).
+        if let Some(limiter) = &ctx.org_rate_limiter
+            && limiter.check_session_create(ctx.org_id()).await.is_err()
+        {
+            return Err(
+                CommandError::rate_limited("Too many requests. Please try again later.")
+                    .with_code("rate_limited")
+                    .with_retry_after(60),
+            );
+        }
+
         let parent_id = q::parse_session_id(&self.session_id)?;
 
         // Existence + active-status checks here so callers get precise HTTP
@@ -845,6 +895,121 @@ mod tests {
         .await
         .expect("seed harness")
         .id
+    }
+
+    async fn chat_test_ctx(session_rpm: u32) -> (Ctx, crate::auth::rate_limit::OrgRateLimiter) {
+        let db = Arc::new(StorageBackend::in_memory());
+        crate::org_init::initialize_org_harnesses(&db, DEFAULT_ORG_ID)
+            .await
+            .expect("initialize built-in harnesses");
+        let user = db
+            .create_user(crate::storage::models::CreateUserRow {
+                email: format!("chat-owner-{}@example.com", Uuid::now_v7()),
+                name: "Chat Owner".to_string(),
+                avatar_url: None,
+                roles: vec!["user".to_string()],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: None,
+                auth_provider_id: None,
+                external_id: None,
+            })
+            .await
+            .expect("create chat owner");
+        let limiter =
+            crate::auth::rate_limit::OrgRateLimiter::for_test_with_session_rpm(session_rpm);
+        let ctx = external_test_ctx(db, user.id)
+            .with_chat_harness_name(Some("platform-chat".to_string()))
+            .with_org_rate_limiter(limiter.clone());
+        (ctx, limiter)
+    }
+
+    #[tokio::test]
+    async fn create_session_enforces_shared_org_rate_limit() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let limiter = crate::auth::rate_limit::OrgRateLimiter::for_test_with_session_rpm(1);
+        limiter
+            .check_session_create(DEFAULT_ORG_ID)
+            .await
+            .expect("initial permit");
+        let ctx = test_ctx(db, 100).with_org_rate_limiter(limiter);
+
+        let err = CreateSession(create_request(HarnessId::new()))
+            .execute(&ctx)
+            .await
+            .expect_err("exhausted per-org bucket must reject command dispatch");
+
+        assert!(matches!(err.kind, CommandErrorKind::RateLimited(_)));
+        assert_eq!(err.code.as_deref(), Some("rate_limited"));
+        assert_eq!(err.retry_after_seconds, Some(60));
+    }
+
+    #[tokio::test]
+    async fn fork_session_enforces_shared_org_rate_limit() {
+        // Fork must consume the same per-org bucket as create so MCP dispatch
+        // cannot bypass it. The limiter is checked before parent lookup, so an
+        // exhausted bucket rejects the fork regardless of the parent id.
+        let db = Arc::new(StorageBackend::in_memory());
+        let limiter = crate::auth::rate_limit::OrgRateLimiter::for_test_with_session_rpm(1);
+        limiter
+            .check_session_create(DEFAULT_ORG_ID)
+            .await
+            .expect("initial permit");
+        let ctx = test_ctx(db, 100).with_org_rate_limiter(limiter);
+
+        let err = ForkSession {
+            session_id: SessionId::new().to_string(),
+            overrides: Default::default(),
+        }
+        .execute(&ctx)
+        .await
+        .expect_err("exhausted per-org bucket must reject fork dispatch");
+
+        assert!(matches!(err.kind, CommandErrorKind::RateLimited(_)));
+        assert_eq!(err.code.as_deref(), Some("rate_limited"));
+        assert_eq!(err.retry_after_seconds, Some(60));
+    }
+
+    #[tokio::test]
+    async fn get_or_create_chat_session_enforces_rate_limit_when_creating() {
+        let (ctx, limiter) = chat_test_ctx(1).await;
+        limiter
+            .check_session_create(DEFAULT_ORG_ID)
+            .await
+            .expect("initial permit");
+
+        let err = GetOrCreateChatSession { locale: None }
+            .execute(&ctx)
+            .await
+            .expect_err("exhausted per-org bucket must reject chat session creation");
+
+        assert!(
+            matches!(err.kind, CommandErrorKind::RateLimited(_)),
+            "unexpected error: {err:?}"
+        );
+        assert_eq!(err.code.as_deref(), Some("rate_limited"));
+        assert_eq!(err.retry_after_seconds, Some(60));
+    }
+
+    #[tokio::test]
+    async fn get_or_create_chat_session_reuse_does_not_consume_rate_limit() {
+        let (ctx, limiter) = chat_test_ctx(1).await;
+
+        let created = GetOrCreateChatSession { locale: None }
+            .execute(&ctx)
+            .await
+            .expect("first request creates within the available permit");
+        assert!(
+            limiter.check_session_create(DEFAULT_ORG_ID).await.is_err(),
+            "create branch must consume the shared bucket"
+        );
+
+        let reused = GetOrCreateChatSession { locale: None }
+            .execute(&ctx)
+            .await
+            .expect("reuse must not check or consume the exhausted bucket");
+
+        assert_eq!(reused.id, created.id);
     }
 
     // Minimal runner whose `cancel_run` succeeds without a real durable backend,
@@ -1424,9 +1589,23 @@ impl Command for GetOrCreateChatSession {
             .unwrap_or(chat_harness_name.as_str());
 
         q::session_service(ctx)?
-            .get_or_create_chat_session(&ctx.caller, user_id, chat_harness_id.uuid(), title, locale)
+            .get_or_create_chat_session(
+                &ctx.caller,
+                user_id,
+                chat_harness_id.uuid(),
+                title,
+                locale,
+                ctx.org_rate_limiter.as_ref(),
+            )
             .await
-            .map_err(classify_anyhow)
+            .map_err(|error| match error {
+                super::service::GetOrCreateChatSessionError::RateLimited => {
+                    CommandError::rate_limited("Too many requests. Please try again later.")
+                        .with_code("rate_limited")
+                        .with_retry_after(60)
+                }
+                super::service::GetOrCreateChatSessionError::Other(error) => classify_anyhow(error),
+            })
     }
 }
 

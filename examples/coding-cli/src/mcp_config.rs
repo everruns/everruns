@@ -1,4 +1,4 @@
-//! Load MCP servers from a workspace `.mcp.json` (specs/runtime-mcp.md D8).
+//! Load MCP servers from a workspace `.mcp.json` (knowledge/integrations/runtime-mcp.md D8).
 //!
 //! Shape matches the `mcpServers` object every MCP client understands:
 //!

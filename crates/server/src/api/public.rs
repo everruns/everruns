@@ -1,7 +1,7 @@
 // Public-endpoint error sanitization.
 //
 // "Public" endpoints serve unauthenticated callers (see
-// `specs/public-endpoints.md`). They MUST NOT surface internal information to
+// `knowledge/execution/public-endpoints.md`). They MUST NOT surface internal information to
 // clients: provider names, model IDs, HTTP status codes from upstream calls,
 // quota state, stack traces, or any other implementation detail. They also
 // MUST NOT instruct the user to "contact admin" or "contact support" — public

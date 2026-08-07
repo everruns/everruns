@@ -125,11 +125,11 @@ Threat summary:
 - Tokens are resolved from user connections or operator env vars and never stored in sandbox state.
 - Session isolation relies on per-session secret names and leased-resource ownership.
 
-See `specs/threat-model.md` for the Deno-specific threat section.
+See `knowledge/security/threat-model.md` for the Deno-specific threat section.
 
 ## Testing
 
 - `tests/live_api_test.rs` is feature-gated behind `deno-live-tests`.
-- Missing-credential behavior is **fail-closed**: with the feature flag on, the test panics when `DENO_DEPLOY_TOKEN` is missing, or when a personal `ddp_...` token is used without `DENO_DEPLOY_ORG`. See `specs/integrations.md`.
+- Missing-credential behavior is **fail-closed**: with the feature flag on, the test panics when `DENO_DEPLOY_TOKEN` is missing, or when a personal `ddp_...` token is used without `DENO_DEPLOY_ORG`. See `knowledge/integrations/integrations.md`.
 - `DENO_SANDBOX_REGION` optionally overrides the create region for live tests. CI pins Deno live coverage to `ams` because upstream `ord` websocket handshakes were returning transport errors while `ams` continued to provision sandboxes successfully.
 - `.github/workflows/ci.yml` runs the live test only on pushes to `main` when `integrations/deno/**` changes; `.github/workflows/integration-live-sweep.yml` reruns it weekly and on demand as the shared-code backstop.

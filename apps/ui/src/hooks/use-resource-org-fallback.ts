@@ -1,5 +1,5 @@
 // Cross-org resource fallback.
-// See specs/multitenancy.md (Cross-Org Resource Resolution).
+// See knowledge/security/multitenancy.md (Cross-Org Resource Resolution).
 //
 // When a user follows a direct link to a top-level entity (session, agent,
 // app, ...) that lives in an org they are a member of but have not currently

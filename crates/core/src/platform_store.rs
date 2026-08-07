@@ -46,11 +46,35 @@ pub struct PlatformCreateSessionRequest {
 
 /// Trait for platform-level management operations.
 ///
-/// Provides org-scoped CRUD for harnesses, agents, and sessions,
-/// plus session messaging and turn management. Used by the
-/// `platform_management` capability tools.
+/// Provides the catalog-backed `platform` surface plus legacy org-scoped CRUD
+/// used by `platform_management` compatibility tools.
 #[async_trait]
 pub trait PlatformStore: Send + Sync {
+    // =========================================================================
+    // Catalog-backed command surface
+    // =========================================================================
+
+    /// Search the authoritative domain-command catalog.
+    async fn platform_discover(&self, _arguments: serde_json::Value) -> Result<String> {
+        Err(crate::error::AgentLoopError::config(
+            "Platform command surface is not available in this host",
+        ))
+    }
+
+    /// Execute a bounded script against read-only domain commands.
+    async fn platform_query(&self, _arguments: serde_json::Value) -> Result<String> {
+        Err(crate::error::AgentLoopError::config(
+            "Platform command surface is not available in this host",
+        ))
+    }
+
+    /// Execute a bounded script against the full authorized command catalog.
+    async fn platform_execute(&self, _arguments: serde_json::Value) -> Result<String> {
+        Err(crate::error::AgentLoopError::config(
+            "Platform command surface is not available in this host",
+        ))
+    }
+
     // =========================================================================
     // Harness Operations
     // =========================================================================
@@ -534,6 +558,18 @@ pub mod tests {
 
     #[async_trait]
     impl PlatformStore for MockPlatformStore {
+        async fn platform_discover(&self, arguments: serde_json::Value) -> Result<String> {
+            Ok(arguments.to_string())
+        }
+
+        async fn platform_query(&self, arguments: serde_json::Value) -> Result<String> {
+            Ok(arguments.to_string())
+        }
+
+        async fn platform_execute(&self, arguments: serde_json::Value) -> Result<String> {
+            Ok(arguments.to_string())
+        }
+
         async fn list_harnesses(&self) -> Result<Vec<Harness>> {
             Ok(vec![self.harness.clone()])
         }
@@ -847,6 +883,7 @@ pub mod tests {
                 agent_id: Some(agent_id),
                 agent_version_id: self.agent.default_version_id,
                 principal_id: self.session.owner_principal_id,
+                display_name: None,
                 role: crate::session::SessionParticipantRole::Member,
                 joined_at: chrono::Utc::now(),
                 left_at: None,

@@ -39,7 +39,7 @@ impl Database {
     }
 
     /// Look up the owning org for a skill by its public_id. See
-    /// specs/multitenancy.md (Cross-Org Resource Resolution).
+    /// knowledge/security/multitenancy.md (Cross-Org Resource Resolution).
     pub async fn get_skill_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
         let row: Option<(i64,)> =
             sqlx::query_as("SELECT org_id FROM skills WHERE public_id = $1 LIMIT 1")
@@ -143,7 +143,11 @@ impl Database {
                 status = COALESCE($10, status),
                 version = COALESCE($11, version),
                 archive_data = COALESCE($12, archive_data),
-                source_type = COALESCE($13, source_type)
+                source_type = COALESCE($13, source_type),
+                archived_at = CASE
+                    WHEN $10 IS NOT NULL AND $10 != 'archived' THEN NULL
+                    ELSE archived_at
+                END
             WHERE id = $1 AND org_id = $2
             RETURNING id, public_id, org_id, name, description, license, compatibility, metadata, allowed_tools, instructions, source_type, archive_data, status, version, created_at, updated_at, archived_at, deleted_at
             "#,
@@ -253,7 +257,7 @@ impl Database {
     // ============================================
 
     /// Fill image `data`/`thumbnail_data` from the object store when offloaded
-    /// (specs/object-storage.md). No-op for the inline backend.
+    /// (knowledge/runtime-resources/object-storage.md). No-op for the inline backend.
     async fn materialize_image_data(&self, row: &mut ImageRow) -> Result<()> {
         let Some(blob) = self.blob_store() else {
             return Ok(());
@@ -288,7 +292,7 @@ impl Database {
                 .map(|_| image_thumbnail_key(org_id, image_id));
 
             // Disaster-recovery metadata so the `images` row can be rebuilt
-            // from the object alone (specs/object-storage.md).
+            // from the object alone (knowledge/runtime-resources/object-storage.md).
             let data_meta = BlobMetadata::new(
                 "image",
                 serde_json::json!({

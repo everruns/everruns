@@ -3,7 +3,7 @@
 // ==========================================================================
 //
 // This module defines the Everruns event protocol - a PUBLIC API CONTRACT.
-// Changes must follow the compatibility guidelines in specs/events.md.
+// Changes must follow the compatibility guidelines in knowledge/execution/events.md.
 //
 // STABILITY: Stable (v1)
 // - Event structure (id, type, ts, session_id, context, data) is frozen
@@ -11,7 +11,7 @@
 // - New optional fields are non-breaking
 // - Unsupported events are filtered before API responses
 //
-// See: specs/events.md for full contract specification.
+// See: knowledge/execution/events.md for full contract specification.
 // ==========================================================================
 //
 // All events follow a consistent structure: id, type, ts, context, data.
@@ -55,7 +55,7 @@ pub const TURN_FAILED: &str = "turn.failed";
 /// Turn was deliberately sealed (stopped to prevent waste): no forward progress
 /// across repeated crash-reclaims, or work budget exhausted. Distinct from
 /// `turn.completed` (success) and `turn.failed` (error). Carries a `reason`.
-/// See EVE-534 and `specs/durable-execution-engine.md`.
+/// See EVE-534 and `knowledge/operations/durable-execution-engine.md`.
 pub const TURN_SEALED: &str = "turn.sealed";
 pub const TURN_CANCELLED: &str = "turn.cancelled";
 
@@ -121,9 +121,9 @@ pub const SCHEDULE_TRIGGERED: &str = "schedule.triggered";
 // Subagent lifecycle events (`subagent.*`) were retired (EVE-585): the subagent
 // flow became Session Tasks and now emits `task.*` events. The legacy types are
 // no longer emitted or parsed; historical `subagent.*` rows in old session logs
-// deserialize via the generic unsupported-type fallback. See specs/events.md.
+// deserialize via the generic unsupported-type fallback. See knowledge/execution/events.md.
 
-// Session task lifecycle events (specs/session-tasks.md)
+// Session task lifecycle events (knowledge/runtime-resources/session-tasks.md)
 pub const TASK_CREATED: &str = "task.created";
 pub const TASK_UPDATED: &str = "task.updated";
 pub const TASK_MESSAGE_SENT: &str = "task.message.sent";
@@ -656,7 +656,7 @@ impl TokenUsage {
 
     /// Get total tokens (input + output)
     pub fn total_tokens(&self) -> u32 {
-        self.input_tokens + self.output_tokens
+        self.input_tokens.saturating_add(self.output_tokens)
     }
 
     /// Add another TokenUsage to this one (for aggregation)
@@ -666,13 +666,15 @@ impl TokenUsage {
         // those slots when no explicit total is set, so reading it afterward
         // would fold in `other`'s just-added actual/estimated and double-count.
         let current_cost = self.effective_cost_usd();
-        self.input_tokens += other.input_tokens;
-        self.output_tokens += other.output_tokens;
+        self.input_tokens = self.input_tokens.saturating_add(other.input_tokens);
+        self.output_tokens = self.output_tokens.saturating_add(other.output_tokens);
         if let Some(cache) = other.cache_read_tokens {
-            *self.cache_read_tokens.get_or_insert(0) += cache;
+            let total = self.cache_read_tokens.get_or_insert(0);
+            *total = total.saturating_add(cache);
         }
         if let Some(cache) = other.cache_creation_tokens {
-            *self.cache_creation_tokens.get_or_insert(0) += cache;
+            let total = self.cache_creation_tokens.get_or_insert(0);
+            *total = total.saturating_add(cache);
         }
         if let Some(cost) = other.actual_cost_usd {
             *self.actual_cost_usd.get_or_insert(0.0) += cost;
@@ -736,6 +738,23 @@ mod token_usage_tests {
         assert_eq!(aggregate.actual_cost_usd, Some(4.0));
         assert_eq!(aggregate.effective_cost_usd(), Some(4.0));
     }
+
+    #[test]
+    fn aggregate_token_counters_saturate_at_their_bound() {
+        let mut aggregate = TokenUsage::with_cache(
+            u32::MAX - 1,
+            u32::MAX - 1,
+            Some(u32::MAX - 1),
+            Some(u32::MAX - 1),
+        );
+        aggregate.add(&TokenUsage::with_cache(10, 10, Some(10), Some(10)));
+
+        assert_eq!(aggregate.input_tokens, u32::MAX);
+        assert_eq!(aggregate.output_tokens, u32::MAX);
+        assert_eq!(aggregate.cache_read_tokens, Some(u32::MAX));
+        assert_eq!(aggregate.cache_creation_tokens, Some(u32::MAX));
+        assert_eq!(aggregate.total_tokens(), u32::MAX);
+    }
 }
 
 /// Data for input.message event
@@ -789,7 +808,7 @@ pub struct OutputMessageStartedData {
     /// the provider stream reveals a native phase before this event is emitted;
     /// today `output.message.started` is emitted before the LLM call, so this is
     /// generally `None` at start. The authoritative classification remains the
-    /// completed `Message.phase`. See `specs/events.md`.
+    /// completed `Message.phase`. See `knowledge/execution/events.md`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<ExecutionPhase>,
 }
@@ -825,7 +844,7 @@ pub struct OutputMessageDeltaData {
     /// (see `ExecutionPhase::refine_streamed_hint`). Providers without native
     /// mid-stream phase (Anthropic, Gemini, …) leave this `None` until
     /// completion. The authoritative classification remains the completed
-    /// `Message.phase`. See `specs/events.md`.
+    /// `Message.phase`. See `knowledge/execution/events.md`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<ExecutionPhase>,
 }
@@ -4014,7 +4033,7 @@ mod tests {
 // Contract Tests
 // ============================================================================
 //
-// These tests validate the event protocol contract defined in specs/events.md.
+// These tests validate the event protocol contract defined in knowledge/execution/events.md.
 // Snapshot tests ensure JSON structure doesn't change accidentally.
 // Forward compatibility tests verify unknown fields are handled correctly.
 

@@ -13,7 +13,7 @@
 // `mode == External` when any OAuth provider config is present, with a clear
 // message that names both the conflicting mode and the specific providers.
 // Operators must remove `google`/`github` config or change `AUTH_MODE`
-// before the server starts. See `specs/authentication.md` (External Mode
+// before the server starts. See `knowledge/security/authentication.md` (External Mode
 // and OAuth Providers).
 
 use everruns_core::config::env_opt_string_any;
@@ -493,7 +493,7 @@ impl AuthConfig {
                     "AUTH_MODE=external is incompatible with built-in OAuth providers \
                      ({}). External mode delegates identity to a third-party provider; \
                      remove the OAuth env vars or set AUTH_MODE=full to use the built-in \
-                     OAuth flow. See specs/authentication.md (External Mode and OAuth \
+                     OAuth flow. See knowledge/security/authentication.md (External Mode and OAuth \
                      Providers).",
                     configured.join("; ")
                 ));

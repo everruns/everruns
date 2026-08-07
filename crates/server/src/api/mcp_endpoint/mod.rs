@@ -25,6 +25,7 @@
 //   `initialize` for older clients since it creates no server state either way.
 // - Multi-org: org-scoped tools accept optional `organization_id` to override the default org
 
+mod caching;
 mod cards;
 mod tasks;
 mod tool_registry;
@@ -48,7 +49,6 @@ use axum::{
     response::{IntoResponse, Response},
     routing::post,
 };
-use bashkit::ScriptingToolSet;
 use everruns_core::mcp_server::{McpErrorCode, McpExecuteError, classify_mcp_execute_error};
 use everruns_core::session_sqldb::SessionSqlDbStore;
 use everruns_core::{Caller, OrgRole, PlatformDefinition, validate_org_public_id};
@@ -60,8 +60,8 @@ use std::sync::Arc;
 
 use super::common::impl_auth_state;
 
-mod catalog;
-mod positional;
+pub(crate) mod catalog;
+pub(crate) mod positional;
 
 // ============================================================================
 // JSON-RPC 2.0 types
@@ -305,6 +305,7 @@ pub struct AppState {
     pub budget_service: Arc<BudgetService>,
     pub runner: Arc<dyn AgentRunner>,
     pub auth: AuthState,
+    pub org_rate_limiter: crate::auth::rate_limit::OrgRateLimiter,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
     pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub fallback_base_harness_name: Option<String>,
@@ -314,7 +315,7 @@ pub struct AppState {
     pub sqldb_store: Option<Arc<dyn SessionSqlDbStore>>,
     /// System utility LLM for sanctioned internal analysis commands.
     pub utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
-    /// Agent health check service (specs/agent-checks.md, tier-3), so the
+    /// Agent health check service (knowledge/evaluation/agent-checks.md, tier-3), so the
     /// health-check commands work over MCP, not just HTTP.
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     /// Absolute URL of `/.well-known/oauth-protected-resource/mcp`, used to
@@ -364,6 +365,7 @@ impl AppState {
             db,
             runner,
             auth,
+            org_rate_limiter: crate::auth::rate_limit::OrgRateLimiter::default(),
             encryption,
             workflow_store,
             fallback_base_harness_name: platform_definition
@@ -388,6 +390,14 @@ impl AppState {
 
     pub fn with_resource_metadata_url(mut self, url: impl Into<String>) -> Self {
         self.resource_metadata_url = Some(url.into());
+        self
+    }
+
+    pub fn with_org_rate_limiter(
+        mut self,
+        limiter: crate::auth::rate_limit::OrgRateLimiter,
+    ) -> Self {
+        self.org_rate_limiter = limiter;
         self
     }
 
@@ -598,25 +608,71 @@ async fn handle_mcp(
         );
     }
 
+    // Result metadata (`resultType` and, where the result is cacheable, `ttlMs`
+    // / `cacheScope`) is attached here rather than inside each handler: the
+    // policy is per-method and per-era, and the handlers have many success
+    // paths. See `caching` for the TTL and scope rationale.
+    let negotiated_version = protocol_version.unwrap_or(MCP_PROTOCOL_VERSION_FALLBACK);
     let response = match req.method.as_str() {
         "initialize" => handle_initialize(req.id, req.params),
-        "tools/list" => handle_tools_list(
-            req.id,
-            protocol_version.unwrap_or(MCP_PROTOCOL_VERSION_FALLBACK),
-        ),
+        "tools/list" => {
+            let mut response = handle_tools_list(req.id, negotiated_version);
+            if let Some(result) = response.result.as_mut() {
+                caching::mark_cacheable(
+                    result,
+                    negotiated_version,
+                    caching::TOOLS_LIST_TTL_MS,
+                    // The catalog is static per protocol version — identical
+                    // for every caller — so it is safe to share across
+                    // authorization contexts.
+                    caching::CacheScope::Public,
+                );
+            }
+            response
+        }
         "tools/call" => {
-            handle_tools_call(
+            let mut response = handle_tools_call(
                 req.id.clone(),
                 req.params,
                 &auth_user,
                 &org,
                 &state,
-                protocol_version.unwrap_or(MCP_PROTOCOL_VERSION_FALLBACK),
+                negotiated_version,
             )
-            .await
+            .await;
+            // Tool results are never cacheable; they only carry `resultType`.
+            if let Some(result) = response.result.as_mut() {
+                caching::mark_complete(result, negotiated_version);
+            }
+            response
         }
-        "resources/list" => handle_resources_list(req.id),
-        "resources/read" => handle_resources_read(req.id, req.params, &org, &state).await,
+        "resources/list" => {
+            let mut response = handle_resources_list(req.id);
+            if let Some(result) = response.result.as_mut() {
+                caching::mark_cacheable(
+                    result,
+                    negotiated_version,
+                    caching::RESOURCES_LIST_TTL_MS,
+                    // Static catalog of resource URIs, same for every caller.
+                    caching::CacheScope::Public,
+                );
+            }
+            response
+        }
+        "resources/read" => {
+            let mut response = handle_resources_read(req.id, req.params, &org, &state).await;
+            if let Some(result) = response.result.as_mut() {
+                caching::mark_cacheable(
+                    result,
+                    negotiated_version,
+                    caching::RESOURCES_READ_TTL_MS,
+                    // Payloads are org-scoped; a shared cache keyed on the URI
+                    // alone would serve one org's data to another.
+                    caching::CacheScope::Private,
+                );
+            }
+            response
+        }
         // MCP 2026-07-28 Tasks extension (SEP-2663). Task handles map to
         // sessions; these methods delegate to the same session logic the
         // agent_run/session_get_status/session_send_message tools use. Gated to
@@ -764,6 +820,7 @@ fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
         state.auth.permission_resolver.clone(),
     )
     .with_feature_flags(org.feature_flags.clone())
+    .with_org_rate_limiter(state.org_rate_limiter.clone())
     .with_utility_llm_service(state.utility_llm_service.clone());
     if let Some(service) = &state.health_check_service {
         ctx = ctx.with_health_check_service(service.clone());
@@ -926,7 +983,7 @@ async fn handle_tools_call(
 
     // Card tools return an MCP content array directly (resource + summary
     // text) and skip the JSON-string wrapping path used by other tools.
-    // See specs/mcp-cards.md.
+    // See knowledge/ui/mcp-cards.md.
     if tool_name == "agent_get_card" {
         let card_result = tokio::time::timeout(
             std::time::Duration::from_millis(tool_def.timeout_ms()),
@@ -1241,7 +1298,7 @@ async fn handle_tasks_update(
 /// that predate the structured envelope keep working; when an envelope
 /// is supplied, also emits `structuredContent` carrying the typed
 /// [`McpExecuteError`] so newer SDKs can branch on a machine-readable
-/// `code`/`category`/`retryable` triple. See `specs/mcp.md`.
+/// `code`/`category`/`retryable` triple. See `knowledge/integrations/mcp.md`.
 fn error_result_payload(message: &str, envelope: Option<&McpExecuteError>) -> Value {
     let mut payload = json!({
         "content": [{ "type": "text", "text": message }],
@@ -1663,7 +1720,7 @@ async fn tool_session_get_status(
 
 // ============================================================================
 // Tier 1: agent_get_card — MCP-Apps card resource for an agent
-// See specs/mcp-cards.md for the card standard.
+// See knowledge/ui/mcp-cards.md for the card standard.
 // ============================================================================
 
 async fn tool_agent_get_card(
@@ -1707,114 +1764,15 @@ async fn tool_agent_get_card(
 
 async fn tool_discover(
     args: &Value,
-    _org: &ResolvedOrg,
-    _state: &AppState,
+    org: &ResolvedOrg,
+    state: &AppState,
 ) -> Result<String, String> {
-    let show_all = args.get("all").and_then(|v| v.as_bool()).unwrap_or(false);
-    let include_schemas = args
-        .get("include_schemas")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(!show_all);
-
-    let mut entries = crate::domains::common::catalog_entries_with_schemas(include_schemas);
-    entries.sort_by_key(|entry| (entry.category, entry.name));
-
-    if !show_all {
-        let query = args
-            .get("query")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .trim();
-        if query.is_empty() {
-            return Err(
-                "Provide a 'query' to search or set 'all: true' to list everything.".into(),
-            );
-        }
-
-        entries.retain(|entry| catalog_entry_matches(entry, query));
-    }
-
-    let operation_json = |entry: &crate::domains::common::CommandCatalogEntry| {
-        let mut value = json!({
-            "name": entry.name,
-            "category": entry.category,
-            "description": entry.description,
-            "read_only": entry.read_only,
-            "output_shape": entry.output_shape,
-        });
-        if let Some(positional_arg) = entry.positional_arg {
-            value["positional_arg"] = json!(positional_arg);
-        }
-        if include_schemas {
-            value["input_schema"] = entry.input_schema.clone();
-            value["output_schema"] = entry.output_schema.clone();
-        }
-        value
-    };
-
-    if show_all {
-        let mut by_category: std::collections::BTreeMap<&str, Vec<Value>> =
-            std::collections::BTreeMap::new();
-        for entry in &entries {
-            by_category
-                .entry(entry.category)
-                .or_default()
-                .push(operation_json(entry));
-        }
-
-        let categories: Vec<Value> = by_category
-            .into_iter()
-            .map(|(category, operations)| {
-                json!({
-                    "category": category,
-                    "count": operations.len(),
-                    "operations": operations,
-                })
-            })
-            .collect();
-
-        pretty_json(&json!({
-            "count": entries.len(),
-            "include_schemas": include_schemas,
-            "categories": categories,
-            "shape_hints": output_shape_hints(),
-        }))
-    } else {
-        pretty_json(&json!({
-            "count": entries.len(),
-            "include_schemas": include_schemas,
-            "operations": entries.iter().map(operation_json).collect::<Vec<_>>(),
-            "shape_hints": output_shape_hints(),
-        }))
-    }
-}
-
-fn catalog_entry_matches(entry: &crate::domains::common::CommandCatalogEntry, query: &str) -> bool {
-    let haystack = format!(
-        "{} {} {} {}",
-        entry.name,
-        entry.name.replace('_', " "),
-        entry.category,
-        entry.description
+    crate::services::platform_command_surface::invoke(
+        crate::services::platform_command_surface::Operation::Discover,
+        args,
+        catalog_context(org, state),
     )
-    .to_lowercase();
-
-    let normalized_query = query.replace('_', " ").to_lowercase();
-    query
-        .to_lowercase()
-        .split_whitespace()
-        .all(|term| haystack.contains(term))
-        || normalized_query
-            .split_whitespace()
-            .all(|term| haystack.contains(term))
-}
-
-fn output_shape_hints() -> Value {
-    json!({
-        "array": "Root JSON value is an array. Use jq '.[]'.",
-        "paginated": "Root JSON value is an object with data/total/offset/limit. Use jq '.data[]'.",
-        "unknown": "Inspect output_schema or run a small sample before choosing a jq path."
-    })
+    .await
 }
 
 // ============================================================================
@@ -1822,121 +1780,63 @@ fn output_shape_hints() -> Value {
 // ============================================================================
 
 async fn tool_query(args: &Value, org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
-    tool_script(args, org, state, catalog::ToolsetMode::ReadOnly).await
+    crate::services::platform_command_surface::invoke(
+        crate::services::platform_command_surface::Operation::Query,
+        args,
+        catalog_context(org, state),
+    )
+    .await
 }
 
 async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
-    tool_script(args, org, state, catalog::ToolsetMode::Full).await
-}
-
-async fn tool_script(
-    args: &Value,
-    org: &ResolvedOrg,
-    state: &AppState,
-    mode: catalog::ToolsetMode,
-) -> Result<String, String> {
-    let command = args
-        .get("commands")
-        .and_then(|v| v.as_str())
-        .ok_or("Missing required parameter: commands")?;
-
-    let timeout_ms = args
-        .get("timeout_ms")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(30000)
-        .min(60000);
-
-    // EVE-323: rewrite `<cmd> <id>` → `<cmd> --<positional> <id>` so LLM
-    // callers don't hit bashkit's "expected --flag" rejection.
-    let rewritten = positional::rewrite(command, positional::positional_map());
-
-    let toolset = build_toolset(org, state, mode);
-    execute_script(&toolset, &rewritten, timeout_ms).await
+    crate::services::platform_command_surface::invoke(
+        crate::services::platform_command_surface::Operation::Execute,
+        args,
+        catalog_context(org, state),
+    )
+    .await
 }
 
 // ============================================================================
-// ScriptingToolSet helpers
+// Catalog command-context helpers
 // ============================================================================
 
 /// Build a CatalogContext for the given org.
 fn catalog_context(org: &ResolvedOrg, state: &AppState) -> catalog::CatalogContext {
     catalog::CatalogContext {
-        state: state.clone(),
-        caller: Caller::from(org),
+        domain_ctx: domain_context(Caller::from(org), state),
         link_builder: link_builder(state),
     }
 }
 
-/// Build a ScriptingToolSet for the given org context.
-/// All scripted tools dispatch inventory-registered domain commands — no HTTP.
-fn build_toolset(
-    org: &ResolvedOrg,
-    state: &AppState,
-    mode: catalog::ToolsetMode,
-) -> ScriptingToolSet {
-    catalog::build_toolset(catalog_context(org, state), mode)
-}
-
-/// Execute a script through a ScriptingToolSet and return formatted output.
-async fn execute_script(
-    toolset: &ScriptingToolSet,
-    command: &str,
-    timeout_ms: u64,
-) -> Result<String, String> {
-    let tools = toolset.tools();
-    let tool = tools
-        .first()
-        .ok_or_else(|| "No tools registered in toolset".to_string())?;
-    let request = bashkit::ToolRequest::new(command);
-
-    let result = tokio::time::timeout(
-        std::time::Duration::from_millis(timeout_ms),
-        tool.execute(request),
+pub(crate) fn domain_context(caller: Caller, state: &AppState) -> crate::domains::common::Ctx {
+    let mut ctx = crate::domains::common::Ctx::new(
+        caller,
+        state.db.clone(),
+        state.capability_service.clone(),
+        state.encryption.clone(),
+        state.auth.permission_resolver.clone(),
     )
-    .await;
-
-    match result {
-        Ok(response) => {
-            if response.exit_code == 0 {
-                Ok(response.stdout)
-            } else {
-                let combined = if response.stderr.is_empty() {
-                    response.stdout
-                } else if response.stdout.is_empty() {
-                    response.stderr
-                } else {
-                    format!("{}\n{}", response.stdout, response.stderr)
-                };
-                let trimmed = combined.trim();
-                if trimmed.is_empty() {
-                    Err(format!(
-                        "Command failed with exit code {}",
-                        response.exit_code
-                    ))
-                } else {
-                    Err(sanitize_script_error(trimmed))
-                }
-            }
-        }
-        Err(_) => Err(format!("Command timed out after {timeout_ms}ms")),
+    .with_org_rate_limiter(state.org_rate_limiter.clone())
+    .with_session_service(state.session_service.clone())
+    .with_message_service(state.message_service.clone())
+    .with_event_service(state.event_service.clone())
+    .with_session_file_service(state.session_file_service.clone())
+    .with_runner(state.runner.clone())
+    .with_fallback_harness_name(state.fallback_default_harness_name.clone())
+    .with_chat_harness_name(state.chat_harness_name.clone())
+    .with_chat_session_title(state.chat_session_title.clone())
+    .with_utility_llm_service(state.utility_llm_service.clone());
+    if let Some(service) = &state.health_check_service {
+        ctx = ctx.with_health_check_service(service.clone());
     }
-}
-
-fn sanitize_script_error(message: &str) -> String {
-    if message.contains("jq: runtime error")
-        || (message.contains("jq: error") && message.contains("Cannot index"))
-    {
-        let cause = if message.to_lowercase().contains("cannot index") {
-            "cannot index input with requested path"
-        } else {
-            "filter failed against input value"
-        };
-        return format!(
-            "jq: runtime error: {cause}. Input value omitted; use discover output_shape/output_schema to choose the jq path."
-        );
+    if let Some(service) = &state.session_sandbox_service {
+        ctx = ctx.with_session_sandbox_service(service.clone());
     }
-
-    message.to_string()
+    if let Some(store) = &state.sqldb_store {
+        ctx = ctx.with_sqldb_store(store.clone());
+    }
+    ctx.with_workflow_store(state.workflow_store.clone())
 }
 
 #[cfg(test)]

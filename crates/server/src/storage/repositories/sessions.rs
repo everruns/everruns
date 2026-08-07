@@ -21,7 +21,7 @@ impl Database {
         // Attach to an existing workspace when requested; otherwise auto-create
         // a default workspace whose primary key equals the session's id. That
         // equality invariant lets existing app code that uses session.id as the
-        // file-store key keep working unchanged. See specs/workspace.md.
+        // file-store key keep working unchanged. See knowledge/runtime-resources/workspace.md.
         let workspace_id = input.workspace_id.unwrap_or(session_id);
 
         let mut tx = self.pool.begin().await?;
@@ -128,9 +128,9 @@ impl Database {
                 r#"
                 INSERT INTO session_participants (
                     id, org_id, session_id, kind, agent_id, agent_version_id,
-                    principal_id, role, joined_at
+                    principal_id, display_name, role, joined_at
                 )
-                VALUES (uuidv7(), $1, $2, 'agent', $3, $4, $5, 'host', $6)
+                VALUES (uuidv7(), $1, $2, 'agent', $3, $4, $5, NULL, 'host', $6)
                 "#,
             )
             .bind(row.org_id)
@@ -147,21 +147,29 @@ impl Database {
             r#"
             INSERT INTO session_participants (
                 id, org_id, session_id, kind, agent_id, agent_version_id,
-                principal_id, role, joined_at
+                principal_id, display_name, role, joined_at
             )
-            VALUES (uuidv7(), $1, $2, 'user', NULL, NULL, $3, 'member', $4)
+            VALUES (
+                uuidv7(), $1, $2, 'user', NULL, NULL, $3,
+                COALESCE(
+                    NULLIF(BTRIM((SELECT name FROM users WHERE id = $4)), ''),
+                    'User'
+                ),
+                'member', $5
+            )
             "#,
         )
         .bind(row.org_id)
         .bind(row.id.uuid())
         .bind(row.owner_principal_id)
+        .bind(row.resolved_owner_user_id)
         .bind(row.created_at)
         .execute(&mut *tx)
         .await?;
 
         tx.commit().await?;
 
-        // Reporting outbox enqueue is best-effort (see specs/reporting.md).
+        // Reporting outbox enqueue is best-effort (see knowledge/evaluation/reporting.md).
         // The canonical session row is durable; no reconciler exists yet
         // (tracked separately), so on failure the corresponding fact will
         // remain stale until reconciliation lands or the session row is
@@ -188,7 +196,7 @@ impl Database {
     }
 
     /// Record fork provenance on an already-created session
-    /// (specs/forking-sessions.md). Set in a dedicated update so the normal
+    /// (knowledge/runtime-resources/forking-sessions.md). Set in a dedicated update so the normal
     /// `create_session` path and its many call sites stay untouched.
     pub async fn set_session_fork_lineage(
         &self,

@@ -1,7 +1,7 @@
 "use client";
 
 // Dev showcase for the MCP Apps card iframe renderer.
-// See specs/mcp-cards.md for the card standard.
+// See knowledge/ui/mcp-cards.md for the card standard.
 
 import Link from "next/link";
 import { useState } from "react";

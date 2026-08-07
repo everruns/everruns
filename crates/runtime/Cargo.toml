@@ -21,7 +21,7 @@ categories = ["development-tools", "asynchronous"]
 default = []
 # Enable local-process (stdio) MCP servers. Off by default so the hosted
 # server/worker (which depend on this crate transitively) never compile stdio
-# in — see specs/runtime-mcp.md (D2). Embedders like the coding CLI opt in.
+# in — see knowledge/integrations/runtime-mcp.md (D2). Embedders like the coding CLI opt in.
 mcp-stdio = ["everruns-mcp/stdio"]
 # Compile the experimental sandboxed Lua execution engine (mlua) into core so
 # the `lua` / `lua_code_mode` capabilities actually run scripts. Off by default

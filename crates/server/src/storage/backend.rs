@@ -15,6 +15,8 @@ use everruns_core::typed_id::{
 use sqlx::PgPool;
 use uuid::Uuid;
 
+pub const USER_PREFERENCE_LIMIT_EXCEEDED: &str = "user preference limit exceeded";
+
 use super::memory::InMemoryDatabase;
 use super::models::*;
 use super::reporting::models::ReportingOutboxRow;
@@ -152,7 +154,7 @@ impl StorageBackend {
     }
 
     /// Attach an object-storage blob backend for content offload
-    /// (specs/object-storage.md). Only the PostgreSQL backend offloads content;
+    /// (knowledge/runtime-resources/object-storage.md). Only the PostgreSQL backend offloads content;
     /// the in-memory dev backend always stores bytes inline.
     pub fn with_blob_store(
         self,
@@ -982,7 +984,7 @@ impl StorageBackend {
     }
 
     /// Record fork provenance on an already-created session
-    /// (specs/forking-sessions.md).
+    /// (knowledge/runtime-resources/forking-sessions.md).
     pub async fn set_session_fork_lineage(
         &self,
         session_id: SessionId,
@@ -1166,7 +1168,7 @@ impl StorageBackend {
     }
 
     // ============================================
-    // Workspaces (see specs/workspace.md)
+    // Workspaces (see knowledge/runtime-resources/workspace.md)
     // ============================================
 
     pub async fn create_workspace(
@@ -1498,7 +1500,7 @@ impl StorageBackend {
     }
 
     // ============================================
-    // Knowledge Indexes (see specs/knowledge-indexes.md)
+    // Knowledge Indexes (see knowledge/runtime-resources/knowledge-indexes.md)
     // ============================================
 
     pub async fn create_knowledge_index(
@@ -1571,6 +1573,13 @@ impl StorageBackend {
         index_id: Uuid,
     ) -> Result<Vec<KnowledgeIndexDocumentRow>> {
         dispatch!(self, list_knowledge_index_documents, index_id)
+    }
+
+    pub async fn count_knowledge_index_documents(
+        &self,
+        index_ids: &[Uuid],
+    ) -> Result<std::collections::HashMap<Uuid, usize>> {
+        dispatch!(self, count_knowledge_index_documents, index_ids)
     }
 
     pub async fn list_knowledge_index_chunks(
@@ -1964,6 +1973,11 @@ impl StorageBackend {
 
     pub async fn delete_provider(&self, org_id: i64, id: Uuid) -> Result<bool> {
         dispatch!(self, delete_provider, org_id, id)
+    }
+
+    /// Mark (or unmark) a provider as host-managed (EVE-810).
+    pub async fn set_provider_managed(&self, org_id: i64, id: Uuid, managed: bool) -> Result<bool> {
+        dispatch!(self, set_provider_managed, org_id, id, managed)
     }
 
     /// Update provider's last_synced_at timestamp
@@ -3290,8 +3304,12 @@ impl StorageBackend {
         dispatch!(self, delete_user_connection, user_id, provider)
     }
 
-    pub async fn list_user_preferences(&self, user_id: Uuid) -> Result<Vec<UserPreferenceRow>> {
-        dispatch!(self, list_user_preferences, user_id)
+    pub async fn list_user_preferences(
+        &self,
+        user_id: Uuid,
+        limit: usize,
+    ) -> Result<Vec<UserPreferenceRow>> {
+        dispatch!(self, list_user_preferences, user_id, limit)
     }
 
     pub async fn get_user_preference(
@@ -3307,8 +3325,16 @@ impl StorageBackend {
         user_id: Uuid,
         key: &str,
         value: &str,
+        max_preferences: usize,
     ) -> Result<UserPreferenceRow> {
-        dispatch!(self, set_user_preference, user_id, key, value)
+        dispatch!(
+            self,
+            set_user_preference,
+            user_id,
+            key,
+            value,
+            max_preferences
+        )
     }
 
     pub async fn delete_user_preference(&self, user_id: Uuid, key: &str) -> Result<bool> {
@@ -3506,7 +3532,7 @@ impl StorageBackend {
     // the caller to know it. Used only by the authenticated
     // GET /v1/resolve-org endpoint, which gates the result by the caller's
     // org memberships to preserve the 404-vs-403 enumeration guarantee.
-    // See specs/multitenancy.md (Cross-Org Resource Resolution).
+    // See knowledge/security/multitenancy.md (Cross-Org Resource Resolution).
     // ============================================
 
     pub async fn get_agent_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
@@ -4019,7 +4045,7 @@ impl StorageBackend {
     }
 
     // ============================================
-    // Observers (online scoring — specs/online-evals.md)
+    // Observers (online scoring — knowledge/evaluation/online-evals.md)
     // ============================================
 
     pub async fn create_observer(
@@ -4297,7 +4323,7 @@ impl StorageBackend {
     }
 
     // ============================================
-    // Agent Health Check Runs (specs/agent-checks.md)
+    // Agent Health Check Runs (knowledge/evaluation/agent-checks.md)
     // ============================================
 
     pub async fn create_agent_health_check_run(
@@ -4353,7 +4379,7 @@ impl StorageBackend {
     }
 
     // ============================================
-    // Agent Check Rules (specs/agent-checks.md, phase 4)
+    // Agent Check Rules (knowledge/evaluation/agent-checks.md, phase 4)
     // ============================================
 
     pub async fn list_agent_check_rules(&self, org_id: i64) -> Result<Vec<AgentCheckRuleRow>> {
@@ -4412,7 +4438,7 @@ impl StorageBackend {
     }
 
     // ============================================
-    // Eval Run Dataset (async export handles — specs/dataset-export.md)
+    // Eval Run Dataset (async export handles — knowledge/evaluation/dataset-export.md)
     // ============================================
 
     pub async fn create_eval_run_dataset(

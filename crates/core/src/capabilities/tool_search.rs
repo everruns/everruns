@@ -10,9 +10,9 @@
 //   1. A `tool_definition_hook` (`DeferSchemaHook`) runs at runtime-agent build
 //      time. When the agent carries at least `threshold` tools, it replaces the
 //      parameter schema of every deferrable tool with a minimal disclosure stub.
-//      The model still sees that the tool exists, but the stub points it back
-//      to `tool_search` for the full schema instead of exposing parameters
-//      upfront. Tools marked `DeferrablePolicy::Never` (e.g. high-frequency
+//      The model still sees that the tool exists, while the single capability
+//      prompt points it to `tool_search` instead of repeating that instruction
+//      in every stub. Tools marked `DeferrablePolicy::Never` (e.g. high-frequency
 //      tools) and tools in the capability's `never_defer` allowlist keep full
 //      schemas.
 //   2. A real `tool_search` tool is added to the registry. When the model calls
@@ -91,9 +91,8 @@ const MAX_SEARCH_RESULTS: usize = 8;
 const NAME_TERM_WEIGHT: usize = 3;
 const DESC_TERM_WEIGHT: usize = 1;
 
-/// Dominant bonus when the whole query is exactly a tool name. The deferred stub
-/// tells the model to call `tool_search` with the exact tool name to load its
-/// schema, so this is the common "load this specific tool" path and that tool
+/// Dominant bonus when the whole query is exactly a tool name. This is the
+/// common "load this specific tool" path and that tool
 /// must rank first regardless of incidental matches elsewhere.
 const EXACT_NAME_BONUS: usize = 100;
 
@@ -319,17 +318,14 @@ impl Capability for ToolSearchCapability {
 // DeferSchemaHook — strips parameter schemas from deferrable, unrevealed tools
 // ============================================================================
 
-/// Stub schema sent in place of a deferred tool's real parameters.
+/// Minimal open-object schema sent in place of a deferred tool's parameters.
 ///
-/// An open object so the provider still accepts the tool definition; the
-/// description nudges the model toward `tool_search` if it somehow tries to
-/// call the tool before loading the schema.
-fn deferred_stub_schema(tool_name: &str) -> Value {
+/// The capability prompt owns the single instruction to use `tool_search`.
+/// Repeating a tool-specific copy inside every stub scales that sentence with
+/// the size of the tool catalogue and defeats much of the deferral saving.
+fn deferred_stub_schema() -> Value {
     json!({
         "type": "object",
-        "description": format!(
-            "Parameter schema hidden to save context. Call tool_search with query \"{tool_name}\" to load the full schema before using this tool."
-        ),
         "additionalProperties": true,
     })
 }
@@ -391,14 +387,14 @@ fn strip_parameters(tool: ToolDefinition) -> ToolDefinition {
             if b.full_parameters.is_none() {
                 b.full_parameters = Some(b.parameters.clone());
             }
-            b.parameters = deferred_stub_schema(&b.name);
+            b.parameters = deferred_stub_schema();
             ToolDefinition::Builtin(b)
         }
         ToolDefinition::ClientSide(mut c) => {
             if c.full_parameters.is_none() {
                 c.full_parameters = Some(c.parameters.clone());
             }
-            c.parameters = deferred_stub_schema(&c.name);
+            c.parameters = deferred_stub_schema();
             ToolDefinition::ClientSide(c)
         }
     }
@@ -708,18 +704,11 @@ mod tests {
         let hook = hook(15);
         let out = hook.transform(many_tools(20));
         for t in &out {
-            // Stub schema: no real properties, carries a progressive-disclosure hint.
+            // The shared capability prompt carries the progressive-disclosure
+            // instruction once; each stub is only the provider-valid open object.
             assert!(t.parameters().get("properties").is_none());
             assert_eq!(t.parameters()["additionalProperties"], json!(true));
-            let description = t.parameters()["description"].as_str().unwrap();
-            assert!(
-                description.contains("tool_search"),
-                "deferred stub should point the model to tool_search"
-            );
-            assert!(
-                description.contains(t.name()),
-                "deferred stub should include the search query that reveals this schema"
-            );
+            assert!(t.parameters().get("description").is_none());
             assert!(
                 t.full_parameters().get("properties").is_some(),
                 "full schema should remain available for progressive disclosure"
@@ -1295,11 +1284,11 @@ mod tests {
             "surface should meet or exceed the default threshold ({total} < {threshold})"
         );
         assert!(
-            pct > 30.0,
+            pct > 45.0,
             "deferral should cut the whole tool list by a wide margin (was {pct:.0}%)"
         );
         assert!(
-            params_pct > 45.0,
+            params_pct > 70.0,
             "parameter schemas should compress substantially (was {params_pct:.0}%)"
         );
     }

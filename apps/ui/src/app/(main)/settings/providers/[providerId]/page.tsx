@@ -103,6 +103,15 @@ export default function ProviderDetailPage({
           <>
             <ProviderIcon providerType={provider.provider_type} size="md" />
             {provider.name}
+            {provider.managed && (
+              <Badge
+                variant="outline"
+                className="bg-blue-100 text-blue-800"
+                title="Managed by the host"
+              >
+                Managed
+              </Badge>
+            )}
             <Badge
               variant="outline"
               className={
@@ -132,6 +141,12 @@ export default function ProviderDetailPage({
             <CardTitle>Provider Settings</CardTitle>
           </CardHeader>
           <CardContent>
+            {provider.managed && (
+              <p className="mb-4 rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+                This provider is managed by the host and is read-only. Its credentials and
+                configuration cannot be changed here.
+              </p>
+            )}
             <form onSubmit={handleSubmit} className="space-y-4 max-w-xl">
               <div className="space-y-2">
                 <Label htmlFor="provider-name">Name</Label>
@@ -139,6 +154,7 @@ export default function ProviderDetailPage({
                   id="provider-name"
                   value={name}
                   onChange={(event) => setName(event.target.value)}
+                  disabled={provider.managed}
                   required
                 />
               </div>
@@ -153,18 +169,21 @@ export default function ProviderDetailPage({
                 API Key: {provider.api_key_set ? "Configured" : "Not set"}
               </div>
               {errorMessage && <p className="text-sm text-destructive">{errorMessage}</p>}
-              <Button
-                type="submit"
-                disabled={updateProvider.isPending || !trimmedName || !nameChanged}
-              >
-                <Save className="h-4 w-4 mr-2" />
-                {updateProvider.isPending ? "Saving..." : "Save Changes"}
-              </Button>
+              {!provider.managed && (
+                <Button
+                  type="submit"
+                  disabled={updateProvider.isPending || !trimmedName || !nameChanged}
+                >
+                  <Save className="h-4 w-4 mr-2" />
+                  {updateProvider.isPending ? "Saving..." : "Save Changes"}
+                </Button>
+              )}
             </form>
           </CardContent>
         </Card>
 
-        <ProviderTraceCard provider={provider} providerId={providerId} />
+        {/* Trace links are part of the host-managed config for managed providers. */}
+        {!provider.managed && <ProviderTraceCard provider={provider} providerId={providerId} />}
 
         <Card>
           <CardHeader>

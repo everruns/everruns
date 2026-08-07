@@ -4,7 +4,7 @@
 import { Suspense, useEffect } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
-import { Sidebar } from "@/components/layout/sidebar";
+import { MobileSidebar, Sidebar } from "@/components/layout/sidebar";
 import { EarlyAccessBanner } from "@/components/layout/early-access-banner";
 import { VerifyEmailBanner } from "@/components/layout/verify-email-banner";
 import { CommandPalette } from "@/components/command-palette";
@@ -20,6 +20,7 @@ import {
 import { useAuth } from "@/providers/auth-provider";
 import { useOrg } from "@/providers/org-provider";
 import { NotificationsProvider } from "@/providers/notifications-provider";
+import { WebMcpProvider } from "@/providers/webmcp-provider";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { useZeroOrgRedirect } from "@/components/onboarding/use-zero-org-redirect";
 import {
@@ -134,9 +135,10 @@ function MainLayoutInner({ children }: MainLayoutProps) {
     <div className="flex h-screen flex-col">
       <EarlyAccessBanner />
       <VerifyEmailBanner />
-      <div className="flex min-h-0 flex-1">
-        <Sidebar />
-        <main className="flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>
+      <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+        <Sidebar className="hidden md:flex" />
+        <MobileSidebar />
+        <main className="min-w-0 flex-1 overflow-auto bg-background bg-brand-dots">{children}</main>
       </div>
       <CommandPalette />
     </div>
@@ -148,7 +150,11 @@ function MainLayoutInner({ children }: MainLayoutProps) {
     appChrome
   );
 
-  return <CommandPaletteContext value={commandPalette}>{content}</CommandPaletteContext>;
+  return (
+    <WebMcpProvider>
+      <CommandPaletteContext value={commandPalette}>{content}</CommandPaletteContext>
+    </WebMcpProvider>
+  );
 }
 
 export default function MainLayout({ children }: MainLayoutProps) {

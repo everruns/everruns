@@ -1,6 +1,6 @@
 // Session tasks — unified registry of background work owned by a session.
 //
-// See specs/session-tasks.md. A task is any asynchronous work a session owns
+// See knowledge/runtime-resources/session-tasks.md. A task is any asynchronous work a session owns
 // (subagent, external A2A agent, background tool, monitor). The registry owns
 // the record, lifecycle invariants, and task.* events; capabilities plug in
 // `TaskExecutor`s (control plane) and report through `TaskSink` (report plane).
@@ -44,7 +44,7 @@ pub const TASK_KIND_BACKGROUND_TOOL: &str = "background_tool";
 /// until the linked schedule is exhausted (one-shot) or `cancel_task` is called.
 pub const TASK_KIND_MONITOR: &str = "monitor";
 
-/// Generate a new task ID (`task_` prefix per specs/id-schema.md).
+/// Generate a new task ID (`task_` prefix per knowledge/foundations/id-schema.md).
 pub fn generate_task_id() -> String {
     format!("task_{}", uuid::Uuid::now_v7().simple())
 }

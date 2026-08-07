@@ -13,7 +13,7 @@
 // Database-registered skills are attached via AttachSkillCapability, which
 // mounts skill files into the VFS so this capability discovers them.
 //
-// COMMAND-SUBSTITUTION TRUST GATE (see also `specs/skills-registry.md`
+// COMMAND-SUBSTITUTION TRUST GATE (see also `knowledge/project/skills-registry.md`
 // "Activation Substitution Pipeline" and threat-model entry TM-TOOL-020):
 // SKILL.md may contain ``!`command` `` placeholders that, when expanded by
 // `preprocess_command_injections`, spawn a shell on the worker host. That is

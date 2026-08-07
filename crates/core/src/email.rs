@@ -488,7 +488,7 @@ fn branded_header() -> String {
 }
 
 // Inline SVG keeps the Basic template branded without fetching a remote image.
-// Geometry mirrors specs/brand.md: the rings' centroid is centered in the
+// Geometry mirrors knowledge/ui/brand.md: the rings' centroid is centered in the
 // viewBox so the mark stays balanced at small email-header sizes.
 fn branded_logo_svg() -> String {
     format!(
