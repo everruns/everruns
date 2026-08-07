@@ -117,7 +117,7 @@ export function ModelEffortMenu({
         aria-label={t("model")}
       >
         <Zap className="size-3.5 text-muted-foreground" />
-        <span className="max-w-[140px] truncate font-medium">{modelTriggerLabel}</span>
+        <span className="font-medium">{modelTriggerLabel}</span>
         {supportsReasoning && <span className="text-muted-foreground">{effortSummary}</span>}
         <ChevronDown className="size-3.5 text-muted-foreground" />
       </DropdownMenuTrigger>

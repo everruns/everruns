@@ -12658,6 +12658,47 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/resolved-model": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /v1/sessions/{session_id}/resolved-model - Resolve the session's active model",
+        "operationId": "get_session_resolved_model",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resolved model for turns without a model override",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResolvedModelResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/resources": {
       "get": {
         "tags": [
@@ -33573,6 +33614,18 @@
           },
           "status": {
             "type": "string"
+          }
+        }
+      },
+      "SessionResolvedModelResponse": {
+        "type": "object",
+        "description": "The model the runtime will use when a turn has no per-message override.",
+        "properties": {
+          "model_id": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

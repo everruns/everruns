@@ -33,6 +33,8 @@ export function useChatModelSelection({
   sessionId,
   models,
   defaultModel,
+  defaultModelLoading,
+  modelsLoading,
   reasoningEffort,
   setReasoningEffort,
   verbosity,
@@ -42,6 +44,8 @@ export function useChatModelSelection({
   sessionId: string;
   models: ModelWithProvider[];
   defaultModel?: ModelWithProvider;
+  defaultModelLoading: boolean;
+  modelsLoading: boolean;
   reasoningEffort: ReasoningEffort | "";
   setReasoningEffort: (value: ReasoningEffort | "") => void;
   verbosity: Verbosity | "";
@@ -146,10 +150,18 @@ export function useChatModelSelection({
     ? getVerbosityName(verbosityConfig.default)
     : "Medium";
 
-  const modelTriggerLabel = selectedModel?.display_name ?? "Default";
+  const modelTriggerLabel = selectedModelId
+    ? (selectedModel?.display_name ?? (modelsLoading ? "Loading model…" : "Unavailable model"))
+    : defaultModel?.display_name
+      ? `Default · ${defaultModel.display_name}`
+      : defaultModelLoading
+        ? "Default · Loading…"
+        : "Default · Unavailable";
   const defaultModelOptionLabel = defaultModel?.display_name
-    ? `Default (${defaultModel.display_name})`
-    : "Default";
+    ? `Default · ${defaultModel.display_name}`
+    : defaultModelLoading
+      ? "Default · Loading…"
+      : "Default · Unavailable";
 
   const handleModelChange = (value: string) => {
     hasUserSelectedModel.current = true;
