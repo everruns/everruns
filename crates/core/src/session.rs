@@ -224,6 +224,9 @@ pub struct SessionParticipant {
         )
     )]
     pub principal_id: PrincipalId,
+    /// Human-readable name captured for this participant.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
     pub role: SessionParticipantRole,
     pub joined_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]

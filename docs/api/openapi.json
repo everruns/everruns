@@ -33546,6 +33546,13 @@
             "description": "Immutable agent version captured for an agent participant when known.",
             "example": "agentver_01933b5a00007000800000000000001"
           },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable name captured for this participant."
+          },
           "id": {
             "type": "string",
             "description": "Unique identifier for the participant row (format: part_{32-hex}).",

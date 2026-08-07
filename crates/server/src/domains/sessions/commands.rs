@@ -4,6 +4,7 @@ use super::types::{
     ForkSessionRequest, GetOrCreateChatSessionRequest, SessionStatsResponse, UpdateSessionRequest,
 };
 use crate::domains::common::*;
+use crate::services::PrincipalService;
 use crate::storage::backend::MAX_SESSION_PARTICIPANT_HISTORY;
 use everruns_core::events::{
     EventContext, EventData, EventRequest, InputMessageData, LLM_GENERATION, SessionIdledData,
@@ -372,13 +373,37 @@ impl Command for AddSessionParticipant {
             }
         }
 
+        let (principal_id, display_name) = if is_user_participant {
+            match ctx.caller.user_id {
+                Some(user_id) => {
+                    let principal = PrincipalService::new(ctx.db.clone())
+                        .ensure_user_principal(ctx.org_id(), user_id)
+                        .await
+                        .map_err(classify_anyhow)?;
+                    let display_name = ctx
+                        .db
+                        .get_user(user_id)
+                        .await
+                        .map_err(classify_anyhow)?
+                        .map(|user| user.name.trim().to_string())
+                        .filter(|name| !name.is_empty())
+                        .unwrap_or_else(|| "User".to_string());
+                    (principal.id, Some(display_name))
+                }
+                None => (session.owner_principal_id, Some("User".to_string())),
+            }
+        } else {
+            (session.owner_principal_id, None)
+        };
+
         let input = crate::storage::models::CreateSessionParticipantRow {
             org_id: ctx.org_id(),
             session_id,
             kind: self.req.kind,
             agent_id,
             agent_version_id,
-            principal_id: session.owner_principal_id,
+            principal_id,
+            display_name,
             role,
             joined_at: None,
         };
