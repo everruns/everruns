@@ -93,7 +93,7 @@ fetchkit = { version = "=0.5.0", features = ["bot-auth", "render-rakers"], optio
 ed25519-dalek = { version = "3", features = ["rand_core"], optional = true }
 
 # Bash interpreter backing the bashkit_shell capability
-bashkit = { version = "0.14.4", features = ["jq", "http_client", "bot-auth"] }
+bashkit = { version = "0.16.0", features = ["jq", "http_client", "bot-auth"] }
 
 # Sandboxed Lua interpreter for the experimental `lua` capability (vendored Lua
 # 5.4, never LuaJIT). Optional + behind the `lua` cargo feature so the default
