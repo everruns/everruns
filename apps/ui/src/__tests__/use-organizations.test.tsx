@@ -161,6 +161,21 @@ describe("useUpdateOrganization", () => {
     });
   });
 
+  it("updates only the currently selected organization", async () => {
+    const updatedOrg = { id: "org-123", name: "Existing Org", default_model_id: "model-2" };
+    mockUpdateOrganization.mockResolvedValueOnce(updatedOrg as never);
+
+    const { result } = renderHook(() => useUpdateOrganization(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ default_model_id: "model-2" });
+    });
+
+    expect(mockUpdateOrganization).toHaveBeenCalledWith("org-123", {
+      default_model_id: "model-2",
+    });
+  });
+
   it("invalidates resolved session data after updating the default model", async () => {
     const updatedOrg = { id: "org-123", name: "Updated Org" };
     mockUpdateOrganization.mockResolvedValueOnce(updatedOrg as never);

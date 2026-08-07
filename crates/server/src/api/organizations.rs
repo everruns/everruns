@@ -574,8 +574,11 @@ pub async fn update_organization(
         .log_internal_error_json("get organization")?
         .ok_or_not_found_json("Organization")?;
 
-    // Cannot update default organization name
-    if org_row.org_id == DEFAULT_ORG_ID && req.name.is_some() {
+    // The built-in organization's name is protected, but an idempotent PATCH
+    // that repeats the current name must not block unrelated settings updates.
+    if org_row.org_id == DEFAULT_ORG_ID
+        && req.name.as_deref().is_some_and(|name| name != org_row.name)
+    {
         return Err(ErrorResponse::new("Cannot update default organization")
             .into_response(StatusCode::BAD_REQUEST));
     }
@@ -1248,6 +1251,93 @@ mod tests {
             .header("content-type", "application/json")
             .body(Body::from(format!(r#"{{"name":"{name}"}}"#)))
             .unwrap()
+    }
+
+    fn update_default_org_request(name: &str) -> Request<Body> {
+        update_default_org_json_request(format!(r#"{{"name":"{name}"}}"#))
+    }
+
+    fn update_default_org_json_request(body: impl Into<Body>) -> Request<Body> {
+        Request::builder()
+            .method("PATCH")
+            .uri("/v1/orgs/org_00000000000000000000000000000001")
+            .header("Authorization", "Bearer test-token")
+            .header("content-type", "application/json")
+            .body(body.into())
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn default_organization_accepts_unchanged_name() {
+        let (app, db, user_id) = create_org_app(None);
+        db.add_organization_member(DEFAULT_ORG_ID, user_id, "owner")
+            .await
+            .unwrap();
+
+        let response = app
+            .oneshot(update_default_org_request("Default Organization"))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn default_organization_still_rejects_renames() {
+        let (app, db, user_id) = create_org_app(None);
+        db.add_organization_member(DEFAULT_ORG_ID, user_id, "owner")
+            .await
+            .unwrap();
+
+        let response = app
+            .oneshot(update_default_org_request("Renamed"))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn organization_settings_require_database_admin_role() {
+        let (app, db, user_id) = create_org_app(None);
+        db.add_organization_member(DEFAULT_ORG_ID, user_id, "member")
+            .await
+            .unwrap();
+
+        let response = app
+            .oneshot(update_default_org_json_request(
+                r#"{"default_model_id":"model_01933b5a00007000800000000000030b"}"#,
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(
+            json["detail"],
+            "Only organization admins can update organization settings"
+        );
+    }
+
+    #[tokio::test]
+    async fn organization_rejects_stale_default_model() {
+        let (app, db, user_id) = create_org_app(None);
+        db.add_organization_member(DEFAULT_ORG_ID, user_id, "owner")
+            .await
+            .unwrap();
+
+        let response = app
+            .oneshot(update_default_org_json_request(
+                r#"{"default_model_id":"model_01933b5a00007000800000000000030b"}"#,
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["detail"], "Model not found");
     }
 
     #[tokio::test]

@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import OrganizationPage from "@/app/(main)/settings/organization/page";
+import { ApiError } from "@/lib/api/client";
 
 const mockPush = jest.fn();
 const mockSetCurrentOrg = jest.fn();
@@ -66,6 +67,7 @@ jest.mock("@/components/models/model-picker", () => ({
     <select aria-label="Default Model" value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="">No default model</option>
       <option value="model-1">Default Model</option>
+      <option value="model-2">Alternate Model</option>
     </select>
   ),
 }));
@@ -178,12 +180,149 @@ describe("OrganizationPage", () => {
     await waitFor(() => {
       expect(mockUpdateOrganization).toHaveBeenCalledWith({
         name: "Renamed Org",
-        default_model_id: "model-1",
-        default_harness_id: "harness-generic",
-        base_harness_id: "harness-base",
       });
     });
 
+    jest.useRealTimers();
+  });
+
+  it("autosaves only the changed model setting", async () => {
+    jest.useFakeTimers();
+
+    render(<OrganizationPage />);
+
+    fireEvent.change(screen.getByLabelText("Default Model"), {
+      target: { value: "model-2" },
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(700);
+      await Promise.resolve();
+    });
+
+    expect(mockUpdateOrganization).toHaveBeenLastCalledWith({
+      default_model_id: "model-2",
+    });
+
+    jest.useRealTimers();
+  });
+
+  it("keeps model errors next to Models without changing Harnesses status", async () => {
+    jest.useFakeTimers();
+    mockUpdateOrganization.mockRejectedValueOnce(
+      new ApiError(400, "Bad Request", "Model not found"),
+    );
+
+    render(<OrganizationPage />);
+
+    fireEvent.change(screen.getByLabelText("Default Model"), {
+      target: { value: "model-2" },
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(700);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Model not found"));
+    expect(screen.getByRole("region", { name: "Models" })).toHaveTextContent("Model not found");
+    expect(screen.getByRole("region", { name: "Harnesses" })).not.toHaveTextContent(
+      "Model not found",
+    );
+
+    jest.useRealTimers();
+  });
+
+  it.each([
+    [
+      new ApiError(403, "Forbidden", "Only organization admins can update organization settings"),
+      "Only organization admins can update organization settings",
+    ],
+    [new TypeError("Failed to fetch"), "Unable to reach the server"],
+  ])("shows actionable model save errors contextually", async (error, message) => {
+    jest.useFakeTimers();
+    mockUpdateOrganization.mockRejectedValueOnce(error);
+
+    render(<OrganizationPage />);
+    fireEvent.change(screen.getByLabelText("Default Model"), {
+      target: { value: "model-2" },
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(700);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent(message));
+    expect(screen.getByRole("region", { name: "Models" })).toHaveTextContent(message);
+    expect(screen.getByRole("region", { name: "Harnesses" })).not.toHaveTextContent(message);
+
+    jest.useRealTimers();
+  });
+
+  it("saves model and harness changes independently while requests overlap", async () => {
+    jest.useFakeTimers();
+    let resolveModel: () => void = () => {};
+    let resolveHarness: () => void = () => {};
+    mockUpdateOrganization.mockImplementation((payload) => {
+      return new Promise<void>((resolve) => {
+        if ("default_model_id" in payload) resolveModel = resolve;
+        else resolveHarness = resolve;
+      });
+    });
+
+    render(<OrganizationPage />);
+    fireEvent.change(screen.getByLabelText("Default Model"), {
+      target: { value: "model-2" },
+    });
+    fireEvent.change(screen.getByLabelText("Select default harness"), {
+      target: { value: "harness-base" },
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(700);
+      await Promise.resolve();
+    });
+
+    expect(mockUpdateOrganization).toHaveBeenCalledWith({ default_model_id: "model-2" });
+    expect(mockUpdateOrganization).toHaveBeenCalledWith({
+      default_harness_id: "harness-base",
+      base_harness_id: "harness-base",
+    });
+    expect(screen.getByRole("region", { name: "Models" })).toHaveTextContent("Saving");
+    expect(screen.getByRole("region", { name: "Harnesses" })).toHaveTextContent("Saving");
+
+    await act(async () => {
+      resolveHarness();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("region", { name: "Harnesses" })).toHaveTextContent("Saved");
+    expect(screen.getByRole("region", { name: "Models" })).toHaveTextContent("Saving");
+
+    await act(async () => {
+      resolveModel();
+      await Promise.resolve();
+    });
+    expect(screen.getByRole("region", { name: "Models" })).toHaveTextContent("Saved");
+
+    jest.useRealTimers();
+  });
+
+  it("replaces a removed model selection with a valid model", async () => {
+    jest.useFakeTimers();
+    mockOrganization = { ...mockOrganization, default_model_id: "model-removed" };
+
+    render(<OrganizationPage />);
+    fireEvent.change(screen.getByLabelText("Default Model"), {
+      target: { value: "model-2" },
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(700);
+      await Promise.resolve();
+    });
+
+    expect(mockUpdateOrganization).toHaveBeenCalledWith({ default_model_id: "model-2" });
     jest.useRealTimers();
   });
 
@@ -208,8 +347,6 @@ describe("OrganizationPage", () => {
     await waitFor(() => {
       expect(mockUpdateOrganization).toHaveBeenCalledWith({
         name: "Renamed Org",
-        default_harness_id: "harness-generic",
-        base_harness_id: "harness-base",
       });
     });
 
