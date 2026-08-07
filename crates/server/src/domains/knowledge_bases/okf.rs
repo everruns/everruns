@@ -528,6 +528,9 @@ pub fn encode_tar_gz(files: &[(String, String)]) -> Result<Vec<u8>> {
     {
         let mut builder = tar::Builder::new(&mut encoder);
         for (path, content) in files {
+            if is_unsafe_path(path) {
+                anyhow::bail!("refusing to archive unsafe path: {path}");
+            }
             let mut header = tar::Header::new_gnu();
             header.set_size(content.len() as u64);
             header.set_mode(0o644);
@@ -900,5 +903,16 @@ tags: [sales]\n\
         let decoded = decode_tar_gz_bundle(&bytes).unwrap();
         assert!(decoded.iter().any(|(p, _)| p == "tables/orders.md"));
         assert!(decoded.iter().any(|(p, _)| p == "index.md"));
+    }
+
+    #[test]
+    fn export_rejects_unsafe_archive_paths() {
+        for path in ["../escape.md", "/absolute.md", "notes/../../escape.md"] {
+            let files = vec![(path.to_string(), "content".to_string())];
+            assert!(
+                encode_tar_gz(&files).is_err(),
+                "expected unsafe archive path to be rejected: {path}"
+            );
+        }
     }
 }
