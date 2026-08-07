@@ -266,6 +266,28 @@ V1 limitation:
 - Background runs are best-effort and worker-local. They are started with `tokio::spawn` inside the worker process and are not yet durable across worker restarts.
 - This is intentional for the first iteration; durable resumption can be layered later without changing the tool contract.
 
+### Turn Completion Gate
+
+A turn ending is not the same as the user's request being done, and a host that
+auto-continues has to tell the difference: a tool-only turn stopped mid-task, a
+turn that asked a question is waiting on the user, a turn whose detached
+background run is still going is neither.
+
+`crates/core/src/turn_completion.rs` holds the cheap half of that judgement — a
+pure function over what the turn already reported (`success`, `stop_reason`,
+response text, tool-call count, whether background work is live). It decides the
+clear-cut cases and answers `Evaluate` on the one genuinely ambiguous case:
+tool-using work that produced a candidate final answer, where only a semantic
+check can tell. Hosts pay for that check on the small fraction of turns needing
+it, not on every turn.
+
+`ContinuationBudget` bounds what the host does next in turns, tokens, *and*
+wall-clock. All three, because each alone leaks: a cheap loop exhausts turns, an
+expensive one exhausts tokens, one stalled on slow calls exhausts neither.
+
+Distinct from the `usage_limit_auto_continue` capability, which resumes after a
+*provider* limit resets. This gate asks whether the work is finished.
+
 ### Tool-Call Cancellation
 
 Dropping the act future is how a cancelled turn stops tool work, and for a tool
