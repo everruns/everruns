@@ -1293,6 +1293,30 @@ impl SessionService {
         }
     }
 
+    /// Resolve the model used by turns without a per-message override.
+    ///
+    /// Session creation materializes agent and harness defaults into `model_id`,
+    /// so only an unbound session continues to follow the organization default.
+    pub async fn resolved_model_id(
+        &self,
+        org_id: i64,
+        session: &Session,
+    ) -> Result<Option<ModelId>> {
+        if let Some(model_id) = session.model_id {
+            return Ok(self
+                .db
+                .get_model(org_id, model_id.uuid())
+                .await?
+                .map(|model| model.id));
+        }
+
+        Ok(self
+            .db
+            .get_default_model(org_id)
+            .await?
+            .map(|model| model.id))
+    }
+
     /// Get session counts grouped by status for an organization.
     pub async fn stats(&self, caller: &Caller) -> Result<SessionStats> {
         let counts = self.db.count_sessions_by_status(caller.org_id).await?;
@@ -3350,6 +3374,75 @@ mod tests {
         .await
         .unwrap()
         .id
+    }
+
+    #[tokio::test]
+    async fn resolved_model_id_tracks_default_and_preserves_explicit_binding() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let _ctx = test_ctx(caller.clone(), db.clone()).await;
+        let service = SessionService::new(db.clone());
+        let harness_id = org_init::base_harness_id(&db, caller.org_id).await.unwrap();
+
+        let inherited = service
+            .create(
+                &caller,
+                harness_id.uuid(),
+                None,
+                None,
+                build_create_request(harness_id, None, None),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            service
+                .resolved_model_id(caller.org_id, &inherited)
+                .await
+                .unwrap(),
+            None
+        );
+
+        let first_default = create_model(&db, caller.org_id, "first-default").await;
+        db.upsert_organization_settings(caller.org_id, Some(first_default.uuid()))
+            .await
+            .unwrap();
+        assert_eq!(
+            service
+                .resolved_model_id(caller.org_id, &inherited)
+                .await
+                .unwrap(),
+            Some(first_default)
+        );
+
+        let second_default = create_model(&db, caller.org_id, "second-default").await;
+        db.upsert_organization_settings(caller.org_id, Some(second_default.uuid()))
+            .await
+            .unwrap();
+        assert_eq!(
+            service
+                .resolved_model_id(caller.org_id, &inherited)
+                .await
+                .unwrap(),
+            Some(second_default)
+        );
+
+        let explicit = service
+            .create(
+                &caller,
+                harness_id.uuid(),
+                None,
+                None,
+                build_create_request(harness_id, None, Some(first_default)),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            service
+                .resolved_model_id(caller.org_id, &explicit)
+                .await
+                .unwrap(),
+            Some(first_default)
+        );
     }
 
     #[tokio::test]

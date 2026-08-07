@@ -53,12 +53,15 @@ export const queryKeys = {
   // Session queries (sessions are org-level, with optional agent filter)
   sessions: {
     all: () => ["sessions"] as const,
+    scoped: (org?: string) => ["session", org] as const,
     list: (org?: string, agentId?: string, offset?: number, limit?: number) =>
       ["sessions", org, agentId ?? "all", offset ?? 0, limit ?? 20] as const,
     byAgent: (agentId: string) => ["sessions", "agent", agentId] as const,
     detail: (org?: string, sessionId?: string) => ["session", org, sessionId] as const,
     contextReport: (org?: string, sessionId?: string) =>
       ["session", org, sessionId, "context-report"] as const,
+    resolvedModel: (org?: string, sessionId?: string) =>
+      ["session", org, sessionId, "resolved-model"] as const,
     participants: (org?: string, sessionId?: string) =>
       ["session", org, sessionId, "participants"] as const,
     stats: (org?: string) => ["sessions", "stats", org] as const,

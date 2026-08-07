@@ -30,7 +30,7 @@ use everruns_core::{
 use everruns_worker::AgentRunner;
 
 use super::common::{
-    ApiResult, ErrorResponse, PaginatedResponse, UrlBuilder, WithUrls,
+    ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse, UrlBuilder, WithUrls,
     deserialize_nullable_update_field, impl_auth_state,
 };
 use everruns_durable::UpdateField;
@@ -491,6 +491,10 @@ pub fn routes(state: AppState) -> Router {
             "/v1/sessions/{session_id}/context-report",
             get(get_session_context_report),
         )
+        .route(
+            "/v1/sessions/{session_id}/resolved-model",
+            get(get_session_resolved_model),
+        )
         // Pin/unpin
         .route(
             "/v1/sessions/{session_id}/pin",
@@ -760,6 +764,43 @@ pub async fn get_session(
     let session = GetSession { session_id }.run(&state.ctx(&org)).await?;
 
     Ok(Json(urls.wrap(session)))
+}
+
+/// The model the runtime will use when a turn has no per-message override.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct SessionResolvedModelResponse {
+    #[schema(value_type = Option<String>)]
+    pub model_id: Option<ModelId>,
+}
+
+/// GET /v1/sessions/{session_id}/resolved-model - Resolve the session's active model
+#[utoipa::path(
+    get,
+    path = "/v1/sessions/{session_id}/resolved-model",
+    params(
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
+    ),
+    responses(
+        (status = 200, description = "Resolved model for turns without a model override", body = SessionResolvedModelResponse),
+        (status = 400, description = "Invalid session ID"),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn get_session_resolved_model(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> ApiResult<SessionResolvedModelResponse> {
+    let session = GetSession { session_id }.run(&state.ctx(&org)).await?;
+    let model_id = state
+        .session_service
+        .resolved_model_id(org.org_id, &session)
+        .await
+        .log_internal_error_json("resolve session model")?;
+
+    Ok(Json(SessionResolvedModelResponse { model_id }))
 }
 
 /// GET /v1/sessions/{session_id}/participants - List session participants

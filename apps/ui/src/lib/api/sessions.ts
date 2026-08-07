@@ -8,6 +8,7 @@ import type {
   CreateSessionRequest,
   UpdateSessionRequest,
   SessionContextReport,
+  SessionResolvedModelResponse,
   PaginatedResponse,
   PaginationParams,
 } from "./types";
@@ -63,6 +64,15 @@ export async function getSessionStats(): Promise<SessionStats> {
 
 export async function getSession(sessionId: string): Promise<Session> {
   const response = await api.get<Session>(`/v1/sessions/${sessionId}`);
+  return response.data;
+}
+
+export async function getSessionResolvedModel(
+  sessionId: string,
+): Promise<SessionResolvedModelResponse> {
+  const response = await api.get<SessionResolvedModelResponse>(
+    `/v1/sessions/${sessionId}/resolved-model`,
+  );
   return response.data;
 }
 

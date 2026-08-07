@@ -3146,6 +3146,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/v1/sessions/{session_id}/resolved-model": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/sessions/{session_id}/resolved-model - Resolve the session's active model */
+    get: operations["get_session_resolved_model"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/v1/sessions/{session_id}/resources": {
     parameters: {
       query?: never;
@@ -14362,6 +14379,10 @@ export interface components {
       created_session?: boolean | null;
       session_id: string;
       status: string;
+    };
+    /** @description The model the runtime will use when a turn has no per-message override. */
+    SessionResolvedModelResponse: {
+      model_id?: string | null;
     };
     /** @description A resource registered in the session resource registry. */
     SessionResourceEntry: {
@@ -28334,6 +28355,50 @@ export interface operations {
       };
       /** @description Authentication required */
       401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
+  get_session_resolved_model: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID (prefixed, e.g., session_...) */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Resolved model for turns without a model override */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionResolvedModelResponse"];
+        };
+      };
+      /** @description Invalid session ID */
+      400: {
         headers: {
           [name: string]: unknown;
         };
