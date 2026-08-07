@@ -1865,9 +1865,16 @@ impl TaskExecutor for DetachedSessionTaskExecutor {
                     .await?;
                 "Peer session cancellation requested; tracking settled canceled.".to_string()
             }
+            (None, Some(_)) => {
+                return Err(crate::error::AgentLoopError::tool(
+                    "detached session task cancellation requires platform_store context",
+                ));
+            }
             // No peer link to signal (e.g. never wired): nothing to stop, just
             // settle the tracking task so the intent is honored.
-            _ => "Detached session tracking canceled; no peer session link to signal.".to_string(),
+            (_, None) => {
+                "Detached session tracking canceled; no peer session link to signal.".to_string()
+            }
         };
         registry
             .update(
@@ -2752,6 +2759,47 @@ mod tests {
             updated.summary.as_deref(),
             Some("Detached session tracking canceled; no peer session link to signal.")
         );
+    }
+
+    #[tokio::test]
+    async fn detached_session_task_cancel_without_platform_store_fails_closed() {
+        let registry = Arc::new(InMemorySessionTaskRegistry::default());
+        let mut context = ToolContext::new(crate::typed_id::SessionId::new());
+        context.session_task_registry = Some(registry.clone());
+        let task = registry
+            .create(CreateSessionTask {
+                session_id: context.session_id,
+                id: None,
+                kind: TASK_KIND_SESSION.to_string(),
+                display_name: "Peer".to_string(),
+                spec: json!({}),
+                state: SessionTaskState::Running,
+                links: TaskLinks {
+                    child_session_id: Some(crate::typed_id::SessionId::new()),
+                    ..Default::default()
+                },
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+
+        let error = DetachedSessionTaskExecutor
+            .cancel(&task, &context)
+            .await
+            .expect_err("missing platform store must prevent false cancellation");
+
+        assert!(
+            error
+                .to_string()
+                .contains("requires platform_store context")
+        );
+        let unchanged = registry
+            .get(context.session_id, &task.id)
+            .await
+            .unwrap()
+            .expect("task should remain present");
+        assert_eq!(unchanged.state, SessionTaskState::Running);
+        assert!(unchanged.summary.is_none());
     }
 
     #[tokio::test]
