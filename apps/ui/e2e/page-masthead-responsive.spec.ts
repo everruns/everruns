@@ -98,37 +98,80 @@ test.describe("Page masthead responsive layout", () => {
     await mockAgentDetailApi(page);
   });
 
+  test("uses overflow-only actions at mobile width", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/agents/${AGENT_ID}`);
+
+    const title = page.getByRole("heading", { name: "Jokes Agent" });
+    const masthead = title.locator("xpath=ancestor::div[@data-slot='page-masthead'][1]");
+    const identity = masthead.locator('[data-slot="page-masthead-identity"]');
+    const actions = page
+      .getByRole("button", { name: "New session" })
+      .locator("xpath=ancestor::div[@data-slot='page-masthead-compact-actions'][1]");
+    await expect(title).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "More actions" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeHidden();
+    await expect(page.getByRole("button", { name: "Observe this agent" })).toBeHidden();
+
+    await page.getByRole("button", { name: "Open navigation" }).click();
+    await expect(page.locator('[data-slot="drawer-content"]')).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.locator('[data-slot="drawer-content"]')).toBeHidden();
+
+    await page.getByRole("button", { name: "More actions" }).click();
+    await expect(page.getByRole("menuitem", { name: "Copy" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Export" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Edit" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Create app" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Observe this agent" })).toBeVisible();
+
+    const mastheadBox = await masthead.boundingBox();
+    const identityBox = await identity.boundingBox();
+    const actionsBox = await actions.boundingBox();
+
+    expect(mastheadBox).not.toBeNull();
+    expect(identityBox).not.toBeNull();
+    expect(actionsBox).not.toBeNull();
+    expect(mastheadBox!.width).toBeGreaterThanOrEqual(300);
+    expect(identityBox!.width).toBeGreaterThanOrEqual(Math.min(320, mastheadBox!.width));
+    expect(actionsBox!.x + actionsBox!.width).toBeLessThanOrEqual(
+      mastheadBox!.x + mastheadBox!.width,
+    );
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      await page.evaluate(() => document.documentElement.clientWidth),
+    );
+  });
+
   for (const viewport of [
     { name: "compact desktop", width: 1024, height: 900 },
     { name: "tablet", width: 768, height: 900 },
-    { name: "mobile", width: 390, height: 844 },
   ]) {
-    test(`protects identity content and contains actions at ${viewport.name} width`, async ({
-      page,
-    }) => {
+    test(`keeps frequent actions in a second row at ${viewport.name} width`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.goto(`/agents/${AGENT_ID}`);
 
       const title = page.getByRole("heading", { name: "Jokes Agent" });
       const masthead = title.locator("xpath=ancestor::div[@data-slot='page-masthead'][1]");
-      const identity = masthead.locator('[data-slot="page-masthead-identity"]');
-      const actions = page
-        .getByRole("button", { name: "New session" })
-        .locator("xpath=ancestor::div[@data-slot='page-masthead-actions'][1]");
-      await expect(title).toBeVisible();
-      await expect(page.getByRole("button", { name: "Observe this agent" })).toBeVisible();
+      const actionStrip = masthead.locator('[data-slot="page-masthead-compact-action-strip"]');
+
+      await expect(page.getByRole("button", { name: "New session" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "More actions" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Export", exact: true })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Edit" })).toBeVisible();
+      await expect(page.getByRole("link", { name: "Create app" })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Observe this agent" })).toBeHidden();
+
+      await page.getByRole("button", { name: "More actions" }).click();
+      await expect(page.getByRole("menuitem", { name: "Observe this agent" })).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: "Copy" })).toHaveCount(0);
 
       const mastheadBox = await masthead.boundingBox();
-      const identityBox = await identity.boundingBox();
-      const actionsBox = await actions.boundingBox();
-
+      const stripBox = await actionStrip.boundingBox();
       expect(mastheadBox).not.toBeNull();
-      expect(identityBox).not.toBeNull();
-      expect(actionsBox).not.toBeNull();
-      expect(identityBox!.width).toBeGreaterThanOrEqual(Math.min(320, mastheadBox!.width));
-      expect(actionsBox!.x + actionsBox!.width).toBeLessThanOrEqual(
-        mastheadBox!.x + mastheadBox!.width,
-      );
+      expect(stripBox).not.toBeNull();
+      expect(stripBox!.width).toBeLessThanOrEqual(mastheadBox!.width);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
         await page.evaluate(() => document.documentElement.clientWidth),
       );
@@ -149,5 +192,8 @@ test.describe("Page masthead responsive layout", () => {
     expect(titleBox).not.toBeNull();
     expect(actionsBox).not.toBeNull();
     expect(actionsBox!.y).toBeLessThan(titleBox!.y + titleBox!.height);
+    await expect(page.getByRole("button", { name: "Open navigation" })).toBeHidden();
+    await expect(page.getByRole("button", { name: "More actions" })).toBeHidden();
+    await expect(page.getByRole("button", { name: "Observe this agent" })).toBeVisible();
   });
 });

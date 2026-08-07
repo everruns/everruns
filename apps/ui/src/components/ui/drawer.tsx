@@ -29,9 +29,11 @@ function DrawerContent({
   className,
   children,
   showCloseButton = true,
+  side = "right",
   ...props
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean;
+  side?: "left" | "right";
 }) {
   return (
     <DrawerPortal data-slot="drawer-portal">
@@ -39,7 +41,10 @@ function DrawerContent({
       <DialogPrimitive.Popup
         data-slot="drawer-content"
         className={cn(
-          "bg-background data-[open]:animate-in data-[open]:slide-in-from-right-8 data-[closed]:animate-out data-[closed]:slide-out-to-right-8 data-[open]:fade-in-0 data-[closed]:fade-out-0 fixed inset-y-0 right-0 z-50 flex h-full w-full max-w-md flex-col gap-4 border-l p-6 shadow-lg duration-200 sm:max-w-lg",
+          "bg-background data-[open]:animate-in data-[closed]:animate-out data-[open]:fade-in-0 data-[closed]:fade-out-0 fixed inset-y-0 z-50 flex h-full w-full max-w-md flex-col gap-4 p-6 shadow-lg duration-200 sm:max-w-lg",
+          side === "right"
+            ? "right-0 border-l data-[open]:slide-in-from-right-8 data-[closed]:slide-out-to-right-8"
+            : "left-0 border-r data-[open]:slide-in-from-left-8 data-[closed]:slide-out-to-left-8",
           className,
         )}
         {...props}
