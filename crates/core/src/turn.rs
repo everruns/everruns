@@ -173,7 +173,11 @@ impl TurnContext {
 }
 
 /// Current phase of turn execution.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// Serializable because a durable host persists it between steps
+/// (`crate::turn_state::TurnState`); the in-memory machine only reads it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum TurnPhase {
     /// Initial state, waiting to process input
     PendingInput,
