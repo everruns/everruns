@@ -19,6 +19,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { TagInput } from "@/components/ui/tag-input";
 import { PromptEditor } from "@/components/ui/prompt-editor";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -409,14 +410,17 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
 
                   <div className="space-y-2">
                     <Label htmlFor="tags">Tags</Label>
-                    <Input
+                    <TagInput
                       id="tags"
-                      placeholder="tag1, tag2, tag3"
+                      placeholder="Add a tag…"
                       value={formData.tags}
-                      onChange={(e) => handleFormChange("tags", e.target.value)}
+                      onChange={(value) => handleFormChange("tags", value)}
                       disabled={isSaving || isReadOnly}
+                      aria-describedby="tags-help"
                     />
-                    <p className="text-xs text-muted-foreground">Comma-separated list of tags</p>
+                    <p id="tags-help" className="text-xs text-muted-foreground">
+                      Press Enter or comma to add a tag. Backspace removes the last tag.
+                    </p>
                   </div>
 
                   <div className="space-y-2">
