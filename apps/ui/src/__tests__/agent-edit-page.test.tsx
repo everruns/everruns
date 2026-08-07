@@ -162,6 +162,22 @@ describe("EditAgentPage", () => {
     expect(screen.queryByTestId("agent-preview")).not.toBeInTheDocument();
   });
 
+  it("adds tags through the tag editor and submits them", async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({});
+    mockUseUpdateAgent.mockReturnValue({ mutateAsync, isPending: false });
+
+    await renderWithSuspense({ agentId: "agent_123" });
+    const tagsInput = screen.getByLabelText("Tags");
+    fireEvent.change(tagsInput, { target: { value: "support" } });
+    fireEvent.keyDown(tagsInput, { key: "Enter" });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Save changes/ }));
+    });
+
+    expect(mutateAsync).toHaveBeenCalledTimes(1);
+    expect(mutateAsync.mock.calls[0][0].request.tags).toEqual(["support"]);
+  });
+
   it("keeps checks in Edit instead of Preview", async () => {
     await renderWithSuspense({ agentId: "agent_123" });
 
