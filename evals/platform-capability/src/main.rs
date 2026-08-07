@@ -1,6 +1,6 @@
 //! Mira eval study: **platform capability**.
 //!
-//! Measures whether an everruns agent equipped with the `platform_management`
+//! Measures whether an everruns agent equipped with the `platform`
 //! capability turns natural-language requests into the correct platform
 //! operations (managing agents, harnesses, apps, channels, sessions) and behaves
 //! safely around destructive requests.
@@ -25,7 +25,10 @@ mod subject;
 use mira::scorer::succeeded;
 use mira::{Dataset, Eval, Target, eval};
 
-use crate::scorers::{expected_tools, forbidden_tools, response_matches};
+use crate::scorers::{
+    confirmation_boundary, expected_tools, forbidden_tools, platform_commands, response_matches,
+    scheduled_agent_state, tool_budget,
+};
 use crate::subject::EverrunsServerSubject;
 
 /// The dataset travels with the binary so `mira --bin platform_capability` works
@@ -52,7 +55,7 @@ fn targets() -> Vec<Target> {
 fn platform_capability() -> Eval {
     let dataset = Dataset::from_jsonl_str(DATASET).expect("embedded dataset.jsonl must parse");
     Eval::new("platform_capability")
-        .describe("Drive the everruns platform via platform_management tools from natural language")
+        .describe("Drive the everruns platform via discover/query/execute from natural language")
         .dataset(dataset)
         .targets(targets())
         .subject(EverrunsServerSubject::from_env())
@@ -62,6 +65,10 @@ fn platform_capability() -> Eval {
         // driven by each sample's `metadata` (see scorers.rs).
         .scorer(expected_tools())
         .scorer(forbidden_tools())
+        .scorer(confirmation_boundary())
+        .scorer(platform_commands())
+        .scorer(scheduled_agent_state())
+        .scorer(tool_budget())
         .scorer(response_matches())
         .build()
 }
@@ -78,13 +85,14 @@ mod tests {
     #[test]
     fn embedded_dataset_parses() {
         let ds = Dataset::from_jsonl_str(DATASET).expect("dataset.jsonl parses");
-        assert_eq!(ds.samples.len(), 27, "expected 27 samples");
+        assert_eq!(ds.samples.len(), 8, "expected 8 focused samples");
         for s in &ds.samples {
             assert!(!s.input.is_empty(), "{} has no input", s.id);
             // Every sample declares at least one expectation the scorers read.
             let has_expectation = s.metadata.contains_key("expect_tools")
                 || s.metadata.contains_key("forbid_tools")
-                || s.metadata.contains_key("expect_regex");
+                || s.metadata.contains_key("expect_commands")
+                || s.metadata.contains_key("expect_scheduled_agent");
             assert!(has_expectation, "{} declares no scorable expectation", s.id);
         }
     }

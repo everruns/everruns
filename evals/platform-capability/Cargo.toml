@@ -8,7 +8,7 @@ name = "everruns-platform-capability"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
-description = "Mira eval study: evaluates the everruns platform_management capability"
+description = "Mira eval study: evaluates the everruns platform capability"
 publish = false
 
 [[bin]]
