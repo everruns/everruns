@@ -2,8 +2,8 @@
 //
 // Zones (numbered ①–⑤ in the design source):
 //   1. Breadcrumb     — PageBreadcrumb: the context line (root → name → mode).
-//   2. Header         — PageMasthead: icon tile · title · status badge · meta, then a
-//                       right-aligned action cluster.
+//   2. Header         — PageMasthead: icon tile · title · status badge · meta, with a
+//                       right-aligned action cluster that moves above the title when compact.
 //   3. Control strip   — the shape-shifter: filters on list, stats on view, section nav
 //                       on edit. Same slot, always. Compose with PageControlStrip plus
 //                       SectionTabs / StatGrid as needed.
@@ -112,6 +112,7 @@ export function IconTile({
 }) {
   return (
     <span
+      data-slot="icon-tile"
       className={cn(
         "inline-flex flex-none items-center justify-center border bg-accent/20 text-foreground",
         size === "lg" ? "size-11 [&_svg]:size-[22px]" : "size-8 [&_svg]:size-4",
@@ -137,7 +138,7 @@ interface PageMastheadProps {
   meta?: ReactNode;
   /** Full right-aligned action cluster shown when the masthead has enough room. */
   actions?: ReactNode;
-  /** Prioritized actions shown instead of `actions` in constrained mastheads. */
+  /** Prioritized actions shown above the title instead of `actions` in constrained mastheads. */
   compactActions?: ReactNode;
   /** Frequent secondary actions shown on a separate row at tablet-like widths. */
   compactActionStrip?: ReactNode;
@@ -146,7 +147,7 @@ interface PageMastheadProps {
 
 /**
  * Zone ② — header anatomy shared by every page: gold icon tile · title · status
- * badge · meta run, then a right-aligned action cluster.
+ * badge · meta run, with a right-aligned action cluster above the title when compact.
  */
 export function PageMasthead({
   icon,
@@ -169,10 +170,18 @@ export function PageMasthead({
     >
       <div
         data-slot="page-masthead-identity"
-        className="flex min-w-0 flex-[1_1_20rem] items-start gap-4 max-sm:flex-col"
+        className="flex min-w-0 flex-[1_1_20rem] flex-wrap items-start gap-4 sm:flex-nowrap"
       >
         {icon && <IconTile icon={icon} />}
-        <div className="min-w-0 flex-1">
+        {compactActions && (
+          <div
+            data-slot="page-masthead-compact-actions"
+            className="ml-auto flex max-w-full flex-none flex-wrap items-center justify-end gap-2 sm:hidden [&>a]:max-w-full [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-8 [&_[data-slot=button]]:max-w-full [&_[data-slot=button]]:whitespace-normal"
+          >
+            {compactActions}
+          </div>
+        )}
+        <div className="min-w-0 flex-1 max-sm:w-full max-sm:flex-none">
           <div className="flex min-w-0 flex-wrap items-center gap-2.5">
             <h1 className="min-w-0 break-words text-2xl font-semibold tracking-tight text-foreground">
               {title}
@@ -203,7 +212,7 @@ export function PageMasthead({
       {compactActions && (
         <div
           data-slot="page-masthead-compact-actions"
-          className="ml-auto flex max-w-full flex-none flex-wrap items-center justify-end gap-2 @5xl/masthead:hidden [&>a]:max-w-full [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-8 [&_[data-slot=button]]:max-w-full [&_[data-slot=button]]:whitespace-normal"
+          className="order-first ml-auto hidden w-full max-w-full flex-none flex-wrap items-center justify-end gap-2 sm:flex @5xl/masthead:hidden [&>a]:max-w-full [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-8 [&_[data-slot=button]]:max-w-full [&_[data-slot=button]]:whitespace-normal"
         >
           {compactActions}
         </div>
