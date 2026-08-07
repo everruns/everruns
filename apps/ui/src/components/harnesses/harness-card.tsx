@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EntityCard, EntityCardFooter } from "@/components/ui/entity-card";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Pencil, Shield } from "lucide-react";
+import { GitBranch, Pencil, Shield } from "lucide-react";
 import { IconTile } from "@/components/layout/page-layout";
 import type { Harness, Capability, CapabilityId } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
@@ -22,12 +22,14 @@ import {
 } from "@/lib/entity-lifecycle";
 import { formatCountLabel } from "@/lib/formatting";
 import { normalizeTags } from "@/lib/tags";
+import type { HarnessInheritance } from "@/lib/harness-inheritance";
 
 interface HarnessCardProps {
   harness: Harness;
   allCapabilities?: Capability[];
   showEditButton?: boolean;
   compact?: boolean;
+  inheritance?: HarnessInheritance;
 }
 
 export function HarnessCard({
@@ -35,6 +37,7 @@ export function HarnessCard({
   allCapabilities,
   showEditButton = false,
   compact = false,
+  inheritance,
 }: HarnessCardProps) {
   const { locale } = useLocale();
   const getCapabilityInfo = (capabilityId: CapabilityId): Capability | undefined =>
@@ -44,6 +47,15 @@ export function HarnessCard({
   const tags = normalizeTags(harness.tags);
   const sessionCount = harness.session_count ?? 0;
   const appCount = harness.app_count ?? 0;
+  const directParent = inheritance?.directParent;
+  const directParentName = directParent ? getDisplayName(directParent) : null;
+  const inheritanceSummary = inheritance?.hasCycle
+    ? "Inheritance chain unavailable because it contains a cycle"
+    : inheritance?.missingParentId
+      ? `Parent harness unavailable (${inheritance.missingParentId})`
+      : inheritance && inheritance.chain.length > 1
+        ? `Inheritance chain: ${inheritance.chain.map(getDisplayName).join(" → ")}`
+        : null;
 
   return (
     <EntityCard
@@ -95,9 +107,46 @@ export function HarnessCard({
         <p className="text-sm text-muted-foreground mb-3 italic">No description provided</p>
       )}
 
+      {harness.parent_harness_id && (
+        <div className="mb-3 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger
+                aria-label="Show harness inheritance chain"
+                className="inline-flex shrink-0 items-center"
+              >
+                <GitBranch className="icon-sharp size-3.5" />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{inheritanceSummary ?? "Direct parent harness"}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <span className="shrink-0">Inherits from</span>
+          {directParent && directParent.status !== "deleted" ? (
+            <Link
+              href={`/harnesses/${directParent.id}`}
+              className="min-w-0 truncate font-medium text-foreground hover:underline"
+              title={directParentName ?? undefined}
+            >
+              {directParentName}
+            </Link>
+          ) : (
+            <span className="min-w-0 truncate italic" title={harness.parent_harness_id}>
+              unavailable harness
+            </span>
+          )}
+          {directParent?.status === "archived" && <span className="shrink-0">(archived)</span>}
+        </div>
+      )}
+
       {/* Capabilities display */}
       {harnessCapabilities.length > 0 && (
-        <div className="flex flex-wrap gap-1 mb-3">
+        <div
+          className="flex flex-wrap items-center gap-1 mb-3"
+          aria-label="Locally declared capabilities"
+        >
+          <span className="mr-1 text-[11px] text-muted-foreground">Declared capabilities</span>
           <TooltipProvider>
             {harnessCapabilities.map((capConfig) => {
               const cap = getCapabilityInfo(capConfig.ref);

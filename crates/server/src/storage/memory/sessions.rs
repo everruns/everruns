@@ -224,6 +224,23 @@ impl InMemoryDatabase {
             .count() as u64)
     }
 
+    pub async fn count_sessions_for_harnesses(
+        &self,
+        org_id: i64,
+        harness_ids: &[HarnessId],
+    ) -> Result<Vec<(HarnessId, i64)>> {
+        let mut counts = std::collections::HashMap::<HarnessId, i64>::new();
+        for session in self.sessions.read().values() {
+            if session.org_id == org_id
+                && let Some(harness_id) = session.harness_id
+                && harness_ids.contains(&harness_id)
+            {
+                *counts.entry(harness_id).or_default() += 1;
+            }
+        }
+        Ok(counts.into_iter().collect())
+    }
+
     /// Count sessions in an org (for resource limits). Sessions are hard-deleted
     /// (no soft-delete status), so every stored row counts toward the cap.
     pub async fn count_sessions_for_org(&self, org_id: i64) -> Result<i64> {

@@ -354,6 +354,26 @@ impl Database {
         Ok(count as u64)
     }
 
+    pub async fn count_sessions_for_harnesses(
+        &self,
+        org_id: i64,
+        harness_ids: &[HarnessId],
+    ) -> Result<Vec<(HarnessId, i64)>> {
+        let harness_ids = harness_ids.iter().map(|id| id.uuid()).collect::<Vec<_>>();
+        Ok(sqlx::query_as(
+            r#"
+            SELECT harness_id, COUNT(*)::bigint
+            FROM sessions
+            WHERE org_id = $1 AND harness_id = ANY($2)
+            GROUP BY harness_id
+            "#,
+        )
+        .bind(org_id)
+        .bind(&harness_ids)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
     /// Count sessions in an org (for resource limits). Sessions are hard-deleted
     /// (no soft-delete status), so every stored row counts toward the cap.
     pub async fn count_sessions_for_org(&self, org_id: i64) -> Result<i64> {

@@ -35,6 +35,7 @@ import { isArchivedStatus } from "@/lib/entity-lifecycle";
 import { normalizeTags } from "@/lib/tags";
 import { pluralize } from "@/lib/formatting";
 import { cn } from "@/lib/utils";
+import { resolveHarnessInheritance } from "@/lib/harness-inheritance";
 
 const EXAMPLE_PREVIEW_LIMIT = 6;
 type StatusTab = "all" | "active" | "archived";
@@ -72,6 +73,11 @@ export default function HarnessesPageClient() {
     const archived = list.filter((h) => isArchivedStatus(h.status)).length;
     return { all: list.length, active: list.length - archived, archived };
   }, [harnesses]);
+
+  const harnessesById = useMemo(
+    () => new Map((harnesses ?? []).map((harness) => [harness.id, harness])),
+    [harnesses],
+  );
 
   const capabilityFacets = useMemo(() => {
     const tally = new Map<string, number>();
@@ -239,6 +245,7 @@ export default function HarnessesPageClient() {
                     harness={harness}
                     allCapabilities={allCapabilities}
                     showEditButton
+                    inheritance={resolveHarnessInheritance(harness, harnessesById)}
                   />
                 ))}
               </div>
