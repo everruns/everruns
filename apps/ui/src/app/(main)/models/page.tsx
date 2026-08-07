@@ -239,7 +239,7 @@ export default function ModelsPage() {
             <div className="space-y-8">
               {enabledModels.length > 0 && (
                 <div>
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-xl font-semibold">Enabled models</h2>
                     <span className="text-sm text-muted-foreground">
                       {enabledModels.length} enabled
@@ -267,7 +267,7 @@ export default function ModelsPage() {
 
               {availableModels.length > 0 && (
                 <div>
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-xl font-semibold">Available models</h2>
                     <span className="text-sm text-muted-foreground">
                       Enable a model to use it with agents
@@ -302,7 +302,7 @@ export default function ModelsPage() {
               </div>
               <Card>
                 <CardContent className="pt-6">
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-4">
                     <Label htmlFor="default-model" className="whitespace-nowrap font-medium">
                       Default Model
                     </Label>
