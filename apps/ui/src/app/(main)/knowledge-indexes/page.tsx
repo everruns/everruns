@@ -153,7 +153,7 @@ export default function KnowledgeIndexesPage() {
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           aria-label="Search knowledge indexes"
-          containerClassName="w-64"
+          containerClassName="w-64 max-w-full"
         />
         <div className="flex-1" />
         <SectionTabs
@@ -192,9 +192,9 @@ export default function KnowledgeIndexesPage() {
             }
           >
             {(items) => (
-              <div className="border">
-                <Table className="min-w-[960px]">
-                  <TableHeader>
+              <div className="min-w-0 border">
+                <Table aria-label="Knowledge indexes" className="xl:min-w-[960px]">
+                  <TableHeader className="hidden xl:table-header-group">
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Source</TableHead>
@@ -349,8 +349,11 @@ function KnowledgeIndexRow({
   const canSync = index.status === "active" && !knowledgeIndexDiagnosticBlocksSync(diagnostic);
 
   return (
-    <TableRow>
-      <TableCell>
+    <TableRow
+      data-slot="responsive-table-row"
+      className="grid grid-cols-2 gap-x-4 gap-y-4 p-4 hover:bg-transparent sm:grid-cols-4 xl:table-row xl:p-0 xl:hover:bg-muted/50"
+    >
+      <TableCell className="col-span-2 block min-w-0 whitespace-normal p-0 sm:col-span-4 xl:table-cell xl:p-1.5">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           <div className="font-medium">
             <EntityIdentity value={index.id} labelClassName={getEntityNameClassName(index.status)}>
@@ -367,7 +370,10 @@ function KnowledgeIndexRow({
           </div>
         )}
       </TableCell>
-      <TableCell>
+      <TableCell className="col-span-2 block min-w-0 whitespace-normal p-0 sm:col-span-1 xl:table-cell xl:p-1.5">
+        <span className="mb-1 block font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground xl:hidden">
+          Source
+        </span>
         <span className="inline-flex items-center gap-1.5 text-muted-foreground">
           {index.source_type === "github" ? (
             <Github className="size-3.5" />
@@ -377,8 +383,11 @@ function KnowledgeIndexRow({
           {index.source_type}
         </span>
       </TableCell>
-      <TableCell>
-        <div className="w-64 space-y-1.5 whitespace-normal">
+      <TableCell className="col-span-2 block min-w-0 whitespace-normal p-0 sm:col-span-3 xl:table-cell xl:p-1.5">
+        <span className="mb-1 block font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground xl:hidden">
+          Index state
+        </span>
+        <div className="min-w-0 space-y-1.5 whitespace-normal xl:w-64">
           <KnowledgeIndexDiagnosticBadge diagnostic={diagnostic} />
           <p className="text-xs text-muted-foreground">{diagnostic.description}</p>
           {diagnostic.failureReason && (
@@ -405,14 +414,23 @@ function KnowledgeIndexRow({
           )}
         </div>
       </TableCell>
-      <TableCell className="text-muted-foreground">
+      <TableCell className="col-span-1 block whitespace-normal p-0 text-muted-foreground xl:table-cell xl:p-1.5">
+        <span className="mb-1 block font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground xl:hidden">
+          Last synced
+        </span>
         {index.last_synced_at ? formatRelativeTime(index.last_synced_at) : "Never"}
       </TableCell>
-      <TableCell className="text-muted-foreground">
+      <TableCell className="col-span-1 block whitespace-normal p-0 text-muted-foreground xl:table-cell xl:p-1.5">
+        <span className="mb-1 block font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground xl:hidden">
+          Updated
+        </span>
         {formatRelativeTime(index.updated_at)}
       </TableCell>
-      <TableCell>
-        <div className="flex items-center justify-end gap-2">
+      <TableCell className="col-span-2 block whitespace-normal p-0 sm:col-span-4 xl:table-cell xl:p-1.5">
+        <span className="mb-1 block font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground xl:hidden">
+          Actions
+        </span>
+        <div className="flex flex-wrap items-center justify-start gap-2 xl:justify-end">
           {canSync && (
             <Button
               variant="outline"

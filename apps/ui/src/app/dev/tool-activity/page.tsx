@@ -41,7 +41,7 @@ export default function ToolActivityDevPage() {
             </p>
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid min-w-0 gap-4 xl:grid-cols-2 [&>*]:min-w-0">
             <div className="space-y-2">
               <p className="text-sm font-medium text-foreground">Bash output</p>
               <BashToolCallCard

@@ -73,7 +73,7 @@ describe("McpServersPage", () => {
       .getByRole("heading", { level: 1, name: "MCP Servers" })
       .closest("div.container");
 
-    expect(pageShell).toHaveClass("container", "mx-auto", "p-6");
+    expect(pageShell).toHaveClass("container", "mx-auto", "max-w-full", "p-4", "sm:p-6");
   });
 
   it("renders configured MCP servers", () => {
