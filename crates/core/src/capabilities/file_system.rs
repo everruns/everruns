@@ -549,7 +549,7 @@ fn fs_input_display_path(file_store: &dyn SessionFileSystem, path: &str) -> Stri
     if file_store.is_mount_resolver() {
         file_store.resolve_path(path)
     } else {
-        file_store.display_path(path)
+        file_store.display_path(&file_store.resolve_path(path))
     }
 }
 
