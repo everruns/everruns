@@ -155,6 +155,7 @@ impl InMemoryDatabase {
     }
 
     pub async fn update_user(&self, id: Uuid, input: UpdateUser) -> Result<Option<UserRow>> {
+        let changed_name = input.name.clone();
         let mut users = self.users.write();
         if let Some(user) = users.get_mut(&id) {
             if let Some(name) = input.name {
@@ -173,7 +174,30 @@ impl InMemoryDatabase {
                 user.email_verified = email_verified;
             }
             user.updated_at = Self::now();
-            return Ok(Some(user.clone()));
+            let updated = user.clone();
+            drop(users);
+            if let Some(name) = changed_name {
+                let display_name = match name.trim() {
+                    "" => "User".to_string(),
+                    name => name.to_string(),
+                };
+                let principal_ids = self
+                    .principals
+                    .read()
+                    .values()
+                    .filter(|principal| principal.resolved_user_id == Some(id))
+                    .map(|principal| principal.id)
+                    .collect::<std::collections::HashSet<_>>();
+                for participant in self.session_participants.write().values_mut() {
+                    if participant.kind == "user"
+                        && principal_ids.contains(&participant.principal_id)
+                    {
+                        participant.display_name = Some(display_name.clone());
+                        participant.updated_at = Self::now();
+                    }
+                }
+            }
+            return Ok(Some(updated));
         }
         Ok(None)
     }

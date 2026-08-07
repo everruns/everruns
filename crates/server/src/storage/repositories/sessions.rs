@@ -128,9 +128,9 @@ impl Database {
                 r#"
                 INSERT INTO session_participants (
                     id, org_id, session_id, kind, agent_id, agent_version_id,
-                    principal_id, role, joined_at
+                    principal_id, display_name, role, joined_at
                 )
-                VALUES (uuidv7(), $1, $2, 'agent', $3, $4, $5, 'host', $6)
+                VALUES (uuidv7(), $1, $2, 'agent', $3, $4, $5, NULL, 'host', $6)
                 "#,
             )
             .bind(row.org_id)
@@ -147,14 +147,22 @@ impl Database {
             r#"
             INSERT INTO session_participants (
                 id, org_id, session_id, kind, agent_id, agent_version_id,
-                principal_id, role, joined_at
+                principal_id, display_name, role, joined_at
             )
-            VALUES (uuidv7(), $1, $2, 'user', NULL, NULL, $3, 'member', $4)
+            VALUES (
+                uuidv7(), $1, $2, 'user', NULL, NULL, $3,
+                COALESCE(
+                    NULLIF(BTRIM((SELECT name FROM users WHERE id = $4)), ''),
+                    'User'
+                ),
+                'member', $5
+            )
             "#,
         )
         .bind(row.org_id)
         .bind(row.id.uuid())
         .bind(row.owner_principal_id)
+        .bind(row.resolved_owner_user_id)
         .bind(row.created_at)
         .execute(&mut *tx)
         .await?;

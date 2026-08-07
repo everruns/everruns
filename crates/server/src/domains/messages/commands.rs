@@ -513,6 +513,7 @@ mod tests {
                 agent_id: Some(guest_agent.id),
                 agent_version_id: None,
                 principal_id: session.owner_principal_id,
+                display_name: None,
                 role: SessionParticipantRole::Member,
                 joined_at: None,
             })

@@ -903,6 +903,7 @@ async fn ensure_slack_user_participant(
             agent_id: None,
             agent_version_id: None,
             principal_id: principal.id,
+            display_name: Some(actor.display_label().to_string()),
             role: SessionParticipantRole::Member,
             joined_at: None,
         })

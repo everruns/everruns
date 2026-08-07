@@ -22,6 +22,7 @@ import type {
   ToolProgressData,
 } from "@/lib/api/types";
 import { getDisplayName } from "@/lib/entity-lifecycle";
+import { getSessionParticipantLabel } from "@/lib/session-participant-label";
 import type { ToolOutputStreams } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { getEventData, isImageFilePart, isTextPart } from "@/lib/api/types";
 import type { TextAnnotation } from "@/lib/api/types";
@@ -386,12 +387,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   }, [participantMarkers, chatEvents]);
 
   const participantLabel = useCallback(
-    (p: SessionParticipant): string => {
-      if (p.kind === "agent") {
-        return (p.agent_id && agentNameById.get(p.agent_id)) || "Agent";
-      }
-      return "Participant";
-    },
+    (p: SessionParticipant): string => getSessionParticipantLabel(p, agentNameById),
     [agentNameById],
   );
 

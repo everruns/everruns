@@ -14343,6 +14343,8 @@ export interface components {
        * @example agentver_01933b5a00007000800000000000001
        */
       agent_version_id?: string | null;
+      /** @description Human-readable name captured for this participant. */
+      display_name?: string | null;
       /**
        * @description Unique identifier for the participant row (format: part_{32-hex}).
        * @example part_01933b5a00007000800000000000001
