@@ -132,4 +132,49 @@ describe("ToolGroupNode", () => {
     expect(screen.getByText(/OPENAI_API_KEY=\[redacted\]/)).toBeInTheDocument();
     expect(screen.queryByText(/sk-live-secret/)).not.toBeInTheDocument();
   });
+
+  it("redacts secret_store values from inputs and results", () => {
+    render(
+      <ToolGroupNode
+        id="tools"
+        type="toolGroup"
+        selected={false}
+        dragging={false}
+        draggable={false}
+        selectable={false}
+        deletable={false}
+        zIndex={0}
+        isConnectable={false}
+        positionAbsoluteX={0}
+        positionAbsoluteY={0}
+        data={{
+          label: "Tools (1)",
+          tools: [
+            {
+              id: "call-1",
+              name: "secret_store",
+              label: "Stored a secret",
+              status: "success",
+              success: true,
+              arguments: { operation: "set", name: "API_TOKEN", value: "input-secret" },
+              resultText: JSON.stringify({
+                operation: "get",
+                name: "API_TOKEN",
+                value: "output-secret",
+                found: true,
+              }),
+            },
+          ],
+          successCount: 1,
+          errorCount: 0,
+          eventId: "event-1",
+          timestamp: "2026-08-06T12:00:00Z",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Stored a secret"));
+    expect(screen.getAllByText(/\[redacted\]/)).toHaveLength(2);
+    expect(screen.queryByText(/input-secret|output-secret/)).not.toBeInTheDocument();
+  });
 });
