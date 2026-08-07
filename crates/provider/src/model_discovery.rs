@@ -11,6 +11,7 @@
 //! no catalog to offer" and callers should keep their curated suggestions,
 //! while `Err` means the catalog request itself failed.
 
+use crate::driver_helpers::shared_request_http_client;
 use crate::driver_registry::{DiscoveredModel, DriverId, DriverRegistry, ProviderConfig};
 use crate::error::{AgentLoopError, Result};
 use crate::model_profiles::get_model_profile;
@@ -144,8 +145,20 @@ pub async fn list_openai_compatible_models(
     base_url: &str,
     api_key: Option<&str>,
 ) -> Result<Option<Vec<DiscoveredModel>>> {
+    // THREAT[TM-API-013]: Provider base URLs are org-configurable. Use the
+    // shared client so redirects, private DNS results, and hung responses are
+    // rejected at request time.
+    list_openai_compatible_models_with_client(&shared_request_http_client(), base_url, api_key)
+        .await
+}
+
+async fn list_openai_compatible_models_with_client(
+    client: &reqwest::Client,
+    base_url: &str,
+    api_key: Option<&str>,
+) -> Result<Option<Vec<DiscoveredModel>>> {
     let url = format!("{}/models", base_url.trim_end_matches('/'));
-    let mut request = reqwest::Client::new().get(&url);
+    let mut request = client.get(&url);
     if let Some(key) = api_key {
         request = request.bearer_auth(key);
     }
@@ -567,10 +580,17 @@ mod tests {
                 .expect("write response");
         });
 
-        let discovered = list_openai_compatible_models(&format!("http://{addr}/v1"), None)
-            .await
-            .expect("fallback discovery should succeed")
-            .expect("endpoint lists models");
+        let discovered = list_openai_compatible_models_with_client(
+            &reqwest::Client::builder()
+                .no_proxy()
+                .build()
+                .expect("build mock HTTP client"),
+            &format!("http://{addr}/v1"),
+            None,
+        )
+        .await
+        .expect("fallback discovery should succeed")
+        .expect("endpoint lists models");
         server.join().expect("mock server thread");
 
         let presented = normalize_and_enrich(&DriverId::OpenAI, discovered);
@@ -578,6 +598,13 @@ mod tests {
         assert!(ids.contains(&"llama3.2:latest"), "ids: {ids:?}");
         // Gemini-style `models/` prefixes are normalized to bare ids.
         assert!(ids.contains(&"qwen3"), "ids: {ids:?}");
+    }
+
+    #[tokio::test]
+    async fn openai_compatible_fallback_blocks_internal_addresses() {
+        list_openai_compatible_models("http://127.0.0.1:9/v1", None)
+            .await
+            .expect_err("model discovery must use the provider SSRF guard");
     }
 
     fn presented(id: &str, display_name: Option<&str>) -> DiscoveredProviderModel {
