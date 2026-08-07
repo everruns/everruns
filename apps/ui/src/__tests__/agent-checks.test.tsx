@@ -179,6 +179,7 @@ describe("AgentChecks", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Apply fix" }));
 
     expect(onApplyFix).toHaveBeenCalledWith(7, 10, "good");
+    expect(screen.getByText("Suggested fix").closest("details")).toHaveClass("min-w-0");
   });
 
   it("shows the built-in check error state", () => {

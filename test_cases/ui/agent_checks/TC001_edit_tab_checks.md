@@ -20,18 +20,19 @@ contains only the rendered system prompt, tools, and initial files.
 ## Steps
 
 1. Open an editable agent and select Edit.
-2. Confirm the Checks and Health check cards appear above Agent Details.
+2. At desktop width, confirm the right rail orders cards as Capabilities, Checks, then Health check.
 3. Change the system prompt to the test value and wait for built-in checks to refresh.
 4. Confirm the template-variable finding appears without saving the agent.
 5. Select Analyze and wait for the deeper AI review to finish.
 6. If a finding proposes a system-prompt replacement, select Apply fix and confirm the editor text changes while the agent remains unsaved.
 7. Select Preview.
 8. Confirm Preview shows Full System Prompt, Available Tools, and Initial Files without Checks or Health check cards.
-9. Resize to a narrow viewport and repeat the Edit/Preview switch.
+9. Resize to a narrow viewport and confirm the shared columns stack Agent Details before
+   Capabilities, Checks, and Health check; repeat the Edit/Preview switch.
 
 ## Expected Result
 
-- Checks and Health check are visible by default in Edit and remain advisory.
+- Checks and Health check are visible in the Edit rail below Capabilities and remain advisory.
 - Built-in findings refresh from the current unsaved configuration.
 - Analyze exposes a loading state and then findings or a clear error without losing built-in findings.
 - Apply fix updates only the authored form state; saving remains explicit.
