@@ -1100,7 +1100,7 @@ async fn test_mcp_session_get_status_nonexistent() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_discover_agents() {
     let server = TestServer::in_memory().await;
-    let resp = mcp_tool_call(&server, "discover", json!({ "query": "agents" })).await;
+    let resp = mcp_tool_call(&server, "discover", json!({ "query": "list_agents" })).await;
 
     assert!(
         !tool_is_error(&resp),
@@ -1129,9 +1129,11 @@ async fn test_mcp_discover_agents() {
         "discover should not expose HTTP paths"
     );
     assert_eq!(list_agents["output_shape"], "paginated");
-    assert_eq!(
-        list_agents["output_schema"]["properties"]["data"]["type"],
-        "array"
+    assert!(
+        list_agents["output_fields"]
+            .as_array()
+            .is_some_and(|fields| fields.iter().any(|field| field == "data")),
+        "exact discovery should expose compact jq field paths"
     );
 }
 
@@ -1157,7 +1159,7 @@ async fn test_mcp_discover_sessions() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_discover_harnesses() {
     let server = TestServer::in_memory().await;
-    let resp = mcp_tool_call(&server, "discover", json!({ "query": "harnesses" })).await;
+    let resp = mcp_tool_call(&server, "discover", json!({ "query": "list_harnesses" })).await;
 
     assert!(
         !tool_is_error(&resp),
@@ -1177,7 +1179,12 @@ async fn test_mcp_discover_harnesses() {
         .find(|op| op["name"] == "list_harnesses")
         .expect("list_harnesses operation");
     assert_eq!(list_harnesses["output_shape"], "array");
-    assert_eq!(list_harnesses["output_schema"]["type"], "array");
+    assert!(
+        list_harnesses["output_fields"]
+            .as_array()
+            .is_some_and(|fields| fields.iter().any(|field| field == "id")),
+        "exact discovery should expose compact jq field paths"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1393,7 +1400,7 @@ async fn test_mcp_execute_missing_commands() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_query_list_harnesses_wrong_jq_shape_is_concise() {
+async fn test_mcp_query_allows_empty_jq_result() {
     let server = TestServer::in_memory().await;
     let resp = mcp_tool_call(
         &server,
@@ -1404,29 +1411,8 @@ async fn test_mcp_query_list_harnesses_wrong_jq_shape_is_concise() {
     )
     .await;
 
-    assert!(tool_is_error(&resp), "Expected jq shape mismatch error");
-    let text = tool_text(&resp);
-    assert!(
-        text.contains("jq: runtime error") || text.contains("jq: error"),
-        "Expected jq error, got: {text}"
-    );
-    assert!(
-        text.contains("output_shape"),
-        "Expected discover guidance, got: {text}"
-    );
-    assert!(
-        !text.contains("system_prompt"),
-        "Error must not dump harness fields: {text}"
-    );
-    assert!(
-        !text.contains("You are"),
-        "Error must not dump prompt content: {text}"
-    );
-    assert!(
-        text.len() < 240,
-        "Error should be concise, got {} chars: {text}",
-        text.len()
-    );
+    assert!(!tool_is_error(&resp), "empty jq output is valid");
+    assert_eq!(tool_text(&resp), "");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

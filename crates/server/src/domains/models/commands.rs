@@ -134,6 +134,14 @@ impl Command for ListModels {
         Some(&LLM_MODEL_VIEW)
     }
 
+    fn output_schema() -> serde_json::Value {
+        array_output_schema(output_schema_for::<ModelWithProvider>())
+    }
+
+    fn output_shape() -> &'static str {
+        "array"
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Vec<ModelWithProvider>, CommandError> {
         q::service(ctx)
             .list_all_with_filters(

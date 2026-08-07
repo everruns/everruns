@@ -859,7 +859,10 @@ async fn platform_command_surface_uses_session_owner_and_org() {
 
     for (query, expected) in [
         ("create agent", ["create_agent", "default_model_id"]),
-        ("agent trigger", ["create_agent_trigger", "cron_expression"]),
+        (
+            "create agent trigger",
+            ["create_agent_trigger", "cron_expression"],
+        ),
     ] {
         let response = service
             .invoke_platform_command_surface(Request::new(InvokePlatformCommandSurfaceRequest {

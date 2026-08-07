@@ -12,10 +12,25 @@ pub fn definition() -> BuiltInHarnessDefinition {
         "Conversational harness for the global chat interface.",
         SYSTEM_PROMPT,
     )
-    .with_parent_name("generic")
+    .with_parent_name("base")
     .with_tags(["chat", "built-in"])
     .with_roles([BuiltInHarnessRole::Chat])
-    .with_capabilities([BuiltInCapabilityDefinition::new("platform")])
+    .with_capabilities([
+        BuiltInCapabilityDefinition::new("platform"),
+        BuiltInCapabilityDefinition::new("loop_detection"),
+        BuiltInCapabilityDefinition::with_config(
+            "error_disclosure",
+            serde_json::json!({"mode": "detailed"}),
+        ),
+        BuiltInCapabilityDefinition::with_config(
+            "compaction",
+            serde_json::json!({
+                "strategy": "auto",
+                "proactive": true,
+                "budget_percent": 0.85
+            }),
+        ),
+    ])
 }
 
 const SYSTEM_PROMPT: &str = "\
@@ -57,3 +72,28 @@ Lead with the outcome. Do not include internal reasoning, planning narration, or
 
 - **Always confirm** before creating a harness or agent — these are reusable org-wide entities.
 - **Sessions**: Use common sense. Routine requests (\"run agent X on this task\") can proceed without confirmation. Unusual or high-impact requests (destructive operations, large-scale actions, unclear intent) should be confirmed first.";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn platform_chat_has_a_focused_tool_surface() {
+        let definition = definition();
+        assert_eq!(definition.parent_name.as_deref(), Some("base"));
+        let capabilities = definition
+            .capabilities
+            .iter()
+            .map(|capability| capability.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            capabilities,
+            [
+                "platform",
+                "loop_detection",
+                "error_disclosure",
+                "compaction"
+            ]
+        );
+    }
+}

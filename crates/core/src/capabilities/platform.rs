@@ -1,8 +1,6 @@
 //! Catalog-backed platform management capability.
 
-use super::{Capability, CapabilityLocalization, CapabilityStatus, MountPoint, RiskLevel};
-#[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
-use crate::capability_types::{MountAccess, MountSource};
+use super::{Capability, CapabilityLocalization, CapabilityStatus, RiskLevel};
 use crate::tool_types::{DeferrablePolicy, ToolHints};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{ToolContext, ToolContextService};
@@ -11,13 +9,11 @@ use serde_json::{Value, json};
 
 pub const PLATFORM_CAPABILITY_ID: &str = "platform";
 
-pub const DISCOVER_DESCRIPTION: &str = "Search the Everruns API catalog to find available operations. Returns matching operations with input/output schemas and jq-oriented output shape hints. Use all: true to list every operation grouped by category. Read-only operations are available as bash builtins in query; the full catalog is available in execute.";
+pub const DISCOVER_DESCRIPTION: &str = "Search the Everruns API catalog to find available operations. Multi-match searches return a compact name list; call discover once more with the exact command name to get its schema and copyable bash_usage. Do not use all: true for a task-specific lookup. Read-only operations are available as bash builtins in query; the full catalog is available in execute.";
 pub const QUERY_DESCRIPTION: &str = "Execute a bash script in an environment where only read-only Everruns API operations are available as built-in commands. Supports pipes, variables, loops, conditionals, jq, and direct access to safe builtins. Mutating commands are intentionally unavailable.";
 pub const EXECUTE_DESCRIPTION: &str = "Execute a bash script in an environment where every Everruns API operation is a built-in command, including operations with side effects. Supports pipes, variables, loops, conditionals, jq, and direct access to the full builtin set. Prefer query for read-only inspection; use execute when you need create/update/delete or other mutating operations.";
 
-const SYSTEM_PROMPT: &str = r#"Use `discover` when an Everruns operation or schema is unknown. Use `query` for read-only inspection and validation. Use `execute` only for user-requested mutations, then validate the resulting state with `query`. Do not guess operation names. Platform commands are already scoped to the current organization.
-
-Everruns public documentation is available under `/workspace/docs`. Consult it when answering product or configuration questions."#;
+const SYSTEM_PROMPT: &str = r#"Use `discover` when an Everruns operation or schema is unknown. Search once per concept. Multi-match search results are intentionally compact; pick the operation name and discover that exact name once to get `bash_usage` and `output_fields`. Do not use `all: true` for a task-specific lookup and do not rediscover a single-match result. Invoke commands with exactly the flags in `bash_usage`, and use `output_fields` to select jq paths instead of guessing resource fields. Platform builtins do not implement `--help`; do not probe them with `--help`, shell inventory commands, or saved-output searches. Filesystem redirection is disabled: never write intermediate output to `/tmp` or another file; keep JSON in shell variables and pipe it directly to `jq`. Pass array and object flags as JSON text. For dependent mutations, capture JSON output and use `jq` to feed returned IDs or capability references to later commands in the same `execute` script. `create_mcp_server` returns `capability_ref`, which is accepted in `create_agent --capabilities`; there is no separate MCP attachment operation. Use `query` for read-only inspection and validation. Use `execute` only for user-requested mutations, then validate the resulting state with `query`. Do not guess operation names or flags. Platform commands are already scoped to the current organization."#;
 
 pub struct PlatformCapability;
 
@@ -68,35 +64,6 @@ impl Capability for PlatformCapability {
             Box::new(PlatformCommandTool::query()),
             Box::new(PlatformCommandTool::execute()),
         ]
-    }
-
-    fn mounts(&self) -> Vec<MountPoint> {
-        #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
-        {
-            vec![MountPoint::new(
-                "/docs",
-                MountAccess::ReadOnly,
-                MountSource::Virtual {
-                    tree: super::platform_management::docs_tree(),
-                },
-                self.id(),
-            )]
-        }
-        #[cfg(not(all(feature = "embedded-platform-docs", everruns_has_workspace_docs)))]
-        {
-            Vec::new()
-        }
-    }
-
-    fn dependencies(&self) -> Vec<&'static str> {
-        #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
-        {
-            vec!["session_file_system"]
-        }
-        #[cfg(not(all(feature = "embedded-platform-docs", everruns_has_workspace_docs)))]
-        {
-            Vec::new()
-        }
     }
 }
 
@@ -240,7 +207,7 @@ pub fn discover_input_schema() -> Value {
             },
             "include_schemas": {
                 "type": "boolean",
-                "description": "Include input_schema and output_schema in results. Defaults to true for search and false for all."
+                "description": "For an exact-name lookup, include authoritative bash_usage/output_fields and bounded expanded schemas. Defaults to true for search and false for all. Omit this field normally; never repeat an exact lookup with a different value."
             }
         }
     })

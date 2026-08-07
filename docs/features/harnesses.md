@@ -16,7 +16,7 @@ For the design rationale (why three configuration layers exist), see [Concepts](
 | [Base](/built-ins/harnesses/base/) | Empty — no capabilities | Minimal agents, custom tool composition, testing |
 | [Generic](/built-ins/harnesses/generic/) | Core capabilities most agents need | General-purpose assistants, coding tasks, research |
 | [Data Analyst](/built-ins/harnesses/data-analyst/) | Generic plus SQL, charts, memory | Data workflows |
-| [Platform Chat](/built-ins/harnesses/platform-chat/) | Generic plus platform management | Operator chat |
+| [Platform Chat](/built-ins/harnesses/platform-chat/) | Focused platform command surface | Operator chat |
 
 The Generic harness is the recommended default. See the [Built-in harnesses reference](/built-ins/harnesses/base/) for the exact capability bundle each one ships with.
 

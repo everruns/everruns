@@ -25,12 +25,34 @@ the capability is high-risk and follows the normal admin-only assignment rule.
 ### `discover`
 
 Search for operations by name, category, description, or schema terms. Results
-include command metadata, input/output schemas, read-only classification, and
-output-shape hints. Use `all: true` to list the entire scriptable catalog.
+include command metadata, read-only classification, and output-shape hints.
+Searches with multiple matches omit schemas and return a refinement hint to
+keep the result compact. A query that exactly matches a command name returns
+only that command with its schemas and `bash_usage`, a copyable invocation with
+the exact supported flags. It also includes bounded `output_fields` paths for
+building `jq` filters without guessing field names. If expanded schemas would
+make the result too large, the response omits them with a notice while retaining
+the authoritative scripting summaries. Use `all: true` only when you truly need
+to list the entire scriptable catalog, not for a task-specific lookup.
 
 ```json
 { "query": "models" }
 ```
+
+Once you find a command, discover its exact name before invoking it:
+
+```json
+{ "query": "create_agent" }
+```
+
+Platform builtins do not implement `--help`. Use `bash_usage` and the returned
+schema instead of probing with `--help` or guessing flag names. Pass array and
+object values as JSON text, for example
+`--capabilities '[{"ref":"mcp:..."}]'`.
+
+Unknown flags are rejected before a command runs. This prevents misspelled
+security-sensitive options, such as an authentication flag, from being silently
+ignored during a mutation.
 
 ### `query`
 
@@ -59,6 +81,12 @@ for requested create, update, delete, and other mutating operations.
 commands may already have succeeded. Inspect the resulting state with `query`
 before retrying.
 
+MCP server command results include both their public resource `id` and a
+derived `capability_ref` in the `mcp:<uuid>` form accepted by Agent capability
+configuration. Capture JSON results and use `jq` to pass dependent IDs or
+capability references to later commands in the same script. No separate MCP
+attachment operation is needed.
+
 ## Scope and authorization
 
 Platform tools are always bound to the current session's organization. Their
@@ -76,12 +104,6 @@ not provision an independently owned worker workflow.
 Credentials are not transferred from Platform Chat session secrets into a new
 Agent. Configure integrations through their supported Agent-scoped credential
 or connection flow; do not paste credentials into command scripts.
-
-## Embedded documentation
-
-When embedded platform docs are enabled, public Markdown documentation is
-mounted read-only at `/workspace/docs`. Files come from the repository `docs/`
-directory at compile time and do not create per-session database rows.
 
 ## See also
 
