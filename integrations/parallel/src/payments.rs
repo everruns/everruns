@@ -311,18 +311,16 @@ pub struct ParallelTaskTool;
 impl Tool for ParallelTaskTool {
     fn narrate(
         &self,
-        tool_call: &everruns_core::tool_types::ToolCall,
+        _tool_call: &everruns_core::tool_types::ToolCall,
         phase: everruns_core::tool_narration::ToolNarrationPhase,
         _locale: Option<&str>,
         _ctx: everruns_core::tool_narration::ToolNarrationContext<'_>,
     ) -> Option<String> {
-        let objective = safe_arg_str(&tool_call.arguments, &["input", "objective"])
-            .map(|value| truncate(value, 48));
-        Some(labeled_phrase(
+        Some(generic_phrase(
             "Running Parallel task",
             "Ran Parallel task",
             "Failed to run Parallel task",
-            objective,
+            None,
             phase,
         ))
     }
@@ -650,6 +648,20 @@ mod tests {
             )
             .as_deref(),
             Some("Checked task status")
+        );
+    }
+
+    #[test]
+    fn narrate_task_omits_private_input() {
+        let tool = ParallelTaskTool;
+        assert_eq!(
+            narrate(
+                &tool,
+                json!({"input": "Private analysis with customer token SECRET42"}),
+                ToolNarrationPhase::Started
+            )
+            .as_deref(),
+            Some("Running Parallel task")
         );
     }
 }
