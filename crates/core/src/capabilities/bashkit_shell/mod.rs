@@ -422,13 +422,14 @@ impl Tool for BashTool {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
         let (partial_tx, partial_rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
 
-        let output_callback: OutputCallback =
-            Box::new(move |stdout_chunk: &str, stderr_chunk: &str| {
-                // Best-effort: if receiver dropped, we just ignore
-                let _ = tx.send((stdout_chunk.to_string(), stderr_chunk.to_string()));
-                // Bounded: drop if full rather than growing without bound.
-                let _ = partial_tx.try_send((stdout_chunk.to_string(), stderr_chunk.to_string()));
-            });
+        let output_callback: OutputCallback = Box::new(move |stdout_chunk, stderr_chunk| {
+            // Tool output events are text, so decode Bashkit's byte-native
+            // chunks explicitly at the event boundary.
+            // Best-effort: if receiver dropped, we just ignore
+            let _ = tx.send((stdout_chunk.to_string(), stderr_chunk.to_string()));
+            // Bounded: drop if full rather than growing without bound.
+            let _ = partial_tx.try_send((stdout_chunk.to_string(), stderr_chunk.to_string()));
+        });
 
         // Spawn a task that reads chunks from the channel and emits events
         let emit_context = context.clone();
@@ -641,16 +642,17 @@ impl BackgroundExecutableTool for BashTool {
         let sink_for_output = sink.clone();
         let dropped_chunks = Arc::new(AtomicUsize::new(0));
         let dropped_chunks_for_callback = dropped_chunks.clone();
-        let output_callback: OutputCallback =
-            Box::new(move |stdout_chunk: &str, stderr_chunk: &str| {
-                if tx
-                    .try_send((stdout_chunk.to_string(), stderr_chunk.to_string()))
-                    .is_err()
-                {
-                    dropped_chunks_for_callback.fetch_add(1, Ordering::Relaxed);
-                }
-                let _ = partial_tx.try_send((stdout_chunk.to_string(), stderr_chunk.to_string()));
-            });
+        let output_callback: OutputCallback = Box::new(move |stdout_chunk, stderr_chunk| {
+            // Background output uses the same text boundary as foreground
+            // tool events.
+            if tx
+                .try_send((stdout_chunk.to_string(), stderr_chunk.to_string()))
+                .is_err()
+            {
+                dropped_chunks_for_callback.fetch_add(1, Ordering::Relaxed);
+            }
+            let _ = partial_tx.try_send((stdout_chunk.to_string(), stderr_chunk.to_string()));
+        });
 
         let emit_task = tokio::spawn(async move {
             while let Some((stdout_chunk, stderr_chunk)) = rx.recv().await {
