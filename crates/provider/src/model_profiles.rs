@@ -254,7 +254,7 @@ struct ModelDescriptor {
     vendor: ModelVendor,
     /// Provider types (API surfaces) this model is offered under.
     surfaces: &'static [DriverId],
-    /// Which provider service this model belongs to (specs/providers.md).
+    /// Which provider service this model belongs to (knowledge/foundations/providers.md).
     /// Pickers filter on it: chat pickers never list realtime models.
     service: ServiceKind,
 }
@@ -314,6 +314,16 @@ const MICROSOFT_MAI: &[DriverId] = &[
     DriverId::OpenRouter,
     DriverId::OpenAICompletions,
 ];
+// Muse is served first-party by Meta Model API and through OpenAI-compatible
+// gateways. The Contributor tier is first-party only because its data-use
+// terms are part of Meta's own Model API product.
+const META_MUSE: &[DriverId] = &[
+    DriverId::Meta,
+    DriverId::OpenAI,
+    DriverId::OpenRouter,
+    DriverId::OpenAICompletions,
+];
+const META_ONLY: &[DriverId] = &[DriverId::Meta];
 
 static REGISTRY: &[ModelDescriptor] = &[
     // OpenAI
@@ -428,6 +438,16 @@ static REGISTRY: &[ModelDescriptor] = &[
         MICROSOFT_MAI,
     ),
     md(
+        &["muse-spark-1.2", "meta/muse-spark-1.2"],
+        ModelVendor::Meta,
+        META_MUSE,
+    ),
+    md(
+        &["muse-spark-1.2-contributor"],
+        ModelVendor::Meta,
+        META_ONLY,
+    ),
+    md(
         &["minimax-m3", "minimax/minimax-m3"],
         ModelVendor::MiniMax,
         OPENAI_COMPAT,
@@ -461,11 +481,9 @@ fn resolve_descriptor(
 ) -> Option<&'static ModelDescriptor> {
     // Match without allocating: compare bytes case-insensitively. Ids are ASCII.
     let id = model_id.as_bytes();
-    let mut best: Option<(usize, &'static ModelDescriptor)> = None;
+    let mut longest_match = 0;
+    let mut best_for_surface: Option<&'static ModelDescriptor> = None;
     for descriptor in REGISTRY {
-        if !descriptor.surfaces.contains(provider_type) {
-            continue;
-        }
         for alias in descriptor.ids {
             let alias = alias.as_bytes();
             // Exact (case-insensitive) match, or an `"<alias>-"` prefix (which
@@ -477,12 +495,27 @@ fn resolve_descriptor(
                     && id[alias.len()] == b'-'
                     && id[..alias.len()].eq_ignore_ascii_case(alias)
             };
-            if id_matches && best.is_none_or(|(len, _)| alias.len() > len) {
-                best = Some((alias.len(), descriptor));
+            if !id_matches {
+                continue;
+            }
+
+            // Resolve the most specific known model identity before checking
+            // its provider surface. Otherwise a shorter generic prefix can
+            // swallow an exact tier/variant that is intentionally unavailable
+            // on this provider (for example Muse Spark Contributor via a
+            // gateway) and silently assign the wrong profile.
+            if alias.len() > longest_match {
+                longest_match = alias.len();
+                best_for_surface = descriptor
+                    .surfaces
+                    .contains(provider_type)
+                    .then_some(descriptor);
+            } else if alias.len() == longest_match && descriptor.surfaces.contains(provider_type) {
+                best_for_surface = Some(descriptor);
             }
         }
     }
-    best.map(|(_, descriptor)| descriptor)
+    best_for_surface
 }
 
 /// Get a model profile by matching provider_type and model_id.
@@ -491,10 +524,10 @@ fn resolve_descriptor(
 pub fn get_model_profile(provider_type: &DriverId, model_id: &str) -> Option<ModelProfile> {
     let descriptor = resolve_descriptor(provider_type, model_id)?;
     let mut profile = profile_data(descriptor.ids[0])?;
-    // Native execution phases are an OpenAI Responses-only feature. OpenRouter
-    // uses a compatible but stateless Responses endpoint, so it keeps the base
-    // model profile while masking native OpenAI-only request options.
-    if !matches!(provider_type, DriverId::OpenAI) {
+    // Native execution phases are implemented by the first-party OpenAI and
+    // Meta Responses surfaces. Gateways keep the base model profile while
+    // masking provider-native request options.
+    if !matches!(provider_type, DriverId::OpenAI | DriverId::Meta) {
         profile.supports_phases = false;
     }
     // Hosted tool_search is rendered by the OpenAI Responses driver and the
@@ -505,8 +538,11 @@ pub fn get_model_profile(provider_type: &DriverId, model_id: &str) -> Option<Mod
     //   - Bedrock: ConverseStream; Anthropic's server-side tool search there is
     //     only on the InvokeModel API, which this driver does not use.
     //   - OpenAI Completions / Gemini: no hosted tool_search at all.
-    // So mask the flag for everything except the two first-party providers.
-    if !matches!(provider_type, DriverId::OpenAI | DriverId::Anthropic) {
+    // So mask the flag except on the first-party surfaces that implement it.
+    if !matches!(
+        provider_type,
+        DriverId::OpenAI | DriverId::Anthropic | DriverId::Meta
+    ) {
         profile.tool_search = false;
     }
     // Speed (service tier) is an OpenAI-platform billing feature. Azure has
@@ -579,7 +615,7 @@ pub fn get_model_vendor(provider_type: &DriverId, model_id: &str) -> Option<Mode
     resolve_descriptor(provider_type, model_id).map(|descriptor| descriptor.vendor)
 }
 
-/// Stable public profile key: `"{vendor}/{canonical_id}"` (specs/providers.md).
+/// Stable public profile key: `"{vendor}/{canonical_id}"` (knowledge/foundations/providers.md).
 ///
 /// The key identifies the model's identity independent of which provider
 /// serves it: `("anthropic", "claude-sonnet-4-5-20250929")` and a gateway
@@ -619,8 +655,77 @@ fn profile_data(canonical: &str) -> Option<ModelProfile> {
     openai_profile_data(canonical)
         .or_else(|| anthropic_profile_data(canonical))
         .or_else(|| gemini_profile_data(canonical))
+        .or_else(|| meta_profile_data(canonical))
         .or_else(|| third_party_profile_data(canonical))
         .or_else(|| llmsim_profile_data(canonical))
+}
+
+fn meta_profile_data(model_id: &str) -> Option<ModelProfile> {
+    let (name, description, cost) = match model_id {
+        "muse-spark-1.2" => (
+            "Muse Spark 1.2",
+            "Meta's coding-optimized Muse Spark model. Prompts and completions are not used to train Meta models.",
+            ModelCost {
+                input: 1.25,
+                output: 4.25,
+                cache_read: Some(0.15),
+                cost_tiers: vec![],
+            },
+        ),
+        "muse-spark-1.2-contributor" => (
+            "Muse Spark 1.2 Contributor",
+            "Discounted Muse Spark 1.2 tier where prompts and completions may be used to train future Meta models.",
+            ModelCost {
+                input: 0.10,
+                output: 0.20,
+                cache_read: Some(0.002),
+                cost_tiers: vec![],
+            },
+        ),
+        _ => return None,
+    };
+
+    Some(ModelProfile {
+        name: name.into(),
+        family: "muse-spark-1.2".into(),
+        description: Some(description.into()),
+        release_date: Some("2026-08-05".into()),
+        last_updated: Some("2026-08-05".into()),
+        attachment: true,
+        reasoning: true,
+        temperature: true,
+        knowledge: None,
+        tool_call: true,
+        structured_output: true,
+        open_weights: false,
+        cost: Some(cost),
+        limits: Some(ModelLimits {
+            // Meta documents one joint input + output context budget and no
+            // smaller fixed output cap. Callers must leave room for input.
+            context: 1_048_576,
+            input: None,
+            output: 1_048_576,
+            max_media: None,
+        }),
+        modalities: Some(ModelModalities {
+            input: vec![
+                Modality::Text,
+                Modality::Image,
+                Modality::Audio,
+                Modality::Video,
+                Modality::Pdf,
+            ],
+            output: vec![Modality::Text],
+        }),
+        // Meta documents a model-determined default rather than a stable
+        // effort value, which the current profile type cannot represent.
+        reasoning_effort: None,
+        speed: None,
+        verbosity: None,
+        tool_search: true,
+        supported_parameters: Vec::new(),
+        supports_phases: true,
+    })
 }
 
 fn openai_profile_data(model_id: &str) -> Option<ModelProfile> {
@@ -5149,6 +5254,65 @@ mod tests {
             Some(ModelVendor::OpenAi)
         );
         assert_eq!(get_model_vendor(&DriverId::OpenAI, "made-up"), None);
+    }
+
+    #[test]
+    fn test_muse_spark_1_2_profiles_and_tiers() {
+        let standard = get_model_profile(&DriverId::Meta, "muse-spark-1.2").unwrap();
+        assert_eq!(standard.name, "Muse Spark 1.2");
+        assert_eq!(standard.limits.as_ref().unwrap().context, 1_048_576);
+        assert!(standard.tool_call);
+        assert!(standard.tool_search);
+        assert!(standard.structured_output);
+        assert!(standard.supports_phases);
+        assert_eq!(
+            standard.modalities.as_ref().unwrap().input,
+            vec![
+                Modality::Text,
+                Modality::Image,
+                Modality::Audio,
+                Modality::Video,
+                Modality::Pdf,
+            ]
+        );
+        let standard_cost = standard.cost.unwrap();
+        assert_eq!(standard_cost.input, 1.25);
+        assert_eq!(standard_cost.cache_read, Some(0.15));
+        assert_eq!(standard_cost.output, 4.25);
+
+        let contributor = get_model_profile(&DriverId::Meta, "muse-spark-1.2-contributor").unwrap();
+        let contributor_cost = contributor.cost.unwrap();
+        assert_eq!(contributor_cost.input, 0.10);
+        assert_eq!(contributor_cost.cache_read, Some(0.002));
+        assert_eq!(contributor_cost.output, 0.20);
+        assert!(
+            contributor
+                .description
+                .as_deref()
+                .unwrap()
+                .contains("may be used to train")
+        );
+        assert_eq!(
+            get_model_profile_key(&DriverId::Meta, "muse-spark-1.2-contributor").as_deref(),
+            Some("meta/muse-spark-1.2-contributor")
+        );
+    }
+
+    #[test]
+    fn test_muse_surface_capabilities_are_transport_gated() {
+        let direct = get_model_profile(&DriverId::Meta, "muse-spark-1.2").unwrap();
+        assert!(direct.supports_phases);
+        assert!(direct.tool_search);
+
+        let openrouter = get_model_profile(&DriverId::OpenRouter, "meta/muse-spark-1.2").unwrap();
+        assert!(!openrouter.supports_phases);
+        assert!(!openrouter.tool_search);
+
+        assert!(get_model_profile(&DriverId::OpenRouter, "muse-spark-1.2-contributor").is_none());
+        assert_eq!(
+            get_model_vendor(&DriverId::Meta, "muse-spark-1.2"),
+            Some(ModelVendor::Meta)
+        );
     }
 
     #[test]

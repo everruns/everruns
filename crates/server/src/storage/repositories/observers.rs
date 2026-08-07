@@ -1,4 +1,4 @@
-// Observer storage (PostgreSQL) — see specs/online-evals.md.
+// Observer storage (PostgreSQL) — see knowledge/evaluation/online-evals.md.
 //
 // trace_scores doubles as the scoring queue: claim_trace_scores uses
 // FOR UPDATE SKIP LOCKED so multiple server instances never double-claim,

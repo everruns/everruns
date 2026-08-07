@@ -1,5 +1,5 @@
 // Pure scorer-rule evaluation shared by eval runs and observers
-// (specs/online-evals.md). Rules that need session context beyond the
+// (knowledge/evaluation/online-evals.md). Rules that need session context beyond the
 // trace (file_contains reads the session filesystem) return None and are
 // handled by the caller.
 

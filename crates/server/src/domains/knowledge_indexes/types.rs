@@ -34,6 +34,8 @@ pub struct KnowledgeIndexResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Embedding dimension, recorded on first successful sync.
     pub vector_dim: Option<i32>,
+    /// Number of documents currently retained by this index.
+    pub document_count: usize,
     /// Current lifecycle status.
     pub status: String,
     /// Syncout pipeline state. One of `idle`, `pending`, `syncing`, `synced`, `failed`.
@@ -113,7 +115,10 @@ pub struct ListKnowledgeIndexesQuery {
     pub include_archived: Option<bool>,
 }
 
-pub fn knowledge_index_response(row: KnowledgeIndexRow) -> anyhow::Result<KnowledgeIndexResponse> {
+pub fn knowledge_index_response(
+    row: KnowledgeIndexRow,
+    document_count: usize,
+) -> anyhow::Result<KnowledgeIndexResponse> {
     Ok(KnowledgeIndexResponse {
         id: row.public_id.parse()?,
         name: row.name,
@@ -123,6 +128,7 @@ pub fn knowledge_index_response(row: KnowledgeIndexRow) -> anyhow::Result<Knowle
         source_config: row.source_config,
         embedding_model_id: row.embedding_model_id,
         vector_dim: row.vector_dim,
+        document_count,
         status: row.status,
         sync_status: row.sync_status,
         last_synced_at: row.last_synced_at,

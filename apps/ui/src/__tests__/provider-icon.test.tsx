@@ -14,6 +14,7 @@ describe("ProviderIcon", () => {
     "anthropic",
     "gemini",
     "openrouter",
+    "meta",
   ];
   const filledProviderTypes: DriverId[] = [
     "openai",
@@ -21,6 +22,7 @@ describe("ProviderIcon", () => {
     "openai_completions",
     "anthropic",
     "gemini",
+    "meta",
   ];
   const customSvgProviderTypes = filledProviderTypes;
 
@@ -47,6 +49,13 @@ describe("ProviderIcon", () => {
     const { container } = render(<ProviderIcon providerType={providerType} />);
     const pathsAndSvgs = container.querySelectorAll("[fill='currentColor']");
     expect(pathsAndSvgs.length).toBeGreaterThan(0);
+  });
+
+  it("uses the official Meta loop geometry", () => {
+    const { container } = render(<ProviderIcon providerType="meta" />);
+    const svg = container.querySelector("svg");
+    expect(svg).toHaveAttribute("viewBox", "0 11.34 14.004 9.32");
+    expect(svg?.querySelectorAll("path")).toHaveLength(2);
   });
 
   it("renders fallback Server icon for unknown provider type", () => {
@@ -136,6 +145,7 @@ describe("getProviderDescription", () => {
     "bedrock",
     "mai",
     "fireworks",
+    "meta",
   ];
 
   it.each(knownProviders)("returns a non-empty tagline for %s", (providerType) => {
@@ -144,6 +154,11 @@ describe("getProviderDescription", () => {
 
   it("returns the Fireworks tagline", () => {
     expect(getProviderDescription("fireworks")).toBe("Fast, low-cost inference for open models.");
+  });
+
+  it("returns the Meta label and tagline", () => {
+    expect(getProviderLabel("meta")).toBe("Meta Model API");
+    expect(getProviderDescription("meta")).toBe("Muse Spark models via Meta's Responses API.");
   });
 
   it("returns an empty string for an unknown provider", () => {

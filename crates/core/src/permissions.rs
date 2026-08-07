@@ -3,7 +3,7 @@
 // Decision: Default permissions are hardcoded per OrgRole; custom resolvers can override evaluation.
 // Decision: Policies are const values evaluated at service method entry via #[policy] macro.
 // Decision: Permission format is `org:<resource>:<action>`.
-// See specs/permissions.md for full design.
+// See knowledge/security/permissions.md for full design.
 
 use crate::organization::OrgRole;
 use serde::Serialize;
@@ -54,7 +54,7 @@ pub enum Permission {
     OrgAgentIdentitiesManage,
     /// View marketplaces and installed plugins (read-only)
     OrgPluginsView,
-    /// Register marketplaces and install/uninstall plugins (admin-gated per specs/plugins.md)
+    /// Register marketplaces and install/uninstall plugins (admin-gated per knowledge/integrations/plugins.md)
     OrgPluginsManage,
     /// CRUD on sessions
     OrgSessionsManage,
@@ -573,7 +573,7 @@ pub type PolicyConfigResponse = ResourceConfigResponse;
 // Decision: Skill permissions use a separate ACL system from org permissions.
 // Rules are parsed from strings like "allow Skill(commit)" or "deny Skill".
 // Specificity-based precedence: exact > wildcard > all; deny wins at same level.
-// See specs/permissions.md and EVE-140 for design.
+// See knowledge/security/permissions.md and EVE-140 for design.
 
 /// Action for a skill permission rule.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

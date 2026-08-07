@@ -1,6 +1,6 @@
 // App domain types
 //
-// Design Decision: Dual-ID pattern (see specs/id-schema.md)
+// Design Decision: Dual-ID pattern (see knowledge/foundations/id-schema.md)
 // - public_id: AppId (external, API-facing, client-supplied or auto-generated)
 // - internal_id: Uuid (internal PK, used for FK references, never exposed in API)
 //
@@ -109,17 +109,17 @@ pub enum ChannelType {
     /// Agent2Agent (A2A) protocol channel — JSON-RPC + API key.
     A2a,
     /// Free Communication Protocol channel — text-first HTTP ingress with an
-    /// optional handshake. See `specs/fcp-channel.md` and the upstream FCP
+    /// optional handshake. See `knowledge/integrations/fcp-channel.md` and the upstream FCP
     /// specification.
     Fcp,
     /// App-scoped, execution-only API key over native session routes.
-    /// See `specs/app-api-keys.md`.
+    /// See `knowledge/integrations/app-api-keys.md`.
     #[serde(rename = "api_endpoint")]
     ApiEndpoint,
     /// Public Chat channel — an isolated, public-facing chat web app bound to a
     /// single App's agent. Anonymous by default, with optional Google sign-in
     /// and Cloudflare Turnstile bot mitigation. Reuses AG-UI streaming and the
-    /// shared App endpoint auth verifier. See `specs/public-chat.md`.
+    /// shared App endpoint auth verifier. See `knowledge/integrations/public-chat.md`.
     #[serde(rename = "public_chat")]
     PublicChat,
 }
@@ -685,7 +685,7 @@ pub const DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS: u32 = 120;
 /// Typed FCP channel configuration.
 ///
 /// FCP is intentionally schema-free at the wire layer (see
-/// `specs/fcp-channel.md`). The fields here only control server-side
+/// `knowledge/integrations/fcp-channel.md`). The fields here only control server-side
 /// behavior — handshake content, a single shared bearer token, session
 /// reuse, rate limiting — and never constrain the body the actor sends in.
 ///
@@ -802,7 +802,7 @@ fn default_timezone() -> String {
 ///
 /// `message` is the template body. `{{path.to.value}}` placeholders expand
 /// against the incoming A2A request payload and metadata (see
-/// `specs/a2a-channel.md`).
+/// `knowledge/integrations/a2a-channel.md`).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct A2aChannelConfig {
@@ -854,7 +854,7 @@ pub struct A2aChannelConfig {
 /// has no path to any management API. The plaintext key is **never** stored —
 /// only the SHA-256 hex hash and a non-secret display prefix are persisted, and
 /// the plaintext is returned exactly once at create / regenerate time. See
-/// `specs/app-api-keys.md`.
+/// `knowledge/integrations/app-api-keys.md`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct ApiEndpointChannelConfig {
@@ -938,7 +938,7 @@ pub struct PublicChatCaptchaConfig {
 /// Parsed from the `channel_config` JSON field on App. Public Chat reuses
 /// AG-UI's streaming semantics and the shared App endpoint auth verifier, and
 /// adds branding and bot-mitigation tailored to a public, link-shareable chat
-/// website. See `specs/public-chat.md`.
+/// website. See `knowledge/integrations/public-chat.md`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct PublicChatChannelConfig {

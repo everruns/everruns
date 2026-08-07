@@ -95,7 +95,7 @@ estimate. Everruns records this as the generation's authoritative
 when needed) alongside its own estimated cost. Budgets debit the actual cost when
 present and fall back to the estimate otherwise, so spend tracking and
 [budgeting](/capabilities/budgeting/) reflect what OpenRouter actually charged.
-See [Usage tracking](https://github.com/everruns/everruns/blob/main/specs/usage-tracking.md)
+See [Usage tracking](https://github.com/everruns/everruns/blob/main/knowledge/security/usage-tracking.md)
 for how estimate-vs-actual reconciliation works.
 
 ## Logs, traces, and observability

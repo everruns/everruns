@@ -123,7 +123,7 @@ echo "9️⃣  Checking migration ordering..."
 if bash "$PROJECT_ROOT/scripts/lib/check-migration-ordering.sh"; then
   echo "   ✅ migrations sequential"
 else
-  echo "   ❌ migration ordering broken (see specs/migrations.md)"
+  echo "   ❌ migration ordering broken (see knowledge/operations/migrations.md)"
   FAILED=1
 fi
 echo ""

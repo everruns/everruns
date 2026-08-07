@@ -18,8 +18,8 @@
 //   3. The agent manifest may declare `initial_files_allow_hidden: [".foo"]`
 //      to extend the allowlist for project-specific tools. Entries in the
 //      hard-deny floor are still rejected.
-// See `specs/cli.md` (Initial Files Hidden Path Policy) and threat
-// `TM-FS-009` in `specs/threat-model.md`.
+// See `knowledge/foundations/cli.md` (Initial Files Hidden Path Policy) and threat
+// `TM-FS-009` in `knowledge/security/threat-model.md`.
 
 use super::sessions::is_prefixed_id;
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};

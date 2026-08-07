@@ -353,6 +353,63 @@ async fn test_create_session_seeds_agent_and_user_participants() {
     assert_eq!(user.role, SessionParticipantRole::Member);
     assert_eq!(user.agent_id, None);
     assert_eq!(user.principal_id, PrincipalId::from_seed(1));
+    assert_eq!(user.display_name.as_deref(), Some("User"));
+}
+
+#[tokio::test]
+async fn test_user_participant_uses_and_tracks_profile_name() {
+    let db = InMemoryDatabase::new();
+    let user = db
+        .create_user(CreateUserRow {
+            email: "mykhailo@example.com".to_string(),
+            name: "Mykhailo Chalyi".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+    let principal = db
+        .create_principal(CreatePrincipalRow {
+            id: PrincipalId::new(),
+            org_id: DEFAULT_ORG_ID,
+            kind: "user".to_string(),
+            subject_id: Some(user.id),
+            parent_principal_id: None,
+            resolved_user_id: Some(user.id),
+            metadata: serde_json::json!({}),
+        })
+        .await
+        .unwrap();
+    let mut input = test_session_input(None);
+    input.owner_principal_id = principal.id;
+    input.resolved_owner_user_id = Some(user.id);
+
+    let session = db.create_session(input).await.unwrap();
+    let initial = db
+        .list_session_participants(DEFAULT_ORG_ID, session.id)
+        .await
+        .unwrap();
+    assert_eq!(initial[0].display_name.as_deref(), Some("Mykhailo Chalyi"));
+
+    db.update_user(
+        user.id,
+        UpdateUser {
+            name: Some("Mike Chalyi".to_string()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let updated = db
+        .list_session_participants(DEFAULT_ORG_ID, session.id)
+        .await
+        .unwrap();
+    assert_eq!(updated[0].display_name.as_deref(), Some("Mike Chalyi"));
 }
 
 #[tokio::test]
@@ -415,6 +472,7 @@ async fn test_create_session_participant_rejects_second_active_host() {
             agent_id: Some(AgentId::new()),
             agent_version_id: None,
             principal_id: PrincipalId::from_seed(1),
+            display_name: None,
             role: SessionParticipantRole::Host,
             joined_at: None,
         })
@@ -440,6 +498,7 @@ async fn test_ensure_active_user_session_participant_is_idempotent() {
         agent_id: None,
         agent_version_id: None,
         principal_id,
+        display_name: Some("Alice".to_string()),
         role: SessionParticipantRole::Member,
         joined_at: None,
     };
@@ -453,6 +512,7 @@ async fn test_ensure_active_user_session_participant_is_idempotent() {
         .unwrap();
 
     assert_eq!(first.id, second.id);
+    assert_eq!(second.display_name.as_deref(), Some("Alice"));
     let active_for_principal = db
         .list_session_participants(DEFAULT_ORG_ID, session.id)
         .await
@@ -477,6 +537,7 @@ async fn test_leave_session_participant_preserves_history() {
             agent_id: Some(AgentId::new()),
             agent_version_id: None,
             principal_id: PrincipalId::from_seed(1),
+            display_name: None,
             role: SessionParticipantRole::Member,
             joined_at: None,
         })

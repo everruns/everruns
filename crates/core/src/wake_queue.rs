@@ -5,7 +5,7 @@
 // so it can react. Historically the only delivery path was a between-turn
 // steering message — a parent that spawned background work finished its turn,
 // idled, and only reacted on its next turn (see the Wake-ups section of
-// `specs/session-tasks.md`).
+// `knowledge/runtime-resources/session-tasks.md`).
 //
 // `SessionWakeQueue` adds the *mid-turn* path. It is a per-session queue that
 // sits behind the registry seam: the registry fans qualifying task transitions

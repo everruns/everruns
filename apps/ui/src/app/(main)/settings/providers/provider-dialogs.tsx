@@ -45,6 +45,7 @@ const PROVIDER_TYPES: DriverId[] = [
   "bedrock",
   "mai",
   "fireworks",
+  "meta",
 ];
 
 // Drivers whose endpoint (`base_url`) is mandatory.
@@ -68,6 +69,8 @@ function getBaseUrlPlaceholder(providerType: DriverId): string {
       return "https://your-resource.services.ai.azure.com";
     case "fireworks":
       return "https://api.fireworks.ai/inference/v1";
+    case "meta":
+      return "https://api.meta.ai/v1";
     default:
       return "https://api.example.com";
   }

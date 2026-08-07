@@ -1,7 +1,7 @@
 // Feature-oriented domain modules.
 //
 // Each domain owns its commands (user-facing operations), queries (shared
-// read/write helpers), and types. See specs/domains.md for the full pattern.
+// read/write helpers), and types. See knowledge/foundations/domains.md for the full pattern.
 
 pub mod common;
 

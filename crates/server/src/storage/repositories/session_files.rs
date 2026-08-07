@@ -1,7 +1,7 @@
 // PostgreSQL repository: Session Files (virtual filesystem)
 //
 // Content offload: when an object-storage blob backend is configured
-// (specs/object-storage.md), file *content* bytes are stored in the object
+// (knowledge/runtime-resources/object-storage.md), file *content* bytes are stored in the object
 // store and the `workspace_files.content` column is left NULL; a pointer +
 // content hash live in `workspace_file_blobs`. Metadata (path, size, flags,
 // tree) always stays in PostgreSQL. When no blob backend is configured the
@@ -14,7 +14,7 @@ use anyhow::Result;
 use uuid::Uuid;
 
 /// Disaster-recovery metadata stamped onto each offloaded file object
-/// (specs/object-storage.md). Lets a recovery tool rebuild the `workspace_files`
+/// (knowledge/runtime-resources/object-storage.md). Lets a recovery tool rebuild the `workspace_files`
 /// row from the object alone.
 fn file_blob_metadata(
     workspace_id: Uuid,

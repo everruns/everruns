@@ -1,7 +1,7 @@
 // Declarative guardrail checks engine.
 //
 // Pure check-evaluation core behind the `guardrails` capability (see
-// specs/guardrails.md): a typed, declarative config of deterministic checks
+// knowledge/execution/guardrails.md): a typed, declarative config of deterministic checks
 // that the capability compiles onto the existing interception seams
 // (streaming output guardrails, pre/post tool hooks) and that the dry-run
 // API evaluates against sample text without a session.

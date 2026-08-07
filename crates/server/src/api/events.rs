@@ -286,7 +286,7 @@ pub fn routes(state: AppState) -> Router {
                 the event-type-specific payload defined in `EventData`. Lifecycle \
                 framing events (`connected`, `disconnecting`) use the same SSE \
                 shape but carry a minimal JSON object in `data` rather than a \
-                full `Event`. See `specs/api-streaming.md` for the SSE convention.",
+                full `Event`. See `knowledge/execution/api-streaming.md` for the SSE convention.",
             body = Event,
             content_type = "text/event-stream",
         ),

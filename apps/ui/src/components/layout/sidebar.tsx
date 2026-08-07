@@ -18,6 +18,7 @@ import packageJson from "../../../package.json";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import {
   Boxes,
   BookOpen,
@@ -43,6 +44,7 @@ import {
   Workflow,
   Cog,
   Cpu,
+  Menu,
 } from "lucide-react";
 import { capabilityIconMap } from "@/lib/capability-icons";
 import { useCommandPalette } from "@/hooks/use-command-palette";
@@ -55,6 +57,9 @@ import { SidebarNavigation } from "./sidebar-navigation";
 import { SidebarOrganizationMenu } from "./sidebar-organization-menu";
 import { SidebarUserMenu } from "./sidebar-user-menu";
 import type { SidebarUserMenuItemsRenderer } from "./sidebar-user-menu";
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Drawer, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
 
 const { version } = packageJson;
 
@@ -155,7 +160,13 @@ function isDurableSection(section: NavigationSection) {
   );
 }
 
-export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
+export function Sidebar({
+  config,
+  className,
+}: {
+  config?: Partial<SidebarConfig>;
+  className?: string;
+}) {
   const pathname = usePathname();
   const {
     user,
@@ -196,7 +207,10 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
   const useDefaultCreateOrgDialog = !config?.orgActions?.createOrg && !createOrgOverride;
 
   return (
-    <div className="flex h-full w-60 flex-col border-r border-border/70 bg-background">
+    <div
+      data-slot="app-sidebar"
+      className={cn("flex h-full w-60 flex-col border-r border-border/70 bg-background", className)}
+    >
       <div className="flex h-14 items-center justify-between border-b border-border/70 bg-card px-4">
         <Link href="/dashboard" prefetch={false} className="flex items-center gap-2">
           <Image src="/logo.svg" alt="Everruns" width={28} height={28} />
@@ -239,6 +253,40 @@ export function Sidebar({ config }: { config?: Partial<SidebarConfig> }) {
           version={version}
         />
       </div>
+    </div>
+  );
+}
+
+export function MobileSidebar({ config }: { config?: Partial<SidebarConfig> }) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border/70 bg-card px-3 md:hidden">
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        aria-label="Open navigation"
+        onClick={() => setOpen(true)}
+      >
+        <Menu className="size-5" />
+      </Button>
+      <Link href="/dashboard" prefetch={false} className="flex items-center gap-2">
+        <Image src="/logo.svg" alt="" width={24} height={24} />
+        <span className="text-sm font-semibold tracking-[-0.02em]">Everruns</span>
+      </Link>
+      <Drawer open={open} onOpenChange={setOpen}>
+        <DrawerContent
+          side="left"
+          className="w-60 max-w-none gap-0 p-0 sm:max-w-none"
+          onClick={(event) => {
+            if ((event.target as Element).closest("a")) setOpen(false);
+          }}
+        >
+          <DrawerTitle className="sr-only">Navigation</DrawerTitle>
+          <Sidebar config={config} className="w-full border-r-0" />
+        </DrawerContent>
+      </Drawer>
     </div>
   );
 }

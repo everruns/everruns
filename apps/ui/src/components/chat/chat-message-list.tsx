@@ -3,6 +3,7 @@
  * - Keep event-to-component routing in one place so the transcript stays easy to extend.
  * - Tool-only assistant events share the same grouping rules as explicit tool-call-requested events.
  * - Narrated act timelines suppress duplicate tool groups to avoid repeated progress chrome.
+ * - Error message completions are canonical; matching turn failures only carry lifecycle state.
  */
 "use client";
 
@@ -21,6 +22,7 @@ import type {
   ToolProgressData,
 } from "@/lib/api/types";
 import { getDisplayName } from "@/lib/entity-lifecycle";
+import { getSessionParticipantLabel } from "@/lib/session-participant-label";
 import type { ToolOutputStreams } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { getEventData, isImageFilePart, isTextPart } from "@/lib/api/types";
 import type { TextAnnotation } from "@/lib/api/types";
@@ -252,6 +254,16 @@ export const ChatMessageList = memo(function ChatMessageList({
     }
     return ids;
   }, [chatEvents]);
+  const errorMessageTurnIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const event of chatEvents) {
+      const data = getEventData(event, "output.message.completed");
+      if (!getRuntimeErrorFromOutputMessage(data)) continue;
+      const turnId = getKnownTurnId(event);
+      if (turnId) ids.add(turnId);
+    }
+    return ids;
+  }, [chatEvents]);
 
   const turnDurationByEventId = useMemo(
     () => getCompletedTurnDurationsByEvent(events ?? []),
@@ -375,12 +387,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   }, [participantMarkers, chatEvents]);
 
   const participantLabel = useCallback(
-    (p: SessionParticipant): string => {
-      if (p.kind === "agent") {
-        return (p.agent_id && agentNameById.get(p.agent_id)) || "Agent";
-      }
-      return "Participant";
-    },
+    (p: SessionParticipant): string => getSessionParticipantLabel(p, agentNameById),
     [agentNameById],
   );
 
@@ -554,6 +561,7 @@ export const ChatMessageList = memo(function ChatMessageList({
 
           const turnFailedData = getEventData(event, "turn.failed");
           if (turnFailedData) {
+            if (errorMessageTurnIds.has(turnFailedData.turn_id)) return null;
             return (
               <ChatErrorAlert
                 key={event.id}

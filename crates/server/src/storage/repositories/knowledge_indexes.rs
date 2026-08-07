@@ -1,9 +1,10 @@
 // PostgreSQL repository: Knowledge Index + Document CRUD.
-// See specs/knowledge-indexes.md.
+// See knowledge/runtime-resources/knowledge-indexes.md.
 
 use super::super::models::*;
 use super::{Database, build_search_sql};
 use anyhow::Result;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 const INDEX_COLUMNS: &str = "id, org_id, public_id, name, description, source_type, source_config, \
@@ -23,8 +24,8 @@ impl Database {
         let sql = format!(
             "INSERT INTO knowledge_indexes \
                 (org_id, public_id, name, description, source_type, source_config, \
-                 embedding_model_id, vector_namespace, owner_principal_id, resolved_owner_user_id) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) \
+                 embedding_model_id, vector_namespace, owner_principal_id, resolved_owner_user_id, sync_status) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending') \
              RETURNING {INDEX_COLUMNS}"
         );
         let row = sqlx::query_as::<_, KnowledgeIndexRow>(sqlx::AssertSqlSafe(sql.as_str()))
@@ -117,6 +118,8 @@ impl Database {
                 resolved_owner_user_id = CASE WHEN $7 THEN $8 ELSE resolved_owner_user_id END, \
                 embedding_model_id = COALESCE($9, embedding_model_id), \
                 status = COALESCE($10, status), \
+                sync_status = CASE WHEN $11 THEN 'pending' ELSE sync_status END, \
+                last_sync_error = CASE WHEN $11 THEN NULL ELSE last_sync_error END, \
                 archived_at = CASE \
                     WHEN $10 = 'archived' THEN COALESCE(archived_at, NOW()) \
                     WHEN $10 = 'active' THEN NULL \
@@ -141,6 +144,7 @@ impl Database {
             .bind(input.resolved_owner_user_id.into_value())
             .bind(input.embedding_model_id.map(|m| m.uuid()))
             .bind(&input.status)
+            .bind(input.enqueue_sync)
             .fetch_optional(&self.pool)
             .await?;
         Ok(row)
@@ -177,6 +181,26 @@ impl Database {
                 .fetch_all(&self.pool)
                 .await?;
         Ok(rows)
+    }
+
+    pub async fn count_knowledge_index_documents(
+        &self,
+        index_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, usize>> {
+        if index_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let rows = sqlx::query_as::<_, (Uuid, i64)>(
+            "SELECT index_id, COUNT(*) FROM knowledge_index_documents \
+             WHERE index_id = ANY($1) GROUP BY index_id",
+        )
+        .bind(index_ids)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(index_id, count)| (index_id, count as usize))
+            .collect())
     }
 
     pub async fn list_knowledge_index_chunks(

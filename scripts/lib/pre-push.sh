@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pre-push checks: fast local validation to catch CI failures early (~30s).
-# Runs formatting, linting, lockfile, migration, test-enumeration, docs index, and attribution checks.
+# Runs formatting, linting, lockfile, migration, test enumeration, knowledge, and attribution checks.
 # Usage: just pre-push (or: bash scripts/lib/pre-push.sh)
 
 source "$(dirname "${BASH_SOURCE[0]}")/common.sh"
@@ -93,15 +93,15 @@ else
   fail "server test enumeration check failed"
 fi
 
-# 9. Specs index coverage
-echo "9/10 Specs index coverage"
-if SPECS_INDEX_OUTPUT="$(
-  bash "$PROJECT_ROOT/scripts/test-specs-index.sh" 2>&1
+# 9. Knowledge bundle conformance
+echo "9/10 Knowledge bundle conformance"
+if KNOWLEDGE_OUTPUT="$(
+  bash "$PROJECT_ROOT/scripts/test-knowledge-okf.sh" 2>&1
 )"; then
-  pass "$SPECS_INDEX_OUTPUT"
+  pass "$KNOWLEDGE_OUTPUT"
 else
-  printf '%s\n' "$SPECS_INDEX_OUTPUT" | sed 's/^/   /'
-  fail "specs index coverage check failed"
+  printf '%s\n' "$KNOWLEDGE_OUTPUT" | sed 's/^/   /'
+  fail "knowledge bundle conformance check failed"
 fi
 
 # 10. Commit author attribution check

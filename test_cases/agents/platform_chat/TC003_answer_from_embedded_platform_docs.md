@@ -4,7 +4,10 @@
 
 Verify that Platform Chat answers a repo-specific product question by consulting the embedded platform docs mounted at `/workspace/docs`, not by relying only on generic model knowledge.
 
-This test exercises the `platform_management` capability's embedded-docs mount together with the inherited file-system and bash tools from the `generic` harness. The question is chosen so the correct answer depends on implementation details documented in Everruns' own docs.
+This test exercises the `platform` capability's embedded-docs mount together
+with the inherited file-system and bash tools from the `generic` harness. The
+question is chosen so the correct answer depends on implementation details
+documented in Everruns' own docs.
 
 ## Preconditions
 
@@ -91,5 +94,5 @@ This test exercises the `platform_management` capability's embedded-docs mount t
 ## Notes
 
 - The exact wording may vary by model. Judge against the factual content, the docs lookup behavior, and the persisted transcript.
-- This case is intentionally repo-specific. A correct answer should line up with `docs/capabilities/platform-management.md` and the `platform_management` capability implementation.
+- This case is intentionally repo-specific. A correct answer should line up with `docs/capabilities/platform.md` and the `platform` capability implementation.
 - If the environment falls back to `llmsim-default`, treat the run as invalid for this case: the simulated model returns canned text and does not prove embedded-docs retrieval.

@@ -1,5 +1,5 @@
 // Plugin Marketplaces and Installed Plugins API
-// All endpoints follow specs/plugins.md § "API sketch".
+// All endpoints follow knowledge/integrations/plugins.md § "API sketch".
 // Org is sent via everruns_org cookie (set by OrgProvider via /v1/users/me/switch-org).
 //
 // Centralising endpoint paths and request/response types here means a rename

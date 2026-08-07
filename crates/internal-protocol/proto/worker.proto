@@ -166,7 +166,7 @@ service WorkerService {
     rpc DeregisterSessionResource(DeregisterSessionResourceRequest) returns (DeregisterSessionResourceResponse);
 
     // === Session task registry ===
-    // Background work owned by a session (specs/session-tasks.md).
+    // Background work owned by a session (knowledge/runtime-resources/session-tasks.md).
     // Task and message payloads travel as native protobuf messages (EVE-642):
     // serialized once by protobuf framing, consumed directly on the worker.
     // Lifecycle invariants stay defined in one place (everruns-core).
@@ -254,6 +254,7 @@ service WorkerService {
     // Generic domain command transport for inventory-registered CRUD.
     rpc ExecuteCommand(ExecuteCommandRequest) returns (ExecuteCommandResponse);
     rpc ListCommands(ListCommandsRequest) returns (ListCommandsResponse);
+    rpc InvokePlatformCommandSurface(InvokePlatformCommandSurfaceRequest) returns (InvokePlatformCommandSurfaceResponse);
 
     // Harness operations
     rpc PlatformListHarnesses(PlatformListHarnessesRequest) returns (PlatformListHarnessesResponse);
@@ -1698,6 +1699,27 @@ message CommandCatalogEntry {
 
 message ListCommandsResponse {
     repeated CommandCatalogEntry commands = 1;
+}
+
+enum PlatformCommandSurfaceOperation {
+    PLATFORM_COMMAND_SURFACE_OPERATION_UNSPECIFIED = 0;
+    PLATFORM_COMMAND_SURFACE_OPERATION_DISCOVER = 1;
+    PLATFORM_COMMAND_SURFACE_OPERATION_QUERY = 2;
+    PLATFORM_COMMAND_SURFACE_OPERATION_EXECUTE = 3;
+}
+
+message InvokePlatformCommandSurfaceRequest {
+    Uuid session_id = 1;
+    int64 org_id = 2;
+    PlatformCommandSurfaceOperation operation = 3;
+    bytes arguments_json = 4;
+}
+
+message InvokePlatformCommandSurfaceResponse {
+    oneof result {
+        string output = 1;
+        string error = 2;
+    }
 }
 
 // === Harness operations ===

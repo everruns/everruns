@@ -5,7 +5,7 @@
 //   2. Sync to load marketplace.json catalog
 //   3. List catalog (microsoft-docs entry present)
 //   4. Install plugin → compiled fields present
-//   5. GET /v1/capabilities contains plugin:microsoft-docs
+//   5. GET /v1/capabilities contains the stable plugin installation ref
 //   6. Disable / re-enable
 //   7. Update (re-compile)
 //   8. Uninstall
@@ -292,10 +292,11 @@ async fn test_install_plugin_and_capability_listing() {
     assert_eq!(plugin["name"], "microsoft-docs");
     assert_eq!(plugin["status"], "active");
     assert!(plugin["id"].as_str().unwrap().starts_with("plugin_"));
-    assert_eq!(plugin["capability_ref"], "plugin:microsoft-docs");
+    let capability_ref = format!("plugin:{}", plugin["id"].as_str().unwrap());
+    assert_eq!(plugin["capability_ref"], capability_ref);
     assert_eq!(plugin["marketplace"], "install-test-mkt");
 
-    // GET /v1/capabilities should now include plugin:microsoft-docs.
+    // GET /v1/capabilities exposes exactly the same stable ref.
     let caps_resp = server.get("/v1/capabilities").await.assert_success();
     let caps = caps_resp.json_value();
     let cap_ids: Vec<&str> = caps["data"]
@@ -305,9 +306,76 @@ async fn test_install_plugin_and_capability_listing() {
         .filter_map(|c| c["id"].as_str())
         .collect();
     assert!(
-        cap_ids.contains(&"plugin:microsoft-docs"),
-        "capabilities should include plugin:microsoft-docs; got: {:?}",
+        cap_ids.contains(&capability_ref.as_str()),
+        "capabilities should include {capability_ref}; got: {:?}",
         cap_ids
+    );
+    let plugin_capability = caps["data"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|capability| capability["id"] == capability_ref)
+        .unwrap();
+    assert!(
+        plugin_capability["icon"]
+            .as_str()
+            .unwrap()
+            .starts_with("data:image/svg+xml;base64,")
+    );
+
+    // Assignment persists and reloads with the same stable identity.
+    let agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "plugin-capability-agent",
+                "display_name": "Plugin Capability Agent",
+                "system_prompt": "Use the installed plugin.",
+                "capabilities": [{"ref": capability_ref.clone(), "config": {}}]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+    let agent_id = agent["id"].as_str().unwrap();
+    assert_eq!(agent["capabilities"][0]["ref"], capability_ref);
+
+    let reloaded = server
+        .get(&format!("/v1/agents/{agent_id}"))
+        .await
+        .assert_success()
+        .json_value();
+    assert_eq!(reloaded["capabilities"][0]["ref"], capability_ref);
+    assert!(reloaded["capabilities"][0]["config"]["mcp_servers"].is_object());
+    assert!(reloaded["capabilities"][0]["config"]["skills"].is_array());
+
+    // Session assembly hydrates the exact installed definition before runtime
+    // contributions are collected. A contributed skill is therefore mounted
+    // in a fresh session rather than being skipped as an empty agent config.
+    let session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "agent_id": agent_id,
+                "title": "Plugin runtime hydration"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+    let session_id = session["id"].as_str().unwrap();
+    let mounted_skill = server
+        .get(&format!(
+            "/v1/sessions/{session_id}/fs/.agents/skills/microsoft-docs/SKILL.md"
+        ))
+        .await
+        .assert_success()
+        .json_value();
+    assert!(
+        mounted_skill["content"]
+            .as_str()
+            .unwrap()
+            .contains("Microsoft Learn")
     );
 
     // Catalog installed flag should now be true.
@@ -326,7 +394,7 @@ async fn test_install_plugin_and_capability_listing() {
 }
 
 // ============================================================
-// OAuth MCP plugin: anchor + provider wiring (specs/plugins.md)
+// OAuth MCP plugin: anchor + provider wiring (knowledge/integrations/plugins.md)
 // ============================================================
 
 /// Collect the set of `mcp_oauth_*` provider ids from the connections API.
@@ -389,6 +457,7 @@ async fn test_install_oauth_plugin_creates_connection_provider() {
         install.text()
     );
     let plugin_id = install.json_value()["id"].as_str().unwrap().to_string();
+    let plugin_capability_ref = format!("plugin:{plugin_id}");
 
     // Exactly one new OAuth provider (the anchor) must appear.
     let after = mcp_oauth_providers(&server).await;
@@ -423,8 +492,8 @@ async fn test_install_oauth_plugin_creates_connection_provider() {
         "disabled anchor {anchor_cap_id} must not be a runtime MCP capability; got {cap_ids:?}"
     );
     assert!(
-        cap_ids.contains(&"plugin:oauth-mail"),
-        "plugin:oauth-mail capability should be listed; got {cap_ids:?}"
+        cap_ids.contains(&plugin_capability_ref.as_str()),
+        "{plugin_capability_ref} capability should be listed; got {cap_ids:?}"
     );
 
     // Uninstall removes the anchor → provider set returns to baseline.
@@ -489,6 +558,19 @@ async fn test_plugin_disable_and_enable() {
         .await
         .assert_success();
     assert_eq!(disabled.json_value()["status"], "disabled");
+    let disabled_ref = format!("plugin:{plugin_id}");
+    let rejected = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "disabled-plugin-agent",
+                "system_prompt": "test",
+                "capabilities": [{"ref": disabled_ref, "config": {}}]
+            }),
+        )
+        .await;
+    assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
+    assert!(rejected.text().contains("unavailable"));
 
     // Re-enable.
     let enabled = server
@@ -537,6 +619,7 @@ async fn test_uninstall_plugin() {
         .as_str()
         .unwrap()
         .to_string();
+    let old_capability_ref = format!("plugin:{plugin_id}");
 
     let del = server.delete(&format!("/v1/plugins/{plugin_id}")).await;
     assert_eq!(del.status(), StatusCode::NO_CONTENT, "{}", del.text());
@@ -544,6 +627,30 @@ async fn test_uninstall_plugin() {
     // Should now be gone.
     let get = server.get(&format!("/v1/plugins/{plugin_id}")).await;
     assert_eq!(get.status(), StatusCode::NOT_FOUND);
+
+    // Reinstalling the same manifest name gets a new identity. The old ref
+    // remains stale and cannot silently bind to the replacement install.
+    let replacement = server
+        .post(
+            "/v1/plugins",
+            json!({ "marketplace_id": marketplace_id, "plugin_name": "microsoft-docs" }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json_value();
+    assert_ne!(replacement["capability_ref"], old_capability_ref);
+    let rejected = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "stale-plugin-agent",
+                "system_prompt": "test",
+                "capabilities": [{"ref": old_capability_ref, "config": {}}]
+            }),
+        )
+        .await;
+    assert_eq!(rejected.status(), StatusCode::BAD_REQUEST);
+    assert!(rejected.text().contains("reinstall"));
 }
 
 // ============================================================
@@ -586,6 +693,7 @@ async fn test_update_plugin() {
         .as_str()
         .unwrap()
         .to_string();
+    let capability_ref = format!("plugin:{plugin_id}");
 
     // Update (re-compile from current catalog source).
     let updated = server
@@ -599,6 +707,7 @@ async fn test_update_plugin() {
         updated.text()
     );
     assert_eq!(updated.json_value()["name"], "microsoft-docs");
+    assert_eq!(updated.json_value()["capability_ref"], capability_ref);
 }
 
 // ============================================================
@@ -685,7 +794,7 @@ async fn test_install_rejects_unsafe_mcp_server_url() {
 }
 
 // ============================================================
-// Default marketplace seeding (specs/plugins.md)
+// Default marketplace seeding (knowledge/integrations/plugins.md)
 // ============================================================
 
 /// The default "everruns" marketplace is seeded at org creation (here: the

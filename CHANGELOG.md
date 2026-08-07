@@ -7,6 +7,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.23] - 2026-08-06
+
+### Highlights
+
+- **New model providers** - Meta Model API and Muse Spark are now available as first-class providers ([#2941](https://github.com/everruns/everruns/pull/2941)).
+- **Host-managed providers** - Org admins now see host-provisioned provider rows as read-only, making platform-managed providers visible without being editable ([#2944](https://github.com/everruns/everruns/pull/2944)).
+
+### What's Changed
+
+- feat(provider): add Meta Model API and Muse Spark ([#2941](https://github.com/everruns/everruns/pull/2941)) by [@chaliy](https://github.com/chaliy)
+- feat(providers): host-managed provider rows (read-only to org admins) ([#2944](https://github.com/everruns/everruns/pull/2944)) by [@chaliy](https://github.com/chaliy)
+- feat(embedding): org-initialization hook for embedder-provisioned org resources ([#2943](https://github.com/everruns/everruns/pull/2943)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump brace-expansion and undici to patched versions (security) ([#2945](https://github.com/everruns/everruns/pull/2945)) by [@chaliy](https://github.com/chaliy)
+- chore(ship): prompt for PR evidence in the ship skill ([#2942](https://github.com/everruns/everruns/pull/2942)) by [@chaliy](https://github.com/chaliy)
+
+## [0.17.22] - 2026-08-06
+
+### Highlights
+
+- **Automatic interrupted-turn recovery** - Agent turns now classify provider failures, recover safely from transient transport, overload, 5xx, and stream-stall failures within bounded retry budgets, preserve completed tool effects, and surface permanent failures as precise resumable errors ([#2937](https://github.com/everruns/everruns/pull/2937)).
+- **Safer interactive tools** - Tool calls can now request host approval and receive cooperative cancellation through `ToolContext`, giving hosts explicit control without abandoning in-flight work ([#2931](https://github.com/everruns/everruns/pull/2931), [#2938](https://github.com/everruns/everruns/pull/2938)).
+- **Model-backed secret screening** - Gallery presets can now add a judge guardrail that catches likely secret leakage beyond deterministic pattern matching ([#2932](https://github.com/everruns/everruns/pull/2932)).
+
+### What's Changed
+
+- fix(runtime): recover interrupted provider turns ([#2937](https://github.com/everruns/everruns/pull/2937)) by [@chaliy](https://github.com/chaliy)
+- feat(tools): cooperative cancellation token on ToolContext ([#2938](https://github.com/everruns/everruns/pull/2938)) by [@chaliy](https://github.com/chaliy)
+- perf(anthropic): make prompt caching incremental ([#2934](https://github.com/everruns/everruns/pull/2934)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): interactive tool-approval gate ([#2931](https://github.com/everruns/everruns/pull/2931)) by [@chaliy](https://github.com/chaliy)
+- feat(tools): host-owned metadata hatch on tool hints and capabilities ([#2936](https://github.com/everruns/everruns/pull/2936)) by [@chaliy](https://github.com/chaliy)
+- feat(guardrails): add model-backed secret-leak judge gallery preset ([#2932](https://github.com/everruns/everruns/pull/2932)) by [@chaliy](https://github.com/chaliy)
+
+## [0.17.21] - 2026-08-06
+
+### Highlights
+
+- **Cumulative-cost context checkpoints** - Long tool trajectories now compact before context-window pressure when cumulative uncached input or raw tool results become costly, while preserving lossless history and query access ([#2933](https://github.com/everruns/everruns/pull/2933)).
+- **Lower tool context overhead** - Deferred tools now keep compact permissive schemas until revealed, reducing the production tool-list payload by 65% while preserving provider-agnostic structured tool calling ([#2935](https://github.com/everruns/everruns/pull/2935)).
+
+### What's Changed
+
+- feat(compaction): trigger checkpoints from cumulative cost ([#2933](https://github.com/everruns/everruns/pull/2933)) by [@chaliy](https://github.com/chaliy)
+- perf(tool-search): compact deferred schemas ([#2935](https://github.com/everruns/everruns/pull/2935)) by [@chaliy](https://github.com/chaliy)
+
+## [0.17.20] - 2026-08-06
+
+### Highlights
+
+- **Linked OAuth accounts** - Verified OAuth sign-ins now link to an existing account with a matching email instead of creating a duplicate ([#2914](https://github.com/everruns/everruns/pull/2914)).
+- **Operator SSRF allowlist** - Self-hosted deployments can exempt specific CIDR ranges from SSRF blocking (`EVERRUNS_SSRF_ALLOW_CIDRS`), making in-cluster MCP servers reachable without exposing them publicly ([#2923](https://github.com/everruns/everruns/pull/2923)).
+- **Auth reliability** - Sessions and org selection now persist across token refresh, and MCP OAuth consent redirects pass the CSP form-action policy ([#2919](https://github.com/everruns/everruns/pull/2919), [#2918](https://github.com/everruns/everruns/pull/2918)).
+
+### What's Changed
+
+- fix(sessions): mount registry skills referenced as skill capabilities ([#2927](https://github.com/everruns/everruns/pull/2927)) by [@chaliy](https://github.com/chaliy)
+- feat(security): operator CIDR allowlist for SSRF validation ([#2923](https://github.com/everruns/everruns/pull/2923)) by [@shbodya](https://github.com/shbodya)
+- chore(deps): bump the npm_and_yarn group across 1 directory with 2 updates ([#2925](https://github.com/everruns/everruns/pull/2925)) by [@app/dependabot](https://github.com/apps/dependabot)
+- chore(deps): bump the cargo group with 3 updates ([#2926](https://github.com/everruns/everruns/pull/2926)) by [@app/dependabot](https://github.com/apps/dependabot)
+- fix(deps): bump fast-uri and postcss to clear security advisories ([#2924](https://github.com/everruns/everruns/pull/2924)) by [@chaliy](https://github.com/chaliy)
+- fix(integrations): fall back to Azure OpenAI credentials for image generation ([#2922](https://github.com/everruns/everruns/pull/2922)) by [@shbodya](https://github.com/shbodya)
+- fix(skills): allow restoring archived skills via status-only update ([#2921](https://github.com/everruns/everruns/pull/2921)) by [@shbodya](https://github.com/shbodya)
+- fix(auth): keep session and org selection across token refresh ([#2919](https://github.com/everruns/everruns/pull/2919)) by [@shbodya](https://github.com/shbodya)
+- fix(server): allow MCP OAuth consent redirect through CSP form-action ([#2918](https://github.com/everruns/everruns/pull/2918)) by [@shbodya](https://github.com/shbodya)
+- feat(docker): add authentication environment variables to docker-compose ([#2917](https://github.com/everruns/everruns/pull/2917)) by [@shbodya](https://github.com/shbodya)
+- chore: green main CI (OpenAI credit-exhaustion skip) + patch brace-expansion DoS (GHSA-mh99-v99m-4gvg) ([#2916](https://github.com/everruns/everruns/pull/2916)) by [@chaliy](https://github.com/chaliy)
+- fix(provider): retry provider stream stalls via shared transient path ([#2915](https://github.com/everruns/everruns/pull/2915)) by [@chaliy](https://github.com/chaliy)
+- feat(auth): link verified OAuth accounts ([#2914](https://github.com/everruns/everruns/pull/2914)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.19] - 2026-07-31
 
 ### Highlights
@@ -1621,10 +1689,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Highlights
 
 - **Model Router & workspace volumes scaffolding** - Foundation slices land for the upcoming Model Router ([EVE-397](https://linear.app/everruns/issue/EVE-397)) and `workspace_volumes` capability ([EVE-396](https://linear.app/everruns/issue/EVE-396)): durable specs, typed IDs, migrations `025_volumes.sql` / `026_model_routers.sql`, core types with structural validation, and capability registration. CRUD APIs, runtime resolution, and UI ship as follow-up vertical slices; existing concrete `default_model_id` behavior is preserved.
-- **GitHub Enterprise Daytona clone-auth** - `daytona_git_clone` and `daytona_git_credentials` honor an operator-configured trusted-host allowlist (`EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS`), so Enterprise customers can authenticate against `github.acme.com` / `git.internal.corp` while public-SaaS behavior and lookalike-host rejection are unchanged. See `integrations/daytona/SPEC.md` and `specs/threat-model.md` (TM-DAYTONA-008).
+- **GitHub Enterprise Daytona clone-auth** - `daytona_git_clone` and `daytona_git_credentials` honor an operator-configured trusted-host allowlist (`EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS`), so Enterprise customers can authenticate against `github.acme.com` / `git.internal.corp` while public-SaaS behavior and lookalike-host rejection are unchanged. See `integrations/daytona/SPEC.md` and `knowledge/security/threat-model.md` (TM-DAYTONA-008).
 - **Schema-driven capability settings** - Capability config UIs are now rendered from capability-provided JSON Schema metadata; per-capability settings editors disappear from shared UI code and server-side config validation is centralized.
 - **Security hardening sweep** - Public `/metrics` endpoint disabled by default ([#1596](https://github.com/everruns/everruns/pull/1596)), Valkey auth rate-limiter fails closed on backend errors ([#1597](https://github.com/everruns/everruns/pull/1597)), admin-seed reuse requires `admin` role + `email_verified` ([#1590](https://github.com/everruns/everruns/pull/1590)), `bashkit` bumped to v0.1.21 catching up on three security/hardening releases ([#1606](https://github.com/everruns/everruns/pull/1606)), and `virtual_bash` / `web_fetch` admin-only tier is now an explicit product-tier decision (specs + decision comments).
-- **Tools-field deprecation window** - `CreateSessionRequest.tools`, `CreateAgentRequest.tools`, and `UpdateAgentRequest.tools` now soft-drop legacy non-`client_side` entries with a structured `tracing::warn!` instead of returning `400`. Operators can flip `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS=1` in dev/staging to surface remaining offenders before the strict cutover. See `specs/client-side-tools.md` (Tools-Field Deprecation Window).
+- **Tools-field deprecation window** - `CreateSessionRequest.tools`, `CreateAgentRequest.tools`, and `UpdateAgentRequest.tools` now soft-drop legacy non-`client_side` entries with a structured `tracing::warn!` instead of returning `400`. Operators can flip `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS=1` in dev/staging to surface remaining offenders before the strict cutover. See `knowledge/execution/client-side-tools.md` (Tools-Field Deprecation Window).
 
 ### What's Changed
 
@@ -1673,7 +1741,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Highlights
 
-- **Security hardening sweep** - Broad audit pass across auth, sessions, MCP, durable execution, CLI, and UI: API-key revalidation, CSRF-confirmed MCP OAuth, bounded buffers, UTF-8 panic guards, path/symlink traversal blocks, ACL and policy enforcement via `Command::run`, and redacted tool timelines. See `specs/threat-model.md`.
+- **Security hardening sweep** - Broad audit pass across auth, sessions, MCP, durable execution, CLI, and UI: API-key revalidation, CSRF-confirmed MCP OAuth, bounded buffers, UTF-8 panic guards, path/symlink traversal blocks, ACL and policy enforcement via `Command::run`, and redacted tool timelines. See `knowledge/security/threat-model.md`.
 - **OpenAI image generation** - `gpt-image-2` now streams generation progress and the end-to-end pipeline is reliable for everyday use.
 - **Raw session file downloads** - New API endpoint exposes raw session file downloads for external consumers ([#1443](https://github.com/everruns/everruns/pull/1443)).
 - **MCP `WWW-Authenticate` on 401 (RFC 9728)** - `/mcp` endpoints now emit `WWW-Authenticate` on 401 so compliant clients can discover the OAuth resource server automatically ([#1441](https://github.com/everruns/everruns/pull/1441)).
@@ -1681,7 +1749,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- Document the `activate_skill` ``!`command` `` trust gate. The gate remains forced off for every source because `SessionFile::is_readonly` is user-controllable via the session-files API and `InitialFile`. `preprocess_command_injections` is kept wired up (with bounded fan-out: 32 placeholders per activation, 4 concurrent shells) so a follow-up can flip it on once a platform-controlled provenance signal is added to `SessionFile`. See `specs/skills-registry.md` "Activation Substitution Pipeline" and threat-model entry TM-TOOL-020 (EVE-388).
+- Document the `activate_skill` ``!`command` `` trust gate. The gate remains forced off for every source because `SessionFile::is_readonly` is user-controllable via the session-files API and `InitialFile`. `preprocess_command_injections` is kept wired up (with bounded fan-out: 32 placeholders per activation, 4 concurrent shells) so a follow-up can flip it on once a platform-controlled provenance signal is added to `SessionFile`. See `knowledge/project/skills-registry.md` "Activation Substitution Pipeline" and threat-model entry TM-TOOL-020 (EVE-388).
 - Restore SVG file preview behind a sandboxed `<iframe sandbox="" srcDoc=...>` with a strict CSP meta tag (`default-src 'none'; style-src 'unsafe-inline'; img-src data:`). PR #1513 had blocked SVG previews entirely to close an XSS surface; the iframe + CSP gate restores the feature while keeping `<script>`, `on*`, `javascript:`, and `<foreignObject>` payloads inert. See threat-model entry TM-WEB-009 (EVE-389).
 
 ### What's Changed

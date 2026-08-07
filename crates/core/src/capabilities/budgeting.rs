@@ -8,7 +8,7 @@
 // by the capability's system_prompt_contribution() method, which the
 // service layer calls with budget data from the database.
 //
-// See specs/budgeting.md (Phase 4: Agent awareness)
+// See knowledge/security/budgeting.md (Phase 4: Agent awareness)
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 use crate::tool_types::ToolHints;

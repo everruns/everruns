@@ -1,10 +1,10 @@
-// Pluggable provider credential source (specs/llm-drivers.md, specs/providers.md)
+// Pluggable provider credential source (knowledge/foundations/llm-drivers.md, knowledge/foundations/providers.md)
 //
 // Driver crates never read the process environment for credentials. Reading
 // `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, etc. from a shared host environment is
 // unsafe in the multitenant server: a platform-level key would silently fund
 // tenant execution (the fail-closed Key Resolution Contract in
-// `specs/llm-drivers.md`).
+// `knowledge/foundations/llm-drivers.md`).
 //
 // Instead, credential loading is an explicit, injectable concern. A caller that
 // wants env-based credentials — a CLI, a dev entrypoint, a standalone embedder —

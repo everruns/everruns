@@ -1,7 +1,7 @@
 // MCP scripting catalog — inventory is the only source of truth.
 
 use crate::domains::common::CommandError;
-use bashkit::{ScriptingToolSet, ToolArgs, ToolDef};
+use bashkit::{ScriptedTool, ToolArgs, ToolDef};
 use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
@@ -10,8 +10,7 @@ use std::sync::LazyLock;
 /// Shared context for inventory-registered domain commands.
 #[derive(Clone)]
 pub struct CatalogContext {
-    pub state: super::AppState,
-    pub caller: everruns_core::permissions::Caller,
+    pub domain_ctx: crate::domains::common::Ctx,
     pub link_builder: crate::api::common::UrlBuilder,
 }
 
@@ -55,39 +54,13 @@ static INVENTORY_TOOL_DEFS: LazyLock<HashMap<&'static str, ToolDef>> = LazyLock:
 impl CatalogContext {
     /// Convert to a domain Ctx for inventory-registered command dispatch.
     pub fn to_domain_ctx(&self) -> crate::domains::common::Ctx {
-        let mut ctx = crate::domains::common::Ctx::new(
-            self.caller.clone(),
-            self.state.db.clone(),
-            self.state.capability_service.clone(),
-            self.state.encryption.clone(),
-            self.state.auth.permission_resolver.clone(),
-        )
-        .with_org_rate_limiter(self.state.org_rate_limiter.clone())
-        .with_session_service(self.state.session_service.clone())
-        .with_message_service(self.state.message_service.clone())
-        .with_event_service(self.state.event_service.clone())
-        .with_session_file_service(self.state.session_file_service.clone())
-        .with_runner(self.state.runner.clone())
-        .with_fallback_harness_name(self.state.fallback_default_harness_name.clone())
-        .with_chat_harness_name(self.state.chat_harness_name.clone())
-        .with_chat_session_title(self.state.chat_session_title.clone())
-        .with_utility_llm_service(self.state.utility_llm_service.clone());
-        if let Some(service) = &self.state.health_check_service {
-            ctx = ctx.with_health_check_service(service.clone());
-        }
-        if let Some(service) = &self.state.session_sandbox_service {
-            ctx = ctx.with_session_sandbox_service(service.clone());
-        }
-        if let Some(store) = &self.state.sqldb_store {
-            ctx = ctx.with_sqldb_store(store.clone());
-        }
-        ctx.with_workflow_store(self.state.workflow_store.clone())
+        self.domain_ctx.clone()
     }
 }
 
-/// Build a ScriptingToolSet from inventory-registered commands only.
-pub fn build_toolset(ctx: CatalogContext, mode: ToolsetMode) -> ScriptingToolSet {
-    let mut builder = ScriptingToolSet::builder("everruns")
+/// Build one scripted tool from inventory-registered commands only.
+pub fn build_toolset(ctx: CatalogContext, mode: ToolsetMode) -> ScriptedTool {
+    let mut builder = ScriptedTool::builder("everruns")
         .short_description(match mode {
             ToolsetMode::Full => "Everruns API operations as bash builtins",
             ToolsetMode::ReadOnly => "Read-only Everruns API operations as bash builtins",
@@ -100,7 +73,8 @@ pub fn build_toolset(ctx: CatalogContext, mode: ToolsetMode) -> ScriptingToolSet
                 .max_input_bytes(500_000)
                 .max_ast_depth(50)
                 .parser_timeout(std::time::Duration::from_secs(3)),
-        );
+        )
+        .sanitize_errors(false);
 
     for desc in inventory::iter::<crate::domains::common::CommandDescriptor> {
         // THREAT[TM-MCP-002]: MCP `query` must not expose mutating server
@@ -116,6 +90,9 @@ pub fn build_toolset(ctx: CatalogContext, mode: ToolsetMode) -> ScriptingToolSet
         }
         let def = command_descriptor_to_def(desc);
         let callback = make_inventory_callback(desc, ctx.clone());
+        // THREAT[TM-MCP-002]: Domain errors are sanitized by
+        // `format_dispatch_error`; disabling Bashkit's blanket replacement
+        // preserves actionable kind tokens without exposing internal details.
         builder = builder.async_tool_fn(def, callback);
     }
 
@@ -145,7 +122,9 @@ fn command_descriptor_to_def(desc: &crate::domains::common::CommandDescriptor) -
 //    attempts (which still don't reach into `allOf`/`$ref` composition;
 //    bashkit#1516/#1527 only coerces top-level array/object schemas).
 // 2. `coerce_json_text_params` parses those JSON strings back into typed
-//    values before the domain dispatcher sees them.
+//    values before the domain dispatcher sees them. It also repairs scalar
+//    values in composed schemas because bashkit does not coerce flags reached
+//    through `allOf`/`$ref` (for example `--enabled true` on Agent Triggers).
 //
 // Both passes walk `$ref` into `$defs`/`definitions`, traverse `allOf`,
 // `oneOf`, `anyOf` branches, and recurse into nested `$defs` entries — this
@@ -232,8 +211,8 @@ fn retype_aggregate_properties_in_place(
 }
 
 /// Walk the original param schema and parse JSON-text values for properties
-/// whose declared type is array or object back into structured JSON. Bashkit's
-/// flag parser keeps these as raw strings; the domain dispatcher expects the
+/// whose declared type is array/object, or a scalar type that bashkit left as
+/// text because it lives under composition. The domain dispatcher expects the
 /// typed shape.
 ///
 /// Empty / whitespace-only strings are left untouched so optional fields that
@@ -258,7 +237,9 @@ fn coerce_json_text_params(
         let Some(property) = all_properties.get(name) else {
             continue;
         };
-        if !property_is_aggregate(property, defs, 0) {
+        let should_parse = property_is_aggregate(property, defs, 0)
+            || property_has_json_scalar_type(property, defs, 0);
+        if !should_parse {
             continue;
         }
         let serde_json::Value::String(text) = value else {
@@ -272,6 +253,51 @@ fn coerce_json_text_params(
         *value = parsed;
     }
     Ok(())
+}
+
+fn property_has_json_scalar_type(
+    schema: &serde_json::Value,
+    defs: Option<&serde_json::Map<String, serde_json::Value>>,
+    depth: u8,
+) -> bool {
+    if depth >= SCHEMA_WALK_MAX_DEPTH {
+        return false;
+    }
+    if let Some(value) = schema.get("type") {
+        if let Some(name) = value.as_str()
+            && matches!(name, "boolean" | "integer" | "number")
+        {
+            return true;
+        }
+        if let Some(types) = value.as_array()
+            && types.iter().any(|entry| {
+                entry
+                    .as_str()
+                    .is_some_and(|name| matches!(name, "boolean" | "integer" | "number"))
+            })
+        {
+            return true;
+        }
+    }
+    if let Some(reference) = schema.get("$ref").and_then(|value| value.as_str())
+        && let Some(name) = reference
+            .strip_prefix("#/$defs/")
+            .or_else(|| reference.strip_prefix("#/definitions/"))
+        && let Some(defs) = defs
+        && let Some(resolved) = defs.get(name)
+    {
+        return property_has_json_scalar_type(resolved, Some(defs), depth + 1);
+    }
+    ["allOf", "oneOf", "anyOf"].iter().any(|key| {
+        schema
+            .get(key)
+            .and_then(|value| value.as_array())
+            .is_some_and(|branches| {
+                branches
+                    .iter()
+                    .any(|branch| property_has_json_scalar_type(branch, defs, depth + 1))
+            })
+    })
 }
 
 /// Merge property maps across `$ref`, `allOf`, `oneOf`, and `anyOf` branches
@@ -385,13 +411,17 @@ fn command_error_kind(err: &CommandError) -> &'static str {
 /// builtin name on its own (e.g. `update_model: …`), so we deliberately do
 /// not duplicate it here. The result is the structured error contract for
 /// MCP-facing builtins; see the "Structured dispatch errors" section in
-/// `specs/domains.md` for the canonical contract and the kind token table.
+/// `knowledge/foundations/domains.md` for the canonical contract and the kind token table.
 ///
 /// Agent-actionable extensions (`code`, `allowed_actions`, `retry_after_seconds`)
 /// flow through `CommandError` but are intentionally not appended here — the
 /// `<kind>: <message>` wire is a documented contract. Surfacing extensions
 /// over MCP is tracked as an additive contract change.
 fn format_dispatch_error(err: &CommandError) -> String {
+    if let crate::domains::common::CommandErrorKind::Internal(inner) = &err.kind {
+        tracing::error!(error = %inner, "Platform command failed");
+        return "internal: Internal server error".to_string();
+    }
     format!("{}: {err}", command_error_kind(err))
 }
 
@@ -545,6 +575,39 @@ mod tests {
             serde_json::json!([{"ref": "current_time"}]),
         );
         assert_eq!(params["tags"], serde_json::json!(["a", "b"]));
+    }
+
+    #[test]
+    fn coerce_parses_scalar_flags_from_composed_schema() {
+        let schema = serde_json::json!({
+            "$defs": {
+                "Trigger": {
+                    "properties": {
+                        "enabled": { "type": "boolean" },
+                        "limit": { "type": "integer" },
+                        "ratio": { "type": "number" },
+                        "session_mode": { "type": "string" }
+                    }
+                }
+            },
+            "allOf": [
+                { "$ref": "#/$defs/Trigger" },
+                { "properties": { "agent_id": { "type": "string" } } }
+            ]
+        });
+        let mut params = serde_json::json!({
+            "enabled": "true",
+            "limit": "5",
+            "ratio": "1.5",
+            "session_mode": "session_per_invocation"
+        });
+
+        coerce_json_text_params(&schema, &mut params).expect("coerce");
+
+        assert_eq!(params["enabled"], true);
+        assert_eq!(params["limit"], 5);
+        assert_eq!(params["ratio"], 1.5);
+        assert_eq!(params["session_mode"], "session_per_invocation");
     }
 
     #[test]
@@ -782,7 +845,8 @@ mod tests {
             "database connection refused"
         )));
         let forbidden = format_dispatch_error(&CommandError::forbidden("permission denied"));
-        assert!(internal.starts_with("internal:"));
+        assert_eq!(internal, "internal: Internal server error");
+        assert!(!internal.contains("database connection refused"));
         assert!(forbidden.starts_with("forbidden:"));
         assert_ne!(internal, forbidden);
     }

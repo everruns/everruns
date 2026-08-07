@@ -34,7 +34,7 @@
 //! everruns_openai::register_driver(&mut drivers);
 //!
 //! // Standalone/dev: resolve credentials through the injectable env provider.
-//! // Driver code never reads the environment itself (see specs/llm-drivers.md).
+//! // Driver code never reads the environment itself (see knowledge/foundations/llm-drivers.md).
 //! let creds = EnvCredentialProvider
 //!     .resolve(&DriverId::OpenAI)
 //!     .expect("OPENAI_API_KEY not set");

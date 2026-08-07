@@ -67,5 +67,5 @@ research/infinity_context/
 
 ## See Also
 
-- [Infinity Context Spec](../../specs/infinity-context.md)
-- [Capabilities Spec](../../specs/capabilities.md)
+- [Infinity Context Spec](../../knowledge/runtime-resources/infinity-context.md)
+- [Capabilities Spec](../../knowledge/execution/capabilities.md)

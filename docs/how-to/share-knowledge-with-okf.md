@@ -114,4 +114,4 @@ Export reconstructs each entry's frontmatter from the preserved raw `type` (or a
 
 The `data_knowledge` capability mounts a readonly `/knowledge/` scaffold shaped as an OKF bundle (frontmatter + `index.md` navigation). Agents on the **Data Analyst** harness read it as ground truth before writing SQL. Import an OKF bundle into a Knowledge Base, and that curated context is available to your agents and portable to any other OKF consumer.
 
-See also: [Data Analyst harness](/built-ins/harnesses/data-analyst/), and `specs/okf-adoption.md` for the design intent.
+See also: [Data Analyst harness](/built-ins/harnesses/data-analyst/), and `knowledge/runtime-resources/okf-adoption.md` for the design intent.

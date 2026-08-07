@@ -3,6 +3,10 @@ title: Platform Management
 description: Programmatic management of harnesses, agents, and sessions from within a running session. Agents can read, create, update, and delete platform resources via tools.
 ---
 
+> This is the legacy handwritten compatibility capability. New built-in
+> Platform Chat sessions use the catalog-backed [Platform capability](/capabilities/platform/),
+> whose `discover`, `query`, and `execute` tools stay aligned with Everruns MCP.
+
 | | |
 |---|---|
 | **ID** | `platform_management` |
@@ -144,6 +148,7 @@ Read the latest estimated context-token breakdown for a session. Returns total e
 
 ## See Also
 
+- [Platform](/capabilities/platform/) — current catalog-backed capability
 - [Concepts](/getting-started/concepts/) — Harness, Agent, Session model
 - [Agent Skills](/capabilities/agent-skills/) — skill discovery
 - [API Reference](/api/) — full REST API

@@ -4,7 +4,7 @@
 // The button yields a Google ID token (JWT) which is sent to the public chat
 // endpoint as a bearer token and validated server-side by the channel's
 // `google_oidc` auth verifier. Only rendered when the channel configures Google
-// sign-in. See specs/public-chat.md.
+// sign-in. See knowledge/integrations/public-chat.md.
 
 import { useEffect, useRef } from "react";
 

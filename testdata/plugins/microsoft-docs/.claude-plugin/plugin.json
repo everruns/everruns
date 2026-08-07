@@ -11,6 +11,7 @@
   "repository": "https://github.com/everruns/everruns",
   "license": "MIT",
   "keywords": ["microsoft", "docs", "azure", "dotnet", "documentation"],
+  "icon": "./assets/icon.svg",
   "skills": "./skills/",
   "commands": "./commands/",
   "agents": "./agents/",

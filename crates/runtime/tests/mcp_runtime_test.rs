@@ -1,5 +1,5 @@
 //! End-to-end MCP wiring through the real in-process runtime
-//! (specs/runtime-mcp.md D4): a session's scoped MCP server is discovered at
+//! (knowledge/integrations/runtime-mcp.md D4): a session's scoped MCP server is discovered at
 //! `tools/list`, its tool appears to the (scripted) LLM, and the resulting
 //! `mcp_*` tool call is routed back out as `tools/call`.
 //!

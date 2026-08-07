@@ -231,7 +231,7 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
   it("renders copy button", async () => {
     await renderWithSuspense({ agentId: "agent-1" });
 
-    expect(screen.getByText("Copy")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Copy" }).length).toBeGreaterThan(0);
   });
 
   it("shows copying state when copy is pending", async () => {
@@ -239,7 +239,9 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
 
     await renderWithSuspense({ agentId: "agent-1" });
 
-    expect(screen.getByText("Copying...")).toBeInTheDocument();
+    const copyingButtons = screen.getAllByRole("button", { name: "Copying..." });
+    expect(copyingButtons.length).toBeGreaterThan(0);
+    copyingButtons.forEach((button) => expect(button).toBeDisabled());
   });
 
   it("renders agent details correctly", async () => {

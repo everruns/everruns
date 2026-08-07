@@ -8,8 +8,8 @@
  * via StreamdownMessage. Falls back to pure markdown when no UI blocks are
  * present.
  *
- * @see specs/openui.md
- * @see specs/a2ui.md
+ * @see knowledge/ui/openui.md
+ * @see knowledge/ui/a2ui.md
  */
 
 import { hasA2UIBlocks, splitA2UIBlocks } from "@/lib/a2ui-utils";
@@ -29,7 +29,7 @@ interface MessageContentProps {
   text: string;
   /** Whether content is actively streaming */
   isStreaming?: boolean;
-  /** Claim-level citations attached to the message text (see specs/citations.md). */
+  /** Claim-level citations attached to the message text (see knowledge/runtime-resources/citations.md). */
   annotations?: TextAnnotation[];
 }
 

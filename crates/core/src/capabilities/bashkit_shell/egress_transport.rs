@@ -1,7 +1,7 @@
 //! Egress-backed HTTP transport for the `bashkit_shell` capability.
 //!
-//! Implements `specs/egress.md` migration step 3 for bashkit via its
-//! transport injection (bashkit >= 0.13, `specs/http-transport.md` there):
+//! Implements `knowledge/operations/egress.md` migration step 3 for bashkit via its
+//! transport injection (bashkit >= 0.13, `knowledge/security/http-transport.md` there):
 //! [`BashkitEgressTransport`] implements `bashkit::HttpTransport` over the
 //! host `EgressService`, so bashkit keeps its entire HTTP pipeline — URL
 //! allowlist, DNS/private-IP SSRF precheck (resolve-then-check producing
@@ -9,7 +9,7 @@
 //! injection, bot-auth signing, and response caps — while every HTTP hop
 //! crosses the egress boundary, where the per-request `NetworkAccessList`
 //! and the deployment-wide system allowlist are enforced
-//! (`specs/system-allowlist.md`).
+//! (`knowledge/operations/system-allowlist.md`).
 //!
 //! curl/wget follow redirects manually and re-dispatch each hop, so egress
 //! policy applies to redirect targets too. `pinned_addrs` carries bashkit's
@@ -37,7 +37,7 @@ pub(crate) struct BashkitEgressTransport {
     egress: Arc<dyn EgressService>,
     /// Merged harness/agent/session access list, enforced at the egress
     /// boundary for every hop — the final enforcement point per
-    /// `specs/egress.md`.
+    /// `knowledge/operations/egress.md`.
     network_access: Option<NetworkAccessList>,
 }
 
@@ -80,7 +80,7 @@ impl HttpTransport for BashkitEgressTransport {
         // bashkit signs bot-auth headers before handing the hop to the
         // transport (re-signed per hop); platform-default signing
         // remains available for a future platform signer
-        // (specs/egress.md).
+        // (knowledge/operations/egress.md).
         .signing(EgressSigning::PlatformDefault)
         .network_access(self.network_access.clone())
         .pinned_addrs(host, pinned)

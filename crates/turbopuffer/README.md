@@ -12,4 +12,4 @@ Each Knowledge Index maps to one org-prefixed Turbopuffer namespace, so the
 store is multitenant and multi-index by construction. Hybrid retrieval fuses
 vector ANN and BM25 with reciprocal-rank fusion (RRF) server-side.
 
-See `specs/knowledge-indexes.md` for the full design.
+See `knowledge/runtime-resources/knowledge-indexes.md` for the full design.

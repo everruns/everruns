@@ -10,9 +10,10 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { useAgent, useSession, useEvents, useModel } from "@/hooks";
+import { useAgent, useSession, useEvents, useModel, useSessionResolvedModel } from "@/hooks";
 import { sendUserMessage, cancelTurn } from "@/lib/api/sessions";
 import { useMutation } from "@tanstack/react-query";
+import { usePathname } from "next/navigation";
 import { useOrg } from "@/providers/org-provider";
 import { useLocale } from "@/providers/locale-provider";
 import type {
@@ -35,6 +36,9 @@ import { getTextFromContent, isToolCallPart, getEventData } from "@/lib/api/type
 import { getLocalizedOutputMessageText } from "@/lib/runtime-errors";
 import { latestStreamingMessage } from "@/lib/streaming-message-state";
 import type { UseMutationResult } from "@tanstack/react-query";
+import { useWebMcpTool } from "@/hooks/use-webmcp-tool";
+import { useWebMcp } from "@/providers/webmcp-context";
+import type { WebMcpToolDefinition } from "@/lib/webmcp/types";
 
 /** Accumulated streamed output for a single tool call */
 export interface ToolOutputStreams {
@@ -57,6 +61,7 @@ export interface SessionContextValue {
   toolOutputMap: Map<string, ToolOutputStreams>;
   // Loading states
   sessionLoading: boolean;
+  llmModelLoading: boolean;
   eventsLoading: boolean;
   // Derived states (updated via SSE)
   effectiveStatus: SessionStatus | undefined;
@@ -125,7 +130,9 @@ interface SessionProviderProps {
 
 // Session provider that derives agentId from the session (for org-level routes)
 export function SessionProvider({ sessionId, children }: SessionProviderProps) {
+  const pathname = usePathname();
   const { currentOrg } = useOrg();
+  const webmcp = useWebMcp();
   const { locale } = useLocale();
   const org = currentOrg?.public_id;
 
@@ -153,6 +160,8 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
 
   // Optimistic events - shown immediately before SSE confirms
   const [optimisticEvents, setOptimisticEvents] = useState<Event[]>([]);
+  // THREAT[TM-WEB-017]: reject concurrent non-idempotent browser-agent mutations.
+  const webMcpActionPendingRef = useRef(false);
 
   // Custom sendMessage mutation with optimistic UI
   const sendMessage = useMutation({
@@ -214,8 +223,11 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     },
   });
 
-  // Fetch LLM model info if session has a model_id
-  const { data: llmModel } = useModel(session?.model_id ?? "");
+  // The server owns model precedence; the UI resolves only the returned model resource.
+  const { data: resolvedModel, isLoading: resolvedModelLoading } =
+    useSessionResolvedModel(sessionId);
+  const { data: llmModel, isLoading: modelLoading } = useModel(resolvedModel?.model_id ?? "");
+  const llmModelLoading = resolvedModelLoading || modelLoading;
 
   // Fetch events using paginated REST + SSE for real-time streaming
   const {
@@ -300,6 +312,99 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   // Determine if session is actively processing
   // "active" = turn running, "waiting_for_tool_results" = paused for client-side tool
   const isActive = effectiveStatus === "active" || effectiveStatus === "waiting_for_tool_results";
+  const isChatPage =
+    pathname === `/sessions/${sessionId}` || pathname === `/sessions/${sessionId}/chat`;
+  const canSendWebMcpMessage = effectiveStatus === "idle" || effectiveStatus === "started";
+
+  const sendMessageTool = useMemo<WebMcpToolDefinition>(
+    () => ({
+      name: "everruns_send_message",
+      description: "Send a text message in the Everruns session displayed on this page.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          message: { type: "string", description: "Text to send to the session agent." },
+        },
+        required: ["message"],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+      execute: async (input) => {
+        webmcp.assertBinding(webmcp.bindingToken);
+        if (!session || session.id !== sessionId || !canSendWebMcpMessage || !isChatPage) {
+          throw new DOMException(
+            "The bound session is no longer ready for a message",
+            "AbortError",
+          );
+        }
+        if (webMcpActionPendingRef.current || sendMessage.isPending) {
+          throw new Error("Another session action is already running");
+        }
+        if (typeof input.message !== "string" || !input.message.trim()) {
+          throw new TypeError("message must be a non-empty string");
+        }
+        const message = input.message.trim().slice(0, 8_000);
+        const preview = message.length > 200 ? `${message.slice(0, 199)}…` : message;
+        await webmcp.requestApproval({
+          title: "Send this agent message?",
+          description: `Send to ${session.title || "this session"}: “${preview}” This starts a potentially billable agent turn.`,
+          confirmLabel: "Send message",
+        });
+        webmcp.assertBinding(webmcp.bindingToken);
+        webMcpActionPendingRef.current = true;
+        try {
+          const created = await sendMessage.mutateAsync({ sessionId, content: message });
+          return { sent: true, message_id: created.id, session_id: sessionId };
+        } finally {
+          webMcpActionPendingRef.current = false;
+        }
+      },
+    }),
+    [canSendWebMcpMessage, isChatPage, sendMessage, session, sessionId, webmcp],
+  );
+
+  const cancelTurnTool = useMemo<WebMcpToolDefinition>(
+    () => ({
+      name: "everruns_cancel_turn",
+      description:
+        "Cancel the currently active turn in the Everruns session displayed on this page.",
+      inputSchema: { type: "object", properties: {}, additionalProperties: false },
+      annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+      execute: async () => {
+        webmcp.assertBinding(webmcp.bindingToken);
+        if (!session || session.id !== sessionId || !isActive || !isChatPage) {
+          throw new DOMException("The bound session no longer has an active turn", "AbortError");
+        }
+        if (webMcpActionPendingRef.current || cancelCurrentTurn.isPending) {
+          throw new Error("Another session action is already running");
+        }
+        await webmcp.requestApproval({
+          title: "Cancel the active turn?",
+          description: `Stop the running turn in ${session.title || "this session"}. Partial work may be lost.`,
+          confirmLabel: "Cancel turn",
+          destructive: true,
+        });
+        webmcp.assertBinding(webmcp.bindingToken);
+        webMcpActionPendingRef.current = true;
+        try {
+          await cancelCurrentTurn.mutateAsync();
+          return { cancelled: true, session_id: sessionId };
+        } finally {
+          webMcpActionPendingRef.current = false;
+        }
+      },
+    }),
+    [cancelCurrentTurn, isActive, isChatPage, session, sessionId, webmcp],
+  );
+
+  useWebMcpTool(sendMessageTool, {
+    enabled: isChatPage && canSendWebMcpMessage,
+    scopeKey: `${sessionId}:${effectiveStatus}`,
+  });
+  useWebMcpTool(cancelTurnTool, {
+    enabled: isChatPage && isActive,
+    scopeKey: `${sessionId}:${effectiveStatus}`,
+  });
 
   // shouldPoll is no longer needed - we use SSE events for real-time status
   const shouldPoll = false;
@@ -595,6 +700,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     toolProgressMap,
     toolOutputMap,
     sessionLoading,
+    llmModelLoading,
     eventsLoading,
     effectiveStatus,
     liveUsage,
