@@ -5,6 +5,7 @@
 
 const DEFAULT_MAX_CONCURRENT_RUNS_PER_ORG: usize = 5;
 const DEFAULT_MAX_CASES_PER_RUN: usize = 500;
+const DEFAULT_MAX_EVALS_PER_IMPORT: usize = 10;
 
 /// Concurrency and volume limits for eval runs.
 #[derive(Clone, Copy, Debug)]
@@ -13,6 +14,8 @@ pub struct EvalLimits {
     pub max_concurrent_runs_per_org: usize,
     /// Max number of cases that may be executed in a single eval run.
     pub max_cases_per_run: usize,
+    /// Max number of eval runs that may be created by one import request.
+    pub max_evals_per_import: usize,
 }
 
 impl Default for EvalLimits {
@@ -29,6 +32,10 @@ impl EvalLimits {
                 DEFAULT_MAX_CONCURRENT_RUNS_PER_ORG,
             ),
             max_cases_per_run: read_usize_env("EVAL_MAX_CASES_PER_RUN", DEFAULT_MAX_CASES_PER_RUN),
+            max_evals_per_import: read_usize_env(
+                "EVAL_MAX_EVALS_PER_IMPORT",
+                DEFAULT_MAX_EVALS_PER_IMPORT,
+            ),
         }
     }
 }
