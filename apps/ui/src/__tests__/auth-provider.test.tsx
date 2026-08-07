@@ -99,6 +99,40 @@ describe("AuthProvider pluggable actions", () => {
     expect(result.current.logoutPending).toBe(false);
   });
 
+  it("exposes the anonymous current user without claiming authentication is required", () => {
+    mockUseAuthConfig.mockReturnValue({
+      data: { mode: "none", oauth_providers: [] },
+      isLoading: false,
+      error: null,
+    });
+    mockUseCurrentUser.mockReturnValue({
+      data: { id: "anonymous", email: "anonymous@local", name: "Anonymous", roles: ["admin"] },
+      isLoading: false,
+      error: null,
+    });
+
+    const { result } = renderHook(() => useAuth(), { wrapper: makeWrapper() });
+
+    expect(result.current.user?.name).toBe("Anonymous");
+    expect(result.current.requiresAuth).toBe(false);
+    expect(result.current.isAuthenticated).toBe(true);
+    expect(result.current.isLoading).toBe(false);
+  });
+
+  it("keeps the provider loading until the current user request settles", () => {
+    mockUseAuthConfig.mockReturnValue({
+      data: { mode: "none", oauth_providers: [] },
+      isLoading: false,
+      error: null,
+    });
+    mockUseCurrentUser.mockReturnValue({ data: undefined, isLoading: true, error: null });
+
+    const { result } = renderHook(() => useAuth(), { wrapper: makeWrapper() });
+
+    expect(result.current.user).toBeNull();
+    expect(result.current.isLoading).toBe(true);
+  });
+
   it("marks auth as unavailable when auth config bootstrap fails", () => {
     mockUseAuthConfig.mockReturnValue({
       data: undefined,

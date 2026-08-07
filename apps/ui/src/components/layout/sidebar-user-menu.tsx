@@ -1,8 +1,8 @@
 /**
  * Decisions:
- * - User footer owns auth-only actions; anonymous mode stays a simple version label.
+ * - A resolved user always gets an identity menu; authentication gates only actions that require it.
  * - Route pushes happen inside menu actions so parent layout does not coordinate menu details.
- * - Forks can append profile menu items via a render prop instead of replacing this component.
+ * - Forks can append authenticated profile menu items via a render prop instead of replacing this component.
  */
 "use client";
 
@@ -71,7 +71,7 @@ export function SidebarUserMenu({
     navigate("/login");
   };
 
-  if (!requiresAuth || !user) {
+  if (!user) {
     return <p className="px-2.5 text-[11px] text-muted-foreground">Everruns v{version}</p>;
   }
 
@@ -87,9 +87,11 @@ export function SidebarUserMenu({
           </Avatar>
           <div className="flex-1 text-left">
             <p className="truncate font-semibold leading-5">{user.name || user.email}</p>
-            {user.name && (
+            {!requiresAuth ? (
+              <p className="truncate text-[11px] text-muted-foreground">Local user</p>
+            ) : user.name ? (
               <p className="truncate text-[11px] text-muted-foreground">{user.email}</p>
-            )}
+            ) : null}
           </div>
           <NotificationIndicator />
           <ChevronUp className="icon-sharp h-4 w-4 text-muted-foreground" />
@@ -97,24 +99,36 @@ export function SidebarUserMenu({
         <DropdownMenuPositioner side="top" align="start">
           <DropdownMenuContent className="w-56">
             <DropdownMenuGroup>
-              <DropdownMenuLabel>My Account</DropdownMenuLabel>
+              <DropdownMenuLabel>{requiresAuth ? "My Account" : "Local Account"}</DropdownMenuLabel>
               <NotificationMenuSub />
               <DropdownMenuItem onClick={() => navigate("/settings/profile")}>
                 <User className="icon-sharp mr-2 h-4 w-4" />
                 Profile
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/settings/personal-access-tokens")}>
-                <Key className="icon-sharp mr-2 h-4 w-4" />
-                Personal access tokens
-              </DropdownMenuItem>
+              {requiresAuth && (
+                <DropdownMenuItem onClick={() => navigate("/settings/personal-access-tokens")}>
+                  <Key className="icon-sharp mr-2 h-4 w-4" />
+                  Personal access tokens
+                </DropdownMenuItem>
+              )}
               {mcpEndpointEnabled && <McpConnectMenuItem onSelect={() => setMcpDialogOpen(true)} />}
-              {renderExtraItems?.({ user, navigate })}
+              {requiresAuth && renderExtraItems?.({ user, navigate })}
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem variant="destructive" onClick={handleLogout} disabled={logoutPending}>
-              <LogOut className="icon-sharp mr-2 h-4 w-4" />
-              {logoutPending ? "Signing out..." : "Sign out"}
-            </DropdownMenuItem>
+            <p className="px-2 py-1 text-[11px] text-muted-foreground">Everruns v{version}</p>
+            {requiresAuth && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  variant="destructive"
+                  onClick={handleLogout}
+                  disabled={logoutPending}
+                >
+                  <LogOut className="icon-sharp mr-2 h-4 w-4" />
+                  {logoutPending ? "Signing out..." : "Sign out"}
+                </DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenuPositioner>
       </DropdownMenu>

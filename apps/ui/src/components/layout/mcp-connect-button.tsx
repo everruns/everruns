@@ -13,6 +13,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useAuth } from "@/providers/auth-provider";
 
 const McpIcon = capabilityIconMap.mcp;
 
@@ -65,6 +66,8 @@ function McpConnectDialogContent({
   mcpUrl: string;
   configSnippet: string;
 }) {
+  const { requiresAuth } = useAuth();
+
   return (
     <DialogContent className="sm:max-w-md">
       <DialogHeader>
@@ -100,7 +103,9 @@ function McpConnectDialogContent({
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Authentication is handled automatically via OAuth when connecting from an MCP client.
+          {requiresAuth
+            ? "Authentication is handled automatically via OAuth when connecting from an MCP client."
+            : "This local Everruns server does not require authentication."}
         </p>
       </div>
     </DialogContent>
