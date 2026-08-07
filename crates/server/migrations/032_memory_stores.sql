@@ -1,5 +1,5 @@
 -- Org-scoped persistent memory stores (EVE-422).
--- See knowledge/runtime-resources/memory.md for full design intent.
+-- See specs/memory.md for full design intent.
 --
 -- A MemoryStore is an org-scoped named container for Memory entries that
 -- agents create and recall via the `memory` capability (remember/recall/forget
@@ -30,7 +30,7 @@ CREATE UNIQUE INDEX idx_memory_stores_id_org ON memory_stores(id, org_id);
 CREATE TRIGGER update_memory_stores_updated_at BEFORE UPDATE ON memory_stores
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-COMMENT ON TABLE memory_stores IS 'Org-scoped containers for agent memories. See knowledge/runtime-resources/memory.md.';
+COMMENT ON TABLE memory_stores IS 'Org-scoped containers for agent memories. See specs/memory.md.';
 
 CREATE TABLE memories (
     id UUID PRIMARY KEY DEFAULT uuidv7(),

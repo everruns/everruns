@@ -1,5 +1,5 @@
 -- Allow `a2a` (Agent2Agent) app invocation channels.
--- See knowledge/integrations/a2a-channel.md.
+-- See specs/a2a-channel.md.
 
 ALTER TABLE apps
     DROP CONSTRAINT IF EXISTS apps_channel_type_check;

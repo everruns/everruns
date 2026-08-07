@@ -7,7 +7,7 @@
 -- delivered by editing migration 006 in place. That broke startup against
 -- already-deployed databases because sqlx tracks each migration's checksum
 -- in `_sqlx_migrations` and refuses to run when an applied migration's
--- content changes (see knowledge/operations/migrations.md, knowledge/project/release-process.md
+-- content changes (see specs/migrations.md, specs/release-process.md
 -- "Migration Handling").
 --
 -- This migration restores the contract by:

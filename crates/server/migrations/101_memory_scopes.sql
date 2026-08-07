@@ -32,7 +32,7 @@ CREATE UNIQUE INDEX idx_memories_org_user_scope_owner_active
 CREATE INDEX idx_memories_org_scope_status
     ON memories(org_id, scope, status);
 
-COMMENT ON COLUMN memories.scope IS 'Memory scope: org, agent, or user. See knowledge/runtime-resources/memory.md.';
+COMMENT ON COLUMN memories.scope IS 'Memory scope: org, agent, or user. See specs/memory.md.';
 COMMENT ON COLUMN memories.owner_agent_id IS 'Owning agent for scope=agent memories.';
 COMMENT ON COLUMN memories.owner_user_id IS 'Owning user for scope=user memories.';
 

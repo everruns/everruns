@@ -1,5 +1,5 @@
 -- OKF adoption: add `resource` URI to knowledge entries.
--- See knowledge/runtime-resources/okf-adoption.md (Gap Closure).
+-- See specs/okf-adoption.md (Gap Closure).
 --
 -- OKF concept documents carry an optional `resource` frontmatter field: a URI
 -- uniquely identifying the underlying asset (e.g. a BigQuery table console URL).
@@ -11,4 +11,4 @@
 
 ALTER TABLE knowledge_entries ADD COLUMN resource TEXT;
 
-COMMENT ON COLUMN knowledge_entries.resource IS 'Optional OKF resource URI identifying the underlying asset. See knowledge/runtime-resources/okf-adoption.md.';
+COMMENT ON COLUMN knowledge_entries.resource IS 'Optional OKF resource URI identifying the underlying asset. See specs/okf-adoption.md.';

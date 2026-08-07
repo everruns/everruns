@@ -1,5 +1,5 @@
 -- Rename Workspace Volume to Memory; drop legacy memory_stores capability.
--- See knowledge/runtime-resources/memory.md (durable design) and docs/advanced/memory-model.md.
+-- See specs/memory.md (durable design) and docs/advanced/memory-model.md.
 --
 -- This migration performs three independent jobs:
 --   1. Drop the legacy `memory_stores`/`memories` (recall) tables and
@@ -86,7 +86,7 @@ ALTER TABLE memories ADD CONSTRAINT memories_public_id_format
 -- 4. Comments
 -- ============================================
 
-COMMENT ON TABLE memories IS 'Memories — org-scoped named stores. See knowledge/runtime-resources/memory.md.';
+COMMENT ON TABLE memories IS 'Memories — org-scoped named stores. See specs/memory.md.';
 COMMENT ON TABLE memory_files IS 'Files and directories inside a Memory. Path validation mirrors session_files.';
 COMMENT ON TABLE session_memory_mounts IS 'Per-session snapshot of resolved memory capability mounts.';
 

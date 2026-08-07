@@ -1,5 +1,5 @@
 -- Model Routers (EVE-397)
--- See knowledge/integrations/model-router.md for full design intent.
+-- See specs/model-router.md for full design intent.
 --
 -- A Model Router owns named routes (e.g. base, utility, analysis, review),
 -- each with a selection strategy and ordered candidates that point at
@@ -54,7 +54,7 @@ CREATE UNIQUE INDEX idx_model_routers_org_name_active
 CREATE TRIGGER update_model_routers_updated_at BEFORE UPDATE ON model_routers
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-COMMENT ON TABLE model_routers IS 'Model Routers — semantic LLM selection. See knowledge/integrations/model-router.md.';
+COMMENT ON TABLE model_routers IS 'Model Routers — semantic LLM selection. See specs/model-router.md.';
 
 -- ============================================
 -- Model Router Routes

@@ -1,6 +1,6 @@
 -- Org-level "default provider per service" resolution tier (EVE-569).
 --
--- Tier 2 of service-bound provider resolution (knowledge/foundations/providers.md): consulted
+-- Tier 2 of service-bound provider resolution (specs/providers.md): consulted
 -- after an explicit per-consumer binding and before the single-active-provider
 -- fallback, an org may pin a default provider for a given ServiceKind (e.g.
 -- provider X for `realtime`, provider Y for `embeddings`).

@@ -1,5 +1,5 @@
 -- Machine payments foundation.
--- See knowledge/security/machine-payments.md.
+-- See specs/machine-payments.md.
 
 CREATE TABLE payment_accounts (
     id UUID PRIMARY KEY DEFAULT uuidv7(),

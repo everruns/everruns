@@ -3,7 +3,7 @@
 --
 -- Each webhook can be independently enabled/disabled. The secret is used to
 -- sign the payload with HMAC-SHA256 so receivers can verify the origin.
--- See knowledge/runtime-resources/session-tasks.md and EVE-579.
+-- See specs/session-tasks.md and EVE-579.
 
 CREATE TABLE organization_task_webhooks (
     id          BIGSERIAL PRIMARY KEY,

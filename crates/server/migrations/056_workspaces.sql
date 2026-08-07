@@ -1,5 +1,5 @@
 -- Workspaces — promote the per-session virtual filesystem to a first-class
--- org-scoped entity. See knowledge/runtime-resources/workspace.md.
+-- org-scoped entity. See specs/workspace.md.
 --
 -- This migration:
 --   1. Creates the `workspaces` table with the standard building-block
@@ -55,7 +55,7 @@ CREATE UNIQUE INDEX idx_workspaces_org_lower_name_active
 CREATE TRIGGER update_workspaces_updated_at BEFORE UPDATE ON workspaces
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-COMMENT ON TABLE workspaces IS 'Org-scoped named working areas. See knowledge/runtime-resources/workspace.md.';
+COMMENT ON TABLE workspaces IS 'Org-scoped named working areas. See specs/workspace.md.';
 
 -- ============================================
 -- 2. Backfill: one Workspace per existing session, with matching UUIDs

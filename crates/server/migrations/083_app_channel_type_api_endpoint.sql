@@ -1,5 +1,5 @@
 -- Allow the `api_endpoint` channel type on apps and app_channels.
--- See knowledge/integrations/app-api-keys.md.
+-- See specs/app-api-keys.md.
 
 ALTER TABLE apps
     DROP CONSTRAINT IF EXISTS apps_channel_type_check;

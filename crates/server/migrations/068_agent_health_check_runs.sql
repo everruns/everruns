@@ -1,4 +1,4 @@
--- Agent health check runs (knowledge/evaluation/agent-checks.md, tier-3 behavioral checks).
+-- Agent health check runs (specs/agent-checks.md, tier-3 behavioral checks).
 --
 -- A health check run is a disposable, system-generated behavioral smoke test
 -- of an agent configuration. Unlike evals, there are no user-curated cases or

@@ -31,7 +31,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_logs_actor ON audit_logs (actor_id, created
 CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type ON audit_logs (event_type, created_at DESC);
 
 -- ============================================
--- Apps (knowledge/integrations/apps.md)
+-- Apps (specs/apps.md)
 -- ============================================
 -- Deployable units binding Harness + Agent to distribution channels
 

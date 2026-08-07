@@ -1,4 +1,4 @@
--- Observers — online scoring of production sessions. See knowledge/evaluation/online-evals.md.
+-- Observers — online scoring of production sessions. See specs/online-evals.md.
 --
 -- trace_scores doubles as the scoring queue: matching inserts 'pending' rows,
 -- workers claim them (FOR UPDATE SKIP LOCKED) and write results in place.

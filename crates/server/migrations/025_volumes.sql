@@ -1,5 +1,5 @@
 -- Workspace Volumes (EVE-396)
--- See knowledge/runtime-resources/memory.md for current design intent.
+-- See specs/volumes.md for full design intent.
 --
 -- A Volume is an org-scoped, named filesystem tree that users can mount into
 -- session workspaces through the workspace_volumes capability. Volumes provide
@@ -54,7 +54,7 @@ CREATE UNIQUE INDEX idx_volumes_org_name_active
 CREATE TRIGGER update_volumes_updated_at BEFORE UPDATE ON volumes
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-COMMENT ON TABLE volumes IS 'Workspace volumes — org-scoped named filesystem trees. See knowledge/runtime-resources/memory.md.';
+COMMENT ON TABLE volumes IS 'Workspace volumes — org-scoped named filesystem trees. See specs/volumes.md.';
 
 -- ============================================
 -- Volume Files (mirrors session_files shape)

@@ -1,7 +1,7 @@
 -- App / channel scoped budgets and periodic reset support.
 --
 -- Behind the experimental `app_budgets` feature flag (FEATURE_APP_BUDGETS).
--- See knowledge/security/budgeting.md for the design intent. The feature flag gates the
+-- See specs/budgeting.md for the design intent. The feature flag gates the
 -- API surface; the schema additions are unconditional so existing rows
 -- continue to work and the flag can be flipped without further migrations.
 --
