@@ -37,6 +37,10 @@ describe("ModelIcon vendor selection", () => {
     expect(gemini.getByTitle("Google Gemini")).toBeInTheDocument();
     gemini.unmount();
 
+    const meta = render(<ModelIcon model={model("meta", "meta")} />);
+    expect(meta.getByTitle("Meta Model API")).toBeInTheDocument();
+    meta.unmount();
+
     // No vendor tag at all → provider icon.
     const bare = render(<ModelIcon model={model(undefined, "openai")} />);
     expect(bare.getByTitle("OpenAI (Responses)")).toBeInTheDocument();

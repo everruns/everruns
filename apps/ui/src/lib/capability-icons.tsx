@@ -6,6 +6,7 @@ import {
 } from "react";
 import {
   CircleOff,
+  Puzzle,
   Clock,
   Search,
   Box,
@@ -146,9 +147,30 @@ export const capabilityIconMap: Record<string, IconComponent> = {
 
 /**
  * Get the icon component for a capability.
- * Falls back to CircleOff if the icon is not found.
+ * Falls back to a neutral plugin-style glyph if the icon is not found.
  */
 export function getCapabilityIcon(iconName?: string | null): IconComponent {
-  if (!iconName) return CircleOff;
-  return capabilityIconMap[iconName] ?? CircleOff;
+  if (!iconName) return Puzzle;
+  return capabilityIconMap[iconName] ?? Puzzle;
+}
+
+function isSafeEmbeddedSvg(icon?: string | null): icon is string {
+  if (!icon?.startsWith("data:image/svg+xml;base64,") || icon.length > 100_000) return false;
+  return /^[A-Za-z0-9+/=]+$/.test(icon.slice("data:image/svg+xml;base64,".length));
+}
+
+interface CapabilityIconProps extends SVGProps<SVGSVGElement> {
+  icon?: string | null;
+}
+
+/** Shared renderer for built-in icon names and validated plugin SVG assets. */
+export function CapabilityIcon({ icon, className, ...props }: CapabilityIconProps) {
+  if (isSafeEmbeddedSvg(icon)) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- bounded embedded plugin asset, not a network image
+      <img src={icon} alt="" aria-hidden="true" className={className} />
+    );
+  }
+  const Icon = getCapabilityIcon(icon);
+  return <Icon className={className} {...props} />;
 }

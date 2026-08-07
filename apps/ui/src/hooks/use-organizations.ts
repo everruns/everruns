@@ -52,12 +52,15 @@ export function useUpdateOrganization() {
 
   return useMutation({
     mutationFn: (data: UpdateOrganizationRequest) => updateOrganization(org!, data),
-    onSuccess: () => {
+    onSuccess: (_organization, data) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.organizations.all });
       if (org) {
         queryClient.invalidateQueries({
           queryKey: queryKeys.organizations.detail(org),
         });
+        if (data.default_model_id !== undefined) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.sessions.scoped(org) });
+        }
       }
       // Refresh auth user query so the sidebar org dropdown reflects updates
       queryClient.invalidateQueries({ queryKey: authKeys.user() });

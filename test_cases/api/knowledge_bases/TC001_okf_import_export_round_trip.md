@@ -8,7 +8,7 @@ bundle of concept documents, confirm entries are created with the correct
 then export and confirm the bundle reproduces the documents.
 
 Exercises `POST /v1/knowledge-bases/{kb_id}/okf_import` and
-`GET /v1/knowledge-bases/{kb_id}/okf_export`. See specs/okf-adoption.md.
+`GET /v1/knowledge-bases/{kb_id}/okf_export`. See knowledge/runtime-resources/okf-adoption.md.
 
 ## Preconditions
 

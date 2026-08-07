@@ -1,5 +1,5 @@
 // Organization types for multitenancy
-// See specs/multitenancy.md
+// See knowledge/security/multitenancy.md
 //
 // Decision: Hierarchical org roles (Owner > Admin > Member) using PartialOrd.
 // External auth providers map their roles to OrgRole via AuthBackend trait.

@@ -1,6 +1,6 @@
 // In-memory storage: MCP Servers
 //
-// Spec: specs/mcp.md (umbrella), specs/mcp-servers.md (detail)
+// Spec: knowledge/integrations/mcp.md (umbrella), knowledge/integrations/mcp-servers.md (detail)
 
 use super::super::models::*;
 use super::InMemoryDatabase;

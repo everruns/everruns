@@ -6,6 +6,7 @@ import {
   installedPluginsCrudApi,
   syncMarketplace,
   getMarketplaceCatalog,
+  getInstalledPlugins,
   installPlugin,
   patchInstalledPlugin,
   updateInstalledPlugin,
@@ -14,9 +15,13 @@ import type {
   CreateMarketplaceRequest,
   UpdateMarketplaceRequest,
   InstallPluginRequest,
+  InstalledPlugin,
+  MarketplaceCatalogEntry,
   UpdateInstalledPluginRequest,
 } from "@/lib/api/types";
+import { ApiError } from "@/lib/api/client";
 import { queryKeys } from "@/lib/query-keys";
+import { useOrg } from "@/providers/org-provider";
 import { createCrudHooks, useOrgScopedQuery } from "./create-crud-hooks";
 
 // ============================================
@@ -94,15 +99,53 @@ export const useInstalledPlugins = installedPluginCrudHooks.useList;
 export const useInstalledPlugin = installedPluginCrudHooks.useDetail;
 export const useDeleteInstalledPlugin = installedPluginCrudHooks.useDelete;
 
-export function useInstallPlugin() {
+export function useInstallPlugin(marketplaceId: string, marketplaceName: string) {
   const queryClient = useQueryClient();
+  const { currentOrg } = useOrg();
+  const orgId = currentOrg?.public_id;
+  const installedListKey = [...queryKeys.installedPlugins.list(), orgId] as const;
+  const catalogKey = [...queryKeys.pluginMarketplaces.catalog(marketplaceId), orgId] as const;
 
   return useMutation({
-    mutationFn: (request: InstallPluginRequest) => installPlugin(request),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.installedPlugins.all });
-      // Catalog entries have an `installed` flag; invalidate them too
-      queryClient.invalidateQueries({ queryKey: queryKeys.pluginMarketplaces.all });
+    mutationFn: async (request: InstallPluginRequest) => {
+      try {
+        return { plugin: await installPlugin(request), inventory: undefined };
+      } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 409) {
+          throw error;
+        }
+
+        // Another tab or request may have won the install race. Reconcile from
+        // the server and accept only the same plugin from the same marketplace.
+        const inventory = await getInstalledPlugins();
+        const plugin = inventory.find(
+          (candidate) =>
+            candidate.name === request.plugin_name && candidate.marketplace === marketplaceName,
+        );
+        if (!plugin) {
+          throw error;
+        }
+        return { plugin, inventory };
+      }
+    },
+    onSuccess: async ({ plugin, inventory }) => {
+      if (inventory) {
+        queryClient.setQueryData(installedListKey, inventory);
+      } else {
+        queryClient.setQueryData<InstalledPlugin[]>(installedListKey, (current) =>
+          current ? [...current.filter((item) => item.id !== plugin.id), plugin] : current,
+        );
+      }
+      queryClient.setQueryData<MarketplaceCatalogEntry[]>(catalogKey, (current) =>
+        current?.map((entry) =>
+          entry.name === plugin.name ? { ...entry, installed: true } : entry,
+        ),
+      );
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: installedListKey, exact: true }),
+        queryClient.invalidateQueries({ queryKey: catalogKey, exact: true }),
+      ]);
     },
   });
 }

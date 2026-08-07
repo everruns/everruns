@@ -55,14 +55,14 @@ boundaries:
 | Resource limits | Input sizes, agent loop iteration caps, query timeouts |
 
 Threats are tracked with stable `TM-<CATEGORY>-<NNN>` IDs. See the
-[threat model](specs/threat-model.md) for the full analysis across all
-categories and the [security testing process](specs/security-testing.md) for
+[threat model](knowledge/security/threat-model.md) for the full analysis across all
+categories and the [security testing process](knowledge/security/security-testing.md) for
 how mitigations are verified.
 
 ### Known Limitations
 
 Documented accepted risks and caller responsibilities are listed in the
-[threat model](specs/threat-model.md) under "Accepted Risks" and "Caller
+[threat model](knowledge/security/threat-model.md) under "Accepted Risks" and "Caller
 Responsibilities".
 
 ## Supported Versions

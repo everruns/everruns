@@ -1,5 +1,5 @@
 // Cross-org resource resolver client.
-// See specs/multitenancy.md (Cross-Org Resource Resolution).
+// See knowledge/security/multitenancy.md (Cross-Org Resource Resolution).
 
 import { ApiError, api } from "./client";
 

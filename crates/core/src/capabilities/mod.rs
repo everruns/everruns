@@ -14,7 +14,7 @@
 //! - System prompt sections use XML tags for clear boundaries between components.
 //!   This follows Anthropic's recommendation for multi-component prompts and reduces
 //!   misattribution between capability instructions, user-provided AGENTS.md, and the
-//!   agent's base system prompt. See specs/xml-prompt-formatting.md for rationale.
+//!   agent's base system prompt. See knowledge/project/xml-prompt-formatting.md for rationale.
 //!
 //! Each capability is in its own file with collocated tools.
 
@@ -129,7 +129,9 @@ mod openrouter_workspace;
 #[cfg(feature = "ui-capabilities")]
 mod openui;
 mod parallel_tool_calls;
+mod platform;
 mod platform_management;
+mod progress_guard;
 mod prompt_caching;
 mod prompt_canary_guardrail;
 mod research;
@@ -148,6 +150,7 @@ mod subagents;
 mod system_commands;
 mod test_math;
 mod test_weather;
+mod tool_approval;
 mod tool_call_repair;
 mod tool_output_distillation;
 mod tool_output_persistence;
@@ -204,7 +207,8 @@ pub use compaction::{
     apply_hierarchical_memory, apply_observation_masking, build_model_view_messages,
     build_summarization_prompt, build_summary_message, classify_memory_tiers,
     compose_summary_with_recent, estimate_tokens, estimate_total_tokens,
-    format_messages_for_summarization, should_compact_proactively,
+    format_messages_for_summarization, should_compact_for_cost, should_compact_proactively,
+    total_tool_result_bytes,
 };
 pub use current_time::{CURRENT_TIME_CAPABILITY_ID, CurrentTimeCapability, GetCurrentTimeTool};
 pub use data_knowledge::{DATA_KNOWLEDGE_CAPABILITY_ID, DataKnowledgeCapability};
@@ -299,11 +303,18 @@ pub use parallel_tool_calls::{
     PARALLEL_TOOL_CALLS_CAPABILITY_ID, ParallelToolCallsCapability, ParallelToolCallsMode,
     parallel_tool_calls_from_config,
 };
+pub use platform::{
+    DISCOVER_DESCRIPTION as PLATFORM_DISCOVER_DESCRIPTION,
+    EXECUTE_DESCRIPTION as PLATFORM_EXECUTE_DESCRIPTION, PLATFORM_CAPABILITY_ID,
+    PlatformCapability, QUERY_DESCRIPTION as PLATFORM_QUERY_DESCRIPTION, discover_input_schema,
+    execute_input_schema, query_input_schema,
+};
 pub use platform_management::{
     ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool, PLATFORM_MANAGEMENT_CAPABILITY_ID,
     PlatformManagementCapability, ReadAgentsTool, ReadCapabilitiesTool, ReadHarnessesTool,
     ReadSessionsTool, SessionReadMessagesTool, SessionReadResponseTool, SessionSendMessageTool,
 };
+pub use progress_guard::{PROGRESS_GUARD_CAPABILITY_ID, ProgressGuardCapability};
 pub use prompt_caching::{PROMPT_CACHING_CAPABILITY_ID, PromptCachingCapability};
 pub use prompt_canary_guardrail::{
     DEFAULT_REPLACEMENT as PROMPT_CANARY_DEFAULT_REPLACEMENT,
@@ -358,6 +369,10 @@ pub use test_math::{
 };
 pub use test_weather::{
     GetForecastTool, GetWeatherTool, TEST_WEATHER_CAPABILITY_ID, TestWeatherCapability,
+};
+pub use tool_approval::{
+    ApprovalDecision, ApprovalMode, TOOL_APPROVAL_CAPABILITY_ID, ToolApprovalCapability,
+    ToolApprover,
 };
 pub use tool_call_repair::{
     DEFAULT_MAX_REPROMPTS, MAX_SALVAGE_INPUT_BYTES, RepairOutcome, SalvageResult,
@@ -613,10 +628,25 @@ pub trait Capability: Send + Sync {
         None
     }
 
+    /// Host-owned annotations that core does not interpret.
+    ///
+    /// The typed accessors above (`category`, `status`, `is_guardrail`, …) are
+    /// the vocabulary core itself reasons about. This is the escape hatch for
+    /// everything a *host* wants to carry alongside a capability — a UI icon,
+    /// an embedder's grouping key, deployment provenance — without adding a
+    /// field to core for each one. Core reads nothing here.
+    ///
+    /// The schema belongs to whoever writes it. Never put credentials or other
+    /// sensitive payload here: it is surfaced to clients alongside the rest of
+    /// the capability descriptor.
+    fn metadata(&self) -> Option<serde_json::Value> {
+        None
+    }
+
     /// Whether this capability is a guardrail — a constraint on agent
     /// behavior (content checks, tool restrictions) rather than a grant of
     /// new abilities. Structural marker for UI sections and catalog
-    /// filtering; carries no runtime semantics. See specs/guardrails.md.
+    /// filtering; carries no runtime semantics. See knowledge/execution/guardrails.md.
     fn is_guardrail(&self) -> bool {
         false
     }
@@ -993,7 +1023,7 @@ pub trait Capability: Send + Sync {
     /// Returns user-defined hook specifications contributed by this capability.
     ///
     /// User hooks are JSON-serializable specs (see
-    /// `crate::user_hook_types::UserHookSpec` and `specs/user-hooks.md`) that
+    /// `crate::user_hook_types::UserHookSpec` and `knowledge/runtime-resources/user-hooks.md`) that
     /// the `HookAdapterBuilder` validates and turns into per-event
     /// `Arc<dyn …Hook>` adapters during capability collection. Capabilities
     /// that ship reusable hook bundles (formatters, security guards, audit
@@ -1055,7 +1085,7 @@ pub trait Capability: Send + Sync {
     /// Commands that need the session's assembled context or an out-of-band
     /// LLM call (e.g. `/btw`) use the host facilities on
     /// [`CommandExecutionContext::host`] — see
-    /// [`crate::command_host::CommandHost`] and specs/commands.md.
+    /// [`crate::command_host::CommandHost`] and knowledge/project/commands.md.
     async fn execute_command(
         &self,
         request: &ExecuteCommandRequest,
@@ -1134,7 +1164,7 @@ pub trait Capability: Send + Sync {
     /// to the message text (optionally rewriting it first, e.g. to strip inline
     /// citation markers). This is the seam citation capabilities use to turn
     /// retrieved sources into claim-level provenance. See
-    /// [`crate::annotation_hook`] and `specs/citations.md`.
+    /// [`crate::annotation_hook`] and `knowledge/runtime-resources/citations.md`.
     ///
     /// A capability contributes nothing unless a citation feed is configured,
     /// keeping the common (no-citations) case free of work.
@@ -1153,7 +1183,7 @@ pub trait Capability: Send + Sync {
     /// collected set, stamping a [`crate::message::VerificationVerdict`] on each
     /// citation. Decoupled from the feeds so any feed can be paired with any
     /// verifier. The `citation_verification` capability implements this. See
-    /// [`crate::annotation_hook::CitationVerifier`] and `specs/citations.md`.
+    /// [`crate::annotation_hook::CitationVerifier`] and `knowledge/runtime-resources/citations.md`.
     ///
     /// Default: no verifier.
     fn citation_verifier_with_config(
@@ -1382,6 +1412,7 @@ impl CapabilityRegistry {
         registry.register(tool_output_persistence::ToolOutputPersistenceCapability);
         registry.register(tool_output_distillation::ToolOutputDistillationCapability);
         registry.register(LoopDetectionCapability);
+        registry.register(ProgressGuardCapability::new());
         registry.register(ToolCallRepairCapability);
         registry.register(PromptCanaryGuardrailCapability);
         registry.register(GuardrailsCapability);
@@ -1413,6 +1444,7 @@ impl CapabilityRegistry {
         registry.register(ModelScoutCapability);
         registry.register(OpenRouterWorkspaceCapability);
         registry.register(OpenRouterServerToolsCapability);
+        registry.register(PlatformCapability);
         registry.register(PlatformManagementCapability);
         registry.register(FileSystemCapability);
         registry.register(MemoryCapability);
@@ -1475,12 +1507,17 @@ impl CapabilityRegistry {
         registry.register(tool_output_persistence::ToolOutputPersistenceCapability);
         registry.register(tool_output_distillation::ToolOutputDistillationCapability);
 
-        // User hooks (see specs/user-hooks.md): user-authored shell commands
+        // User hooks (see knowledge/runtime-resources/user-hooks.md): user-authored shell commands
         // at lifecycle/tool events. Risk: High.
         registry.register(user_hooks::UserHooksCapability);
 
         // Loop detection (EVE-227: detect repeated identical tool calls)
         registry.register(LoopDetectionCapability);
+
+        // Progress guard: warns when tool traffic is investigation without
+        // edits or validation. Complements loop detection, which only catches
+        // literal repeats. Behavior-only (no tools), opt-in per agent.
+        registry.register(ProgressGuardCapability::new());
 
         // Auto-continue after an LLM usage limit resets: resumes interrupted
         // work once the provider limit clears. Behavior-only (no tools).
@@ -1499,7 +1536,7 @@ impl CapabilityRegistry {
         // first sentence of the system prompt. Streaming-output guardrail.
         registry.register(PromptCanaryGuardrailCapability);
 
-        // Declarative guardrails (specs/guardrails.md): config-driven
+        // Declarative guardrails (knowledge/execution/guardrails.md): config-driven
         // deterministic checks over model output and tool calls.
         registry.register(GuardrailsCapability);
 
@@ -1516,16 +1553,16 @@ impl CapabilityRegistry {
         // Data knowledge scaffold (all environments)
         registry.register(DataKnowledgeCapability);
 
-        // Knowledge bases (curated org knowledge — see specs/knowledge-bases.md)
+        // Knowledge bases (curated org knowledge — see knowledge/runtime-resources/knowledge-bases.md)
         registry.register(KnowledgeBaseCapability);
 
-        // Knowledge indexes (source-backed embedded collections — see specs/knowledge-indexes.md)
+        // Knowledge indexes (source-backed embedded collections — see knowledge/runtime-resources/knowledge-indexes.md)
         registry.register(KnowledgeIndexCapability);
 
-        // Retrieval citations (claim-level provenance from search results — see specs/citations.md)
+        // Retrieval citations (claim-level provenance from search results — see knowledge/runtime-resources/citations.md)
         registry.register(CitationRetrievalCapability);
 
-        // Citation verification (stamps faithfulness verdicts — see specs/citations.md)
+        // Citation verification (stamps faithfulness verdicts — see knowledge/runtime-resources/citations.md)
         registry.register(CitationVerificationCapability);
 
         // Fake demo capabilities (all environments)
@@ -1540,7 +1577,7 @@ impl CapabilityRegistry {
             registry.register(SessionSandboxCapability);
         }
 
-        // Experimental sandboxed Lua execution (specs/lua-execution.md). High
+        // Experimental sandboxed Lua execution (knowledge/execution/lua-execution.md). High
         // risk, admin-gated. Gated by FEATURE_LUA; scripts only actually run
         // when the `lua` cargo feature is also compiled in.
         if internal_flags.lua {
@@ -2200,7 +2237,7 @@ impl CollectedModelViewProviders {
 /// True when the `compaction` capability is present and available in this set.
 ///
 /// Infinity context defers token-budget eviction to compaction when both are
-/// enabled (see specs/infinity-context.md) so that compaction's summary — not a
+/// enabled (see knowledge/runtime-resources/infinity-context.md) so that compaction's summary — not a
 /// bare "hidden" notice — covers trimmed history.
 fn compaction_is_enabled(
     capability_configs: &[AgentCapabilityConfig],
@@ -2962,7 +2999,7 @@ pub async fn collect_capabilities_with_configs(
 
             // Normalize capability-contributed skills into mount points under
             // `/.agents/skills/{name}/`. Discovery/activation stays with the
-            // built-in `skills` capability — see specs/skills-registry.md.
+            // built-in `skills` capability — see knowledge/project/skills-registry.md.
             for skill in effective.contribute_skills() {
                 mounts.push(skill.to_mount(cap_id));
             }
@@ -3013,7 +3050,7 @@ pub async fn collect_capabilities_with_configs(
     // Lockstep: we extend both `tools` (execution registry) and
     // `tool_definitions` (model-visible) so the model can see and the worker
     // can dispatch `spawn_background` from the same activation event. See
-    // `specs/background-execution.md`.
+    // `knowledge/execution/background-execution.md`.
     if !applied_ids
         .iter()
         .any(|id| id == BACKGROUND_EXECUTION_CAPABILITY_ID)
@@ -3206,6 +3243,35 @@ mod tests {
         SystemPromptContext::without_file_store(SessionId::new())
     }
 
+    /// A host-defined capability carrying annotations core knows nothing about.
+    struct HostAnnotatedCapability;
+
+    #[async_trait]
+    impl Capability for HostAnnotatedCapability {
+        fn id(&self) -> &str {
+            "host_annotated"
+        }
+        fn name(&self) -> &str {
+            "Host Annotated"
+        }
+        fn description(&self) -> &str {
+            "Test capability with host-owned metadata."
+        }
+        fn metadata(&self) -> Option<serde_json::Value> {
+            Some(serde_json::json!({"icon": "sparkles", "group": "host"}))
+        }
+    }
+
+    #[test]
+    fn capability_metadata_is_an_opt_in_host_hatch() {
+        // Core capabilities carry none, so nothing changes for them.
+        assert!(NoopCapability.metadata().is_none());
+
+        let metadata = HostAnnotatedCapability.metadata().expect("metadata");
+        assert_eq!(metadata["icon"], "sparkles");
+        assert_eq!(metadata["group"], "host");
+    }
+
     /// Base set of built-in capabilities present in all environments (no experimental delegation).
     fn expected_core_builtin_ids() -> BTreeSet<&'static str> {
         let mut ids = [
@@ -3216,6 +3282,7 @@ mod tests {
             "noop",
             "current_time",
             "research",
+            "platform",
             "platform_management",
             "session_file_system",
             "session_storage",
@@ -3256,6 +3323,7 @@ mod tests {
             "fake_crm",
             "fake_financial",
             "loop_detection",
+            "progress_guard",
             "usage_limit_auto_continue",
             "tool_call_repair",
             "error_disclosure",
@@ -3304,6 +3372,7 @@ mod tests {
             "tool_output_persistence",
             "tool_output_distillation",
             "loop_detection",
+            "progress_guard",
             "tool_call_repair",
             "error_disclosure",
             "prompt_canary_guardrail",
@@ -3375,6 +3444,7 @@ mod tests {
         assert!(registry.has("bashkit_shell"));
 
         for platform_only in [
+            "platform",
             "platform_management",
             "model_scout",
             "openrouter_workspace",
@@ -3539,6 +3609,10 @@ mod tests {
             // low-frequency operator surface where the display-name presentation
             // ("Read Agents", "Read Sessions") is already clear.
             (
+                "platform",
+                "operator command surface; tool display names are the intended presentation",
+            ),
+            (
                 "platform_management",
                 "operator admin surface; mutations narrate via narration_noun, reads use display names",
             ),
@@ -3602,7 +3676,7 @@ mod tests {
         assert!(
             missing.is_empty(),
             "These built-in tools fall back to raw tool-call presentation. Implement \
-             `Tool::narrate` (see specs/tool-narration.md), set a `narration_noun` hint, \
+             `Tool::narrate` (see knowledge/execution/tool-narration.md), set a `narration_noun` hint, \
              or add a documented entry to GENERIC_NARRATION_ALLOWLIST: {missing:?}"
         );
     }

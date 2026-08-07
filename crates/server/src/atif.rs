@@ -1,4 +1,4 @@
-// ATIF (Agent Trajectory Interchange Format) adoption. See specs/atif-adoption.md.
+// ATIF (Agent Trajectory Interchange Format) adoption. See knowledge/evaluation/atif-adoption.md.
 //
 // This module is the single place that folds a session's event log into an
 // ATIF-v1.7 trajectory JSON document (Harbor RFC 0001), and the inverse parser
@@ -6,7 +6,7 @@
 // paths (session export, eval dataset export) and the tests share one folding
 // implementation.
 //
-// Folding rules (see the mapping table in specs/atif-adoption.md):
+// Folding rules (see the mapping table in knowledge/evaluation/atif-adoption.md):
 // - `input.message`             → one "user" step
 // - `output.message.completed`  → opens one "agent" step per reasoning
 //   iteration (everruns emits it once per LLM call); text content becomes the
@@ -189,7 +189,7 @@ fn assemble_document(
 ///
 /// Folds the raw event log. Used by the whole-session export path; the eval
 /// **dataset** export uses [`build_case_record_from_messages`] instead so its
-/// rows reflect the compaction model view (specs/dataset-export.md).
+/// rows reflect the compaction model view (knowledge/evaluation/dataset-export.md).
 pub fn build_case_record(
     run: &everruns_core::eval::EvalRun,
     result: &everruns_core::eval::EvalCaseResult,
@@ -202,7 +202,7 @@ pub fn build_case_record(
 
 /// Build one dataset NDJSON record from the case's **model-view** messages
 /// (post-compaction masking) rather than the raw event log, so training rows
-/// match what the model actually saw (specs/dataset-export.md, Model-view
+/// match what the model actually saw (knowledge/evaluation/dataset-export.md, Model-view
 /// faithfulness). Reward and case identity go in root `extra`, same as
 /// [`build_case_record`].
 ///
@@ -1094,7 +1094,7 @@ impl Fold {
                 // a subagent, attach a `subagent_trajectory_ref` pointing at the
                 // child session's own ATIF export. Ref-only — the child's events
                 // are not embedded (this fold sees only one session's events; see
-                // specs/atif-adoption.md, "Subagent trajectories").
+                // knowledge/evaluation/atif-adoption.md, "Subagent trajectories").
                 if let Some(child) = subagent_child_session(data) {
                     observation.insert(
                         "subagent_trajectory_ref".to_string(),
@@ -1395,7 +1395,7 @@ fn subagent_child_session(data: &everruns_core::events::ToolCompletedData) -> Op
 /// child's own ATIF export (a resolvable location per Harbor RFC 0001, which
 /// requires at least one of `trajectory_id`/`trajectory_path`); `session_id` is
 /// informational. The child trajectory is not embedded (see the ToolCompleted
-/// handler and specs/atif-adoption.md).
+/// handler and knowledge/evaluation/atif-adoption.md).
 fn subagent_trajectory_ref(child_session_id: &str) -> Value {
     json!([{
         "trajectory_path": format!("/v1/sessions/{child_session_id}/export?format=atif"),
@@ -1459,7 +1459,7 @@ fn append_omitted_images(extra: &mut Map<String, Value>, omitted: Vec<Value>) {
 // ============================================================================
 
 /// Import body cap (NDJSON or JSON). Sized like other untrusted-import caps
-/// (see specs/okf-adoption.md security notes).
+/// (see knowledge/runtime-resources/okf-adoption.md security notes).
 pub const MAX_IMPORT_BYTES: usize = 4 * 1024 * 1024;
 /// Max trajectories accepted per import call.
 pub const MAX_IMPORT_TRAJECTORIES: usize = 200;

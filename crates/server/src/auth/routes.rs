@@ -671,7 +671,7 @@ pub async fn login(
 }
 
 /// Minimum password length enforced on `/v1/auth/register`. Matches the
-/// commitment in `specs/authentication.md` and the UI's `minLength={8}` on
+/// commitment in `knowledge/security/authentication.md` and the UI's `minLength={8}` on
 /// the register form (TM-AUTH-004 / EVE-453). UI validation is convenience;
 /// this server-side check is the trust boundary.
 const PASSWORD_MIN_LENGTH: usize = 12;
@@ -841,7 +841,7 @@ pub async fn register(
     // Gated on `auto_join_default_org` (off by default): in a multi-tenant
     // deployment a fresh signup must own no org so the zero-org onboarding flow
     // creates the user's own org, instead of every tenant landing in the shared
-    // default organization. See `specs/authentication.md`.
+    // default organization. See `knowledge/security/authentication.md`.
     if state.config.auto_join_default_org {
         let _ = state
             .db
@@ -860,7 +860,7 @@ pub async fn register(
         // so a custom `PlatformDefinition` is never overridden — that was the
         // security concern addressed by PR #1462. The call is idempotent: if
         // seeding has already completed, every harness is "unchanged". See
-        // EVE-390 and `specs/authentication.md`.
+        // EVE-390 and `knowledge/security/authentication.md`.
         if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
             &state.db,
             DEFAULT_ORG_ID,
@@ -1080,6 +1080,7 @@ pub async fn get_current_user(
                 .http_only(false) // Allow JS to read for UI state
                 .secure(true)
                 .same_site(SameSite::Lax)
+                .max_age(super::middleware::ORG_COOKIE_MAX_AGE)
                 .build();
             jar.add(cookie)
         } else {
@@ -1449,7 +1450,7 @@ async fn oauth_callback_inner(
             // convenience only, gated on `auto_join_default_org` (off by default).
             // In a multi-tenant deployment a first-time-OAuth user must own no org
             // so zero-org onboarding creates their own. See `register` and
-            // `specs/authentication.md`.
+            // `knowledge/security/authentication.md`.
             if state.config.auto_join_default_org {
                 let _ = state
                     .db
@@ -1904,13 +1905,21 @@ async fn generate_token_response(
 
     let mut jar = jar.add(access_cookie).add(refresh_cookie);
 
-    // Set org cookie to user's first org (ensures org context for subsequent API calls)
-    if let Some(org) = user.organizations.first() {
+    // Ensure org context for subsequent API calls, but never clobber a
+    // selection that still maps to one of the user's organizations: this
+    // helper runs on every login AND every silent refresh (~each access-token
+    // lifetime), so unconditional re-minting silently reset the selected org
+    // to the first (alphabetical) one.
+    let keep_existing_org = jar
+        .get(ORG_COOKIE_NAME)
+        .is_some_and(|c| user.organizations.iter().any(|o| o.public_id == c.value()));
+    if !keep_existing_org && let Some(org) = user.organizations.first() {
         let org_cookie = Cookie::build((ORG_COOKIE_NAME, org.public_id.clone()))
             .path("/")
             .http_only(false) // Allow JS to read for UI state
             .secure(true)
             .same_site(SameSite::Lax)
+            .max_age(super::middleware::ORG_COOKIE_MAX_AGE)
             .build();
         jar = jar.add(org_cookie);
     }

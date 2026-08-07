@@ -1,4 +1,4 @@
-// Model entity and model-profile types (specs/providers.md)
+// Model entity and model-profile types (knowledge/foundations/providers.md)
 //
 // A Model is a specific model via a specific provider (provider FK + wire
 // model id). ModelProfile is the model's identity and metadata; profile data
@@ -330,6 +330,7 @@ pub enum ModelVendor {
     Nvidia,
     Qwen,
     Microsoft,
+    Meta,
     MiniMax,
     Moonshot,
     XAi,
@@ -338,7 +339,7 @@ pub enum ModelVendor {
 
 impl ModelVendor {
     /// Stable lowercase slug, the first segment of a model-profile key
-    /// (`"{vendor}/{canonical_id}"`, see specs/providers.md). Matches the
+    /// (`"{vendor}/{canonical_id}"`, see knowledge/foundations/providers.md). Matches the
     /// serde `lowercase` representation.
     pub fn slug(&self) -> &'static str {
         match self {
@@ -348,6 +349,7 @@ impl ModelVendor {
             ModelVendor::Nvidia => "nvidia",
             ModelVendor::Qwen => "qwen",
             ModelVendor::Microsoft => "microsoft",
+            ModelVendor::Meta => "meta",
             ModelVendor::MiniMax => "minimax",
             ModelVendor::Moonshot => "moonshot",
             ModelVendor::XAi => "xai",
@@ -465,6 +467,7 @@ mod tests {
             serde_json::to_string(&DriverId::LlmSim).unwrap(),
             "\"llmsim\""
         );
+        assert_eq!(serde_json::to_string(&DriverId::Meta).unwrap(), "\"meta\"");
     }
 
     #[test]
@@ -498,6 +501,10 @@ mod tests {
             serde_json::from_str::<DriverId>("\"llmsim\"").unwrap(),
             DriverId::LlmSim
         ));
+        assert!(matches!(
+            serde_json::from_str::<DriverId>("\"meta\"").unwrap(),
+            DriverId::Meta
+        ));
     }
 
     #[test]
@@ -530,6 +537,10 @@ mod tests {
         assert!(matches!(
             "llmsim".parse::<DriverId>().unwrap(),
             DriverId::LlmSim
+        ));
+        assert!(matches!(
+            "meta".parse::<DriverId>().unwrap(),
+            DriverId::Meta
         ));
     }
 
@@ -579,5 +590,6 @@ mod tests {
         assert_eq!(DriverId::Anthropic.to_string(), "anthropic");
         assert_eq!(DriverId::Gemini.to_string(), "gemini");
         assert_eq!(DriverId::LlmSim.to_string(), "llmsim");
+        assert_eq!(DriverId::Meta.to_string(), "meta");
     }
 }

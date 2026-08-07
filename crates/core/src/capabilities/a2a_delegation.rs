@@ -533,7 +533,7 @@ struct AgentRunRecord {
     last_remote_task_snapshot: Option<Value>,
     #[serde(default)]
     wake_on_completion: bool,
-    /// Session task mirroring this run (specs/session-tasks.md). Absent on
+    /// Session task mirroring this run (knowledge/runtime-resources/session-tasks.md). Absent on
     /// records that predate the task registry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     task_id: Option<String>,
@@ -675,7 +675,7 @@ async fn save_run(context: &ToolContext, record: &AgentRunRecord) -> Result<()> 
     Ok(())
 }
 
-/// A2A run status → session task state (specs/session-tasks.md). Rejection is
+/// A2A run status → session task state (knowledge/runtime-resources/session-tasks.md). Rejection is
 /// an `error.kind` on `failed`, not a state.
 fn task_state_for(status: &AgentRunStatus) -> SessionTaskState {
     match status {
@@ -1487,7 +1487,7 @@ impl Tool for SpawnAgentTool {
             result_schema.clone(),
         );
         record.network_access = context.network_access.clone();
-        // Create the session task tracking this run (specs/session-tasks.md).
+        // Create the session task tracking this run (knowledge/runtime-resources/session-tasks.md).
         // Background runs must be task-backed before any remote work starts so
         // wait_task/message_task/cancel_task have a usable control handle.
         // run_id is stored in spec so load_run_for_task can do a direct key lookup.

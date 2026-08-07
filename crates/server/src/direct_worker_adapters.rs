@@ -2714,6 +2714,21 @@ impl DirectPlatformStore {
         }
     }
 
+    async fn invoke_platform_command_surface(
+        &self,
+        operation: crate::services::platform_command_surface::Operation,
+        arguments: serde_json::Value,
+    ) -> everruns_core::error::Result<String> {
+        let base_url = Self::base_url_from_env();
+        let context = crate::api::mcp_endpoint::catalog::CatalogContext {
+            domain_ctx: self.command_ctx().await?,
+            link_builder: crate::api::common::UrlBuilder::new(&base_url, &base_url),
+        };
+        crate::services::platform_command_surface::invoke(operation, &arguments, context)
+            .await
+            .map_err(AgentLoopError::tool)
+    }
+
     async fn latest_terminal_turn_status(&self, session_id: SessionId) -> Result<Option<String>> {
         const TURN_COMPLETED: &str = "turn.completed";
         const TURN_FAILED: &str = "turn.failed";
@@ -2782,6 +2797,39 @@ impl SessionCreationAuthority for DirectPlatformStore {
 
 #[async_trait]
 impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
+    async fn platform_discover(
+        &self,
+        arguments: serde_json::Value,
+    ) -> everruns_core::error::Result<String> {
+        self.invoke_platform_command_surface(
+            crate::services::platform_command_surface::Operation::Discover,
+            arguments,
+        )
+        .await
+    }
+
+    async fn platform_query(
+        &self,
+        arguments: serde_json::Value,
+    ) -> everruns_core::error::Result<String> {
+        self.invoke_platform_command_surface(
+            crate::services::platform_command_surface::Operation::Query,
+            arguments,
+        )
+        .await
+    }
+
+    async fn platform_execute(
+        &self,
+        arguments: serde_json::Value,
+    ) -> everruns_core::error::Result<String> {
+        self.invoke_platform_command_surface(
+            crate::services::platform_command_surface::Operation::Execute,
+            arguments,
+        )
+        .await
+    }
+
     // =========================================================================
     // Harness Operations
     // =========================================================================
@@ -4011,6 +4059,29 @@ mod tests {
         let session_id =
             seed_platform_session(&adapters.db, org.org_id, harness_id, Some(user.id)).await;
         let store = adapters.platform_store(org.org_id, session_id);
+
+        let discovered = store
+            .platform_discover(serde_json::json!({ "query": "models" }))
+            .await
+            .expect("members may inspect the command catalog");
+        assert!(discovered.contains("list_models"));
+
+        store
+            .platform_query(serde_json::json!({ "commands": "list_models" }))
+            .await
+            .expect("members may run read-only platform queries");
+
+        let script_error = store
+            .platform_execute(serde_json::json!({
+                "commands": "create_harness --name forbidden-script"
+            }))
+            .await
+            .expect_err("member should not mutate through the command surface");
+        assert!(
+            script_error.to_string().contains("forbidden")
+                || script_error.to_string().contains("Access denied"),
+            "unexpected authorization error: {script_error}"
+        );
 
         let err = store
             .create_harness("forbidden", None, None, Some("prompt"), None, &[])

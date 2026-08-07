@@ -26,15 +26,19 @@ use std::sync::Arc;
 // `parse_declarative_capability_id` trio in `capabilities/declarative.rs` for
 // the `plugin:` namespace.
 //
-// `plugin:` is 7 bytes; capability ref columns are VARCHAR(50), leaving 43
-// bytes for the unique plugin name.
+// Server-managed plugin refs use stable installation public IDs. Standalone
+// Agent Plugins refs use manifest names of at most 64 ASCII bytes, so persisted
+// capability reference columns reserve 71 bytes including `plugin:`.
 
 /// The `plugin:` prefix used to identify installed plugin capabilities.
 pub const PLUGIN_CAPABILITY_PREFIX: &str = "plugin:";
 
-/// Construct a `plugin:{name}` capability reference.
-pub fn plugin_capability_id(name: &str) -> String {
-    format!("{PLUGIN_CAPABILITY_PREFIX}{name}")
+/// Construct a plugin capability reference from its stable identity suffix.
+///
+/// Server-managed plugins use the installation public ID. Standalone runtime
+/// plugins use the manifest name because they do not have an installation row.
+pub fn plugin_capability_id(identity: &str) -> String {
+    format!("{PLUGIN_CAPABILITY_PREFIX}{identity}")
 }
 
 /// Return `true` if `capability_id` is a `plugin:…` reference.
@@ -42,8 +46,7 @@ pub fn is_plugin_capability(capability_id: &str) -> bool {
     capability_id.starts_with(PLUGIN_CAPABILITY_PREFIX)
 }
 
-/// Strip the `plugin:` prefix and return the plugin name, or `None` if the ID
-/// is not a plugin capability reference.
+/// Strip the `plugin:` prefix and return the identity suffix.
 pub fn parse_plugin_capability_id(capability_id: &str) -> Option<&str> {
     capability_id.strip_prefix(PLUGIN_CAPABILITY_PREFIX)
 }

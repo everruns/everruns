@@ -3,7 +3,7 @@
 // `HookExecutor` is the per-backend trait. v1 ships only `BashHookExecutor`,
 // which routes the user-authored shell command through the session's
 // `bashkit_shell` sandbox (the same FS isolation `bash` itself uses) and parses
-// the structured JSON contract documented in `specs/user-hooks.md`.
+// the structured JSON contract documented in `knowledge/runtime-resources/user-hooks.md`.
 //
 // The trait is deliberately backend-agnostic so future variants
 // (`WebhookHookExecutor`, `WasmHookExecutor`, `BlueprintHookExecutor`) can
@@ -23,7 +23,7 @@ use crate::user_hook_types::{HookEvent, HookId, HookOutcome};
 /// Envelope handed to every executor. For bash hooks this is serialized
 /// into `$EVERRUNS_HOOK_PAYLOAD_JSON` / `$EVERRUNS_HOOK_PAYLOAD_PATH`;
 /// other backends (webhook, wasm, blueprint) consume it in their own
-/// format. `data` is event-specific; see `specs/user-hooks.md` for the
+/// format. `data` is event-specific; see `knowledge/runtime-resources/user-hooks.md` for the
 /// per-event shape.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HookPayload {
@@ -140,7 +140,7 @@ pub const HOOK_PAYLOAD_DIR: &str = "/.hooks";
 
 /// Build the standard env vars every bash hook receives — the canonical
 /// `EVERRUNS_HOOK_PAYLOAD_JSON` plus the convenience scalars documented in
-/// `specs/user-hooks.md`. Returns the env in declaration order so dispatcher
+/// `knowledge/runtime-resources/user-hooks.md`. Returns the env in declaration order so dispatcher
 /// logs render deterministically.
 pub fn standard_hook_env(
     payload: &HookPayload,

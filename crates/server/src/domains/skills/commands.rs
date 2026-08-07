@@ -353,17 +353,30 @@ impl Command for UpdateSkillCmd {
             ));
         }
 
-        // Check existing status
+        // Check existing status. Archiving is documented as restorable
+        // (see DeleteSkill), so archived skills accept a status-only PATCH
+        // (the restore path) but no content edits; deleted skills stay
+        // immutable.
         if let Some(existing) = ctx
             .db
             .get_skill(ctx.org_id(), id)
             .await
             .map_err(classify_anyhow)?
-            && !matches!(existing.status.as_str(), "active" | "disabled")
         {
-            return Err(CommandError::bad_request(
-                "Archived or deleted skills cannot be edited",
-            ));
+            match existing.status.as_str() {
+                "active" | "disabled" => {}
+                "archived" => {
+                    if req.skill_md.is_some() || req.status.is_none() {
+                        return Err(CommandError::bad_request(
+                            "Archived skills only accept a status-only update (restore); \
+                             restore the skill before editing its content",
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(CommandError::bad_request("Deleted skills cannot be edited"));
+                }
+            }
         }
 
         let mut input = UpdateSkill::default();

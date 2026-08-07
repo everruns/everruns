@@ -11,7 +11,7 @@
 // watcher (same pattern as spawn_background runs) sends the instructions,
 // heartbeats the task registry, and settles the task on the child's terminal
 // turn status. The task's OnTerminal wake policy notifies the parent session
-// through the registry-level waker (specs/session-tasks.md, Wake-ups).
+// through the registry-level waker (knowledge/runtime-resources/session-tasks.md, Wake-ups).
 // Foreground mode: blocks until subagent completes (send_message + wait_for_idle).
 // When no session task registry is wired (embedders without background
 // tracking), an unspecified mode degrades to foreground so results are not lost.
@@ -1253,7 +1253,7 @@ async fn spawn_create_and_wait(
         Ok(s) => s,
         Err(e) => return ToolExecutionResult::internal_error(e),
     };
-    // Create the session task tracking this subagent (specs/session-tasks.md).
+    // Create the session task tracking this subagent (knowledge/runtime-resources/session-tasks.md).
     // Background tasks wake the parent on terminal transition through the
     // registry-level wake policy; foreground spawns already return the result
     // inline, so a wake would be noise.

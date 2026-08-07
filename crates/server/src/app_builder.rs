@@ -18,7 +18,7 @@ use crate::pg_listener_config::resolve_pg_listener_database_url;
 use crate::server::{ServerConfig, build_router_with_prefix};
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::supervised_task::{RestartPolicy, TaskSupervisor};
-use crate::{api, seed, services};
+use crate::{api, org_init, seed, services};
 
 use crate::middleware::RequestIdLayer;
 use crate::middleware::request_id::RequestId;
@@ -192,7 +192,7 @@ async fn init_storage(config: &ServerConfig, migrations: Vec<MigrationFn>) -> Re
     tracing::info!("Connected to PostgreSQL database");
 
     // Optional S3-compatible blob backend for file/image content offload
-    // (specs/object-storage.md). Defaults to inline PostgreSQL storage.
+    // (knowledge/runtime-resources/object-storage.md). Defaults to inline PostgreSQL storage.
     let blob_store = crate::storage::blob_store::blob_store_from_env()
         .context("Invalid object-storage configuration (STORAGE_S3_*)")?;
     let backend = backend.with_blob_store(blob_store);
@@ -276,10 +276,27 @@ fn apply_personal_access_token_routes_wrap(
     }
 }
 
-fn permissions_policy_header_value(voice_enabled: bool) -> axum::http::HeaderValue {
+// TM-WEB-004/005: baseline CSP stamped on every response that does not set its
+// own. `frame-src 'self' data:` lets the file-preview UI embed PDFs via a
+// `data:application/pdf` iframe (sandboxed viewers don't render in Chromium)
+// and keeps `about:srcdoc` previews (SVG/HTML/MCP cards) working under 'self'.
+// `form-action` must remain the LAST directive: the MCP OAuth consent page
+// extends it by appending the validated client redirect origin to this string
+// (see `auth::mcp_oauth::oauth_authorize`).
+pub(crate) const BASE_CONTENT_SECURITY_POLICY: &str = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+
+fn permissions_policy_header_value(
+    voice_enabled: bool,
+    webmcp_enabled: bool,
+) -> axum::http::HeaderValue {
+    let tools = if webmcp_enabled {
+        "tools=(self)"
+    } else {
+        "tools=()"
+    };
     let value = format!(
-        "camera=(), {}, geolocation=()",
-        api::voice::microphone_permissions_policy_directive(voice_enabled)
+        "camera=(), {}, geolocation=(), {tools}",
+        api::voice::microphone_permissions_policy_directive(voice_enabled),
     );
     axum::http::HeaderValue::from_str(&value)
         .expect("permissions policy value is assembled from static directives")
@@ -378,6 +395,7 @@ pub struct ServerAppBuilder {
     background_tasks: Vec<BackgroundTaskFn>,
     personal_access_token_routes_wrap: Option<PersonalAccessTokenRoutesWrapFn>,
     org_create_policy: Option<Arc<dyn api::organizations::OrgCreatePolicy>>,
+    org_initializers: Vec<Arc<dyn org_init::OrgInitializer>>,
 }
 
 impl ServerAppBuilder {
@@ -394,6 +412,7 @@ impl ServerAppBuilder {
             background_tasks: Vec::new(),
             personal_access_token_routes_wrap: None,
             org_create_policy: None,
+            org_initializers: Vec::new(),
         }
     }
 
@@ -443,7 +462,7 @@ impl ServerAppBuilder {
     ///
     /// Wrappers that integrate Sentry, Datadog, Rollbar, etc. implement
     /// `ErrorReporter` and install it here. OSS never imports vendor SDKs;
-    /// the reporter is the only contact surface. See `specs/embedding.md`.
+    /// the reporter is the only contact surface. See `knowledge/foundations/embedding.md`.
     pub fn error_reporter(mut self, reporter: Arc<dyn ErrorReporter>) -> Self {
         self.error_reporter = Some(reporter);
         self
@@ -488,12 +507,31 @@ impl ServerAppBuilder {
     /// This lets wrappers (e.g. SaaS) gate creation on product policy — verified
     /// email, account/resource limits — without forking the create-org handler or
     /// mounting a parallel `/v1/saas/orgs` route. When not set, default OSS
-    /// behavior is unchanged. See `specs/embedding.md`.
+    /// behavior is unchanged. See `knowledge/foundations/embedding.md`.
     pub fn org_create_policy(
         mut self,
         policy: Arc<dyn api::organizations::OrgCreatePolicy>,
     ) -> Self {
         self.org_create_policy = Some(policy);
+        self
+    }
+
+    /// Register a post-create organization initializer (EVE-811).
+    ///
+    /// The initializer runs inside the OSS `POST /v1/orgs` handler after the new
+    /// org's built-in harnesses and default marketplace are provisioned, with
+    /// access to the storage backend, the new org id, and the creating user. It
+    /// lets a wrapper provision per-org resources — a managed provider, a default
+    /// budget, an external tenant record — as part of org creation rather than via
+    /// a follow-up reconciler, closing the window where a new org has no working
+    /// provider.
+    ///
+    /// May be called multiple times; initializers run in registration order. A
+    /// required initializer that fails aborts creation (the org is rolled back);
+    /// an optional one only logs. When none are registered, default OSS behavior
+    /// is unchanged. See `knowledge/foundations/embedding.md`.
+    pub fn org_initializer(mut self, initializer: Arc<dyn org_init::OrgInitializer>) -> Self {
+        self.org_initializers.push(initializer);
         self
     }
 
@@ -744,7 +782,7 @@ impl ServerAppBuilder {
         // Observers: tap turn.completed to enqueue scoring (the listener needs
         // only db + wake). The background worker — which may call an LLM judge —
         // is spawned later, once the driver registry and provider resolver exist.
-        // See specs/online-evals.md.
+        // See knowledge/evaluation/online-evals.md.
         let observer_wake = if feature_flags.observers {
             let observer_wake = Arc::new(tokio::sync::Notify::new());
             let observer_listener: Arc<dyn EventListener> =
@@ -1084,7 +1122,7 @@ impl ServerAppBuilder {
         });
         let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone())
             .with_run_context(eval_run_ctx);
-        // Agent health checks (specs/agent-checks.md, tier-3). Built once and
+        // Agent health checks (knowledge/evaluation/agent-checks.md, tier-3). Built once and
         // shared by the agents HTTP state and the MCP endpoint state so the
         // catalog commands work over both surfaces. Gated on the utility LLM
         // (generates/judges cases) and a default harness (hosts the sessions).
@@ -1313,6 +1351,7 @@ impl ServerAppBuilder {
         );
         organizations_state.org_rate_limiter = org_rate_limiter.clone();
         organizations_state.org_create_policy = self.org_create_policy;
+        organizations_state.org_initializers = self.org_initializers;
         let org_invitations_state = api::org_invitations::AppState::new(
             db.clone(),
             auth_state.clone(),
@@ -1327,8 +1366,11 @@ impl ServerAppBuilder {
         let memory_files_state = api::memory_files::AppState::new(db.clone(), auth_state.clone());
         let knowledge_bases_state =
             api::knowledge_bases::AppState::new(db.clone(), auth_state.clone());
-        let knowledge_indexes_state =
-            api::knowledge_indexes::AppState::new(db.clone(), auth_state.clone());
+        let knowledge_indexes_state = api::knowledge_indexes::AppState::new(
+            db.clone(),
+            auth_state.clone(),
+            driver_registry.clone(),
+        );
         let payments_state =
             api::payments::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
         let reporting_state = api::reporting::AppState::new(db.clone(), auth_state.clone());
@@ -1697,17 +1739,11 @@ impl ServerAppBuilder {
             ))
             .layer(SetResponseHeaderLayer::if_not_present(
                 axum::http::header::HeaderName::from_static("permissions-policy"),
-                permissions_policy_header_value(feature_flags.voice),
+                permissions_policy_header_value(feature_flags.voice, feature_flags.webmcp),
             ))
             .layer(SetResponseHeaderLayer::if_not_present(
                 axum::http::header::HeaderName::from_static("content-security-policy"),
-                axum::http::HeaderValue::from_static(
-                    // `frame-src 'self' data:` lets the file-preview UI embed
-                    // PDFs via a `data:application/pdf` iframe (sandboxed
-                    // viewers don't render in Chromium) and keeps `about:srcdoc`
-                    // previews (SVG/HTML/MCP cards) working under 'self'.
-                    "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
-                ),
+                axum::http::HeaderValue::from_static(BASE_CONTENT_SECURITY_POLICY),
             ));
 
         let app = app.layer(TraceLayer::new_for_http().make_span_with(
@@ -1729,14 +1765,14 @@ impl ServerAppBuilder {
         ));
 
         // RequestIdLayer must be outer (run first) so TraceLayer can read the ID when
-        // creating the span above. See specs/correlation-ids.md.
+        // creating the span above. See knowledge/operations/correlation-ids.md.
         let app = app.layer(RequestIdLayer);
 
         // Per-request access log: applied as route_layer so axum's MatchedPath
         // extractor is available for low-cardinality `route` labels. Emits one
         // tracing event per request with method, route, status, latency_ms,
         // and request_id (DEBUG for /health and /metrics, WARN for 5xx,
-        // INFO otherwise). See EVE-399 / specs/correlation-ids.md.
+        // INFO otherwise). See EVE-399 / knowledge/operations/correlation-ids.md.
         let app = app.route_layer(axum::middleware::from_fn(
             crate::middleware::http_access_log_layer,
         ));
@@ -2092,7 +2128,7 @@ impl ServerAppBuilder {
             // -- Object-storage blob GC --
             // Reconciles bucket contents against the sidecar pointer tables and
             // reclaims orphaned objects. No-ops for the inline (db) backend
-            // (no external objects to collect). See specs/object-storage.md.
+            // (no external objects to collect). See knowledge/runtime-resources/object-storage.md.
             supervisor.track_optional(
                 "blob_gc",
                 crate::blob_gc::spawn_blob_gc_task(
@@ -2207,7 +2243,7 @@ impl ServerAppBuilder {
         // A previous process may have died mid-run, leaving health-check rows
         // stuck in `running`/`pending` forever (a user-visible perpetual
         // spinner). A fresh process has no run in flight, so transition every
-        // such orphan to `failed` on boot. See specs/agent-checks.md and EVE-586.
+        // such orphan to `failed` on boot. See knowledge/evaluation/agent-checks.md and EVE-586.
         match db.reap_running_agent_health_check_runs().await {
             Ok(0) => {}
             Ok(count) => tracing::info!(count, "Reaped interrupted agent health-check runs"),
@@ -2287,7 +2323,7 @@ impl ServerAppBuilder {
         // -- Knowledge Index Syncout (both prod and dev) --
         // Reuses the same GitHub connection resolver as Memory sync, plus the
         // shared provider resolver / driver registry (for embeddings) and the
-        // platform-selected vector store. See specs/knowledge-indexes.md.
+        // platform-selected vector store. See knowledge/runtime-resources/knowledge-indexes.md.
         supervisor.track_optional(
             "knowledge_index_sync",
             crate::domains::knowledge_indexes::source_sync::spawn_knowledge_index_sync_task(
@@ -2480,16 +2516,30 @@ mod tests {
     #[test]
     fn permissions_policy_denies_microphone_by_default() {
         assert_eq!(
-            permissions_policy_header_value(false).to_str().unwrap(),
-            "camera=(), microphone=(), geolocation=()"
+            permissions_policy_header_value(false, false)
+                .to_str()
+                .unwrap(),
+            "camera=(), microphone=(), geolocation=(), tools=()"
         );
     }
 
     #[test]
     fn permissions_policy_allows_microphone_when_voice_is_enabled() {
         assert_eq!(
-            permissions_policy_header_value(true).to_str().unwrap(),
-            "camera=(), microphone=(self), geolocation=()"
+            permissions_policy_header_value(true, false)
+                .to_str()
+                .unwrap(),
+            "camera=(), microphone=(self), geolocation=(), tools=()"
+        );
+    }
+
+    #[test]
+    fn permissions_policy_allows_same_origin_webmcp_when_enabled() {
+        assert_eq!(
+            permissions_policy_header_value(false, true)
+                .to_str()
+                .unwrap(),
+            "camera=(), microphone=(), geolocation=(), tools=(self)"
         );
     }
 

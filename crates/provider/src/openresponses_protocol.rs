@@ -130,6 +130,9 @@ pub struct OpenResponsesProtocolChatDriver {
     /// awaited once per HTTP attempt so refreshable (OAuth) providers can mint or
     /// refresh tokens per retry. `None` falls back to the static `api_key`.
     auth_provider: Option<Arc<dyn AuthHeaderProvider>>,
+    /// Explicit stateful-continuation support for compatible custom endpoints.
+    /// `None` uses the conservative host allowlist.
+    stateful_responses: Option<bool>,
 }
 
 impl OpenResponsesProtocolChatDriver {
@@ -147,6 +150,7 @@ impl OpenResponsesProtocolChatDriver {
             retry_config: LlmRetryConfig::default(),
             request_extension: None,
             auth_provider: None,
+            stateful_responses: None,
         }
     }
 
@@ -160,6 +164,7 @@ impl OpenResponsesProtocolChatDriver {
             retry_config: LlmRetryConfig::default(),
             request_extension: None,
             auth_provider: None,
+            stateful_responses: None,
         }
     }
 
@@ -190,6 +195,17 @@ impl OpenResponsesProtocolChatDriver {
     pub fn with_auth_provider(mut self, provider: Arc<dyn AuthHeaderProvider>) -> Self {
         self.auth_provider = Some(provider);
         self
+    }
+
+    /// Override whether this endpoint persists Responses continuation state.
+    pub fn with_stateful_responses(mut self, supported: bool) -> Self {
+        self.stateful_responses = Some(supported);
+        self
+    }
+
+    fn persists_responses(&self) -> bool {
+        self.stateful_responses
+            .unwrap_or_else(|| endpoint_persists_responses(&self.api_url))
     }
 
     /// Resolve the auth header `(name, value)` for one HTTP attempt against
@@ -232,11 +248,14 @@ impl OpenResponsesProtocolChatDriver {
         request_body: &Value,
         extension_headers: &HeaderMap,
         model: &str,
+        retries_consumed: u32,
     ) -> Result<(reqwest::Response, RetryMetadata)> {
         let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let mut retry_config = self.retry_config.clone();
+        retry_config.max_retries = retry_config.max_retries.saturating_sub(retries_consumed);
 
         retry_request(
-            &self.retry_config,
+            &retry_config,
             "OpenResponsesProtocolDriver",
             || async {
                 // Compose headers: provider decoration first, then the resolved
@@ -968,6 +987,15 @@ fn repair_unpaired_function_call_items(
         .collect()
 }
 
+fn is_missing_tool_output_continuation_error(error: &AgentLoopError) -> bool {
+    if !matches!(error.llm_error_kind(), Some(LlmErrorKind::InvalidRequest)) {
+        return false;
+    }
+    let message = error.to_string().to_ascii_lowercase();
+    message.contains("no tool output found for function call")
+        || message.contains("no tool call found for function call output")
+}
+
 /// Whether the endpoint at `api_url` persists responses server-side and honors
 /// `previous_response_id` for stateful continuation.
 ///
@@ -980,12 +1008,13 @@ fn repair_unpaired_function_call_items(
 fn endpoint_persists_responses(api_url: &str) -> bool {
     crate::openai_protocol::is_openai_api_url(api_url)
         || crate::openai_protocol::is_azure_openai_api_url(api_url)
+        || crate::openai_protocol::url_host_eq(api_url, "api.meta.ai")
 }
 
 #[async_trait]
 impl ChatDriver for OpenResponsesProtocolChatDriver {
     fn supports_stateful_responses(&self) -> bool {
-        endpoint_persists_responses(&self.api_url)
+        self.persists_responses()
     }
 
     async fn chat_completion_stream(
@@ -1007,13 +1036,14 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
             .is_some_and(|profile| profile.tool_search);
 
         let (instructions, transcript_input_items) = Self::build_input(&messages, supports_phases);
+        let full_replay_input_items = transcript_input_items.clone();
 
         // Only chain via `previous_response_id` when the endpoint actually persists
         // responses server-side. Stateless OpenAI-compatible gateways (OpenRouter,
         // Gemini compat, …) accept the field but ignore it, so chaining there drops
         // the conversation from turn 2 onward (EVE-523). For those we send no
         // continuation handle and replay the full transcript in `input` below.
-        let mut previous_response_id = if endpoint_persists_responses(&self.api_url) {
+        let mut previous_response_id = if self.persists_responses() {
             config.previous_response_id.clone()
         } else {
             None
@@ -1070,7 +1100,7 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         };
         let prompt_cache_key =
             Self::build_prompt_cache_key(config, &input_items, &instructions, &tools);
-        let request = ResponsesRequest {
+        let mut request = ResponsesRequest {
             model: config.model.clone(),
             input: input_items,
             instructions,
@@ -1126,14 +1156,65 @@ impl ChatDriver for OpenResponsesProtocolChatDriver {
         // failure that lands before the first event is decoded (the "error
         // decoding response body" flake). Header-phase retries (429/5xx and
         // transient send failures) are handled inside the per-attempt send.
-        let (event_stream, retry_metadata) = connect_sse_with_reconnect(
+        let first_connect = connect_sse_with_reconnect(
             &self.retry_config,
             "OpenResponsesProtocolDriver",
-            |_attempt| {
-                self.send_responses_request(&request_body, &extension_headers, &config.model)
+            |attempts| {
+                self.send_responses_request(
+                    &request_body,
+                    &extension_headers,
+                    &config.model,
+                    attempts,
+                )
             },
         )
-        .await?;
+        .await;
+        let (event_stream, retry_metadata) = match first_connect {
+            Ok(connected) => connected,
+            Err(error)
+                if request.previous_response_id.is_some()
+                    && is_missing_tool_output_continuation_error(&error) =>
+            {
+                // The provider lost or rejected its continuation state. The
+                // rejected 400 executed no tools, so safely retry once without
+                // the opaque handle and replay the locally complete transcript.
+                // Full replay runs the same pair repair used by ordinary
+                // stateless requests, preserving completed tool outputs without
+                // re-running their side effects.
+                tracing::warn!(
+                    model = %request.model,
+                    "stateful Responses continuation rejected for missing tool output; retrying once with repaired stateless replay"
+                );
+                request.previous_response_id = None;
+                request.input = repair_unpaired_function_call_items(full_replay_input_items);
+                request.prompt_cache_key = Self::build_prompt_cache_key(
+                    config,
+                    &request.input,
+                    &request.instructions,
+                    &request.tools,
+                );
+                request_body = serde_json::to_value(&request).map_err(|e| {
+                    AgentLoopError::llm(format!("Failed to serialize recovery request: {e}"))
+                })?;
+                if let Some(extension) = &self.request_extension {
+                    extension.decorate(&mut request_body, config)?;
+                }
+                connect_sse_with_reconnect(
+                    &self.retry_config,
+                    "OpenResponsesProtocolDriver",
+                    |attempts| {
+                        self.send_responses_request(
+                            &request_body,
+                            &extension_headers,
+                            &config.model,
+                            attempts,
+                        )
+                    },
+                )
+                .await?
+            }
+            Err(error) => return Err(error),
+        };
 
         let model = config.model.clone();
         let input_tokens = Arc::new(Mutex::new(0u32));
@@ -2021,7 +2102,7 @@ pub fn messages_to_compact_input(messages: &[LlmMessage]) -> Vec<CompactInputIte
 // OpenAI Responses API Types
 // ============================================================================
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct ResponsesRequest {
     model: String,
     input: Vec<ResponsesInputItem>,
@@ -2060,13 +2141,13 @@ struct ResponsesRequest {
 
 /// `text` request block for the Responses API. Verbosity ("low"/"medium"/"high")
 /// controls output length independently of reasoning effort.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct ResponsesText {
     #[serde(skip_serializing_if = "Option::is_none")]
     verbosity: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 struct ResponsesReasoning {
     effort: String,
     /// Request reasoning summary to get thinking tokens streamed back.
@@ -2074,7 +2155,7 @@ struct ResponsesReasoning {
     summary: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 enum ResponsesInputItem {
     Message {
@@ -2159,7 +2240,7 @@ impl From<&CompactOutputItem> for ResponsesInputItem {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 enum ResponsesContent {
     Text(String),
@@ -2167,7 +2248,7 @@ enum ResponsesContent {
 }
 
 // The "Input" prefix matches OpenAI's Responses API naming convention
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 #[allow(clippy::enum_variant_names)]
 enum ResponsesContentPart {
@@ -2185,13 +2266,13 @@ enum ResponsesContentPart {
     },
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ResponsesInputAudio {
     data: String,
     format: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 enum ResponsesTool {
     /// Standard function tool (or deferred function with defer_loading)
@@ -3540,6 +3621,113 @@ mod tests {
         assert!(
             has_tool_output,
             "the latest tool result must still be present; got {input:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn rejected_stateful_continuation_replays_repaired_transcript_once() {
+        use crate::tool_types::ToolCall;
+        use futures::StreamExt;
+        use serde_json::json;
+        use wiremock::matchers::{body_partial_json, method};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(body_partial_json(json!({
+                "previous_response_id": "resp_tool_turn"
+            })))
+            .respond_with(ResponseTemplate::new(400).set_body_json(json!({
+                "error": {
+                    "type": "invalid_request_error",
+                    "message": "No tool output found for function call call_1"
+                }
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let completed = r#"data: {"type":"response.completed","response":{"id":"resp_recovered","status":"completed","model":"gpt-5.4","output":[],"usage":{"input_tokens":4,"output_tokens":1,"total_tokens":5}}}
+
+"#;
+        Mock::given(method("POST"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(completed),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let driver = OpenResponsesProtocolChatDriver::with_base_url(
+            "test-key",
+            format!("{}/v1/responses", server.uri()),
+        )
+        .with_stateful_responses(true)
+        .with_retry_config(LlmRetryConfig::no_retry());
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::User, "inspect the project"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text(String::new()),
+                tool_calls: Some(vec![ToolCall {
+                    id: "call_1".to_string(),
+                    name: "read_file".to_string(),
+                    arguments: json!({"path": "Cargo.toml"}),
+                }]),
+                tool_call_id: None,
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+            LlmMessage {
+                role: LlmMessageRole::Tool,
+                content: LlmMessageContent::Text("[package]".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_1".to_string()),
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+        ];
+        let config = LlmCallConfig {
+            speed: None,
+            verbosity: None,
+            model: "gpt-5.4".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: Some("resp_tool_turn".to_string()),
+            provider_opaque_context: None,
+            tool_search: None,
+            prompt_cache: None,
+            openrouter_routing: None,
+            parallel_tool_calls: None,
+            volatile_suffix_len: 0,
+        };
+
+        let mut stream = driver
+            .chat_completion_stream(messages, &config)
+            .await
+            .expect("continuation should recover");
+        while let Some(event) = stream.next().await {
+            event.expect("valid recovered event");
+        }
+
+        let requests = server.received_requests().await.expect("requests");
+        assert_eq!(requests.len(), 2);
+        let first: serde_json::Value = requests[0].body_json().expect("first body");
+        let second: serde_json::Value = requests[1].body_json().expect("second body");
+        assert_eq!(first["previous_response_id"], "resp_tool_turn");
+        assert!(second.get("previous_response_id").is_none());
+        let replay = second["input"].as_array().expect("replay input");
+        assert!(replay.iter().any(|item| item["type"] == "function_call"));
+        assert!(
+            replay
+                .iter()
+                .any(|item| item["type"] == "function_call_output")
         );
     }
 
@@ -5276,6 +5464,7 @@ mod tests {
             max_backoff: std::time::Duration::from_millis(1),
             backoff_multiplier: 1.0,
             jitter_factor: 0.0,
+            ..Default::default()
         };
         let driver = OpenResponsesProtocolChatDriver::with_base_url("ignored", api_url)
             .with_retry_config(fast_retry)

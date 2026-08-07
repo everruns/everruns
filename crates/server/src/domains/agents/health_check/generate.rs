@@ -1,5 +1,5 @@
 // Generate behavioral smoke-test cases from an agent config via the utility
-// LLM (specs/utility-llm.md, "system analysis tasks"). See specs/agent-checks.md.
+// LLM (knowledge/operations/utility-llm.md, "system analysis tasks"). See knowledge/evaluation/agent-checks.md.
 
 use std::sync::Arc;
 use std::time::Duration;

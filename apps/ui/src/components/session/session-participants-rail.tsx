@@ -19,6 +19,7 @@ import {
   useSessionParticipants,
 } from "@/hooks";
 import { getDisplayName } from "@/lib/entity-lifecycle";
+import { getSessionParticipantLabel } from "@/lib/session-participant-label";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -71,12 +72,8 @@ export function SessionParticipantsRail({ sessionId, className }: SessionPartici
   // Guard: keep ordinary 1:1 sessions (host only) untouched.
   if (active.length < 2 && left.length === 0) return null;
 
-  const participantLabel = (p: SessionParticipant): string => {
-    if (p.kind === "agent") {
-      return (p.agent_id && agentNameById.get(p.agent_id)) || "Agent";
-    }
-    return "Participant";
-  };
+  const participantLabel = (p: SessionParticipant): string =>
+    getSessionParticipantLabel(p, agentNameById);
 
   const handleInvite = async (agentId: string) => {
     try {

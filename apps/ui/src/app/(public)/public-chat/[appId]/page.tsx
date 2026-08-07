@@ -3,7 +3,7 @@
 // Isolated Public Chat page. Renders a branded, chrome-free chat bound to a
 // single App's agent and talks only to the app-scoped public endpoints. No
 // console navigation, no other apps/agents reachable from here.
-// See specs/public-chat.md.
+// See knowledge/integrations/public-chat.md.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";

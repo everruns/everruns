@@ -20,7 +20,7 @@
  * validate prop types, so these objects leak through as raw {type, typeName,
  * props, partial} ElementNode objects.
  *
- * @see specs/openui.md
+ * @see knowledge/ui/openui.md
  * @see https://github.com/thesysdev/openui
  */
 

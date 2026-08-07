@@ -1,6 +1,6 @@
 // Scaffold for worker↔control-plane transport-fault tests using `turmoil`
 // (https://github.com/tokio-rs/turmoil). Covers scenario 3 of
-// specs/agent-reliability-tests.md: deterministic network partitions, latency,
+// knowledge/runtime-resources/agent-reliability-tests.md: deterministic network partitions, latency,
 // and reorder between the worker and the control plane, which `fail-rs` cannot
 // model because it injects at the store layer rather than the transport.
 //
@@ -53,7 +53,7 @@ async fn heartbeat_once() -> io::Result<()> {
 
 /// Partition mid-flight, then repair: the worker's heartbeat must fail during
 /// the partition and succeed after `repair`. Mirrors scenario 3's "extended
-/// outage" variant from specs/agent-reliability-tests.md.
+/// outage" variant from knowledge/runtime-resources/agent-reliability-tests.md.
 ///
 /// `turmoil::partition` and `turmoil::repair` resolve the world via a
 /// thread-local that is only set while a host/client task is running, so the
@@ -105,5 +105,5 @@ fn heartbeat_clean_run() {
 //      `turmoil::net::TcpStream::connect((host, port))`.
 //   2. Serve `WorkerServiceServer` on a `turmoil::net::TcpListener` inside the
 //      "cp" host.
-//   3. Port scenario 3 variants from specs/agent-reliability-tests.md:
+//   3. Port scenario 3 variants from knowledge/runtime-resources/agent-reliability-tests.md:
 //      transient failure, extended outage, late completion → TaskNotOwned.

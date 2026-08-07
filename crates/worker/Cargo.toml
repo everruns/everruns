@@ -7,7 +7,7 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-# Experimental sandboxed Lua execution capability (specs/lua-execution.md).
+# Experimental sandboxed Lua execution capability (knowledge/execution/lua-execution.md).
 # Off by default; `lua` compiles the mlua engine into core. Also runtime-gated
 # by FEATURE_LUA.
 lua = ["everruns-core/lua"]
@@ -39,6 +39,7 @@ everruns-openai = { path = "../openai" }
 everruns-openrouter = { path = "../openrouter" }
 everruns-mai = { path = "../mai" }
 everruns-fireworks = { path = "../fireworks" }
+everruns-meta = { path = "../meta" }
 everruns-anthropic = { path = "../anthropic" }
 everruns-gemini = { path = "../gemini" }
 everruns-bedrock = { path = "../bedrock" }
@@ -63,6 +64,6 @@ prost-types.workspace = true
 [dev-dependencies]
 # Deterministic network simulator. Used by tests/network_reliability_test.rs to
 # exercise worker↔control-plane transport faults (partitions, latency, reorder)
-# with a simulated clock. See specs/agent-reliability-tests.md scenario 3.
+# with a simulated clock. See knowledge/runtime-resources/agent-reliability-tests.md scenario 3.
 turmoil.workspace = true
 tokio = { workspace = true }
