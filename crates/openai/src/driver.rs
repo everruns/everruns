@@ -286,12 +286,19 @@ async fn list_openai_models(
         .await
         .map_err(|e| AgentLoopError::llm(format!("Failed to parse models response: {}", e)))?;
 
-    // Filter to chat models only and convert to DiscoveredModel
+    // Keep models supported by one of this driver's concrete services. The
+    // provider supports both chat and embeddings, so filtering to chat here
+    // made legitimate embedding models impossible to discover.
     let discovered: Vec<DiscoveredModel> = models_response
         .data
         .into_iter()
-        .filter(|m| m.is_chat_model())
+        .filter(|m| m.is_chat_model() || m.is_embedding_model())
         .map(|m| DiscoveredModel {
+            capabilities: if m.is_embedding_model() {
+                vec!["embeddings".to_string()]
+            } else {
+                vec!["chat".to_string()]
+            },
             model_id: m.id,
             display_name: None, // OpenAI doesn't provide display names
             created_at: chrono::Utc.timestamp_opt(m.created, 0).single(),

@@ -21,10 +21,7 @@ import { useOrgScopedQuery } from "./create-crud-hooks";
 import { useResourceOrgFallback } from "./use-resource-org-fallback";
 
 function syncIndexCache(queryClient: QueryClient, index: KnowledgeIndex) {
-  queryClient.setQueriesData<KnowledgeIndex | undefined>(
-    { queryKey: queryKeys.knowledgeIndexes.detail(index.id) },
-    () => index,
-  );
+  queryClient.setQueryData<KnowledgeIndex>(queryKeys.knowledgeIndexes.detail(index.id), index);
   queryClient.setQueriesData<KnowledgeIndex[] | undefined>(
     { queryKey: queryKeys.knowledgeIndexes.all },
     (existing) =>
@@ -85,6 +82,7 @@ export function useKnowledgeIndexDocuments(indexId: string | undefined) {
     queryKey: queryKeys.knowledgeIndexes.documents(indexId ?? ""),
     queryFn: () => listKnowledgeIndexDocuments(indexId!),
     enabled: !!indexId,
+    refetchInterval: 3_000,
   });
 }
 

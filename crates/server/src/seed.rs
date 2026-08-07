@@ -122,6 +122,8 @@ mod seed_ids {
     pub const GPT_5_6_SOL: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000226);
     pub const GPT_5_6_TERRA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000227);
     pub const GPT_5_6_LUNA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000228);
+    pub const TEXT_EMBEDDING_3_SMALL: Uuid =
+        Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000229);
     pub const O1_PREVIEW: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021e);
 
     // Anthropic Models (0x300-0x3FF)
@@ -1662,6 +1664,16 @@ struct SeedModel {
 
 /// Built-in seed models
 const SEED_MODELS: &[SeedModel] = &[
+    // OpenAI embeddings. Knowledge indexes require a concrete embedding model,
+    // so the default catalog must contain one even before provider discovery.
+    SeedModel {
+        id: seed_ids::TEXT_EMBEDDING_3_SMALL,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "text-embedding-3-small",
+        display_name: "Text Embedding 3 Small",
+        enabled: true,
+        is_favorite: true,
+    },
     // OpenAI Realtime series
     SeedModel {
         id: seed_ids::GPT_REALTIME_2,
@@ -2311,7 +2323,11 @@ async fn seed_models_with_platform_definition(
             provider_id: seed.provider_id.into(),
             model_id: seed.model_id.to_string(),
             display_name: seed.display_name.to_string(),
-            capabilities: vec![], // Empty capabilities for now
+            capabilities: if seed.model_id.starts_with("text-embedding-") {
+                vec!["embeddings".to_string()]
+            } else {
+                vec![]
+            },
             enabled: seed.enabled,
             is_favorite: seed.is_favorite,
             source: "predefined".to_string(), // Seed models are predefined
@@ -3629,6 +3645,17 @@ mod tests {
                 .map(|m| (m.model_id.clone(), (m.enabled, m.is_favorite)))
                 .collect::<std::collections::HashMap<_, _>>()
         };
+
+        let openai = db
+            .list_models_for_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
+            .await
+            .unwrap();
+        let embedding = openai
+            .iter()
+            .find(|model| model.model_id == "text-embedding-3-small")
+            .expect("default embedding model must be catalogued");
+        assert!(embedding.enabled);
+        assert_eq!(embedding.capabilities, serde_json::json!(["embeddings"]));
 
         let anthropic = db
             .list_models_for_provider(DEFAULT_ORG_ID, seed_ids::ANTHROPIC_PROVIDER)

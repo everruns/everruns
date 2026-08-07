@@ -1143,6 +1143,7 @@ impl ChatDriver for AnthropicChatDriver {
             .map(|m| {
                 let profile = Some(m.to_discovered_profile());
                 DiscoveredModel {
+                    capabilities: vec!["chat".to_string()],
                     model_id: m.id,
                     display_name: Some(m.display_name),
                     created_at: m

@@ -8,13 +8,15 @@ use axum::Json;
 use axum::http::StatusCode;
 #[cfg(test)]
 use everruns_core::DefaultPermissionResolver;
-use everruns_core::{Caller, EgressService, FeatureFlags, PermissionResolver, Policy, PolicyError};
+use everruns_core::{
+    Caller, DriverRegistry, EgressService, FeatureFlags, PermissionResolver, Policy, PolicyError,
+};
 use everruns_durable::WorkflowEventStore;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use utoipa::ToSchema;
 
 use crate::api::common::{AllowedAction, ErrorResponse};
@@ -305,6 +307,9 @@ pub struct CommandMeta {
 // Ctx — shared execution context
 // ============================================================================
 
+static DEFAULT_DRIVER_REGISTRY: LazyLock<Arc<DriverRegistry>> =
+    LazyLock::new(|| Arc::new(everruns_worker::create_driver_registry()));
+
 #[derive(Clone)]
 pub struct Ctx {
     pub caller: Caller,
@@ -314,6 +319,9 @@ pub struct Ctx {
     // hardcodes `DefaultPermissionResolver`.
     pub permission_resolver: Arc<dyn PermissionResolver>,
     pub db: Arc<StorageBackend>,
+    /// Platform driver declarations used by domain validation at provider/model
+    /// trust boundaries.
+    pub driver_registry: Arc<DriverRegistry>,
     pub feature_flags: FeatureFlags,
     pub capability_service: Arc<crate::services::CapabilityService>,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
@@ -382,6 +390,7 @@ impl Ctx {
             caller,
             permission_resolver,
             db,
+            driver_registry: DEFAULT_DRIVER_REGISTRY.clone(),
             feature_flags: FeatureFlags::current(),
             capability_service,
             encryption,
@@ -450,6 +459,11 @@ impl Ctx {
 
     pub fn with_feature_flags(mut self, feature_flags: FeatureFlags) -> Self {
         self.feature_flags = feature_flags;
+        self
+    }
+
+    pub fn with_driver_registry(mut self, driver_registry: Arc<DriverRegistry>) -> Self {
+        self.driver_registry = driver_registry;
         self
     }
 
@@ -1003,7 +1017,6 @@ fn dispatch_for<C: Command>(
 // ============================================================================
 
 use std::collections::HashMap;
-use std::sync::LazyLock;
 
 static DISPATCH_TABLE: LazyLock<HashMap<&'static str, &'static CommandDescriptor>> =
     LazyLock::new(|| {

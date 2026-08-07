@@ -486,7 +486,17 @@ fn clone_repository(source: &ResolvedGitSource, checkout_dir: &Path) -> Result<(
         .branch(&source.branch)
         .clone(&source.url, checkout_dir)
         .map(|_| ())
-        .map_err(|_| anyhow!("failed to clone repository"))
+        .map_err(|error| {
+            // Keep provider details in operator logs while returning only the
+            // stable, credential-safe message stored on the index.
+            tracing::warn!(
+                git_error_code = ?error.code(),
+                git_error_class = ?error.class(),
+                git_error = %error.message(),
+                "Git clone failed during knowledge index sync"
+            );
+            anyhow!("failed to clone repository")
+        })
 }
 
 fn resolve_root_folder(checkout_dir: &Path, root_folder: Option<&str>) -> Result<PathBuf> {

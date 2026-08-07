@@ -29,6 +29,68 @@ use everruns_server::storage::models::{
 };
 use uuid::Uuid;
 
+#[tokio::test]
+async fn test_knowledge_index_create_enqueues_sync_and_rejects_chat_model() {
+    let server = TestServer::in_memory().await;
+    let models: Value = server
+        .get("/v1/models")
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let models = models["data"].as_array().expect("models list");
+    let embedding_model = models
+        .iter()
+        .find(|model| model["model_id"] == "text-embedding-3-small")
+        .expect("seeded embedding model");
+    assert_eq!(embedding_model["capabilities"], json!(["embeddings"]));
+
+    let created: Value = server
+        .post(
+            "/v1/knowledge-indexes",
+            json!({
+                "name": "Bashkit knowledge test",
+                "source_type": "github",
+                "source_config": {
+                    "repository": "everruns/bashkit",
+                    "branch": "main",
+                    "root_folder": "knowledge"
+                },
+                "embedding_model_id": embedding_model["id"]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    assert_eq!(created["sync_status"], "pending");
+
+    let chat_model = models
+        .iter()
+        .find(|model| model["model_id"] == "claude-opus-4-7[1m]")
+        .or_else(|| {
+            models
+                .iter()
+                .find(|model| model["model_id"] == "claude-opus-4-7")
+        })
+        .expect("seeded Claude chat model");
+    let rejected: Value = server
+        .post(
+            "/v1/knowledge-indexes",
+            json!({
+                "name": "Invalid embedding model",
+                "source_type": "github",
+                "source_config": {"repository": "everruns/bashkit"},
+                "embedding_model_id": chat_model["id"]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST)
+        .json();
+    assert_eq!(
+        rejected["detail"],
+        "Embedding model is unavailable or does not support embeddings"
+    );
+}
+
 // ============================================
 // Health Endpoint Tests
 // ============================================

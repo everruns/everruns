@@ -41,7 +41,6 @@ import {
   useSyncKnowledgeIndex,
   useUpdateKnowledgeIndex,
 } from "@/hooks";
-import { useModels } from "@/hooks/use-providers";
 import type {
   CreateKnowledgeIndexRequest,
   KnowledgeIndex,
@@ -61,6 +60,7 @@ import {
   type KnowledgeIndexDiagnostic,
 } from "@/lib/knowledge-index-diagnostics";
 import { cn } from "@/lib/utils";
+import { useModels } from "@/hooks/use-providers";
 
 type StatusTab = "all" | "active" | "archived";
 

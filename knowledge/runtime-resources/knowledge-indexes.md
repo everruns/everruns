@@ -239,8 +239,18 @@ credentials are resolved **only at sync time** from the owner's short-lived
 connection token (`UserConnectionResolver`), never persisted in `source_config`
 (THREAT[TM-API-018]).
 
-Triggers: manual "Sync now" first; periodic polling and webhook-driven
-(GitHub push) sync later.
+Creation atomically enters `pending`, so every valid new index receives an
+initial sync without a second client request. Editing source coordinates or the
+embedding model also re-enters `pending`; metadata-only edits preserve the
+current sync state. Manual "Sync now" is an idempotent retry. Periodic and
+webhook-driven (GitHub push) sync remain later work.
+
+The embedding model must be enabled, advertise the embeddings capability, and
+belong to an active org-scoped provider whose driver declares the embeddings
+service. All invalid or inaccessible references return the same validation
+error. Existing invalid indexes are never silently reassigned: management UI
+surfaces the incompatible selection, disables retry, and lets an admin repair
+it by choosing a valid model; saving that repair queues a sync.
 
 ## Retrieval and citations
 
@@ -358,6 +368,8 @@ harness.
   out-of-range `top_k` are rejected.
 * Storage parity (in-memory and Postgres) for the three tables (management slice).
 * Sync claim/complete/fail concurrency with stale-claim rejection (sync slice).
+* Create-to-ingestion state transitions, invalid embedding-model rejection,
+  source-subfolder ingestion, failure display, and management-UI polling.
 * Cross-org isolation (namespace derivation + config validation).
 * Hybrid retrieval ranking and citation hydration (retrieval slice).
 * OpenAPI export updated when the API surface lands.

@@ -24,8 +24,8 @@ impl Database {
         let sql = format!(
             "INSERT INTO knowledge_indexes \
                 (org_id, public_id, name, description, source_type, source_config, \
-                 embedding_model_id, vector_namespace, owner_principal_id, resolved_owner_user_id) \
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) \
+                 embedding_model_id, vector_namespace, owner_principal_id, resolved_owner_user_id, sync_status) \
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending') \
              RETURNING {INDEX_COLUMNS}"
         );
         let row = sqlx::query_as::<_, KnowledgeIndexRow>(sqlx::AssertSqlSafe(sql.as_str()))
@@ -118,6 +118,8 @@ impl Database {
                 resolved_owner_user_id = CASE WHEN $7 THEN $8 ELSE resolved_owner_user_id END, \
                 embedding_model_id = COALESCE($9, embedding_model_id), \
                 status = COALESCE($10, status), \
+                sync_status = CASE WHEN $11 THEN 'pending' ELSE sync_status END, \
+                last_sync_error = CASE WHEN $11 THEN NULL ELSE last_sync_error END, \
                 archived_at = CASE \
                     WHEN $10 = 'archived' THEN COALESCE(archived_at, NOW()) \
                     WHEN $10 = 'active' THEN NULL \
@@ -142,6 +144,7 @@ impl Database {
             .bind(input.resolved_owner_user_id.into_value())
             .bind(input.embedding_model_id.map(|m| m.uuid()))
             .bind(&input.status)
+            .bind(input.enqueue_sync)
             .fetch_optional(&self.pool)
             .await?;
         Ok(row)

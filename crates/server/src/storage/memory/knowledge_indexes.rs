@@ -42,7 +42,7 @@ impl InMemoryDatabase {
             owner_principal_id: input.owner_principal_id,
             resolved_owner_user_id: input.resolved_owner_user_id,
             status: "active".to_string(),
-            sync_status: "idle".to_string(),
+            sync_status: "pending".to_string(),
             last_synced_at: None,
             last_sync_error: None,
             created_at: now,
@@ -151,6 +151,10 @@ impl InMemoryDatabase {
             .apply(&mut idx.resolved_owner_user_id);
         if let Some(embedding_model_id) = input.embedding_model_id {
             idx.embedding_model_id = embedding_model_id;
+        }
+        if input.enqueue_sync {
+            idx.sync_status = "pending".to_string();
+            idx.last_sync_error = None;
         }
         if let Some(status) = input.status {
             idx.status = status.clone();

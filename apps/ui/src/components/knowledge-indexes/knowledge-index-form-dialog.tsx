@@ -67,6 +67,7 @@ export function KnowledgeIndexFormDialog({
   const [rootFolder, setRootFolder] = useState("");
   const [embeddingModelId, setEmbeddingModelId] = useState("");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [embeddingModelValid, setEmbeddingModelValid] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const { data: connections = [] } = useUserConnections();
   const githubConnection = connections.find((connection) => connection.provider === "github");
@@ -85,6 +86,7 @@ export function KnowledgeIndexFormDialog({
     setRootFolder(readStringField(config, "root_folder"));
     setEmbeddingModelId(mode === "edit" ? (index?.embedding_model_id ?? "") : "");
     setFieldErrors({});
+    setEmbeddingModelValid(false);
     setFormError(null);
   }, [mode, open, index]);
 
@@ -114,6 +116,10 @@ export function KnowledgeIndexFormDialog({
     });
     if (!parsed.success) {
       setFieldErrors(getFieldErrors(parsed.error));
+      return;
+    }
+    if (!embeddingModelValid) {
+      setFieldErrors({ embedding_model_id: "Choose an enabled embedding model" });
       return;
     }
 
@@ -203,6 +209,7 @@ export function KnowledgeIndexFormDialog({
               aria-describedby={
                 fieldErrors.embedding_model_id ? "kidx-embedding-model-error" : undefined
               }
+              onValidityChange={setEmbeddingModelValid}
             />
             <p className="text-xs text-muted-foreground">
               Required. Chunks are embedded with this model; it cannot be cleared.
@@ -311,7 +318,7 @@ export function KnowledgeIndexFormDialog({
             >
               Cancel
             </Button>
-            <Button type="submit" variant="accent" disabled={isPending}>
+            <Button type="submit" variant="accent" disabled={isPending || !embeddingModelValid}>
               {submitLabel}
             </Button>
           </DialogFooter>

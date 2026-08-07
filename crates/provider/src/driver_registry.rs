@@ -199,6 +199,10 @@ pub struct DiscoveredModel {
     pub created_at: Option<DateTime<Utc>>,
     /// Owner or organization (e.g., "openai", "system")
     pub owned_by: Option<String>,
+    /// Service capabilities advertised for this concrete model (for example,
+    /// `chat` or `embeddings`). These are distinct from provider-level
+    /// services: an OpenAI provider supports both, but each model does not.
+    pub capabilities: Vec<String>,
     /// Structured profile built from provider API metadata (capabilities, limits).
     /// Populated by drivers that return rich model metadata (e.g., Anthropic /v1/models).
     pub discovered_profile: Option<crate::model::ModelProfile>,

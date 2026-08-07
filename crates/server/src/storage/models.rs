@@ -1545,6 +1545,9 @@ pub struct UpdateKnowledgeIndex {
     /// Optional update to the embedding model. `None` = unchanged. The model is
     /// required on the index, so `Clear` is not representable.
     pub embedding_model_id: Option<ModelId>,
+    /// Source or embedding changes invalidate the current projection and must
+    /// atomically put the index back on the worker queue.
+    pub enqueue_sync: bool,
     pub status: Option<String>,
 }
 

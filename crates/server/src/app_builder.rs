@@ -1366,8 +1366,11 @@ impl ServerAppBuilder {
         let memory_files_state = api::memory_files::AppState::new(db.clone(), auth_state.clone());
         let knowledge_bases_state =
             api::knowledge_bases::AppState::new(db.clone(), auth_state.clone());
-        let knowledge_indexes_state =
-            api::knowledge_indexes::AppState::new(db.clone(), auth_state.clone());
+        let knowledge_indexes_state = api::knowledge_indexes::AppState::new(
+            db.clone(),
+            auth_state.clone(),
+            driver_registry.clone(),
+        );
         let payments_state =
             api::payments::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
         let reporting_state = api::reporting::AppState::new(db.clone(), auth_state.clone());
