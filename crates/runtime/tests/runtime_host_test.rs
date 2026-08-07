@@ -2268,6 +2268,70 @@ async fn user_prompt_submit_hook_blocks_turn_before_reason() {
     );
 }
 
+/// Synthetic user messages injected between iterations must cross the same
+/// prompt-policy boundary as the turn's original input.
+#[tokio::test]
+async fn user_prompt_submit_hook_blocks_injected_mid_turn_message() {
+    use everruns_core::atoms::ReasonInput;
+    use everruns_core::user_hook_types::HookEvent;
+    use everruns_runtime::execute_reason_activity_with_prompt_messages;
+
+    let mut adapter = mock_host();
+    adapter
+        .capability_registry
+        .register(LifecycleHookCapability {
+            event: HookEvent::UserPromptSubmit,
+            command: r#"echo '{"decision":"block","reason":"policy"}'"#.into(),
+        });
+
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    adapter
+        .harness_store
+        .add_harness(Harness {
+            capabilities: vec![AgentCapabilityConfig::new("lifecycle_hook_test")],
+            ..harness(harness_id)
+        })
+        .await;
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+    let original = adapter
+        .message_store
+        .add(session_id, InputMessage::user("continue working"))
+        .await
+        .unwrap();
+    let wake = adapter
+        .message_store
+        .add(
+            session_id,
+            InputMessage::user("Task summary with disallowed content"),
+        )
+        .await
+        .unwrap();
+
+    let result = execute_reason_activity_with_prompt_messages(
+        &adapter,
+        1,
+        ReasonInput {
+            context: AtomContext::new(session_id, TurnId::from_uuid(Uuid::now_v7()), original.id),
+            harness_id,
+            agent_id: None,
+            org_id: 1,
+            mcp_tool_definitions: vec![],
+            previous_response_id: None,
+            iteration: 3,
+        },
+        vec![wake.id],
+    )
+    .await
+    .unwrap();
+
+    assert!(!result.success, "injected message must be blocked");
+    assert_eq!(result.error.as_deref(), Some("blocked_by_user_prompt_hook"));
+}
+
 /// A `user_prompt_submit` hook that emits `allow` (empty stdout, exit 0) must
 /// not block — `execute_reason_activity` proceeds past the hook to the reason
 /// step. We only assert the hook did not short-circuit with the block error.

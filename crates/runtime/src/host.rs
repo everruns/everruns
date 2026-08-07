@@ -1121,6 +1121,23 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
     org_id: i64,
     input: ReasonInput,
 ) -> everruns_core::error::Result<ReasonResult> {
+    let prompt_message_ids = (input.iteration <= 1)
+        .then_some(input.context.input_message_id)
+        .into_iter()
+        .collect();
+    execute_reason_activity_with_prompt_messages(adapter, org_id, input, prompt_message_ids).await
+}
+
+/// Execute a reason activity while applying `user_prompt_submit` hooks to the
+/// supplied messages. Hosts that inject synthetic user messages between reason
+/// iterations must include their ids here so they cross the same policy
+/// boundary as the turn's original input.
+pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>(
+    adapter: &A,
+    org_id: i64,
+    input: ReasonInput,
+    prompt_message_ids: Vec<MessageId>,
+) -> everruns_core::error::Result<ReasonResult> {
     if let Some(blocker) =
         detect_dependency_blocker(adapter, org_id, input.harness_id, input.agent_id).await?
     {
@@ -1152,17 +1169,19 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
         });
     }
 
-    // user_prompt_submit hook (see `knowledge/runtime-resources/user-hooks.md`). Fires once per turn,
-    // on the first reason iteration, before the LLM is consulted — the closest
-    // choke point to "inbound user message accepted, before reason" that both
-    // the in-process loop and the durable worker share. A `Block` aborts the
-    // turn by reusing the same failure path as `dependency_blocked`: emit a
-    // user-facing message + turn.failed, idle the session, and return a
-    // non-success `ReasonResult` so no LLM/act work runs.
-    let mut user_prompt_message_override = None;
-    if input.iteration <= 1
-        && let Some(hook_result) = run_user_prompt_submit_for_turn(adapter, org_id, &input).await?
-    {
+    // A `Block` aborts the turn by reusing the same failure path as
+    // `dependency_blocked`. Hosts pass the original input on iteration one and
+    // any synthetic user messages injected later, ensuring every provider-bound
+    // user message crosses this policy boundary.
+    let mut user_prompt_message_overrides = Vec::new();
+    for message_id in prompt_message_ids {
+        let mut hook_input = input.clone();
+        hook_input.context.input_message_id = message_id;
+        let Some(hook_result) =
+            run_user_prompt_submit_for_turn(adapter, org_id, &hook_input).await?
+        else {
+            continue;
+        };
         match hook_result.decision {
             everruns_core::lifecycle_hooks::UserPromptDecision::Block {
                 reason,
@@ -1198,7 +1217,7 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
             }
             everruns_core::lifecycle_hooks::UserPromptDecision::Continue { message } => {
                 if message != hook_result.original_message {
-                    user_prompt_message_override = Some(message);
+                    user_prompt_message_overrides.push((message_id, message));
                 }
             }
         }
@@ -1323,7 +1342,7 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
         ..input
     };
 
-    if let Some(message_override) = user_prompt_message_override {
+    if !user_prompt_message_overrides.is_empty() {
         let mut assembled = assemble_turn_context(
             adapter.harness_store(org_id).as_ref(),
             adapter.agent_store(org_id).as_ref(),
@@ -1339,26 +1358,26 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
         )
         .await?;
 
-        let message = assembled
-            .messages
-            .iter_mut()
-            .find(|message| message.id == input.context.input_message_id)
-            .ok_or_else(|| {
-                everruns_core::error::AgentLoopError::config(
-                    "user_prompt_submit mutation: input message not found in assembled context",
-                )
-            })?;
+        for (message_id, message_override) in user_prompt_message_overrides {
+            let message = assembled
+                .messages
+                .iter_mut()
+                .find(|message| message.id == message_id)
+                .ok_or_else(|| {
+                    everruns_core::error::AgentLoopError::config(
+                        "user_prompt_submit mutation: input message not found in assembled context",
+                    )
+                })?;
 
-        // user_prompt_submit mutations are enforcement controls for the
-        // provider-bound prompt. Apply them to the assembled context only
-        // so persisted user history remains an audit record of the input.
-        // Preserve non-text parts (images, files); replace only text parts.
-        message
-            .content
-            .retain(|part| !matches!(part, ContentPart::Text(_)));
-        message
-            .content
-            .insert(0, ContentPart::text(message_override));
+            // Apply enforcement mutations to provider context only, retaining
+            // persisted history as an audit record of the original content.
+            message
+                .content
+                .retain(|part| !matches!(part, ContentPart::Text(_)));
+            message
+                .content
+                .insert(0, ContentPart::text(message_override));
+        }
 
         return atom.execute_with_assembled_context(input, assembled).await;
     }

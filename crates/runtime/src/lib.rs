@@ -127,6 +127,7 @@ pub use file_store_decorators::{
 pub use host::{
     RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle, detect_dependency_blocker,
     execute_act_activity, execute_input_activity, execute_reason_activity,
+    execute_reason_activity_with_prompt_messages,
 };
 pub use in_memory::{
     InMemorySessionFileStore, InMemorySessionFileSystemFactory, InMemorySessionStorageStore,
