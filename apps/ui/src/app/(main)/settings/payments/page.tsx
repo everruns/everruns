@@ -35,6 +35,7 @@ import {
   usePaymentPolicies,
 } from "@/hooks/use-payments";
 import type { PaymentOwnerType, PaymentRail, PaymentPolicy } from "@/lib/api/types";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 
 const railLabels: Record<PaymentRail, string> = {
   mpp_tempo: "MPP / Tempo",
@@ -242,7 +243,9 @@ export default function PaymentSettingsPage() {
             <TableBody>
               {accounts.map((account) => (
                 <TableRow key={account.id}>
-                  <TableCell className="font-medium">{account.label}</TableCell>
+                  <TableCell className="font-medium">
+                    <EntityIdentity value={account.id}>{account.label}</EntityIdentity>
+                  </TableCell>
                   <TableCell>
                     {ownerLabels[account.owner_type]} · {account.owner_id}
                   </TableCell>
@@ -375,7 +378,9 @@ export default function PaymentSettingsPage() {
               {policies.map((policy) => (
                 <TableRow key={policy.id}>
                   <TableCell>
-                    {policy.subject_type} · {policy.subject_id}
+                    <EntityIdentity value={policy.id}>
+                      {policy.subject_type} · {policy.subject_id}
+                    </EntityIdentity>
                   </TableCell>
                   <TableCell>{policy.allowed_capabilities.join(", ") || "Any"}</TableCell>
                   <TableCell>{policy.allowed_hosts.join(", ") || "Any"}</TableCell>

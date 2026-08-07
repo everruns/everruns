@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { CopyButton } from "@/components/ui/copy-button";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import { getHealthBadgeVariant, getWorkflowStatusBadgeVariant } from "@/lib/status-utils";
 
 // `recharts` is heavy and only rendered once metrics load on this page. Load it
@@ -338,10 +338,12 @@ export default function DurableDashboardPage() {
                                   : "bg-red-500"
                             }`}
                           />
-                          <span className="text-sm font-medium truncate max-w-[150px]">
+                          <EntityIdentity
+                            value={worker.id}
+                            labelClassName="max-w-[150px] text-sm font-medium"
+                          >
                             {worker.hostname || worker.id.slice(0, 12)}
-                          </span>
-                          <CopyButton value={worker.id} />
+                          </EntityIdentity>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground">
@@ -384,22 +386,25 @@ export default function DurableDashboardPage() {
               {workflowsData && workflowsData.data.length > 0 ? (
                 <div className="space-y-2">
                   {workflowsData.data.map((workflow) => (
-                    <Link
+                    <div
                       key={workflow.id}
-                      href={`/durable/workflows/${workflow.id}`}
-                      className="flex items-center justify-between p-2 bg-muted/50 hover:bg-muted transition-colors"
+                      className="flex items-center justify-between gap-2 bg-muted/50 p-2"
                     >
                       <div className="flex items-center gap-2">
                         <WorkflowStatusIcon status={workflow.status} />
-                        <div>
-                          <p className="text-sm font-medium">{workflow.workflow_type}</p>
-                          <CopyButton value={workflow.id} />
-                        </div>
+                        <EntityIdentity value={workflow.id} labelClassName="text-sm font-medium">
+                          <Link
+                            href={`/durable/workflows/${workflow.id}`}
+                            className="hover:underline"
+                          >
+                            {workflow.workflow_type}
+                          </Link>
+                        </EntityIdentity>
                       </div>
                       <Badge variant={getWorkflowStatusBadgeVariant(workflow.status)}>
                         {workflow.status}
                       </Badge>
-                    </Link>
+                    </div>
                   ))}
                 </div>
               ) : (

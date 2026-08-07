@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation";
 import type { Agent, ModelWithProvider, Session, SessionStatus, TokenUsage } from "@/lib/api/types";
 import { buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { CopyButton } from "@/components/ui/copy-button";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -141,8 +141,8 @@ function EditableSessionTitle({
   }
 
   return (
-    <h1 className="flex items-center gap-2 text-xl font-bold">
-      {title || fallback}
+    <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-bold">
+      <EntityIdentity value={sessionId}>{title || fallback}</EntityIdentity>
       {editable && (
         <button
           onClick={() => setEditing(true)}
@@ -152,7 +152,6 @@ function EditableSessionTitle({
           <Pencil className="h-3.5 w-3.5" />
         </button>
       )}
-      <CopyButton value={sessionId} />
     </h1>
   );
 }

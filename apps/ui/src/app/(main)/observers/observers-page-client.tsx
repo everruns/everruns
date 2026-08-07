@@ -4,7 +4,7 @@ import Link from "next/link";
 import { Plus } from "lucide-react";
 import { useObservers, usePageTitle } from "@/hooks";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EntityCard } from "@/components/ui/entity-card";
 import { Badge } from "@/components/ui/badge";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { ExperimentalPageBadge } from "@/components/ui/experimental-badge";
@@ -15,27 +15,27 @@ import type { Observer } from "@/lib/api/types";
 
 function ObserverCard({ observer }: { observer: Observer }) {
   return (
-    <Link href={`/observers/${observer.id}`}>
-      <Card className="h-full cursor-pointer transition-colors hover:border-primary/50">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="truncate text-base">{observer.name}</CardTitle>
-            <Badge variant={getEntityStatusBadgeVariant(observer.status)}>{observer.status}</Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {observer.description && (
-            <p className="line-clamp-2 text-sm text-muted-foreground">{observer.description}</p>
-          )}
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            <span>{Math.round(observer.sampling_rate * 100)}% sampled</span>
-            <span>
-              {observer.scorers.length} {pluralize(observer.scorers.length, "scorer")}
-            </span>
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
+    <EntityCard
+      className="h-full"
+      title={observer.name}
+      href={`/observers/${observer.id}`}
+      copyValue={observer.id}
+      headerActions={
+        <Badge variant={getEntityStatusBadgeVariant(observer.status)}>{observer.status}</Badge>
+      }
+    >
+      <div className="space-y-2">
+        {observer.description && (
+          <p className="line-clamp-2 text-sm text-muted-foreground">{observer.description}</p>
+        )}
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <span>{Math.round(observer.sampling_rate * 100)}% sampled</span>
+          <span>
+            {observer.scorers.length} {pluralize(observer.scorers.length, "scorer")}
+          </span>
+        </div>
+      </div>
+    </EntityCard>
   );
 }
 

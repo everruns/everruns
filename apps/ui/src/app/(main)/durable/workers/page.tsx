@@ -25,7 +25,7 @@ import {
   Play,
   CheckCircle,
 } from "lucide-react";
-import { CopyButton } from "@/components/ui/copy-button";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import { formatDistanceToNow, formatDurationCompact } from "@/lib/formatting";
 import { getWorkerStatusBadgeVariant } from "@/lib/status-utils";
 
@@ -61,9 +61,10 @@ function WorkerRow({
       <TableCell>
         <div className="flex items-center gap-2">
           <div className={`w-2 h-2 rounded-full ${getStatusColor(worker.status)}`} />
-          <div>
-            <p className="font-medium">{worker.hostname || worker.id.slice(0, 20)}</p>
-            <CopyButton value={worker.id} />
+          <div className="font-medium">
+            <EntityIdentity value={worker.id}>
+              {worker.hostname || worker.id.slice(0, 20)}
+            </EntityIdentity>
           </div>
         </div>
       </TableCell>

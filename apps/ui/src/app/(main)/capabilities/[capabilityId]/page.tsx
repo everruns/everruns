@@ -19,7 +19,6 @@ import {
   Bot,
   Layers,
 } from "lucide-react";
-import { CopyButton } from "@/components/ui/copy-button";
 import type { CapabilityStatus, ToolDefinition } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
 import {
@@ -147,14 +146,12 @@ export default function CapabilityDetailPage({
 
       <PageMasthead
         icon={<CapabilityIcon icon={capability.icon} />}
+        entityId={capability.id}
         title={localizedCapabilityName(capability, locale)}
         badges={
-          <>
-            <CopyButton value={capability.id} />
-            <Badge variant={getCapabilityStatusBadgeVariant(capability.status)}>
-              {getStatusLabel(capability.status)}
-            </Badge>
-          </>
+          <Badge variant={getCapabilityStatusBadgeVariant(capability.status)}>
+            {getStatusLabel(capability.status)}
+          </Badge>
         }
         meta={
           <>

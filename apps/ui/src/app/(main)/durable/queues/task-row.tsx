@@ -6,7 +6,7 @@ import { TableCell, TableRow } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertTriangle, CheckCircle, Clock, XCircle, Activity, ExternalLink } from "lucide-react";
 import Link from "next/link";
-import { CopyButton } from "@/components/ui/copy-button";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import { formatDistanceToNow } from "@/lib/formatting";
 import { getTaskStatusBadgeVariant } from "@/lib/status-utils";
 import type { DurableTask, TaskStatus } from "@/lib/api/types";
@@ -35,7 +35,9 @@ export function TaskRow({ task }: { task: DurableTask }) {
         <div className="flex items-center gap-2">
           {getTaskStatusIcon(task.status)}
           <div>
-            <p className="font-medium">{task.activity_type}</p>
+            <p className="font-medium">
+              <EntityIdentity value={task.id}>{task.activity_type}</EntityIdentity>
+            </p>
             <p className="text-xs text-muted-foreground">{task.activity_id}</p>
           </div>
         </div>
@@ -93,7 +95,6 @@ export function TaskRow({ task }: { task: DurableTask }) {
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-1">
-          <CopyButton value={task.id} />
           {task.workflow_id ? (
             <Link href={`/durable/workflows/${task.workflow_id}`}>
               <Button variant="ghost" size="sm">

@@ -4,7 +4,7 @@ import { useEvals } from "@/hooks";
 import { useAgents, usePageTitle } from "@/hooks";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { EntityCard } from "@/components/ui/entity-card";
 import { Badge } from "@/components/ui/badge";
 import { Plus } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
@@ -37,51 +37,51 @@ function EvalCard({ eval: ev, agentMap }: { eval: Eval; agentMap: Map<string, st
   const label = targetLabel(ev.target, agentMap);
 
   return (
-    <Link href={`/evals/${ev.id}`}>
-      <Card className="hover:border-primary/50 transition-colors cursor-pointer h-full">
-        <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base truncate">{ev.name}</CardTitle>
-            <Badge variant={ev.status === "active" ? "default" : "secondary"}>{ev.status}</Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {ev.description && (
-            <p className="text-sm text-muted-foreground line-clamp-2">{ev.description}</p>
+    <EntityCard
+      className="h-full"
+      title={ev.name}
+      href={`/evals/${ev.id}`}
+      copyValue={ev.id}
+      headerActions={
+        <Badge variant={ev.status === "active" ? "default" : "secondary"}>{ev.status}</Badge>
+      }
+    >
+      <div className="space-y-2">
+        {ev.description && (
+          <p className="text-sm text-muted-foreground line-clamp-2">{ev.description}</p>
+        )}
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          {label && <span>{label}</span>}
+          {ev.target?.type && (
+            <Badge variant="outline" className="text-xs">
+              {ev.target.type}
+            </Badge>
           )}
-          <div className="flex items-center gap-4 text-xs text-muted-foreground">
-            {label && <span>{label}</span>}
-            {ev.target?.type && (
-              <Badge variant="outline" className="text-xs">
-                {ev.target.type}
-              </Badge>
+          <span>{ev.case_count} cases</span>
+        </div>
+        {ev.last_run && (
+          <div className="flex items-center gap-3 text-xs">
+            <Badge variant={ev.last_run.status === "completed" ? "default" : "outline"}>
+              {ev.last_run.status}
+            </Badge>
+            {ev.last_run.summary && (
+              <span className={passRateColor(ev.last_run.summary.pass_rate)}>
+                {(ev.last_run.summary.pass_rate * 100).toFixed(0)}% pass rate
+              </span>
             )}
-            <span>{ev.case_count} cases</span>
           </div>
-          {ev.last_run && (
-            <div className="flex items-center gap-3 text-xs">
-              <Badge variant={ev.last_run.status === "completed" ? "default" : "outline"}>
-                {ev.last_run.status}
+        )}
+        {ev.tags.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {ev.tags.map((tag) => (
+              <Badge key={tag} variant="outline" className="text-xs">
+                {tag}
               </Badge>
-              {ev.last_run.summary && (
-                <span className={passRateColor(ev.last_run.summary.pass_rate)}>
-                  {(ev.last_run.summary.pass_rate * 100).toFixed(0)}% pass rate
-                </span>
-              )}
-            </div>
-          )}
-          {ev.tags.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              {ev.tags.map((tag) => (
-                <Badge key={tag} variant="outline" className="text-xs">
-                  {tag}
-                </Badge>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </Link>
+            ))}
+          </div>
+        )}
+      </div>
+    </EntityCard>
   );
 }
 

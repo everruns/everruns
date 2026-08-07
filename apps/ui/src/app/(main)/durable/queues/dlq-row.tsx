@@ -8,6 +8,7 @@ import { RotateCcw, Trash2, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { formatDistanceToNow } from "@/lib/formatting";
 import type { DlqEntry } from "@/lib/api/types";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 
 export function DlqRow({
   entry,
@@ -22,7 +23,9 @@ export function DlqRow({
     <TableRow>
       <TableCell>
         <div>
-          <p className="font-medium">{entry.activity_type}</p>
+          <p className="font-medium">
+            <EntityIdentity value={entry.id}>{entry.activity_type}</EntityIdentity>
+          </p>
           <p className="text-xs text-muted-foreground">{entry.activity_id}</p>
         </div>
       </TableCell>

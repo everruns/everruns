@@ -29,6 +29,7 @@ import type {
   PersonalAccessTokenListItem,
   CreatePersonalAccessTokenRequest,
 } from "@/lib/api/types";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 
 const TOKEN_EXPIRY_OPTIONS = [
   {
@@ -82,7 +83,9 @@ function PersonalAccessTokenRow({
       <div className="flex items-center gap-3">
         <Key className="h-5 w-5 text-muted-foreground" />
         <div>
-          <div className="font-medium">{token.name}</div>
+          <div className="font-medium">
+            <EntityIdentity value={token.id}>{token.name}</EntityIdentity>
+          </div>
           <div className="text-sm text-muted-foreground font-mono">{token.token_prefix}</div>
         </div>
       </div>

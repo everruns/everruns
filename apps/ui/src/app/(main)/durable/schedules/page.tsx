@@ -58,7 +58,7 @@ import {
   Settings,
 } from "lucide-react";
 import Link from "next/link";
-import { CopyButton } from "@/components/ui/copy-button";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import { formatDistanceToNow } from "@/lib/formatting";
 
 function ScheduleRow({
@@ -82,17 +82,17 @@ function ScheduleRow({
             className={`h-4 w-4 shrink-0 ${schedule.enabled ? "text-green-500" : "text-gray-400"}`}
           />
           <div className="min-w-0 flex-1">
-            <Link
-              href={`/durable/schedules/${schedule.id}`}
-              className="font-medium hover:underline truncate block"
-            >
-              {schedule.name}
-            </Link>
+            <div className="font-medium">
+              <EntityIdentity value={schedule.id}>
+                <Link href={`/durable/schedules/${schedule.id}`} className="hover:underline">
+                  {schedule.name}
+                </Link>
+              </EntityIdentity>
+            </div>
             {schedule.description && (
               <p className="text-xs text-muted-foreground truncate">{schedule.description}</p>
             )}
           </div>
-          <CopyButton value={schedule.id} />
         </div>
       </TableCell>
       <TableCell>

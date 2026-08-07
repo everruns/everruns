@@ -131,7 +131,7 @@ describe("Work view", () => {
 
     // The shared TaskCard is now shown (its expand control appears).
     expect(screen.getByRole("button", { name: /show task details/i })).toBeInTheDocument();
-    expect(screen.getByText(/ID: t_sel/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy ID: t_sel" })).toBeInTheDocument();
     expect(screen.queryByText(/Select a task to see its detail/)).not.toBeInTheDocument();
   });
 

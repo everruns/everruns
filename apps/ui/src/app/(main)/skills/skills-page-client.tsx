@@ -78,6 +78,7 @@ function SkillRow({
       title={getDisplayName(skill)}
       href={`/skills/${skill.id}`}
       titleClassName={getEntityNameClassName(skill.status)}
+      copyValue={skill.id}
       inlineBadges={
         <>
           <Badge variant={getEntityStatusBadgeVariant(skill.status)}>{skill.status}</Badge>

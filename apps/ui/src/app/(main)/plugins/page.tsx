@@ -23,7 +23,7 @@ import {
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CopyButton } from "@/components/ui/copy-button";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import {
   PageContainer,
   PageBreadcrumb,
@@ -108,14 +108,19 @@ function MarketplaceCard({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center bg-primary/10">
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center bg-primary/10">
             <Store className="h-5 w-5 text-primary" />
           </div>
-          <div>
-            <CardTitle className={`text-lg ${isDisabled ? "text-muted-foreground" : ""}`}>
-              {marketplace.name}
+          <div className="min-w-0">
+            <CardTitle className="text-lg">
+              <EntityIdentity
+                value={marketplace.id}
+                labelClassName={isDisabled ? "text-muted-foreground" : undefined}
+              >
+                {marketplace.name}
+              </EntityIdentity>
             </CardTitle>
             <CardDescription className="text-sm truncate max-w-xs">
               {marketplaceSourceLabel(marketplace)}
@@ -550,7 +555,7 @@ function MarketplaceCatalogDialog({
 // Installed plugin card
 // ============================================
 
-function InstalledPluginCard({
+export function InstalledPluginCard({
   plugin,
   onUninstall,
 }: {
@@ -572,19 +577,24 @@ function InstalledPluginCard({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center bg-primary/10">
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-3 space-y-0">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center bg-primary/10">
             <Package className="h-5 w-5 text-primary" />
           </div>
-          <div>
-            <CardTitle className={`text-lg ${!isEnabled ? "text-muted-foreground" : ""}`}>
-              {plugin.display_name ?? plugin.name}
+          <div className="min-w-0">
+            <CardTitle className="text-lg">
+              <EntityIdentity
+                value={plugin.capability_ref}
+                labelClassName={!isEnabled ? "text-muted-foreground" : undefined}
+              >
+                {plugin.display_name ?? plugin.name}
+              </EntityIdentity>
             </CardTitle>
             <CardDescription className="text-sm font-mono">{plugin.name}</CardDescription>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">
           {plugin.warnings.length > 0 && (
             <Badge variant="outline" className="text-amber-600 border-amber-400 text-xs gap-1">
               <AlertTriangle className="h-3 w-3" />
@@ -605,12 +615,6 @@ function InstalledPluginCard({
                 SHA: <span className="font-mono">{truncateSha(plugin.pinned_sha)}</span>
               </span>
             )}
-          </div>
-          <div className="flex items-center gap-1 mt-1">
-            <span className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">
-              {plugin.capability_ref}
-            </span>
-            <CopyButton value={plugin.capability_ref} />
           </div>
         </div>
 

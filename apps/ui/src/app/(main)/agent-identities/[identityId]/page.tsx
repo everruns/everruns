@@ -18,7 +18,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CopyButton } from "@/components/ui/copy-button";
 import {
   Dialog,
   DialogContent,
@@ -163,10 +162,10 @@ export default function AgentIdentityDetailPage({
 
       <PageMasthead
         icon={<UserRound />}
+        entityId={identity.id}
         title={<span className={getEntityNameClassName(identity.status)}>{identity.name}</span>}
         badges={
           <>
-            <CopyButton value={identity.id} />
             <Badge variant={getEntityStatusBadgeVariant(identity.status)}>{identity.status}</Badge>
             {!isReadOnly && (
               <Badge variant="accent">

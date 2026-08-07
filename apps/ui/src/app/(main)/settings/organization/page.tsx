@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { CopyButton } from "@/components/ui/copy-button";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import {
   Dialog,
   DialogContent,
@@ -309,7 +310,11 @@ export default function OrganizationPage() {
                     readOnly
                     className="w-full font-mono text-sm bg-muted"
                   />
-                  <CopyButton value={organization?.id || currentOrg?.public_id || ""} />
+                  <CopyButton
+                    value={organization?.id || currentOrg?.public_id || ""}
+                    label={`Copy ID: ${organization?.id || currentOrg?.public_id || ""}`}
+                    kind="id"
+                  />
                 </div>
               </SettingsRow>
             </SettingsGroup>
@@ -436,7 +441,6 @@ export default function OrganizationPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Organization</TableHead>
-                    <TableHead>ID</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
@@ -447,9 +451,8 @@ export default function OrganizationPage() {
                     const isCurrent = currentOrg?.public_id === org.public_id;
                     return (
                       <TableRow key={org.public_id} data-state={isCurrent ? "selected" : undefined}>
-                        <TableCell className="font-medium">{org.name}</TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground">
-                          {org.public_id}
+                        <TableCell className="font-medium">
+                          <EntityIdentity value={org.public_id}>{org.name}</EntityIdentity>
                         </TableCell>
                         <TableCell>{ROLE_LABELS[org.role]}</TableCell>
                         <TableCell>

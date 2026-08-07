@@ -14,7 +14,6 @@ import { KnowledgeIndexFormDialog } from "@/components/knowledge-indexes/knowled
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CopyButton } from "@/components/ui/copy-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -135,10 +134,10 @@ export default function KnowledgeIndexDetailPage({
 
       <PageMasthead
         icon={<Library />}
+        entityId={index.id}
         title={<span className={getEntityNameClassName(index.status)}>{index.name}</span>}
         badges={
           <>
-            <CopyButton value={index.id} />
             <Badge variant={getEntityStatusBadgeVariant(index.status)}>{index.status}</Badge>
             <KnowledgeIndexDiagnosticBadge diagnostic={diagnostic} />
           </>

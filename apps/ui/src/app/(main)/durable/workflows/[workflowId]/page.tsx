@@ -31,7 +31,7 @@ import {
   Zap,
   MessageSquare,
 } from "lucide-react";
-import { CopyButton } from "@/components/ui/copy-button";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import Link from "next/link";
 import { formatDistanceToNow } from "@/lib/formatting";
 import { getWorkflowStatusBadgeVariant } from "@/lib/status-utils";
@@ -235,10 +235,9 @@ export default function WorkflowDetailPage({
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
             {getStatusIcon(workflow.status, "lg")}
-            <div className="flex items-center gap-2">
-              <h2 className="text-2xl font-bold">{workflow.workflow_type}</h2>
-              <CopyButton value={workflow.id} />
-            </div>
+            <h2 className="text-2xl font-bold">
+              <EntityIdentity value={workflow.id}>{workflow.workflow_type}</EntityIdentity>
+            </h2>
           </div>
           <div className="flex items-center gap-2">
             <Badge

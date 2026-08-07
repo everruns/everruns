@@ -4,7 +4,6 @@ import { use } from "react";
 import { Archive, FileText } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CopyButton } from "@/components/ui/copy-button";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { SkillDetailView } from "@/components/skills/skill-detail-view";
 import { SkillUsageRow } from "@/components/skills/skill-usage-row";
@@ -75,12 +74,12 @@ export default function SkillDetailPage({ params }: { params: Promise<{ skillId:
 
       <PageMasthead
         icon={skill.source_type === "archive" ? <Archive /> : <FileText />}
+        entityId={skill.id}
         title={
           <span className={getEntityNameClassName(skill.status)}>{getDisplayName(skill)}</span>
         }
         badges={
           <>
-            <CopyButton value={skill.id} />
             <Badge variant={getEntityStatusBadgeVariant(skill.status)}>{skill.status}</Badge>
             <Badge variant="secondary" className="text-xs">
               {skill.source_type}

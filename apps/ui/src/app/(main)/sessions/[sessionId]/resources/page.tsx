@@ -16,6 +16,7 @@ import { useSessionContext } from "../session-context";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import { formatRelativeTime } from "@/lib/formatting";
 import type { SessionResourceEntry } from "@/lib/api/types";
 
@@ -108,7 +109,9 @@ function ResourceCard({ resource }: { resource: SessionResourceEntry }) {
             {statusIcon(resource.status)}
             <div>
               <CardTitle className="text-base">
-                {resource.display_name || resource.resource_id}
+                <EntityIdentity value={resource.resource_id}>
+                  {resource.display_name || resource.resource_id}
+                </EntityIdentity>
               </CardTitle>
               <CardDescription>{resource.kind}</CardDescription>
             </div>
@@ -119,7 +122,6 @@ function ResourceCard({ resource }: { resource: SessionResourceEntry }) {
       <CardContent className="space-y-2 text-sm text-muted-foreground">
         <div className="grid gap-1">
           <div>Registered: {formatRelativeTime(resource.created_at)}</div>
-          <div className="truncate">ID: {resource.resource_id}</div>
           {statusText ? <div>Status: {statusText}</div> : null}
           {progressLine ? <div>Progress: {progressLine}</div> : null}
           {summary ? <div className="text-foreground">Summary: {summary}</div> : null}

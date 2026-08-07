@@ -35,8 +35,8 @@ import {
   Terminal,
   Shield,
 } from "lucide-react";
-import { CopyButton } from "@/components/ui/copy-button";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import {
   PageContainer,
   PageBreadcrumb,
@@ -161,12 +161,12 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
 
       <PageMasthead
         icon={<Shield />}
+        entityId={harness.id}
         title={
           <span className={getEntityNameClassName(harness.status)}>{getDisplayName(harness)}</span>
         }
         badges={
           <>
-            <CopyButton value={harness.id} />
             {harness.is_built_in && <Badge variant="outline">Built-in</Badge>}
             <Badge variant={getEntityStatusBadgeVariant(harness.status)}>{harness.status}</Badge>
           </>
@@ -330,14 +330,20 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
                   <div>
                     <p className="text-sm font-medium">Inherits From</p>
                     {parentHarness ? (
-                      <Link
-                        href={`/harnesses/${parentHarness.id}`}
-                        className="text-sm text-primary hover:underline"
+                      <EntityIdentity
+                        value={parentHarness.id}
+                        labelClassName="text-sm text-primary"
                       >
-                        {getDisplayName(parentHarness)}
-                      </Link>
+                        <Link href={`/harnesses/${parentHarness.id}`} className="hover:underline">
+                          {getDisplayName(parentHarness)}
+                        </Link>
+                      </EntityIdentity>
                     ) : (
-                      <p className="text-sm text-muted-foreground">{harness.parent_harness_id}</p>
+                      <p className="text-sm text-muted-foreground">
+                        <EntityIdentity value={harness.parent_harness_id}>
+                          {harness.parent_harness_id}
+                        </EntityIdentity>
+                      </p>
                     )}
                   </div>
                 )}

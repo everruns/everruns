@@ -9,7 +9,6 @@ import { MemoryFormDialog } from "@/components/memory/memory-form-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CopyButton } from "@/components/ui/copy-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   PageContainer,
@@ -71,17 +70,16 @@ export default function MemoryDetailPage({ params }: { params: Promise<{ memoryI
 
       <PageMasthead
         icon={<Brain />}
+        entityId={memory.id}
         title={<span className={getEntityNameClassName(memory.status)}>{memory.name}</span>}
         badges={
           <>
-            <CopyButton value={memory.id} />
             <Badge variant={getEntityStatusBadgeVariant(memory.status)}>{memory.status}</Badge>
             {memory.is_readonly && <Badge variant="secondary">Read-only</Badge>}
           </>
         }
         meta={
           <>
-            <span className="font-mono">{memory.id}</span>
             <span>
               Source <span className="text-foreground">{sourceLabel(memory)}</span>
             </span>

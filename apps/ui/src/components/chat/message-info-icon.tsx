@@ -61,7 +61,7 @@ export function MessageInfoIcon({ event, variant = "default" }: MessageInfoIconP
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
           <dt className="text-muted-foreground">{t("message_info_id")}</dt>
           <dd>
-            <CopyButton value={event.id} />
+            <CopyButton value={event.id} label={`Copy ID: ${event.id}`} kind="id" />
           </dd>
           {model && (
             <>

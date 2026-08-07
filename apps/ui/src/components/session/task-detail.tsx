@@ -22,6 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import { formatRelativeTime } from "@/lib/formatting";
 import { isTerminalTaskState } from "@/lib/api/types";
 import type { SessionTask, SessionTaskState, TaskMessage } from "@/lib/api/types";
@@ -221,7 +222,9 @@ export function TaskCard({
           <div className="flex items-center gap-2">
             <ListTodo className="h-4 w-4 text-muted-foreground" />
             <div>
-              <CardTitle className="text-base">{task.display_name || task.id}</CardTitle>
+              <CardTitle className="text-base">
+                <EntityIdentity value={task.id}>{task.display_name || task.id}</EntityIdentity>
+              </CardTitle>
               <CardDescription>
                 <Badge variant="outline">{task.kind}</Badge>
               </CardDescription>
@@ -261,7 +264,6 @@ export function TaskCard({
       <CardContent className="space-y-2 text-sm text-muted-foreground">
         <div className="grid gap-1">
           <div>Created: {formatRelativeTime(task.created_at)}</div>
-          <div className="truncate">ID: {task.id}</div>
           {task.state_detail ? <div>Status: {task.state_detail}</div> : null}
         </div>
         <TaskProgressBar task={task} />

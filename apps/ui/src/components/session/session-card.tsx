@@ -23,7 +23,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn, shortenId } from "@/lib/utils";
 import { formatRelativeTime, formatTokens } from "@/lib/formatting";
-import { CopyButton } from "@/components/ui/copy-button";
 import { useLocale } from "@/providers/locale-provider";
 import type { Session, SessionStatus, ModelWithProvider, TokenUsage } from "@/lib/api/types";
 import type { SessionExportFormat } from "@/lib/api/sessions";
@@ -114,10 +113,6 @@ function SessionInfoIcon({ session }: { session: Session }) {
       </TooltipTrigger>
       <TooltipContent className="max-w-sm">
         <div className="space-y-1 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="text-muted-foreground">ID:</span>
-            <CopyButton value={session.id} />
-          </div>
           <div className="flex gap-2">
             <span className="text-muted-foreground">Status:</span>
             <span className="capitalize">{session.status}</span>

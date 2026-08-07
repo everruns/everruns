@@ -69,7 +69,7 @@ import {
   SkipForward,
 } from "lucide-react";
 import Link from "next/link";
-import { CopyButton } from "@/components/ui/copy-button";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import { formatDistanceToNow } from "@/lib/formatting";
 import { getScheduleExecutionBadgeVariant } from "@/lib/status-utils";
 
@@ -417,9 +417,8 @@ export default function ScheduleDetailPage() {
                   className={`h-6 w-6 ${schedule.enabled ? "text-green-500" : "text-gray-400"}`}
                 />
                 <div>
-                  <CardTitle className="flex items-center gap-2">
-                    {schedule.name}
-                    <CopyButton value={schedule.id} />
+                  <CardTitle>
+                    <EntityIdentity value={schedule.id}>{schedule.name}</EntityIdentity>
                   </CardTitle>
                   {schedule.description && (
                     <CardDescription>{schedule.description}</CardDescription>

@@ -90,6 +90,7 @@ export function RecentSessions({ sessions, agents, models = [] }: RecentSessions
                   variant="row"
                   href={`/sessions/${session.id}`}
                   title={session.title || `Session ${shortenId(session.id)}`}
+                  copyValue={session.id}
                   icon={
                     isRunning(session) ? (
                       <Loader2 className="w-4 h-4 text-primary animate-spin" />

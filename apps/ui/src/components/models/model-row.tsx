@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import {
   Brain,
   Wrench,
@@ -89,7 +90,9 @@ export function ModelRow({
           />
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2 font-medium">
-              <span className="break-words">{model.display_name}</span>
+              <EntityIdentity value={model.id} truncate={false}>
+                {model.display_name}
+              </EntityIdentity>
               {model.enabled && (
                 <Badge
                   variant="outline"

@@ -75,6 +75,7 @@ import {
 } from "@/components/layout";
 import { capabilityIconMap } from "@/lib/capability-icons";
 import { pluralize } from "@/lib/formatting";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 
 const McpIcon = capabilityIconMap.mcp;
 
@@ -116,8 +117,13 @@ function McpServerRow({
         <div className="flex items-center gap-3">
           <IconTile size="md" icon={<McpIcon />} />
           <div className="min-w-0">
-            <div className={`font-medium ${getEntityNameClassName(server.status)}`}>
-              {server.name}
+            <div className="font-medium">
+              <EntityIdentity
+                value={server.id}
+                labelClassName={getEntityNameClassName(server.status)}
+              >
+                {server.name}
+              </EntityIdentity>
             </div>
             <div className="max-w-[42ch] truncate text-xs text-muted-foreground">
               {server.description || server.url}

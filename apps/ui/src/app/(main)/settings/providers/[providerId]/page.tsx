@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PageBody, PageHeader, PageShell } from "@/components/layout";
 import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { useModels, useProvider, useUpdateProvider } from "@/hooks/use-providers";
 import { usePageTitle } from "@/hooks";
@@ -102,7 +103,7 @@ export default function ProviderDetailPage({
         title={
           <>
             <ProviderIcon providerType={provider.provider_type} size="md" />
-            {provider.name}
+            <EntityIdentity value={provider.id}>{provider.name}</EntityIdentity>
             {provider.managed && (
               <Badge
                 variant="outline"

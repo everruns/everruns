@@ -14,7 +14,8 @@ import { SearchInput } from "@/components/ui/search-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
 import { CircleOff, Bot, Layers, Plus, Pencil, Puzzle } from "lucide-react";
-import { CopyButton } from "@/components/ui/copy-button";
+import { EntityCard } from "@/components/ui/entity-card";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import type { Capability, CapabilityStatus, DeclarativeCapability } from "@/lib/api/types";
 import { CapabilityIcon } from "@/lib/capability-icons";
 import {
@@ -59,18 +60,19 @@ function DeclarativeCapabilityRow({ capability }: { capability: DeclarativeCapab
   const deleteCapability = useDeleteDeclarativeCapability();
   return (
     <div className="flex items-center justify-between gap-3 border p-3">
-      <Link href={`/capabilities/declarative/${capability.id}`} className="min-w-0 flex-1 group">
-        <div className="flex items-center gap-2">
-          <p className="font-medium truncate group-hover:underline">
-            {capability.display_name ?? localizedCapabilityName(capability, locale)}
-          </p>
+      <div className="min-w-0 flex-1">
+        <div className="font-medium">
+          <EntityIdentity value={capability.capability_id}>
+            <Link href={`/capabilities/declarative/${capability.id}`} className="hover:underline">
+              {capability.display_name ?? localizedCapabilityName(capability, locale)}
+            </Link>
+          </EntityIdentity>
         </div>
         <p className="text-sm text-muted-foreground line-clamp-1">
           {localizedCapabilityDescription(capability, locale)}
         </p>
-      </Link>
+      </div>
       <div className="flex items-center gap-2 shrink-0">
-        <CopyButton value={capability.capability_id} />
         <Link href={`/capabilities/declarative/${capability.id}`}>
           <Button type="button" variant="outline" size="sm">
             <Pencil className="mr-1.5 h-3.5 w-3.5" />
@@ -111,41 +113,34 @@ function CapabilityStats({ capability }: { capability: Capability }) {
 function CapabilityCard({ capability }: { capability: Capability }) {
   const { locale } = useLocale();
   return (
-    <Link href={`/capabilities/${capability.id}`}>
-      <Card className="h-full cursor-pointer bg-background transition-colors hover:bg-card">
-        <CardHeader className="flex flex-row items-start justify-between space-y-0">
-          <div className="flex items-center gap-3 min-w-0">
-            <IconTile size="md" icon={<CapabilityIcon icon={capability.icon} />} />
-            <div className="flex items-center gap-2 min-w-0">
-              <CardTitle className="text-lg truncate">
-                {localizedCapabilityName(capability, locale)}
-              </CardTitle>
-              <CopyButton value={capability.id} />
-            </div>
-          </div>
-          <Badge variant={getCapabilityStatusBadgeVariant(capability.status)}>
-            {getStatusLabel(capability.status)}
+    <EntityCard
+      className="h-full"
+      icon={<IconTile size="md" icon={<CapabilityIcon icon={capability.icon} />} />}
+      title={localizedCapabilityName(capability, locale)}
+      href={`/capabilities/${capability.id}`}
+      copyValue={capability.id}
+      headerActions={
+        <Badge variant={getCapabilityStatusBadgeVariant(capability.status)}>
+          {getStatusLabel(capability.status)}
+        </Badge>
+      }
+    >
+      <div className="text-sm text-muted-foreground mb-3 line-clamp-3">
+        <InlineStreamdownMessage>
+          {localizedCapabilityDescription(capability, locale)}
+        </InlineStreamdownMessage>
+      </div>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        {capability.category ? (
+          <Badge variant="outline" className="text-xs">
+            {capability.category}
           </Badge>
-        </CardHeader>
-        <CardContent>
-          <div className="text-sm text-muted-foreground mb-3 line-clamp-3">
-            <InlineStreamdownMessage>
-              {localizedCapabilityDescription(capability, locale)}
-            </InlineStreamdownMessage>
-          </div>
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            {capability.category ? (
-              <Badge variant="outline" className="text-xs">
-                {capability.category}
-              </Badge>
-            ) : (
-              <span />
-            )}
-            <CapabilityStats capability={capability} />
-          </div>
-        </CardContent>
-      </Card>
-    </Link>
+        ) : (
+          <span />
+        )}
+        <CapabilityStats capability={capability} />
+      </div>
+    </EntityCard>
   );
 }
 
