@@ -81,21 +81,20 @@ export default function DashboardPage() {
     }
   };
 
+  const newSessionAction = (
+    <Button variant="accent" onClick={handleOpenNewSessionDialog} disabled={agents.length === 0}>
+      <Plus className="size-4" />
+      New session
+    </Button>
+  );
+
   const dashboardMasthead = (
     <PageMasthead
       icon={<LayoutDashboard />}
       title="Dashboard"
       description="Your agents, recent sessions, and activity at a glance."
-      actions={
-        <Button
-          variant="accent"
-          onClick={handleOpenNewSessionDialog}
-          disabled={agents.length === 0}
-        >
-          <Plus className="size-4" />
-          New session
-        </Button>
-      }
+      actions={newSessionAction}
+      compactActions={newSessionAction}
     />
   );
 

@@ -81,20 +81,25 @@ export function EarlyAccessBanner() {
   };
 
   return (
-    <div className="flex h-11 flex-none items-center gap-2.5 border-b border-[hsl(var(--accent)/0.35)] bg-[hsl(var(--accent)/0.12)] px-[18px] text-primary">
+    <div
+      data-slot="early-access-banner"
+      className="flex h-9 flex-none items-center gap-2.5 border-b border-[hsl(var(--accent)/0.35)] bg-[hsl(var(--accent)/0.12)] px-3 text-primary md:h-11 md:px-[18px]"
+    >
       <span className="inline-flex text-accent-foreground">
         <FlaskConical className="h-[15px] w-[15px]" />
       </span>
       <span className="text-[13px] tracking-[-0.01em]">
-        <strong className="font-semibold">Early access.</strong> Everruns is still stabilizing —
-        expect breaking changes and rough edges.
+        <strong className="font-semibold">Early access</strong>
+        <span className="hidden md:inline">
+          . Everruns is still stabilizing — expect breaking changes and rough edges.
+        </span>
       </span>
       <span className="flex-1" />
       <a
         href={GITHUB_URL}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 whitespace-nowrap text-[13px] font-medium text-primary hover:underline hover:underline-offset-[3px]"
+        className="hidden items-center gap-1 whitespace-nowrap text-[13px] font-medium text-primary hover:underline hover:underline-offset-[3px] md:inline-flex"
       >
         <GithubIcon className="h-[14px] w-[14px]" /> Follow along on GitHub{" "}
         <ArrowRight className="h-[13px] w-[13px]" />
