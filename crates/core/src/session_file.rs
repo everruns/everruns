@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 /// Maximum number of context lines accepted on either side of a grep match.
 pub const GREP_MAX_CONTEXT_LINES: usize = 20;
-/// Maximum text bytes returned by one contextual grep request.
+/// Maximum serialized entry bytes returned by one grep request.
 pub const GREP_MAX_RETURN_BYTES: usize = 64 * 1024;
 
 #[cfg(feature = "openapi")]
@@ -429,12 +429,8 @@ fn apply_grep_byte_budget(
     total_matches: usize,
     options: &GrepOptions,
 ) -> GrepSearchResult {
-    let bytes_total = flat.iter().map(|item| item.line.len()).sum::<usize>()
-        + blocks
-            .iter()
-            .flat_map(|block| &block.lines)
-            .map(|item| item.line.len())
-            .sum::<usize>();
+    let bytes_total = flat.iter().map(serialized_entry_len).sum::<usize>()
+        + blocks.iter().map(serialized_entry_len).sum::<usize>();
     let mut bytes_returned = 0usize;
     let mut returned_matches = 0usize;
     let mut byte_truncated = false;
@@ -443,15 +439,20 @@ fn apply_grep_byte_budget(
 
     for mut item in flat {
         let remaining = options.max_bytes.saturating_sub(bytes_returned);
-        if item.line.len() > remaining {
+        let mut item_bytes = serialized_entry_len(&item);
+        if item_bytes > remaining {
             if !returned_flat.is_empty() || remaining == 0 {
                 byte_truncated = true;
                 break;
             }
-            item.line = truncate_utf8(&item.line, remaining).to_string();
+            truncate_line_to_serialized_size(&mut item, remaining);
+            item_bytes = serialized_entry_len(&item);
             byte_truncated = true;
+            if item_bytes > remaining {
+                break;
+            }
         }
-        bytes_returned += item.line.len();
+        bytes_returned += item_bytes;
         returned_matches += 1;
         returned_flat.push(item);
         if byte_truncated {
@@ -460,29 +461,21 @@ fn apply_grep_byte_budget(
     }
 
     for mut block in blocks {
-        let block_bytes: usize = block.lines.iter().map(|item| item.line.len()).sum();
         let remaining = options.max_bytes.saturating_sub(bytes_returned);
+        let mut block_bytes = serialized_entry_len(&block);
         if block_bytes > remaining {
             if !returned_blocks.is_empty() || remaining == 0 {
                 byte_truncated = true;
                 break;
             }
-            let mut left = remaining;
-            for line in &mut block.lines {
-                if line.line.len() > left {
-                    line.line = truncate_utf8(&line.line, left).to_string();
-                    left = 0;
-                } else {
-                    left -= line.line.len();
-                }
-            }
+            truncate_block_to_serialized_size(&mut block, remaining);
+            block_bytes = serialized_entry_len(&block);
             byte_truncated = true;
+            if block_bytes > remaining {
+                break;
+            }
         }
-        bytes_returned += block
-            .lines
-            .iter()
-            .map(|item| item.line.len())
-            .sum::<usize>();
+        bytes_returned += block_bytes;
         returned_matches += block.match_line_numbers.len();
         returned_blocks.push(block);
         if byte_truncated {
@@ -500,6 +493,55 @@ fn apply_grep_byte_budget(
         bytes_total,
         next_offset: (next < total_matches).then_some(next),
         byte_truncated,
+    }
+}
+
+// Include a comma per entry so a collection of entries never exceeds the reported budget.
+fn serialized_entry_len<T: Serialize>(value: &T) -> usize {
+    serde_json::to_vec(value)
+        .expect("grep result types are always JSON serializable")
+        .len()
+        .saturating_add(1)
+}
+
+fn truncate_line_to_serialized_size(item: &mut GrepMatch, max_bytes: usize) {
+    let original = std::mem::take(&mut item.line);
+    let mut low = 0;
+    let mut high = original.len();
+    while low < high {
+        let mid = low + (high - low).div_ceil(2);
+        item.line = truncate_utf8(&original, mid).to_string();
+        if serialized_entry_len(item) <= max_bytes {
+            low = mid;
+        } else {
+            high = mid - 1;
+        }
+    }
+    item.line = truncate_utf8(&original, low).to_string();
+}
+
+fn truncate_block_to_serialized_size(block: &mut GrepContextBlock, max_bytes: usize) {
+    let originals: Vec<_> = block
+        .lines
+        .iter_mut()
+        .map(|line| std::mem::take(&mut line.line))
+        .collect();
+    for (index, original) in originals.iter().enumerate() {
+        let mut low = 0;
+        let mut high = original.len();
+        while low < high {
+            let mid = low + (high - low).div_ceil(2);
+            block.lines[index].line = truncate_utf8(original, mid).to_string();
+            if serialized_entry_len(block) <= max_bytes {
+                low = mid;
+            } else {
+                high = mid - 1;
+            }
+        }
+        block.lines[index].line = truncate_utf8(original, low).to_string();
+        if low < original.len() {
+            break;
+        }
     }
 }
 
@@ -675,5 +717,32 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![3, 4, 5]
         );
+    }
+
+    #[test]
+    fn contextual_grep_budgets_serialized_structure() {
+        let blocks = (0..1_000)
+            .map(|index| GrepContextBlock {
+                path: format!("/sparse/{index}.txt"),
+                start_line: 1,
+                end_line: 41,
+                match_line_numbers: vec![21],
+                lines: (1..=41)
+                    .map(|line_number| GrepContextLine {
+                        line_number,
+                        line: (if line_number == 21 { "x" } else { "" }).to_string(),
+                        is_match: line_number == 21,
+                    })
+                    .collect(),
+            })
+            .collect();
+        let result = apply_grep_byte_budget(Vec::new(), blocks, 1_000, &GrepOptions::default());
+        let serialized_blocks = serde_json::to_vec(&result.blocks).unwrap();
+
+        assert!(result.byte_truncated);
+        assert!(result.returned_matches < 1_000);
+        assert!(result.bytes_total > GREP_MAX_RETURN_BYTES);
+        assert!(result.bytes_returned <= GREP_MAX_RETURN_BYTES);
+        assert!(serialized_blocks.len() <= GREP_MAX_RETURN_BYTES);
     }
 }
