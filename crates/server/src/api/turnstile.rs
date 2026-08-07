@@ -1,7 +1,7 @@
 // Cloudflare Turnstile verification for the Public Chat channel.
 //
 // Turnstile is the bot-mitigation challenge enforced on anonymous Public Chat
-// access (see `specs/public-chat.md`). The client widget produces a token that
+// access (see `knowledge/integrations/public-chat.md`). The client widget produces a token that
 // is verified server-side here before any session is created or any turn runs.
 // Signed-in visitors bypass the challenge and never reach this verifier.
 //

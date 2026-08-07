@@ -8,7 +8,7 @@
 // harness) for cumulative usage and on the agent's own judgment about when and
 // how to adapt behavior.
 //
-// See specs/budgeting.md (Self-Managed vs Platform-Enforced Budgets).
+// See knowledge/security/budgeting.md (Self-Managed vs Platform-Enforced Budgets).
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};
 

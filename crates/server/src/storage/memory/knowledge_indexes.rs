@@ -1,5 +1,5 @@
 // In-memory storage: Knowledge Index + Document CRUD.
-// See specs/knowledge-indexes.md.
+// See knowledge/runtime-resources/knowledge-indexes.md.
 
 use super::super::models::*;
 use super::{InMemoryDatabase, matches_search_tokens};

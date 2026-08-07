@@ -55,7 +55,7 @@ Grounded in `crates/core/src/capabilities/guardrails.rs` and
   `{"verdict":"allow"}` / `{"verdict":"block","reason":"…"}` response
   (`run_judge_check`).
 - On `tool_use` it runs in the **pre-tool hook**; a `block` verdict refuses the
-  call and, per `specs/guardrails.md` §Runtime integration, "feeds the reason
+  call and, per `knowledge/execution/guardrails.md` §Runtime integration, "feeds the reason
   back to the model (which can self-correct)." That is exactly the screenshot:
   block the secret-echoing compare → model retries as a hash compare.
 - It is **value-agnostic**: the policy prompt describes the *class* of thing to
@@ -117,7 +117,7 @@ exact, in-process backstop that fails *closed*:
   valid on all three stages, matching via Aho-Corasick (linear, no backtracking,
   same DoS posture as the existing blocklist/regex matchers).
 - Value source: `session_storage`'s `secret_store` — the encrypted, session-scoped
-  namespaced-secret store (`ns` table, AES-256-GCM per `specs/encryption.md`),
+  namespaced-secret store (`ns` table, AES-256-GCM per `knowledge/security/encryption.md`),
   which already holds MCP OAuth tokens (`mcp_oauth_ns_name`), sandbox state, and
   user API keys. Optionally auto-enroll high-entropy values seen at `tool_output`.
 - New **`redact`** action (mask the matched span) alongside `block`/`log`, so the

@@ -8,7 +8,7 @@ then have a Data Analyst agent answer a question that depends on that curated
 knowledge — grounding its SQL and interpretation in the imported entries.
 
 This is the headline demo for OKF support and the basis for the announcement
-walkthrough/recording. See specs/okf-adoption.md and the
+walkthrough/recording. See knowledge/runtime-resources/okf-adoption.md and the
 [Share knowledge with OKF](../../../docs/how-to/share-knowledge-with-okf.md) guide.
 
 ## Preconditions

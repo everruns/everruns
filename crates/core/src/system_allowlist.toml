@@ -6,7 +6,7 @@
 # it ships with the binary and is reviewed by maintainers.
 #
 # Organized into named groups so it stays manageable. Pattern format matches the
-# NetworkAccessList rules (see specs/network-access.md):
+# NetworkAccessList rules (see knowledge/operations/network-access.md):
 #   - example.com            exact domain (any port/path)
 #   - *.example.com          domain and all subdomains (apex included)
 #   - https://example.com/x/ URL prefix (scheme + host + path)

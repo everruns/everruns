@@ -1338,7 +1338,7 @@ impl Tool for SpawnBackgroundTool {
         let log_path = format!("{artifact_dir}/output.log");
         let result_path = format!("{artifact_dir}/result.json");
 
-        // Create the session task tracking this run (specs/session-tasks.md).
+        // Create the session task tracking this run (knowledge/runtime-resources/session-tasks.md).
         // task_registry is guaranteed Some above.
         let (task_id, task_attempt): (Option<String>, i32) = match task_registry
             .create(crate::session_task::CreateSessionTask {

@@ -214,7 +214,7 @@ def validate_plugin(config):
                     f"{label} {host_label} plugin must declare {key!r}: {value!r} "
                     f"to keep all hosts pointing at the same shared payload "
                     f"(got {plugin.get(key)!r}). "
-                    "See specs/everruns-dev-plugin.md."
+                    "See knowledge/integrations/everruns-dev-plugin.md."
                 )
 
     shared_keys = ("author", "homepage", "repository", "license", "keywords")
@@ -223,7 +223,7 @@ def validate_plugin(config):
             raise SystemExit(
                 f"{label} plugin {key!r} drifted between Claude and Codex "
                 "manifests. Keep them identical. "
-                "See specs/everruns-dev-plugin.md."
+                "See knowledge/integrations/everruns-dev-plugin.md."
             )
 
     cursor_shared_keys = ("homepage", "repository", "license", "keywords")
@@ -232,7 +232,7 @@ def validate_plugin(config):
             raise SystemExit(
                 f"{label} cursor plugin {key!r} drifted from the Claude "
                 "manifest. Keep them identical. "
-                "See specs/everruns-dev-plugin.md."
+                "See knowledge/integrations/everruns-dev-plugin.md."
             )
 
     if cursor.get("author", {}).get("name") != claude.get("author", {}).get("name"):
@@ -240,7 +240,7 @@ def validate_plugin(config):
             f"{label} cursor plugin author.name drifted from the Claude "
             "manifest. Cursor manifests cannot share the full author object "
             "(schema rejects `author.url`); keep `author.name` aligned. "
-            "See specs/everruns-dev-plugin.md."
+            "See knowledge/integrations/everruns-dev-plugin.md."
         )
 
     codex_desc = codex.get("description")
@@ -249,21 +249,21 @@ def validate_plugin(config):
     if not codex_desc or not claude_desc or not cursor_desc:
         raise SystemExit(
             f"Every {label} plugin.json must declare a non-empty "
-            "'description'. See specs/everruns-dev-plugin.md."
+            "'description'. See knowledge/integrations/everruns-dev-plugin.md."
         )
 
     if not description_matches(codex_desc, claude_desc, " from Codex"):
         raise SystemExit(
             f"{label} description drifted between Claude and Codex manifests. "
             "Codex may insert ' from Codex' exactly once; otherwise the wording "
-            "must match. See specs/everruns-dev-plugin.md."
+            "must match. See knowledge/integrations/everruns-dev-plugin.md."
         )
 
     if not description_matches(cursor_desc, claude_desc, " from Cursor"):
         raise SystemExit(
             f"{label} description drifted between Claude and Cursor manifests. "
             "Cursor may insert ' from Cursor' exactly once; otherwise the wording "
-            "must match. See specs/everruns-dev-plugin.md."
+            "must match. See knowledge/integrations/everruns-dev-plugin.md."
         )
 
     skill = (plugin_dir / "skills" / name / "SKILL.md").read_text()

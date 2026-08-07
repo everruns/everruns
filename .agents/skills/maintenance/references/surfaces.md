@@ -8,19 +8,19 @@ Every workspace crate and pnpm package — CLI, server, worker, integrations, UI
 current versions, with major bumps applied rather than deferred indefinitely.
 
 - Run `cargo outdated` (or `cargo search` per crate) and `pnpm outdated` during any
-  release-readiness or dependency-scoped pass, even with no advisory outstanding. `specs/maintenance.md`
+  release-readiness or dependency-scoped pass, even with no advisory outstanding. `knowledge/project/maintenance.md`
   records the current `cargo outdated` tooling caveat and the pnpm release-age floor.
 - Apply and test major upgrades when the migration path is clear; document the blocker when it is not.
 - Flag deprecated crates/packages with a replacement, and check for unused dependencies
   (`cargo udeps` or manual review).
 - Update lockfiles intentionally.
 
-## Specs and docs alignment
+## Knowledge and docs alignment
 
 Docs describe current intent and constraints without drifting into code duplication: changed
-behavior reflected in `specs/`, `apps/docs/`, OpenAPI, or examples; stale or duplicated spec detail
-replaced by links to source. Follow the spec hygiene rules in `specs/README.md` and
-`specs/maintenance.md`.
+behavior reflected in `knowledge/`, `apps/docs/`, OpenAPI, or examples; stale or duplicated
+knowledge replaced by links to source. Follow the maintenance rules in
+`knowledge/knowledge-contract.md` and `knowledge/project/maintenance.md`.
 
 ## Feature completeness across surfaces
 
@@ -29,7 +29,7 @@ Features that look shipped in one surface are connected and consistent in the ot
 - UI affordances call real backend APIs and handle loading, errors, auth, and refresh
 - backend features intended for agents or automation are exposed through MCP/app surfaces
 - CLI commands and flags match current API semantics
-- docs, specs, examples, tests, and manual test cases do not claim behavior the product lacks
+- docs, knowledge, examples, tests, and manual test cases do not claim behavior the product lacks
 
 Fix locally, or record the missing surface, user impact, and next action.
 

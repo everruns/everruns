@@ -1,4 +1,4 @@
-//! Transport abstraction over MCP connections (specs/runtime-mcp.md D2).
+//! Transport abstraction over MCP connections (knowledge/integrations/runtime-mcp.md D2).
 //!
 //! A [`McpTransport`] speaks JSON-RPC against one logical server and returns
 //! parsed results, so result/content mapping is shared across transports. The

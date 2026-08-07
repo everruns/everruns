@@ -1,4 +1,4 @@
-// Provider entity types (specs/providers.md)
+// Provider entity types (knowledge/foundations/providers.md)
 //
 // A Provider is an org-scoped instance of a driver: a configured vendor
 // account (credentials, endpoint) that powers services like chat. DriverId

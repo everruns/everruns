@@ -272,7 +272,7 @@ pub struct TextContentPart {
     /// Claim-level citations attached to spans of `text`.
     ///
     /// The narrow render contract shared by all citation capabilities (see
-    /// `specs/citations.md`). Empty for non-cited text, so the wire shape of
+    /// `knowledge/runtime-resources/citations.md`). Empty for non-cited text, so the wire shape of
     /// existing messages is unchanged.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub annotations: Vec<TextAnnotation>,
@@ -298,7 +298,7 @@ impl TextContentPart {
 /// The single shared type across every citation capability: a text span linked
 /// to a source. Producers agree only on this render contract — each capability
 /// keeps its own richer representation (e.g. `KnowledgeIndexCitation`) and maps
-/// into this envelope at emit time. See `specs/citations.md`.
+/// into this envelope at emit time. See `knowledge/runtime-resources/citations.md`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct TextAnnotation {

@@ -1,4 +1,4 @@
-// Pluggable opaque-blob backend (specs/object-storage.md).
+// Pluggable opaque-blob backend (knowledge/runtime-resources/object-storage.md).
 //
 // The default deployment stores file/image bytes inline in PostgreSQL. When an
 // S3-compatible object store is configured, the *bytes* move to the object
@@ -53,7 +53,7 @@ pub trait BlobStore: Send + Sync {
     /// applied by the implementation is stripped back off), so the result is
     /// directly comparable to the keys callers store in the sidecar pointer
     /// tables. Used by the blob garbage collector to reconcile bucket contents
-    /// against PostgreSQL pointers (`specs/object-storage.md`).
+    /// against PostgreSQL pointers (`knowledge/runtime-resources/object-storage.md`).
     ///
     /// Backends with no external objects (none today — only the object_store
     /// backend implements `BlobStore`) may return an empty list.
@@ -103,7 +103,7 @@ const META_RECOVERY_KEY: &str = "everruns-recovery";
 /// owners, sizes, hashes) after a metadata-store loss. It is only visible to
 /// holders of the bucket credentials (the control plane), who can already read
 /// the bytes and the key, so it adds no exposure beyond what already exists.
-/// See `specs/object-storage.md`.
+/// See `knowledge/runtime-resources/object-storage.md`.
 #[derive(Debug, Clone)]
 pub struct BlobMetadata {
     /// Object kind: `workspace_file` | `image` | `image_thumbnail`.

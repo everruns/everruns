@@ -569,7 +569,7 @@ pub trait SessionFileSystem: Send + Sync {
     /// Implementations compile the content pattern once before scanning and
     /// return an error for invalid regex. Basename-only globs match at any
     /// depth. Non-glob path filters retain legacy substring matching; see
-    /// `specs/file-store.md`.
+    /// `knowledge/runtime-resources/file-store.md`.
     async fn grep_files(
         &self,
         session_id: SessionId,
@@ -623,7 +623,7 @@ pub trait SessionFileSystem: Send + Sync {
 /// session's `workspace_id`, and all downstream capability/tool access then
 /// addresses the attached workspace rather than the session's own keyspace. For
 /// the default 1:1 session the key equals the session id, so the wrapper is a
-/// transparent pass-through. See `specs/workspace.md`.
+/// transparent pass-through. See `knowledge/runtime-resources/workspace.md`.
 pub struct WorkspaceScopedFileSystem {
     inner: Arc<dyn SessionFileSystem>,
     key: SessionId,
@@ -947,7 +947,7 @@ pub struct SecretInfo {
 /// - Use in-memory storage for testing
 ///
 /// A single ranked hit from a Knowledge Base search. Public-id surface only;
-/// no internal UUIDs. See specs/knowledge-bases.md and specs/okf-adoption.md.
+/// no internal UUIDs. See knowledge/runtime-resources/knowledge-bases.md and knowledge/runtime-resources/okf-adoption.md.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct KnowledgeSearchHit {
     /// Entry public id (`kbe_…`).
@@ -1117,7 +1117,7 @@ pub trait SessionScheduleStore: Send + Sync {
 ///
 /// Capabilities register resources here (sandboxes, subagents, browser sessions).
 /// Agents query it ("what's running?"), infrastructure scans it for cleanup.
-/// See `specs/session-resources.md`.
+/// See `knowledge/runtime-resources/session-resources.md`.
 #[async_trait]
 pub trait SessionResourceRegistry: Send + Sync {
     /// Register a resource (or update if resource_id already exists for this session).
@@ -1811,7 +1811,7 @@ pub struct ToolContext {
     /// `WorkspaceId::from_uuid(session_id.uuid())`; for a shared workspace it
     /// differs. File-system tools MUST key by this (via `workspace_fs_key`)
     /// rather than `session_id` so shared-workspace sessions read/write the
-    /// attached workspace's files. See specs/workspace.md.
+    /// attached workspace's files. See knowledge/runtime-resources/workspace.md.
     pub workspace_id: WorkspaceId,
 
     /// Optional file store for filesystem operations
@@ -1877,7 +1877,7 @@ pub struct ToolContext {
     pub session_resource_registry: Option<Arc<dyn SessionResourceRegistry>>,
 
     /// Optional session task registry — background work owned by the session
-    /// (specs/session-tasks.md).
+    /// (knowledge/runtime-resources/session-tasks.md).
     pub session_task_registry: Option<Arc<dyn crate::session_task::SessionTaskRegistry>>,
 
     /// Optional event emitter for tools that need to stream progress updates.
@@ -2557,7 +2557,7 @@ use crate::events::{Event, EventRequest};
 /// - Log events for debugging
 ///
 /// Events follow a consistent schema: id, type, ts, context, data.
-/// See specs/events.md for the full event protocol specification.
+/// See knowledge/execution/events.md for the full event protocol specification.
 #[async_trait]
 pub trait EventEmitter: Send + Sync {
     /// Emit an event request

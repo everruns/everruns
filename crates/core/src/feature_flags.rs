@@ -51,7 +51,7 @@ pub struct FeatureFlags {
     pub observers: bool,
     /// Public Chat (isolated, public-facing chat web app + `public_chat`
     /// channel). Experimental. Gates the public endpoints, channel creation,
-    /// the builder UI, and the public web route. See `specs/public-chat.md`.
+    /// the builder UI, and the public web route. See `knowledge/integrations/public-chat.md`.
     pub public_chat: bool,
     /// First-party MCP server endpoint (`POST /mcp`) and OAuth-minted MCP tokens.
     /// Experimental remote-control surface; requires both deployment enablement
@@ -59,7 +59,7 @@ pub struct FeatureFlags {
     pub mcp_endpoint: bool,
     /// Browser-native WebMCP tools exposed by the authenticated Everruns UI.
     /// Experimental remote-control surface; requires deployment enablement and
-    /// per-org opt-in. See `specs/webmcp.md`.
+    /// per-org opt-in. See `knowledge/ui/webmcp.md`.
     pub webmcp: bool,
 }
 
@@ -309,7 +309,7 @@ pub struct InternalFeatureFlags {
     /// through `PaymentAuthority`. Disabled by default on all envs, including dev,
     /// because spend is irreversible. Enable via `FEATURE_MACHINE_PAYMENTS=true`.
     pub machine_payments: bool,
-    /// Experimental sandboxed Lua execution capability (`specs/lua-execution.md`).
+    /// Experimental sandboxed Lua execution capability (`knowledge/execution/lua-execution.md`).
     /// Disabled by default; requires the `lua` cargo feature to be compiled in to
     /// actually run scripts. Enable via `FEATURE_LUA=true`.
     pub lua: bool,

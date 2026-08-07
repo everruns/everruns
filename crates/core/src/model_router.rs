@@ -1,6 +1,6 @@
 // Model Router domain types
 //
-// Design intent lives in `specs/model-router.md`.
+// Design intent lives in `knowledge/integrations/model-router.md`.
 //
 // A Model Router is an org-scoped, named container of named routes. Each
 // route picks a concrete LLM model via a strategy and a list of candidates;
@@ -52,7 +52,7 @@ impl From<&str> for ModelRouterStatus {
     }
 }
 
-/// Selection strategy for a route. See `specs/model-router.md` for behavior.
+/// Selection strategy for a route. See `knowledge/integrations/model-router.md` for behavior.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]

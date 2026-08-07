@@ -11,7 +11,7 @@
 // Non-OpenRouter providers ignore the routing config entirely, so enabling this
 // capability on a non-OpenRouter agent is a harmless no-op.
 //
-// See specs/llm-drivers.md ("OpenRouter Server Tools") and
+// See knowledge/foundations/llm-drivers.md ("OpenRouter Server Tools") and
 // https://openrouter.ai/docs/guides/features/server-tools.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus, SystemPromptContext};

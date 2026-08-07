@@ -21,7 +21,7 @@ impl Database {
         // Attach to an existing workspace when requested; otherwise auto-create
         // a default workspace whose primary key equals the session's id. That
         // equality invariant lets existing app code that uses session.id as the
-        // file-store key keep working unchanged. See specs/workspace.md.
+        // file-store key keep working unchanged. See knowledge/runtime-resources/workspace.md.
         let workspace_id = input.workspace_id.unwrap_or(session_id);
 
         let mut tx = self.pool.begin().await?;
@@ -169,7 +169,7 @@ impl Database {
 
         tx.commit().await?;
 
-        // Reporting outbox enqueue is best-effort (see specs/reporting.md).
+        // Reporting outbox enqueue is best-effort (see knowledge/evaluation/reporting.md).
         // The canonical session row is durable; no reconciler exists yet
         // (tracked separately), so on failure the corresponding fact will
         // remain stale until reconciliation lands or the session row is
@@ -196,7 +196,7 @@ impl Database {
     }
 
     /// Record fork provenance on an already-created session
-    /// (specs/forking-sessions.md). Set in a dedicated update so the normal
+    /// (knowledge/runtime-resources/forking-sessions.md). Set in a dedicated update so the normal
     /// `create_session` path and its many call sites stay untouched.
     pub async fn set_session_fork_lineage(
         &self,

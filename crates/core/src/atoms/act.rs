@@ -476,7 +476,7 @@ where
 
     /// Add capability-contributed pre-tool-use hooks. Pre-hooks fire before
     /// each tool call and can mutate or block it; see
-    /// `act_hooks::PreToolUseHook` and `specs/user-hooks.md`.
+    /// `act_hooks::PreToolUseHook` and `knowledge/runtime-resources/user-hooks.md`.
     pub fn with_pre_tool_hooks(mut self, hooks: Vec<Arc<dyn act_hooks::PreToolUseHook>>) -> Self {
         self.pre_tool_hooks.extend(hooks);
         self

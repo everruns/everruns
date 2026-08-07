@@ -174,7 +174,7 @@ impl Command for CreateKnowledgeIndex {
         let source_type = validate_source_type(self.source_type.as_deref())?;
         let embedding_model_id = require_embedding_model(ctx, self.embedding_model_id).await?;
         // Assign the vector-store namespace at creation; it is org-prefixed and
-        // never reused. See specs/knowledge-indexes.md#multitenancy-and-naming.
+        // never reused. See knowledge/runtime-resources/knowledge-indexes.md#multitenancy-and-naming.
         let public_id = KnowledgeIndexId::new().to_string();
         let vector_namespace = index_namespace(ctx.org_id(), &public_id);
         let input = CreateKnowledgeIndexRow {
@@ -281,7 +281,7 @@ impl Command for UpdateKnowledgeIndexCmd {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
-        // Archived indexes are read-only per specs/models.md lifecycle contract.
+        // Archived indexes are read-only per knowledge/foundations/models.md lifecycle contract.
         if existing.status != "active" {
             return Err(CommandError::bad_request(
                 "Knowledge index is archived; restore it before updating",

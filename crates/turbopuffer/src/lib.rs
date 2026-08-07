@@ -561,7 +561,7 @@ mod tests {
     /// Live test: hits the real Turbopuffer API. Gated behind the
     /// `turbopuffer-live-tests` feature so it never runs in the default suite.
     /// When the feature is on but `TURBOPUFFER_API_KEY` is missing/empty the
-    /// test fails closed (panics), per specs/integrations.md parity.
+    /// test fails closed (panics), per knowledge/integrations/integrations.md parity.
     #[cfg(feature = "turbopuffer-live-tests")]
     #[tokio::test]
     async fn live_roundtrip() {

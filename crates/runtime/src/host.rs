@@ -266,7 +266,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     }
 
     /// MCP executor routing `mcp_*` tool calls for this session, if the host
-    /// configures MCP (specs/runtime-mcp.md D4). Default: `None`, so hosts
+    /// configures MCP (knowledge/integrations/runtime-mcp.md D4). Default: `None`, so hosts
     /// without scoped MCP servers keep the plain tool registry unchanged.
     async fn mcp_executor(
         &self,
@@ -526,7 +526,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     // capability hooks can persist or compact it into secondary surfaces.
     post_tool_hooks.sort_by_key(|hook| hook.priority());
 
-    // User-hook contributions (see `specs/user-hooks.md`). `finalize_specs_from_configs`
+    // User-hook contributions (see `knowledge/runtime-resources/user-hooks.md`). `finalize_specs_from_configs`
     // gathers specs across every resolved capability — both the user-facing
     // `user_hooks` capability and any capability that bundles hooks — and applies
     // `finalize_hook_specs` (namespace stamping, stable ids, `disabled_contributions`
@@ -1152,7 +1152,7 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
         });
     }
 
-    // user_prompt_submit hook (see `specs/user-hooks.md`). Fires once per turn,
+    // user_prompt_submit hook (see `knowledge/runtime-resources/user-hooks.md`). Fires once per turn,
     // on the first reason iteration, before the LLM is consulted — the closest
     // choke point to "inbound user message accepted, before reason" that both
     // the in-process loop and the durable worker share. A `Block` aborts the
@@ -1444,10 +1444,10 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     // everything that introspects the registry (spawn_background, tool_search,
     // openai_tool_search namespaces, ...). The turn's tool definitions already
     // include the discovered MCP tools, so no re-discovery is needed; the host's
-    // MCP executor supplies execution (specs/runtime-mcp.md D5).
+    // MCP executor supplies execution (knowledge/integrations/runtime-mcp.md D5).
     // The MCP invoker is reused below for the guardrails `mcp` check, which
     // delegates a guardrail decision to an external endpoint over the same
-    // scoped-MCP client/auth (specs/guardrails.md).
+    // scoped-MCP client/auth (knowledge/execution/guardrails.md).
     let mut mcp_invoker: Option<Arc<dyn everruns_core::McpToolInvoker>> = None;
     if let Some(mcp) = adapter.mcp_executor(org_id, input.context.session_id).await {
         let invoker: Arc<dyn everruns_core::McpToolInvoker> = mcp;

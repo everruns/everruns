@@ -1,6 +1,6 @@
 // MCP server connection info.
 //
-// Spec: specs/mcp-servers.md (execution detail), specs/runtime-mcp.md (D5).
+// Spec: knowledge/integrations/mcp-servers.md (execution detail), knowledge/integrations/runtime-mcp.md (D5).
 //
 // The transport-agnostic MCP client (discovery, tools/call, SSE parsing, SSRF)
 // now lives in the shared `everruns-mcp` crate. This module only carries the

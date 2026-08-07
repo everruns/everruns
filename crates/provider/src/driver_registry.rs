@@ -1678,8 +1678,8 @@ pub enum EmbeddingsDriverError {
 /// Driver trait for text embedding services.
 ///
 /// Implementors call their provider's embedding API and return dense float
-/// vectors. Used by knowledge-base hybrid retrieval (see specs/knowledge-bases.md
-/// and specs/providers.md phase 6).
+/// vectors. Used by knowledge-base hybrid retrieval (see knowledge/runtime-resources/knowledge-bases.md
+/// and knowledge/foundations/providers.md phase 6).
 #[async_trait]
 pub trait EmbeddingsDriver: Send + Sync {
     /// Embed a batch of texts and return one vector per input.
@@ -1706,7 +1706,7 @@ pub type EmbeddingsDriverFactory =
 /// provider metadata) and returns a boxed driver.
 pub type DriverFactory = Arc<dyn Fn(&DriverConfig) -> BoxedChatDriver + Send + Sync>;
 
-/// A typed service a provider driver can offer (see specs/providers.md).
+/// A typed service a provider driver can offer (see knowledge/foundations/providers.md).
 ///
 /// Declared in code by each driver, never stored in the database. Only `Chat`
 /// has a driver trait today; the set is additive and new kinds gain factories
@@ -1745,7 +1745,7 @@ impl std::fmt::Display for ServiceKind {
 /// browser instead of pasting an API key. The flow always yields a long-lived
 /// credential that lands in `providers.credentials_encrypted`, exactly like a
 /// hand-entered key — so runtime resolution is unchanged and non-admin users
-/// are unaffected (see specs/providers.md "OAuth provider connection").
+/// are unaffected (see knowledge/foundations/providers.md "OAuth provider connection").
 ///
 /// Only OpenRouter's PKCE flavor exists today. Adding OAuth to another driver
 /// means a new variant here (which the server matches on) plus a
@@ -1792,7 +1792,7 @@ impl DriverOAuthConfig {
 /// shape its providers must supply, and per-service factories.
 ///
 /// The descriptor is the code-side unit of the providers domain model
-/// (specs/providers.md): one descriptor per driver id, instantiated as many
+/// (knowledge/foundations/providers.md): one descriptor per driver id, instantiated as many
 /// org-scoped providers.
 #[derive(Clone)]
 pub struct DriverDescriptor {

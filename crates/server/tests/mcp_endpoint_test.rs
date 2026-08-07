@@ -397,7 +397,7 @@ async fn test_mcp_tools_list() {
     assert!(names.contains(&"discover"), "Missing discover");
     assert!(names.contains(&"query"), "Missing query");
     assert!(names.contains(&"execute"), "Missing execute");
-    // Card tools (specs/mcp-cards.md) only exposed under 2025-06-18.
+    // Card tools (knowledge/ui/mcp-cards.md) only exposed under 2025-06-18.
     assert!(names.contains(&"agent_get_card"), "Missing agent_get_card");
 
     // Verify each tool has inputSchema
@@ -506,7 +506,7 @@ async fn test_mcp_tools_list_fallback_omits_2025_06_fields() {
     assert_eq!(agent_run["annotations"]["openWorldHint"], true);
 
     // Card tools require 2025-06-18 features and must not be advertised
-    // under the fallback protocol. See specs/mcp-cards.md.
+    // under the fallback protocol. See knowledge/ui/mcp-cards.md.
     let card_names: Vec<&str> = tools
         .iter()
         .filter_map(|t| t["name"].as_str())

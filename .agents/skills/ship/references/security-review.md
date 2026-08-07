@@ -7,7 +7,7 @@ risk is not a reason to skip it. Purely docs, comment, spec, or test-only change
 ## 1. Identify the threat surface
 
 Read `git diff origin/main...HEAD` and map it to the categories in
-[`specs/threat-model.md`](../../../../specs/threat-model.md) — auth (`TM-AUTH`), authorization
+[`knowledge/security/threat-model.md`](../../../../knowledge/security/threat-model.md) — auth (`TM-AUTH`), authorization
 (`TM-AUTHZ`), API surface (`TM-API`), tools and MCP (`TM-TOOL`), prompts and provider keys
 (`TM-LLM`), tenancy (`TM-TENANT`), filesystem (`TM-FS`), SQL (`TM-SQL`), sandboxed execution
 (`TM-BASH`), frontend (`TM-WEB`), and resource exhaustion (`TM-DOS`). The spec is the current list;
@@ -26,7 +26,7 @@ verify the mitigation still holds. If it opens new surface, add a marker.
 
 ## 4. Update the threat model
 
-Update `specs/threat-model.md` when the change introduces a genuinely new threat or materially
+Update `knowledge/security/threat-model.md` when the change introduces a genuinely new threat or materially
 changes a mitigation. Small changes at trust boundaries often qualify.
 
 ## 5. Document it

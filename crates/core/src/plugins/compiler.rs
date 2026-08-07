@@ -1,7 +1,7 @@
 // Plugin compiler: PluginFileSet → CompiledPlugin
 //
 // Maps plugin directory components to a DeclarativeCapabilityDefinition per
-// the table in specs/plugins.md.
+// the table in knowledge/integrations/plugins.md.
 
 use std::collections::BTreeMap;
 
@@ -36,7 +36,7 @@ pub struct CompiledPlugin {
 /// Compile a `PluginFileSet` into a `CompiledPlugin`.
 ///
 /// Maps each plugin component to the corresponding capability contribution per
-/// the component-mapping table in `specs/plugins.md`. Errors are returned when
+/// the component-mapping table in `knowledge/integrations/plugins.md`. Errors are returned when
 /// compilation cannot produce a valid `DeclarativeCapabilityDefinition`.
 pub fn compile_plugin(file_set: &PluginFileSet) -> Result<CompiledPlugin, String> {
     let (manifest, mut warnings) = file_set.manifest()?;
@@ -153,7 +153,7 @@ fn sanitize_plugin_name(name: &str) -> Result<String, String> {
 /// Render agent files into a combined system prompt.
 ///
 /// Each `.md` file under `agents/` (or the manifest-overridden path) is
-/// rendered as a named `<agent>` XML section per specs/xml-prompt-formatting.md.
+/// rendered as a named `<agent>` XML section per knowledge/project/xml-prompt-formatting.md.
 fn compile_agents(
     file_set: &PluginFileSet,
     manifest: &PluginManifest,
@@ -465,7 +465,7 @@ fn compile_mcp_servers(
         // A plugin must never bind to an existing OAuth provider — that would
         // let third-party plugin content read tokens connected for other
         // providers (e.g. github). The host assigns the provider id at
-        // install time (see specs/plugins.md).
+        // install time (see knowledge/integrations/plugins.md).
         if server_config.get("oauth_provider_id").is_some() {
             warnings.push(format!(
                 "MCP server '{server_name}': 'oauth_provider_id' cannot be set by a plugin and will be ignored"

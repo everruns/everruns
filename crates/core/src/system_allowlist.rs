@@ -10,7 +10,7 @@
 //! one of the groups, in addition to (and independently of) the
 //! per-agent/session [`NetworkAccessList`]. Host-owned services do not use this
 //! boundary. It is disabled by default, so the default behavior is unchanged.
-//! See `specs/system-allowlist.md`.
+//! See `knowledge/operations/system-allowlist.md`.
 
 use crate::network_access::NetworkAccessList;
 use serde::Deserialize;

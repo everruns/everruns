@@ -185,7 +185,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         // Session filesystem routes (under /v1/sessions/{session_id}/fs)
         // are intentionally omitted from the OpenAPI doc. They remain wired
         // for backward compatibility but are deprecated; the documented
-        // surface is /v1/workspaces/{workspace_id}/fs. See specs/workspace.md.
+        // surface is /v1/workspaces/{workspace_id}/fs. See knowledge/runtime-resources/workspace.md.
         // Session Git
         api::session_git::commit,
         api::session_git::log,

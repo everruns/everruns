@@ -1,4 +1,4 @@
-// Background runner for agent health checks (specs/agent-checks.md, tier-3).
+// Background runner for agent health checks (knowledge/evaluation/agent-checks.md, tier-3).
 //
 // Reuses the session + message services to run each generated case as a real
 // session, then scores it with deterministic checks plus an LLM judge. Results

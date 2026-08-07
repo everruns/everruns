@@ -28,7 +28,7 @@ pub const DEFAULT_MAX_SCHEDULES_PER_ORG: i64 = 100;
 /// Each fire dispatches a real worker turn, so on open-signup deployments a
 /// `* * * * *` (every-minute) cron is a sustained amplifier of operator compute.
 /// This is the session-schedule sibling of the app `schedule` channel's
-/// `SCHEDULE_CHANNEL_MIN_INTERVAL_SECONDS` (see `specs/app-invocation-channels.md`).
+/// `SCHEDULE_CHANNEL_MIN_INTERVAL_SECONDS` (see `knowledge/integrations/app-invocation-channels.md`).
 pub fn min_interval_seconds() -> i64 {
     std::env::var("SESSION_SCHEDULE_MIN_INTERVAL_SECONDS")
         .ok()
@@ -116,7 +116,7 @@ pub enum ScheduleLimitError {
 /// per-session cap, per-org cap, and minimum recurring cron interval. Pass the
 /// recurring `cron_expression` (None for one-shot schedules, which skip the
 /// interval gate). Each fire dispatches a real worker turn, so these bound
-/// operator compute on open-signup deployments (see `specs/threat-model.md`
+/// operator compute on open-signup deployments (see `knowledge/security/threat-model.md`
 /// TM-SCHED-001).
 pub async fn validate_schedule_create_limits<T: crate::traits::SessionScheduleStore + ?Sized>(
     store: &T,

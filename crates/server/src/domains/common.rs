@@ -1,7 +1,7 @@
 // Domain command infrastructure.
 //
 // The Command trait, CommandError, CommandContext (Ctx), and inventory-based
-// dispatch. See specs/domains.md for the full pattern spec.
+// dispatch. See knowledge/foundations/domains.md for the full pattern spec.
 
 use crate::storage::StorageBackend;
 use axum::Json;
@@ -24,7 +24,7 @@ use crate::api::common::{AllowedAction, ErrorResponse};
 // ============================================================================
 
 /// Stable, lower-snake-case category for a command failure. The token set is
-/// part of the public MCP contract (see `specs/domains.md` "Structured
+/// part of the public MCP contract (see `knowledge/foundations/domains.md` "Structured
 /// dispatch errors"); do not rename or drop tokens without a spec update.
 #[derive(Debug, thiserror::Error)]
 pub enum CommandErrorKind {
@@ -51,7 +51,7 @@ pub enum CommandErrorKind {
 /// adapter (`From<CommandError> for (StatusCode, Json<ErrorResponse>)`)
 /// propagates every extension. MCP `execute` keeps emitting
 /// `<kind>: <message>` for bashkit compatibility; surfacing extensions over
-/// MCP is a planned additive extension (see `specs/domains.md`).
+/// MCP is a planned additive extension (see `knowledge/foundations/domains.md`).
 #[derive(Debug)]
 pub struct CommandError {
     pub kind: CommandErrorKind,
@@ -345,9 +345,9 @@ pub struct Ctx {
     /// calls (e.g. plugin sync/fetch from GitHub or a URL source).
     pub egress_service: Option<Arc<dyn EgressService>>,
     /// System utility LLM for sanctioned internal analysis tasks
-    /// (specs/utility-llm.md). Not a user-configurable model surface.
+    /// (knowledge/operations/utility-llm.md). Not a user-configurable model surface.
     pub utility_llm_service: Option<Arc<dyn everruns_core::UtilityLlmService>>,
-    /// Agent health check service (specs/agent-checks.md, tier-3).
+    /// Agent health check service (knowledge/evaluation/agent-checks.md, tier-3).
     pub health_check_service: Option<Arc<crate::domains::agents::AgentHealthCheckService>>,
     /// Per-org/per-user resource caps enforced in create paths (harnesses,
     /// agents, sessions). Resolved from env so SaaS plan overrides apply across
