@@ -23,8 +23,7 @@ jest.mock("@/hooks/use-user-preferences", () => ({
 import { EarlyAccessBanner } from "@/components/layout/early-access-banner";
 
 function getBanner(): HTMLElement | null {
-  // The banner row carries the fixed 44px height; its absence means no shell gap.
-  return document.querySelector(".h-11");
+  return document.querySelector('[data-slot="early-access-banner"]');
 }
 
 beforeEach(() => {
@@ -39,7 +38,19 @@ describe("EarlyAccessBanner (EVE-794)", () => {
     render(<EarlyAccessBanner />);
 
     expect(getBanner()).not.toBeNull();
-    expect(screen.getByText("Early access.")).toBeInTheDocument();
+    expect(screen.getByText("Early access")).toBeInTheDocument();
+  });
+
+  it("collapses to the short label on small screens", () => {
+    preferenceData = null;
+    render(<EarlyAccessBanner />);
+
+    expect(getBanner()).toHaveClass("h-9", "md:h-11");
+    expect(screen.getByText(/Everruns is still stabilizing/)).toHaveClass("hidden", "md:inline");
+    expect(screen.getByRole("link", { name: /Follow along on GitHub/i })).toHaveClass(
+      "hidden",
+      "md:inline-flex",
+    );
   });
 
   it("does not render during loading when the local cache says dismissed", () => {
