@@ -539,6 +539,7 @@ impl SessionFileSystem for DbSessionFileStore {
                 session_id.uuid(),
                 pattern,
                 path_pattern,
+                None,
                 GREP_MAX_FILE_BYTES,
             )
             .await
@@ -601,6 +602,7 @@ impl SessionFileSystem for DbSessionFileStore {
                 session_id.uuid(),
                 pattern,
                 options.path_pattern.as_deref(),
+                None,
                 GREP_MAX_FILE_BYTES,
             )
             .await

@@ -520,6 +520,8 @@ impl Command for GrepWorkspaceFiles {
                 GrepInput {
                     pattern: self.req.pattern,
                     path_pattern: self.req.path_pattern,
+                    excluded_path_prefix: (!access.user_memory_allowed)
+                        .then(|| q::USER_MEMORY_MOUNT_PATH.to_string()),
                 },
             )
             .await
@@ -531,11 +533,8 @@ impl Command for GrepWorkspaceFiles {
                     q::classify_storage(error)
                 }
             })?;
-        // Non-owners must not see matches under the private `/memory/user`
-        // subtree. Redact those results (consistent with recursive `list`)
-        // instead of failing the whole scan, so workspace-wide grep stays
-        // available to callers that can't be resolved as the session owner
-        // (e.g. no-auth/dev deployments).
+        // Defense in depth: storage already excludes private memory before
+        // matching or scan accounting, but keep response redaction here too.
         let results = if access.user_memory_allowed {
             results
         } else {

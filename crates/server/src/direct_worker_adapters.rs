@@ -1241,7 +1241,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 .map(everruns_core::session_path::GrepPathPattern::new)
                 .transpose()
                 .unwrap_or(None);
-            let virtual_matches = registry.grep(&session_id, &regex, None, 512 * 1024);
+            let virtual_matches = registry.grep(&session_id, &regex, None, None, 512 * 1024);
             matches.extend(
                 virtual_matches
                     .into_iter()

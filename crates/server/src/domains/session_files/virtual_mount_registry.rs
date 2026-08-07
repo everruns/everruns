@@ -129,6 +129,7 @@ impl VirtualMountRegistry {
         session_id: &Uuid,
         pattern: &regex::Regex,
         path_filter: Option<&str>,
+        excluded_path_prefix: Option<&str>,
         max_file_bytes: usize,
     ) -> Vec<VirtualGrepMatch> {
         let mut results = Vec::new();
@@ -138,6 +139,11 @@ impl VirtualMountRegistry {
         };
         for mount in session_mounts {
             for (file_path, file) in mount.tree.all_files() {
+                if excluded_path_prefix.is_some_and(|prefix| {
+                    file_path == prefix || file_path.starts_with(&format!("{prefix}/"))
+                }) {
+                    continue;
+                }
                 // TM-DOS-008: skip virtual files exceeding the per-file size cap.
                 if file.content.len() > max_file_bytes {
                     continue;
@@ -360,7 +366,7 @@ mod tests {
         registry.register(sid, "/docs".into(), Arc::new(tree), "cap".into());
 
         let pattern = regex::Regex::new("find me").unwrap();
-        let results = registry.grep(&sid, &pattern, None, usize::MAX);
+        let results = registry.grep(&sid, &pattern, None, None, usize::MAX);
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].line_number, 2);
         assert_eq!(results[0].line, "find me");
