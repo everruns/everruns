@@ -191,8 +191,8 @@ export const ToolGroupNode = memo(function ToolGroupNode({
         {d.tools.map((tool) => {
           const failed = tool.status === "error" || tool.status === "timeout" || !tool.success;
           const pending = tool.status === "pending";
-          const input = formatToolDetail(tool.arguments);
-          const output = formatToolDetail(tool.error ?? tool.resultText);
+          const input = formatToolDetail(tool.arguments, tool.name);
+          const output = formatToolDetail(tool.error ?? tool.resultText, tool.name);
           const hasDetails = input.length > 0 || output.length > 0;
 
           return (
