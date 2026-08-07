@@ -1,7 +1,7 @@
 // User-defined lifecycle hooks: session and turn events.
 //
 // Two trait families bridge the four non-tool `HookEvent`s to runtime firing
-// points (see `specs/user-hooks.md`):
+// points (see `knowledge/runtime-resources/user-hooks.md`):
 //
 // - `SessionLifecycleHook` — `session_start` / `session_end`. Advisory only;
 //   a hook failure is logged and never aborts the session.

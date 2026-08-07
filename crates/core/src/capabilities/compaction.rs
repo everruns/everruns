@@ -2,7 +2,7 @@
 //!
 //! Configurable context compaction strategy. Users choose between native provider
 //! compaction (e.g., OpenAI /responses/compact) and our own strategies (observation
-//! masking, LLM summarization). See specs/compaction.md.
+//! masking, LLM summarization). See knowledge/runtime-resources/compaction.md.
 //!
 //! Design decisions:
 //! - Strategy selection is per-agent/harness via `AgentCapabilityConfig`
@@ -119,6 +119,14 @@ pub struct CostControlConfig {
     /// If cumulative/session usage is available, mask when cache read ratio falls below this.
     #[serde(default = "default_cost_control_min_cache_read_ratio")]
     pub min_cache_read_ratio: f32,
+
+    /// Consider durable compaction once raw tool-result history exceeds this many bytes.
+    #[serde(default = "default_cost_control_compact_after_tool_result_bytes")]
+    pub compact_after_tool_result_bytes: usize,
+
+    /// Do not cost-trigger durable compaction for a smaller current prompt.
+    #[serde(default = "default_cost_control_compact_min_input_tokens")]
+    pub compact_min_input_tokens: usize,
 }
 
 impl Default for CostControlConfig {
@@ -130,6 +138,8 @@ impl Default for CostControlConfig {
             max_live_tool_result_bytes: default_cost_control_max_live_tool_result_bytes(),
             max_uncached_input_tokens: default_cost_control_max_uncached_input_tokens(),
             min_cache_read_ratio: default_cost_control_min_cache_read_ratio(),
+            compact_after_tool_result_bytes: default_cost_control_compact_after_tool_result_bytes(),
+            compact_min_input_tokens: default_cost_control_compact_min_input_tokens(),
         }
     }
 }
@@ -156,6 +166,14 @@ fn default_cost_control_max_uncached_input_tokens() -> u32 {
 
 fn default_cost_control_min_cache_read_ratio() -> f32 {
     0.35
+}
+
+fn default_cost_control_compact_after_tool_result_bytes() -> usize {
+    256 * 1024
+}
+
+fn default_cost_control_compact_min_input_tokens() -> usize {
+    8 * 1024
 }
 
 /// Summarization settings.
@@ -524,6 +542,29 @@ pub fn should_compact_proactively(
     estimated > budget
 }
 
+/// Check whether cumulative prompt cost or raw tool evidence warrants a durable checkpoint.
+///
+/// The marginal prompt floor prevents a large lifetime counter from compacting
+/// every short follow-up. Checkpoint suffix re-arming and retry watermarks remain
+/// owned by the reason atom, so this predicate is pure and restart-safe.
+pub fn should_compact_for_cost(
+    estimated_input_tokens: usize,
+    raw_tool_result_bytes: usize,
+    config: &CompactionConfig,
+    prior_usage: Option<&TokenUsage>,
+) -> bool {
+    if !config.proactive
+        || !config.cost_control.enabled
+        || estimated_input_tokens < config.cost_control.compact_min_input_tokens
+    {
+        return false;
+    }
+
+    let cumulative_uncached_input = prior_usage.map_or(0, |usage| usage.input_tokens);
+    cumulative_uncached_input >= config.cost_control.max_uncached_input_tokens
+        || raw_tool_result_bytes >= config.cost_control.compact_after_tool_result_bytes
+}
+
 // ============================================================================
 // Aggressive Trim (last resort in cascade)
 // ============================================================================
@@ -821,7 +862,7 @@ use crate::driver_registry::{LlmContentPart, LlmMessage, LlmMessageContent, LlmM
 /// degrade agent behavior when masked, summarized, or trimmed. The agentskills.io
 /// client implementation guide recommends exempting skill content from pruning.
 ///
-/// See: specs/compaction.md (Tier 3: tool-aware masking), specs/skills-registry.md
+/// See: knowledge/runtime-resources/compaction.md (Tier 3: tool-aware masking), knowledge/project/skills-registry.md
 const PROTECTED_TOOL_NAMES: &[&str] = &["activate_skill"];
 
 /// Check if a tool result message corresponds to a protected tool.
@@ -1145,6 +1186,16 @@ fn message_tool_result_len(message: &Message) -> usize {
         .map(estimate_json_value_len)
         .unwrap_or(0)
         + result.error.as_ref().map_or(0, String::len)
+}
+
+/// Aggregate raw tool-result payload bytes without allocating or overflowing.
+pub fn total_tool_result_bytes(messages: &[Message]) -> usize {
+    messages
+        .iter()
+        .filter(|message| message.role == MessageRole::ToolResult)
+        .fold(0usize, |total, message| {
+            total.saturating_add(message_tool_result_len(message))
+        })
 }
 
 fn mask_tool_result_message(message: &Message, tool_name: &str) -> Message {
@@ -2783,6 +2834,44 @@ mod tests {
             ..Default::default()
         };
         assert!(!should_compact_proactively(&messages, &config, 1000));
+    }
+
+    #[test]
+    fn test_should_compact_for_cumulative_uncached_cost() {
+        let config = CompactionConfig::default();
+        let usage = TokenUsage::new(config.cost_control.max_uncached_input_tokens, 0);
+
+        assert!(should_compact_for_cost(
+            config.cost_control.compact_min_input_tokens,
+            0,
+            &config,
+            Some(&usage),
+        ));
+    }
+
+    #[test]
+    fn test_should_compact_for_raw_tool_result_bytes() {
+        let config = CompactionConfig::default();
+
+        assert!(should_compact_for_cost(
+            config.cost_control.compact_min_input_tokens,
+            config.cost_control.compact_after_tool_result_bytes,
+            &config,
+            None,
+        ));
+    }
+
+    #[test]
+    fn test_should_not_cost_compact_below_marginal_prompt_floor() {
+        let config = CompactionConfig::default();
+        let usage = TokenUsage::new(u32::MAX, 0);
+
+        assert!(!should_compact_for_cost(
+            config.cost_control.compact_min_input_tokens - 1,
+            usize::MAX,
+            &config,
+            Some(&usage),
+        ));
     }
 
     // ====================================================================

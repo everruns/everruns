@@ -9,7 +9,7 @@
 // EvalTarget::Session mirrors CreateSessionRequest params; EvalTarget::App references a deployed app.
 // EvalCaseResult stores both a live reference and a frozen snapshot for reproducibility.
 //
-// See specs/evals.md for full specification.
+// See knowledge/evaluation/evals.md for full specification.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -318,7 +318,7 @@ pub enum Scorer {
         #[serde(default = "default_weight")]
         weight: f64,
     },
-    /// Citation faithfulness: the answer's citations (see `specs/citations.md`)
+    /// Citation faithfulness: the answer's citations (see `knowledge/runtime-resources/citations.md`)
     /// must cover the claim and be verified as supported. Scored from the
     /// `TextAnnotation`s on the final message — pair with the
     /// `citation_verification` capability so verdicts are present.
@@ -338,7 +338,7 @@ pub enum Scorer {
     },
     /// Citation faithfulness judged by an LLM: each cited claim/source pair is
     /// graded by a model, so the eval works even without the
-    /// `citation_verification` capability. See `specs/citations.md`.
+    /// `citation_verification` capability. See `knowledge/runtime-resources/citations.md`.
     CitationJudged {
         /// Rubric override; a citation-faithfulness rubric is used when absent.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -594,7 +594,7 @@ pub struct EvalRun {
 }
 
 // ============================================
-// Eval Run Dataset (async dataset export — specs/dataset-export.md)
+// Eval Run Dataset (async dataset export — knowledge/evaluation/dataset-export.md)
 // ============================================
 
 /// Status of an async dataset export.

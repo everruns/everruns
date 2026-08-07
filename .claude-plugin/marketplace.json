@@ -10,7 +10,7 @@
       "name": "everruns-dev",
       "source": "./plugins/everruns-dev",
       "description": "Interact with the Everruns(Dev) managed harnesses platform. Manage harnesses, agents, and capabilities. Run agentic sessions. Create and deploy agentic applications.",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "author": {
         "name": "Everruns",
         "url": "https://everruns.com"
@@ -31,7 +31,7 @@
       "name": "everruns",
       "source": "./plugins/everruns",
       "description": "Interact with the Everruns managed harnesses platform. Manage harnesses, agents, and capabilities. Run agentic sessions. Create and deploy agentic applications.",
-      "version": "0.1.5",
+      "version": "0.1.6",
       "author": {
         "name": "Everruns",
         "url": "https://everruns.com"
@@ -52,7 +52,7 @@
       "name": "resend",
       "source": "./plugins/resend",
       "description": "Send transactional emails through the Resend remote MCP server with OAuth.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "Everruns",
         "url": "https://everruns.com"

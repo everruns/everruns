@@ -89,7 +89,7 @@ fn sqldb_error_to_result(err: SessionSqlDbError) -> ToolExecutionResult {
 /// `sql_query` does not support in-place offset resume: if the result set
 /// exceeds the row/byte cap, the caller must paginate via `LIMIT`/`OFFSET`
 /// or narrow the `WHERE`. That fallback is documented in
-/// `specs/session-sqldb.md`. The envelope therefore uses `without_resume`
+/// `knowledge/runtime-resources/session-sqldb.md`. The envelope therefore uses `without_resume`
 /// when truncated.
 fn shape_sql_query_response(
     database: &str,

@@ -323,7 +323,7 @@ fn normalize_and_validate_channel_config(
         ChannelType::Fcp | ChannelType::Slack | ChannelType::Schedule | ChannelType::Webhook => {
             // FCP deliberately runs its own minimal auth stack (anonymous +
             // shared bearer token) so it never shares verifier code with
-            // AG-UI/A2A. See `specs/fcp-channel.md`.
+            // AG-UI/A2A. See `knowledge/integrations/fcp-channel.md`.
             if channel_config.get("auth").is_some() {
                 return Err(CommandError::bad_request(
                     "App endpoint auth is only supported for AG-UI and A2A channels",
@@ -1092,7 +1092,7 @@ fn build_schedule_target_input(app: &App, channel: &AppChannel) -> Value {
 /// (`crates/server/src/api/slack_events.rs`) ingress paths; the rest of the
 /// keys (`app_channel_id`, `app_channel_type`, `source`) are specific to the
 /// schedule / webhook / A2A invocation channels documented in
-/// `specs/app-invocation-channels.md` and are not emitted by AG-UI or Slack.
+/// `knowledge/integrations/app-invocation-channels.md` and are not emitted by AG-UI or Slack.
 ///
 /// `_app_id` is the system-id consumed by `is_ag_ui_app_image` for AG-UI
 /// image authorization and by the matching system-id assertions in the

@@ -225,7 +225,7 @@ export interface FindingLocation {
   end?: number;
 }
 
-/** Advisory finding from agent config checks (specs/agent-checks.md) */
+/** Advisory finding from agent config checks (knowledge/evaluation/agent-checks.md) */
 export interface AgentFinding {
   /** Stable rule identifier, e.g. "prompt.duplicate_paragraphs" */
   rule_id: string;
@@ -278,7 +278,7 @@ export interface HealthCheckSummary {
   total_output_tokens: number;
 }
 
-/** A behavioral health-check run (specs/agent-checks.md, tier-3) */
+/** A behavioral health-check run (knowledge/evaluation/agent-checks.md, tier-3) */
 export interface HealthCheckRun {
   id: string;
   agent_id?: string;
@@ -787,6 +787,8 @@ export interface FeatureFlags {
   public_chat: boolean;
   /** First-party MCP server endpoint (`POST /mcp`). Experimental. */
   mcp_endpoint: boolean;
+  /** Browser-native tools exposed by the authenticated Everruns UI. Experimental. */
+  webmcp: boolean;
 }
 
 export interface OrgFeatureFlagSetting {
@@ -1991,7 +1993,7 @@ export interface EvalCaseResult {
   updated_at: string;
 }
 
-// Read-only share links (see specs/evals.md, specs/public-endpoints.md).
+// Read-only share links (see knowledge/evaluation/evals.md, knowledge/execution/public-endpoints.md).
 export interface EvalRunShareLink {
   token: string;
   token_prefix: string;
@@ -2522,7 +2524,7 @@ export interface ReasonThinkingCompletedData {
  *
  * Carries provider-supplied opaque reasoning artifacts plus curated summary
  * text. Plaintext hidden chain-of-thought is intentionally not persisted on
- * this event — see specs/events.md.
+ * this event — see knowledge/execution/events.md.
  */
 export interface ReasonItemData {
   turn_id: string;
@@ -2753,6 +2755,7 @@ export interface KnowledgeIndex {
   source_config: Record<string, unknown>;
   embedding_model_id: string;
   vector_dim?: number | null;
+  document_count: number;
   status: KnowledgeIndexStatus;
   sync_status: KnowledgeIndexSyncStatus;
   last_synced_at?: string | null;
@@ -2813,13 +2816,13 @@ export type McpServerAuthMode = "none" | "api_key" | "oauth";
 export type McpServerStatus = "active" | "disabled" | "archived" | "deleted";
 
 /**
- * MCP protocol-era adoption policy.
- * - `auto`: probe and adapt (legacy/current/RC) — the default.
- * - `legacy`: pin 2025-03-26 (stateful handshake + session id).
- * - `stable`: pin 2025-06-18 (stateful handshake + session id).
- * - `rc`: pin 2026-07-28 stateless (no handshake).
+ * MCP protocol-era adoption policy. Pinned values are the spec version dates.
+ * - `auto`: probe and adapt across every era — the default.
+ * - `2025-03-26`: stateful handshake + session id.
+ * - `2025-06-18`: stateful handshake + session id.
+ * - `2026-07-28`: stateless (no handshake).
  */
-export type McpProtocolMode = "auto" | "legacy" | "stable" | "rc";
+export type McpProtocolMode = "auto" | "2025-03-26" | "2025-06-18" | "2026-07-28";
 
 /** MCP Server configuration */
 export interface McpServer {
@@ -2970,7 +2973,7 @@ export type ContentPart =
   | {
       type: "text";
       text: string;
-      /** Claim-level citations attached to spans of `text` (see specs/citations.md). */
+      /** Claim-level citations attached to spans of `text` (see knowledge/runtime-resources/citations.md). */
       annotations?: import("./schema-types").TextAnnotation[];
     }
   | {
@@ -3258,7 +3261,7 @@ export interface PaymentAttempt {
 
 // From legacy plugin-types.ts; retained as UI compatibility over generated OpenAPI schemas.
 // Plugin Marketplace and Installed Plugin types
-// See specs/plugins.md for the data model and API sketch.
+// See knowledge/integrations/plugins.md for the data model and API sketch.
 // ============================================
 // Marketplace types
 // ============================================
@@ -3336,7 +3339,7 @@ export type InstalledPluginWarning = string;
 /** An installed plugin (compiled into the capability registry) */
 export interface InstalledPlugin {
   id: string;
-  /** Kebab-case plugin name; capability ref is `plugin:{name}` */
+  /** Kebab-case plugin name used for display and discovery */
   name: string;
   display_name: string | null;
   description: string | null;
@@ -3345,7 +3348,7 @@ export interface InstalledPlugin {
   pinned_sha: string | null;
   /** Name of the marketplace this was installed from */
   marketplace: string | null;
-  /** Capability reference: `plugin:{name}` */
+  /** Stable capability reference: `plugin:{install_id}` */
   capability_ref: string;
   status: InstalledPluginStatus;
   /** Install-time warnings for unsupported plugin components */
@@ -3381,7 +3384,8 @@ export type DriverId =
   | "gemini"
   | "bedrock"
   | "mai"
-  | "fireworks";
+  | "fireworks"
+  | "meta";
 
 export type ProviderStatus = "active" | "disabled";
 
@@ -3393,6 +3397,7 @@ export type ModelVendor =
   | "nvidia"
   | "qwen"
   | "microsoft"
+  | "meta"
   | "minimax"
   | "moonshot"
   | "xai"
@@ -3418,6 +3423,8 @@ export interface Provider {
   base_url?: string;
   api_key_set: boolean;
   status: ProviderStatus;
+  /** Whether this provider is host-managed (read-only to org admins). */
+  managed: boolean;
   created_at: string;
   updated_at: string;
   /** Resolved trace/observability link configuration (driver defaults + overrides). */

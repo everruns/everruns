@@ -45,6 +45,20 @@ export interface EntityCardProps {
   className?: string;
 }
 
+export function EntityCardIdentifier({ value, className }: { value: string; className?: string }) {
+  return (
+    <div
+      data-slot="entity-card-identifier"
+      className={cn("flex min-w-0 max-w-full items-center gap-1.5", className)}
+    >
+      <span className="min-w-0 truncate font-mono text-xs text-muted-foreground" title={value}>
+        {value}
+      </span>
+      <CopyButton value={value} className="shrink-0" />
+    </div>
+  );
+}
+
 function EntityCardTitleLink({
   href,
   className,
@@ -99,7 +113,7 @@ export function EntityCard({
               >
                 {title}
               </EntityCardTitleLink>
-              {copyValue && <CopyButton value={copyValue} />}
+              {copyValue && <CopyButton value={copyValue} className="shrink-0" />}
               {inlineBadges}
             </div>
             {children}
@@ -115,14 +129,14 @@ export function EntityCard({
   return (
     <Card className={cn("bg-background transition-colors hover:bg-card", className)}>
       <CardHeader className="flex flex-row items-start justify-between space-y-0">
-        <div className="flex min-w-0 items-start gap-3">
+        <div data-slot="entity-card-heading" className="flex min-w-0 flex-1 items-start gap-3">
           {icon && <div className="flex-shrink-0">{icon}</div>}
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <div className="flex items-center gap-2">
-              <CardTitle className={cn("text-lg", titleClassName)}>
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <div className="flex min-w-0 items-center gap-2">
+              <CardTitle className={cn("min-w-0 flex-1 truncate text-lg", titleClassName)}>
                 <EntityCardTitleLink href={href}>{title}</EntityCardTitleLink>
               </CardTitle>
-              {copyValue && <CopyButton value={copyValue} />}
+              {copyValue && <CopyButton value={copyValue} className="shrink-0" />}
             </div>
             {subtitle && <div className="min-w-0">{subtitle}</div>}
           </div>

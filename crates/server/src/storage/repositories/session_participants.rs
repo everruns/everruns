@@ -17,11 +17,11 @@ impl Database {
             r#"
             INSERT INTO session_participants (
                 id, org_id, session_id, kind, agent_id, agent_version_id,
-                principal_id, role, joined_at
+                principal_id, display_name, role, joined_at
             )
-            VALUES (uuidv7(), $1, $2, $3, $4, $5, $6, $7, $8)
+            VALUES (uuidv7(), $1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING id, org_id, session_id, kind, agent_id, agent_version_id,
-                      principal_id, role, joined_at, left_at, created_at, updated_at
+                      principal_id, display_name, role, joined_at, left_at, created_at, updated_at
             "#,
         )
         .bind(input.org_id)
@@ -30,6 +30,7 @@ impl Database {
         .bind(input.agent_id.map(|id| id.uuid()))
         .bind(input.agent_version_id.map(|id| id.uuid()))
         .bind(input.principal_id)
+        .bind(input.display_name)
         .bind(input.role.to_string())
         .bind(joined_at)
         .fetch_one(&self.pool)
@@ -55,19 +56,24 @@ impl Database {
             r#"
             INSERT INTO session_participants (
                 id, org_id, session_id, kind, agent_id, agent_version_id,
-                principal_id, role, joined_at
+                principal_id, display_name, role, joined_at
             )
-            VALUES (uuidv7(), $1, $2, 'user', NULL, NULL, $3, 'member', $4)
+            VALUES (uuidv7(), $1, $2, 'user', NULL, NULL, $3, $4, 'member', $5)
             ON CONFLICT (session_id, principal_id)
                 WHERE kind = 'user' AND left_at IS NULL
-            DO UPDATE SET updated_at = NOW()
+            DO UPDATE SET display_name = COALESCE(
+                              NULLIF(EXCLUDED.display_name, ''),
+                              session_participants.display_name
+                          ),
+                          updated_at = NOW()
             RETURNING id, org_id, session_id, kind, agent_id, agent_version_id,
-                      principal_id, role, joined_at, left_at, created_at, updated_at
+                      principal_id, display_name, role, joined_at, left_at, created_at, updated_at
             "#,
         )
         .bind(input.org_id)
         .bind(input.session_id.uuid())
         .bind(input.principal_id)
+        .bind(input.display_name)
         .bind(joined_at)
         .fetch_one(&self.pool)
         .await
@@ -82,7 +88,7 @@ impl Database {
         sqlx::query_as::<_, SessionParticipantRow>(
             r#"
             SELECT id, org_id, session_id, kind, agent_id, agent_version_id,
-                   principal_id, role, joined_at, left_at, created_at, updated_at
+                   principal_id, display_name, role, joined_at, left_at, created_at, updated_at
             FROM session_participants
             WHERE org_id = $1 AND session_id = $2
             ORDER BY joined_at ASC, created_at ASC, id ASC
@@ -110,7 +116,7 @@ impl Database {
                 updated_at = NOW()
             WHERE org_id = $1 AND session_id = $2 AND id = $3
             RETURNING id, org_id, session_id, kind, agent_id, agent_version_id,
-                      principal_id, role, joined_at, left_at, created_at, updated_at
+                      principal_id, display_name, role, joined_at, left_at, created_at, updated_at
             "#,
         )
         .bind(org_id)

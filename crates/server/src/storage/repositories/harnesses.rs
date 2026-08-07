@@ -103,7 +103,7 @@ impl Database {
     }
 
     /// Look up the owning org for a harness by its public_id, without scoping
-    /// to a caller-supplied org. See specs/multitenancy.md (Cross-Org Resource
+    /// to a caller-supplied org. See knowledge/security/multitenancy.md (Cross-Org Resource
     /// Resolution). Gating by membership happens at the resolver endpoint.
     pub async fn get_harness_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
         let Ok(id) = public_id.parse::<HarnessId>() else {

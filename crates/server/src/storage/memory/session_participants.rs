@@ -20,6 +20,7 @@ impl InMemoryDatabase {
                 agent_id: Some(agent_id),
                 agent_version_id: session.agent_version_id,
                 principal_id: session.owner_principal_id,
+                display_name: None,
                 role: SessionParticipantRole::Host.to_string(),
                 joined_at: session.created_at,
                 left_at: None,
@@ -28,6 +29,16 @@ impl InMemoryDatabase {
             })?;
         }
 
+        let display_name = session
+            .resolved_owner_user_id
+            .and_then(|user_id| {
+                self.users
+                    .read()
+                    .get(&user_id)
+                    .map(|user| user.name.trim().to_string())
+            })
+            .filter(|name| !name.is_empty())
+            .unwrap_or_else(|| "User".to_string());
         self.insert_session_participant_unchecked(SessionParticipantRow {
             id: SessionParticipantId::new(),
             org_id: session.org_id,
@@ -36,6 +47,7 @@ impl InMemoryDatabase {
             agent_id: None,
             agent_version_id: None,
             principal_id: session.owner_principal_id,
+            display_name: Some(display_name),
             role: SessionParticipantRole::Member.to_string(),
             joined_at: session.created_at,
             left_at: None,
@@ -62,6 +74,7 @@ impl InMemoryDatabase {
             agent_id: input.agent_id,
             agent_version_id: input.agent_version_id,
             principal_id: input.principal_id,
+            display_name: input.display_name,
             role: input.role.to_string(),
             joined_at,
             left_at: None,
@@ -85,20 +98,33 @@ impl InMemoryDatabase {
             bail!("active user participant upsert requires a user member shape");
         }
 
-        if let Some(existing) = self
-            .session_participants
-            .read()
-            .values()
-            .find(|row| {
-                row.org_id == input.org_id
-                    && row.session_id == input.session_id
-                    && row.kind == SessionParticipantKind::User.to_string()
-                    && row.principal_id == input.principal_id
-                    && row.left_at.is_none()
-            })
-            .cloned()
-        {
-            return Ok(existing);
+        let existing_id = {
+            self.session_participants
+                .read()
+                .values()
+                .find(|row| {
+                    row.org_id == input.org_id
+                        && row.session_id == input.session_id
+                        && row.kind == SessionParticipantKind::User.to_string()
+                        && row.principal_id == input.principal_id
+                        && row.left_at.is_none()
+                })
+                .map(|row| row.id)
+        };
+        if let Some(existing_id) = existing_id {
+            let mut participants = self.session_participants.write();
+            let existing = participants
+                .get_mut(&existing_id)
+                .expect("participant exists");
+            if input
+                .display_name
+                .as_ref()
+                .is_some_and(|name| !name.is_empty())
+            {
+                existing.display_name = input.display_name;
+                existing.updated_at = Self::now();
+            }
+            return Ok(existing.clone());
         }
 
         self.validate_session_participant(&input)?;
@@ -113,6 +139,7 @@ impl InMemoryDatabase {
             agent_id: None,
             agent_version_id: None,
             principal_id: input.principal_id,
+            display_name: input.display_name,
             role: SessionParticipantRole::Member.to_string(),
             joined_at,
             left_at: None,

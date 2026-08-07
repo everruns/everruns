@@ -393,16 +393,50 @@ impl ProactiveTestRig {
         }
     }
 
-    async fn execute(&self, previous_response_id: Option<&str>) -> everruns_core::Result<()> {
+    async fn execute(
+        &self,
+        previous_response_id: Option<&str>,
+    ) -> everruns_core::Result<everruns_core::atoms::ReasonResult> {
         self.execute_with_checkpoint_store(previous_response_id, self.checkpoint_store.clone())
             .await
+    }
+
+    async fn configure_cost_pressure(&self, messages: Vec<Message>) {
+        use everruns_core::AgentCapabilityConfig;
+        use everruns_core::capabilities::COMPACTION_CAPABILITY_ID;
+        use everruns_core::traits::SessionStore;
+
+        self.message_retriever
+            .seed(self.session_id.into(), messages)
+            .await;
+        let mut session = self
+            .session_store
+            .get_session(self.session_id.into())
+            .await
+            .unwrap()
+            .unwrap();
+        session.usage = Some(everruns_core::TokenUsage::new(100_000, 1_000));
+        session.capabilities = vec![AgentCapabilityConfig::with_config(
+            COMPACTION_CAPABILITY_ID,
+            json!({
+                "strategy": "native",
+                "proactive": true,
+                "budget_percent": 0.85,
+                "cost_control": {
+                    "max_uncached_input_tokens": 100_000,
+                    "compact_min_input_tokens": 1_000,
+                    "compact_after_tool_result_bytes": 1_000_000
+                }
+            }),
+        )];
+        self.session_store.add_session(session).await;
     }
 
     async fn execute_with_checkpoint_store(
         &self,
         previous_response_id: Option<&str>,
         checkpoint_store: Arc<dyn everruns_core::CompactionCheckpointStore>,
-    ) -> everruns_core::Result<()> {
+    ) -> everruns_core::Result<everruns_core::atoms::ReasonResult> {
         let atom = ReasonAtom::new(
             self.harness_store.clone(),
             self.agent_store.clone(),
@@ -424,7 +458,6 @@ impl ProactiveTestRig {
             iteration: 1,
         })
         .await
-        .map(|_| ())
     }
 }
 
@@ -631,6 +664,54 @@ impl everruns_core::ChatDriver for FlakyStreamDriver {
         Ok(Box::pin(stream::iter(vec![
             Ok(everruns_core::LlmStreamEvent::TextDelta(
                 "Recovered after retry.".to_string(),
+            )),
+            Ok(everruns_core::LlmStreamEvent::Done(Box::new(
+                everruns_core::LlmCompletionMetadata {
+                    total_tokens: Some(8),
+                    prompt_tokens: Some(5),
+                    completion_tokens: Some(3),
+                    model: Some(config.model.clone()),
+                    finish_reason: Some("stop".to_string()),
+                    ..Default::default()
+                },
+            ))),
+        ])))
+    }
+}
+
+/// EVE-806: stalls the stream (emits nothing) on the first attempt so the
+/// ReasonAtom's liveness watchdog fires, then recovers with a normal completion
+/// on the retry. `max_stalls` bounds how many leading attempts stall — set it
+/// beyond the retry budget to prove repeated stalls stay bounded and error out.
+#[derive(Clone, Debug)]
+struct StallingStreamDriver {
+    attempts: Arc<AtomicUsize>,
+    max_stalls: usize,
+    /// Number of request messages seen on each attempt, so tests can prove the
+    /// retry re-issues the same request without injecting artificial history.
+    seen_message_counts: Arc<Mutex<Vec<usize>>>,
+}
+
+#[async_trait]
+impl everruns_core::ChatDriver for StallingStreamDriver {
+    async fn chat_completion_stream(
+        &self,
+        messages: Vec<everruns_core::LlmMessage>,
+        config: &everruns_core::LlmCallConfig,
+    ) -> everruns_core::Result<everruns_core::LlmResponseStream> {
+        self.seen_message_counts.lock().await.push(messages.len());
+        let attempt = self.attempts.fetch_add(1, Ordering::SeqCst);
+
+        if attempt < self.max_stalls {
+            // A stream that never yields a token: the watchdog must abort it.
+            return Ok(Box::pin(stream::pending::<
+                everruns_core::Result<everruns_core::LlmStreamEvent>,
+            >()));
+        }
+
+        Ok(Box::pin(stream::iter(vec![
+            Ok(everruns_core::LlmStreamEvent::TextDelta(
+                "Recovered after stall.".to_string(),
             )),
             Ok(everruns_core::LlmStreamEvent::Done(Box::new(
                 everruns_core::LlmCompletionMetadata {
@@ -916,11 +997,14 @@ async fn native_compact_retry_reuses_ordered_opaque_output_without_previous_resp
         .await
         .clone()
         .expect("compact request should be captured");
-    assert!(compact_request.input.is_empty());
-    assert_eq!(
-        compact_request.previous_response_id.as_deref(),
-        Some("resp_before_compaction")
-    );
+    assert!(compact_request.previous_response_id.is_none());
+    assert_eq!(compact_request.input.len(), 1);
+    assert!(matches!(
+        &compact_request.input[0],
+        everruns_core::CompactInputItem::Message { role, content }
+            if role == "user"
+                && matches!(content, everruns_core::CompactContent::Text(text) if text == "latest delta")
+    ));
 
     let public_events = serde_json::to_string(&event_emitter.events().await).unwrap();
     assert!(!public_events.contains("encrypted-compact-context"));
@@ -1139,6 +1223,173 @@ async fn proactive_native_compaction_installs_checkpoint_at_reason_entry_point()
         !serde_json::to_string(&events)
             .unwrap()
             .contains("proactive-opaque-payload")
+    );
+}
+
+#[tokio::test]
+async fn cumulative_cost_compacts_below_window_budget_and_preserves_raw_history() {
+    let rig = ProactiveTestRig::new(
+        DriverId::external("openai-codex-cost-pressure"),
+        1_000_000,
+        (10_000, 100),
+        false,
+        false,
+    )
+    .await;
+    let mut trajectory = vec![Message::user(
+        "Find the decisive evidence and complete the task without losing it.",
+    )];
+    for index in 0..12 {
+        let call_id = format!("call_{index}");
+        trajectory.push(Message::assistant_with_tools(
+            "",
+            vec![ToolCall {
+                id: call_id.clone(),
+                name: "read_file".to_string(),
+                arguments: json!({ "path": format!("evidence/{index}.txt") }),
+            }],
+        ));
+        let marker = (index == 3).then_some("DECISIVE-EVIDENCE=WREN-5081\n");
+        trajectory.push(Message::tool_result(
+            call_id,
+            Some(json!({
+                "output": format!("{}{}", marker.unwrap_or_default(), "x".repeat(24_000))
+            })),
+            None,
+        ));
+        if index == 3 {
+            trajectory.push(Message::assistant(
+                "Decision recorded from DECISIVE-EVIDENCE: use WREN-5081.",
+            ));
+        }
+    }
+    trajectory.push(Message::user("Use WREN-5081 and finish now."));
+    let baseline_bytes = serde_json::to_vec(&trajectory).unwrap().len();
+    rig.configure_cost_pressure(trajectory.clone()).await;
+
+    let result = rig.execute(None).await.unwrap();
+
+    assert!(result.success);
+    assert_eq!(result.text, "ok");
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
+    let calls = rig.calls.lock().await;
+    let model_view_bytes =
+        everruns_core::capabilities::estimate_total_tokens(&calls.last().unwrap().0) * 4;
+    let reduction_percent = 100usize.saturating_sub(model_view_bytes * 100 / baseline_bytes);
+    println!(
+        "context_cost_ab baseline_prompt_bytes={baseline_bytes} candidate_prompt_bytes={model_view_bytes} reduction_percent={reduction_percent} task_success={}",
+        result.success
+    );
+    assert!(
+        model_view_bytes * 4 < baseline_bytes,
+        "durable replacement should reduce the next model view by at least 75%: {model_view_bytes} vs {}",
+        baseline_bytes
+    );
+    drop(calls);
+
+    let raw = rig
+        .message_retriever
+        .load(rig.session_id.into())
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(&raw).unwrap(),
+        serde_json::to_value(&trajectory).unwrap()
+    );
+    let queryable = rig
+        .message_retriever
+        .load_filtered(
+            everruns_core::MessageQuery::new(rig.session_id.into()).with_filter(
+                everruns_core::message_filter::MessageFilter::Search(
+                    "DECISIVE-EVIDENCE".to_string(),
+                ),
+            ),
+        )
+        .await
+        .unwrap();
+    assert_eq!(queryable.len(), 1);
+    assert!(
+        queryable[0]
+            .text()
+            .is_some_and(|text| text.contains("WREN-5081"))
+    );
+
+    rig.message_retriever
+        .add(
+            rig.session_id.into(),
+            everruns_core::InputMessage::user(
+                "Latest validation passed; keep this visible and finish.",
+            ),
+        )
+        .await
+        .unwrap();
+    let resumed = rig.execute(None).await.unwrap();
+    assert!(resumed.success);
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
+    let calls = rig.calls.lock().await;
+    let (messages, config) = calls.last().unwrap();
+    assert!(config.provider_opaque_context.is_some());
+    assert!(messages.iter().any(|message| {
+        matches!(
+            &message.content,
+            everruns_core::LlmMessageContent::Text(text)
+                if text.contains("Latest validation passed")
+        )
+    }));
+}
+
+#[tokio::test]
+async fn cumulative_cost_does_not_compact_a_short_prompt() {
+    let rig = ProactiveTestRig::new(
+        DriverId::external("openai-codex-short-cost-pressure"),
+        1_000_000,
+        (10_000, 100),
+        false,
+        false,
+    )
+    .await;
+    rig.configure_cost_pressure(vec![Message::user("short follow-up")])
+        .await;
+
+    rig.execute(None).await.unwrap();
+
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn cumulative_cost_compaction_failure_falls_back_to_raw_model_view() {
+    let rig = ProactiveTestRig::new(
+        DriverId::external("openai-codex-cost-failure"),
+        1_000_000,
+        (10_000, 100),
+        false,
+        true,
+    )
+    .await;
+    rig.configure_cost_pressure(vec![Message::user("x".repeat(400_000))])
+        .await;
+
+    rig.execute(None).await.unwrap();
+    rig.execute(None).await.unwrap();
+
+    assert_eq!(rig.compact_attempts.load(Ordering::SeqCst), 1);
+    assert!(
+        rig.checkpoint_store
+            .get_latest(
+                rig.session_id.into(),
+                rig.provider_type.as_str(),
+                &rig.model,
+            )
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        rig.calls
+            .lock()
+            .await
+            .iter()
+            .all(|(_, config)| config.provider_opaque_context.is_none())
     );
 }
 
@@ -2400,6 +2651,189 @@ async fn test_reason_atom_retries_structured_processing_error_before_output() {
     } else {
         panic!("Expected llm.generation event data");
     }
+}
+
+/// EVE-806: a provider stream stall before any output must be recovered by the
+/// shared bounded retry path (one stall, one retry, then a successful response),
+/// not surfaced as a failed turn — and without injecting artificial history.
+#[tokio::test(start_paused = true)]
+async fn test_reason_atom_retries_provider_stream_stall_before_output() {
+    use everruns_core::in_memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    message_retriever
+        .seed(session_id.into(), vec![Message::user("Hello!")])
+        .await;
+
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_registry = Arc::clone(&attempts);
+    let seen_counts = Arc::new(Mutex::new(Vec::new()));
+    let seen_counts_for_registry = Arc::clone(&seen_counts);
+    let mut driver_registry = DriverRegistry::new();
+    driver_registry.register(DriverId::LlmSim, move |_config| {
+        Box::new(StallingStreamDriver {
+            attempts: Arc::clone(&attempts_for_registry),
+            max_stalls: 1,
+            seen_message_counts: Arc::clone(&seen_counts_for_registry),
+        })
+    });
+
+    let event_emitter = InMemoryEventEmitter::new();
+
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever.clone(),
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        event_emitter.clone(),
+    )
+    .with_provider_stall_timeout(std::time::Duration::from_millis(50));
+
+    let context = create_context(session_id);
+    let input = ReasonInput {
+        context,
+        harness_id,
+        agent_id: Some(agent_id.into()),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: None,
+        iteration: 1,
+    };
+
+    let result = atom
+        .execute(input)
+        .await
+        .expect("stream stall should receive a bounded retry, not fail the turn");
+
+    assert!(result.success, "stall should be recovered by the retry");
+    assert_eq!(result.text, "Recovered after stall.");
+    assert_eq!(
+        attempts.load(Ordering::SeqCst),
+        2,
+        "one stalled attempt plus one successful retry"
+    );
+
+    // Retry must not add an artificial user/assistant message: the request
+    // re-issued on the retry carries the same number of messages as the first.
+    let counts = seen_counts.lock().await.clone();
+    assert_eq!(counts.len(), 2, "expected one stall attempt and one retry");
+    assert_eq!(
+        counts[0], counts[1],
+        "retry must re-issue the same request without injecting history: {counts:?}"
+    );
+
+    let events = event_emitter.events().await;
+    let llm_event = events
+        .iter()
+        .find(|e| e.event_type == "llm.generation")
+        .expect("llm.generation event should be emitted");
+    if let everruns_core::EventData::LlmGeneration(data) = &llm_event.data {
+        assert!(data.metadata.success, "retry should recover the generation");
+        let retry = data
+            .metadata
+            .retry
+            .as_ref()
+            .expect("retry metadata should be recorded");
+        assert_eq!(retry.attempts, 1);
+    } else {
+        panic!("Expected llm.generation event data");
+    }
+}
+
+/// EVE-806: repeated provider stream stalls must stay bounded by the shared
+/// retry budget and eventually return an error rather than retrying forever.
+#[tokio::test(start_paused = true)]
+async fn test_reason_atom_bounds_repeated_provider_stream_stalls() {
+    use everruns_core::in_memory::InMemoryEventEmitter;
+
+    let (
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever,
+        provider_store,
+        harness_id,
+        agent_id,
+        session_id,
+    ) = setup_test_environment().await;
+
+    message_retriever
+        .seed(session_id.into(), vec![Message::user("Hello!")])
+        .await;
+
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let attempts_for_registry = Arc::clone(&attempts);
+    let mut driver_registry = DriverRegistry::new();
+    driver_registry.register(DriverId::LlmSim, move |_config| {
+        Box::new(StallingStreamDriver {
+            attempts: Arc::clone(&attempts_for_registry),
+            // Never recovers — every attempt stalls.
+            max_stalls: usize::MAX,
+            seen_message_counts: Arc::new(Mutex::new(Vec::new())),
+        })
+    });
+
+    let event_emitter = InMemoryEventEmitter::new();
+
+    let atom = ReasonAtom::new(
+        harness_store,
+        agent_store,
+        session_store,
+        message_retriever.clone(),
+        provider_store,
+        CapabilityRegistry::new(),
+        driver_registry,
+        event_emitter.clone(),
+    )
+    .with_provider_stall_timeout(std::time::Duration::from_millis(50));
+
+    let context = create_context(session_id);
+    let input = ReasonInput {
+        context,
+        harness_id,
+        agent_id: Some(agent_id.into()),
+        org_id: 0,
+        mcp_tool_definitions: vec![],
+        previous_response_id: None,
+        iteration: 1,
+    };
+
+    // A terminal stall surfaces as an unsuccessful result carrying the stall
+    // error (the atom maps terminal LLM errors into a ReasonResult rather than
+    // returning Err), never an unbounded retry loop.
+    let result = atom
+        .execute(input)
+        .await
+        .expect("execute returns a failure result, not Err, on a terminal stall");
+    assert!(!result.success, "unbounded stalls must fail the turn");
+    assert!(
+        result
+            .error
+            .as_deref()
+            .is_some_and(|e| e.contains("provider stream stall")),
+        "terminal error should be the stall error, got: {:?}",
+        result.error
+    );
+    // Default LlmRetryConfig::max_retries = 2, so the initial attempt plus two
+    // bounded retries = 3 total stream attempts, then a terminal error.
+    assert_eq!(
+        attempts.load(Ordering::SeqCst),
+        3,
+        "stalls must stay bounded by the retry budget"
+    );
 }
 
 #[tokio::test]

@@ -1,7 +1,7 @@
 //! MCP `tools/call` result → internal `ToolResult` mapping.
 //!
 //! Lifted verbatim from `worker/src/mcp_executor.rs` so behavior is unchanged
-//! and the worker stops carrying its own copy (specs/runtime-mcp.md D1/D5).
+//! and the worker stops carrying its own copy (knowledge/integrations/runtime-mcp.md D1/D5).
 
 use everruns_core::{McpContent, McpToolCallResult, ToolResultImage};
 use serde_json::{Value, json};

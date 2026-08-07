@@ -1,6 +1,6 @@
 # Plugin test fixtures
 
-Local marketplace fixture for the plugins subsystem (`specs/plugins.md`).
+Local marketplace fixture for the plugins subsystem (`knowledge/integrations/plugins.md`).
 Not shipped; consumed by server and runtime tests and by manual smoke tests.
 
 - `.claude-plugin/marketplace.json` — marketplace manifest with

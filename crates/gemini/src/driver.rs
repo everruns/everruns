@@ -823,6 +823,7 @@ impl ChatDriver for GeminiChatDriver {
                 // Strip "models/" prefix from name
                 let model_id = m.name.strip_prefix("models/").unwrap_or(&m.name);
                 DiscoveredModel {
+                    capabilities: vec!["chat".to_string()],
                     model_id: model_id.to_string(),
                     display_name: Some(m.display_name),
                     created_at: None,

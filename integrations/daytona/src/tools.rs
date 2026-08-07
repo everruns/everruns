@@ -16,7 +16,7 @@
 //!    host so authentication works against every configured server.
 //!
 //! See `integrations/daytona/SPEC.md` (GitHub clone-auth host allowlist) and
-//! `TM-DAYTONA-008` in `specs/threat-model.md`.
+//! `TM-DAYTONA-008` in `knowledge/security/threat-model.md`.
 
 use everruns_core::SessionFile;
 use everruns_core::ToolHints;

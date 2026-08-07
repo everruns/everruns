@@ -1,6 +1,6 @@
 //! Vendor-neutral vector store abstraction for Knowledge Indexes.
 //!
-//! See `specs/knowledge-indexes.md`. Embedding vectors for Knowledge Index
+//! See `knowledge/runtime-resources/knowledge-indexes.md`. Embedding vectors for Knowledge Index
 //! chunks live in an external vector database, not in Postgres. This module
 //! defines the platform-selected `VectorStore` trait (mirroring how
 //! `SessionFileSystemFactory` keeps the filesystem pluggable) plus an
@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 const RRF_K: f32 = 60.0;
 
 /// A single retrieved chunk returned by [`KnowledgeIndexSearch::search`], shaped
-/// to the `search_index` citation contract in `specs/knowledge-indexes.md`. The
+/// to the `search_index` citation contract in `knowledge/runtime-resources/knowledge-indexes.md`. The
 /// `id` (`kchk_…`) + `source_uri` + `location` give the agent a stable, linkable
 /// citation. Kept compatible with the planned `search_knowledge` citation shape
 /// so the UI can render both uniformly.

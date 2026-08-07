@@ -1,5 +1,5 @@
-// Read-only share tokens for eval runs (specs/public-endpoints.md,
-// specs/evals.md). A share token unlocks an anonymous, read-only view of one
+// Read-only share tokens for eval runs (knowledge/execution/public-endpoints.md,
+// knowledge/evaluation/evals.md). A share token unlocks an anonymous, read-only view of one
 // eval run via `GET /v1/public/eval-runs/{token}`.
 //
 // Decision: mirror the personal-access-token pattern — an opaque random token,

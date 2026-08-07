@@ -1,6 +1,6 @@
 // Workspace domain types
 //
-// Design intent lives in `specs/workspace.md`.
+// Design intent lives in `knowledge/runtime-resources/workspace.md`.
 //
 // A Workspace is an org-scoped, named working area that holds the files an
 // agent reads and writes during execution. Sessions attach to a Workspace;
@@ -18,7 +18,7 @@ use utoipa::ToSchema;
 
 /// Workspace lifecycle status.
 ///
-/// Mirrors the standard building-block lifecycle from `specs/models.md`:
+/// Mirrors the standard building-block lifecycle from `knowledge/foundations/models.md`:
 /// - `active`: assignable to sessions, editable, listed by default.
 /// - `archived`: hidden from default lists, not assignable to new sessions,
 ///   files become read-only.

@@ -352,6 +352,11 @@ impl TestServer {
             None,
         );
         let models_state = api::models::AppState::new(db.clone(), auth_state.clone(), None);
+        let knowledge_indexes_state = api::knowledge_indexes::AppState::new(
+            db.clone(),
+            auth_state.clone(),
+            driver_registry.clone(),
+        );
         let virtual_registry = Arc::new(
             everruns_server::domains::session_files::virtual_mount_registry::VirtualMountRegistry::new(),
         );
@@ -612,6 +617,7 @@ impl TestServer {
             .merge(api::messages::routes(messages_state))
             .merge(api::events::routes(events_state))
             .merge(api::models::routes(models_state))
+            .merge(api::knowledge_indexes::routes(knowledge_indexes_state))
             .merge(api::providers::routes(providers_state))
             .merge(api::mcp_servers::routes(mcp_servers_state))
             .merge(api::capabilities::routes(capabilities_state))

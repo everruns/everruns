@@ -9,7 +9,7 @@
 //! tree of markdown files with YAML frontmatter, navigated via `index.md`
 //! files. Concept documents added under `tables/`, `business/`, and `queries/`
 //! should carry frontmatter with at least a `type` field, so the same content
-//! is portable to any OKF consumer. See specs/okf-adoption.md.
+//! is portable to any OKF consumer. See knowledge/runtime-resources/okf-adoption.md.
 
 use super::{
     Capability, CapabilityLocalization, CapabilityStatus, MountDirectoryBuilder, MountPoint,
@@ -30,7 +30,7 @@ type: Index
 # Data Knowledge
 
 This directory is an Open Knowledge Format (OKF) bundle: curated context for
-data analysis, as markdown files with YAML frontmatter. See specs/okf-adoption.md.
+data analysis, as markdown files with YAML frontmatter. See knowledge/runtime-resources/okf-adoption.md.
 
 - [Tables & data sources](/tables/index.md)
 - [Business rules & metrics](/business/index.md)

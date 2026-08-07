@@ -22,13 +22,26 @@ function makeModel(id: string, overrides: Partial<ModelWithProvider> = {}): Mode
   };
 }
 
-function renderSelection(models: ModelWithProvider[]) {
+function renderSelection(
+  models: ModelWithProvider[],
+  {
+    defaultModel,
+    defaultModelLoading = false,
+    modelsLoading = false,
+  }: {
+    defaultModel?: ModelWithProvider;
+    defaultModelLoading?: boolean;
+    modelsLoading?: boolean;
+  } = {},
+) {
   return renderHook(() =>
     useChatModelSelection({
       agentId: "agent-1",
       sessionId: "session-1",
       models,
-      defaultModel: undefined,
+      defaultModel,
+      defaultModelLoading,
+      modelsLoading,
       reasoningEffort: "",
       setReasoningEffort: () => undefined,
       verbosity: "",
@@ -75,5 +88,63 @@ describe("useChatModelSelection recent models", () => {
 
     // "gone" is missing entirely, "disabled" is not enabled — only "ok" survives.
     expect(result.current.recentModels.map((m) => m.id)).toEqual(["ok"]);
+  });
+});
+
+describe("useChatModelSelection labels", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it("shows the resolved model while following Default", () => {
+    const model = makeModel("gpt-5.4", { display_name: "GPT-5.4" });
+    const { result } = renderSelection([model], { defaultModel: model });
+
+    expect(result.current.modelTriggerLabel).toBe("Default · GPT-5.4");
+    expect(result.current.defaultModelOptionLabel).toBe("Default · GPT-5.4");
+  });
+
+  it("updates the label when the resolved default changes", () => {
+    const first = makeModel("first", { display_name: "First" });
+    const second = makeModel("second", { display_name: "Second" });
+    const { result, rerender } = renderHook(
+      ({ defaultModel }: { defaultModel: ModelWithProvider }) =>
+        useChatModelSelection({
+          agentId: "agent-1",
+          sessionId: "session-1",
+          models: [first, second],
+          defaultModel,
+          defaultModelLoading: false,
+          modelsLoading: false,
+          reasoningEffort: "",
+          setReasoningEffort: () => undefined,
+          verbosity: "",
+          setVerbosity: () => undefined,
+        }),
+      { initialProps: { defaultModel: first } },
+    );
+
+    expect(result.current.modelTriggerLabel).toBe("Default · First");
+    rerender({ defaultModel: second });
+    expect(result.current.modelTriggerLabel).toBe("Default · Second");
+  });
+
+  it("distinguishes loading and unavailable defaults", () => {
+    const loading = renderSelection([], { defaultModelLoading: true });
+    expect(loading.result.current.modelTriggerLabel).toBe("Default · Loading…");
+    loading.unmount();
+
+    const unavailable = renderSelection([]);
+    expect(unavailable.result.current.modelTriggerLabel).toBe("Default · Unavailable");
+  });
+
+  it("shows an explicit model without the Default prefix", () => {
+    const defaultModel = makeModel("default", { display_name: "Default Model" });
+    const explicitModel = makeModel("explicit", { display_name: "Explicit Model" });
+    const { result } = renderSelection([defaultModel, explicitModel], { defaultModel });
+
+    act(() => result.current.handleModelChange(explicitModel.id));
+
+    expect(result.current.modelTriggerLabel).toBe("Explicit Model");
   });
 });

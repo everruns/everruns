@@ -4,7 +4,7 @@
 // org the caller is a member of. The API's 404-on-cross-org behaviour is
 // preserved for every resource route — this endpoint is the only place that
 // leaks an org_id across org boundaries, and only to orgs the caller
-// already belongs to. See specs/multitenancy.md (Cross-Org Resource
+// already belongs to. See knowledge/security/multitenancy.md (Cross-Org Resource
 // Resolution).
 
 use std::sync::Arc;

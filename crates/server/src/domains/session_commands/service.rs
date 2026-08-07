@@ -3,7 +3,7 @@
 // Decision: system commands dispatch uniformly through
 // `Capability::execute_command`. Context-aware commands like /btw are
 // implemented inside their capability against the `CommandHost` facilities
-// (see specs/commands.md); this service only wires the store-backed host
+// (see knowledge/project/commands.md); this service only wires the store-backed host
 // from the worker adapters and routes the request.
 
 use crate::direct_worker_adapters::DirectWorkerAdapters;

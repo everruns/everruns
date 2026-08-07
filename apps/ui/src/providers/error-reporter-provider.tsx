@@ -38,7 +38,7 @@ export interface ErrorReport {
 
 /**
  * Vendor-neutral error reporter contract. Wrappers implement this and install
- * it via {@link ErrorReporterProvider}. See `specs/embedding.md` for the full
+ * it via {@link ErrorReporterProvider}. See `knowledge/foundations/embedding.md` for the full
  * embedding contract.
  *
  * `report` may return `void` or a `Promise<void>`. Callers treat it as

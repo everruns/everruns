@@ -50,6 +50,29 @@ async fn create_is_idempotent_on_supplied_id() {
 }
 
 #[tokio::test]
+async fn task_spec_webhook_secret_survives_storage_round_trip() {
+    let reg = LocalSessionTaskRegistry::new(SqliteDb::open_in_memory().unwrap()).unwrap();
+    let session_id = SessionId::new();
+    let mut input = create_input(session_id, TASK_KIND_SUBAGENT);
+    input.spec = serde_json::json!({
+        "push_configs": [{
+            "url": "https://hooks.example.com/everruns",
+            "secret": "spawn-time-hmac-secret",
+            "event_filter": ["terminal"]
+        }]
+    });
+
+    let created = reg.create(input).await.unwrap();
+    let loaded = reg.get(session_id, &created.id).await.unwrap().unwrap();
+
+    assert_eq!(
+        loaded.spec["push_configs"][0]["secret"],
+        "spawn-time-hmac-secret"
+    );
+    assert!(loaded.spec["push_configs"][0].get("has_secret").is_none());
+}
+
+#[tokio::test]
 async fn create_rejects_id_reuse_across_sessions() {
     let reg = LocalSessionTaskRegistry::new(SqliteDb::open_in_memory().unwrap()).unwrap();
     let session_a = SessionId::new();

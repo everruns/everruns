@@ -2,7 +2,7 @@
 //!
 //! Binds an agent or harness to one or more org-scoped Knowledge Indexes —
 //! source-backed, embedded collections searched semantically with citations.
-//! See `specs/knowledge-indexes.md` for the durable design.
+//! See `knowledge/runtime-resources/knowledge-indexes.md` for the durable design.
 //!
 //! This module registers the capability, validates the structural shape of
 //! its config (`indexes[]` entries: `kidx_`-prefixed Knowledge Index IDs;
@@ -90,7 +90,7 @@ impl Capability for KnowledgeIndexCapability {
         "Bind an agent to org Knowledge Indexes — source-backed collections \
          (e.g. a GitHub repository) that are synced, chunked, and embedded for \
          semantic search with citations. Exposes a `search_index` tool over the \
-         bound indexes; see `specs/knowledge-indexes.md`."
+         bound indexes; see `knowledge/runtime-resources/knowledge-indexes.md`."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -219,7 +219,7 @@ impl Capability for KnowledgeIndexCapability {
 ///
 /// The searchable indexes come from the capability config, not the model — the
 /// optional `indexes` argument may only NARROW the configured set. See
-/// `specs/knowledge-indexes.md` ("Retrieval and citations").
+/// `knowledge/runtime-resources/knowledge-indexes.md` ("Retrieval and citations").
 pub struct SearchIndexTool {
     /// `kidx_` ids bound in the capability config.
     pub index_ids: Vec<String>,

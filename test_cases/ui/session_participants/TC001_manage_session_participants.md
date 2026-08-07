@@ -17,12 +17,14 @@ Verify that the session participant rail identifies the host and members, suppor
 | --- | --- |
 | Host agent | `Participant Host` |
 | Guest agent | `Participant Specialist` |
+| Current user display name | The name shown in the signed-in profile; `Anonymous` in `AUTH_MODE=none` |
 | Addressed message | `Reply with exactly: specialist reply` |
 
 ## Steps
 
 1. Open the host agent's session and locate the **In this session** participant rail.
-2. Verify the host agent appears with the host role and the current user appears among the members.
+2. Verify the host agent appears with the host role and the current user appears among the members
+   under the current profile display name, both in the participant rail and its transcript join marker.
 3. Use the invite control to add `Participant Specialist`.
 4. Verify the guest appears as an active agent member without replacing the host.
 5. Address `Participant Specialist` and send `Reply with exactly: specialist reply`.
@@ -33,6 +35,8 @@ Verify that the session participant rail identifies the host and members, suppor
 ## Expected Result
 
 - The participant rail distinguishes the host, user members, and invited agent members.
+- The current user's persisted participant and transcript marker use the same profile display name;
+  neither renders the generic label `Participant`.
 - Inviting an agent adds it as a member while preserving the original host.
 - An addressed turn routes to the selected active agent and attributes its reply to that participant.
 - Removing the guest retains membership history and renders a leave system line in the transcript.

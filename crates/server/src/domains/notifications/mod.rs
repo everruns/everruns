@@ -1,6 +1,6 @@
 // Notification domain — commands, queries, types.
 //
-// See specs/domains.md for the pattern.
+// See knowledge/foundations/domains.md for the pattern.
 
 use everruns_core::{OrgRole, Policy, Rule};
 

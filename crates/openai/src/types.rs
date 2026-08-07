@@ -213,6 +213,10 @@ pub struct OpenAiModelInfo {
 }
 
 impl OpenAiModelInfo {
+    pub fn is_embedding_model(&self) -> bool {
+        self.id.starts_with("text-embedding-")
+    }
+
     /// Check if this model is a chat/completion model (not embedding, TTS, etc.)
     ///
     /// Includes: gpt-*, o1*, o3*, o4*, chatgpt-*
@@ -245,5 +249,29 @@ impl OpenAiModelInfo {
             || id.starts_with("o3")
             || id.starts_with("o4")
             || id.starts_with("chatgpt-")
+    }
+}
+
+#[cfg(test)]
+mod model_catalog_tests {
+    use super::OpenAiModelInfo;
+
+    fn model(id: &str) -> OpenAiModelInfo {
+        OpenAiModelInfo {
+            id: id.to_string(),
+            created: 0,
+            owned_by: "openai".to_string(),
+        }
+    }
+
+    #[test]
+    fn classifies_embedding_models_separately_from_chat() {
+        let embedding = model("text-embedding-3-small");
+        assert!(embedding.is_embedding_model());
+        assert!(!embedding.is_chat_model());
+
+        let chat = model("gpt-5");
+        assert!(!chat.is_embedding_model());
+        assert!(chat.is_chat_model());
     }
 }

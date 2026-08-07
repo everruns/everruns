@@ -30,7 +30,7 @@ Secrets   │ per-run creds          │ org credentials (TBD)  │
           └────────────────────────┴────────────────────────┘
 ```
 
-Today only the **Files** surface exists on both sides; Tables exist on the Workspace side (session SQL DB). Tabular, KV, secrets, and structured surfaces on Memory are durable design intent — see `specs/memory.md`.
+Today only the **Files** surface exists on both sides; Tables exist on the Workspace side (session SQL DB). Tabular, KV, secrets, and structured surfaces on Memory are durable design intent — see `knowledge/runtime-resources/memory.md`.
 
 ## Org → Session: Mount
 
@@ -100,8 +100,8 @@ External validation: Anthropic's Claude Managed Agents settled on essentially th
 These exist in Everruns but live outside this model:
 
 - **Transcripts and events** — the conversation history is the session's append-only log, not a memory surface.
-- **Sandboxes** — managed compute environments (`specs/session-sandbox.md`) are a separate primitive from storage.
-- **Knowledge Bases** (`specs/knowledge-bases.md`) — curated entries with stable citation IDs, agent reads via `search_knowledge`. Likely folds into a future "structured" surface of Memory; today it stays separate.
+- **Sandboxes** — managed compute environments (`knowledge/runtime-resources/session-sandbox.md`) are a separate primitive from storage.
+- **Knowledge Bases** (`knowledge/runtime-resources/knowledge-bases.md`) — curated entries with stable citation IDs, agent reads via `search_knowledge`. Likely folds into a future "structured" surface of Memory; today it stays separate.
 
 ## Mapping to other systems
 
@@ -116,6 +116,6 @@ These exist in Everruns but live outside this model:
 ## Further reading
 
 - [Agent and user memory](/features/memory-scopes/) — scoped memory mounts, access, and privacy defaults
-- [`specs/memory.md`](https://github.com/everruns/everruns/blob/main/specs/memory.md) — durable design intent for the Memory tier
-- [`specs/workspace.md`](https://github.com/everruns/everruns/blob/main/specs/workspace.md) — Workspace specification (file surface, mount point, git VCS)
-- [`specs/knowledge-bases.md`](https://github.com/everruns/everruns/blob/main/specs/knowledge-bases.md) — curated org knowledge, the curation-first sibling of Memory
+- [`knowledge/runtime-resources/memory.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/memory.md) — durable design intent for the Memory tier
+- [`knowledge/runtime-resources/workspace.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/workspace.md) — Workspace specification (file surface, mount point, git VCS)
+- [`knowledge/runtime-resources/knowledge-bases.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/knowledge-bases.md) — curated org knowledge, the curation-first sibling of Memory

@@ -367,7 +367,7 @@ impl Command for UpdateKnowledgeBaseCmd {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("KnowledgeBase"))?;
-        // Archived KBs are read-only per specs/models.md lifecycle contract.
+        // Archived KBs are read-only per knowledge/foundations/models.md lifecycle contract.
         if existing.status != "active" {
             return Err(CommandError::bad_request(
                 "Knowledge base is archived; restore it before updating",
@@ -464,7 +464,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteKnowledgeBase>() }
 
 /// Resolve a KB's internal UUID. If `require_active` is true, archived KBs
 /// reject the call so write paths honor the lifecycle contract from
-/// `specs/models.md` (archived = read-only).
+/// `knowledge/foundations/models.md` (archived = read-only).
 pub(super) async fn resolve_kb_internal_id(
     ctx: &Ctx,
     kb_id: &str,

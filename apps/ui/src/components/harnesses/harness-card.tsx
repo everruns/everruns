@@ -8,7 +8,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Pencil, Shield } from "lucide-react";
 import { IconTile } from "@/components/layout/page-layout";
 import type { Harness, Capability, CapabilityId } from "@/lib/api/types";
-import { getCapabilityIcon } from "@/lib/capability-icons";
+import { CapabilityIcon } from "@/lib/capability-icons";
 import {
   localizedCapabilityDescription,
   localizedCapabilityName,
@@ -102,12 +102,10 @@ export function HarnessCard({
             {harnessCapabilities.map((capConfig) => {
               const cap = getCapabilityInfo(capConfig.ref);
               if (!cap) return null;
-              const IconComponent = getCapabilityIcon(cap.icon);
-
               return (
                 <Tooltip key={capConfig.ref}>
                   <TooltipTrigger className="inline-flex cursor-default items-center gap-1 border bg-muted px-2 py-0.5 text-xs">
-                    <IconComponent className="icon-sharp h-3 w-3" />
+                    <CapabilityIcon icon={cap.icon} className="icon-sharp h-3 w-3" />
                     {!compact && <span>{localizedCapabilityName(cap, locale)}</span>}
                   </TooltipTrigger>
                   <TooltipContent>

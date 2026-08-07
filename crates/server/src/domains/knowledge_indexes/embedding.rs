@@ -3,7 +3,7 @@
 //! Both the Syncout pipeline (`source_sync`) and the retrieval slice
 //! (`search`) resolve an index's embedding model → provider → embeddings
 //! service and build a driver from the registry. This module factors that path
-//! so the two callers stay consistent (specs/knowledge-indexes.md).
+//! so the two callers stay consistent (knowledge/runtime-resources/knowledge-indexes.md).
 
 use std::sync::Arc;
 

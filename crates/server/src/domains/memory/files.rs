@@ -58,6 +58,12 @@ pub enum MemoryFsError {
 /// Maximum file size considered by the grep path scan (matches session_files default).
 const GREP_MAX_FILE_BYTES: i64 = 1_048_576; // 1 MiB
 
+/// Max total bytes scanned across all path-filtered candidates in a single grep
+/// call (TM-DOS-008). Mirrors the session-file grep budget so a broad glob over
+/// many sub-`GREP_MAX_FILE_BYTES` files cannot force an unbounded aggregate
+/// content scan (and unbounded per-candidate fetches).
+const MAX_GREP_TOTAL_SCAN_BYTES: usize = 5 * 1024 * 1024; // 5 MiB
+
 #[derive(Clone)]
 pub struct MemoryFileService {
     db: Arc<StorageBackend>,
@@ -259,7 +265,7 @@ impl MemoryFileService {
         }
         // Validate regex up-front so client errors surface as 400 rather than
         // bubbling up from Postgres as a generic 500.
-        regex::Regex::new(pattern)
+        let content_matcher = regex::Regex::new(pattern)
             .map_err(|e| MemoryFsError::InvalidPattern(format!("pattern: {e}")))?;
         let path_matcher = path_pattern
             .map(everruns_core::session_path::GrepPathPattern::new)
@@ -267,20 +273,48 @@ impl MemoryFileService {
             .map_err(|e| MemoryFsError::InvalidPattern(format!("path_pattern: {e}")))?;
         let rows = self
             .db
-            .grep_memory_files(memory_id, pattern, None, GREP_MAX_FILE_BYTES)
+            .grep_memory_files(memory_id, pattern, path_pattern, GREP_MAX_FILE_BYTES)
             .await?;
-        Ok(rows
-            .into_iter()
-            .filter(|row| {
-                path_matcher
-                    .as_ref()
-                    .is_none_or(|matcher| matcher.is_match(&row.path))
-            })
-            .map(|r| GrepMatchInfo {
-                path: r.path,
-                size_bytes: r.size_bytes,
-            })
-            .collect())
+        let mut matches = Vec::new();
+        let mut total_scanned: usize = 0;
+        for row in rows {
+            if path_matcher
+                .as_ref()
+                .is_some_and(|matcher| !matcher.is_match(&row.path))
+            {
+                continue;
+            }
+            // With a path filter, storage deliberately avoids a content scan;
+            // fetch and match only the path-scoped candidates here.
+            if path_pattern.is_some() {
+                // TM-DOS-008: bound the aggregate scan (and the number of
+                // per-candidate fetches) so a broad glob cannot amplify. Charge
+                // by candidate size before fetching content.
+                total_scanned = total_scanned.saturating_add(row.size_bytes.max(0) as usize);
+                if total_scanned > MAX_GREP_TOTAL_SCAN_BYTES {
+                    return Err(MemoryFsError::Other(anyhow::anyhow!(
+                        "Grep request exceeds maximum scan size ({MAX_GREP_TOTAL_SCAN_BYTES} bytes); narrow the path filter or pattern"
+                    )));
+                }
+                let Some(file) = self.db.get_memory_file(memory_id, &row.path).await? else {
+                    continue;
+                };
+                let Some(content) = file.content else {
+                    continue;
+                };
+                let Ok(text) = std::str::from_utf8(&content) else {
+                    continue;
+                };
+                if !content_matcher.is_match(text) {
+                    continue;
+                }
+            }
+            matches.push(GrepMatchInfo {
+                path: row.path,
+                size_bytes: row.size_bytes,
+            });
+        }
+        Ok(matches)
     }
 
     async fn ensure_parents_exist(&self, memory_id: Uuid, path: &str) -> Result<(), MemoryFsError> {

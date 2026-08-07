@@ -11,7 +11,7 @@ import {
 // dropdown bug: <Select> must show the human-readable label of the selected
 // item, never the raw internal value. base-ui's <Select.Value> resolves the
 // label from the items map our wrapper auto-collects from <SelectItem>
-// children. See specs/code-organization.md "Dropdowns Must Show Display
+// children. See knowledge/foundations/code-organization.md "Dropdowns Must Show Display
 // Names".
 describe("Select trigger displays human-readable labels by default", () => {
   it("shows 'Webhook' (label) when value is 'webhook' (internal)", () => {

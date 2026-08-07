@@ -34,6 +34,7 @@ pub mod auth;
 pub mod client;
 pub mod executor;
 pub mod http;
+pub mod oauth;
 pub mod protocol;
 pub mod result;
 pub mod transport;

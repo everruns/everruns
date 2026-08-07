@@ -104,6 +104,9 @@ pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
 pub const ANTHROPIC_OPUS: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Anthropic, "claude-opus-4-7", "ANTHROPIC_API_KEY");
 
+pub const ANTHROPIC_OPUS5: ProviderModelConfig =
+    ProviderModelConfig::new(DriverId::Anthropic, "claude-opus-5", "ANTHROPIC_API_KEY");
+
 pub const ANTHROPIC_SONNET: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Anthropic,
     "claude-sonnet-4-6",
@@ -124,6 +127,15 @@ pub const OPENAI_GPT55: ProviderModelConfig =
 
 pub const GEMINI_FLASH: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Gemini, "gemini-2.5-flash", "GEMINI_API_KEY");
+
+// Use Meta's lower-cost Contributor tier for the live matrix. Its data-use
+// terms are acceptable for these synthetic test prompts.
+pub const META_MUSE_SPARK_CONTRIBUTOR: ProviderModelConfig = ProviderModelConfig::new(
+    DriverId::Meta,
+    "muse-spark-1.2-contributor",
+    "MODEL_API_KEY",
+)
+.reasoning_as_text();
 
 // OpenRouter routes to upstream providers; gpt-4o-mini is cheap and reliably
 // available. Exercises the Open Responses streaming path (incl. the `[DONE]`
@@ -207,6 +219,14 @@ pub fn is_quota_exhausted(err: &str) -> bool {
         return true;
     }
 
+    // OpenAI's explicit out-of-credits machine code / phrasing. Returned as a
+    // 429 with body `credit_balance_exhausted: You have no credits remaining.`
+    // — no "quota" word, and "no credits remaining" isn't an exhaustion phrase
+    // below, so match it directly here.
+    if e.contains("credit_balance_exhausted") {
+        return true;
+    }
+
     let quota_signal = e.contains("quota") || e.contains("out of quota");
     let billing_signal = e.contains("billing") || e.contains("credit");
     let exceeded_signal = e.contains("exceeded");
@@ -224,6 +244,7 @@ pub fn is_quota_exhausted(err: &str) -> bool {
         || e.contains("run out")
         || e.contains("ran out")
         || e.contains("out of credit")
+        || e.contains("no credit") // "you have no credits remaining" (OpenAI)
         || e.contains("purchase credit")
         || e.contains("depleted");
     if billing_signal && exhaustion_phrase {
@@ -362,6 +383,7 @@ pub fn all_providers_registry() -> DriverRegistry {
     everruns_fireworks::register_driver(&mut registry);
     everruns_gemini::register_driver(&mut registry);
     everruns_bedrock::register_driver(&mut registry);
+    everruns_meta::register_driver(&mut registry);
     registry
 }
 
@@ -398,6 +420,13 @@ mod quota_detector_tests {
             "HTTP 429 Too Many Requests: insufficient_quota"
         ));
         assert!(is_quota_exhausted("429: quota exceeded for project"));
+        // OpenAI real-world out-of-credits: 429 with `credit_balance_exhausted`
+        // machine code and "You have no credits remaining." (no "quota" word,
+        // no exhaustion phrase like "too low"). This is the exact message that
+        // red main CI until matched here.
+        assert!(is_quota_exhausted(
+            "LLM error: credit_balance_exhausted: You have no credits remaining. Add credits to continue using the API at https://platform.openai.com/settings/organization/billing/."
+        ));
         // Case-insensitive.
         assert!(is_quota_exhausted("INSUFFICIENT_QUOTA"));
     }

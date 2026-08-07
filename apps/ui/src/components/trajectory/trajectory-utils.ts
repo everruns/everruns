@@ -10,7 +10,7 @@
 //   NOT on every SSE delta event (which fires 10-30x per second during streaming).
 
 import type { Node, Edge } from "@xyflow/react";
-import type { Event, ToolCompletedData } from "@/lib/api/types";
+import type { Event, ToolCompletedData, ToolStartedData } from "@/lib/api/types";
 import { getTextFromContent, getEventData } from "@/lib/api/types";
 import type { SupportedLocale } from "@/lib/i18n";
 import {
@@ -56,9 +56,14 @@ export interface ToolGroupNodeData {
     name: string;
     /** Human-readable display name for UI rendering */
     displayName?: string;
-    success: boolean;
+    /** Argument-aware narration, falling back to displayName/name. */
+    label: string;
+    success?: boolean;
     status: string;
     durationMs?: number;
+    arguments?: Record<string, unknown>;
+    resultText?: string;
+    error?: string;
   }>;
   successCount: number;
   errorCount: number;
@@ -117,6 +122,7 @@ export const STRUCTURAL_EVENT_TYPES = new Set([
   "reason.completed",
   "act.started",
   "act.completed",
+  "tool.started",
   "tool.completed",
 ]);
 
@@ -133,6 +139,51 @@ const GROUP_GAP = 40; // vertical gap between turn groups
 function truncate(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
   return text.slice(0, maxLen) + "…";
+}
+
+const SENSITIVE_DETAIL_KEY =
+  /(?:^|_)(?:api_?key|authorization|cookie|credential|password|private_?key|secret|token)(?:$|_)/i;
+const TOOL_DETAIL_LIMIT = 1_200;
+
+function redactSensitiveDetails(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redactSensitiveDetails);
+  if (value === null || typeof value !== "object") return value;
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, nested]) => [
+      key,
+      SENSITIVE_DETAIL_KEY.test(key) ? "[redacted]" : redactSensitiveDetails(nested),
+    ]),
+  );
+}
+
+function limitToolDetail(text: string): string {
+  const trimmed = text.trim();
+  return trimmed.length <= TOOL_DETAIL_LIMIT
+    ? trimmed
+    : `${trimmed.slice(0, TOOL_DETAIL_LIMIT)}\n…`;
+}
+
+function redactSensitiveText(text: string): string {
+  return text.replace(
+    /(\b[\w-]*(?:api[_-]?key|authorization|cookie|credential|password|private[_-]?key|secret|token)[\w-]*\b)(\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
+    "$1$2[redacted]",
+  );
+}
+
+/** Format bounded, secret-aware content for an expandable trajectory detail. */
+export function formatToolDetail(value: unknown): string {
+  if (value == null || value === "") return "";
+  let structured = value;
+  if (typeof value === "string") {
+    try {
+      structured = JSON.parse(value);
+    } catch {
+      return limitToolDetail(redactSensitiveText(value));
+    }
+  }
+
+  return limitToolDetail(JSON.stringify(redactSensitiveDetails(structured), null, 2));
 }
 
 // --- Build trajectory from events ---
@@ -173,9 +224,14 @@ export interface IterationAccumulator {
     tools: Array<{
       id: string;
       name: string;
-      success: boolean;
+      displayName?: string;
+      label: string;
+      success?: boolean;
       status: string;
       durationMs?: number;
+      arguments?: Record<string, unknown>;
+      resultText?: string;
+      error?: string;
     }>;
     successCount: number;
     errorCount: number;
@@ -189,7 +245,12 @@ export function buildTurns(events: Event[]): TurnAccumulator[] {
   let currentIteration: IterationAccumulator | null = null;
 
   const toolResults = new Map<string, ToolCompletedData>();
+  const toolStarts = new Map<string, ToolStartedData>();
   for (const event of events) {
+    const tsData = getEventData(event, "tool.started");
+    if (tsData) {
+      toolStarts.set(tsData.tool_call.id, tsData);
+    }
     const tcData = getEventData(event, "tool.completed");
     if (tcData) {
       toolResults.set(tcData.tool_call_id, tcData);
@@ -279,18 +340,33 @@ export function buildTurns(events: Event[]): TurnAccumulator[] {
           eventId: event.id,
           ts: event.ts,
           tools: data.tool_calls.map((tc) => {
+            const started = toolStarts.get(tc.id);
             const result = toolResults.get(tc.id);
             return {
               id: tc.id,
-              name: tc.name,
-              displayName: tc.display_name ?? result?.display_name,
-              success: result?.success ?? true,
+              name: started?.tool_call.name ?? result?.tool_name ?? tc.name,
+              displayName: started?.display_name ?? tc.display_name ?? result?.display_name,
+              label:
+                result?.narration ??
+                started?.narration ??
+                tc.narration ??
+                started?.display_name ??
+                tc.display_name ??
+                result?.display_name ??
+                started?.tool_call.name ??
+                result?.tool_name ??
+                tc.name,
+              success: result?.success,
               status: result?.status ?? "pending",
               durationMs: result?.duration_ms,
+              arguments: started?.tool_call.arguments,
+              resultText: result?.result ? getTextFromContent(result.result) : undefined,
+              error: result?.error,
             };
           }),
-          successCount: 0,
-          errorCount: 0,
+          successCount: data.tool_calls.filter((tc) => toolResults.get(tc.id)?.success).length,
+          errorCount: data.tool_calls.filter((tc) => toolResults.get(tc.id)?.success === false)
+            .length,
         };
         break;
       }
@@ -304,6 +380,13 @@ export function buildTurns(events: Event[]): TurnAccumulator[] {
         currentIteration.toolGroup.durationMs = data.duration_ms;
         break;
       }
+
+      // tool lifecycle events are pre-indexed above and hydrated into the
+      // act.started batch. They remain structural so live completion updates
+      // replace pending status/details without changing batch ordering.
+      case "tool.started":
+      case "tool.completed":
+        break;
 
       case "output.message.completed": {
         if (!currentTurn) break;
@@ -418,6 +501,7 @@ export function buildTrajectory(
   for (let turnIdx = 0; turnIdx < turns.length; turnIdx++) {
     const turn = turns[turnIdx];
     const groupId = `turn-${turnIdx}-group`;
+    const groupInsertIndex = nodes.length;
     let childY = GROUP_PAD_TOP; // relative Y within group
     let firstChildId: string | null = null;
     let lastChildId: string | null = null;
@@ -432,6 +516,10 @@ export function buildTrajectory(
         position: { x: CHILD_X, y: childY },
         parentId: groupId,
         extent: "parent" as const,
+        // Earlier tool popovers must paint over every later node in the flow.
+        // A descending positive value keeps expanded details readable without
+        // changing the chronological layout.
+        zIndex: type === "toolGroup" ? events.length - nodes.length : undefined,
         data: data as TrajectoryNodeData & Record<string, unknown>,
       });
       if (!firstChildId) firstChildId = id;
@@ -507,7 +595,8 @@ export function buildTrajectory(
     const groupHeight = childY - CHILD_SPACING_CONTENT + CHILD_SPACING_COMPACT + GROUP_PAD_BOTTOM;
 
     // Create turn group node
-    nodes.push({
+    // React Flow requires a parent to precede all of its children.
+    nodes.splice(groupInsertIndex, 0, {
       id: groupId,
       type: "turnGroup",
       position: { x: 0, y: groupY },

@@ -7,11 +7,14 @@
 - Body: copy the headings from [`.github/pull_request_template.md`](../../../../.github/pull_request_template.md)
   exactly and fill every applicable section — including Before/After proof, risk, the security
   review, and **Follow-ups**. Do not substitute ad-hoc headings, even for small changes.
+- For the Before/After, attach evidence a skeptical reviewer can check, not just a claim — CLI/API
+  output, logs, or metrics, and screenshots for UI changes (`apps/ui`). State explicitly when a
+  change has no observable behavior.
 
 ## CI
 
 - `gh pr checks` watches CI. Never merge red.
-- CI opt-out labels (`ci:skip-*`) are listed in [`specs/shipping.md`](../../../../specs/shipping.md).
+- CI opt-out labels (`ci:skip-*`) are listed in [`knowledge/project/shipping.md`](../../../../knowledge/project/shipping.md).
   They exist to save interim CI cycles, not to weaken merge evidence: before merge, remove any label
   suppressing CI affected by the diff and rerun CI on the final commit so the `CI Opt-Out Policy`
   job passes. Add and remove with `gh pr edit --add-label` / `--remove-label`.

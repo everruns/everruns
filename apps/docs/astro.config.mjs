@@ -241,6 +241,7 @@ export default defineConfig({
                       label: "Platform",
                       collapsed: true,
                       items: [
+                        { label: "Platform", slug: "capabilities/platform" },
                         { label: "Platform Management", slug: "capabilities/platform-management" },
                       ],
                     },
@@ -262,6 +263,7 @@ export default defineConfig({
                       label: "Safety",
                       collapsed: true,
                       items: [
+                        { label: "Guardrails", slug: "capabilities/guardrails" },
                         { label: "Prompt Canary Guardrail", slug: "capabilities/prompt-canary-guardrail" },
                         { label: "Tool Call Repair", slug: "capabilities/tool-call-repair" },
                       ],

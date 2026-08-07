@@ -113,9 +113,12 @@ impl Database {
     ) -> Result<Option<UserRow>> {
         let row = sqlx::query_as::<_, UserRow>(
             r#"
-            SELECT id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
-            FROM users
-            WHERE auth_provider = $1 AND auth_provider_id = $2
+            SELECT u.id, u.email, u.name, u.avatar_url, u.roles, u.password_hash,
+                   u.email_verified, u.auth_provider, u.auth_provider_id,
+                   u.created_at, u.updated_at, u.external_id
+            FROM user_oauth_identities i
+            JOIN users u ON u.id = i.user_id
+            WHERE i.provider = $1 AND i.provider_id = $2
             "#,
         )
         .bind(provider)
@@ -127,11 +130,9 @@ impl Database {
     }
 
     /// Attach an OAuth identity to an existing account so a subsequent
-    /// `get_user_by_oauth(provider, provider_id)` resolves to it. Only touches
-    /// the provider columns; `password_hash` is preserved so a linked account
-    /// keeps password login and password reset (`is_local_password_user` keys
-    /// off `password_hash`). Callers must confirm the provider verified the
-    /// email before linking (see TM-AUTH-017 / `oauth_identity_rejection_reason`).
+    /// `get_user_by_oauth(provider, provider_id)` resolves to it. The account's
+    /// original provider and password remain unchanged. Callers must confirm
+    /// the provider verified the email before linking (TM-AUTH-017).
     pub async fn link_oauth_identity(
         &self,
         id: Uuid,
@@ -140,10 +141,27 @@ impl Database {
     ) -> Result<Option<UserRow>> {
         let row = sqlx::query_as::<_, UserRow>(
             r#"
-            UPDATE users
-            SET auth_provider = $2, auth_provider_id = $3, updated_at = NOW()
-            WHERE id = $1
-            RETURNING id, email, name, avatar_url, roles, password_hash, email_verified, auth_provider, auth_provider_id, created_at, updated_at, external_id
+            WITH inserted AS (
+                INSERT INTO user_oauth_identities (user_id, provider, provider_id)
+                SELECT id, $2, $3
+                FROM users
+                WHERE id = $1
+                ON CONFLICT DO NOTHING
+                RETURNING user_id
+            ),
+            resolved AS (
+                SELECT user_id FROM inserted
+                UNION ALL
+                SELECT user_id
+                FROM user_oauth_identities
+                WHERE provider = $2 AND provider_id = $3
+            )
+            SELECT u.id, u.email, u.name, u.avatar_url, u.roles, u.password_hash,
+                   u.email_verified, u.auth_provider, u.auth_provider_id,
+                   u.created_at, u.updated_at, u.external_id
+            FROM users u
+            JOIN resolved r ON r.user_id = u.id
+            WHERE u.id = $1
             "#,
         )
         .bind(id)
@@ -156,7 +174,16 @@ impl Database {
     }
 
     pub async fn update_user(&self, id: Uuid, input: UpdateUser) -> Result<Option<UserRow>> {
+        let display_name = input
+            .name
+            .as_deref()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .unwrap_or("User")
+            .to_string();
+        let name_changed = input.name.is_some();
         let roles_json = input.roles.map(|r| serde_json::to_value(&r)).transpose()?;
+        let mut tx = self.pool.begin().await?;
 
         let row = sqlx::query_as::<_, UserRow>(
             r#"
@@ -178,8 +205,28 @@ impl Database {
         .bind(&roles_json)
         .bind(&input.password_hash)
         .bind(input.email_verified)
-        .fetch_optional(&self.pool)
+        .fetch_optional(&mut *tx)
         .await?;
+
+        if row.is_some() && name_changed {
+            sqlx::query(
+                r#"
+                UPDATE session_participants AS participant
+                SET display_name = $2,
+                    updated_at = NOW()
+                FROM principals
+                WHERE participant.kind = 'user'
+                  AND participant.principal_id = principals.id
+                  AND principals.resolved_user_id = $1
+                "#,
+            )
+            .bind(id)
+            .bind(display_name)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
 
         Ok(row)
     }

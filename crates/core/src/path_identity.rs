@@ -2,7 +2,7 @@
 //
 // Shared helpers for asserting that serialized values exposed to the model use
 // the active `SessionFileSystem` display identity. The contract is documented
-// in `specs/file-store.md` under "Model-visible path identity".
+// in `knowledge/runtime-resources/file-store.md` under "Model-visible path identity".
 
 use crate::session_path::WORKSPACE_PREFIX;
 use crate::traits::SessionFileSystem;
