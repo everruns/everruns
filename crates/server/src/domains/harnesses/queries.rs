@@ -9,7 +9,7 @@ use everruns_core::{
     AgentCapabilityConfig, Harness, HarnessId, HarnessStatus, InitialFile,
     is_declarative_capability, merge_harness,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
 use super::types::HarnessRow;
@@ -212,9 +212,31 @@ pub async fn load_harnesses_list(
     db: &StorageBackend,
     rows: Vec<HarnessRow>,
 ) -> anyhow::Result<Vec<Harness>> {
+    let Some(org_id) = rows.first().map(|row| row.org_id) else {
+        return Ok(Vec::new());
+    };
+    let harness_ids = rows.iter().map(|row| row.id).collect::<Vec<_>>();
+    let capability_rows = db
+        .get_harness_capabilities_by_harness_ids(org_id, &harness_ids)
+        .await?;
+    let mut capabilities_by_harness = HashMap::<HarnessId, Vec<AgentCapabilityConfig>>::new();
+    for row in capability_rows {
+        capabilities_by_harness
+            .entry(row.harness_id)
+            .or_default()
+            .push(AgentCapabilityConfig::with_config(
+                row.capability_id,
+                row.config,
+            ));
+    }
+
     let mut harnesses = Vec::with_capacity(rows.len());
     for row in rows {
-        let caps = get_capabilities(db, row.org_id, row.id.uuid()).await?;
+        let caps = capabilities_by_harness.remove(&row.id).unwrap_or_default();
+        let caps = crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+            db, row.org_id, caps,
+        )
+        .await?;
         harnesses.push(row_to_harness(row, caps));
     }
     Ok(harnesses)
@@ -424,4 +446,66 @@ pub fn validate_harness_name(name: &str) -> Result<(), CommandError> {
         )));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage::models::CreateHarnessRow;
+
+    fn harness_row(name: &str, parent_harness_id: Option<HarnessId>) -> CreateHarnessRow {
+        CreateHarnessRow {
+            name: name.to_string(),
+            display_name: Some(name.to_string()),
+            description: None,
+            system_prompt: None,
+            parent_harness_id,
+            default_model_id: None,
+            tags: vec![],
+            initial_files: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            network_access: None,
+            embedder_metadata: serde_json::json!({}),
+            is_built_in: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn list_loads_local_capabilities_in_one_batched_lookup() {
+        let db = StorageBackend::in_memory();
+        let org_id = 1;
+        let root = db
+            .create_harness(org_id, harness_row("root", None))
+            .await
+            .unwrap();
+        let child = db
+            .create_harness(org_id, harness_row("child", Some(root.id)))
+            .await
+            .unwrap();
+        let _leaf = db
+            .create_harness(org_id, harness_row("leaf", Some(child.id)))
+            .await
+            .unwrap();
+        db.set_harness_capabilities(
+            child.id.uuid(),
+            vec![("web_fetch".to_string(), 0, serde_json::json!({}))],
+        )
+        .await
+        .unwrap();
+
+        let rows = db.list_harnesses(org_id, None, true).await.unwrap();
+        db.reset_session_list_lookup_count();
+        let harnesses = load_harnesses_list(&db, rows).await.unwrap();
+
+        assert_eq!(db.session_list_lookup_count(), 1);
+        let root = harnesses.iter().find(|h| h.name == "root").unwrap();
+        let child = harnesses.iter().find(|h| h.name == "child").unwrap();
+        let leaf = harnesses.iter().find(|h| h.name == "leaf").unwrap();
+        assert_eq!(root.parent_harness_id, None);
+        assert_eq!(child.parent_harness_id, Some(root.id));
+        assert_eq!(leaf.parent_harness_id, Some(child.id));
+        assert!(root.capabilities.is_empty());
+        assert_eq!(child.capabilities[0].capability_id(), "web_fetch");
+        assert!(leaf.capabilities.is_empty());
+    }
 }

@@ -763,6 +763,14 @@ impl StorageBackend {
         dispatch!(self, count_sessions_for_harness, org_id, harness_id)
     }
 
+    pub async fn count_sessions_for_harnesses(
+        &self,
+        org_id: i64,
+        harness_ids: &[HarnessId],
+    ) -> Result<Vec<(HarnessId, i64)>> {
+        dispatch!(self, count_sessions_for_harnesses, org_id, harness_ids)
+    }
+
     /// Count user-created harnesses in an org (for resource limits); excludes
     /// soft-deleted rows and system-seeded built-in harnesses.
     pub async fn count_harnesses_for_org(&self, org_id: i64) -> Result<i64> {
@@ -3948,6 +3956,14 @@ impl StorageBackend {
 
     pub async fn count_apps_for_harness(&self, org_id: i64, harness_id: HarnessId) -> Result<u64> {
         dispatch!(self, count_apps_for_harness, org_id, harness_id)
+    }
+
+    pub async fn count_apps_for_harnesses(
+        &self,
+        org_id: i64,
+        harness_ids: &[HarnessId],
+    ) -> Result<Vec<(HarnessId, i64)>> {
+        dispatch!(self, count_apps_for_harnesses, org_id, harness_ids)
     }
 
     pub async fn update_app(

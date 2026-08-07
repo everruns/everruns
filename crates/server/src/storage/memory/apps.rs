@@ -126,6 +126,22 @@ impl InMemoryDatabase {
             .count() as u64)
     }
 
+    pub async fn count_apps_for_harnesses(
+        &self,
+        org_id: i64,
+        harness_ids: &[HarnessId],
+    ) -> Result<Vec<(HarnessId, i64)>> {
+        let mut counts = std::collections::HashMap::<HarnessId, i64>::new();
+        for app in self.apps.read().values() {
+            let harness_id = HarnessId::from_uuid(app.harness_id);
+            if app.org_id == org_id && app.status != "deleted" && harness_ids.contains(&harness_id)
+            {
+                *counts.entry(harness_id).or_default() += 1;
+            }
+        }
+        Ok(counts.into_iter().collect())
+    }
+
     pub async fn update_app(
         &self,
         org_id: i64,

@@ -153,6 +153,26 @@ impl Database {
         Ok(count as u64)
     }
 
+    pub async fn count_apps_for_harnesses(
+        &self,
+        org_id: i64,
+        harness_ids: &[HarnessId],
+    ) -> Result<Vec<(HarnessId, i64)>> {
+        let harness_ids = harness_ids.iter().map(|id| id.uuid()).collect::<Vec<_>>();
+        Ok(sqlx::query_as(
+            r#"
+            SELECT harness_id, COUNT(*)::bigint
+            FROM apps
+            WHERE org_id = $1 AND harness_id = ANY($2) AND status != 'deleted'
+            GROUP BY harness_id
+            "#,
+        )
+        .bind(org_id)
+        .bind(&harness_ids)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
     pub async fn update_app(
         &self,
         org_id: i64,

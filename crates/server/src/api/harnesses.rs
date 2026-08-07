@@ -20,7 +20,6 @@ use everruns_core::{
     AgentCapabilityConfig, Caller, DeploymentGrade, Harness, PlatformDefinition,
     ResourceConfigResponse, evaluate_policies_with,
 };
-use futures::{StreamExt, TryStreamExt, stream};
 
 use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, ListResponse, ResourceStatsResponse,
@@ -28,7 +27,7 @@ use super::common::{
 };
 use super::dispatch::{Dispatchable, impl_dispatchable};
 use serde::Deserialize;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use utoipa::{IntoParams, ToSchema};
 
 use crate::services::CapabilityService;
@@ -108,21 +107,37 @@ async fn add_harness_counts(
     })
 }
 
-const HARNESS_COUNT_CONCURRENCY_LIMIT: usize = 8;
-
 async fn add_harnesses_counts(
     db: &StorageBackend,
     org_id: i64,
     harnesses: Vec<Harness>,
 ) -> Result<Vec<ResourceWithCounts<Harness>>, (StatusCode, Json<ErrorResponse>)> {
-    stream::iter(
-        harnesses
-            .into_iter()
-            .map(|harness| add_harness_counts(db, org_id, harness)),
-    )
-    .buffered(HARNESS_COUNT_CONCURRENCY_LIMIT)
-    .try_collect::<Vec<_>>()
-    .await
+    let harness_ids = harnesses
+        .iter()
+        .map(|harness| harness.id)
+        .collect::<Vec<_>>();
+    let session_counts = async {
+        db.count_sessions_for_harnesses(org_id, &harness_ids)
+            .await
+            .log_internal_error_json("count harness sessions")
+    };
+    let app_counts = async {
+        db.count_apps_for_harnesses(org_id, &harness_ids)
+            .await
+            .log_internal_error_json("count harness apps")
+    };
+    let (session_counts, app_counts) = tokio::try_join!(session_counts, app_counts)?;
+    let session_counts = session_counts.into_iter().collect::<HashMap<_, _>>();
+    let app_counts = app_counts.into_iter().collect::<HashMap<_, _>>();
+
+    Ok(harnesses
+        .into_iter()
+        .map(|harness| ResourceWithCounts {
+            session_count: session_counts.get(&harness.id).copied().unwrap_or(0) as u64,
+            app_count: app_counts.get(&harness.id).copied().unwrap_or(0) as u64,
+            inner: harness,
+        })
+        .collect())
 }
 
 /// Create harness routes
