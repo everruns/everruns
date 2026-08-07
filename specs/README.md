@@ -95,6 +95,7 @@ detail. Stale "current" lists (current flags, current statuses) should become li
 
 ## UI and generative UI
 
+- `specs/webmcp.md` - Browser-native tools exposed by the authenticated Everruns UI
 - `specs/markdown-messages.md` - Chat message markdown rendering with llm-ui
 - `specs/openui.md` - OpenUI generative-UI capability
 - `specs/a2ui.md` - A2UI generative-UI capability

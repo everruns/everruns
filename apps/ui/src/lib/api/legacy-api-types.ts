@@ -787,6 +787,8 @@ export interface FeatureFlags {
   public_chat: boolean;
   /** First-party MCP server endpoint (`POST /mcp`). Experimental. */
   mcp_endpoint: boolean;
+  /** Browser-native tools exposed by the authenticated Everruns UI. Experimental. */
+  webmcp: boolean;
 }
 
 export interface OrgFeatureFlagSetting {

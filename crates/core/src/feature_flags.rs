@@ -57,6 +57,10 @@ pub struct FeatureFlags {
     /// Experimental remote-control surface; requires both deployment enablement
     /// and per-org opt-in.
     pub mcp_endpoint: bool,
+    /// Browser-native WebMCP tools exposed by the authenticated Everruns UI.
+    /// Experimental remote-control surface; requires deployment enablement and
+    /// per-org opt-in. See `specs/webmcp.md`.
+    pub webmcp: bool,
 }
 
 /// Untyped API representation of feature flags: a generic `{ "<flag>": bool }` map.
@@ -168,6 +172,13 @@ pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
              side-effecting operations within the caller's permissions.",
         experimental: true,
     },
+    FeatureFlagDefinition {
+        name: "webmcp",
+        label: "WebMCP UI tools",
+        description: "Exposes a small browser-native tool surface from the authenticated UI so a \
+             browser agent can search, navigate, and perform confirmed actions in Everruns.",
+        experimental: true,
+    },
 ];
 
 impl FeatureFlags {
@@ -190,6 +201,7 @@ impl FeatureFlags {
             observers: opt_in("observers", system.observers),
             public_chat: opt_in("public_chat", system.public_chat),
             mcp_endpoint: opt_in("mcp_endpoint", system.mcp_endpoint),
+            webmcp: opt_in("webmcp", system.webmcp),
         }
     }
 
@@ -206,6 +218,7 @@ impl FeatureFlags {
             observers: experimental_flag("FEATURE_OBSERVERS", grade),
             public_chat: experimental_flag("FEATURE_PUBLIC_CHAT", grade),
             mcp_endpoint: experimental_flag("FEATURE_MCP_ENDPOINT", grade),
+            webmcp: experimental_flag("FEATURE_WEBMCP", grade),
         }
     }
 
@@ -233,6 +246,7 @@ impl FeatureFlags {
             ("observers".to_string(), self.observers),
             ("public_chat".to_string(), self.public_chat),
             ("mcp_endpoint".to_string(), self.mcp_endpoint),
+            ("webmcp".to_string(), self.webmcp),
         ]))
     }
 
@@ -249,6 +263,7 @@ impl FeatureFlags {
             "observers" => self.observers,
             "public_chat" => self.public_chat,
             "mcp_endpoint" => self.mcp_endpoint,
+            "webmcp" => self.webmcp,
             _ => false,
         }
     }
@@ -267,6 +282,7 @@ impl FeatureFlags {
             observers: true,
             public_chat: true,
             mcp_endpoint: true,
+            webmcp: true,
         }
     }
 }
@@ -425,6 +441,7 @@ mod tests {
             observers: true,
             public_chat: true,
             mcp_endpoint: true,
+            webmcp: true,
         };
         assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("notifications"));
@@ -436,6 +453,7 @@ mod tests {
         assert!(flags.is_enabled("observers"));
         assert!(flags.is_enabled("public_chat"));
         assert!(flags.is_enabled("mcp_endpoint"));
+        assert!(flags.is_enabled("webmcp"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
@@ -452,6 +470,7 @@ mod tests {
             observers: true,
             public_chat: true,
             mcp_endpoint: true,
+            webmcp: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"global_chat\":true"));
@@ -461,6 +480,7 @@ mod tests {
         assert!(json.contains("\"voice\":true"));
         assert!(json.contains("\"agent_delegation\":true"));
         assert!(json.contains("\"observers\":true"));
+        assert!(json.contains("\"webmcp\":true"));
 
         let parsed: FeatureFlags = serde_json::from_str(&json).unwrap();
         assert_eq!(flags, parsed);
