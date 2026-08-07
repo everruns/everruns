@@ -26,21 +26,21 @@ function ShowcaseSection({
   children: React.ReactNode;
 }) {
   return (
-    <Card>
+    <Card className="min-w-0">
       <CardHeader>
         <CardTitle className="text-lg">{title}</CardTitle>
         {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
-      <CardContent className="space-y-4">{children}</CardContent>
+      <CardContent className="min-w-0 space-y-4">{children}</CardContent>
     </Card>
   );
 }
 
 function ShowcaseItem({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-2">
+    <div className="min-w-0 space-y-2">
       <div className="text-sm font-medium text-muted-foreground">{label}</div>
-      <div className="border p-4 bg-background">{children}</div>
+      <div className="min-w-0 border bg-background p-4">{children}</div>
     </div>
   );
 }
@@ -248,9 +248,9 @@ function IncompleteMarkdownDemo() {
   return (
     <div className="space-y-3">
       {incompleteExamples.map((example) => (
-        <div key={example.label} className="flex gap-4">
-          <div className="w-40 text-sm text-muted-foreground shrink-0">{example.label}</div>
-          <div className="flex-1 border rounded p-2 bg-muted/30">
+        <div key={example.label} className="flex min-w-0 flex-col gap-2 sm:flex-row sm:gap-4">
+          <div className="text-sm text-muted-foreground sm:w-40 sm:shrink-0">{example.label}</div>
+          <div className="min-w-0 flex-1 rounded border bg-muted/30 p-2">
             <StreamdownMessage variant="inline" isAnimating={true}>
               {example.content}
             </StreamdownMessage>

@@ -14,7 +14,13 @@ interface PageShellProps {
 
 export function PageShell({ children, fullWidth = false, className }: PageShellProps) {
   return (
-    <div className={cn(fullWidth ? "w-full p-6" : "container mx-auto p-6", className)}>
+    <div
+      className={cn(
+        fullWidth ? "w-full" : "container mx-auto",
+        "min-w-0 max-w-full p-4 sm:p-6",
+        className,
+      )}
+    >
       {children}
     </div>
   );
@@ -29,12 +35,23 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, description, actions, className }: PageHeaderProps) {
   return (
-    <div className={cn("flex items-start justify-between gap-4 mb-6", className)}>
+    <div
+      className={cn(
+        "mb-6 flex min-w-0 flex-col items-start justify-between gap-4 sm:flex-row",
+        className,
+      )}
+    >
       <div className="min-w-0">
-        <h1 className="text-2xl font-bold flex items-center gap-3">{title}</h1>
-        {description && <p className="text-sm text-muted-foreground mt-1">{description}</p>}
+        <h1 className="flex min-w-0 flex-wrap items-center gap-3 break-words text-2xl font-bold">
+          {title}
+        </h1>
+        {description && (
+          <p className="mt-1 break-words text-sm text-muted-foreground">{description}</p>
+        )}
       </div>
-      {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+      {actions && (
+        <div className="flex max-w-full flex-wrap items-center gap-2 sm:shrink-0">{actions}</div>
+      )}
     </div>
   );
 }

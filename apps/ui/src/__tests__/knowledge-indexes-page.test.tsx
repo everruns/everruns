@@ -217,6 +217,21 @@ describe("KnowledgeIndexesPage", () => {
     );
   });
 
+  it("provides one responsive record with labeled mobile fields", () => {
+    render(<KnowledgeIndexesPage />);
+
+    const table = screen.getByRole("table", { name: "Knowledge indexes" });
+    const row = within(table).getByRole("row", { name: /Product Docs/i });
+
+    expect(row).toHaveAttribute("data-slot", "responsive-table-row");
+    expect(within(row).getByText("Source", { selector: "span" })).toBeInTheDocument();
+    expect(within(row).getByText("Index state", { selector: "span" })).toBeInTheDocument();
+    expect(within(row).queryByText(indexes[0].id)).not.toBeInTheDocument();
+    expect(
+      within(row).getByRole("button", { name: `Copy ID: ${indexes[0].id}` }),
+    ).toBeInTheDocument();
+  });
+
   it("surfaces an invalid model and requires repair before sync", () => {
     mockUseModels.mockReturnValue({ data: [], isLoading: false });
     render(<KnowledgeIndexesPage />);

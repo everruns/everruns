@@ -38,7 +38,7 @@ export function PageContainer({ children, fullWidth = false, className }: PageCo
     <div
       className={cn(
         fullWidth ? "w-full" : "container mx-auto",
-        "flex flex-col gap-6 p-6",
+        "flex min-w-0 max-w-full flex-col gap-5 p-4 sm:gap-6 sm:p-6",
         className,
       )}
     >
@@ -263,7 +263,7 @@ export function PageControlStrip({
   children: ReactNode;
   className?: string;
 }) {
-  return <div className={className}>{children}</div>;
+  return <div className={cn("min-w-0 max-w-full", className)}>{children}</div>;
 }
 
 export interface SectionTabItem {
@@ -288,7 +288,10 @@ export function SectionTabs({
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-center border-b", className)} role="tablist">
+    <div
+      className={cn("flex max-w-full items-center overflow-x-auto border-b", className)}
+      role="tablist"
+    >
       {items.map((item) => {
         const isActive = item.value === value;
         return (
@@ -299,7 +302,7 @@ export function SectionTabs({
             aria-selected={isActive}
             onClick={() => onValueChange(item.value)}
             className={cn(
-              "-mb-px inline-flex items-center gap-2 border-b-2 px-3.5 py-2 text-[13px] font-medium transition-colors",
+              "-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 px-3.5 py-2 text-[13px] font-medium transition-colors",
               isActive
                 ? "border-primary text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground",
@@ -405,7 +408,11 @@ export function PageColumns({ children, className }: { children: ReactNode; clas
 
 /** The primary column inside {@link PageColumns}. */
 export function PageMain({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn("flex min-w-0 flex-col gap-4", className)}>{children}</div>;
+  return (
+    <div className={cn("@container/page-main flex min-w-0 flex-col gap-4", className)}>
+      {children}
+    </div>
+  );
 }
 
 /** The fixed right rail inside {@link PageColumns}. */
@@ -446,7 +453,7 @@ export function PageFooter({ children, className }: { children: ReactNode; class
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-4 border-t pt-3.5 text-[13px] text-muted-foreground",
+        "flex flex-wrap items-center justify-between gap-4 border-t pt-3.5 text-[13px] text-muted-foreground",
         className,
       )}
     >

@@ -39,8 +39,8 @@ export function DevPageShell({
   }
 
   return (
-    <div className="min-h-screen bg-background bg-brand-dots px-4 py-8">
-      <div className={`mx-auto ${widthClassName}`}>
+    <div className="min-h-screen min-w-0 max-w-full bg-background bg-brand-dots px-4 py-8">
+      <div className={`mx-auto min-w-0 max-w-full ${widthClassName}`}>
         <Link
           href="/dev"
           className="mb-6 inline-flex items-center gap-2 border border-border bg-card px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted/35 hover:text-foreground"
