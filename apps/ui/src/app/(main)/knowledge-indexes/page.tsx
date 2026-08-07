@@ -2,19 +2,11 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import {
-  AlertCircle,
-  Archive,
-  FolderOpen,
-  GitBranch,
-  Library,
-  Pencil,
-  Plus,
-  RefreshCw,
-} from "lucide-react";
+import { Archive, FolderOpen, GitBranch, Library, Pencil, Plus, RefreshCw } from "lucide-react";
 import { GithubIcon as Github } from "@/components/icons/github-icon";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { ArchiveKnowledgeIndexDialog } from "@/components/knowledge-indexes/archive-knowledge-index-dialog";
+import { KnowledgeIndexDiagnosticBadge } from "@/components/knowledge-indexes/knowledge-index-diagnostic";
 import { KnowledgeIndexFormDialog } from "@/components/knowledge-indexes/knowledge-index-form-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,6 +41,7 @@ import {
   useSyncKnowledgeIndex,
   useUpdateKnowledgeIndex,
 } from "@/hooks";
+import { useModels } from "@/hooks/use-providers";
 import type {
   CreateKnowledgeIndexRequest,
   KnowledgeIndex,
@@ -61,7 +54,12 @@ import {
   isReadOnlyStatus,
 } from "@/lib/entity-lifecycle";
 import { formatRelativeTime, pluralize } from "@/lib/formatting";
-import { syncStatusBadgeVariant } from "@/lib/knowledge-index-sync";
+import {
+  getKnowledgeIndexDiagnostic,
+  knowledgeIndexDiagnosticBlocksSync,
+  knowledgeIndexSyncActionLabel,
+  type KnowledgeIndexDiagnostic,
+} from "@/lib/knowledge-index-diagnostics";
 import { cn } from "@/lib/utils";
 
 type StatusTab = "all" | "active" | "archived";
@@ -90,6 +88,7 @@ export default function KnowledgeIndexesPage() {
   const updateIndex = useUpdateKnowledgeIndex();
   const syncIndex = useSyncKnowledgeIndex();
   const archiveIndex = useArchiveKnowledgeIndex();
+  const { data: models, isLoading: modelsLoading, error: modelsError } = useModels();
 
   const counts = useMemo(() => {
     const list = indexes ?? [];
@@ -194,12 +193,12 @@ export default function KnowledgeIndexesPage() {
           >
             {(items) => (
               <div className="border">
-                <Table>
+                <Table className="min-w-[960px]">
                   <TableHeader>
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Source</TableHead>
-                      <TableHead>Sync</TableHead>
+                      <TableHead>Index state</TableHead>
                       <TableHead>Last synced</TableHead>
                       <TableHead>Updated</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
@@ -214,6 +213,10 @@ export default function KnowledgeIndexesPage() {
                         onArchive={setArchivingIndex}
                         onSync={(candidate) => syncIndex.mutate(candidate.id)}
                         isSyncing={syncIndex.isPending}
+                        diagnostic={getKnowledgeIndexDiagnostic(index, {
+                          models,
+                          modelsReady: !modelsLoading && !modelsError,
+                        })}
                       />
                     ))}
                   </TableBody>
@@ -333,15 +336,17 @@ function KnowledgeIndexRow({
   onArchive,
   onSync,
   isSyncing,
+  diagnostic,
 }: {
   index: KnowledgeIndex;
   onEdit: (index: KnowledgeIndex) => void;
   onArchive: (index: KnowledgeIndex) => void;
   onSync: (index: KnowledgeIndex) => void;
   isSyncing: boolean;
+  diagnostic: KnowledgeIndexDiagnostic;
 }) {
   const isReadOnly = isReadOnlyStatus(index.status);
-  const canSync = index.status === "active";
+  const canSync = index.status === "active" && !knowledgeIndexDiagnosticBlocksSync(diagnostic);
 
   return (
     <TableRow>
@@ -364,12 +369,6 @@ function KnowledgeIndexRow({
           <span className="truncate font-mono">{index.id}</span>
           <CopyButton value={index.id} />
         </div>
-        {index.last_sync_error && (
-          <div className="mt-1 flex gap-1.5 text-xs text-destructive">
-            <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
-            <span className="line-clamp-2">{index.last_sync_error}</span>
-          </div>
-        )}
       </TableCell>
       <TableCell>
         <span className="inline-flex items-center gap-1.5 text-muted-foreground">
@@ -382,7 +381,32 @@ function KnowledgeIndexRow({
         </span>
       </TableCell>
       <TableCell>
-        <Badge variant={syncStatusBadgeVariant(index.sync_status)}>{index.sync_status}</Badge>
+        <div className="w-64 space-y-1.5 whitespace-normal">
+          <KnowledgeIndexDiagnosticBadge diagnostic={diagnostic} />
+          <p className="text-xs text-muted-foreground">{diagnostic.description}</p>
+          {diagnostic.failureReason && (
+            <p className="line-clamp-2 text-xs text-destructive">
+              <span className="font-medium">Latest failure:</span> {diagnostic.failureReason}
+            </p>
+          )}
+          {diagnostic.action === "configure_model" && !isReadOnly && (
+            <button
+              type="button"
+              className="text-xs font-medium text-primary hover:underline"
+              onClick={() => onEdit(index)}
+            >
+              Configure embedding model
+            </button>
+          )}
+          {diagnostic.action === "configure_provider" && diagnostic.providerId && (
+            <Link
+              href={`/settings/providers/${diagnostic.providerId}`}
+              className="block text-xs font-medium text-primary hover:underline"
+            >
+              Configure provider
+            </Link>
+          )}
+        </div>
       </TableCell>
       <TableCell className="text-muted-foreground">
         {index.last_synced_at ? formatRelativeTime(index.last_synced_at) : "Never"}
@@ -402,7 +426,7 @@ function KnowledgeIndexRow({
               }
             >
               <RefreshCw className="size-4" />
-              Sync
+              {knowledgeIndexSyncActionLabel(diagnostic)}
             </Button>
           )}
           <Link href={`/knowledge-indexes/${index.id}`}>

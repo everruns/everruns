@@ -4,6 +4,7 @@
 use super::super::models::*;
 use super::{Database, build_search_sql};
 use anyhow::Result;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 const INDEX_COLUMNS: &str = "id, org_id, public_id, name, description, source_type, source_config, \
@@ -177,6 +178,26 @@ impl Database {
                 .fetch_all(&self.pool)
                 .await?;
         Ok(rows)
+    }
+
+    pub async fn count_knowledge_index_documents(
+        &self,
+        index_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, usize>> {
+        if index_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let rows = sqlx::query_as::<_, (Uuid, i64)>(
+            "SELECT index_id, COUNT(*) FROM knowledge_index_documents \
+             WHERE index_id = ANY($1) GROUP BY index_id",
+        )
+        .bind(index_ids)
+        .fetch_all(&self.pool)
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|(index_id, count)| (index_id, count as usize))
+            .collect())
     }
 
     pub async fn list_knowledge_index_chunks(

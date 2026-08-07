@@ -5,6 +5,7 @@ use super::super::models::*;
 use super::{InMemoryDatabase, matches_search_tokens};
 use anyhow::{Result, bail};
 use chrono::{DateTime, Duration, Utc};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 impl InMemoryDatabase {
@@ -202,6 +203,20 @@ impl InMemoryDatabase {
             .collect();
         result.sort_by_key(|doc| std::cmp::Reverse(doc.created_at));
         Ok(result)
+    }
+
+    pub async fn count_knowledge_index_documents(
+        &self,
+        index_ids: &[Uuid],
+    ) -> Result<HashMap<Uuid, usize>> {
+        let wanted: std::collections::HashSet<_> = index_ids.iter().copied().collect();
+        let mut counts = HashMap::new();
+        for document in self.knowledge_index_documents.read().values() {
+            if wanted.contains(&document.index_id) {
+                *counts.entry(document.index_id).or_insert(0) += 1;
+            }
+        }
+        Ok(counts)
     }
 
     pub async fn list_knowledge_index_chunks(

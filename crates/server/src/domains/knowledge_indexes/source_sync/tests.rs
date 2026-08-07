@@ -402,6 +402,11 @@ async fn embed_persists_documents_chunks_and_vectors() {
         .await
         .expect("docs");
     assert_eq!(documents.len(), 2);
+    let document_counts = db
+        .count_knowledge_index_documents(&[index_id])
+        .await
+        .expect("document counts");
+    assert_eq!(document_counts.get(&index_id), Some(&2));
     let chunks = db
         .list_knowledge_index_chunks(index_id)
         .await

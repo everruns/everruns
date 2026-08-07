@@ -22,12 +22,9 @@ interface EmbeddingModelPickerProps {
   "aria-describedby"?: string;
 }
 
-// A model is treated as an embeddings model when its capabilities advertise
-// "embeddings". The backend model registry does not reliably tag embedding
-// models through the list API today (model sync leaves capabilities empty for
-// many providers), so we fall back to listing all enabled models when no model
-// advertises the capability. The server still enforces that the chosen model
-// resolves to an Embeddings driver, so an invalid pick is rejected on save.
+// Only advertise models whose registry capabilities explicitly include
+// embeddings. Listing a generation-only fallback creates an index that cannot
+// sync and hides the configuration problem until runtime.
 export function isEmbeddingModel(model: ModelWithProvider): boolean {
   return model.capabilities.some((cap) => cap.toLowerCase() === "embeddings");
 }
@@ -45,10 +42,7 @@ export function EmbeddingModelPicker({
   const { data: models = [], isLoading } = useModels();
 
   const enabled = models.filter((m) => m.enabled);
-  const embeddingModels = enabled.filter(isEmbeddingModel);
-  // Fall back to all enabled models when the registry exposes no embeddings
-  // capability so the picker is never empty; the server validates the choice.
-  const candidates = embeddingModels.length > 0 ? embeddingModels : enabled;
+  const candidates = enabled.filter(isEmbeddingModel);
 
   const sorted = [...candidates].sort((a, b) => {
     if (a.provider_name !== b.provider_name) {
@@ -77,7 +71,7 @@ export function EmbeddingModelPicker({
       <SelectContent>
         {sorted.length === 0 && (
           <SelectItem value="__none__" disabled>
-            No models available
+            No embedding models available
           </SelectItem>
         )}
         {sorted.map((model) => (

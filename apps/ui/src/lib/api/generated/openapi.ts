@@ -8433,6 +8433,8 @@ export interface components {
       deleted_at?: string | null;
       /** @description Human-readable description. Safe to render in user-facing messages. */
       description?: string | null;
+      /** @description Number of documents currently retained by this index. */
+      document_count: number;
       /** @description Embedding model used to embed chunks. Required. */
       embedding_model_id: string;
       /**
@@ -9389,6 +9391,8 @@ export interface components {
         deleted_at?: string | null;
         /** @description Human-readable description. Safe to render in user-facing messages. */
         description?: string | null;
+        /** @description Number of documents currently retained by this index. */
+        document_count: number;
         /** @description Embedding model used to embed chunks. Required. */
         embedding_model_id: string;
         /**

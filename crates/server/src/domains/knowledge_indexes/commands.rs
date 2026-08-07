@@ -58,6 +58,21 @@ async fn require_embedding_model(
     Ok(model_id)
 }
 
+async fn response_with_document_count(
+    ctx: &Ctx,
+    row: crate::storage::models::KnowledgeIndexRow,
+) -> Result<KnowledgeIndexResponse, CommandError> {
+    let document_count = ctx
+        .db
+        .count_knowledge_index_documents(&[row.id])
+        .await
+        .map_err(classify_anyhow)?
+        .get(&row.id)
+        .copied()
+        .unwrap_or(0);
+    knowledge_index_response(row, document_count).map_err(classify_anyhow)
+}
+
 // ============================================
 // Knowledge Index CRUD
 // ============================================
@@ -110,8 +125,16 @@ impl Command for ListKnowledgeIndexes {
             )
             .await
             .map_err(classify_anyhow)?;
+        let counts = ctx
+            .db
+            .count_knowledge_index_documents(&rows.iter().map(|row| row.id).collect::<Vec<_>>())
+            .await
+            .map_err(classify_anyhow)?;
         rows.into_iter()
-            .map(|row| knowledge_index_response(row).map_err(classify_anyhow))
+            .map(|row| {
+                let document_count = counts.get(&row.id).copied().unwrap_or(0);
+                knowledge_index_response(row, document_count).map_err(classify_anyhow)
+            })
             .collect()
     }
 }
@@ -193,7 +216,7 @@ impl Command for CreateKnowledgeIndex {
             .create_knowledge_index(ctx.org_id(), input)
             .await
             .map_err(classify_anyhow)?;
-        knowledge_index_response(row).map_err(classify_anyhow)
+        knowledge_index_response(row, 0).map_err(classify_anyhow)
     }
 }
 
@@ -238,7 +261,7 @@ impl Command for GetKnowledgeIndex {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
-        knowledge_index_response(row).map_err(classify_anyhow)
+        response_with_document_count(ctx, row).await
     }
 }
 
@@ -327,7 +350,7 @@ impl Command for UpdateKnowledgeIndexCmd {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
-        knowledge_index_response(row).map_err(classify_anyhow)
+        response_with_document_count(ctx, row).await
     }
 }
 
@@ -430,7 +453,7 @@ impl Command for SyncKnowledgeIndex {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
-        knowledge_index_response(row).map_err(classify_anyhow)
+        response_with_document_count(ctx, row).await
     }
 }
 
