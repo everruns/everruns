@@ -1688,7 +1688,19 @@ impl SessionBackgroundSink {
     }
 
     async fn signal_session(&self, status: &str, summary: &str) -> Result<()> {
+        // Without a platform store there is nowhere to deliver the completion,
+        // and the background run finishes invisibly — the agent that spawned it
+        // never learns it ended. Say so: a host that wires `spawn_background`
+        // but no store has a hole, not a preference.
         let Some(platform_store) = &self.context.platform_store else {
+            tracing::warn!(
+                run_id = %self.run_id,
+                tool = %self.tool_name,
+                session_id = %self.context.session_id,
+                %status,
+                "background run finished but no platform store is configured; \
+                 the session will not be woken (see everruns-local's wake routing)"
+            );
             return Ok(());
         };
         let message = format!(
