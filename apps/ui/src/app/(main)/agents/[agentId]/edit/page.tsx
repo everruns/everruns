@@ -321,20 +321,6 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
           <PageColumns>
             {/* Main form */}
             <PageMain>
-              <AgentChecks
-                systemPrompt={formData.system_prompt}
-                capabilities={selectedCapabilities}
-                tools={agent.tools ?? []}
-                onApplyFix={(start, end, replacement) =>
-                  handleFormChange(
-                    "system_prompt",
-                    applyByteSpanReplacement(formData.system_prompt, start, end, replacement),
-                  )
-                }
-              />
-
-              <AgentHealthCheck agentId={agent.id} />
-
               <Card>
                 <CardHeader>
                   <CardTitle>Agent Details</CardTitle>
@@ -543,8 +529,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
               </Card>
             </PageMain>
 
-            {/* Capabilities sidebar */}
-            <PageRail>
+            <PageRail className="min-w-0">
               <Card>
                 <CardHeader>
                   <CardTitle>Capabilities</CardTitle>
@@ -558,6 +543,20 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                   />
                 </CardContent>
               </Card>
+
+              <AgentChecks
+                systemPrompt={formData.system_prompt}
+                capabilities={selectedCapabilities}
+                tools={agent.tools ?? []}
+                onApplyFix={(start, end, replacement) =>
+                  handleFormChange(
+                    "system_prompt",
+                    applyByteSpanReplacement(formData.system_prompt, start, end, replacement),
+                  )
+                }
+              />
+
+              <AgentHealthCheck agentId={agent.id} />
 
               {updateAgent.error && (
                 <p className="text-sm text-destructive">Error: {updateAgent.error.message}</p>
