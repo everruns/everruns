@@ -145,6 +145,9 @@ pub async fn prepare_login(
         .as_ref()
         .and_then(|metadata| metadata.resource.clone())
         .unwrap_or_else(|| server_url.to_string());
+    // THREAT[TM-MCP-008]: protected-resource metadata is attacker-controlled;
+    // bind its audience to the endpoint before involving the authorization server.
+    validate_resource(&resource, server_url)?;
     let issuer = protected
         .as_ref()
         .and_then(|metadata| metadata.authorization_servers.first().cloned())
@@ -327,6 +330,23 @@ fn origin_of(url: &str) -> String {
     }
 }
 
+/// Validate that an authorization server cannot mint a token for a resource
+/// controlled by a different origin than the configured MCP endpoint.
+fn validate_resource(resource: &str, server_url: &str) -> Result<()> {
+    let resource = url::Url::parse(resource).context("MCP OAuth resource is not a valid URL")?;
+    let server = url::Url::parse(server_url).context("MCP server URL is not a valid URL")?;
+
+    if resource.scheme() != "https" {
+        return Err(anyhow!("MCP OAuth resource must use HTTPS"));
+    }
+    if resource.origin() != server.origin() {
+        return Err(anyhow!(
+            "MCP OAuth resource origin does not match the configured server"
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -471,6 +491,60 @@ mod tests {
 
         assert_eq!(tokens.access_token, "at-1");
         assert_eq!(tokens.refresh_token.as_deref(), Some("rt-1"));
+    }
+
+    #[tokio::test]
+    async fn login_rejects_a_resource_on_another_origin() {
+        let egress = FakeEgress::with(vec![(
+            "https://evil-mcp.example/.well-known/oauth-protected-resource/sse",
+            200,
+            r#"{
+                "resource": "https://victim-mcp.example/",
+                "authorization_servers": ["https://auth.victim.example"]
+            }"#,
+        )]);
+
+        let error = prepare_login(
+            egress.as_ref(),
+            "https://evil-mcp.example/sse",
+            "http://127.0.0.1:1455/callback",
+            "everruns",
+            None,
+            None,
+        )
+        .await
+        .err()
+        .expect("a server must not select another origin as its token audience");
+
+        assert!(error.to_string().contains("resource origin"));
+        assert_eq!(egress.sent.lock().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn login_rejects_an_insecure_resource() {
+        let egress = FakeEgress::with(vec![(
+            "https://mcp.example.com/.well-known/oauth-protected-resource/sse",
+            200,
+            r#"{
+                "resource": "http://mcp.example.com/",
+                "authorization_servers": ["https://auth.example.com"]
+            }"#,
+        )]);
+
+        let error = prepare_login(
+            egress.as_ref(),
+            "https://mcp.example.com/sse",
+            "http://127.0.0.1:1455/callback",
+            "everruns",
+            None,
+            None,
+        )
+        .await
+        .err()
+        .expect("OAuth resources must use a secure URL");
+
+        assert!(error.to_string().contains("HTTPS"));
+        assert_eq!(egress.sent.lock().unwrap().len(), 1);
     }
 
     #[tokio::test]
