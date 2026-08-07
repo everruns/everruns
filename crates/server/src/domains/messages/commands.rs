@@ -69,6 +69,7 @@ impl Command for CreateMessage {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Session"))?;
+        require_platform_chat_owner(ctx, &session).await?;
         let responder_agent_id = resolve_responder_agent_id(
             ctx,
             session_id,
@@ -96,6 +97,33 @@ impl Command for CreateMessage {
 }
 
 inventory::submit! { CommandDescriptor::of::<CreateMessage>() }
+
+async fn require_platform_chat_owner(
+    ctx: &Ctx,
+    session: &everruns_core::Session,
+) -> Result<(), CommandError> {
+    let harness = ctx
+        .db
+        .get_harness(ctx.org_id(), session.harness_id)
+        .await
+        .map_err(classify_anyhow)?;
+    let is_platform_chat = harness
+        .as_ref()
+        .is_some_and(|harness| harness.is_built_in && harness.name == "platform-chat");
+
+    // THREAT[TM-AGENT-017]: Platform commands run as the persisted session
+    // owner. Only that user may submit turns that can trigger those commands.
+    if is_platform_chat
+        && !ctx.caller.is_internal
+        && ctx.caller.user_id != session.resolved_owner_user_id
+    {
+        return Err(CommandError::forbidden(
+            "Only the Platform Chat session owner can create messages",
+        ));
+    }
+
+    Ok(())
+}
 
 async fn resolve_responder_agent_id(
     ctx: &Ctx,
@@ -390,10 +418,11 @@ mod tests {
     };
     use async_trait::async_trait;
     use everruns_core::typed_id::{HarnessId, MessageId};
-    use everruns_core::{Caller, DEFAULT_ORG_ID, PrincipalId};
+    use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole, PrincipalId};
     use everruns_worker::AgentRunner;
     use std::sync::{Arc, Mutex};
     use tokio::time::{Duration, sleep};
+    use uuid::Uuid;
 
     #[derive(Default)]
     struct RecordingRunner {
@@ -595,6 +624,101 @@ mod tests {
             external_actor: None,
             request_id: None,
         }
+    }
+
+    async fn platform_chat_owner_fixture(
+        caller_user_id: Uuid,
+        owner_user_id: Uuid,
+    ) -> (Ctx, everruns_core::Session) {
+        let db = Arc::new(StorageBackend::in_memory());
+        let harness = db
+            .create_harness(
+                DEFAULT_ORG_ID,
+                CreateHarnessRow {
+                    name: "platform-chat".to_string(),
+                    display_name: Some("Platform Chat".to_string()),
+                    description: None,
+                    system_prompt: None,
+                    parent_harness_id: None,
+                    default_model_id: None,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    embedder_metadata: serde_json::json!({}),
+                    is_built_in: true,
+                },
+            )
+            .await
+            .expect("create Platform Chat harness");
+        let row = db
+            .create_session(CreateSessionRow {
+                org_id: DEFAULT_ORG_ID,
+                app_id: None,
+                harness_id: Some(harness.id),
+                agent_id: None,
+                agent_version_id: None,
+                agent_config_hash: None,
+                agent_identity_id: None,
+                owner_principal_id: PrincipalId::from_seed(owner_user_id.as_u128()),
+                resolved_owner_user_id: Some(owner_user_id),
+                title: Some("Platform Chat".to_string()),
+                locale: None,
+                tags: vec!["global-chat".to_string()],
+                model_id: None,
+                capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                system_prompt: None,
+                initial_files: serde_json::json!([]),
+                hints: None,
+                network_access: None,
+                max_iterations: None,
+                parallel_tool_calls: None,
+                blueprint_id: None,
+                blueprint_config: None,
+                parent_session_id: None,
+                budget_root_session_id: None,
+                workspace_id: None,
+            })
+            .await
+            .expect("create Platform Chat session");
+        let caller = Caller {
+            org_id: DEFAULT_ORG_ID,
+            org_public_id: everruns_core::organization::org_public_id_from_internal(DEFAULT_ORG_ID),
+            user_id: Some(caller_user_id),
+            role: OrgRole::Member,
+            is_platform_user: false,
+            is_internal: false,
+        };
+        let service = SessionService::new(db.clone());
+        let session = service
+            .get(&caller, row.id.uuid(), None)
+            .await
+            .expect("get Platform Chat session")
+            .expect("Platform Chat session exists");
+        (Ctx::minimal_for_test(caller, db, None), session)
+    }
+
+    #[tokio::test]
+    async fn platform_chat_rejects_messages_from_non_owner() {
+        let (ctx, session) = platform_chat_owner_fixture(Uuid::new_v4(), Uuid::new_v4()).await;
+
+        let err = require_platform_chat_owner(&ctx, &session)
+            .await
+            .expect_err("another org member must not drive the owner's Platform Chat");
+
+        assert_eq!(err.status().as_u16(), 403);
+    }
+
+    #[tokio::test]
+    async fn platform_chat_accepts_messages_from_owner() {
+        let owner_user_id = Uuid::new_v4();
+        let (ctx, session) = platform_chat_owner_fixture(owner_user_id, owner_user_id).await;
+
+        require_platform_chat_owner(&ctx, &session)
+            .await
+            .expect("owner may drive their Platform Chat");
     }
 
     async fn wait_for_runner_calls(runner: &RecordingRunner, expected_len: usize) {
