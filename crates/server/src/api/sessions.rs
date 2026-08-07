@@ -30,7 +30,7 @@ use everruns_core::{
 use everruns_worker::AgentRunner;
 
 use super::common::{
-    ApiResult, ErrorResponse, PaginatedResponse, UrlBuilder, WithUrls,
+    ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse, UrlBuilder, WithUrls,
     deserialize_nullable_update_field, impl_auth_state,
 };
 use everruns_durable::UpdateField;
@@ -165,7 +165,7 @@ pub struct CreateSessionRequest {
     pub workspace_id: Option<WorkspaceId>,
 }
 
-/// Request to fork a session (specs/forking-sessions.md). Every field is
+/// Request to fork a session (knowledge/runtime-resources/forking-sessions.md). Every field is
 /// optional; omitted fields inherit the parent session's value. Title defaults
 /// to "{parent title} (fork)" when omitted.
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]
@@ -208,7 +208,7 @@ pub struct ForkSessionRequest {
 // for ops visibility) instead of failing the request. Operators flip
 // `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS=1` to opt back into hard-rejection
 // once their clients are confirmed migrated. The migration timeline lives in
-// `specs/client-side-tools.md`.
+// `knowledge/execution/client-side-tools.md`.
 fn deserialize_client_side_tools<'de, D>(deserializer: D) -> Result<Vec<ToolDefinition>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -257,7 +257,7 @@ pub(crate) fn filter_or_reject_client_side_tools(
         dropped_kinds = ?dropped_kinds,
         "tools[] contained {} non-client_side definition(s); dropping them. \
          The server will reject these in a future release; migrate clients \
-         now. See specs/client-side-tools.md for the timeline.",
+         now. See knowledge/execution/client-side-tools.md for the timeline.",
         dropped.len()
     );
     Ok(kept)
@@ -441,6 +441,7 @@ impl AppState {
         .with_fallback_harness_name(self.fallback_default_harness_name.clone())
         .with_chat_harness_name(self.chat_harness_name.clone())
         .with_chat_session_title(self.chat_session_title.clone())
+        .with_org_rate_limiter(self.org_rate_limiter.clone())
     }
 }
 
@@ -489,6 +490,10 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/v1/sessions/{session_id}/context-report",
             get(get_session_context_report),
+        )
+        .route(
+            "/v1/sessions/{session_id}/resolved-model",
+            get(get_session_resolved_model),
         )
         // Pin/unpin
         .route(
@@ -569,7 +574,6 @@ pub async fn create_session(
     State(state): State<AppState>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Session>>), (StatusCode, Json<ErrorResponse>)> {
-    check_session_create_rate_limit(&state, org.org_id).await?;
     let mut req = req;
     strip_internal_only_fields(&mut req);
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
@@ -626,7 +630,8 @@ pub async fn fork_session(
             .map_err(|e| crate::domains::common::CommandError::forbidden(e.message))?;
     }
 
-    check_session_create_rate_limit(&state, org.org_id).await?;
+    // Per-org session-create throttle is enforced inside `ForkSession::execute`
+    // (shared across REST and MCP dispatch), so no separate pre-check here.
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     let session = ForkSession {
@@ -637,27 +642,6 @@ pub async fn fork_session(
     .await?;
 
     Ok((StatusCode::CREATED, Json(urls.wrap(session))))
-}
-
-async fn check_session_create_rate_limit(
-    state: &AppState,
-    org_id: i64,
-) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
-    if state
-        .org_rate_limiter
-        .check_session_create(org_id)
-        .await
-        .is_err()
-    {
-        return Err(
-            ErrorResponse::new("Too many requests. Please try again later.")
-                .with_code("rate_limited")
-                .with_retry_after(60)
-                .into_response(StatusCode::TOO_MANY_REQUESTS),
-        );
-    }
-
-    Ok(())
 }
 
 /// Guard the Platform Chat feature behind the org-effective `global_chat` flag.
@@ -780,6 +764,43 @@ pub async fn get_session(
     let session = GetSession { session_id }.run(&state.ctx(&org)).await?;
 
     Ok(Json(urls.wrap(session)))
+}
+
+/// The model the runtime will use when a turn has no per-message override.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct SessionResolvedModelResponse {
+    #[schema(value_type = Option<String>)]
+    pub model_id: Option<ModelId>,
+}
+
+/// GET /v1/sessions/{session_id}/resolved-model - Resolve the session's active model
+#[utoipa::path(
+    get,
+    path = "/v1/sessions/{session_id}/resolved-model",
+    params(
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
+    ),
+    responses(
+        (status = 200, description = "Resolved model for turns without a model override", body = SessionResolvedModelResponse),
+        (status = 400, description = "Invalid session ID"),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn get_session_resolved_model(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> ApiResult<SessionResolvedModelResponse> {
+    let session = GetSession { session_id }.run(&state.ctx(&org)).await?;
+    let model_id = state
+        .session_service
+        .resolved_model_id(org.org_id, &session)
+        .await
+        .log_internal_error_json("resolve session model")?;
+
+    Ok(Json(SessionResolvedModelResponse { model_id }))
 }
 
 /// GET /v1/sessions/{session_id}/participants - List session participants

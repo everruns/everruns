@@ -1,7 +1,7 @@
 // PostgreSQL repository: Session Files (virtual filesystem)
 //
 // Content offload: when an object-storage blob backend is configured
-// (specs/object-storage.md), file *content* bytes are stored in the object
+// (knowledge/runtime-resources/object-storage.md), file *content* bytes are stored in the object
 // store and the `workspace_files.content` column is left NULL; a pointer +
 // content hash live in `workspace_file_blobs`. Metadata (path, size, flags,
 // tree) always stays in PostgreSQL. When no blob backend is configured the
@@ -14,7 +14,7 @@ use anyhow::Result;
 use uuid::Uuid;
 
 /// Disaster-recovery metadata stamped onto each offloaded file object
-/// (specs/object-storage.md). Lets a recovery tool rebuild the `workspace_files`
+/// (knowledge/runtime-resources/object-storage.md). Lets a recovery tool rebuild the `workspace_files`
 /// row from the object alone.
 fn file_blob_metadata(
     workspace_id: Uuid,
@@ -783,45 +783,32 @@ impl Database {
         // each blob and matches lines (TM-DOS-008 per-file and total-scan caps
         // still bound the work).
         if self.blob_store().is_some() {
-            let rows = if let Some(path_pat) = path_pattern {
-                sqlx::query_as::<_, SessionFileInfoRow>(
-                    r#"
-                    SELECT id, workspace_id AS session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
-                    FROM workspace_files
-                    WHERE workspace_id = $1
-                        AND is_directory = FALSE
-                        AND size_bytes <= $2
-                        AND path ~ $3
-                    ORDER BY path ASC
-                    "#,
-                )
-                .bind(session_id)
-                .bind(max_file_bytes)
-                .bind(path_pat)
-                .fetch_all(&self.pool)
-                .await?
-            } else {
-                sqlx::query_as::<_, SessionFileInfoRow>(
-                    r#"
-                    SELECT id, workspace_id AS session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
-                    FROM workspace_files
-                    WHERE workspace_id = $1
-                        AND is_directory = FALSE
-                        AND size_bytes <= $2
-                    ORDER BY path ASC
-                    "#,
-                )
-                .bind(session_id)
-                .bind(max_file_bytes)
-                .fetch_all(&self.pool)
-                .await?
-            };
+            // The candidate query is path-pattern agnostic here: PostgreSQL
+            // returns size-bounded rows and the service layer applies the glob
+            // filter before fetching blob content, so both cases share one query.
+            let rows = sqlx::query_as::<_, SessionFileInfoRow>(
+                r#"
+                SELECT id, workspace_id AS session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
+                FROM workspace_files
+                WHERE workspace_id = $1
+                    AND is_directory = FALSE
+                    AND size_bytes <= $2
+                ORDER BY path ASC
+                "#,
+            )
+            .bind(session_id)
+            .bind(max_file_bytes)
+            .fetch_all(&self.pool)
+            .await?;
             return Ok(rows);
         }
 
         // Inline path: TM-DOS-008 size_bytes filter keeps Postgres from scanning
         // large files; content match happens in-database.
-        let rows = if let Some(path_pat) = path_pattern {
+        // Glob syntax is not PostgreSQL regex syntax. When a path filter is
+        // present, return cheap metadata candidates so the service can apply the
+        // exact shared matcher before fetching or scanning any content.
+        let rows = if path_pattern.is_some() {
             sqlx::query_as::<_, SessionFileInfoRow>(
                 r#"
                 SELECT id, workspace_id AS session_id, path, is_directory, is_readonly, size_bytes, created_at, updated_at
@@ -829,15 +816,11 @@ impl Database {
                 WHERE workspace_id = $1
                     AND is_directory = FALSE
                     AND size_bytes <= $2
-                    AND path ~ $3
-                    AND convert_from(content, 'UTF8') ~ $4
                 ORDER BY path ASC
                 "#,
             )
             .bind(session_id)
             .bind(max_file_bytes)
-            .bind(path_pat)
-            .bind(pattern)
             .fetch_all(&self.pool)
             .await?
         } else {

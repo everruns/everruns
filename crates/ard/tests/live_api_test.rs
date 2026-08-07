@@ -3,7 +3,7 @@
 //! Gated behind:
 //!   cargo test -p everruns-ard --features ard-live-tests
 //!
-//! Fail-closed contract (specs/integrations.md): when the feature flag is on but
+//! Fail-closed contract (knowledge/integrations/integrations.md): when the feature flag is on but
 //! the required env var is missing or empty, these tests MUST `panic!` — CI live
 //! jobs must never silently pass. The registry base URL is read from
 //! `ARD_LIVE_REGISTRY_URL`; an optional bearer token from `ARD_REGISTRY_TOKEN`.

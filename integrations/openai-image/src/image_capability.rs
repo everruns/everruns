@@ -117,7 +117,7 @@ impl Capability for GptImageGenCapability {
                 "model": {
                     "type": "string",
                     "title": "Image Model",
-                    "description": "Default model used by image generation and edit tools.",
+                    "description": "Default model used by image generation and edit tools. With an Azure OpenAI provider, this must match the name of an image model deployment on the Azure resource.",
                     "default": DEFAULT_OPENAI_IMAGE_MODEL.as_str(),
                     "oneOf": [
                         {
@@ -208,7 +208,7 @@ impl Capability for GptImageGenCapability {
                     "properties": {
                         "model": {
                             "title": "Модель зображень",
-                            "description": "Типова модель для інструментів генерації та редагування зображень.",
+                            "description": "Типова модель для інструментів генерації та редагування зображень. Для провайдера Azure OpenAI назва має збігатися з іменем розгортання моделі зображень на ресурсі Azure.",
                             "enum_labels": {
                                 "gpt-image-2": "ChatGPT Images 2.0",
                                 "gpt-image-1": "GPT Image 1"
@@ -853,23 +853,33 @@ async fn resolve_client_config(
 
     let Some(provider_store) = &context.provider_credential_store else {
         return Err(ToolExecutionResult::tool_error(
-            "OpenAI credentials are not configured. Store OPENAI_API_KEY via secret_store or configure an OpenAI provider.",
+            "OpenAI credentials are not configured. Store OPENAI_API_KEY via secret_store or configure an OpenAI or Azure OpenAI provider.",
         ));
     };
 
-    match provider_store
-        .get_default_provider_credentials("openai")
-        .await
-    {
-        Ok(Some(credentials)) => Ok(ResolvedClientConfig {
-            api_key: credentials.api_key,
-            base_url: credentials.base_url,
-        }),
-        Ok(None) => Err(ToolExecutionResult::tool_error(
-            "OpenAI credentials are not configured. Store OPENAI_API_KEY via secret_store or configure an OpenAI provider.",
-        )),
-        Err(error) => Err(ToolExecutionResult::internal_error(error)),
+    // Prefer a native OpenAI provider; fall back to Azure OpenAI, whose base
+    // URL is validated at provider creation to the OpenAI-compatible
+    // `/openai/v1` surface that serves the Images API (the client applies
+    // Azure's `api-key` auth header based on the URL).
+    for provider_type in ["openai", "azure_openai"] {
+        match provider_store
+            .get_default_provider_credentials(provider_type)
+            .await
+        {
+            Ok(Some(credentials)) => {
+                return Ok(ResolvedClientConfig {
+                    api_key: credentials.api_key,
+                    base_url: credentials.base_url,
+                });
+            }
+            Ok(None) => {}
+            Err(error) => return Err(ToolExecutionResult::internal_error(error)),
+        }
     }
+
+    Err(ToolExecutionResult::tool_error(
+        "OpenAI credentials are not configured. Store OPENAI_API_KEY via secret_store or configure an OpenAI or Azure OpenAI provider.",
+    ))
 }
 
 async fn get_first_secret(
@@ -1235,7 +1245,15 @@ mod tests {
     }
 
     struct MockProviderCredentialStore {
-        credentials: ProviderCredentials,
+        providers: Vec<(&'static str, ProviderCredentials)>,
+    }
+
+    impl MockProviderCredentialStore {
+        fn openai(credentials: ProviderCredentials) -> Self {
+            Self {
+                providers: vec![("openai", credentials)],
+            }
+        }
     }
 
     #[async_trait]
@@ -1244,8 +1262,11 @@ mod tests {
             &self,
             provider_type: &str,
         ) -> Result<Option<ProviderCredentials>> {
-            assert_eq!(provider_type, "openai");
-            Ok(Some(self.credentials.clone()))
+            Ok(self
+                .providers
+                .iter()
+                .find(|(name, _)| *name == provider_type)
+                .map(|(_, credentials)| credentials.clone()))
         }
     }
 
@@ -1287,12 +1308,10 @@ mod tests {
             ("OPENAI_API_KEY", "session-key"),
             ("OPENAI_BASE_URL", "https://session.example/v1"),
         ]));
-        let provider = Arc::new(MockProviderCredentialStore {
-            credentials: ProviderCredentials {
-                api_key: "provider-key".to_string(),
-                base_url: Some("https://provider.example/v1".to_string()),
-            },
-        });
+        let provider = Arc::new(MockProviderCredentialStore::openai(ProviderCredentials {
+            api_key: "provider-key".to_string(),
+            base_url: Some("https://provider.example/v1".to_string()),
+        }));
         let context = ToolContext {
             session_id,
             storage_store: Some(storage),
@@ -1318,12 +1337,10 @@ mod tests {
             "OPENAI_BASE_URL",
             "https://attacker.example/v1",
         )]));
-        let provider = Arc::new(MockProviderCredentialStore {
-            credentials: ProviderCredentials {
-                api_key: "provider-key".to_string(),
-                base_url: Some("https://provider.example/v1".to_string()),
-            },
-        });
+        let provider = Arc::new(MockProviderCredentialStore::openai(ProviderCredentials {
+            api_key: "provider-key".to_string(),
+            base_url: Some("https://provider.example/v1".to_string()),
+        }));
         let context = ToolContext {
             session_id,
             storage_store: Some(storage),
@@ -1340,6 +1357,74 @@ mod tests {
             resolved.base_url,
             Some("https://provider.example/v1".to_string())
         );
+    }
+
+    // With no OpenAI provider configured, credentials must fall back to the
+    // org's default Azure OpenAI provider: its base URL is validated to the
+    // OpenAI-compatible `/openai/v1` surface, which serves the Images API.
+    #[tokio::test]
+    async fn falls_back_to_azure_openai_provider_credentials() {
+        let session_id = SessionId::new();
+        let provider = Arc::new(MockProviderCredentialStore {
+            providers: vec![(
+                "azure_openai",
+                ProviderCredentials {
+                    api_key: "azure-key".to_string(),
+                    base_url: Some("https://res.openai.azure.com/openai/v1".to_string()),
+                },
+            )],
+        });
+        let context = ToolContext {
+            session_id,
+            storage_store: None,
+            provider_credential_store: Some(provider),
+            ..ToolContext::new(session_id)
+        };
+
+        let resolved = resolve_client_config(&context)
+            .await
+            .expect("resolve config");
+
+        assert_eq!(resolved.api_key, "azure-key");
+        assert_eq!(
+            resolved.base_url,
+            Some("https://res.openai.azure.com/openai/v1".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn openai_provider_wins_over_azure_openai_provider() {
+        let session_id = SessionId::new();
+        let provider = Arc::new(MockProviderCredentialStore {
+            providers: vec![
+                (
+                    "openai",
+                    ProviderCredentials {
+                        api_key: "openai-key".to_string(),
+                        base_url: None,
+                    },
+                ),
+                (
+                    "azure_openai",
+                    ProviderCredentials {
+                        api_key: "azure-key".to_string(),
+                        base_url: Some("https://res.openai.azure.com/openai/v1".to_string()),
+                    },
+                ),
+            ],
+        });
+        let context = ToolContext {
+            session_id,
+            storage_store: None,
+            provider_credential_store: Some(provider),
+            ..ToolContext::new(session_id)
+        };
+
+        let resolved = resolve_client_config(&context)
+            .await
+            .expect("resolve config");
+
+        assert_eq!(resolved.api_key, "openai-key");
     }
 
     #[test]

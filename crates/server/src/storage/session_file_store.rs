@@ -528,6 +528,9 @@ impl SessionFileSystem for DbSessionFileStore {
         // Validate regex pattern
         let regex = Regex::new(pattern)
             .map_err(|e| AgentLoopError::store(format!("Invalid regex pattern: {}", e)))?;
+        let path_matcher = path_pattern
+            .map(everruns_core::session_path::GrepPathPattern::new)
+            .transpose()?;
 
         // Get matching files from database (size-capped at storage level, TM-DOS-008)
         let files = self
@@ -545,6 +548,12 @@ impl SessionFileSystem for DbSessionFileStore {
 
         // For each matching file, find the actual line matches
         for file_info in files {
+            if path_matcher
+                .as_ref()
+                .is_some_and(|matcher| !matcher.is_match(&file_info.path))
+            {
+                continue;
+            }
             // Read full file content
             let file = self
                 .db
@@ -588,7 +597,12 @@ impl SessionFileSystem for DbSessionFileStore {
             .transpose()?;
         let files = self
             .db
-            .grep_session_files(session_id.uuid(), pattern, None, GREP_MAX_FILE_BYTES)
+            .grep_session_files(
+                session_id.uuid(),
+                pattern,
+                options.path_pattern.as_deref(),
+                GREP_MAX_FILE_BYTES,
+            )
             .await
             .store_err()?;
         let mut text_files = Vec::new();

@@ -1,0 +1,330 @@
+//! Catalog-backed platform management capability.
+
+use super::{Capability, CapabilityLocalization, CapabilityStatus, MountPoint, RiskLevel};
+#[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
+use crate::capability_types::{MountAccess, MountSource};
+use crate::tool_types::{DeferrablePolicy, ToolHints};
+use crate::tools::{Tool, ToolExecutionResult};
+use crate::traits::{ToolContext, ToolContextService};
+use async_trait::async_trait;
+use serde_json::{Value, json};
+
+pub const PLATFORM_CAPABILITY_ID: &str = "platform";
+
+pub const DISCOVER_DESCRIPTION: &str = "Search the Everruns API catalog to find available operations. Returns matching operations with input/output schemas and jq-oriented output shape hints. Use all: true to list every operation grouped by category. Read-only operations are available as bash builtins in query; the full catalog is available in execute.";
+pub const QUERY_DESCRIPTION: &str = "Execute a bash script in an environment where only read-only Everruns API operations are available as built-in commands. Supports pipes, variables, loops, conditionals, jq, and direct access to safe builtins. Mutating commands are intentionally unavailable.";
+pub const EXECUTE_DESCRIPTION: &str = "Execute a bash script in an environment where every Everruns API operation is a built-in command, including operations with side effects. Supports pipes, variables, loops, conditionals, jq, and direct access to the full builtin set. Prefer query for read-only inspection; use execute when you need create/update/delete or other mutating operations.";
+
+const SYSTEM_PROMPT: &str = r#"Use `discover` when an Everruns operation or schema is unknown. Use `query` for read-only inspection and validation. Use `execute` only for user-requested mutations, then validate the resulting state with `query`. Do not guess operation names. Platform commands are already scoped to the current organization.
+
+Everruns public documentation is available under `/workspace/docs`. Consult it when answering product or configuration questions."#;
+
+pub struct PlatformCapability;
+
+impl Capability for PlatformCapability {
+    fn id(&self) -> &str {
+        PLATFORM_CAPABILITY_ID
+    }
+
+    fn name(&self) -> &str {
+        "Platform"
+    }
+
+    fn description(&self) -> &str {
+        "Discover and execute the authorized Everruns command catalog."
+    }
+
+    fn localizations(&self) -> Vec<CapabilityLocalization> {
+        vec![CapabilityLocalization::text(
+            "uk",
+            "Платформа",
+            "Пошук і виконання дозволених команд Everruns.",
+        )]
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+
+    fn risk_level(&self) -> RiskLevel {
+        RiskLevel::High
+    }
+
+    fn icon(&self) -> Option<&str> {
+        Some("terminal-square")
+    }
+
+    fn category(&self) -> Option<&str> {
+        Some("Platform")
+    }
+
+    fn system_prompt_addition(&self) -> Option<&str> {
+        Some(SYSTEM_PROMPT)
+    }
+
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        vec![
+            Box::new(PlatformCommandTool::discover()),
+            Box::new(PlatformCommandTool::query()),
+            Box::new(PlatformCommandTool::execute()),
+        ]
+    }
+
+    fn mounts(&self) -> Vec<MountPoint> {
+        #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
+        {
+            vec![MountPoint::new(
+                "/docs",
+                MountAccess::ReadOnly,
+                MountSource::Virtual {
+                    tree: super::platform_management::docs_tree(),
+                },
+                self.id(),
+            )]
+        }
+        #[cfg(not(all(feature = "embedded-platform-docs", everruns_has_workspace_docs)))]
+        {
+            Vec::new()
+        }
+    }
+
+    fn dependencies(&self) -> Vec<&'static str> {
+        #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
+        {
+            vec!["session_file_system"]
+        }
+        #[cfg(not(all(feature = "embedded-platform-docs", everruns_has_workspace_docs)))]
+        {
+            Vec::new()
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum PlatformCommandOperation {
+    Discover,
+    Query,
+    Execute,
+}
+
+struct PlatformCommandTool {
+    operation: PlatformCommandOperation,
+}
+
+impl PlatformCommandTool {
+    const fn discover() -> Self {
+        Self {
+            operation: PlatformCommandOperation::Discover,
+        }
+    }
+
+    const fn query() -> Self {
+        Self {
+            operation: PlatformCommandOperation::Query,
+        }
+    }
+
+    const fn execute() -> Self {
+        Self {
+            operation: PlatformCommandOperation::Execute,
+        }
+    }
+}
+
+#[async_trait]
+impl Tool for PlatformCommandTool {
+    fn name(&self) -> &str {
+        match self.operation {
+            PlatformCommandOperation::Discover => "discover",
+            PlatformCommandOperation::Query => "query",
+            PlatformCommandOperation::Execute => "execute",
+        }
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some(match self.operation {
+            PlatformCommandOperation::Discover => "Discover Operations",
+            PlatformCommandOperation::Query => "Query Commands",
+            PlatformCommandOperation::Execute => "Execute Commands",
+        })
+    }
+
+    fn description(&self) -> &str {
+        match self.operation {
+            PlatformCommandOperation::Discover => DISCOVER_DESCRIPTION,
+            PlatformCommandOperation::Query => QUERY_DESCRIPTION,
+            PlatformCommandOperation::Execute => EXECUTE_DESCRIPTION,
+        }
+    }
+
+    fn parameters_schema(&self) -> Value {
+        match self.operation {
+            PlatformCommandOperation::Discover => discover_input_schema(),
+            PlatformCommandOperation::Query => query_input_schema(),
+            PlatformCommandOperation::Execute => execute_input_schema(),
+        }
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error("Platform command context is required")
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        if arguments.get("organization_id").is_some() {
+            return ToolExecutionResult::tool_error(
+                "organization_id is not accepted; Platform commands use the current session organization",
+            );
+        }
+        let Some(store) = context.platform_store.as_deref() else {
+            return ToolExecutionResult::tool_error("Platform command service is unavailable");
+        };
+        let result = match self.operation {
+            PlatformCommandOperation::Discover => store.platform_discover(arguments).await,
+            PlatformCommandOperation::Query => store.platform_query(arguments).await,
+            PlatformCommandOperation::Execute => store.platform_execute(arguments).await,
+        };
+        match result {
+            Ok(output) => ToolExecutionResult::success(output),
+            Err(error) => ToolExecutionResult::tool_error(error.to_string()),
+        }
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+
+    fn required_context_services(&self) -> &'static [ToolContextService] {
+        &[ToolContextService::PlatformStore]
+    }
+
+    fn hints(&self) -> ToolHints {
+        match self.operation {
+            PlatformCommandOperation::Discover | PlatformCommandOperation::Query => ToolHints {
+                readonly: Some(true),
+                destructive: Some(false),
+                idempotent: Some(true),
+                open_world: Some(false),
+                ..Default::default()
+            },
+            PlatformCommandOperation::Execute => ToolHints {
+                readonly: Some(false),
+                destructive: Some(true),
+                idempotent: Some(false),
+                open_world: Some(true),
+                ..Default::default()
+            },
+        }
+    }
+
+    fn deferrable_policy(&self) -> DeferrablePolicy {
+        DeferrablePolicy::Never
+    }
+}
+
+pub fn discover_input_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "query": {
+                "type": "string",
+                "description": "Search query to find API operations."
+            },
+            "all": {
+                "type": "boolean",
+                "description": "List all available operations grouped by category. When true, query is ignored."
+            },
+            "include_schemas": {
+                "type": "boolean",
+                "description": "Include input_schema and output_schema in results. Defaults to true for search and false for all."
+            }
+        }
+    })
+}
+
+pub fn query_input_schema() -> Value {
+    script_input_schema(
+        "Bash script to execute. Only read-only API operations are available as built-in commands.",
+    )
+}
+
+pub fn execute_input_schema() -> Value {
+    script_input_schema(
+        "Bash script to execute. API operations are available as built-in commands.",
+    )
+}
+
+fn script_input_schema(commands_description: &str) -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "commands": {
+                "type": "string",
+                "description": commands_description,
+                "minLength": 1
+            },
+            "timeout_ms": {
+                "type": "integer",
+                "description": "Execution timeout in milliseconds (default: 30000, max: 60000).",
+                "minimum": 1,
+                "maximum": 60000
+            }
+        },
+        "required": ["commands"]
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::platform_store::tests::MockPlatformStore;
+    use crate::typed_id::SessionId;
+    use std::sync::Arc;
+
+    #[test]
+    fn schemas_do_not_allow_organization_override() {
+        assert!(
+            discover_input_schema()["properties"]
+                .get("organization_id")
+                .is_none()
+        );
+        assert!(
+            query_input_schema()["properties"]
+                .get("organization_id")
+                .is_none()
+        );
+        assert!(
+            execute_input_schema()["properties"]
+                .get("organization_id")
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
+    async fn tools_dispatch_to_platform_store() {
+        let store = Arc::new(MockPlatformStore::new());
+        let context = ToolContext::new(SessionId::new()).with_platform_store(store);
+        let result = PlatformCommandTool::query()
+            .execute_with_context(json!({ "commands": "list_models" }), &context)
+            .await;
+        assert!(result.is_success());
+    }
+
+    #[tokio::test]
+    async fn organization_override_is_rejected_even_if_injected() {
+        let store = Arc::new(MockPlatformStore::new());
+        let context = ToolContext::new(SessionId::new()).with_platform_store(store);
+        let result = PlatformCommandTool::query()
+            .execute_with_context(
+                json!({ "commands": "list_models", "organization_id": "org_other" }),
+                &context,
+            )
+            .await;
+        assert!(matches!(result, ToolExecutionResult::ToolError(_)));
+    }
+}

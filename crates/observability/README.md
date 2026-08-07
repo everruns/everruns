@@ -16,4 +16,4 @@ exporter can never panic core's initialization path.
 
 Both implement `everruns_core::EventListener`.
 
-See `specs/observability.md` for the full specification.
+See `knowledge/operations/observability.md` for the full specification.

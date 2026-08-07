@@ -1,4 +1,4 @@
-// Org-configurable agent check rules (specs/agent-checks.md, phase 4):
+// Org-configurable agent check rules (knowledge/evaluation/agent-checks.md, phase 4):
 // admins enable/disable or re-severity built-in rules and add custom rules
 // (declarative regex or natural-language rubric).
 

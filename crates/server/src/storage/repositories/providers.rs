@@ -24,7 +24,7 @@ impl Database {
             r#"
             INSERT INTO providers (org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, settings)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, last_synced_at, created_at, updated_at
+            RETURNING id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, managed, last_synced_at, created_at, updated_at
             "#,
         )
         .bind(org_id)
@@ -65,7 +65,7 @@ impl Database {
             WHERE
                 providers.name IS DISTINCT FROM EXCLUDED.name
                 OR providers.provider_type IS DISTINCT FROM EXCLUDED.provider_type
-            RETURNING id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, last_synced_at, created_at, updated_at
+            RETURNING id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, managed, last_synced_at, created_at, updated_at
             "#,
         )
         .bind(id)
@@ -85,7 +85,7 @@ impl Database {
     pub async fn get_provider(&self, org_id: i64, id: Uuid) -> Result<Option<ProviderRow>> {
         let row = sqlx::query_as::<_, ProviderRow>(
             r#"
-            SELECT id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, last_synced_at, created_at, updated_at
+            SELECT id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, managed, last_synced_at, created_at, updated_at
             FROM providers
             WHERE org_id = $1 AND id = $2
             "#,
@@ -101,7 +101,7 @@ impl Database {
     pub async fn list_providers(&self, org_id: i64) -> Result<Vec<ProviderRow>> {
         let rows = sqlx::query_as::<_, ProviderRow>(
             r#"
-            SELECT id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, last_synced_at, created_at, updated_at
+            SELECT id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, managed, last_synced_at, created_at, updated_at
             FROM providers
             WHERE org_id = $1
             ORDER BY created_at DESC
@@ -136,7 +136,7 @@ impl Database {
                 settings = COALESCE($9, settings),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, last_synced_at, created_at, updated_at
+            RETURNING id, org_id, name, provider_type, base_url, api_key_encrypted, api_key_set, status, settings, managed, last_synced_at, created_at, updated_at
             "#,
         )
         .bind(org_id)
@@ -160,6 +160,24 @@ impl Database {
             .bind(id)
             .execute(&self.pool)
             .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
+    /// Mark (or unmark) a provider as host-managed (EVE-810).
+    ///
+    /// Host-only write path: the OSS providers API never sets this flag (a
+    /// managed provider is provisioned by an embedder directly through storage,
+    /// e.g. from an `OrgInitializer`). Returns whether a row was updated.
+    pub async fn set_provider_managed(&self, org_id: i64, id: Uuid, managed: bool) -> Result<bool> {
+        let result = sqlx::query(
+            "UPDATE providers SET managed = $3, updated_at = NOW() WHERE org_id = $1 AND id = $2",
+        )
+        .bind(org_id)
+        .bind(id)
+        .bind(managed)
+        .execute(&self.pool)
+        .await?;
 
         Ok(result.rows_affected() > 0)
     }
@@ -509,7 +527,7 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        // Reporting outbox enqueue is best-effort (see specs/reporting.md).
+        // Reporting outbox enqueue is best-effort (see knowledge/evaluation/reporting.md).
         // The canonical llm_generations row is already durable; no reconciler
         // exists yet (tracked separately), so on failure the corresponding
         // fact will remain stale until reconciliation lands.
@@ -664,7 +682,7 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        // Reporting outbox enqueue is best-effort (see specs/reporting.md).
+        // Reporting outbox enqueue is best-effort (see knowledge/evaluation/reporting.md).
         // The canonical session totals are already committed; no reconciler
         // exists yet (tracked separately), so on failure the corresponding
         // fact will remain stale until reconciliation lands or the session

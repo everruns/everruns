@@ -1,4 +1,4 @@
-//! Open Knowledge Format (OKF) import. See specs/okf-adoption.md.
+//! Open Knowledge Format (OKF) import. See knowledge/runtime-resources/okf-adoption.md.
 //!
 //! OKF is a vendor-neutral interchange format: a bundle is a directory tree of
 //! markdown files with YAML frontmatter. This module parses a bundle and
@@ -40,7 +40,7 @@ fn is_unsafe_path(path: &str) -> bool {
 }
 
 /// Map a free-form OKF `type` string onto our closed `kind` enum.
-/// Case-insensitive substring match; defaults to `note`. See specs/okf-adoption.md.
+/// Case-insensitive substring match; defaults to `note`. See knowledge/runtime-resources/okf-adoption.md.
 pub fn map_type_to_kind(okf_type: &str) -> &'static str {
     let t = okf_type.to_lowercase();
     let has = |needle: &str| t.contains(needle);
@@ -573,7 +573,7 @@ pub struct ImportOkfBundleRequest {
     pub bundle_base64: Option<String>,
 }
 
-/// Import an OKF bundle into a knowledge base. See specs/okf-adoption.md.
+/// Import an OKF bundle into a knowledge base. See knowledge/runtime-resources/okf-adoption.md.
 #[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
 pub struct ImportOkfBundle {
     /// Knowledge base's prefixed public identifier.

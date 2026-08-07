@@ -61,7 +61,7 @@ jobs:
   # now a docs-only site (405/404 on the API; registry/api subdomains no longer
   # resolve), so these fail-closed live tests can never pass. The job is gated
   # off (`if: false`) rather than allowed to silently skip/pass, per the
-  # fail-closed contract in specs/integrations.md. The wiremock-backed unit +
+  # fail-closed contract in knowledge/integrations/integrations.md. The wiremock-backed unit +
   # integration tests in the `unit-test` job above still cover the ARD client.
   # To re-enable: restore the trigger condition below and repoint
   # ARD_LIVE_REGISTRY_URL to a reachable reference registry.

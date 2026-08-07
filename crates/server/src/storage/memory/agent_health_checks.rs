@@ -1,4 +1,4 @@
-// In-memory agent health check storage. See specs/agent-checks.md.
+// In-memory agent health check storage. See knowledge/evaluation/agent-checks.md.
 
 use anyhow::Result;
 use uuid::Uuid;
@@ -84,7 +84,7 @@ impl InMemoryDatabase {
     }
 
     /// In-memory parity for the Postgres reaper: mark every non-terminal run
-    /// (`pending`/`running`) as `failed`. See specs/agent-checks.md and EVE-586.
+    /// (`pending`/`running`) as `failed`. See knowledge/evaluation/agent-checks.md and EVE-586.
     pub async fn reap_running_agent_health_check_runs(&self) -> Result<u64> {
         let now = Self::now();
         let mut guard = self.agent_health_check_runs.write();

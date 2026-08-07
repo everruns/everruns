@@ -10,7 +10,11 @@ impl InMemoryDatabase {
     // User Preferences
     // ============================================
 
-    pub async fn list_user_preferences(&self, user_id: Uuid) -> Result<Vec<UserPreferenceRow>> {
+    pub async fn list_user_preferences(
+        &self,
+        user_id: Uuid,
+        limit: usize,
+    ) -> Result<Vec<UserPreferenceRow>> {
         let mut prefs: Vec<_> = self
             .user_preferences
             .read()
@@ -19,6 +23,7 @@ impl InMemoryDatabase {
             .cloned()
             .collect();
         prefs.sort_by(|a, b| a.key.cmp(&b.key));
+        prefs.truncate(limit);
         Ok(prefs)
     }
 
@@ -39,10 +44,17 @@ impl InMemoryDatabase {
         user_id: Uuid,
         key: &str,
         value: &str,
+        max_preferences: usize,
     ) -> Result<UserPreferenceRow> {
         let now = Self::now();
         let mut prefs = self.user_preferences.write();
         let map_key = (user_id, key.to_string());
+
+        if !prefs.contains_key(&map_key)
+            && prefs.values().filter(|row| row.user_id == user_id).count() >= max_preferences
+        {
+            anyhow::bail!(super::super::backend::USER_PREFERENCE_LIMIT_EXCEEDED);
+        }
 
         let row = match prefs.get(&map_key) {
             Some(existing) => UserPreferenceRow {

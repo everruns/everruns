@@ -1,4 +1,4 @@
-// Object-storage blob garbage collector (specs/object-storage.md).
+// Object-storage blob garbage collector (knowledge/runtime-resources/object-storage.md).
 //
 // The S3-compatible object store is not transactional with PostgreSQL, so blob
 // objects can outlive their metadata: an interrupted delete (row gone, object

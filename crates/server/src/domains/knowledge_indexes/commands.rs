@@ -5,9 +5,9 @@ use super::types::{
 };
 use super::{DEFAULT_SOURCE_TYPE, KNOWLEDGE_INDEX_MANAGE, KNOWLEDGE_INDEX_VIEW, SOURCE_TYPES};
 use crate::domains::common::*;
-use everruns_core::Policy;
 use everruns_core::typed_id::KnowledgeIndexId;
 use everruns_core::vector_store::index_namespace;
+use everruns_core::{DriverId, Policy, ServiceKind};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -44,18 +44,65 @@ fn validate_source_type(source_type: Option<&str>) -> Result<String, CommandErro
     Ok(source_type.to_string())
 }
 
-/// Ensure the embedding model exists in this org. Cross-org / missing refs are
-/// rejected with the same bad-request message so existence is not leaked.
+const INVALID_EMBEDDING_MODEL: &str =
+    "Embedding model is unavailable or does not support embeddings";
+
+/// Validate the complete org-scoped model → provider → service binding.
+/// Cross-org, missing, disabled, and incompatible references deliberately use
+/// one response so the API cannot be used as a model/provider existence oracle.
 async fn require_embedding_model(
     ctx: &Ctx,
     model_id: everruns_core::ModelId,
 ) -> Result<everruns_core::ModelId, CommandError> {
-    ctx.db
+    // THREAT[TM-AUTHZ-015]: resolve both resources inside the caller's org and
+    // collapse every invalid binding into one non-enumerable response.
+    let model = ctx
+        .db
         .get_model(ctx.org_id(), model_id.uuid())
         .await
         .map_err(classify_anyhow)?
-        .ok_or_else(|| CommandError::bad_request("Embedding model not found"))?;
+        .ok_or_else(|| CommandError::bad_request(INVALID_EMBEDDING_MODEL))?;
+    let capabilities: Vec<String> = serde_json::from_value(model.capabilities).unwrap_or_default();
+    if !model.enabled
+        || !capabilities
+            .iter()
+            .any(|capability| capability.eq_ignore_ascii_case("embeddings"))
+    {
+        return Err(CommandError::bad_request(INVALID_EMBEDDING_MODEL));
+    }
+    let provider = ctx
+        .db
+        .get_provider(ctx.org_id(), model.provider_id.uuid())
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::bad_request(INVALID_EMBEDDING_MODEL))?;
+    let provider_type: DriverId = provider
+        .provider_type
+        .parse()
+        .expect("DriverId::from_str is infallible");
+    if provider.status != "active"
+        || !ctx
+            .driver_registry
+            .supports(&provider_type, ServiceKind::Embeddings)
+    {
+        return Err(CommandError::bad_request(INVALID_EMBEDDING_MODEL));
+    }
     Ok(model_id)
+}
+
+async fn response_with_document_count(
+    ctx: &Ctx,
+    row: crate::storage::models::KnowledgeIndexRow,
+) -> Result<KnowledgeIndexResponse, CommandError> {
+    let document_count = ctx
+        .db
+        .count_knowledge_index_documents(&[row.id])
+        .await
+        .map_err(classify_anyhow)?
+        .get(&row.id)
+        .copied()
+        .unwrap_or(0);
+    knowledge_index_response(row, document_count).map_err(classify_anyhow)
 }
 
 // ============================================
@@ -110,8 +157,16 @@ impl Command for ListKnowledgeIndexes {
             )
             .await
             .map_err(classify_anyhow)?;
+        let counts = ctx
+            .db
+            .count_knowledge_index_documents(&rows.iter().map(|row| row.id).collect::<Vec<_>>())
+            .await
+            .map_err(classify_anyhow)?;
         rows.into_iter()
-            .map(|row| knowledge_index_response(row).map_err(classify_anyhow))
+            .map(|row| {
+                let document_count = counts.get(&row.id).copied().unwrap_or(0);
+                knowledge_index_response(row, document_count).map_err(classify_anyhow)
+            })
             .collect()
     }
 }
@@ -174,7 +229,7 @@ impl Command for CreateKnowledgeIndex {
         let source_type = validate_source_type(self.source_type.as_deref())?;
         let embedding_model_id = require_embedding_model(ctx, self.embedding_model_id).await?;
         // Assign the vector-store namespace at creation; it is org-prefixed and
-        // never reused. See specs/knowledge-indexes.md#multitenancy-and-naming.
+        // never reused. See knowledge/runtime-resources/knowledge-indexes.md#multitenancy-and-naming.
         let public_id = KnowledgeIndexId::new().to_string();
         let vector_namespace = index_namespace(ctx.org_id(), &public_id);
         let input = CreateKnowledgeIndexRow {
@@ -193,7 +248,7 @@ impl Command for CreateKnowledgeIndex {
             .create_knowledge_index(ctx.org_id(), input)
             .await
             .map_err(classify_anyhow)?;
-        knowledge_index_response(row).map_err(classify_anyhow)
+        knowledge_index_response(row, 0).map_err(classify_anyhow)
     }
 }
 
@@ -238,7 +293,7 @@ impl Command for GetKnowledgeIndex {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
-        knowledge_index_response(row).map_err(classify_anyhow)
+        response_with_document_count(ctx, row).await
     }
 }
 
@@ -281,7 +336,7 @@ impl Command for UpdateKnowledgeIndexCmd {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
-        // Archived indexes are read-only per specs/models.md lifecycle contract.
+        // Archived indexes are read-only per knowledge/foundations/models.md lifecycle contract.
         if existing.status != "active" {
             return Err(CommandError::bad_request(
                 "Knowledge index is archived; restore it before updating",
@@ -294,6 +349,8 @@ impl Command for UpdateKnowledgeIndexCmd {
             .map(validate_name)
             .transpose()?;
         // The embedding model is required, so it can be changed but not cleared.
+        let enqueue_sync =
+            self.request.source_config.is_some() || self.request.embedding_model_id.is_some();
         let embedding_model_id = match self.request.embedding_model_id {
             Some(model_id) => Some(require_embedding_model(ctx, model_id).await?),
             None => None,
@@ -321,13 +378,14 @@ impl Command for UpdateKnowledgeIndexCmd {
                     source_config: self.request.source_config,
                     resolved_owner_user_id,
                     embedding_model_id,
+                    enqueue_sync,
                     status: None,
                 },
             )
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
-        knowledge_index_response(row).map_err(classify_anyhow)
+        response_with_document_count(ctx, row).await
     }
 }
 
@@ -424,13 +482,14 @@ impl Command for SyncKnowledgeIndex {
                 "Knowledge index is archived; restore it before syncing",
             ));
         }
+        require_embedding_model(ctx, existing.embedding_model_id).await?;
         let row = ctx
             .db
             .enqueue_knowledge_index_sync(ctx.org_id(), existing.id)
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("KnowledgeIndex"))?;
-        knowledge_index_response(row).map_err(classify_anyhow)
+        response_with_document_count(ctx, row).await
     }
 }
 
@@ -576,7 +635,7 @@ mod tests {
 
         assert!(created.id.to_string().starts_with("kidx_"));
         assert_eq!(created.status, "active");
-        assert_eq!(created.sync_status, "idle");
+        assert_eq!(created.sync_status, "pending");
         assert_eq!(created.source_type, "github");
 
         // Vector namespace is assigned at create time and org-prefixed.
@@ -591,7 +650,7 @@ mod tests {
             Some(index_namespace(DEFAULT_ORG_ID, &created.id.to_string()).as_str())
         );
 
-        // Documents are empty until the Syncout worker runs (phase 3).
+        // Documents are empty until the Syncout worker claims the pending row.
         let docs = ListKnowledgeIndexDocuments {
             index_id: created.id.to_string(),
         }
@@ -747,6 +806,261 @@ mod tests {
                 ..
             }
         ));
+        assert_eq!(err.message(), INVALID_EMBEDDING_MODEL);
+    }
+
+    #[tokio::test]
+    async fn create_rejects_chat_model_from_embeddings_capable_provider() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let provider = db
+            .create_provider(
+                DEFAULT_ORG_ID,
+                crate::storage::models::CreateProviderRow {
+                    name: "OpenAI".into(),
+                    provider_type: "openai".into(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .expect("create provider");
+        let chat_model = db
+            .create_model(
+                DEFAULT_ORG_ID,
+                crate::storage::models::CreateModelRow {
+                    provider_id: provider.id,
+                    model_id: "gpt-5".into(),
+                    display_name: "GPT-5".into(),
+                    capabilities: vec!["chat".into()],
+                    enabled: true,
+                    is_favorite: false,
+                    source: "manual".into(),
+                    provider_metadata: None,
+                },
+            )
+            .await
+            .expect("create model");
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
+
+        let err = CreateKnowledgeIndex {
+            name: "Invalid model".into(),
+            description: None,
+            source_type: None,
+            source_config: None,
+            embedding_model_id: chat_model.id,
+        }
+        .run(&ctx)
+        .await
+        .expect_err("chat model must fail");
+
+        assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
+        assert_eq!(err.message(), INVALID_EMBEDDING_MODEL);
+    }
+
+    #[tokio::test]
+    async fn create_rejects_embedding_tag_when_provider_lacks_service() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let provider = db
+            .create_provider(
+                DEFAULT_ORG_ID,
+                crate::storage::models::CreateProviderRow {
+                    name: "Anthropic".into(),
+                    provider_type: "anthropic".into(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .expect("create provider");
+        let incorrectly_tagged_model = db
+            .create_model(
+                DEFAULT_ORG_ID,
+                crate::storage::models::CreateModelRow {
+                    provider_id: provider.id,
+                    model_id: "claude-embedding-impostor".into(),
+                    display_name: "Not Embeddings".into(),
+                    capabilities: vec!["embeddings".into()],
+                    enabled: true,
+                    is_favorite: false,
+                    source: "manual".into(),
+                    provider_metadata: None,
+                },
+            )
+            .await
+            .expect("create model");
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
+
+        let err = CreateKnowledgeIndex {
+            name: "Unsupported provider".into(),
+            description: None,
+            source_type: None,
+            source_config: None,
+            embedding_model_id: incorrectly_tagged_model.id,
+        }
+        .run(&ctx)
+        .await
+        .expect_err("provider without embeddings service must fail");
+
+        assert_eq!(err.message(), INVALID_EMBEDDING_MODEL);
+    }
+
+    #[tokio::test]
+    async fn update_rejects_chat_model_and_preserves_valid_configuration() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let embedding_model_id = seed_model(&db, DEFAULT_ORG_ID).await;
+        let embedding_model = db
+            .get_model(DEFAULT_ORG_ID, embedding_model_id.uuid())
+            .await
+            .expect("get model")
+            .expect("embedding model");
+        let chat_model = db
+            .create_model(
+                DEFAULT_ORG_ID,
+                crate::storage::models::CreateModelRow {
+                    provider_id: embedding_model.provider_id,
+                    model_id: "gpt-5".into(),
+                    display_name: "GPT-5".into(),
+                    capabilities: vec!["chat".into()],
+                    enabled: true,
+                    is_favorite: false,
+                    source: "manual".into(),
+                    provider_metadata: None,
+                },
+            )
+            .await
+            .expect("create chat model");
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
+        let created = CreateKnowledgeIndex {
+            name: "Valid index".into(),
+            description: None,
+            source_type: None,
+            source_config: None,
+            embedding_model_id,
+        }
+        .run(&ctx)
+        .await
+        .expect("create index");
+
+        UpdateKnowledgeIndexCmd {
+            index_id: created.id.to_string(),
+            request: UpdateKnowledgeIndexRequest {
+                name: None,
+                description: everruns_durable::UpdateField::Unchanged,
+                source_config: None,
+                embedding_model_id: Some(chat_model.id),
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect_err("chat model update must fail");
+
+        let stored = ctx
+            .db
+            .get_knowledge_index_by_id(DEFAULT_ORG_ID, created.internal_id)
+            .await
+            .expect("get index")
+            .expect("stored index");
+        assert_eq!(stored.embedding_model_id, embedding_model_id);
+    }
+
+    #[tokio::test]
+    async fn valid_model_repair_requeues_failed_index_and_clears_error() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let model_id = seed_model(&db, DEFAULT_ORG_ID).await;
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
+        let created = CreateKnowledgeIndex {
+            name: "Repairable index".into(),
+            description: None,
+            source_type: None,
+            source_config: None,
+            embedding_model_id: model_id,
+        }
+        .run(&ctx)
+        .await
+        .expect("create index");
+        let claimed = ctx
+            .db
+            .claim_next_knowledge_index_sync()
+            .await
+            .expect("claim")
+            .expect("pending index");
+        ctx.db
+            .fail_knowledge_index_sync(claimed.id, claimed.updated_at, "invalid configuration")
+            .await
+            .expect("fail sync")
+            .expect("failed row");
+
+        let repaired = UpdateKnowledgeIndexCmd {
+            index_id: created.id.to_string(),
+            request: UpdateKnowledgeIndexRequest {
+                name: None,
+                description: everruns_durable::UpdateField::Unchanged,
+                source_config: None,
+                embedding_model_id: Some(model_id),
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect("repair model");
+
+        assert_eq!(repaired.sync_status, "pending");
+        assert_eq!(repaired.last_sync_error, None);
+    }
+
+    #[tokio::test]
+    async fn create_rejects_chat_model() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let provider = db
+            .create_provider(
+                DEFAULT_ORG_ID,
+                crate::storage::models::CreateProviderRow {
+                    name: "openai provider".into(),
+                    provider_type: "openai".into(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .expect("create provider");
+        let chat_model = db
+            .create_model(
+                DEFAULT_ORG_ID,
+                crate::storage::models::CreateModelRow {
+                    provider_id: provider.id,
+                    model_id: "gpt-5.6".into(),
+                    display_name: "GPT-5.6".into(),
+                    capabilities: vec!["chat".into()],
+                    enabled: true,
+                    is_favorite: false,
+                    source: "manual".into(),
+                    provider_metadata: None,
+                },
+            )
+            .await
+            .expect("create model");
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
+
+        let err = CreateKnowledgeIndex {
+            name: "Wrong Model".into(),
+            description: None,
+            source_type: None,
+            source_config: None,
+            embedding_model_id: chat_model.id,
+        }
+        .run(&ctx)
+        .await
+        .expect_err("chat model should fail");
+
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]
@@ -799,6 +1113,7 @@ mod tests {
                 ..
             }
         ));
+        assert_eq!(err.message(), INVALID_EMBEDDING_MODEL);
     }
 
     #[tokio::test]

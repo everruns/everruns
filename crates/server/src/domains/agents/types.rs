@@ -260,14 +260,14 @@ pub struct AgentPreviewResponse {
     /// All tool definitions from capabilities
     #[schema(value_type = Vec<Object>)]
     pub tools: Vec<ToolDefinition>,
-    /// Advisory findings from built-in checks (specs/agent-checks.md)
+    /// Advisory findings from built-in checks (knowledge/evaluation/agent-checks.md)
     pub findings: Vec<super::checks::Finding>,
 }
 
 /// Response from on-demand agent analysis (built-in rules + LLM checkers)
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AgentAnalysisResponse {
-    /// Advisory findings, built-in and LLM-sourced (specs/agent-checks.md)
+    /// Advisory findings, built-in and LLM-sourced (knowledge/evaluation/agent-checks.md)
     pub findings: Vec<super::checks::Finding>,
 }
 

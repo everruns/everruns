@@ -141,6 +141,7 @@ async fn list_openrouter_models(
                 .map(|m| {
                     let profile = m.to_discovered_profile();
                     DiscoveredModel {
+                        capabilities: vec!["chat".to_string()],
                         created_at: m
                             .created
                             .and_then(|ts| chrono::Utc.timestamp_opt(ts, 0).single()),

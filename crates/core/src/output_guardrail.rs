@@ -179,7 +179,8 @@ pub trait PostGenerationOutputGuardrail: Send + Sync {
     /// `output.message.replaced` event.
     fn id(&self) -> &str;
 
-    /// Inspect the finalized assistant message. Returns
+    /// Inspect the finalized client-visible assistant output, including
+    /// annotation metadata. Returns
     /// [`GuardrailDecision::Block`] to replace it; otherwise
     /// [`GuardrailDecision::Pass`]. Must fail open on any error.
     async fn check_message(&self, ctx: &PostGenerationOutputContext<'_>) -> GuardrailDecision;
@@ -190,7 +191,8 @@ pub trait PostGenerationOutputGuardrail: Send + Sync {
 pub struct PostGenerationOutputContext<'a> {
     /// The fully assembled system prompt for this turn.
     pub system_prompt: &'a str,
-    /// The finalized assistant message text (post-streaming, pre-context).
+    /// The finalized client-visible output (post-streaming, pre-context), with
+    /// persisted annotation metadata appended when present.
     pub message_text: &'a str,
     /// Utility LLM service for model-backed checks. `None` when the deployment
     /// has no utility model configured — model-backed checks then fail open.
@@ -202,6 +204,41 @@ pub struct PostGenerationOutputContext<'a> {
 pub struct PostGenerationProvider {
     pub capability_id: String,
     pub provider: Arc<dyn PostGenerationOutputGuardrail>,
+}
+
+/// Build the complete client-visible output inspected by post-generation
+/// guardrails. Citation metadata is persisted and rendered alongside the
+/// assistant text, so it must cross the same output policy boundary.
+pub fn post_generation_guardrail_text(
+    message_text: &str,
+    annotations: &[crate::message::TextAnnotation],
+) -> String {
+    if annotations.is_empty() {
+        return message_text.to_string();
+    }
+
+    let mut output = String::from(message_text);
+    for annotation in annotations {
+        output.push('\n');
+        output.push_str(&annotation.source.uri);
+        if let Some(title) = &annotation.source.title {
+            output.push('\n');
+            output.push_str(title);
+        }
+        if let Some(snippet) = &annotation.source.snippet {
+            output.push('\n');
+            output.push_str(snippet);
+        }
+        if let Some(location) = &annotation.source.location {
+            output.push('\n');
+            output.push_str(&location.to_string());
+        }
+        if let Some(external_id) = &annotation.external_id {
+            output.push('\n');
+            output.push_str(external_id);
+        }
+    }
+    output
 }
 
 /// Run post-generation guardrails in registration order, returning the first
@@ -229,6 +266,7 @@ pub async fn evaluate_post_generation_guardrails(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::message::{AnnotationSource, TextAnnotation};
 
     struct AlwaysBlock;
     impl OutputGuardrailRun for AlwaysBlock {
@@ -339,5 +377,30 @@ mod tests {
                 .await
                 .is_none()
         );
+    }
+
+    #[test]
+    fn post_generation_text_includes_client_visible_citation_metadata() {
+        let annotations = vec![TextAnnotation {
+            start: 0,
+            end: 5,
+            origin: "citation_retrieval".to_string(),
+            source: AnnotationSource {
+                uri: "https://example.com/private".to_string(),
+                title: Some("Private roadmap".to_string()),
+                snippet: Some("password S3CR3T".to_string()),
+                location: Some(serde_json::json!({ "page": 4 })),
+            },
+            external_id: None,
+            verified: None,
+        }];
+
+        let output = post_generation_guardrail_text("An answer.", &annotations);
+
+        assert!(output.contains("An answer."));
+        assert!(output.contains("https://example.com/private"));
+        assert!(output.contains("Private roadmap"));
+        assert!(output.contains("password S3CR3T"));
+        assert!(output.contains(r#"{"page":4}"#));
     }
 }

@@ -1,6 +1,6 @@
 // Organization task webhook CRUD — outbound HTTP targets notified on terminal
 // task transitions (Succeeded / Failed / Canceled). See EVE-579 and
-// specs/session-tasks.md.
+// knowledge/runtime-resources/session-tasks.md.
 
 use crate::auth::middleware::{AuthState, OrgAdmin};
 use crate::storage::{

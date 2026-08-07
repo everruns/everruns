@@ -1,6 +1,6 @@
 "use client";
 
-// Per-session task detail card (specs/session-tasks.md) — extracted from the
+// Per-session task detail card (knowledge/runtime-resources/session-tasks.md) — extracted from the
 // session Resources page so both the per-session Tasks tab and the
 // cross-session Work view (EVE-756) render the identical detail surface:
 // state badge, progress, summary/error, result + artifact links, cancel,

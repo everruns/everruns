@@ -83,7 +83,7 @@ and OpenAI both do). No capability needed.
   }
   ```
 
-  See `specs/runtime-mcp.md`. The CLI builds with the runtime's `mcp-stdio`
+  See `knowledge/integrations/runtime-mcp.md`. The CLI builds with the runtime's `mcp-stdio`
   feature, so local-process (stdio) MCP servers are spawned on demand. stdio is
   intentionally unavailable in the hosted product.
 - **Slash commands** (TUI): `/help`, `/tools`, `/cwd`, `/mcp`, `/model <provider>/<id>`, `/clear`, `/quit`.

@@ -7,7 +7,7 @@
 //! collection loop. It can also be selected explicitly by id
 //! (`"background_execution"`) — the auto-activator skips it in that case.
 //!
-//! See `specs/background-execution.md` for the cross-cutting / meta-tool
+//! See `knowledge/execution/background-execution.md` for the cross-cutting / meta-tool
 //! capability contract this implements.
 
 use super::{Capability, CapabilityLocalization, CapabilityStatus};

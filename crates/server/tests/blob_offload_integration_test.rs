@@ -1,5 +1,5 @@
 //! Backend-agnostic integration coverage for the object-storage blob offload
-//! paths (specs/object-storage.md).
+//! paths (knowledge/runtime-resources/object-storage.md).
 //!
 //! These tests exercise the *offload* code in
 //! `storage/repositories/{session_files,skills}.rs` end-to-end against a real

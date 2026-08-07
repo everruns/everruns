@@ -6,15 +6,55 @@
 use super::*;
 use crate::domains::agent_triggers::types::{CreateAgentTriggerRequest, UpdateAgentTriggerRequest};
 use crate::domains::common::Ctx;
+use crate::event_delivery::EventDelivery;
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateAgentRow, CreateHarnessRow};
-use everruns_core::typed_id::AgentId;
+use crate::storage::models::{CreateAgentRow, CreateHarnessRow, CreateSessionRow};
+use async_trait::async_trait;
+use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{Caller, DEFAULT_ORG_ID, InvocationSessionMode};
 use everruns_durable::InMemoryWorkflowEventStore;
+use everruns_worker::AgentRunner;
 use std::sync::{Arc, Mutex};
 
 // Serializes the env-mutating cap tests.
 static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+#[derive(Default)]
+struct RecordingRunner {
+    harness_ids: Mutex<Vec<HarnessId>>,
+}
+
+#[async_trait]
+impl AgentRunner for RecordingRunner {
+    async fn start_run(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+        harness_id: HarnessId,
+        _agent_id: Option<AgentId>,
+        _input_message_id: MessageId,
+        _request_id: Option<String>,
+    ) -> anyhow::Result<()> {
+        self.harness_ids.lock().unwrap().push(harness_id);
+        Ok(())
+    }
+
+    async fn resume_after_tool_results(&self, _session_id: SessionId) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn cancel_run(&self, _session_id: SessionId) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn is_running(&self, _session_id: SessionId) -> bool {
+        false
+    }
+
+    async fn active_count(&self) -> usize {
+        self.harness_ids.lock().unwrap().len()
+    }
+}
 
 async fn seed_agent(db: &Arc<StorageBackend>) -> (String, everruns_core::typed_id::HarnessId) {
     let harness = db
@@ -153,6 +193,101 @@ async fn resolve_trigger_execution_context_preserves_migrated_app_context() {
     assert_eq!(context.resolved_owner_user_id, resolved_owner_user_id);
     assert_eq!(context.agent_identity_id, agent_identity_id);
     assert_eq!(context.app_id, app_id);
+}
+
+#[tokio::test]
+async fn dispatch_trigger_message_uses_preserved_harness() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let (agent_public_id, _) = seed_agent(&db).await;
+    let agent = db
+        .get_agent_by_public_id(DEFAULT_ORG_ID, &agent_public_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let preserved_harness = db
+        .create_harness(
+            DEFAULT_ORG_ID,
+            CreateHarnessRow {
+                name: "preserved-app-harness".to_string(),
+                display_name: None,
+                description: None,
+                system_prompt: Some(String::new()),
+                parent_harness_id: None,
+                default_model_id: None,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                embedder_metadata: serde_json::json!({}),
+                is_built_in: false,
+            },
+        )
+        .await
+        .unwrap();
+    let (_, owner) = ensure_identity_for_agent(&db, DEFAULT_ORG_ID, &agent)
+        .await
+        .unwrap();
+    let session = db
+        .create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            app_id: None,
+            harness_id: Some(preserved_harness.id),
+            agent_id: Some(agent.id),
+            agent_version_id: None,
+            agent_config_hash: None,
+            agent_identity_id: None,
+            owner_principal_id: owner.id,
+            resolved_owner_user_id: owner.resolved_user_id,
+            title: Some("preserved app trigger".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            parallel_tool_calls: None,
+            blueprint_id: None,
+            blueprint_config: None,
+            parent_session_id: None,
+            budget_root_session_id: None,
+            workspace_id: None,
+        })
+        .await
+        .unwrap();
+    assert_eq!(session.harness_id, Some(preserved_harness.id));
+
+    let runner = Arc::new(RecordingRunner::default());
+    let message_service =
+        MessageService::new(db, runner.clone(), false, EventDelivery::in_memory());
+    dispatch_trigger_message(
+        &message_service,
+        DEFAULT_ORG_ID,
+        &agent,
+        TriggerId::new(),
+        session.id,
+        preserved_harness.id,
+        owner.id,
+        "scheduled message".to_string(),
+    )
+    .await
+    .unwrap();
+
+    tokio::time::timeout(std::time::Duration::from_secs(1), async {
+        while runner.harness_ids.lock().unwrap().is_empty() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("runner called");
+    assert_eq!(
+        *runner.harness_ids.lock().unwrap(),
+        vec![preserved_harness.id]
+    );
 }
 
 // ---- cron / config validation -------------------------------------------

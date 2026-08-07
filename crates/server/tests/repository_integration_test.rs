@@ -117,6 +117,80 @@ async fn create_test_user_principal(
         .id
 }
 
+#[tokio::test]
+async fn test_oauth_identity_linking_preserves_existing_provider() {
+    let backend = create_test_backend().await;
+    let github_id = format!("github-{}", Uuid::now_v7());
+    let google_id = format!("google-{}", Uuid::now_v7());
+    let user = backend
+        .create_user(CreateUserRow {
+            email: format!("oauth-link-{}@example.com", Uuid::now_v7()),
+            name: "OAuth Link".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: Some("github".to_string()),
+            auth_provider_id: Some(github_id.clone()),
+            external_id: None,
+        })
+        .await
+        .expect("create OAuth user");
+
+    let linked = backend
+        .link_oauth_identity(user.id, "google", &google_id)
+        .await
+        .expect("link second provider")
+        .expect("linked user");
+    assert_eq!(linked.id, user.id);
+
+    for (provider, provider_id) in [
+        ("github", github_id.as_str()),
+        ("google", google_id.as_str()),
+    ] {
+        assert_eq!(
+            backend
+                .get_user_by_oauth(provider, provider_id)
+                .await
+                .expect("look up OAuth identity")
+                .expect("identity resolves")
+                .id,
+            user.id
+        );
+    }
+
+    assert_eq!(
+        backend
+            .link_oauth_identity(user.id, "google", &google_id)
+            .await
+            .expect("relink same identity")
+            .expect("idempotent link")
+            .id,
+        user.id
+    );
+
+    assert!(
+        backend
+            .link_oauth_identity(
+                user.id,
+                "google",
+                &format!("replacement-{}", Uuid::now_v7())
+            )
+            .await
+            .expect("reject provider identity replacement")
+            .is_none()
+    );
+
+    let other_user = create_test_user(&backend, "oauth-link-other").await;
+    assert!(
+        backend
+            .link_oauth_identity(other_user.id, "google", &google_id)
+            .await
+            .expect("reject cross-user identity link")
+            .is_none()
+    );
+}
+
 // ============================================
 // Agent Repository Tests
 // ============================================

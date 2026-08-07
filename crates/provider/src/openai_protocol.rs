@@ -273,11 +273,14 @@ impl OpenAIProtocolChatDriver {
         &self,
         request: &OpenAiRequest,
         model: &str,
+        retries_consumed: u32,
     ) -> Result<(reqwest::Response, RetryMetadata)> {
         let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let mut retry_config = self.retry_config.clone();
+        retry_config.max_retries = retry_config.max_retries.saturating_sub(retries_consumed);
 
         retry_request(
-            &self.retry_config,
+            &retry_config,
             "OpenAIProtocolDriver",
             || async {
                 // Apply auth: a pluggable provider (e.g. OAuth bearer token)
@@ -554,8 +557,8 @@ impl ChatDriver for OpenAIProtocolChatDriver {
         // transient send failures) are handled inside the per-attempt send;
         // this adds the body-phase reconnect the official SDKs get for free.
         let (event_stream, retry_metadata) =
-            connect_sse_with_reconnect(&self.retry_config, "OpenAIProtocolDriver", |_attempt| {
-                self.send_chat_completion_request(&request, &config.model)
+            connect_sse_with_reconnect(&self.retry_config, "OpenAIProtocolDriver", |attempts| {
+                self.send_chat_completion_request(&request, &config.model, attempts)
             })
             .await?;
 

@@ -194,11 +194,122 @@ fn is_blocked_host(host: &str) -> bool {
 /// Use this for runtime DNS-pinned checks where the caller has already resolved
 /// a hostname to its actual address. Static URL/hostname checks should use
 /// [`validate_safe_url`] instead.
+///
+/// Self-hosted deployments can exempt specific ranges via the
+/// [`SSRF_ALLOW_CIDRS_ENV`] environment variable; see [`operator_allowed_cidrs`].
 pub fn is_blocked_ip(ip: IpAddr) -> bool {
-    match ip {
+    is_blocked_ip_with_allowlist(ip, operator_allowed_cidrs())
+}
+
+/// Operator allowlist env var: comma-separated CIDRs (e.g.
+/// `10.42.0.0/16,10.43.0.0/16`) exempted from the private-range block.
+pub const SSRF_ALLOW_CIDRS_ENV: &str = "EVERRUNS_SSRF_ALLOW_CIDRS";
+
+/// CIDR ranges the operator explicitly exempted from SSRF blocking, parsed
+/// once from [`SSRF_ALLOW_CIDRS_ENV`]. Empty (block everything private) unless
+/// the deployment sets the variable.
+///
+/// This is a single-tenant/self-hosted escape hatch: it lets in-cluster
+/// service URLs (e.g. `http://tools.ns.svc.cluster.local:8100/mcp`) pass
+/// validation without exposing the service publicly. It applies to every
+/// consumer of this module — MCP servers, web fetch egress, plugin and OAuth
+/// fetches — so keep the ranges as narrow as possible. Hostname-pattern blocks
+/// (`localhost`, `metadata.google.internal`) are unaffected.
+pub fn operator_allowed_cidrs() -> &'static [Cidr] {
+    static ALLOWED: std::sync::LazyLock<Vec<Cidr>> = std::sync::LazyLock::new(|| {
+        let raw = std::env::var(SSRF_ALLOW_CIDRS_ENV).unwrap_or_default();
+        let cidrs = parse_cidr_list(&raw);
+        for cidr in &cidrs {
+            tracing::warn!(
+                cidr = %cidr,
+                "SSRF protection: operator allowlisted a private range via {SSRF_ALLOW_CIDRS_ENV}"
+            );
+        }
+        cidrs
+    });
+    &ALLOWED
+}
+
+/// Parse a comma-separated CIDR list, skipping (and logging) invalid entries.
+fn parse_cidr_list(raw: &str) -> Vec<Cidr> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .filter_map(|entry| match entry.parse::<Cidr>() {
+            Ok(cidr) => Some(cidr),
+            Err(()) => {
+                tracing::warn!(entry, "Ignoring invalid CIDR in {SSRF_ALLOW_CIDRS_ENV}");
+                None
+            }
+        })
+        .collect()
+}
+
+/// An IP network in CIDR notation (`10.42.0.0/16`, `fd00::/8`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Cidr {
+    network: IpAddr,
+    prefix: u8,
+}
+
+impl std::fmt::Display for Cidr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.network, self.prefix)
+    }
+}
+
+impl std::str::FromStr for Cidr {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, ()> {
+        let (addr, prefix) = s.split_once('/').ok_or(())?;
+        let network: IpAddr = addr.trim().parse().map_err(|_| ())?;
+        let prefix: u8 = prefix.trim().parse().map_err(|_| ())?;
+        let max = match network {
+            IpAddr::V4(_) => 32,
+            IpAddr::V6(_) => 128,
+        };
+        if prefix > max {
+            return Err(());
+        }
+        Ok(Self { network, prefix })
+    }
+}
+
+impl Cidr {
+    /// Whether `ip` falls inside this network. IPv4-mapped IPv6 addresses are
+    /// compared as their embedded IPv4 address against IPv4 networks.
+    fn contains(&self, ip: IpAddr) -> bool {
+        let ip = match ip {
+            IpAddr::V6(v6) => v6.to_ipv4_mapped().map(IpAddr::V4).unwrap_or(ip),
+            v4 => v4,
+        };
+        match (self.network, ip) {
+            (IpAddr::V4(net), IpAddr::V4(ip)) => {
+                // checked_shl(32) (prefix 0) yields None -> mask 0 -> match-all.
+                let mask = u32::MAX
+                    .checked_shl(32 - u32::from(self.prefix))
+                    .unwrap_or(0);
+                (u32::from(net) & mask) == (u32::from(ip) & mask)
+            }
+            (IpAddr::V6(net), IpAddr::V6(ip)) => {
+                let mask = u128::MAX
+                    .checked_shl(128 - u32::from(self.prefix))
+                    .unwrap_or(0);
+                (u128::from(net) & mask) == (u128::from(ip) & mask)
+            }
+            _ => false,
+        }
+    }
+}
+
+/// [`is_blocked_ip`] with an explicit allowlist (unit-testable without env).
+fn is_blocked_ip_with_allowlist(ip: IpAddr, allowed: &[Cidr]) -> bool {
+    let blocked = match ip {
         IpAddr::V4(v4) => is_blocked_ipv4(v4),
         IpAddr::V6(v6) => is_blocked_ipv6(v6),
-    }
+    };
+    blocked && !allowed.iter().any(|cidr| cidr.contains(ip))
 }
 
 fn is_blocked_ipv4(ip: Ipv4Addr) -> bool {
@@ -507,6 +618,97 @@ mod tests {
                 .to_string()
                 .contains("http or https")
         );
+    }
+
+    // --- Operator CIDR allowlist (EVERRUNS_SSRF_ALLOW_CIDRS) ---
+
+    fn cidrs(raw: &str) -> Vec<Cidr> {
+        parse_cidr_list(raw)
+    }
+
+    #[test]
+    fn allowlist_exempts_matching_private_ipv4() {
+        let allow = cidrs("10.42.0.0/16");
+        assert!(!is_blocked_ip_with_allowlist(
+            "10.42.7.1".parse().unwrap(),
+            &allow
+        ));
+        // Other private ranges stay blocked.
+        assert!(is_blocked_ip_with_allowlist(
+            "10.43.0.1".parse().unwrap(),
+            &allow
+        ));
+        assert!(is_blocked_ip_with_allowlist(
+            "192.168.1.1".parse().unwrap(),
+            &allow
+        ));
+    }
+
+    #[test]
+    fn allowlist_does_not_affect_public_ips() {
+        let allow = cidrs("10.0.0.0/8");
+        assert!(!is_blocked_ip_with_allowlist(
+            "1.1.1.1".parse().unwrap(),
+            &allow
+        ));
+    }
+
+    #[test]
+    fn allowlist_supports_multiple_entries_and_ipv6() {
+        let allow = cidrs("10.42.0.0/16, fd00::/8");
+        assert!(!is_blocked_ip_with_allowlist(
+            "fd00::1".parse().unwrap(),
+            &allow
+        ));
+        assert!(is_blocked_ip_with_allowlist(
+            "fe80::1".parse().unwrap(),
+            &allow
+        ));
+    }
+
+    #[test]
+    fn allowlist_matches_ipv4_mapped_ipv6_against_v4_cidr() {
+        let allow = cidrs("10.0.0.0/8");
+        assert!(!is_blocked_ip_with_allowlist(
+            "::ffff:10.0.0.1".parse().unwrap(),
+            &allow
+        ));
+    }
+
+    #[test]
+    fn allowlist_ignores_invalid_entries() {
+        let allow = cidrs("not-a-cidr, 10.0.0.0/33, 10.0.0.0, ,10.42.0.0/16");
+        assert_eq!(allow.len(), 1);
+        assert_eq!(allow[0].to_string(), "10.42.0.0/16");
+    }
+
+    #[test]
+    fn allowlist_prefix_zero_matches_family_wide() {
+        let allow = cidrs("0.0.0.0/0");
+        assert!(!is_blocked_ip_with_allowlist(
+            "10.0.0.1".parse().unwrap(),
+            &allow
+        ));
+        // /0 v4 must not match v6 addresses.
+        assert!(is_blocked_ip_with_allowlist(
+            "fd00::1".parse().unwrap(),
+            &allow
+        ));
+    }
+
+    #[test]
+    fn allowlist_never_unblocks_localhost_hostname() {
+        // Hostname-pattern blocks are independent of the IP allowlist.
+        assert!(is_blocked_host("localhost"));
+        assert!(is_blocked_host("metadata.google.internal"));
+    }
+
+    #[test]
+    fn empty_allowlist_blocks_all_private() {
+        assert!(is_blocked_ip_with_allowlist(
+            "10.0.0.1".parse().unwrap(),
+            &[]
+        ));
     }
 
     // --- validate_url_dns_pinned: static pre-check path (IP literals) ---

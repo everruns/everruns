@@ -657,6 +657,7 @@ mod tests {
                 agent_id: Some(guest_agent_id),
                 agent_version_id: None,
                 principal_id: PrincipalId::from_seed(2),
+                display_name: None,
                 role: SessionParticipantRole::Member,
                 joined_at: None,
             })

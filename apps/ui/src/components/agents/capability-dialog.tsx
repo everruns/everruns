@@ -16,7 +16,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Plus, ChevronRight, Plug, Link, Lock, Shield } from "lucide-react";
 import type { Capability, CapabilityId } from "@/lib/api/types";
-import { getCapabilityIcon } from "@/lib/capability-icons";
+import { CapabilityIcon } from "@/lib/capability-icons";
 import {
   localizedCapabilityDescription,
   localizedCapabilityName,
@@ -163,7 +163,6 @@ export function CapabilityDialog({
                     {!isCollapsed && (
                       <div className="ml-6 space-y-1 mt-1">
                         {caps.map((cap) => {
-                          const IconComponent = getCapabilityIcon(cap.icon);
                           const isSelected = selectedIds.has(cap.id);
                           const dependents = getDependents(cap.id);
                           const isRequired = dependents.length > 0;
@@ -185,7 +184,7 @@ export function CapabilityDialog({
                                 disabled={isSelected && isRequired}
                                 className="mt-0.5"
                               />
-                              <IconComponent className="w-4 h-4 mt-0.5 shrink-0" />
+                              <CapabilityIcon icon={cap.icon} className="w-4 h-4 mt-0.5 shrink-0" />
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2 text-sm font-medium">
                                   {localizedCapabilityName(cap, locale)}

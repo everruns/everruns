@@ -47,6 +47,7 @@ use crate::events::{
 };
 use crate::llm_retry::{
     LlmRetryConfig, RetryMetadata, is_transient_error_message, is_transient_stream_error,
+    remaining_retry_time, reserve_retry_wait,
 };
 use crate::message::{Message, MessageRole};
 use crate::message_retriever::MessageRetriever;
@@ -54,6 +55,7 @@ use crate::openresponses_protocol::{CompactRequest, messages_to_compact_input};
 use crate::output_guardrail::{
     ArmedGuardrail, OutputGuardrailContext, PostGenerationOutputContext, PostGenerationProvider,
     TrippedGuardrail, evaluate_guardrails, evaluate_post_generation_guardrails,
+    post_generation_guardrail_text,
 };
 use crate::runtime_context::{AssembledTurnContext, assemble_turn_context};
 use crate::tool_types::{ToolCall, ToolDefinition};
@@ -616,7 +618,6 @@ async fn try_apply_native_compaction(
     model: &str,
     system_prompt: Option<&str>,
     stateful_response_continuation: bool,
-    previous_response_id: Option<String>,
     llm_messages: &mut Vec<LlmMessage>,
     llm_config: &mut crate::driver_registry::LlmCallConfig,
 ) -> Result<Option<AppliedNativeCompaction>> {
@@ -650,13 +651,10 @@ async fn try_apply_native_compaction(
                 .map(|value| value.len() as u64)
         })
         .flatten();
-    let (input, compact_previous_response_id) = if has_prior_opaque_context {
-        (standalone_input, None)
-    } else if stateful_response_continuation {
-        (Vec::new(), previous_response_id)
-    } else {
-        (standalone_input, None)
-    };
+    // Reconstruct standalone input even for a stateful continuation. Compacting
+    // only the previous response handle would omit the fresh request delta, then
+    // clearing that handle for the retry would make the omission permanent.
+    let (input, compact_previous_response_id) = (standalone_input, None);
 
     let compact_response = match chat_driver
         .compact(CompactRequest {
@@ -918,6 +916,8 @@ pub struct ReasonAtom {
     stream_heartbeater: Option<Arc<dyn crate::traits::StreamHeartbeater>>,
     /// Optional provider stall timeout (EVE-531). Default: 120s.
     provider_stall_timeout: Option<std::time::Duration>,
+    /// Shared attempt/backoff/time budget for automatic provider recovery.
+    provider_retry_config: LlmRetryConfig,
     /// Optional durable tool result store for transcript repair (EVE-533).
     durable_tool_result_store: Option<Arc<dyn DurableToolResultStore>>,
     /// Optional partial-stream store for ContinuePartial recovery (EVE-532).
@@ -966,6 +966,7 @@ impl ReasonAtom {
             file_store: None,
             stream_heartbeater: None,
             provider_stall_timeout: None,
+            provider_retry_config: LlmRetryConfig::default(),
             durable_tool_result_store: None,
             partial_stream_store: None,
             reasoning_effort_handle: None,
@@ -1059,6 +1060,12 @@ impl ReasonAtom {
     /// the stream is aborted and the activity fails with a retryable error.
     pub fn with_provider_stall_timeout(mut self, timeout: std::time::Duration) -> Self {
         self.provider_stall_timeout = Some(timeout);
+        self
+    }
+
+    /// Set the bounded provider recovery policy.
+    pub fn with_provider_retry_config(mut self, config: LlmRetryConfig) -> Self {
+        self.provider_retry_config = config;
         self
     }
 
@@ -1597,7 +1604,7 @@ impl ReasonAtom {
             .flatten()
             .collect();
 
-        // End-of-message citation annotation hooks (see specs/citations.md).
+        // End-of-message citation annotation hooks (see knowledge/runtime-resources/citations.md).
         // Collected here alongside the guardrail providers; evaluated once on
         // the finalized final-answer message to attach claim-level citations.
         // Empty unless a citation capability is configured.
@@ -1623,7 +1630,7 @@ impl ReasonAtom {
             .flatten()
             .collect();
 
-        // Citation verifiers (see specs/citations.md). Decoupled from the feeds:
+        // Citation verifiers (see knowledge/runtime-resources/citations.md). Decoupled from the feeds:
         // run once over the collected annotations to stamp faithfulness verdicts.
         // Empty unless the citation_verification capability is configured.
         let citation_verifiers: Vec<VerifierProvider> = resolved_capability_configs
@@ -1869,6 +1876,7 @@ impl ReasonAtom {
             &context.turn_id.to_string(),
         )
         .await;
+        let raw_tool_result_bytes = crate::capabilities::total_tool_result_bytes(&patched_messages);
 
         // 9b. Let enabled capabilities build a prompt-facing model view from
         // lossless stored messages. Storage remains unchanged.
@@ -2216,13 +2224,20 @@ impl ReasonAtom {
             } else {
                 true
             };
+            let window_pressure = crate::capabilities::should_compact_proactively(
+                &llm_messages_for_call,
+                config,
+                context_window,
+            );
+            let cost_pressure = crate::capabilities::should_compact_for_cost(
+                estimated_tokens_before as usize,
+                raw_tool_result_bytes,
+                config,
+                prior_usage.as_ref(),
+            );
             let local_pressure = !stateful_response_continuation
                 && checkpoint_rearmed
-                && crate::capabilities::should_compact_proactively(
-                    &llm_messages_for_call,
-                    config,
-                    context_window,
-                );
+                && (window_pressure || cost_pressure);
             let should_attempt = native_strategy
                 && chat_driver.supports_compact()
                 && durable_source_available
@@ -2289,7 +2304,6 @@ impl ReasonAtom {
                     &model_with_provider.model,
                     has_system_prompt.then_some(runtime_agent.system_prompt.as_str()),
                     false,
-                    None,
                     &mut llm_messages_for_call,
                     &mut llm_config,
                 )
@@ -2372,8 +2386,9 @@ impl ReasonAtom {
         // 14. Process stream with batched output.message.delta emissions
         // Batch deltas every 100ms to reduce event volume while providing real-time feedback
         const DELTA_BATCH_INTERVAL_MS: u64 = 100;
-        let retry_config = LlmRetryConfig::default();
+        let retry_config = self.provider_retry_config.clone();
         let mut stream_retry_metadata = RetryMetadata::default();
+        let mut retry_started_at = None;
         // Best-effort streamed phase hint (EVE-774). Starts `None` ("not yet
         // classified — treat as assistant text") and is refined monotonically
         // once a provider reveals a native phase mid-stream. Declared outside the
@@ -2388,10 +2403,34 @@ impl ReasonAtom {
             time_to_first_token_ms,
             pending_delta,
         ) = 'stream_attempt: loop {
-            let mut stream = match chat_driver
-                .chat_completion_stream(llm_messages_for_call.clone(), &llm_config)
-                .await
+            let stream_result = if let Some(remaining) =
+                remaining_retry_time(&retry_config, retry_started_at)
             {
+                match tokio::time::timeout(
+                    remaining,
+                    chat_driver.chat_completion_stream(llm_messages_for_call.clone(), &llm_config),
+                )
+                .await
+                {
+                    Ok(result) => result,
+                    Err(_) => {
+                        return Err(AgentLoopError::llm_kind(
+                            crate::error::LlmErrorKind::Unavailable,
+                            format!(
+                                "provider retry time budget exhausted after {} retries over {:.1}s; the turn is safe to resume",
+                                stream_retry_metadata.attempts,
+                                retry_config.max_retry_elapsed.as_secs_f64()
+                            ),
+                        )
+                        .with_retry_metadata(&stream_retry_metadata));
+                    }
+                }
+            } else {
+                chat_driver
+                    .chat_completion_stream(llm_messages_for_call.clone(), &llm_config)
+                    .await
+            };
+            let mut stream = match stream_result {
                 Ok(stream) => stream,
                 Err(e) if e.is_request_too_large() => {
                     // Context too large — run compaction cascade
@@ -2512,7 +2551,6 @@ impl ReasonAtom {
                             &model_with_provider.model,
                             has_system_prompt.then_some(runtime_agent.system_prompt.as_str()),
                             stateful_response_continuation,
-                            previous_response_id.clone(),
                             &mut llm_messages_for_call,
                             &mut llm_config,
                         )
@@ -2741,6 +2779,39 @@ impl ReasonAtom {
                         .chat_completion_stream(llm_messages_for_call.clone(), &llm_config)
                         .await?
                 }
+                Err(e)
+                    if e.is_transient_llm_error()
+                        && !e.llm_retry_handled()
+                        && stream_retry_metadata.attempts < retry_config.max_retries =>
+                {
+                    let proposed_wait =
+                        retry_config.calculate_backoff(stream_retry_metadata.attempts);
+                    let Some(wait_duration) =
+                        reserve_retry_wait(&retry_config, &mut retry_started_at, proposed_wait)
+                    else {
+                        return Err(AgentLoopError::llm_kind(
+                            e.llm_error_kind()
+                                .unwrap_or(crate::error::LlmErrorKind::Unavailable),
+                            format!(
+                                "{e}; automatic recovery time budget exhausted after {} retries; the turn is safe to resume",
+                                stream_retry_metadata.attempts
+                            ),
+                        )
+                        .with_retry_metadata(&stream_retry_metadata));
+                    };
+                    tracing::warn!(
+                        session_id = %session_id,
+                        turn_id = %context.turn_id,
+                        attempt = stream_retry_metadata.attempts + 1,
+                        max_retries = retry_config.max_retries,
+                        wait_secs = wait_duration.as_secs_f64(),
+                        error = %e,
+                        "ReasonAtom: transient provider failure before stream, retrying"
+                    );
+                    stream_retry_metadata.record_retry(wait_duration, None);
+                    tokio::time::sleep(wait_duration).await;
+                    continue 'stream_attempt;
+                }
                 Err(e) => return Err(e),
             };
 
@@ -2760,7 +2831,9 @@ impl ReasonAtom {
             let stall_timeout = self
                 .provider_stall_timeout
                 .unwrap_or(std::time::Duration::from_secs(120));
-            let mut stall_sleep = Box::pin(tokio::time::sleep(stall_timeout));
+            let initial_stall_timeout = remaining_retry_time(&retry_config, retry_started_at)
+                .map_or(stall_timeout, |remaining| remaining.min(stall_timeout));
+            let mut stall_sleep = Box::pin(tokio::time::sleep(initial_stall_timeout));
             let mut keepalive_ticker = tokio::time::interval(std::time::Duration::from_secs(12));
             keepalive_ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
             keepalive_ticker.tick().await; // consume immediate first tick
@@ -2779,16 +2852,62 @@ impl ReasonAtom {
                         None => break,
                     },
                     _ = &mut stall_sleep => {
+                        // EVE-806: a stream that produced no tokens within the
+                        // liveness window is equivalent to a dropped connection.
+                        // Route it through the same bounded transient-retry path
+                        // as an in-stream provider error (everruns-provider
+                        // classifies this message as transient) instead of
+                        // failing the turn immediately. Retrying re-issues the
+                        // same request with no artificial history messages; a
+                        // stall after partial output is not retried, and repeated
+                        // stalls stay bounded by retry_config.max_retries.
+                        let stall_error =
+                            crate::driver_registry::LlmStreamError::new(format!(
+                                "provider stream stall: no tokens for {}s",
+                                stall_timeout.as_secs()
+                            ));
                         tracing::warn!(
                             session_id = %session_id,
                             turn_id = %context.turn_id,
                             stall_secs = stall_timeout.as_secs(),
                             "ReasonAtom: provider stream stall timeout"
                         );
-                        return Err(AgentLoopError::llm(format!(
-                            "provider stream stall: no tokens for {}s",
-                            stall_timeout.as_secs()
-                        )));
+                        if should_retry_stream_error(
+                            &stall_error,
+                            stream_retry_metadata.attempts,
+                            retry_config.max_retries,
+                            stream_has_output,
+                        ) {
+                            let proposed_wait = retry_config
+                                .calculate_backoff(stream_retry_metadata.attempts);
+                            let Some(wait_duration) = reserve_retry_wait(
+                                &retry_config,
+                                &mut retry_started_at,
+                                proposed_wait,
+                            ) else {
+                                return Err(AgentLoopError::llm_kind(
+                                    crate::error::LlmErrorKind::Unavailable,
+                                    format!(
+                                        "{}; automatic recovery time budget exhausted after {} retries; the turn is safe to resume",
+                                        stall_error.message,
+                                        stream_retry_metadata.attempts
+                                    ),
+                                )
+                                .with_retry_metadata(&stream_retry_metadata));
+                            };
+                            tracing::warn!(
+                                session_id = %session_id,
+                                turn_id = %context.turn_id,
+                                attempt = stream_retry_metadata.attempts + 1,
+                                max_retries = retry_config.max_retries,
+                                wait_secs = wait_duration.as_secs_f64(),
+                                "ReasonAtom: provider stream stall, retrying"
+                            );
+                            stream_retry_metadata.record_retry(wait_duration, None);
+                            tokio::time::sleep(wait_duration).await;
+                            continue 'stream_attempt;
+                        }
+                        return Err(AgentLoopError::llm(stall_error.message));
                     },
                     _ = keepalive_ticker.tick() => {
                         if let Some(ref hb) = self.stream_heartbeater {
@@ -3114,8 +3233,22 @@ impl ReasonAtom {
                             retry_config.max_retries,
                             stream_has_output,
                         ) {
-                            let wait_duration =
+                            let proposed_wait =
                                 retry_config.calculate_backoff(stream_retry_metadata.attempts);
+                            let Some(wait_duration) = reserve_retry_wait(
+                                &retry_config,
+                                &mut retry_started_at,
+                                proposed_wait,
+                            ) else {
+                                return Err(AgentLoopError::llm_kind(
+                                    err.kind(),
+                                    format!(
+                                        "{err}; automatic recovery time budget exhausted after {} retries; the turn is safe to resume",
+                                        stream_retry_metadata.attempts
+                                    ),
+                                )
+                                .with_retry_metadata(&stream_retry_metadata));
+                            };
                             tracing::warn!(
                                 session_id = %session_id,
                                 turn_id = %context.turn_id,
@@ -3192,26 +3325,10 @@ impl ReasonAtom {
         let (mut text, mut thinking, thinking_signature, mut tool_calls) =
             (text, thinking, thinking_signature, tool_calls);
 
-        // End-of-message output guardrail seam (EVE-573). Runs once on the
-        // finalized assistant text after streaming completes, before the
-        // message is built into context. Async, time-bounded, and fail-open
-        // (each provider owns its own timeout). Skipped when the streaming seam
-        // already tripped (the message is already a replacement), when there
-        // are no post-generation providers, or when there is no assistant text.
-        // A trip here reuses the same replacement/emit path as the streaming
-        // seam below, so the original tokens are never persisted.
-        if tripped.is_none() && !post_output_providers.is_empty() && !text.is_empty() {
-            let ctx = PostGenerationOutputContext {
-                system_prompt: &runtime_agent.system_prompt,
-                message_text: &text,
-                utility_llm_service: self.utility_llm_service.as_ref(),
-            };
-            tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
-        }
-
-        // End-of-message citation annotation seam (see specs/citations.md). Runs
-        // once on the finalized final-answer text after guardrails allow it, to
-        // attach claim-level citations. Skipped when a guardrail already tripped,
+        // End-of-message citation annotation seam (see knowledge/runtime-resources/citations.md). Runs
+        // once on the finalized final-answer text to attach claim-level citations
+        // before guardrails inspect the complete client-visible payload. Skipped
+        // when a guardrail already tripped,
         // when there are no citation providers, when there is no text, or while
         // the message still carries tool calls (citations attach to answer
         // prose, not intermediate tool-calling turns). The built-in feeds do not
@@ -3239,9 +3356,24 @@ impl ReasonAtom {
             text = collected.text;
             citation_annotations = collected.annotations;
 
+            // Post-generation guardrails must inspect citation metadata as well
+            // as prose because annotations are persisted and rendered to clients.
+            if !citation_annotations.is_empty() && !post_output_providers.is_empty() {
+                let guarded_output = post_generation_guardrail_text(&text, &citation_annotations);
+                let ctx = PostGenerationOutputContext {
+                    system_prompt: &runtime_agent.system_prompt,
+                    message_text: &guarded_output,
+                    utility_llm_service: self.utility_llm_service.as_ref(),
+                };
+                tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
+            }
+
             // Verification pass: stamp faithfulness verdicts on the collected
             // citations (no-op when no citation_verification capability is on).
-            if !citation_annotations.is_empty() && !citation_verifiers.is_empty() {
+            if tripped.is_none()
+                && !citation_annotations.is_empty()
+                && !citation_verifiers.is_empty()
+            {
                 citation_annotations = verify_annotations(
                     &citation_verifiers,
                     &text,
@@ -3250,6 +3382,25 @@ impl ReasonAtom {
                 )
                 .await;
             }
+        }
+
+        // Messages without citation annotations still cross the same
+        // post-generation output seam once.
+        if tripped.is_none()
+            && citation_annotations.is_empty()
+            && !post_output_providers.is_empty()
+            && !text.is_empty()
+        {
+            let ctx = PostGenerationOutputContext {
+                system_prompt: &runtime_agent.system_prompt,
+                message_text: &text,
+                utility_llm_service: self.utility_llm_service.as_ref(),
+            };
+            tripped = evaluate_post_generation_guardrails(&post_output_providers, &ctx).await;
+        }
+
+        if tripped.is_some() {
+            citation_annotations.clear();
         }
 
         // Release buffered text only after post-generation guardrails allow it.
@@ -3488,7 +3639,7 @@ impl ReasonAtom {
         }
         .with_id(output_message_id);
         // Attach citation annotations produced by the annotation seam above to
-        // the message's text part (see specs/citations.md).
+        // the message's text part (see knowledge/runtime-resources/citations.md).
         if !citation_annotations.is_empty() {
             for part in assistant_message.content.iter_mut() {
                 if let crate::message::ContentPart::Text(t) = part {

@@ -1,4 +1,4 @@
-// Agent health check service + commands (specs/agent-checks.md, tier-3).
+// Agent health check service + commands (knowledge/evaluation/agent-checks.md, tier-3).
 
 use std::sync::Arc;
 

@@ -280,8 +280,8 @@ export const EDGES: Edge[] = [
 
   // --- OAuth rejections (backend-decided categories) ---
   // Permanent (409 → oauth_account_exists): the verified email already has an
-  // account bound to another method. Copy now names the way through, so from the
-  // login door the user reaches auth via their original method.
+  // unsafe local twin or the provider identity conflicts with an existing
+  // binding. Copy names the way through via the original method.
   {
     from: "oauth.rejected_permanent",
     affordance: "use your original method",

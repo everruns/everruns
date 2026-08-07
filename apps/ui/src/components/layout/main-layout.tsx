@@ -1,6 +1,6 @@
 "use client";
 
-import { Sidebar } from "./sidebar";
+import { MobileSidebar, Sidebar } from "./sidebar";
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -8,9 +8,10 @@ interface MainLayoutProps {
 
 export function MainLayout({ children }: MainLayoutProps) {
   return (
-    <div className="flex h-screen">
-      <Sidebar />
-      <main className="flex-1 overflow-auto bg-background text-[15px]">{children}</main>
+    <div className="flex h-screen flex-col md:flex-row">
+      <Sidebar className="hidden md:flex" />
+      <MobileSidebar />
+      <main className="min-w-0 flex-1 overflow-auto bg-background text-[15px]">{children}</main>
     </div>
   );
 }

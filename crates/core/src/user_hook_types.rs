@@ -1,6 +1,6 @@
 // User-defined hooks: shared types.
 //
-// See `specs/user-hooks.md` for the contract. This module defines the data
+// See `knowledge/runtime-resources/user-hooks.md` for the contract. This module defines the data
 // shape — events, matchers, executor spec, outcomes — used both as the
 // on-the-wire JSON config and as the in-memory `UserHookSpec` carried through
 // the capability collection pipeline. Capability authors return
@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 /// The lifecycle point at which a hook fires.
 ///
-/// Six events. See `specs/user-hooks.md` for semantics and wire payload.
+/// Six events. See `knowledge/runtime-resources/user-hooks.md` for semantics and wire payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HookEvent {

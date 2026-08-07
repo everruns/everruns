@@ -9,7 +9,7 @@ switch to the owning org and render the resource — instead of showing a
 "not found" screen.
 
 Covers the cross-org resource resolution behaviour described in
-`specs/multitenancy.md` (Cross-Org Resource Resolution). The API's
+`knowledge/security/multitenancy.md` (Cross-Org Resource Resolution). The API's
 `GET /v1/<resource>/<id>` continues to return 404 for cross-org access; the
 recovery happens only in the UI via the authenticated
 `GET /v1/resolve-org` endpoint, which only reveals orgs the caller already
