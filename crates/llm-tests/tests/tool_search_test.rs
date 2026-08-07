@@ -18,8 +18,8 @@ mod llm_test_matrix;
 use llm_test_matrix::*;
 
 use everruns_core::capabilities::{
-    AutoToolSearchCapability, ClaudeToolSearchCapability, CurrentTimeCapability,
-    FileSystemCapability, OpenAiToolSearchCapability, SessionCapability,
+    AutoToolSearchCapability, BashkitShellCapability, ClaudeToolSearchCapability,
+    CurrentTimeCapability, FileSystemCapability, OpenAiToolSearchCapability, SessionCapability,
     StatelessTodoListCapability, TOOL_SEARCH_TOOL_NAME, TestMathCapability, TestWeatherCapability,
     ToolSearchCapability,
 };
@@ -474,6 +474,58 @@ async fn test_anthropic_auto_tool_search_resolves_to_hosted() {
              `{TOOL_SEARCH_TOOL_NAME}` tool must not be offered to the model"
         );
     }
+}
+
+/// Reproduces the production surface where Opus 5 invented `bash_run` after
+/// Bash's schema was deferred. Bash is a hot-path exception now, so hosted
+/// search remains active for the rest of the tool set while the model always
+/// receives Bash's exact `bash` / `commands` contract.
+#[tokio::test]
+async fn test_anthropic_opus5_hosted_search_calls_bash_contract() {
+    let Some(model) = ANTHROPIC_OPUS5.model() else {
+        eprintln!("Skipping: {} not set", ANTHROPIC_OPUS5.label());
+        return;
+    };
+
+    let runner = InMemoryAgenticLoop::builder()
+        .agent_name("Claude Bash Tool Search Agent")
+        .system_prompt("Use the bash tool for shell commands.")
+        .model(model)
+        .driver_registry(all_providers_registry())
+        .capability(BashkitShellCapability)
+        .capability(FileSystemCapability)
+        .capability(TestMathCapability)
+        .capability(AutoToolSearchCapability::with_threshold(3))
+        .max_iterations(6)
+        .build()
+        .await
+        .unwrap();
+
+    let result = runner
+        .run_turn("Use Bash to run `printf everruns-bash-contract`.")
+        .await
+        .unwrap();
+
+    assert!(result.success, "Turn should succeed: {:?}", result.error);
+    assert_hosted_tool_search_was_enabled(&runner).await;
+
+    let generations = runner.events_by_type(LLM_GENERATION).await;
+    let bash_calls: Vec<_> = generations
+        .iter()
+        .filter_map(|event| {
+            let EventData::LlmGeneration(data) = &event.data else {
+                return None;
+            };
+            Some(data.output.tool_calls.iter())
+        })
+        .flatten()
+        .filter(|call| call.name == "bash")
+        .collect();
+
+    assert!(!bash_calls.is_empty(), "Opus 5 should call the `bash` tool");
+    assert!(bash_calls.iter().all(|call| {
+        call.arguments.get("commands").is_some() && call.arguments.get("command").is_none()
+    }));
 }
 
 /// Tests that tool_search gracefully works when below threshold

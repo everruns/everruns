@@ -104,6 +104,9 @@ pub const ANTHROPIC_HAIKU: ProviderModelConfig = ProviderModelConfig::new(
 pub const ANTHROPIC_OPUS: ProviderModelConfig =
     ProviderModelConfig::new(DriverId::Anthropic, "claude-opus-4-7", "ANTHROPIC_API_KEY");
 
+pub const ANTHROPIC_OPUS5: ProviderModelConfig =
+    ProviderModelConfig::new(DriverId::Anthropic, "claude-opus-5", "ANTHROPIC_API_KEY");
+
 pub const ANTHROPIC_SONNET: ProviderModelConfig = ProviderModelConfig::new(
     DriverId::Anthropic,
     "claude-sonnet-4-6",
