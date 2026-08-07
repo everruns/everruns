@@ -68,10 +68,20 @@ jest.mock("@/hooks/use-organizations", () => ({
   }),
 }));
 
+const mockMcpEndpointEnabled = jest.fn(() => true);
 jest.mock("@/components/layout/mcp-connect-button", () => ({
   McpConnectButton: () => <button type="button" aria-label="Connect via MCP" />,
-  McpConnectDialog: () => null,
-  McpConnectMenuItem: () => <div>Connect via MCP</div>,
+  McpConnectDialog: ({ open }: { open: boolean }) =>
+    open ? (
+      <div role="dialog" aria-label="MCP connection details">
+        MCP connection details
+      </div>
+    ) : null,
+  McpConnectMenuItem: ({ onSelect }: { onSelect: () => void }) => (
+    <button role="menuitem" onClick={onSelect}>
+      Connect via MCP
+    </button>
+  ),
 }));
 
 jest.mock("@/components/layout/notification-bell", () => ({
@@ -93,7 +103,8 @@ jest.mock("@/providers/feature-flags-provider", () => ({
     observers: true,
     mcp_endpoint: true,
   }),
-  useFeatureFlag: (flag: string) => flag === "mcp_endpoint" || flag === "notifications",
+  useFeatureFlag: (flag: string) =>
+    flag === "mcp_endpoint" ? mockMcpEndpointEnabled() : flag === "notifications",
 }));
 
 /// Mock LLM providers hook (default: providers configured, no warning)
@@ -122,6 +133,7 @@ describe("Sidebar", () => {
     mockPathname.mockReturnValue("/dashboard");
     mockPush.mockClear();
     mockPrefetch.mockClear();
+    mockMcpEndpointEnabled.mockReturnValue(true);
     mockUsePolicies.mockReturnValue({
       data: { policies: { "durable.view": true } },
       can: (policyId: string) => policyId === "durable.view",
@@ -180,6 +192,85 @@ describe("Sidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: /test user/i }));
     expect(screen.getByText("Notifications")).toBeInTheDocument();
     expect(screen.getByText("Connect via MCP")).toBeInTheDocument();
+  });
+
+  it("renders a local identity menu with applicable actions in no-auth mode", async () => {
+    mockUseAuth.mockReturnValue({
+      user: { name: "Anonymous", email: "anonymous@local", avatar_url: null },
+      requiresAuth: false,
+      isAuthenticated: true,
+      config: { mode: "none" },
+      isLoading: false,
+      logout: jest.fn(),
+      logoutPending: false,
+      createOrganization: undefined,
+    });
+
+    render(<Sidebar />);
+
+    const footer = screen.getByRole("contentinfo", { name: "Sidebar footer" });
+    const trigger = within(footer).getByRole("button", { name: /anonymous/i });
+    expect(trigger).toHaveTextContent("Local user");
+
+    fireEvent.click(trigger);
+    expect(screen.getByRole("menuitem", { name: "Profile" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Connect via MCP" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: /personal access tokens/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: /sign out/i })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Connect via MCP" }));
+    expect(
+      await screen.findByRole("dialog", { name: /mcp connection details/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("hides MCP Connect when the endpoint capability is disabled", () => {
+    mockMcpEndpointEnabled.mockReturnValue(false);
+    mockUseAuth.mockReturnValue({
+      user: { name: "Anonymous", email: "anonymous@local", avatar_url: null },
+      requiresAuth: false,
+      isAuthenticated: true,
+      config: { mode: "none" },
+      isLoading: false,
+      logout: jest.fn(),
+      logoutPending: false,
+      createOrganization: undefined,
+    });
+
+    render(<Sidebar />);
+    fireEvent.click(screen.getByRole("button", { name: /anonymous/i }));
+
+    expect(screen.queryByRole("menuitem", { name: "Connect via MCP" })).not.toBeInTheDocument();
+  });
+
+  it("preserves authentication-only actions in authenticated mode", () => {
+    mockUseAuth.mockReturnValue({
+      user: { name: "Test User", email: "test@example.com", avatar_url: null },
+      requiresAuth: true,
+      isAuthenticated: true,
+      config: { mode: "password" },
+      isLoading: false,
+      logout: jest.fn(),
+      logoutPending: false,
+      createOrganization: undefined,
+    });
+
+    render(<Sidebar />);
+    fireEvent.click(screen.getByRole("button", { name: /test user/i }));
+
+    expect(screen.getByRole("menuitem", { name: /personal access tokens/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: /sign out/i })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Connect via MCP" })).toBeInTheDocument();
+  });
+
+  it("renders only the version when no current user is available", () => {
+    render(<Sidebar />);
+
+    const footer = screen.getByRole("contentinfo", { name: "Sidebar footer" });
+    expect(within(footer).getByText(/^Everruns v\d+\.\d+\.\d+$/)).toBeInTheDocument();
+    expect(within(footer).queryByRole("button")).not.toBeInTheDocument();
   });
 
   it("routes the Profile menu item to /settings/profile", () => {
