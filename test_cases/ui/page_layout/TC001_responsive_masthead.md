@@ -25,11 +25,12 @@ when the app content area narrows.
 1. Open the agent detail page at the wide desktop viewport.
 2. Confirm the action cluster is right-aligned beside the title, description, badges, and metadata.
 3. Resize to the compact desktop and tablet viewports. Confirm `New session` and `More actions`
-   remain prioritized while Edit, Create app, Copy, and Export move to a second row. Open the
-   overflow menu and confirm Observe this agent is available.
+   appear above the identity while Edit, Create app, Copy, and Export move to a second row. Open
+   the overflow menu and confirm Observe this agent is available.
 4. Resize to the mobile viewport. Confirm only `New session` and `More actions` remain visible.
-   Open the overflow menu and confirm Copy, Export, Edit, Create app, and Observe this agent are
-   available. Open the mobile navigation drawer and close it with Escape.
+   Confirm they share the icon row above the title. Open the overflow menu and confirm Copy,
+   Export, Edit, Create app, and Observe this agent are available. Open the mobile navigation
+   drawer and close it with Escape.
 5. Repeat with a long title, a long description, expanded button labels, badges, and metadata.
 6. Inspect representative detail pages for agents, harnesses, apps, capabilities, skills, memory,
    knowledge indexes, agent identities, and sessions.
@@ -38,9 +39,10 @@ when the app content area narrows.
 
 - Identity content keeps a readable width instead of collapsing into a single-word column.
 - Wide screens show the full action cluster beside the identity content.
-- Compact desktop and tablet widths show the prioritized controls and secondary action strip.
+- Compact desktop and tablet widths show the prioritized controls above the identity and the
+  secondary action strip below it.
 - Mobile widths keep the primary action visible and expose every secondary action through the
-  keyboard-accessible overflow menu.
+  keyboard-accessible overflow menu on the icon row above the title.
 - The desktop sidebar becomes an accessible navigation drawer on mobile, leaving the page a
   readable content width.
 - Long text wraps without horizontal page overflow.

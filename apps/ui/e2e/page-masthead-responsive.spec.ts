@@ -105,6 +105,7 @@ test.describe("Page masthead responsive layout", () => {
     const title = page.getByRole("heading", { name: "Jokes Agent" });
     const masthead = title.locator("xpath=ancestor::div[@data-slot='page-masthead'][1]");
     const identity = masthead.locator('[data-slot="page-masthead-identity"]');
+    const icon = identity.locator('[data-slot="icon-tile"]');
     const actions = page
       .getByRole("button", { name: "New session" })
       .locator("xpath=ancestor::div[@data-slot='page-masthead-compact-actions'][1]");
@@ -128,11 +129,19 @@ test.describe("Page masthead responsive layout", () => {
 
     const mastheadBox = await masthead.boundingBox();
     const identityBox = await identity.boundingBox();
+    const iconBox = await icon.boundingBox();
     const actionsBox = await actions.boundingBox();
+    const titleBox = await title.boundingBox();
 
     expect(mastheadBox).not.toBeNull();
     expect(identityBox).not.toBeNull();
+    expect(iconBox).not.toBeNull();
     expect(actionsBox).not.toBeNull();
+    expect(titleBox).not.toBeNull();
+    expect(Math.abs(actionsBox!.y - iconBox!.y)).toBeLessThanOrEqual(1);
+    expect(Math.max(actionsBox!.y + actionsBox!.height, iconBox!.y + iconBox!.height)).toBeLessThan(
+      titleBox!.y,
+    );
     expect(mastheadBox!.width).toBeGreaterThanOrEqual(300);
     expect(identityBox!.width).toBeGreaterThanOrEqual(Math.min(320, mastheadBox!.width));
     expect(actionsBox!.x + actionsBox!.width).toBeLessThanOrEqual(
@@ -147,12 +156,16 @@ test.describe("Page masthead responsive layout", () => {
     { name: "compact desktop", width: 1024, height: 900 },
     { name: "tablet", width: 768, height: 900 },
   ]) {
-    test(`keeps frequent actions in a second row at ${viewport.name} width`, async ({ page }) => {
+    test(`places prioritized actions above identity at ${viewport.name} width`, async ({ page }) => {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await page.goto(`/agents/${AGENT_ID}`);
 
       const title = page.getByRole("heading", { name: "Jokes Agent" });
       const masthead = title.locator("xpath=ancestor::div[@data-slot='page-masthead'][1]");
+      const identity = masthead.locator('[data-slot="page-masthead-identity"]');
+      const actions = page
+        .getByRole("button", { name: "New session" })
+        .locator("xpath=ancestor::div[@data-slot='page-masthead-compact-actions'][1]");
       const actionStrip = masthead.locator('[data-slot="page-masthead-compact-action-strip"]');
 
       await expect(page.getByRole("button", { name: "New session" })).toBeVisible();
@@ -168,9 +181,14 @@ test.describe("Page masthead responsive layout", () => {
       await expect(page.getByRole("menuitem", { name: "Copy" })).toHaveCount(0);
 
       const mastheadBox = await masthead.boundingBox();
+      const identityBox = await identity.boundingBox();
+      const actionsBox = await actions.boundingBox();
       const stripBox = await actionStrip.boundingBox();
       expect(mastheadBox).not.toBeNull();
+      expect(identityBox).not.toBeNull();
+      expect(actionsBox).not.toBeNull();
       expect(stripBox).not.toBeNull();
+      expect(actionsBox!.y + actionsBox!.height).toBeLessThanOrEqual(identityBox!.y);
       expect(stripBox!.width).toBeLessThanOrEqual(mastheadBox!.width);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
         await page.evaluate(() => document.documentElement.clientWidth),
