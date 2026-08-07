@@ -506,9 +506,9 @@ pub use model::{
     ModelVendor, ModelWithProvider, ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };
 pub use model_discovery::{
-    DiscoveredProviderModel, RankedDiscoveredModels, discover_provider_models,
-    enrich_with_profiles, list_openai_compatible_models, normalize_and_enrich,
-    rank_discovered_models,
+    DiscoveredProviderModel, ModelSearchMatch, ModelSearchResult, RankedDiscoveredModels,
+    discover_provider_models, enrich_with_profiles, list_openai_compatible_models, match_models,
+    normalize_and_enrich, rank_discovered_models, search_provider_models,
 };
 pub use model_profiles::{get_model_profile, get_model_vendor};
 pub use organization::{
