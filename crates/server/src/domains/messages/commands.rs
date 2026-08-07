@@ -69,6 +69,7 @@ impl Command for CreateMessage {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Session"))?;
+        ensure_platform_chat_owner(ctx, session.harness_id, session.resolved_owner_user_id).await?;
         let responder_agent_id = resolve_responder_agent_id(
             ctx,
             session_id,
@@ -96,6 +97,31 @@ impl Command for CreateMessage {
 }
 
 inventory::submit! { CommandDescriptor::of::<CreateMessage>() }
+
+async fn ensure_platform_chat_owner(
+    ctx: &Ctx,
+    harness_id: everruns_core::typed_id::HarnessId,
+    owner_user_id: Option<uuid::Uuid>,
+) -> Result<(), CommandError> {
+    let harness = ctx
+        .db
+        .get_harness(ctx.org_id(), harness_id)
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Harness"))?;
+
+    // THREAT[TM-AGENT-017]: Platform commands run as the persisted session
+    // owner. Only that owner may start a Platform Chat turn; otherwise an org
+    // member could use the session as a confused deputy.
+    if harness.is_built_in && harness.name == "platform-chat" && ctx.caller.user_id != owner_user_id
+    {
+        return Err(CommandError::forbidden(
+            "Only the session owner can send messages to Platform Chat",
+        ));
+    }
+
+    Ok(())
+}
 
 async fn resolve_responder_agent_id(
     ctx: &Ctx,
@@ -390,10 +416,11 @@ mod tests {
     };
     use async_trait::async_trait;
     use everruns_core::typed_id::{HarnessId, MessageId};
-    use everruns_core::{Caller, DEFAULT_ORG_ID, PrincipalId};
+    use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole, PrincipalId};
     use everruns_worker::AgentRunner;
     use std::sync::{Arc, Mutex};
     use tokio::time::{Duration, sleep};
+    use uuid::Uuid;
 
     #[derive(Default)]
     struct RecordingRunner {
@@ -608,6 +635,62 @@ mod tests {
             "runner recorded {} calls, expected at least {expected_len}",
             runner.calls().len()
         );
+    }
+
+    async fn platform_chat_authorization_fixture(
+        caller_user_id: Uuid,
+        owner_user_id: Uuid,
+    ) -> Result<(), CommandError> {
+        let db = Arc::new(StorageBackend::in_memory());
+        let harness = db
+            .create_harness(
+                DEFAULT_ORG_ID,
+                CreateHarnessRow {
+                    name: "platform-chat".to_string(),
+                    display_name: None,
+                    description: None,
+                    system_prompt: None,
+                    parent_harness_id: None,
+                    default_model_id: None,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    embedder_metadata: serde_json::json!({}),
+                    is_built_in: true,
+                },
+            )
+            .await
+            .expect("create Platform Chat harness");
+        let caller = Caller {
+            org_id: DEFAULT_ORG_ID,
+            org_public_id: everruns_core::organization::org_public_id_from_internal(DEFAULT_ORG_ID),
+            user_id: Some(caller_user_id),
+            role: OrgRole::Member,
+            is_platform_user: false,
+            is_internal: false,
+        };
+        let ctx = Ctx::minimal_for_test(caller, db, None);
+
+        ensure_platform_chat_owner(&ctx, harness.id, Some(owner_user_id)).await
+    }
+
+    #[tokio::test]
+    async fn platform_chat_rejects_message_from_non_owner() {
+        let err = platform_chat_authorization_fixture(Uuid::new_v4(), Uuid::new_v4())
+            .await
+            .expect_err("non-owner must not start a privileged Platform Chat turn");
+
+        assert_eq!(err.status().as_u16(), 403);
+    }
+
+    #[tokio::test]
+    async fn platform_chat_accepts_message_from_owner() {
+        let owner_user_id = Uuid::new_v4();
+
+        platform_chat_authorization_fixture(owner_user_id, owner_user_id)
+            .await
+            .expect("owner may start a Platform Chat turn");
     }
 
     #[tokio::test]
