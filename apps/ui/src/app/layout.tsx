@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import localFont from "next/font/local";
 import { cookies } from "next/headers";
 import "./globals.css";
 import { QueryProvider } from "@/providers/query-provider";
@@ -7,16 +6,6 @@ import { FeatureFlagsProvider } from "@/providers/feature-flags-provider";
 import { AuthProvider } from "@/providers/auth-provider";
 import { OrgProvider } from "@/providers/org-provider";
 import { LocaleProvider } from "@/providers/locale-provider";
-
-// Self-hosted via next/font/local to avoid any runtime or build-time dependency
-// on fonts.googleapis.com. Downstream apps with strict CSP (font-src 'self')
-// won't break.
-const caveat = localFont({
-  src: "./fonts/Caveat-SemiBold.woff2",
-  weight: "600",
-  display: "swap",
-  variable: "--font-caveat",
-});
 
 // Default title — individual pages override via usePageTitle.
 // See knowledge/foundations/code-organization.md (Page Titles) for the format.
@@ -35,7 +24,7 @@ export default async function RootLayout({
   const webMcpOriginTrialToken = process.env.WEBMCP_ORIGIN_TRIAL_TOKEN?.trim();
 
   return (
-    <html lang="en" className={caveat.variable}>
+    <html lang="en">
       {webMcpOriginTrialToken ? (
         <head>
           <meta httpEquiv="origin-trial" content={webMcpOriginTrialToken} />

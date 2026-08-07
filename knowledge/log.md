@@ -2,6 +2,9 @@
 
 ## 2026-08-07
 
+* **Slate fidelity**: Retired the handwritten experimental page stamp; experimental
+  navigation now uses the single Lucide flask marker defined by the design system.
+
 * **Platform behavioral eval**: Replaced the legacy tool-name study with a
   live-server Mira eval for `platform` command sequencing, safety, loop budgets,
   and persisted hourly Agent/MCP/model/trigger state.

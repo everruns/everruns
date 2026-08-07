@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "name": "Everruns Design System",
+  "archiveFile": "Everruns Design System.zip",
+  "archiveSha256": "8b03485591d45d275f3a9fa33fdb2dd5d9a6920e66e6bde2f1ad86a8ad3c1501",
+  "sourceUrl": "https://claude.ai/design/p/019e0a57-7d4b-70aa-a3c2-8c3d3746126e",
+  "reviewedOn": "2026-08-07",
+  "canonicalRuntime": "src/app/design-system.css",
+  "canonicalGuidance": "DESIGN.md",
+  "referenceShowcase": "/dev/design-reference",
+  "componentShowcase": "/dev/ui-components"
+}

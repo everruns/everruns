@@ -26,9 +26,8 @@ colors:
   input: "hsl(0 0% 85%)"
   ring: "hsl(43 60% 53%)"
 typography:
-  # Font families come from CSS variables: --font-sans (Geist Sans),
-  # --font-mono (Geist Mono), and --font-caveat (Caveat, used only for the
-  # hand-drawn experimental badge). Body copy carries -0.01em global tracking.
+  # Font families come from CSS variables: --font-sans (Geist Sans) and
+  # --font-mono (Geist Mono). Body copy carries -0.01em global tracking.
   headline-lg:
     fontFamily: Geist Sans
     fontSize: 1.875rem
@@ -70,11 +69,6 @@ typography:
     fontSize: 0.875rem
     fontWeight: 400
     lineHeight: 1.6
-  accent-script:
-    fontFamily: Caveat
-    fontSize: 1.05rem
-    fontWeight: 600
-    lineHeight: 1
 rounded:
   # Sharp corners are a defining brand trait: every radius is 0.
   none: 0px
@@ -99,7 +93,7 @@ components:
     typography: "{typography.label-md}"
     padding: "0.5rem 1rem"
   button-primary-hover:
-    backgroundColor: "hsl(220 62% 18%)"
+    backgroundColor: "hsl(220 62% 13% / 0.9)"
   button-secondary:
     backgroundColor: "{colors.secondary}"
     textColor: "{colors.secondary-foreground}"
@@ -123,6 +117,28 @@ components:
 Slate is the Everruns design system. The normative token values live in the YAML
 front matter above and in `src/app/design-system.css` (the runtime source of
 truth); the prose below explains how to apply them.
+
+## Reference and authority
+
+Use the [Everruns design project](https://claude.ai/design/p/019e0a57-7d4b-70aa-a3c2-8c3d3746126e)
+as a visual reference for Slate's page archetypes, density, and component anatomy. Exported design
+project archives are snapshots for review; they are not copied into the application and do not
+override repository sources.
+
+The reviewed ZIP export is pinned by filename, SHA-256 checksum, and review date in
+`design-reference.json`. Update that manifest whenever a newer export is adopted, then reconcile
+intent here and verify both `/dev/design-reference` and `/dev/ui-components`.
+
+When references disagree, use this order:
+
+1. `src/app/design-system.css` for runtime tokens, utilities, and animation.
+2. This file for visual intent, hierarchy, and composition rules.
+3. Production components in `src/components/` for exact behavior and component APIs.
+4. `/dev/ui-components` for an interactive rendering of those production components.
+5. The external design project for visual comparison and page-level examples.
+
+The external project should stay recognizably close to the product, but application code remains
+canonical. Reconcile meaningful drift here rather than introducing parallel CSS or mock components.
 
 ## Overview
 
@@ -158,8 +174,8 @@ capture the light theme as the canonical reference.
 ## Typography
 
 Two families carry the system: **Geist Sans** for everything structural and
-**Geist Mono** for code, logs, and telemetry. **Caveat** appears in exactly one
-place — the hand-drawn "experimental" page badge — and should not be reused.
+**Geist Mono** for code, logs, and telemetry. Do not introduce handwritten or display fonts.
+Experimental features use the Lucide flask marker in navigation rather than a page-title stamp.
 
 - **Headlines (`headline-lg`, `headline-md`):** Geist Sans Semi-Bold with tight
   negative tracking for an engineered, condensed feel.
@@ -182,24 +198,28 @@ background.
 ## Elevation & Depth
 
 Slate is intentionally **flat**. Hierarchy comes from tonal layering and
-borders, not shadows: a near-white background, pure-white cards, and 1px borders
-(`colors.border`). Focus and active emphasis is signaled with the gold `ring`
-rather than elevation. Subtle motion (row-enter, tool-pulse, loading-wave, and a
-progress sheen) conveys state changes in place.
+borders rather than decorative elevation: a near-white background, pure-white
+cards, and 1px borders (`colors.border`). Inputs and buttons may use `shadow-xs`;
+popovers and dialogs may rise as far as `shadow-md`. Content cards do not cast
+shadows. Focus and active emphasis is signaled with the gold `ring`. Subtle
+motion (row-enter, tool-pulse, loading-wave, and a progress sheen) conveys state
+changes in place.
 
 ## Shapes
 
 The shape language is **uncompromisingly sharp**: every corner radius is `0px`
 (`--radius` and all `--radius-*` tokens). Icons reinforce this with squared
-line caps and mitered joins (`.icon-sharp`). The single deliberate exception is
-the hand-drawn experimental badge, whose organic border is a one-off accent.
+line caps and mitered joins (`.icon-sharp`). The only round elements are semantic
+status dots, circular Lucide glyphs, and the rings in the Everruns logo.
 
 ## Components
 
 - **Buttons:** `button-primary` is navy with near-white label text and sharp
-  corners; it darkens on hover (`button-primary-hover`). `button-secondary` uses
+  corners; it uses 90% opacity on hover (`button-primary-hover`). `button-secondary` uses
   the light gray `secondary` surface for lower-emphasis actions. Both use the
-  `label-md` token.
+  `label-md` token. Action hierarchy is semantic: `accent` creates a new entity,
+  `default` commits changes, `outline` handles secondary actions, and destructive
+  list actions use a red ghost icon rather than a filled button.
 - **Inputs:** White surface, `input` border color, sharp corners, comfortable
   padding; focus draws the gold `ring`.
 - **Cards:** White surface on the textured background, 1px border, no radius,
@@ -207,15 +227,33 @@ the hand-drawn experimental badge, whose organic border is a one-off accent.
   collapse secondary or destructive actions into an ellipsis menu when the
   card is too narrow for the full action row.
 
+### Composition invariants
+
+- Top-level entity screens compose the five-zone primitives in
+  `src/components/layout/page-layout.tsx`: breadcrumb, masthead, control strip,
+  body columns, and footer. List, detail, and edit pages supply content without
+  inventing a parallel shell.
+- Domain cards compose shared primitives. For example, `AgentCard` composes
+  `EntityCard`, which composes `Card`; previews must render `AgentCard` when they
+  claim to show an agent card.
+- Entity-specific styling belongs in the domain component, while navigation,
+  identifiers, responsive action behavior, border treatment, and card anatomy
+  belong in the shared primitive.
+- Create actions use one `accent` button at the far right. Edit forms use one
+  `default` commit button followed by an `outline` discard action. Read-only
+  action clusters are otherwise `outline` or `ghost`.
+- Headings, buttons, menu items, and badges use sentence case. API-facing names
+  and identifiers remain verbatim and use Geist Mono when code-adjacent.
+
 ## Do's and Don'ts
 
-- **Do** keep every corner sharp — never introduce a non-zero radius outside the
-  experimental badge.
+- **Do** keep every corner sharp.
 - **Do** reserve gold (`accent`) for active states, focus rings, and highlights;
   use navy (`primary`) for the single most important action per screen.
 - **Don't** place dark text on a gold surface or use gold for body text — its
   contrast is too low for WCAG AA.
-- **Don't** add drop shadows; convey hierarchy with tone and borders instead.
+- **Don't** add decorative shadows to content cards or exceed `shadow-md` on overlays.
 - **Do** edit `src/app/design-system.css` and this file together — they must
   stay in sync.
-- **Don't** reuse the Caveat font outside the experimental badge.
+- **Don't** create lookalike domain examples from lower-level primitives; render
+  the real domain component.
