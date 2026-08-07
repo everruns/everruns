@@ -2332,6 +2332,7 @@ impl StorageBackend {
         session_id: Uuid,
         pattern: &str,
         path_prefix: Option<&str>,
+        excluded_path_prefix: Option<&str>,
         max_file_bytes: i64,
     ) -> Result<Vec<SessionFileInfoRow>> {
         dispatch!(
@@ -2340,6 +2341,7 @@ impl StorageBackend {
             session_id,
             pattern,
             path_prefix,
+            excluded_path_prefix,
             max_file_bytes
         )
     }

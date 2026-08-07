@@ -59,6 +59,8 @@ pub struct CopyFileInput {
 pub struct GrepInput {
     pub pattern: String,
     pub path_pattern: Option<String>,
+    /// Subtree that storage must exclude before evaluating the content regex.
+    pub excluded_path_prefix: Option<String>,
 }
 
 /// Factory for the server-backed session filesystem.
@@ -743,11 +745,12 @@ impl WorkspaceFileService {
 
     /// Search files using grep-like pattern matching (delegates to shared helper).
     pub async fn grep(&self, session_id: Uuid, req: GrepInput) -> Result<Vec<GrepResult>> {
-        let mut results = grep_session_files(
+        let mut results = grep_session_files_excluding(
             &self.db,
             session_id,
             &req.pattern,
             req.path_pattern.as_deref(),
+            req.excluded_path_prefix.as_deref(),
         )
         .await?;
 
@@ -760,8 +763,13 @@ impl WorkspaceFileService {
                 .map(everruns_core::session_path::GrepPathPattern::new)
                 .transpose()?;
             // Apply the shared path matcher after reading virtual entries.
-            let virtual_matches =
-                registry.grep(&session_id, &regex, None, MAX_GREP_FILE_BYTES as usize);
+            let virtual_matches = registry.grep(
+                &session_id,
+                &regex,
+                None,
+                req.excluded_path_prefix.as_deref(),
+                MAX_GREP_FILE_BYTES as usize,
+            );
             for vm in virtual_matches.into_iter().filter(|vm| {
                 path_matcher
                     .as_ref()
@@ -1287,6 +1295,7 @@ impl SessionFileSystem for WorkspaceFileService {
                 GrepInput {
                     pattern: pattern.to_string(),
                     path_pattern: path_pattern.map(ToString::to_string),
+                    excluded_path_prefix: None,
                 },
             )
             .await
@@ -1363,6 +1372,16 @@ pub async fn grep_session_files(
     pattern: &str,
     path_pattern: Option<&str>,
 ) -> Result<Vec<GrepResult>> {
+    grep_session_files_excluding(db, session_id, pattern, path_pattern, None).await
+}
+
+async fn grep_session_files_excluding(
+    db: &StorageBackend,
+    session_id: Uuid,
+    pattern: &str,
+    path_pattern: Option<&str>,
+    excluded_path_prefix: Option<&str>,
+) -> Result<Vec<GrepResult>> {
     // TM-DOS-008: cap content/path pattern lengths, then cap content-regex NFA size.
     anyhow::ensure!(
         pattern.len() <= MAX_GREP_PATTERN_LEN,
@@ -1386,7 +1405,13 @@ pub async fn grep_session_files(
     // scanning content. The shared matcher below then narrows those candidates
     // before content is fetched and charged to the total scan budget.
     let files = db
-        .grep_session_files(session_id, pattern, path_pattern, MAX_GREP_FILE_BYTES)
+        .grep_session_files(
+            session_id,
+            pattern,
+            path_pattern,
+            excluded_path_prefix,
+            MAX_GREP_FILE_BYTES,
+        )
         .await?;
 
     let mut results = Vec::new();
@@ -1483,6 +1508,7 @@ pub(crate) async fn grep_session_files_with_options(
             session_id,
             pattern,
             options.path_pattern.as_deref(),
+            None,
             MAX_GREP_FILE_BYTES,
         )
         .await?;
@@ -1762,6 +1788,35 @@ mod tests {
         assert!(
             msg.contains("maximum scan size"),
             "Expected 'maximum scan size' in: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn grep_excludes_private_subtree_before_scan_limit_accounting() {
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        let chunk = "x".repeat(MAX_GREP_FILE_BYTES as usize);
+        let files_at_limit = MAX_GREP_TOTAL_SCAN_BYTES / MAX_GREP_FILE_BYTES as usize;
+        for i in 0..files_at_limit {
+            seed_file(&db, sid, &format!("/public_{i:02}.txt"), &chunk).await;
+        }
+        seed_file(&db, sid, "/memory/user/secret.md", "x").await;
+
+        let result = grep_session_files_excluding(
+            &db,
+            sid,
+            "x",
+            None,
+            Some(crate::domains::session_files::queries::USER_MEMORY_MOUNT_PATH),
+        )
+        .await
+        .expect("excluded private files must not count against the scan limit");
+
+        assert_eq!(result.len(), files_at_limit);
+        assert!(
+            result
+                .iter()
+                .all(|entry| !entry.path.starts_with("/memory/user"))
         );
     }
 

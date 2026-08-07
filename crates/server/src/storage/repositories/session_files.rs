@@ -776,6 +776,7 @@ impl Database {
         session_id: Uuid,
         pattern: &str,
         path_pattern: Option<&str>,
+        excluded_path_prefix: Option<&str>,
         max_file_bytes: i64,
     ) -> Result<Vec<SessionFileInfoRow>> {
         // Offload path: content is in the object store, so PostgreSQL cannot grep
@@ -793,11 +794,13 @@ impl Database {
                 WHERE workspace_id = $1
                     AND is_directory = FALSE
                     AND size_bytes <= $2
+                    AND ($3::text IS NULL OR (path <> $3 AND path NOT LIKE $3 || '/%'))
                 ORDER BY path ASC
                 "#,
             )
             .bind(session_id)
             .bind(max_file_bytes)
+            .bind(excluded_path_prefix)
             .fetch_all(&self.pool)
             .await?;
             return Ok(rows);
@@ -816,11 +819,13 @@ impl Database {
                 WHERE workspace_id = $1
                     AND is_directory = FALSE
                     AND size_bytes <= $2
+                    AND ($3::text IS NULL OR (path <> $3 AND path NOT LIKE $3 || '/%'))
                 ORDER BY path ASC
                 "#,
             )
             .bind(session_id)
             .bind(max_file_bytes)
+            .bind(excluded_path_prefix)
             .fetch_all(&self.pool)
             .await?
         } else {
@@ -831,12 +836,14 @@ impl Database {
                 WHERE workspace_id = $1
                     AND is_directory = FALSE
                     AND size_bytes <= $2
-                    AND convert_from(content, 'UTF8') ~ $3
+                    AND ($3::text IS NULL OR (path <> $3 AND path NOT LIKE $3 || '/%'))
+                    AND convert_from(content, 'UTF8') ~ $4
                 ORDER BY path ASC
                 "#,
             )
             .bind(session_id)
             .bind(max_file_bytes)
+            .bind(excluded_path_prefix)
             .bind(pattern)
             .fetch_all(&self.pool)
             .await?

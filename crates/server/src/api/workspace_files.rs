@@ -543,6 +543,7 @@ pub async fn grep_files(
             GrepInput {
                 pattern: req.pattern,
                 path_pattern: req.path_pattern,
+                excluded_path_prefix: None,
             },
         )
         .await
