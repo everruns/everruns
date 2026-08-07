@@ -28,6 +28,7 @@ import type {
   KnowledgeIndexSourceType,
   UpdateKnowledgeIndexRequest,
 } from "@/lib/api/types";
+import { getFieldErrors, knowledgeIndexFormSchema, type FieldErrors } from "@/lib/form-validation";
 import { EmbeddingModelPicker } from "./embedding-model-picker";
 
 type FormMode = "create" | "edit";
@@ -65,7 +66,7 @@ export function KnowledgeIndexFormDialog({
   const [branch, setBranch] = useState("");
   const [rootFolder, setRootFolder] = useState("");
   const [embeddingModelId, setEmbeddingModelId] = useState("");
-  const [fieldError, setFieldError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const { data: connections = [] } = useUserConnections();
   const githubConnection = connections.find((connection) => connection.provider === "github");
@@ -83,7 +84,7 @@ export function KnowledgeIndexFormDialog({
     setBranch(readStringField(config, "branch"));
     setRootFolder(readStringField(config, "root_folder"));
     setEmbeddingModelId(mode === "edit" ? (index?.embedding_model_id ?? "") : "");
-    setFieldError(null);
+    setFieldErrors({});
     setFormError(null);
   }, [mode, open, index]);
 
@@ -103,21 +104,25 @@ export function KnowledgeIndexFormDialog({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setFieldError(null);
+    setFieldErrors({});
     setFormError(null);
 
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      setFieldError("Name is required");
-      return;
-    }
-    if (!embeddingModelId) {
-      setFieldError("An embedding model is required");
+    const parsed = knowledgeIndexFormSchema.safeParse({
+      name,
+      description,
+      embedding_model_id: embeddingModelId,
+    });
+    if (!parsed.success) {
+      setFieldErrors(getFieldErrors(parsed.error));
       return;
     }
 
     try {
-      const trimmedDescription = description.trim();
+      const {
+        name: trimmedName,
+        description: trimmedDescription,
+        embedding_model_id: parsedEmbeddingModelId,
+      } = parsed.data;
       const sourceConfig = buildSourceConfig();
       if (mode === "create") {
         await onSubmit({
@@ -125,14 +130,14 @@ export function KnowledgeIndexFormDialog({
           ...(trimmedDescription ? { description: trimmedDescription } : {}),
           source_type: sourceType,
           source_config: sourceConfig,
-          embedding_model_id: embeddingModelId,
+          embedding_model_id: parsedEmbeddingModelId,
         });
       } else {
         await onSubmit({
           name: trimmedName,
           description: trimmedDescription || null,
           source_config: sourceConfig,
-          embedding_model_id: embeddingModelId,
+          embedding_model_id: parsedEmbeddingModelId,
         });
       }
       onOpenChange(false);
@@ -161,11 +166,17 @@ export function KnowledgeIndexFormDialog({
               value={name}
               onChange={(event) => {
                 setName(event.target.value);
-                setFieldError(null);
+                setFieldErrors((previous) => ({ ...previous, name: undefined }));
               }}
-              aria-invalid={!!fieldError}
+              aria-invalid={!!fieldErrors.name}
+              aria-describedby={fieldErrors.name ? "kidx-name-error" : undefined}
               required
             />
+            {fieldErrors.name && (
+              <p id="kidx-name-error" className="text-xs text-destructive">
+                {fieldErrors.name}
+              </p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="kidx-description">Description</Label>
@@ -183,12 +194,24 @@ export function KnowledgeIndexFormDialog({
               value={embeddingModelId}
               onChange={(modelId) => {
                 setEmbeddingModelId(modelId);
-                setFieldError(null);
+                setFieldErrors((previous) => ({
+                  ...previous,
+                  embedding_model_id: undefined,
+                }));
               }}
+              aria-invalid={!!fieldErrors.embedding_model_id}
+              aria-describedby={
+                fieldErrors.embedding_model_id ? "kidx-embedding-model-error" : undefined
+              }
             />
             <p className="text-xs text-muted-foreground">
               Required. Chunks are embedded with this model; it cannot be cleared.
             </p>
+            {fieldErrors.embedding_model_id && (
+              <p id="kidx-embedding-model-error" className="text-xs text-destructive">
+                {fieldErrors.embedding_model_id}
+              </p>
+            )}
           </div>
           <div className="space-y-4">
             <div className="space-y-2">
@@ -278,7 +301,6 @@ export function KnowledgeIndexFormDialog({
               </div>
             </div>
           </div>
-          {fieldError && <p className="text-xs text-destructive">{fieldError}</p>}
           {formError && <p className="text-sm text-destructive">{formError}</p>}
           <DialogFooter>
             <Button
