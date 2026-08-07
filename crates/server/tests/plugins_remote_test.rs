@@ -543,7 +543,10 @@ async fn test_github_marketplace_end_to_end_install() {
     assert_eq!(installed.version.as_deref(), Some("0.5.0"));
     assert_eq!(installed.pinned_sha.as_deref(), Some(sha));
     assert_eq!(installed.status, "active");
-    assert_eq!(installed.capability_ref, "plugin:e2e-plugin");
+    assert_eq!(
+        installed.capability_ref,
+        format!("plugin:{}", installed.public_id)
+    );
     assert!(
         !installed.update_available,
         "freshly installed is up-to-date"

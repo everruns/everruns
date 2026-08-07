@@ -2,7 +2,7 @@
 //
 // Decision: Builder pattern mirrors ServerAppBuilder for symmetry
 // Decision: Encapsulates telemetry, shutdown, and worker lifecycle
-// Decision: Error reporter is vendor-neutral (see specs/embedding.md). Fatal
+// Decision: Error reporter is vendor-neutral (see knowledge/foundations/embedding.md). Fatal
 //   `run()` failures flow through the installed reporter when one is present;
 //   OSS never imports vendor SDKs directly. Panic interception and per-task /
 //   per-workflow scoping are wrapper responsibilities today — see the spec's
@@ -63,7 +63,7 @@ impl WorkerAppBuilder {
     /// Fatal `run()` failures are forwarded to the reporter with the worker
     /// component name in the scope. Panic interception and per-task /
     /// per-workflow scoping are wrapper responsibilities (e.g., by wrapping
-    /// task execution themselves). See `specs/embedding.md` for the contract.
+    /// task execution themselves). See `knowledge/foundations/embedding.md` for the contract.
     pub fn error_reporter(mut self, reporter: Arc<dyn ErrorReporter>) -> Self {
         self.error_reporter = Some(reporter);
         self

@@ -10,7 +10,7 @@ user-invocable: true
 
 Leave the repo materially healthier and closer to release-ready, with evidence.
 
-Read [`specs/maintenance.md`](../../../specs/maintenance.md) first — it owns the success bar, the
+Read [`knowledge/project/maintenance.md`](../../../knowledge/project/maintenance.md) first — it owns the success bar, the
 constraints, and the release-readiness standard. This skill owns execution only. Choose the smallest
 set of actions that closes the real maintenance risk in front of you; a longer checklist is not a
 better one.

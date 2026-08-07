@@ -1,6 +1,6 @@
 "use client";
 
-// Renders an Everruns MCP Apps card (specs/mcp-cards.md) inside a
+// Renders an Everruns MCP Apps card (knowledge/ui/mcp-cards.md) inside a
 // sandboxed iframe. The card HTML is server-rendered and arrives as the
 // `text` payload of an embedded MCP resource at `ui://everruns/...`.
 //

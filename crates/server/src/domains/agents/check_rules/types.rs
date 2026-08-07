@@ -1,4 +1,4 @@
-// Org-configurable agent check rule types (specs/agent-checks.md, phase 4).
+// Org-configurable agent check rule types (knowledge/evaluation/agent-checks.md, phase 4).
 
 use std::collections::HashMap;
 

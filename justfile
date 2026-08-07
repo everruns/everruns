@@ -56,6 +56,22 @@ test:
 test-shell:
     ./scripts/run-shell-tests.sh
 
+# Validate the canonical knowledge/ OKF v0.2 bundle. The upstream linter is
+# optional locally and pinned in CI; install it with `just install-okf-lint`.
+check-okf:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    python3 scripts/check_okf.py knowledge
+    if command -v okf-lint >/dev/null; then
+        okf-lint knowledge --max-line-length 10000
+    else
+        echo "okf-lint not installed — skipping upstream check"
+    fi
+
+# Install the upstream OKF v0.2 linter version used by CI.
+install-okf-lint:
+    cargo install okf-lint --version 0.1.1 --locked
+
 # Run pure unit tests (no PostgreSQL required) - fast feedback
 test-unit:
     cargo test -p everruns-anthropic --lib --all-features
@@ -112,7 +128,7 @@ test-integration: start-infra
 test-workflow:
     cargo test -p everruns-server --test workflow_test -- --test-threads=1
 
-# Run LLM tests against real APIs (requires ANTHROPIC_API_KEY, OPENAI_API_KEY)
+# Run LLM tests against real APIs (provider API keys required; MODEL_API_KEY covers Meta)
 # Skip providers: SKIP_LLM_INTEGRATION_TESTS_PROVIDERS=gemini just test-llm
 test-llm:
     cargo test -p everruns-core --test agent_run_basic
@@ -161,7 +177,7 @@ start-production *args:
 stop-all:
     ./scripts/lib/services.sh stop-all
 
-# SeaweedFS local S3 for object-storage testing: start|stop|reset|bucket|logs (specs/object-storage.md)
+# SeaweedFS local S3 for object-storage testing: start|stop|reset|bucket|logs (knowledge/runtime-resources/object-storage.md)
 seaweedfs cmd="start":
     ./scripts/lib/seaweedfs.sh {{cmd}}
 

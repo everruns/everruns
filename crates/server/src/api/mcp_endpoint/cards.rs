@@ -1,6 +1,6 @@
 // MCP entity cards — UI resources rendered in MCP-Apps-aware hosts.
 //
-// See `specs/mcp-cards.md` for the standard. Highlights:
+// See `knowledge/ui/mcp-cards.md` for the standard. Highlights:
 // - URI scheme: `ui://everruns/{entity}/{public_id}/card`
 // - MIME: `text/html`, single self-contained sandboxed document
 // - Every entity-controlled string flows through `escape_html`
@@ -92,7 +92,7 @@ pub fn escape_html(input: &str) -> String {
 /// the rendered size exceeds `MAX_CARD_BYTES`. Callers (currently
 /// `card_tool_content` → `tool_agent_get_card`) surface this as a tool
 /// error (`isError: true`) rather than truncating the document or
-/// silently degrading to a text-only result; see `specs/mcp-cards.md`.
+/// silently degrading to a text-only result; see `knowledge/ui/mcp-cards.md`.
 pub fn render_html(card: &EntityCard) -> Option<String> {
     let mut html = String::with_capacity(2048);
 
@@ -103,7 +103,7 @@ pub fn render_html(card: &EntityCard) -> Option<String> {
     // — are not enforceable when the policy is delivered via
     // `<meta http-equiv>`, so clickjacking and origin isolation are
     // handled by the host's iframe `sandbox` attribute (see
-    // `specs/mcp-cards.md`), not by CSP.
+    // `knowledge/ui/mcp-cards.md`), not by CSP.
     html.push_str("<!doctype html>\n");
     html.push_str("<html lang=\"en\"><head><meta charset=\"utf-8\">\n");
     html.push_str(

@@ -1,4 +1,4 @@
-// Agent health checks (specs/agent-checks.md, tier-3): generate behavioral
+// Agent health checks (knowledge/evaluation/agent-checks.md, tier-3): generate behavioral
 // smoke cases from an agent config, run them as real sessions, score with
 // deterministic checks plus an LLM judge, and persist the run.
 

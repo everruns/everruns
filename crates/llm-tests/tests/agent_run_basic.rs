@@ -11,7 +11,7 @@
 //   cargo test -p everruns-llm-tests --test agent_run_basic -- anthropic
 //
 // Required env vars (tests skip gracefully if missing):
-//   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
+//   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, MODEL_API_KEY
 //
 // Skip specific providers: SKIP_LLM_INTEGRATION_TESTS_PROVIDERS=gemini,openai
 #![cfg(feature = "llm-tests")]
@@ -38,6 +38,7 @@ use everruns_core::traits::ResolvedModel;
 #[case::gemini_flash(GEMINI_FLASH)]
 #[case::openrouter_gpt4o_mini(OPENROUTER_GPT4O_MINI)]
 #[case::fireworks_kimi_k2(FIREWORKS_KIMI_K2)]
+#[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
 #[tokio::test]
 async fn test_basic_completion(#[case] config: ProviderModelConfig) {
     if config.model().is_none() {
@@ -82,6 +83,7 @@ async fn test_basic_completion(#[case] config: ProviderModelConfig) {
 #[case::gemini_flash(GEMINI_FLASH)]
 #[case::openrouter_gpt4o_mini(OPENROUTER_GPT4O_MINI)]
 #[case::fireworks_kimi_k2(FIREWORKS_KIMI_K2)]
+#[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
 #[tokio::test]
 async fn test_tool_call(#[case] config: ProviderModelConfig) {
     if config.model().is_none() {
@@ -141,6 +143,7 @@ async fn test_tool_call(#[case] config: ProviderModelConfig) {
 #[case::anthropic_haiku(ANTHROPIC_HAIKU)]
 #[case::openai_gpt4o_mini(OPENAI_GPT4O_MINI)]
 #[case::openai_gpt54(OPENAI_GPT54)]
+#[case::meta_muse_spark_contributor(META_MUSE_SPARK_CONTRIBUTOR)]
 // Gemini excluded: rejects additionalProperties in nested object schemas (separate issue)
 #[tokio::test]
 async fn test_file_system_tool_schemas_accepted(#[case] config: ProviderModelConfig) {

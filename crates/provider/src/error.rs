@@ -6,7 +6,7 @@
 use crate::typed_id::{AgentId, HarnessId, SessionId};
 use crate::user_facing_error::{
     UserFacingError, UserFacingErrorContext, classify_runtime_error_message,
-    codes as user_facing_error_codes, is_provider_quota_message,
+    codes as user_facing_error_codes, is_provider_quota_message, is_usage_limit_message,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use thiserror::Error;
@@ -68,7 +68,7 @@ impl LlmErrorKind {
     /// (OpenAI: 429 `insufficient_quota`, Anthropic: 400 "credit balance is
     /// too low").
     pub fn from_provider_status(status: u16, body: &str) -> Self {
-        if is_provider_quota_message(body) {
+        if is_provider_quota_message(body) || is_usage_limit_message(body) {
             return LlmErrorKind::QuotaExhausted;
         }
         match status {
@@ -85,7 +85,7 @@ impl LlmErrorKind {
     /// Keyword-based classification for drivers without an HTTP status at the
     /// error site (e.g. Bedrock SDK errors).
     pub fn from_error_text(text: &str) -> Self {
-        if is_provider_quota_message(text) {
+        if is_provider_quota_message(text) || is_usage_limit_message(text) {
             return LlmErrorKind::QuotaExhausted;
         }
         let lower = text.to_ascii_lowercase();
@@ -120,6 +120,15 @@ impl LlmErrorKind {
 pub struct LlmError {
     pub kind: LlmErrorKind,
     pub message: String,
+    /// Retries already consumed below the turn loop.
+    #[serde(default)]
+    pub retry_attempts: u32,
+    /// Backoff time already consumed below the turn loop.
+    #[serde(default)]
+    pub retry_wait_ms: u64,
+    /// Whether a lower provider layer already made the terminal retry decision.
+    #[serde(default)]
+    pub retry_handled: bool,
 }
 
 impl std::fmt::Display for LlmError {
@@ -203,6 +212,9 @@ impl AgentLoopError {
         AgentLoopError::Llm(LlmError {
             kind: LlmErrorKind::Other,
             message: msg.into(),
+            retry_attempts: 0,
+            retry_wait_ms: 0,
+            retry_handled: false,
         })
     }
 
@@ -211,7 +223,34 @@ impl AgentLoopError {
         AgentLoopError::Llm(LlmError {
             kind,
             message: msg.into(),
+            retry_attempts: 0,
+            retry_wait_ms: 0,
+            retry_handled: false,
         })
+    }
+
+    /// Attach retries already consumed by a lower provider layer. The reason
+    /// loop uses this to avoid multiplying attempt budgets across layers.
+    pub fn with_retry_metadata(mut self, metadata: &crate::llm_retry::RetryMetadata) -> Self {
+        if let AgentLoopError::Llm(error) = &mut self {
+            error.retry_attempts = metadata.attempts;
+            error.retry_wait_ms = metadata.total_retry_wait.as_millis() as u64;
+            error.retry_handled = true;
+        }
+        self
+    }
+
+    /// Number of lower-layer retries already consumed by this failure.
+    pub fn llm_retry_attempts(&self) -> u32 {
+        match self {
+            AgentLoopError::Llm(error) => error.retry_attempts,
+            _ => 0,
+        }
+    }
+
+    /// Whether a lower provider layer already exhausted or rejected recovery.
+    pub fn llm_retry_handled(&self) -> bool {
+        matches!(self, AgentLoopError::Llm(error) if error.retry_handled)
     }
 
     /// Get the semantic LLM error kind, if this is an LLM error.
@@ -893,6 +932,13 @@ mod tests {
             ),
             LlmErrorKind::QuotaExhausted
         );
+        assert_eq!(
+            LlmErrorKind::from_provider_status(
+                429,
+                "{\"error\":{\"type\":\"usage_limit_reached\"}}"
+            ),
+            LlmErrorKind::QuotaExhausted
+        );
         // Anthropic reports exhausted billing as a 400.
         assert_eq!(
             LlmErrorKind::from_provider_status(
@@ -928,6 +974,10 @@ mod tests {
         assert_eq!(
             LlmErrorKind::from_error_text("ServiceUnavailableException"),
             LlmErrorKind::Unavailable
+        );
+        assert_eq!(
+            LlmErrorKind::from_error_text("usage_limit_reached; resets_at=1783767823"),
+            LlmErrorKind::QuotaExhausted
         );
         assert_eq!(
             LlmErrorKind::from_error_text("something else entirely"),

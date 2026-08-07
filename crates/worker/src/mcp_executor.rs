@@ -1,6 +1,6 @@
 // MCP server connection info.
 //
-// Spec: specs/mcp-servers.md (execution detail), specs/runtime-mcp.md (D5).
+// Spec: knowledge/integrations/mcp-servers.md (execution detail), knowledge/integrations/runtime-mcp.md (D5).
 //
 // The transport-agnostic MCP client (discovery, tools/call, SSE parsing, SSRF)
 // now lives in the shared `everruns-mcp` crate. This module only carries the
@@ -20,7 +20,7 @@ pub struct McpServerInfo {
     pub api_key: Option<String>,
     pub headers: HashMap<String, String>,
     pub auth_mode: McpServerAuthMode,
-    /// Protocol-era adoption policy (`auto` negotiates legacy/current/RC).
+    /// Protocol-era adoption policy (`auto` negotiates every protocol era).
     pub protocol_mode: McpProtocolMode,
     pub oauth_provider_id: Option<String>,
 }

@@ -6,6 +6,7 @@ that carry the version in sync, then run the plugin metadata validation.
 
 For `plugins/everruns-dev`, update:
 
+- `plugins/everruns-dev/plugin.json`
 - `plugins/everruns-dev/.codex-plugin/plugin.json`
 - `plugins/everruns-dev/.claude-plugin/plugin.json`
 - `plugins/everruns-dev/.cursor-plugin/plugin.json`

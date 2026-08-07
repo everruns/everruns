@@ -4,7 +4,7 @@
  * Citation rendering for assistant messages.
  *
  * Consumes the `TextAnnotation`s attached to a message's text (the render
- * contract shared by every citation capability — see `specs/citations.md`) and
+ * contract shared by every citation capability — see `knowledge/runtime-resources/citations.md`) and
  * surfaces them two ways:
  *  - inline numbered chips at each cited span (injected as `[n](#cite-n)`
  *    markers the citation-aware link renderer turns into chips), and

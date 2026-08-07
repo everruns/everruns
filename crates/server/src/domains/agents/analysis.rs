@@ -1,7 +1,7 @@
-// Tier-2 LLM-backed agent config checks (specs/agent-checks.md).
+// Tier-2 LLM-backed agent config checks (knowledge/evaluation/agent-checks.md).
 //
 // Narrow single-purpose checkers run against the resolved agent config via
-// the system utility LLM (specs/utility-llm.md, "system analysis tasks").
+// the system utility LLM (knowledge/operations/utility-llm.md, "system analysis tasks").
 // Advisory only, on-demand: the Analyze action triggers these; they never
 // run implicitly with preview.
 
@@ -164,7 +164,7 @@ struct Checker {
 
 // Each checker is narrowly scoped with explicit output contract — scoped
 // single-purpose checkers produce higher-precision findings than one
-// mega-prompt (see specs/agent-checks.md design decisions).
+// mega-prompt (see knowledge/evaluation/agent-checks.md design decisions).
 const CHECKERS: &[Checker] = &[
     Checker {
         rule_id: "llm.contradiction",
@@ -423,7 +423,7 @@ fn strip_code_fences(raw: &str) -> &str {
 }
 
 // ============================================================================
-// Custom natural-language rubric rules (specs/agent-checks.md, phase 4)
+// Custom natural-language rubric rules (knowledge/evaluation/agent-checks.md, phase 4)
 // ============================================================================
 
 /// A custom, org-authored rule judged by the utility LLM: the rubric describes

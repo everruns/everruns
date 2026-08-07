@@ -28,22 +28,40 @@ use sha2::{Digest, Sha256};
 use similar::TextDiff;
 use std::sync::Arc;
 
-/// Image MIME types recognized by LLM vision APIs (OpenAI, Anthropic)
-const IMAGE_EXTENSIONS: &[(&str, &str)] = &[
-    (".png", "image/png"),
-    (".jpg", "image/jpeg"),
-    (".jpeg", "image/jpeg"),
-    (".gif", "image/gif"),
-    (".webp", "image/webp"),
-];
+/// Detect the MIME type of an image format supported by model providers.
+fn image_media_type(content: &str) -> Option<&'static str> {
+    use base64::Engine as _;
 
-/// Get the image MIME type if the path has a known image extension
-fn image_media_type(path: &str) -> Option<&'static str> {
-    let lower = path.to_lowercase();
-    IMAGE_EXTENSIONS
-        .iter()
-        .find(|(ext, _)| lower.ends_with(ext))
-        .map(|(_, mime)| *mime)
+    // Decode only the prefix needed by supported formats. This avoids trusting an
+    // attacker-controlled extension and avoids decoding large image payloads twice.
+    let encoded = content.as_bytes();
+    let prefix_len = encoded.len().min(16);
+    let prefix_len = prefix_len - (prefix_len % 4);
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(&encoded[..prefix_len])
+        .ok()?;
+
+    match bytes.as_slice() {
+        [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, ..] => Some("image/png"),
+        [0xff, 0xd8, 0xff, ..] => Some("image/jpeg"),
+        [b'G', b'I', b'F', b'8', b'7' | b'9', b'a', ..] => Some("image/gif"),
+        [
+            b'R',
+            b'I',
+            b'F',
+            b'F',
+            _,
+            _,
+            _,
+            _,
+            b'W',
+            b'E',
+            b'B',
+            b'P',
+            ..,
+        ] => Some("image/webp"),
+        _ => None,
+    }
 }
 
 /// Workspace prefix used in file paths
@@ -1005,30 +1023,28 @@ impl Tool for ReadFileTool {
                     ));
                 }
 
-                // Check if this is an image file that should be returned as native image content
-                if let Some(media_type) = image_media_type(resolved_path) {
-                    // For base64-encoded files, return as image
-                    if file.encoding == "base64"
-                        && let Some(ref content) = file.content
-                    {
-                        let content_hash = match file_content_hash(content, &file.encoding) {
-                            Ok(hash) => hash,
-                            Err(e) => return ToolExecutionResult::internal_error(e),
-                        };
-                        return ToolExecutionResult::success_with_images(
-                            json!({
-                                "path": display_path,
-                                "media_type": media_type,
-                                "size_bytes": file.size_bytes,
-                                "content_hash": content_hash
-                            }),
-                            vec![ToolResultImage {
-                                base64: content.clone(),
-                                media_type: media_type.to_string(),
-                            }],
-                        );
-                    }
-                    // Text-encoded image paths still get returned as text (unusual case)
+                // Return supported image formats as native image content. Detect the format from
+                // bytes rather than the path so extensionless and mislabeled files work safely.
+                if file.encoding == "base64"
+                    && let Some(ref content) = file.content
+                    && let Some(media_type) = image_media_type(content)
+                {
+                    let content_hash = match file_content_hash(content, &file.encoding) {
+                        Ok(hash) => hash,
+                        Err(e) => return ToolExecutionResult::internal_error(e),
+                    };
+                    return ToolExecutionResult::success_with_images(
+                        json!({
+                            "path": display_path,
+                            "media_type": media_type,
+                            "size_bytes": file.size_bytes,
+                            "content_hash": content_hash
+                        }),
+                        vec![ToolResultImage {
+                            base64: content.clone(),
+                            media_type: media_type.to_string(),
+                        }],
+                    );
                 }
 
                 let content_hash = match session_file_content_hash(&file) {
@@ -1454,16 +1470,23 @@ impl Tool for EditFileTool {
             Ok(hash) => hash,
             Err(e) => return ToolExecutionResult::internal_error(e),
         };
-        if expected_hash != current_hash {
-            return ToolExecutionResult::tool_error(format!(
-                "File '{}' changed since the last read. Expected {}, found {}. Read the file again before editing.",
-                display_path, expected_hash, current_hash
-            ));
-        }
+        let rebased = expected_hash != current_hash;
 
         let current_content = existing.content.unwrap_or_default();
+        // Plan every exact, unique hunk against one current snapshot, then commit
+        // the whole result with compare-and-swap. This safely rebases across an
+        // unrelated stale change while missing, ambiguous, overlapping, or racing
+        // hunks leave the file untouched. Fuzzy matching was rejected because it
+        // can silently select the wrong occurrence; the returned content hash
+        // invalidates caller-side workspace and validation caches after success.
         let (updated_content, applied_edits) = match apply_text_edits(&current_content, &edits) {
             Ok(result) => result,
+            Err(error) if rebased => {
+                return ToolExecutionResult::tool_error(format!(
+                    "File '{}' changed since the last read (expected {}, found {}) and the edits conflict with its current content: {}. Read the file again before editing.",
+                    display_path, expected_hash, current_hash, error
+                ));
+            }
             Err(error) => return ToolExecutionResult::tool_error(error),
         };
 
@@ -1539,6 +1562,7 @@ impl Tool for EditFileTool {
                     "content_hash": new_hash,
                     "previous_content_hash": current_hash,
                     "applied_edits": applied_edits,
+                    "rebased": rebased,
                     "first_changed_line": first_changed_line,
                     "diff": diff,
                     "diff_truncated": diff_truncated
@@ -3350,6 +3374,7 @@ mod tests {
 
         assert_eq!(store.content("/batch.txt").unwrap(), "ONE\ntwo\nTHREE\n");
         assert_eq!(value["applied_edits"], 2);
+        assert_eq!(value["rebased"], false);
         assert_eq!(value["first_changed_line"], 1);
     }
 
@@ -3457,24 +3482,93 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_edit_file_rejects_hash_mismatch() {
+    async fn test_edit_file_rebases_exact_edits_over_unrelated_stale_change() {
         let store = Arc::new(MockFileStore::default());
-        store.add_text_file("/stale.txt", "hello");
-        let context = make_context(store);
+        store.add_text_file("/stale.txt", "title\nold value\nfooter\n");
+        let context = make_context(store.clone());
+        let stale_hash = read_hash(&context, "/workspace/stale.txt").await;
+        store.add_text_file("/stale.txt", "new title\nold value\nfooter\n");
 
         let result = EditFileTool
             .execute_with_context(
                 json!({
                     "path": "/workspace/stale.txt",
-                    "expected_hash": "sha256:stale",
-                    "old_text": "hello",
-                    "new_text": "goodbye"
+                    "expected_hash": stale_hash,
+                    "edits": [
+                        {"old_text": "old value", "new_text": "new value"},
+                        {"old_text": "footer", "new_text": "new footer"}
+                    ]
                 }),
                 &context,
             )
             .await;
 
-        assert!(expect_tool_error(result).contains("changed since the last read"));
+        let value = expect_success(result);
+        assert_eq!(
+            store.content("/stale.txt").unwrap(),
+            "new title\nnew value\nnew footer\n"
+        );
+        assert_eq!(value["applied_edits"], 2);
+        assert_eq!(value["rebased"], true);
+        assert_ne!(value["previous_content_hash"], stale_hash);
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_rejects_stale_target_conflict_without_changes() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/stale-conflict.txt", "title\nold value\n");
+        let context = make_context(store.clone());
+        let stale_hash = read_hash(&context, "/workspace/stale-conflict.txt").await;
+        store.add_text_file("/stale-conflict.txt", "title\nother writer value\n");
+
+        let result = EditFileTool
+            .execute_with_context(
+                json!({
+                    "path": "/workspace/stale-conflict.txt",
+                    "expected_hash": stale_hash,
+                    "edits": [
+                        {"old_text": "title", "new_text": "new title"},
+                        {"old_text": "old value", "new_text": "new value"}
+                    ]
+                }),
+                &context,
+            )
+            .await;
+
+        assert!(expect_tool_error(result).contains("Could not find an exact match"));
+        assert_eq!(
+            store.content("/stale-conflict.txt").unwrap(),
+            "title\nother writer value\n"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_rejects_stale_ambiguity_without_changes() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/stale-ambiguous.txt", "header\nunique target\n");
+        let context = make_context(store.clone());
+        let stale_hash = read_hash(&context, "/workspace/stale-ambiguous.txt").await;
+        store.add_text_file(
+            "/stale-ambiguous.txt",
+            "header\nunique target\nunique target\n",
+        );
+
+        let result = EditFileTool
+            .execute_with_context(
+                json!({
+                    "path": "/workspace/stale-ambiguous.txt",
+                    "expected_hash": stale_hash,
+                    "edits": [{"old_text": "unique target", "new_text": "replacement"}]
+                }),
+                &context,
+            )
+            .await;
+
+        assert!(expect_tool_error(result).contains("matched multiple locations"));
+        assert_eq!(
+            store.content("/stale-ambiguous.txt").unwrap(),
+            "header\nunique target\nunique target\n"
+        );
     }
 
     #[tokio::test]
@@ -3500,13 +3594,38 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_read_file_non_image_binary_omits_base64_content() {
+    async fn test_read_file_detects_image_from_content_without_extension() {
+        use base64::Engine as _;
+
         let store = Arc::new(MockFileStore::default());
-        store.add_base64_file("/archive.zip", "UEsDBAoAAAAAAA==");
+        let png = b"\x89PNG\r\n\x1a\nimage data";
+        let encoded = base64::engine::general_purpose::STANDARD.encode(png);
+        store.add_base64_file("/diagram", &encoded);
         let context = make_context(store);
 
         let result = ReadFileTool
-            .execute_with_context(json!({"path": "/workspace/archive.zip"}), &context)
+            .execute_with_context(json!({"path": "/workspace/diagram"}), &context)
+            .await;
+
+        match result {
+            ToolExecutionResult::SuccessWithImages { result, images } => {
+                assert_eq!(result["media_type"], "image/png");
+                assert_eq!(images.len(), 1);
+                assert_eq!(images[0].media_type, "image/png");
+                assert_eq!(images[0].base64, encoded);
+            }
+            other => panic!("Expected image success, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_read_file_non_image_binary_omits_base64_content() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_base64_file("/archive.png", "UEsDBAoAAAAAAA==");
+        let context = make_context(store);
+
+        let result = ReadFileTool
+            .execute_with_context(json!({"path": "/workspace/archive.png"}), &context)
             .await;
         let value = expect_success(result);
 
@@ -3704,44 +3823,40 @@ mod tests {
         );
     }
 
+    fn encoded_prefix(bytes: &[u8]) -> String {
+        use base64::Engine as _;
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    }
+
     #[test]
-    fn test_image_media_type_png() {
+    fn test_image_media_type_supported_formats() {
         assert_eq!(
-            image_media_type("/workspace/screenshot.png"),
+            image_media_type(&encoded_prefix(b"\x89PNG\r\n\x1a\nrest")),
             Some("image/png")
         );
-    }
-
-    #[test]
-    fn test_image_media_type_jpeg() {
-        assert_eq!(image_media_type("/workspace/photo.jpg"), Some("image/jpeg"));
         assert_eq!(
-            image_media_type("/workspace/photo.jpeg"),
+            image_media_type(&encoded_prefix(b"\xff\xd8\xff\xe0rest")),
             Some("image/jpeg")
+        );
+        assert_eq!(
+            image_media_type(&encoded_prefix(b"GIF87arest")),
+            Some("image/gif")
+        );
+        assert_eq!(
+            image_media_type(&encoded_prefix(b"GIF89arest")),
+            Some("image/gif")
+        );
+        assert_eq!(
+            image_media_type(&encoded_prefix(b"RIFF\x04\x00\x00\x00WEBPrest")),
+            Some("image/webp")
         );
     }
 
     #[test]
-    fn test_image_media_type_gif() {
-        assert_eq!(image_media_type("/data/anim.gif"), Some("image/gif"));
-    }
-
-    #[test]
-    fn test_image_media_type_webp() {
-        assert_eq!(image_media_type("/images/art.webp"), Some("image/webp"));
-    }
-
-    #[test]
-    fn test_image_media_type_case_insensitive() {
-        assert_eq!(image_media_type("/workspace/PHOTO.PNG"), Some("image/png"));
-        assert_eq!(image_media_type("/workspace/image.JPG"), Some("image/jpeg"));
-    }
-
-    #[test]
-    fn test_image_media_type_not_image() {
-        assert_eq!(image_media_type("/workspace/readme.txt"), None);
-        assert_eq!(image_media_type("/workspace/data.json"), None);
-        assert_eq!(image_media_type("/workspace/script.py"), None);
+    fn test_image_media_type_rejects_non_images_and_invalid_base64() {
+        assert_eq!(image_media_type(&encoded_prefix(b"not an image")), None);
+        assert_eq!(image_media_type("not base64!"), None);
+        assert_eq!(image_media_type(""), None);
     }
 
     // EVE-249: Content-type detection tests

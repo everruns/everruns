@@ -80,9 +80,9 @@ impl AuthError {
 
     /// 409 for a request that is well-formed but conflicts with existing state
     /// where the caller has already proven ownership — e.g. an OAuth callback
-    /// whose verified email already has an Everruns account bound to another
-    /// sign-in method. The caller completed the provider handshake, so naming
-    /// the conflict is not account enumeration (they own the mailbox).
+    /// whose verified email matches an unsafe local account or whose provider
+    /// identity is already bound. The caller completed the provider handshake,
+    /// so naming the conflict is not account enumeration (they own the mailbox).
     pub fn conflict(message: &str) -> Self {
         Self {
             error: message.to_string(),
@@ -621,9 +621,14 @@ where
 // ResolvedOrg - Organization context from auth (not URL path)
 // ============================================================================
 
-/// Cookie name for org selection in session auth
-/// Note: Also defined in api/users.rs - keep in sync
+/// Cookie name for org selection in session auth (re-exported by api/users.rs)
 pub const ORG_COOKIE_NAME: &str = "everruns_org";
+
+/// Max-Age for the org-selection cookie. Without an explicit Max-Age the
+/// browser drops it on restart and the UI falls back to the default org.
+/// Matches the default refresh-token lifetime so the selection outlives any
+/// session it can belong to.
+pub const ORG_COOKIE_MAX_AGE: time::Duration = time::Duration::days(30);
 
 /// Organization context resolved from authentication
 ///

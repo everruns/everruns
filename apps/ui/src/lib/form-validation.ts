@@ -115,11 +115,17 @@ export const mcpServerEditFormSchema = z.object({
     (value) => z.url().safeParse(value).success,
     "URL must be a valid absolute URL",
   ),
-  protocol_mode: z.enum(["auto", "legacy", "stable", "rc"]),
+  protocol_mode: z.enum(["auto", "2025-03-26", "2025-06-18", "2026-07-28"]),
 });
 
 export const apiKeySecretSchema = z.object({
   api_key: requiredString("API key"),
+});
+
+export const knowledgeIndexFormSchema = z.object({
+  name: requiredString("Name"),
+  description: optionalString(),
+  embedding_model_id: requiredString("Embedding model"),
 });
 
 export function createConnectionFormSchema(fields: ConnectionFormField[]) {

@@ -203,7 +203,9 @@ the hand-drawn experimental badge, whose organic border is a one-off accent.
 - **Inputs:** White surface, `input` border color, sharp corners, comfortable
   padding; focus draws the gold `ring`.
 - **Cards:** White surface on the textured background, 1px border, no radius,
-  no shadow.
+  no shadow. Card action groups keep the highest-priority action visible and
+  collapse secondary or destructive actions into an ellipsis menu when the
+  card is too narrow for the full action row.
 
 ## Do's and Don'ts
 

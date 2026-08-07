@@ -720,7 +720,7 @@ impl InMemoryDatabase {
     }
 
     // ============================================
-    // Eval Run Dataset (async export handles — specs/dataset-export.md)
+    // Eval Run Dataset (async export handles — knowledge/evaluation/dataset-export.md)
     // ============================================
 
     pub async fn create_eval_run_dataset(

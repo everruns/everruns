@@ -353,6 +353,63 @@ async fn test_create_session_seeds_agent_and_user_participants() {
     assert_eq!(user.role, SessionParticipantRole::Member);
     assert_eq!(user.agent_id, None);
     assert_eq!(user.principal_id, PrincipalId::from_seed(1));
+    assert_eq!(user.display_name.as_deref(), Some("User"));
+}
+
+#[tokio::test]
+async fn test_user_participant_uses_and_tracks_profile_name() {
+    let db = InMemoryDatabase::new();
+    let user = db
+        .create_user(CreateUserRow {
+            email: "mykhailo@example.com".to_string(),
+            name: "Mykhailo Chalyi".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+    let principal = db
+        .create_principal(CreatePrincipalRow {
+            id: PrincipalId::new(),
+            org_id: DEFAULT_ORG_ID,
+            kind: "user".to_string(),
+            subject_id: Some(user.id),
+            parent_principal_id: None,
+            resolved_user_id: Some(user.id),
+            metadata: serde_json::json!({}),
+        })
+        .await
+        .unwrap();
+    let mut input = test_session_input(None);
+    input.owner_principal_id = principal.id;
+    input.resolved_owner_user_id = Some(user.id);
+
+    let session = db.create_session(input).await.unwrap();
+    let initial = db
+        .list_session_participants(DEFAULT_ORG_ID, session.id)
+        .await
+        .unwrap();
+    assert_eq!(initial[0].display_name.as_deref(), Some("Mykhailo Chalyi"));
+
+    db.update_user(
+        user.id,
+        UpdateUser {
+            name: Some("Mike Chalyi".to_string()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let updated = db
+        .list_session_participants(DEFAULT_ORG_ID, session.id)
+        .await
+        .unwrap();
+    assert_eq!(updated[0].display_name.as_deref(), Some("Mike Chalyi"));
 }
 
 #[tokio::test]
@@ -415,6 +472,7 @@ async fn test_create_session_participant_rejects_second_active_host() {
             agent_id: Some(AgentId::new()),
             agent_version_id: None,
             principal_id: PrincipalId::from_seed(1),
+            display_name: None,
             role: SessionParticipantRole::Host,
             joined_at: None,
         })
@@ -440,6 +498,7 @@ async fn test_ensure_active_user_session_participant_is_idempotent() {
         agent_id: None,
         agent_version_id: None,
         principal_id,
+        display_name: Some("Alice".to_string()),
         role: SessionParticipantRole::Member,
         joined_at: None,
     };
@@ -453,6 +512,7 @@ async fn test_ensure_active_user_session_participant_is_idempotent() {
         .unwrap();
 
     assert_eq!(first.id, second.id);
+    assert_eq!(second.display_name.as_deref(), Some("Alice"));
     let active_for_principal = db
         .list_session_participants(DEFAULT_ORG_ID, session.id)
         .await
@@ -477,6 +537,7 @@ async fn test_leave_session_participant_preserves_history() {
             agent_id: Some(AgentId::new()),
             agent_version_id: None,
             principal_id: PrincipalId::from_seed(1),
+            display_name: None,
             role: SessionParticipantRole::Member,
             joined_at: None,
         })
@@ -3842,7 +3903,7 @@ async fn test_user_preferences_crud_and_isolation() {
 
     // Set creates the row.
     let created = db
-        .set_user_preference(user_a, "theme", "\"dark\"")
+        .set_user_preference(user_a, "theme", "\"dark\"", 100)
         .await
         .unwrap();
     assert_eq!(created.key, "theme");
@@ -3850,17 +3911,28 @@ async fn test_user_preferences_crud_and_isolation() {
 
     // Set again upserts (updates value, keeps identity, no duplicate row).
     let updated = db
-        .set_user_preference(user_a, "theme", "\"light\"")
+        .set_user_preference(user_a, "theme", "\"light\"", 100)
         .await
         .unwrap();
     assert_eq!(updated.id, created.id, "upsert must reuse the same row");
     assert_eq!(updated.value, "\"light\"");
-    assert_eq!(db.list_user_preferences(user_a).await.unwrap().len(), 1);
+    assert_eq!(
+        db.list_user_preferences(user_a, 100).await.unwrap().len(),
+        1
+    );
 
     // Preferences are isolated per user.
-    db.set_user_preference(user_b, "theme", "\"system\"")
+    db.set_user_preference(user_b, "theme", "\"system\"", 100)
         .await
         .unwrap();
+    let quota_error = db
+        .set_user_preference(user_b, "locale", "\"en\"", 1)
+        .await
+        .unwrap_err();
+    assert_eq!(
+        quota_error.to_string(),
+        super::super::backend::USER_PREFERENCE_LIMIT_EXCEEDED
+    );
     assert_eq!(
         db.get_user_preference(user_a, "theme")
             .await
@@ -3869,7 +3941,10 @@ async fn test_user_preferences_crud_and_isolation() {
             .value,
         "\"light\""
     );
-    assert_eq!(db.list_user_preferences(user_b).await.unwrap().len(), 1);
+    assert_eq!(
+        db.list_user_preferences(user_b, 100).await.unwrap().len(),
+        1
+    );
 
     // Delete removes only the targeted key and reports whether a row was hit.
     assert!(db.delete_user_preference(user_a, "theme").await.unwrap());
@@ -3881,7 +3956,10 @@ async fn test_user_preferences_crud_and_isolation() {
             .is_none()
     );
     // user_b is unaffected by user_a's delete.
-    assert_eq!(db.list_user_preferences(user_b).await.unwrap().len(), 1);
+    assert_eq!(
+        db.list_user_preferences(user_b, 100).await.unwrap().len(),
+        1
+    );
 }
 
 // Account linking: signing in with an OAuth provider whose verified email
@@ -3941,6 +4019,103 @@ async fn link_oauth_identity_attaches_provider_and_preserves_password() {
     // Linking a non-existent user is a no-op (None), not an error.
     assert!(
         db.link_oauth_identity(Uuid::now_v7(), "google", "x")
+            .await
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[tokio::test]
+async fn link_oauth_identity_preserves_other_provider_logins() {
+    let db = InMemoryDatabase::new();
+    let user = db
+        .create_user(CreateUserRow {
+            email: format!("multi-oauth-{}@example.com", Uuid::now_v7()),
+            name: "Multi OAuth".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: Some("github".to_string()),
+            auth_provider_id: Some("github-user-1".to_string()),
+            external_id: None,
+        })
+        .await
+        .unwrap();
+
+    let linked = db
+        .link_oauth_identity(user.id, "google", "google-user-1")
+        .await
+        .unwrap()
+        .expect("second provider linked");
+    assert_eq!(linked.id, user.id);
+
+    for (provider, provider_id) in [("github", "github-user-1"), ("google", "google-user-1")] {
+        assert_eq!(
+            db.get_user_by_oauth(provider, provider_id)
+                .await
+                .unwrap()
+                .expect("provider login resolves")
+                .id,
+            user.id
+        );
+    }
+}
+
+#[tokio::test]
+async fn link_oauth_identity_does_not_replace_existing_provider_subject() {
+    let db = InMemoryDatabase::new();
+    let user = db
+        .create_user(CreateUserRow {
+            email: format!("provider-lock-{}@example.com", Uuid::now_v7()),
+            name: "Provider Lock".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: Some("google".to_string()),
+            auth_provider_id: Some("google-original".to_string()),
+            external_id: None,
+        })
+        .await
+        .unwrap();
+    let other_user = db
+        .create_user(CreateUserRow {
+            email: format!("provider-lock-other-{}@example.com", Uuid::now_v7()),
+            name: "Other User".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+
+    assert!(
+        db.link_oauth_identity(user.id, "google", "google-replacement")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        db.get_user_by_oauth("google", "google-original")
+            .await
+            .unwrap()
+            .expect("original identity remains")
+            .id,
+        user.id
+    );
+    assert!(
+        db.get_user_by_oauth("google", "google-replacement")
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        db.link_oauth_identity(other_user.id, "google", "google-original")
             .await
             .unwrap()
             .is_none()

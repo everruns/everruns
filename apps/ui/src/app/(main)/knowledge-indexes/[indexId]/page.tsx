@@ -1,10 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { use, useMemo, useState } from "react";
-import { AlertCircle, Archive, GitBranch, Library, Pencil, RefreshCw } from "lucide-react";
+import { Archive, GitBranch, Library, Pencil, RefreshCw } from "lucide-react";
 import { GithubIcon as Github } from "@/components/icons/github-icon";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { ArchiveKnowledgeIndexDialog } from "@/components/knowledge-indexes/archive-knowledge-index-dialog";
+import {
+  KnowledgeIndexDiagnosticBadge,
+  KnowledgeIndexDiagnosticNotice,
+} from "@/components/knowledge-indexes/knowledge-index-diagnostic";
 import { KnowledgeIndexFormDialog } from "@/components/knowledge-indexes/knowledge-index-form-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -41,6 +46,7 @@ import {
   useSyncKnowledgeIndex,
   useUpdateKnowledgeIndex,
 } from "@/hooks";
+import { useModels } from "@/hooks/use-providers";
 import type {
   KnowledgeIndex,
   KnowledgeIndexDocument,
@@ -52,7 +58,12 @@ import {
   isReadOnlyStatus,
 } from "@/lib/entity-lifecycle";
 import { formatDate, formatRelativeTime } from "@/lib/formatting";
-import { syncStatusBadgeVariant } from "@/lib/knowledge-index-sync";
+import {
+  getKnowledgeIndexDiagnostic,
+  knowledgeIndexDiagnosticBlocksSync,
+  knowledgeIndexSyncActionLabel,
+  type KnowledgeIndexDiagnostic,
+} from "@/lib/knowledge-index-diagnostics";
 
 function sourceField(index: KnowledgeIndex, key: string): string | null {
   const value = (index.source_config as Record<string, unknown>)?.[key];
@@ -76,6 +87,7 @@ export default function KnowledgeIndexDetailPage({
   const updateIndex = useUpdateKnowledgeIndex();
   const syncIndex = useSyncKnowledgeIndex();
   const archiveIndex = useArchiveKnowledgeIndex();
+  const { data: models, isLoading: modelsLoading, error: modelsError } = useModels();
   usePageTitle(index ? index.name : null, "Knowledge Indexes");
 
   const totalChunks = useMemo(
@@ -100,7 +112,11 @@ export default function KnowledgeIndexDetailPage({
   }
 
   const isReadOnly = isReadOnlyStatus(index.status);
-  const canSync = index.status === "active";
+  const diagnostic = getKnowledgeIndexDiagnostic(index, {
+    models,
+    modelsReady: !modelsLoading && !modelsError,
+  });
+  const canSync = index.status === "active" && !knowledgeIndexDiagnosticBlocksSync(diagnostic);
   const repository = sourceField(index, "repository");
   const gitUrl = sourceField(index, "url");
   const branch = sourceField(index, "branch");
@@ -124,7 +140,7 @@ export default function KnowledgeIndexDetailPage({
           <>
             <CopyButton value={index.id} />
             <Badge variant={getEntityStatusBadgeVariant(index.status)}>{index.status}</Badge>
-            <Badge variant={syncStatusBadgeVariant(index.sync_status)}>{index.sync_status}</Badge>
+            <KnowledgeIndexDiagnosticBadge diagnostic={diagnostic} />
           </>
         }
         description={index.description || undefined}
@@ -175,10 +191,24 @@ export default function KnowledgeIndexDetailPage({
                 }
               >
                 <RefreshCw className="size-4" />
-                Sync now
+                {knowledgeIndexSyncActionLabel(diagnostic)}
               </Button>
             )}
           </>
+        }
+      />
+
+      <KnowledgeIndexDiagnosticNotice
+        diagnostic={diagnostic}
+        action={
+          <DiagnosticAction
+            diagnostic={diagnostic}
+            index={index}
+            canSync={canSync}
+            isSyncing={syncIndex.isPending}
+            onEdit={() => setEditOpen(true)}
+            onSync={() => syncIndex.mutate(index.id)}
+          />
         }
       />
 
@@ -271,9 +301,7 @@ export default function KnowledgeIndexDetailPage({
               <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
                 <div>
                   <div className="font-medium">Status</div>
-                  <Badge variant={syncStatusBadgeVariant(index.sync_status)}>
-                    {index.sync_status}
-                  </Badge>
+                  <KnowledgeIndexDiagnosticBadge diagnostic={diagnostic} />
                 </div>
                 <div>
                   <div className="font-medium">Last synced</div>
@@ -292,12 +320,6 @@ export default function KnowledgeIndexDetailPage({
                   </div>
                 </div>
               </div>
-              {index.last_sync_error && (
-                <div className="flex gap-2 text-destructive">
-                  <AlertCircle className="mt-0.5 size-4 shrink-0" />
-                  <span>{index.last_sync_error}</span>
-                </div>
-              )}
               {canSync && (
                 <Button
                   variant="outline"
@@ -310,7 +332,7 @@ export default function KnowledgeIndexDetailPage({
                   }
                 >
                   <RefreshCw className="size-4" />
-                  Sync now
+                  {knowledgeIndexSyncActionLabel(diagnostic)}
                 </Button>
               )}
             </div>
@@ -344,6 +366,55 @@ export default function KnowledgeIndexDetailPage({
       />
     </PageContainer>
   );
+}
+
+function DiagnosticAction({
+  diagnostic,
+  index,
+  canSync,
+  isSyncing,
+  onEdit,
+  onSync,
+}: {
+  diagnostic: KnowledgeIndexDiagnostic;
+  index: KnowledgeIndex;
+  canSync: boolean;
+  isSyncing: boolean;
+  onEdit: () => void;
+  onSync: () => void;
+}) {
+  if (diagnostic.action === "configure_model") {
+    return (
+      <Button size="sm" variant="outline" onClick={onEdit} disabled={index.status !== "active"}>
+        Configure embedding model
+      </Button>
+    );
+  }
+  if (diagnostic.action === "configure_provider" && diagnostic.providerId) {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        render={<Link href={`/settings/providers/${diagnostic.providerId}`} />}
+      >
+        Configure provider
+      </Button>
+    );
+  }
+  if (
+    diagnostic.action === "retry_sync" ||
+    diagnostic.action === "start_sync" ||
+    diagnostic.action === "sync_changes" ||
+    diagnostic.action === "sync_again"
+  ) {
+    return (
+      <Button size="sm" variant="outline" onClick={onSync} disabled={!canSync || isSyncing}>
+        <RefreshCw className="size-4" />
+        {knowledgeIndexSyncActionLabel(diagnostic)}
+      </Button>
+    );
+  }
+  return null;
 }
 
 function DocumentsCard({

@@ -136,7 +136,7 @@ impl Command for ImportEvalRun {
 
 inventory::submit! { CommandDescriptor::of::<ImportEvalRun>() }
 
-/// Import ATIF trajectories as eval cases (specs/atif-adoption.md).
+/// Import ATIF trajectories as eval cases (knowledge/evaluation/atif-adoption.md).
 ///
 /// `body` is the raw import payload: NDJSON (one trajectory per line), a JSON
 /// array of trajectories, a single trajectory object, or `{ "trajectories":

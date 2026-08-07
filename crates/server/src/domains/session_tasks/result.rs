@@ -10,7 +10,7 @@
 // The A2A and MCP task surfaces both expose a session as a "task" handle, so
 // this helper resolves that structured result for a session id and hands it to
 // each surface (A2A `tasks/get` artifact, MCP Tasks `tasks/get` result). See
-// `specs/a2a-channel.md` / `specs/mcp.md`.
+// `knowledge/integrations/a2a-channel.md` / `knowledge/integrations/mcp.md`.
 
 use everruns_core::SessionId;
 use everruns_core::session_task::{SessionTask, TASK_KIND_SUBAGENT, task_result_path};

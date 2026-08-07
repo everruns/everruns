@@ -1,4 +1,4 @@
-// LLM-as-judge for observer scoring. See specs/online-evals.md.
+// LLM-as-judge for observer scoring. See knowledge/evaluation/online-evals.md.
 //
 // The judge grades a trace slice against a rubric and returns a 0.0–1.0 value,
 // an optional categorical label, and free-text reasoning. Judge calls go

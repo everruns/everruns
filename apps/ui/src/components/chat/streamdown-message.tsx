@@ -6,7 +6,7 @@
  * Replaces react-markdown with Streamdown for streaming-optimized rendering.
  * Handles incomplete markdown blocks during streaming gracefully.
  *
- * @see specs/markdown-messages.md
+ * @see knowledge/ui/markdown-messages.md
  */
 
 import { Streamdown, type StreamdownProps } from "streamdown";

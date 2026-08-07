@@ -28,7 +28,7 @@ import {
   RailSection,
   PageFooter,
 } from "@/components/layout";
-import { getCapabilityIcon } from "@/lib/capability-icons";
+import { CapabilityIcon } from "@/lib/capability-icons";
 import { localizedCapabilityName } from "@/lib/capability-localization";
 import { useLocale } from "@/providers/locale-provider";
 import { isArchivedStatus } from "@/lib/entity-lifecycle";
@@ -81,15 +81,18 @@ export default function HarnessesPageClient() {
       }
     }
     return [...tally.entries()]
-      .map(([ref, count]) => ({
-        ref,
-        count,
-        name: (() => {
-          const cap = allCapabilities?.find((c) => c.id === ref);
-          return cap ? localizedCapabilityName(cap, locale) : ref;
-        })(),
-        icon: getCapabilityIcon(allCapabilities?.find((c) => c.id === ref)?.icon),
-      }))
+      .map(([ref, count]) => {
+        const cap = allCapabilities?.find((c) => c.id === ref);
+        const icon = cap?.icon;
+        return {
+          ref,
+          count,
+          name: cap ? localizedCapabilityName(cap, locale) : ref,
+          icon: ({ className }: { className?: string }) => (
+            <CapabilityIcon icon={icon} className={className} />
+          ),
+        };
+      })
       .sort((a, b) => b.count - a.count)
       .slice(0, 6);
   }, [harnesses, allCapabilities, locale]);

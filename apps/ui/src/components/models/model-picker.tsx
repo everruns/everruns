@@ -12,6 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ModelWithProvider } from "@/lib/api/types";
+import { isChatModel } from "@/lib/model-capabilities";
 import { useModels, useUpdateModel } from "@/hooks/use-providers";
 import { useQueryClient } from "@tanstack/react-query";
 
@@ -51,7 +52,7 @@ export function ModelPicker({
 
   // Only show enabled models, sorted: favorites first, then by provider and name
   const sortedModels = [...models]
-    .filter((m) => m.enabled)
+    .filter((m) => m.enabled && isChatModel(m))
     .sort((a, b) => {
       // Favorites first
       if (a.is_favorite !== b.is_favorite) {
@@ -65,7 +66,7 @@ export function ModelPicker({
       return a.display_name.localeCompare(b.display_name);
     });
 
-  const selectedModel = models.find((m) => m.id === value);
+  const selectedModel = models.find((m) => m.id === value && isChatModel(m));
 
   return (
     <Select
