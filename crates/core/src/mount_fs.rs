@@ -18,7 +18,7 @@
 // the same files; `/workspace` wins by longest-prefix so `/workspace/foo`
 // ≡ `/foo`.
 //
-// See `specs/file-store.md` for the contract and the migration plan.
+// See `knowledge/runtime-resources/file-store.md` for the contract and the migration plan.
 
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -74,7 +74,7 @@ pub const WORKSPACE_MOUNT: &str = crate::session_path::WORKSPACE_PREFIX;
 /// and #2776's security property is preserved, but expose `BackendNative` so a
 /// local embedder can opt back into its backend's real identity. The runtime no
 /// longer *hardcodes* presentation — it *defaults* it, and lets the embedder
-/// decide. See `specs/file-store.md` (EVE-660, "Display policy").
+/// decide. See `knowledge/runtime-resources/file-store.md` (EVE-660, "Display policy").
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum DisplayPolicy {
     /// Present primary paths under the stable, host-agnostic `/workspace`

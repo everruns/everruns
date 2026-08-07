@@ -37,7 +37,7 @@ pub mod capability_types;
 pub mod tool_fingerprint;
 pub use everruns_provider::tool_types;
 
-// User-defined hooks (see specs/user-hooks.md)
+// User-defined hooks (see knowledge/runtime-resources/user-hooks.md)
 pub mod hook_adapter;
 pub mod hook_dispatch;
 pub mod hook_executor;
@@ -71,7 +71,7 @@ pub mod error_reporter;
 // init they build on stay here in `telemetry`.
 
 // Typed ID system (type-safe prefixed identifiers)
-// See specs/id-schema.md for specification
+// See knowledge/foundations/id-schema.md for specification
 pub use everruns_provider::typed_id;
 
 // Audit logging types and trait (EVE-226)
@@ -140,7 +140,7 @@ pub mod resource_names;
 pub use everruns_provider::url_validation;
 
 // Plugin compiler (directory → declarative capability definition)
-// See specs/plugins.md
+// See knowledge/integrations/plugins.md
 pub mod plugins;
 
 pub mod atoms;

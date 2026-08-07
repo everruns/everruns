@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { inferMarketplaceSourceType, marketplaceSourceLabel } from "@/lib/api/plugins";
 import { Button } from "@/components/ui/button";
 import {
@@ -365,66 +365,118 @@ function RemoveMarketplaceDialog({
 // Marketplace catalog browser dialog
 // ============================================
 
-function CatalogEntryRow({
+export function CatalogEntryRow({
   entry,
   marketplaceId,
+  marketplaceName,
+  installedPlugins,
 }: {
   entry: MarketplaceCatalogEntry;
   marketplaceId: string;
+  marketplaceName: string;
+  installedPlugins: InstalledPlugin[];
 }) {
-  const installMutation = useInstallPlugin();
-  const isInstalled = entry.installed;
+  const installMutation = useInstallPlugin(marketplaceId, marketplaceName);
+  const installStarted = useRef(false);
+  const installedPlugin =
+    installedPlugins.find((plugin) => plugin.name === entry.name) ??
+    (installMutation.data?.plugin.name === entry.name ? installMutation.data.plugin : undefined);
+  const isSameSource = installedPlugin?.marketplace === marketplaceName;
+  const isUpgrade =
+    isSameSource &&
+    (installedPlugin.update_available ||
+      (!!entry.version && !!installedPlugin.version && entry.version !== installedPlugin.version));
+  const isSourceConflict = !!installedPlugin?.marketplace && !isSameSource;
+  const isInstalled = entry.installed || (!!installedPlugin && !isUpgrade && !isSourceConflict);
 
-  const handleInstall = async () => {
-    await installMutation.mutateAsync({ marketplace_id: marketplaceId, plugin_name: entry.name });
+  const handleInstall = () => {
+    if (installStarted.current || isInstalled || isUpgrade || isSourceConflict) return;
+    installStarted.current = true;
+    installMutation.mutate(
+      { marketplace_id: marketplaceId, plugin_name: entry.name },
+      {
+        onSettled: () => {
+          installStarted.current = false;
+        },
+      },
+    );
   };
 
+  const installLabel = isUpgrade
+    ? "Upgrade available"
+    : isSourceConflict
+      ? "Installed elsewhere"
+      : isInstalled
+        ? "Installed"
+        : installMutation.isPending
+          ? "Installing..."
+          : "Install";
+
   return (
-    <div className="flex items-start justify-between gap-4 py-3 border-b last:border-0">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium text-sm">{entry.display_name ?? entry.name}</span>
-          <span className="text-xs text-muted-foreground font-mono">{entry.name}</span>
-          {entry.version && (
-            <Badge variant="secondary" className="text-xs">
-              v{entry.version}
-            </Badge>
+    <div className="py-3 border-b last:border-0">
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium text-sm">{entry.display_name ?? entry.name}</span>
+            <span className="text-xs text-muted-foreground font-mono">{entry.name}</span>
+            {entry.version && (
+              <Badge variant="secondary" className="text-xs">
+                v{entry.version}
+              </Badge>
+            )}
+            {entry.category && (
+              <Badge variant="outline" className="text-xs">
+                {entry.category}
+              </Badge>
+            )}
+            {(isInstalled || isUpgrade || isSourceConflict) && (
+              <Badge variant="default" className="text-xs">
+                {installLabel}
+              </Badge>
+            )}
+          </div>
+          {entry.description && (
+            <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{entry.description}</p>
           )}
-          {entry.category && (
-            <Badge variant="outline" className="text-xs">
-              {entry.category}
-            </Badge>
-          )}
-          {isInstalled && (
-            <Badge variant="default" className="text-xs">
-              Installed
-            </Badge>
-          )}
+          {entry.author && <p className="text-xs text-muted-foreground mt-1">by {entry.author}</p>}
         </div>
-        {entry.description && (
-          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{entry.description}</p>
-        )}
-        {entry.author && <p className="text-xs text-muted-foreground mt-1">by {entry.author}</p>}
+        <Button
+          size="sm"
+          variant={isInstalled || isUpgrade || isSourceConflict ? "outline" : "default"}
+          disabled={isInstalled || isUpgrade || isSourceConflict || installMutation.isPending}
+          onClick={handleInstall}
+        >
+          <Download className="h-4 w-4 mr-1" />
+          {installLabel}
+        </Button>
       </div>
-      <Button
-        size="sm"
-        variant={isInstalled ? "outline" : "default"}
-        disabled={isInstalled || installMutation.isPending}
-        onClick={handleInstall}
-      >
-        <Download className="h-4 w-4 mr-1" />
-        {isInstalled ? "Installed" : installMutation.isPending ? "Installing..." : "Install"}
-      </Button>
+      {isUpgrade && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Version {installedPlugin.version} is installed. Update it from Installed Plugins.
+        </p>
+      )}
+      {isSourceConflict && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          This plugin name is already installed from {installedPlugin.marketplace}.
+        </p>
+      )}
+      {installMutation.isError && (
+        <p role="alert" className="mt-2 text-sm text-destructive">
+          Failed to install {entry.display_name ?? entry.name}: {installMutation.error.message}
+        </p>
+      )}
     </div>
   );
 }
 
 function MarketplaceCatalogDialog({
   marketplace,
+  installedPlugins,
   open,
   onOpenChange,
 }: {
   marketplace: Marketplace | null;
+  installedPlugins: InstalledPlugin[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -476,6 +528,8 @@ function MarketplaceCatalogDialog({
                     key={entry.name}
                     entry={entry}
                     marketplaceId={marketplace?.id ?? ""}
+                    marketplaceName={marketplace?.name ?? ""}
+                    installedPlugins={installedPlugins}
                   />
                 ))}
               </div>
@@ -864,6 +918,7 @@ export default function PluginsPage() {
       />
       <MarketplaceCatalogDialog
         marketplace={browseMarketplace}
+        installedPlugins={plugins ?? []}
         open={browseMarketplace !== null}
         onOpenChange={(open) => !open && setBrowseMarketplace(null)}
       />

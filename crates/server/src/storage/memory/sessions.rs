@@ -43,7 +43,7 @@ impl InMemoryDatabase {
         // Attach to an existing workspace when requested (validated by the
         // service before reaching storage); otherwise auto-create a default
         // workspace whose UUID equals the session id — matches the Postgres
-        // path and the migration's equality invariant (see specs/workspace.md).
+        // path and the migration's equality invariant (see knowledge/runtime-resources/workspace.md).
         let session_uuid = id.uuid();
         let workspace_id = input.workspace_id.unwrap_or(session_uuid);
         if input.workspace_id.is_none() {
@@ -129,7 +129,7 @@ impl InMemoryDatabase {
     }
 
     /// Record fork provenance on an already-created session
-    /// (specs/forking-sessions.md). No-op if the session id is unknown.
+    /// (knowledge/runtime-resources/forking-sessions.md). No-op if the session id is unknown.
     pub async fn set_session_fork_lineage(
         &self,
         session_id: SessionId,

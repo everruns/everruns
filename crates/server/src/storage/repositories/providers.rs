@@ -527,7 +527,7 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        // Reporting outbox enqueue is best-effort (see specs/reporting.md).
+        // Reporting outbox enqueue is best-effort (see knowledge/evaluation/reporting.md).
         // The canonical llm_generations row is already durable; no reconciler
         // exists yet (tracked separately), so on failure the corresponding
         // fact will remain stale until reconciliation lands.
@@ -682,7 +682,7 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        // Reporting outbox enqueue is best-effort (see specs/reporting.md).
+        // Reporting outbox enqueue is best-effort (see knowledge/evaluation/reporting.md).
         // The canonical session totals are already committed; no reconciler
         // exists yet (tracked separately), so on failure the corresponding
         // fact will remain stale until reconciliation lands or the session

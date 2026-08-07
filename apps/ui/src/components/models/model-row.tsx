@@ -79,17 +79,17 @@ export function ModelRow({
 
   return (
     <div className="border overflow-hidden">
-      <div className="flex items-center justify-between p-3">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3">
+        <div className="flex min-w-0 flex-[1_1_18rem] items-center gap-3">
           <ModelIcon
             model={model}
             size="sm"
             showBackground={false}
             className="text-muted-foreground"
           />
-          <div>
-            <div className="font-medium flex items-center gap-2">
-              {model.display_name}
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2 font-medium">
+              <span className="break-words">{model.display_name}</span>
               {model.enabled && (
                 <Badge
                   variant="outline"
@@ -107,15 +107,17 @@ export function ModelRow({
                 </Badge>
               )}
             </div>
-            <div className="text-sm text-muted-foreground">
-              {model.model_id} - {model.provider_name}
+            <div className="flex flex-wrap items-center text-sm text-muted-foreground">
+              <span className="break-all">
+                {model.model_id} - {model.provider_name}
+              </span>
               {profile?.release_date && (
-                <>
-                  {" · "}
-                  <span title={`Released ${profile.release_date}`}>
-                    Released {formatReleaseDate(profile.release_date)}
+                <span title={`Released ${profile.release_date}`}>
+                  <span aria-hidden className="mx-1">
+                    ·
                   </span>
-                </>
+                  Released {formatReleaseDate(profile.release_date)}
+                </span>
               )}
               {profile && (
                 <Button
@@ -135,9 +137,9 @@ export function ModelRow({
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-[1_1_28rem] flex-wrap items-center gap-2 sm:justify-end">
           {profile && (
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
               {profile.reasoning && (
                 <Badge variant="secondary" className="text-xs" title="Reasoning">
                   <Brain className="h-3 w-3 mr-1" />
@@ -159,7 +161,7 @@ export function ModelRow({
             </div>
           )}
           {!profile && model.capabilities.length > 0 && (
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-1">
               {model.capabilities.slice(0, 2).map((cap) => (
                 <Badge key={cap} variant="secondary" className="text-xs">
                   {cap}
@@ -230,6 +232,8 @@ export function ModelRow({
             size="sm"
             className="text-destructive"
             onClick={() => onDelete(model.id)}
+            aria-label={`Delete ${model.display_name}`}
+            title="Delete model"
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -238,7 +242,7 @@ export function ModelRow({
 
       {expanded && profile && (
         <div className="border-t bg-muted/30 p-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3">
+          <div className="mb-3 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 2xl:grid-cols-4">
             {profile.limits && (
               <div>
                 <div className="font-medium text-muted-foreground mb-1 flex items-center gap-1">

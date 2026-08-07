@@ -164,8 +164,10 @@ impl BashHookDispatcher for BashkitShellHookDispatcher {
 
         match exec {
             Ok(Ok(output)) => {
-                let mut stdout = output.stdout;
-                let mut stderr = output.stderr;
+                // Hook results are a text contract; decode Bashkit's byte-native
+                // streams explicitly at this host boundary.
+                let mut stdout = output.stdout.to_string();
+                let mut stderr = output.stderr.to_string();
                 // Apply the executor-level output cap. Bashkit's own
                 // `max_input_bytes` bounds the *script* size; for output we
                 // truncate here so the parse step sees a bounded buffer.

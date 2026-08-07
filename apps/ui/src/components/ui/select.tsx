@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 // the raw internal value (e.g. show "Webhook", not "webhook"). base-ui resolves
 // labels from <Select.Value> using its `items` prop, so the wrapper auto-walks
 // <SelectItem> children and forwards a value→label map by default.
-// Spec: specs/code-organization.md "Dropdowns must show display names".
+// Spec: knowledge/foundations/code-organization.md "Dropdowns must show display names".
 type SelectItemsMap = Record<string, React.ReactNode>;
 
 function collectSelectItemLabels(

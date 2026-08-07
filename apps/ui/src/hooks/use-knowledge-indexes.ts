@@ -21,10 +21,7 @@ import { useOrgScopedQuery } from "./create-crud-hooks";
 import { useResourceOrgFallback } from "./use-resource-org-fallback";
 
 function syncIndexCache(queryClient: QueryClient, index: KnowledgeIndex) {
-  queryClient.setQueriesData<KnowledgeIndex | undefined>(
-    { queryKey: queryKeys.knowledgeIndexes.detail(index.id) },
-    () => index,
-  );
+  queryClient.setQueryData<KnowledgeIndex>(queryKeys.knowledgeIndexes.detail(index.id), index);
   queryClient.setQueriesData<KnowledgeIndex[] | undefined>(
     { queryKey: queryKeys.knowledgeIndexes.all },
     (existing) =>
@@ -50,6 +47,12 @@ export function useKnowledgeIndexes(
     queryKey: queryKeys.knowledgeIndexes.list(includeArchived, search),
     queryFn: () => listKnowledgeIndexes({ includeArchived, search }),
     enabled: options.enabled ?? true,
+    refetchInterval: (query) =>
+      query.state.data?.some(
+        (index) => index.sync_status === "pending" || index.sync_status === "syncing",
+      )
+        ? 2000
+        : false,
   });
 }
 
@@ -58,6 +61,10 @@ export function useKnowledgeIndex(indexId: string | undefined) {
     queryKey: queryKeys.knowledgeIndexes.detail(indexId ?? ""),
     queryFn: () => getKnowledgeIndex(indexId!),
     enabled: !!indexId,
+    refetchInterval: (candidate) => {
+      const status = candidate.state.data?.sync_status;
+      return status === "pending" || status === "syncing" ? 2000 : false;
+    },
   });
   const fallback = useResourceOrgFallback({
     resourceId: indexId,
@@ -75,6 +82,7 @@ export function useKnowledgeIndexDocuments(indexId: string | undefined) {
     queryKey: queryKeys.knowledgeIndexes.documents(indexId ?? ""),
     queryFn: () => listKnowledgeIndexDocuments(indexId!),
     enabled: !!indexId,
+    refetchInterval: 3_000,
   });
 }
 

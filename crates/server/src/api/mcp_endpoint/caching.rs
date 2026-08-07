@@ -1,6 +1,6 @@
 // MCP 2026-07-28 cacheable results (spec: server/utilities/caching).
 //
-// Spec: specs/mcp.md
+// Spec: knowledge/integrations/mcp.md
 //
 // `2026-07-28` requires every complete result to carry `resultType: "complete"`,
 // and requires the listing/reading operations to carry caching hints so clients

@@ -192,7 +192,7 @@ async fn init_storage(config: &ServerConfig, migrations: Vec<MigrationFn>) -> Re
     tracing::info!("Connected to PostgreSQL database");
 
     // Optional S3-compatible blob backend for file/image content offload
-    // (specs/object-storage.md). Defaults to inline PostgreSQL storage.
+    // (knowledge/runtime-resources/object-storage.md). Defaults to inline PostgreSQL storage.
     let blob_store = crate::storage::blob_store::blob_store_from_env()
         .context("Invalid object-storage configuration (STORAGE_S3_*)")?;
     let backend = backend.with_blob_store(blob_store);
@@ -462,7 +462,7 @@ impl ServerAppBuilder {
     ///
     /// Wrappers that integrate Sentry, Datadog, Rollbar, etc. implement
     /// `ErrorReporter` and install it here. OSS never imports vendor SDKs;
-    /// the reporter is the only contact surface. See `specs/embedding.md`.
+    /// the reporter is the only contact surface. See `knowledge/foundations/embedding.md`.
     pub fn error_reporter(mut self, reporter: Arc<dyn ErrorReporter>) -> Self {
         self.error_reporter = Some(reporter);
         self
@@ -507,7 +507,7 @@ impl ServerAppBuilder {
     /// This lets wrappers (e.g. SaaS) gate creation on product policy — verified
     /// email, account/resource limits — without forking the create-org handler or
     /// mounting a parallel `/v1/saas/orgs` route. When not set, default OSS
-    /// behavior is unchanged. See `specs/embedding.md`.
+    /// behavior is unchanged. See `knowledge/foundations/embedding.md`.
     pub fn org_create_policy(
         mut self,
         policy: Arc<dyn api::organizations::OrgCreatePolicy>,
@@ -529,7 +529,7 @@ impl ServerAppBuilder {
     /// May be called multiple times; initializers run in registration order. A
     /// required initializer that fails aborts creation (the org is rolled back);
     /// an optional one only logs. When none are registered, default OSS behavior
-    /// is unchanged. See `specs/embedding.md`.
+    /// is unchanged. See `knowledge/foundations/embedding.md`.
     pub fn org_initializer(mut self, initializer: Arc<dyn org_init::OrgInitializer>) -> Self {
         self.org_initializers.push(initializer);
         self
@@ -782,7 +782,7 @@ impl ServerAppBuilder {
         // Observers: tap turn.completed to enqueue scoring (the listener needs
         // only db + wake). The background worker — which may call an LLM judge —
         // is spawned later, once the driver registry and provider resolver exist.
-        // See specs/online-evals.md.
+        // See knowledge/evaluation/online-evals.md.
         let observer_wake = if feature_flags.observers {
             let observer_wake = Arc::new(tokio::sync::Notify::new());
             let observer_listener: Arc<dyn EventListener> =
@@ -1122,7 +1122,7 @@ impl ServerAppBuilder {
         });
         let evals_state = api::evals::AppState::new(db.clone(), auth_state.clone())
             .with_run_context(eval_run_ctx);
-        // Agent health checks (specs/agent-checks.md, tier-3). Built once and
+        // Agent health checks (knowledge/evaluation/agent-checks.md, tier-3). Built once and
         // shared by the agents HTTP state and the MCP endpoint state so the
         // catalog commands work over both surfaces. Gated on the utility LLM
         // (generates/judges cases) and a default harness (hosts the sessions).
@@ -1366,8 +1366,11 @@ impl ServerAppBuilder {
         let memory_files_state = api::memory_files::AppState::new(db.clone(), auth_state.clone());
         let knowledge_bases_state =
             api::knowledge_bases::AppState::new(db.clone(), auth_state.clone());
-        let knowledge_indexes_state =
-            api::knowledge_indexes::AppState::new(db.clone(), auth_state.clone());
+        let knowledge_indexes_state = api::knowledge_indexes::AppState::new(
+            db.clone(),
+            auth_state.clone(),
+            driver_registry.clone(),
+        );
         let payments_state =
             api::payments::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
         let reporting_state = api::reporting::AppState::new(db.clone(), auth_state.clone());
@@ -1762,14 +1765,14 @@ impl ServerAppBuilder {
         ));
 
         // RequestIdLayer must be outer (run first) so TraceLayer can read the ID when
-        // creating the span above. See specs/correlation-ids.md.
+        // creating the span above. See knowledge/operations/correlation-ids.md.
         let app = app.layer(RequestIdLayer);
 
         // Per-request access log: applied as route_layer so axum's MatchedPath
         // extractor is available for low-cardinality `route` labels. Emits one
         // tracing event per request with method, route, status, latency_ms,
         // and request_id (DEBUG for /health and /metrics, WARN for 5xx,
-        // INFO otherwise). See EVE-399 / specs/correlation-ids.md.
+        // INFO otherwise). See EVE-399 / knowledge/operations/correlation-ids.md.
         let app = app.route_layer(axum::middleware::from_fn(
             crate::middleware::http_access_log_layer,
         ));
@@ -2125,7 +2128,7 @@ impl ServerAppBuilder {
             // -- Object-storage blob GC --
             // Reconciles bucket contents against the sidecar pointer tables and
             // reclaims orphaned objects. No-ops for the inline (db) backend
-            // (no external objects to collect). See specs/object-storage.md.
+            // (no external objects to collect). See knowledge/runtime-resources/object-storage.md.
             supervisor.track_optional(
                 "blob_gc",
                 crate::blob_gc::spawn_blob_gc_task(
@@ -2240,7 +2243,7 @@ impl ServerAppBuilder {
         // A previous process may have died mid-run, leaving health-check rows
         // stuck in `running`/`pending` forever (a user-visible perpetual
         // spinner). A fresh process has no run in flight, so transition every
-        // such orphan to `failed` on boot. See specs/agent-checks.md and EVE-586.
+        // such orphan to `failed` on boot. See knowledge/evaluation/agent-checks.md and EVE-586.
         match db.reap_running_agent_health_check_runs().await {
             Ok(0) => {}
             Ok(count) => tracing::info!(count, "Reaped interrupted agent health-check runs"),
@@ -2320,7 +2323,7 @@ impl ServerAppBuilder {
         // -- Knowledge Index Syncout (both prod and dev) --
         // Reuses the same GitHub connection resolver as Memory sync, plus the
         // shared provider resolver / driver registry (for embeddings) and the
-        // platform-selected vector store. See specs/knowledge-indexes.md.
+        // platform-selected vector store. See knowledge/runtime-resources/knowledge-indexes.md.
         supervisor.track_optional(
             "knowledge_index_sync",
             crate::domains::knowledge_indexes::source_sync::spawn_knowledge_index_sync_task(

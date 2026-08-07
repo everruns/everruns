@@ -10,7 +10,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Boxes, Plus } from "lucide-react";
 import type { Agent, Capability, CapabilityId } from "@/lib/api/types";
 import { getDisplayName } from "@/lib/entity-lifecycle";
-import { getCapabilityIcon } from "@/lib/capability-icons";
+import { CapabilityIcon } from "@/lib/capability-icons";
 import { localizedCapabilityName } from "@/lib/capability-localization";
 import { useLocale } from "@/providers/locale-provider";
 
@@ -77,12 +77,13 @@ export function AgentListWidget({ agents, allCapabilities }: AgentListWidgetProp
                         {agentCapabilities.slice(0, 3).map((capConfig) => {
                           const cap = getCapabilityInfo(capConfig.ref);
                           if (!cap) return null;
-                          const IconComponent = getCapabilityIcon(cap.icon);
-
                           return (
                             <Tooltip key={capConfig.ref}>
                               <TooltipTrigger className="cursor-default border bg-muted p-0.5">
-                                <IconComponent className="icon-sharp h-3 w-3 text-muted-foreground" />
+                                <CapabilityIcon
+                                  icon={cap.icon}
+                                  className="icon-sharp h-3 w-3 text-muted-foreground"
+                                />
                               </TooltipTrigger>
                               <TooltipContent>
                                 <p>{localizedCapabilityName(cap, locale)}</p>

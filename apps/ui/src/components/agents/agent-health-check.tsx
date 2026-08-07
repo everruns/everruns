@@ -26,7 +26,7 @@ interface AgentHealthCheckProps {
 
 /**
  * Behavioral health check: runs generated smoke tests against the agent's real
- * configuration and shows a score card. See specs/agent-checks.md (tier 3).
+ * configuration and shows a score card. See knowledge/evaluation/agent-checks.md (tier 3).
  */
 export function AgentHealthCheck({ agentId }: AgentHealthCheckProps) {
   const trigger = useTriggerHealthCheck();
@@ -46,16 +46,18 @@ export function AgentHealthCheck({ agentId }: AgentHealthCheckProps) {
   const isRunning = trigger.isPending || run?.status === "pending" || run?.status === "running";
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Activity className="w-5 h-5" />
-          Health check
-          <span className="flex-1" />
+    <Card className="min-w-0 overflow-hidden">
+      <CardHeader className="gap-2 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <CardTitle className="flex min-w-0 items-center gap-2 text-base">
+            <Activity className="size-4 shrink-0" />
+            Health check
+          </CardTitle>
           <Button
             type="button"
             variant="outline"
             size="sm"
+            className="ml-auto max-w-full"
             disabled={isRunning}
             onClick={() =>
               trigger.mutate(agentId, {
@@ -65,21 +67,20 @@ export function AgentHealthCheck({ agentId }: AgentHealthCheckProps) {
           >
             {isRunning ? (
               <>
-                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                <Loader2 className="size-4 animate-spin" />
                 Running…
               </>
             ) : (
               "Run health check"
             )}
           </Button>
-        </CardTitle>
-        <CardDescription>
-          Generates a few smoke tests from this agent&apos;s configuration and runs them as real
-          sessions, then scores each with an AI judge. Runs several real sessions and takes a minute
-          or two.
+        </div>
+        <CardDescription className="text-xs leading-relaxed">
+          Runs generated smoke tests as real sessions, then scores them with an AI judge. Takes a
+          minute or two.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="min-w-0 px-4 pb-4">
         {trigger.error && (
           <p className="text-sm text-destructive">
             Could not start health check: {trigger.error.message}
@@ -121,9 +122,9 @@ function HealthCheckResults({ run }: { run: HealthCheckRun }) {
 
   const summary = run.summary;
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-3">
       {summary && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 gap-2">
           <Metric label="Pass rate" value={`${Math.round(summary.pass_rate * 100)}%`} />
           <Metric label="Passed" value={`${summary.passed}/${summary.total}`} />
           <Metric label="Avg score" value={summary.avg_score.toFixed(2)} />
@@ -136,20 +137,27 @@ function HealthCheckResults({ run }: { run: HealthCheckRun }) {
           {summary.total_output_tokens.toLocaleString()} output tokens
         </p>
       )}
-      <ul className="space-y-2">
-        {(run.results ?? []).map((result, index) => (
-          <CaseRow key={result.session_id ?? `${result.name}-${index}`} result={result} />
-        ))}
-      </ul>
+      {(run.results?.length ?? 0) > 0 && (
+        <details className="min-w-0 border p-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            Case results ({run.results?.length ?? 0})
+          </summary>
+          <ul className="mt-3 min-w-0 space-y-2">
+            {(run.results ?? []).map((result, index) => (
+              <CaseRow key={result.session_id ?? `${result.name}-${index}`} result={result} />
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="border p-3 bg-muted/30">
+    <div className="min-w-0 border bg-muted/30 p-2.5">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-lg font-semibold">{value}</div>
+      <div className="break-words text-base font-semibold">{value}</div>
     </div>
   );
 }
@@ -164,11 +172,11 @@ function CaseRow({ result }: { result: HealthCheckCaseResult }) {
   );
 
   return (
-    <li className="flex items-start gap-3 border p-3">
+    <li className="flex min-w-0 items-start gap-2 border p-2.5">
       {icon}
       <div className="space-y-1 min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="text-sm font-medium">{result.name}</span>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="min-w-0 break-words text-sm font-medium">{result.name}</span>
           {!result.error && (
             <Badge variant="secondary" className="text-xs">
               {result.score.toFixed(2)}
@@ -185,11 +193,11 @@ function CaseRow({ result }: { result: HealthCheckCaseResult }) {
             </Link>
           )}
         </div>
-        <p className="text-xs text-muted-foreground">{result.user_message}</p>
+        <p className="break-words text-xs text-muted-foreground">{result.user_message}</p>
         {result.error ? (
-          <p className="text-xs text-amber-600 dark:text-amber-400">{result.error}</p>
+          <p className="break-words text-xs text-amber-600 dark:text-amber-400">{result.error}</p>
         ) : (
-          <p className="text-xs">{result.judge_reason}</p>
+          <p className="break-words text-xs">{result.judge_reason}</p>
         )}
       </div>
     </li>

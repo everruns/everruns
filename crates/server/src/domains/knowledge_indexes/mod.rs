@@ -1,4 +1,4 @@
-// Knowledge Indexes domain. See specs/knowledge-indexes.md.
+// Knowledge Indexes domain. See knowledge/runtime-resources/knowledge-indexes.md.
 
 use everruns_core::{Permission, Policy, Rule};
 

@@ -4,7 +4,7 @@
 // Supports multiple currencies (USD, tokens, credits), pluggable meters,
 // pluggable rules, and soft enforcement (pause/warn/stop).
 //
-// See specs/budgeting.md for the full specification.
+// See knowledge/security/budgeting.md for the full specification.
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

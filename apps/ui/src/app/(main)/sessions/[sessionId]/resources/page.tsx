@@ -1,6 +1,6 @@
 "use client";
 
-// Tasks + Resources page. Session tasks (specs/session-tasks.md) render on
+// Tasks + Resources page. Session tasks (knowledge/runtime-resources/session-tasks.md) render on
 // top with live SSE-driven updates; the leased-resource registry stays below
 // unchanged. The nav tab keeps the "Resources" label and leased_resources
 // feature gating.

@@ -1,4 +1,4 @@
-// Commands for managing org agent check rules (specs/agent-checks.md, phase 4).
+// Commands for managing org agent check rules (knowledge/evaluation/agent-checks.md, phase 4).
 
 use regex::Regex;
 use serde::Deserialize;

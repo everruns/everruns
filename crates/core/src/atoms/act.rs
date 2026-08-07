@@ -49,8 +49,8 @@ use crate::tool_fingerprint::{
     tool_call_fingerprint, tool_error_fingerprint, tool_result_fingerprint,
 };
 use crate::tool_narration::{
-    ToolNarrationContext, ToolNarrationPhase, render_group_headline_with_locale,
-    render_tool_narration_with_locale,
+    GroupHeadlineAction, ToolNarrationContext, ToolNarrationPhase,
+    render_tool_narration_with_locale, summarize_group_actions, tool_call_for_group_summary,
 };
 use crate::tool_types::{SideEffectClass, ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{
@@ -476,7 +476,7 @@ where
 
     /// Add capability-contributed pre-tool-use hooks. Pre-hooks fire before
     /// each tool call and can mutate or block it; see
-    /// `act_hooks::PreToolUseHook` and `specs/user-hooks.md`.
+    /// `act_hooks::PreToolUseHook` and `knowledge/runtime-resources/user-hooks.md`.
     pub fn with_pre_tool_hooks(mut self, hooks: Vec<Arc<dyn act_hooks::PreToolUseHook>>) -> Self {
         self.pre_tool_hooks.extend(hooks);
         self
@@ -736,12 +736,13 @@ where
                 ));
             }
         }
-        if tool_calls.len() == 1 {
-            started_data.headline = started_data
-                .tool_calls
-                .first()
-                .and_then(|summary| summary.narration.clone());
-        }
+        started_data.headline = self.render_group_headline(
+            &context,
+            &tool_calls,
+            &tool_map,
+            ToolNarrationPhase::Started,
+            locale.as_deref(),
+        );
 
         // Emit act.started event (with display names from tool definitions)
         if let Err(e) = self
@@ -809,23 +810,13 @@ where
             act_span_id.clone(), // Same span_id as started
             Some(parent_span_id.clone()),
         );
-        let mut completed_headline = render_group_headline_with_locale(
+        let mut completed_headline = self.render_group_headline(
+            &context,
             &tool_calls,
-            &tool_definitions,
+            &tool_map,
             ToolNarrationPhase::Completed,
             locale.as_deref(),
         );
-        if tool_calls.len() == 1
-            && let Some(tool_call) = tool_calls.first()
-        {
-            completed_headline = Some(self.render_tool_narration(
-                &context,
-                tool_map.get(tool_call.name.as_str()).copied(),
-                tool_call,
-                ToolNarrationPhase::Completed,
-                locale.as_deref(),
-            ));
-        }
         if error_count > 0 {
             let suffix = crate::localization::format_error_suffix(locale.as_deref(), error_count);
             completed_headline = Some(match completed_headline {
@@ -921,6 +912,47 @@ where
             }
         }
         render_tool_narration_with_locale(tool_def, tool_call, phase, locale)
+    }
+
+    fn render_group_headline(
+        &self,
+        atom_context: &AtomContext,
+        tool_calls: &[ToolCall],
+        tool_map: &std::collections::HashMap<&str, &ToolDefinition>,
+        phase: ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> Option<String> {
+        if tool_calls.is_empty() {
+            return None;
+        }
+        if let [tool_call] = tool_calls {
+            return Some(self.render_tool_narration(
+                atom_context,
+                tool_map.get(tool_call.name.as_str()).copied(),
+                tool_call,
+                phase,
+                locale,
+            ));
+        }
+
+        let actions = tool_calls
+            .iter()
+            .map(|tool_call| {
+                let tool_def = tool_map.get(tool_call.name.as_str()).copied();
+                let narration =
+                    self.render_tool_narration(atom_context, tool_def, tool_call, phase, locale);
+                let repeated_narration = self.render_tool_narration(
+                    atom_context,
+                    tool_def,
+                    &tool_call_for_group_summary(tool_call),
+                    phase,
+                    locale,
+                );
+                GroupHeadlineAction::new(tool_call, narration, repeated_narration)
+            })
+            .collect::<Vec<_>>();
+
+        Some(summarize_group_actions(&actions, locale))
     }
 
     /// Mirror the file-store wrapping applied during tool execution so
@@ -1830,6 +1862,60 @@ mod tests {
         async fn execute(&self, arguments: serde_json::Value) -> crate::ToolExecutionResult {
             crate::ToolExecutionResult::success(arguments)
         }
+    }
+
+    #[test]
+    fn grouped_headline_uses_tool_owned_narration_for_repeated_actions() {
+        use crate::capabilities::{Capability, CapabilityNarrationHook, FileSystemCapability};
+
+        let capability: Arc<dyn Capability> = Arc::new(FileSystemCapability);
+        let tool_definitions = capability
+            .tools()
+            .into_iter()
+            .map(|tool| tool.to_definition())
+            .collect::<Vec<_>>();
+        let tool_map = tool_definitions
+            .iter()
+            .map(|tool_def| (tool_def.name(), tool_def))
+            .collect::<std::collections::HashMap<_, _>>();
+        let atom = ActAtom::new(ToolRegistry::new(), NoopEventEmitter)
+            .with_tool_call_hooks(vec![Arc::new(CapabilityNarrationHook(capability))]);
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let tool_calls = vec![
+            ToolCall {
+                id: "grep-1".to_string(),
+                name: "grep_files".to_string(),
+                arguments: json!({ "pattern": "full_name" }),
+            },
+            ToolCall {
+                id: "grep-2".to_string(),
+                name: "grep_files".to_string(),
+                arguments: json!({ "pattern": "login" }),
+            },
+        ];
+
+        assert_eq!(
+            atom.render_group_headline(
+                &context,
+                &tool_calls,
+                &tool_map,
+                ToolNarrationPhase::Started,
+                None,
+            )
+            .as_deref(),
+            Some("Searching files twice")
+        );
+        assert_eq!(
+            atom.render_group_headline(
+                &context,
+                &tool_calls,
+                &tool_map,
+                ToolNarrationPhase::Completed,
+                None,
+            )
+            .as_deref(),
+            Some("Searched files twice")
+        );
     }
 
     struct UtilityLlmContextProbeTool;

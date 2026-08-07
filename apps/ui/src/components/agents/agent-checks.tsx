@@ -103,12 +103,12 @@ export function AgentChecks({
 
 function ChecksSkeleton() {
   return (
-    <Card aria-label="Refreshing checks">
-      <CardHeader>
-        <Skeleton className="h-6 w-32" />
+    <Card aria-label="Refreshing checks" className="min-w-0 overflow-hidden">
+      <CardHeader className="p-4">
+        <Skeleton className="h-5 w-28" />
       </CardHeader>
-      <CardContent>
-        <Skeleton className="h-24 w-full" />
+      <CardContent className="px-4 pb-4">
+        <Skeleton className="h-16 w-full" />
       </CardContent>
     </Card>
   );
@@ -142,17 +142,19 @@ function FindingsCard({ findings, request, requestKey, onApplyFix }: FindingsCar
   const shown = analysis ?? findings;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex flex-wrap items-center gap-2">
-          <ShieldCheck className="w-5 h-5" />
-          Checks
-          {shown.length > 0 && <Badge variant="secondary">{shown.length}</Badge>}
-          <span className="flex-1" />
+    <Card className="min-w-0 overflow-hidden">
+      <CardHeader className="gap-2 p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <CardTitle className="flex min-w-0 items-center gap-2 text-base">
+            <ShieldCheck className="size-4 shrink-0" />
+            Checks
+            {shown.length > 0 && <Badge variant="secondary">{shown.length}</Badge>}
+          </CardTitle>
           <Button
             type="button"
             variant="outline"
             size="sm"
+            className="ml-auto max-w-full"
             disabled={analyzeMutation.isPending}
             onClick={() => {
               const analyzedRequestKey = requestKey;
@@ -165,16 +167,15 @@ function FindingsCard({ findings, request, requestKey, onApplyFix }: FindingsCar
               });
             }}
           >
-            <Sparkles className="w-4 h-4 mr-1" />
+            <Sparkles className="size-4" />
             {analyzeMutation.isPending ? "Analyzing…" : "Analyze"}
           </Button>
-        </CardTitle>
-        <CardDescription>
-          Advisory findings about this configuration. They never block saving. Analyze runs a deeper
-          AI review (takes ~30s).
+        </div>
+        <CardDescription className="text-xs leading-relaxed">
+          Advisory only. Analyze runs a deeper AI review and may take about 30 seconds.
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="min-w-0 px-4 pb-4">
         {analyzeMutation.error && (
           <p className="text-sm text-destructive mb-3">
             Analysis failed: {analyzeMutation.error.message}
@@ -187,7 +188,7 @@ function FindingsCard({ findings, request, requestKey, onApplyFix }: FindingsCar
               : "No issues found by built-in rules."}
           </p>
         ) : (
-          <ul className="space-y-3">
+          <ul className="min-w-0 space-y-3">
             {shown.map((finding, index) => (
               <FindingRow
                 key={`${finding.rule_id}-${index}`}
@@ -218,28 +219,35 @@ function FindingRow({
       : null;
 
   return (
-    <li className="flex items-start gap-3">
-      <Badge variant="outline" className={`text-xs ${SEVERITY_STYLES[finding.severity]}`}>
-        {finding.severity}
-      </Badge>
-      <div className="space-y-1 min-w-0">
-        <p className="text-sm">{finding.message}</p>
-        <p className="text-xs text-muted-foreground font-mono">{finding.rule_id}</p>
+    <li className="min-w-0 space-y-1.5 border-t pt-3 first:border-t-0 first:pt-0">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <Badge variant="outline" className={`text-xs ${SEVERITY_STYLES[finding.severity]}`}>
+          {finding.severity}
+        </Badge>
+        <span className="min-w-0 break-all font-mono text-xs text-muted-foreground">
+          {finding.rule_id}
+        </span>
+      </div>
+      <div className="min-w-0 space-y-1.5">
+        <p className="break-words text-sm">{finding.message}</p>
         {finding.fix !== undefined && (
-          <div className="text-xs border p-2 bg-muted/50 space-y-1">
-            <p className="text-muted-foreground">Suggested replacement:</p>
-            <pre className="whitespace-pre-wrap font-mono">{finding.fix}</pre>
+          <details className="min-w-0 border bg-muted/50 p-2 text-xs">
+            <summary className="cursor-pointer text-muted-foreground">Suggested fix</summary>
+            <pre className="mt-2 whitespace-pre-wrap break-words font-mono [overflow-wrap:anywhere]">
+              {finding.fix}
+            </pre>
             {fixSpan && onApplyFix && (
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
+                className="mt-2 max-w-full"
                 onClick={() => onApplyFix(fixSpan.start, fixSpan.end, finding.fix ?? "")}
               >
                 Apply fix
               </Button>
             )}
-          </div>
+          </details>
         )}
       </div>
     </li>

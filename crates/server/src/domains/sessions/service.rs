@@ -65,7 +65,7 @@ pub const SESSION_MANAGE: Policy = Policy {
 };
 
 /// Optional, caller-supplied overrides applied when forking a session
-/// (specs/forking-sessions.md). Every field omitted (`None`) inherits the
+/// (knowledge/runtime-resources/forking-sessions.md). Every field omitted (`None`) inherits the
 /// parent session's value.
 #[derive(Debug, Clone, Default)]
 pub struct ForkOverrides {
@@ -202,7 +202,7 @@ impl SessionService {
     /// while the App was created by a real user. Without this override, the
     /// session would be owned by `system-owner` and shared-session reuse via
     /// `find_app_session_by_tags_and_owner(.. app.owner_principal_id ..)` would
-    /// fail to match it. See `specs/app-invocation-channels.md` and EVE-A2A
+    /// fail to match it. See `knowledge/integrations/app-invocation-channels.md` and EVE-A2A
     /// follow-up.
     #[allow(clippy::too_many_arguments)]
     pub async fn create_from_app(
@@ -257,7 +257,7 @@ impl SessionService {
         .await
     }
 
-    /// Fork a session into a new, independent session (specs/forking-sessions.md).
+    /// Fork a session into a new, independent session (knowledge/runtime-resources/forking-sessions.md).
     ///
     /// Creates a fresh session that is config-identical to `parent_id` (modulo
     /// `overrides`), then deep-copies the parent's conversation history (events)
@@ -708,7 +708,7 @@ impl SessionService {
         }
         // THREAT[TM-AUTHZ-009]: `app:<id>`, `app_channel:<id>` and the legacy
         // `slack:app:<id>` tags all drive budget hierarchy attribution (see
-        // specs/budgeting.md and `extract_app_subjects` in
+        // knowledge/security/budgeting.md and `extract_app_subjects` in
         // `crates/server/src/domains/budgets/service.rs`). Allowing external
         // callers to forge any of them would let an org member opt their
         // session into another app's budget — corrupting spend attribution and
@@ -744,7 +744,7 @@ impl SessionService {
 
         // Optional attach to an existing shared workspace. When absent, the
         // storage layer auto-creates a default 1:1 workspace (see
-        // specs/workspace.md, "Default Workspace per Session").
+        // knowledge/runtime-resources/workspace.md, "Default Workspace per Session").
         let workspace_id = match req.workspace_id {
             Some(public_id) => {
                 let workspace = self
@@ -898,6 +898,13 @@ impl SessionService {
             &merge_capabilities(&effective_harness.capabilities, &agent_capabilities),
             &session_capabilities,
         );
+        let effective_capabilities =
+            crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+                self.db.as_ref(),
+                org_id,
+                effective_capabilities,
+            )
+            .await?;
 
         if let Some(service) = &self.session_sandbox_service {
             service
@@ -1958,7 +1965,20 @@ impl SessionService {
             Vec::new()
         };
         let merged = merge_capabilities(&harness_caps, &agent_caps);
-        merge_capabilities(&merged, session_caps)
+        let merged = merge_capabilities(&merged, session_caps);
+        match crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+            self.db.as_ref(),
+            org_id,
+            merged,
+        )
+        .await
+        {
+            Ok(capabilities) => capabilities,
+            Err(error) => {
+                tracing::warn!(%error, "failed to hydrate session capabilities");
+                Vec::new()
+            }
+        }
     }
 
     /// Fire session-lifecycle hooks (`session_start` / `session_end`) for a
@@ -2131,10 +2151,13 @@ impl SessionService {
             capability_configs = merge_capabilities(&capability_configs, &agent_capabilities);
         }
 
-        Ok(merge_capabilities(
-            &capability_configs,
-            session_capabilities,
-        ))
+        let capability_configs = merge_capabilities(&capability_configs, session_capabilities);
+        crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+            self.db.as_ref(),
+            org_id,
+            capability_configs,
+        )
+        .await
     }
 
     async fn collect_workspace_memory_mounts(

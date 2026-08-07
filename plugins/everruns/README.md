@@ -13,6 +13,7 @@ local agent tools. The shared payload is the Everruns MCP server config, the
 
 ## What It Includes
 
+- `plugin.json` and `mcp.json` for the portable Agent Plugins v1 format
 - `.claude-plugin/plugin.json` for Claude Code metadata
 - `.codex-plugin/plugin.json` for Codex metadata
 - `.cursor-plugin/plugin.json` for Cursor metadata

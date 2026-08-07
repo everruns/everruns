@@ -1,7 +1,7 @@
 // MCP Server service for business logic
 // Handles MCP server CRUD and tool discovery/caching
 //
-// Spec: specs/mcp.md (umbrella), specs/mcp-servers.md (detail)
+// Spec: knowledge/integrations/mcp.md (umbrella), knowledge/integrations/mcp-servers.md (detail)
 //
 // Note (EVE-316): this module was moved from `crate::services::mcp_server` to
 // `crate::domains::mcp_servers::service`. The `McpServerService` type, the
@@ -192,7 +192,7 @@ impl McpServerService {
 
     pub async fn create(&self, caller: &Caller, req: CreateMcpServerRequest) -> Result<McpServer> {
         // Org-managed MCP servers are always remote; stdio is reserved for
-        // single-tenant runtime/CLI hosts (specs/runtime-mcp.md D2).
+        // single-tenant runtime/CLI hosts (knowledge/integrations/runtime-mcp.md D2).
         if req.transport_type.is_local() {
             anyhow::bail!("stdio MCP servers are not supported for organization MCP servers");
         }
@@ -812,7 +812,7 @@ pub struct McpServerResolved {
 
 /// Fetch tools from an MCP server using JSON-RPC over HTTP. Delegates to the
 /// shared `everruns-mcp` client so SSRF validation and SSE/JSON handling are
-/// not duplicated (specs/runtime-mcp.md D5).
+/// not duplicated (knowledge/integrations/runtime-mcp.md D5).
 pub(crate) async fn fetch_mcp_tools(
     egress_service: &dyn EgressService,
     url: &str,

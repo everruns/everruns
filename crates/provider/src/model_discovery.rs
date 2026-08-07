@@ -166,6 +166,7 @@ pub async fn list_openai_compatible_models(
         .data
         .into_iter()
         .map(|model| DiscoveredModel {
+            capabilities: vec!["chat".to_string()],
             created_at: model
                 .created
                 .and_then(|ts| chrono::DateTime::from_timestamp(ts, 0)),
@@ -399,6 +400,7 @@ mod tests {
 
     fn bare_discovered(model_id: &str) -> DiscoveredModel {
         DiscoveredModel {
+            capabilities: vec!["chat".to_string()],
             model_id: model_id.to_string(),
             display_name: None,
             created_at: None,

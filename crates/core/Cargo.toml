@@ -93,11 +93,11 @@ fetchkit = { version = "=0.5.0", features = ["bot-auth", "render-rakers"], optio
 ed25519-dalek = { version = "3", features = ["rand_core"], optional = true }
 
 # Bash interpreter backing the bashkit_shell capability
-bashkit = { version = "0.14.4", features = ["jq", "http_client", "bot-auth"] }
+bashkit = { version = "0.16.0", features = ["jq", "http_client", "bot-auth"] }
 
 # Sandboxed Lua interpreter for the experimental `lua` capability (vendored Lua
 # 5.4, never LuaJIT). Optional + behind the `lua` cargo feature so the default
-# build does not compile the C sources. See specs/lua-execution.md.
+# build does not compile the C sources. See knowledge/execution/lua-execution.md.
 mlua = { version = "0.12", features = ["lua54", "vendored", "async", "send", "serialize"], optional = true }
 
 # Tree-sitter for structural outlines (EVE-248)
@@ -169,7 +169,7 @@ a2a = ["dep:a2a", "dep:a2a-client"]
 web-fetch = ["dep:fetchkit", "dep:ed25519-dalek"]
 embedded-platform-docs = ["dep:include_dir"]
 # Experimental sandboxed Lua execution capability (mlua, vendored Lua 5.4).
-# Off by default; enabling compiles the C sources. See specs/lua-execution.md.
+# Off by default; enabling compiles the C sources. See knowledge/execution/lua-execution.md.
 lua = ["dep:mlua"]
 openapi = ["utoipa", "everruns-provider/openapi"]
 sqlx = ["dep:sqlx", "everruns-provider/sqlx"]

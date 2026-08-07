@@ -165,7 +165,7 @@ pub struct CreateSessionRequest {
     pub workspace_id: Option<WorkspaceId>,
 }
 
-/// Request to fork a session (specs/forking-sessions.md). Every field is
+/// Request to fork a session (knowledge/runtime-resources/forking-sessions.md). Every field is
 /// optional; omitted fields inherit the parent session's value. Title defaults
 /// to "{parent title} (fork)" when omitted.
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]
@@ -208,7 +208,7 @@ pub struct ForkSessionRequest {
 // for ops visibility) instead of failing the request. Operators flip
 // `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS=1` to opt back into hard-rejection
 // once their clients are confirmed migrated. The migration timeline lives in
-// `specs/client-side-tools.md`.
+// `knowledge/execution/client-side-tools.md`.
 fn deserialize_client_side_tools<'de, D>(deserializer: D) -> Result<Vec<ToolDefinition>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -257,7 +257,7 @@ pub(crate) fn filter_or_reject_client_side_tools(
         dropped_kinds = ?dropped_kinds,
         "tools[] contained {} non-client_side definition(s); dropping them. \
          The server will reject these in a future release; migrate clients \
-         now. See specs/client-side-tools.md for the timeline.",
+         now. See knowledge/execution/client-side-tools.md for the timeline.",
         dropped.len()
     );
     Ok(kept)

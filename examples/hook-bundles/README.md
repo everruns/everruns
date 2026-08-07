@@ -56,13 +56,13 @@ sibling `user_hooks` capability config:
 
 Declarative-capability hook bundles (one POST to register, many agents
 to reuse) are on the roadmap — see the "Deferred" note in
-[`specs/user-hooks.md`](../../specs/user-hooks.md). Until then, paste
+[`knowledge/runtime-resources/user-hooks.md`](../../knowledge/runtime-resources/user-hooks.md). Until then, paste
 the JSON from this directory into each agent's `user_hooks` config.
 
 ## See also
 
 - [`docs/capabilities/user-hooks.md`](../../docs/capabilities/user-hooks.md) — capability docs
-- [`specs/user-hooks.md`](../../specs/user-hooks.md) — full contract
+- [`knowledge/runtime-resources/user-hooks.md`](../../knowledge/runtime-resources/user-hooks.md) — full contract
 
 ## Live end-to-end demo: Cloud Cost & Security Auditor
 

@@ -2,8 +2,8 @@
 //
 // Zones (numbered ①–⑤ in the design source):
 //   1. Breadcrumb     — PageBreadcrumb: the context line (root → name → mode).
-//   2. Header         — PageMasthead: icon tile · title · status badge · meta, then a
-//                       right-aligned action cluster (primary verb first).
+//   2. Header         — PageMasthead: icon tile · title · status badge · meta, with a
+//                       right-aligned action cluster that moves above the title when compact.
 //   3. Control strip   — the shape-shifter: filters on list, stats on view, section nav
 //                       on edit. Same slot, always. Compose with PageControlStrip plus
 //                       SectionTabs / StatGrid as needed.
@@ -112,6 +112,7 @@ export function IconTile({
 }) {
   return (
     <span
+      data-slot="icon-tile"
       className={cn(
         "inline-flex flex-none items-center justify-center border bg-accent/20 text-foreground",
         size === "lg" ? "size-11 [&_svg]:size-[22px]" : "size-8 [&_svg]:size-4",
@@ -135,14 +136,18 @@ interface PageMastheadProps {
   description?: ReactNode;
   /** Meta run — small key/value spans rendered below the description. */
   meta?: ReactNode;
-  /** Right-aligned action cluster, primary verb first. */
+  /** Full right-aligned action cluster shown when the masthead has enough room. */
   actions?: ReactNode;
+  /** Prioritized actions shown above the title instead of `actions` in constrained mastheads. */
+  compactActions?: ReactNode;
+  /** Frequent secondary actions shown on a separate row at tablet-like widths. */
+  compactActionStrip?: ReactNode;
   className?: string;
 }
 
 /**
  * Zone ② — header anatomy shared by every page: gold icon tile · title · status
- * badge · meta run, then a right-aligned action cluster.
+ * badge · meta run, with a right-aligned action cluster above the title when compact.
  */
 export function PageMasthead({
   icon,
@@ -151,26 +156,75 @@ export function PageMasthead({
   description,
   meta,
   actions,
+  compactActions,
+  compactActionStrip,
   className,
 }: PageMastheadProps) {
   return (
-    <div className={cn("flex items-start justify-between gap-4 border-b pb-4", className)}>
-      <div className="flex min-w-0 items-start gap-4">
+    <div
+      data-slot="page-masthead"
+      className={cn(
+        "@container/masthead flex flex-wrap items-start gap-4 border-b pb-4",
+        className,
+      )}
+    >
+      <div
+        data-slot="page-masthead-identity"
+        className="flex min-w-0 flex-[1_1_20rem] flex-wrap items-start gap-4 sm:flex-nowrap"
+      >
         {icon && <IconTile icon={icon} />}
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
+        {compactActions && (
+          <div
+            data-slot="page-masthead-compact-actions"
+            className="ml-auto flex max-w-full flex-none flex-wrap items-center justify-end gap-2 sm:hidden [&>a]:max-w-full [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-8 [&_[data-slot=button]]:max-w-full [&_[data-slot=button]]:whitespace-normal"
+          >
+            {compactActions}
+          </div>
+        )}
+        <div className="min-w-0 flex-1 max-sm:w-full max-sm:flex-none">
+          <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+            <h1 className="min-w-0 break-words text-2xl font-semibold tracking-tight text-foreground">
+              {title}
+            </h1>
             {badges}
           </div>
-          {description && <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>}
+          {description && (
+            <p className="mt-1.5 break-words text-sm text-muted-foreground">{description}</p>
+          )}
           {meta && (
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
+            <div className="mt-2 flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted-foreground [&>*]:min-w-0 [&>*]:break-words">
               {meta}
             </div>
           )}
         </div>
       </div>
-      {actions && <div className="flex flex-none items-center gap-2">{actions}</div>}
+      {actions && (
+        <div
+          data-slot="page-masthead-actions"
+          className={cn(
+            "ml-auto flex max-w-full flex-none flex-wrap items-center justify-end gap-2 [&>a]:max-w-full [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-8 [&_[data-slot=button]]:max-w-full [&_[data-slot=button]]:whitespace-normal",
+            compactActions && "hidden @5xl/masthead:flex",
+          )}
+        >
+          {actions}
+        </div>
+      )}
+      {compactActions && (
+        <div
+          data-slot="page-masthead-compact-actions"
+          className="order-first ml-auto hidden w-full max-w-full flex-none flex-wrap items-center justify-end gap-2 sm:flex @5xl/masthead:hidden [&>a]:max-w-full [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-8 [&_[data-slot=button]]:max-w-full [&_[data-slot=button]]:whitespace-normal"
+        >
+          {compactActions}
+        </div>
+      )}
+      {compactActionStrip && (
+        <div
+          data-slot="page-masthead-compact-action-strip"
+          className="hidden w-full flex-wrap items-center gap-2 @sm/masthead:flex @5xl/masthead:hidden [&>a]:max-w-full [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-8 [&_[data-slot=button]]:max-w-full [&_[data-slot=button]]:whitespace-normal"
+        >
+          {compactActionStrip}
+        </div>
+      )}
     </div>
   );
 }
@@ -322,7 +376,7 @@ export function EmptyState({ icon, title, description, action, className }: Empt
  */
 export function PageColumns({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_320px]", className)}>
+    <div className={cn("grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]", className)}>
       {children}
     </div>
   );

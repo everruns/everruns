@@ -122,6 +122,8 @@ mod seed_ids {
     pub const GPT_5_6_SOL: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000226);
     pub const GPT_5_6_TERRA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000227);
     pub const GPT_5_6_LUNA: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000228);
+    pub const TEXT_EMBEDDING_3_SMALL: Uuid =
+        Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000229);
     pub const O1_PREVIEW: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021e);
 
     // Anthropic Models (0x300-0x3FF)
@@ -1060,59 +1062,12 @@ Verify each action by re-listing the affected resource type.
         name: "platform-manager",
         display_name: "Platform Manager",
         description: "Manages Everruns entities: harnesses, agents, and sessions. Can create, update, delete, copy harnesses and agents, start sessions, send messages, and retrieve results.",
-        system_prompt: r#"You are a Platform Manager Agent for Everruns. You can manage the entire platform
-programmatically using the management tools available to you.
+        system_prompt: r#"You are a Platform Manager Agent for Everruns. Use the catalog-backed platform tools to inspect and manage Everruns resources.
 
-## What You Can Do
-
-### Harness Management
-- List all harnesses to see what's available
-- Get details of a specific harness (including system prompt and capabilities)
-- Create new harnesses with custom system prompts and capabilities
-- Update existing harnesses (name, description, system prompt)
-- Copy a harness and modify the copy
-- Delete (archive) harnesses that are no longer needed
-
-### Agent Management
-- List all agents to see what's available
-- Get details of a specific agent
-- Create new agents with custom configurations
-- Update existing agents
-- Delete (archive) agents that are not active or needed
-
-### Session Management
-- List sessions (optionally filter by agent)
-- Create new sessions with specific harness and agent
-- Get session details and status
-- Delete old sessions
-
-### Session Interaction
-- Send messages to any session to trigger agent responses
-- Get messages from a session (default: last 10)
-- Wait for a session's turn to complete before reading the response
-
-## Common Workflows
-
-### Run an agent and get results:
-1. Create a session with the desired agent
-2. Send a message to the session
-3. Wait for idle (turn completion)
-4. Get messages to read the response
-
-### Copy and modify a harness:
-1. Get the source harness details
-2. Copy it with a new name
-3. Update the copy's system prompt or other fields
-
-### Clean up inactive agents:
-1. List all agents
-2. Identify agents with "Archived" status or that match criteria
-3. Delete the ones that should be removed
-
-All tool results include UI links so you can point users to the web interface."#,
+Discover command names and schemas instead of guessing. Use read-only queries for inspection, execute only user-requested mutations, and validate resulting state. Create Agent Triggers for recurring autonomous work instead of scheduling this management session. Include returned UI links when reporting resources. Lead final answers with the outcome and omit internal reasoning or tool-selection narration."#,
         tags: &["platform", "management", "admin", "seed"],
         capabilities: &[
-            SeedCapability::new("platform_management"),
+            SeedCapability::new("platform"),
             SeedCapability::new("session_file_system"),
             SeedCapability::new("session_storage"),
             SeedCapability::new("session"),
@@ -1709,6 +1664,16 @@ struct SeedModel {
 
 /// Built-in seed models
 const SEED_MODELS: &[SeedModel] = &[
+    // OpenAI embeddings. Knowledge indexes require a concrete embedding model,
+    // so the default catalog must contain one even before provider discovery.
+    SeedModel {
+        id: seed_ids::TEXT_EMBEDDING_3_SMALL,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "text-embedding-3-small",
+        display_name: "Text Embedding 3 Small",
+        enabled: true,
+        is_favorite: true,
+    },
     // OpenAI Realtime series
     SeedModel {
         id: seed_ids::GPT_REALTIME_2,
@@ -2358,7 +2323,11 @@ async fn seed_models_with_platform_definition(
             provider_id: seed.provider_id.into(),
             model_id: seed.model_id.to_string(),
             display_name: seed.display_name.to_string(),
-            capabilities: vec![], // Empty capabilities for now
+            capabilities: if seed.model_id.starts_with("text-embedding-") {
+                vec!["embeddings".to_string()]
+            } else {
+                vec![]
+            },
             enabled: seed.enabled,
             is_favorite: seed.is_favorite,
             source: "predefined".to_string(), // Seed models are predefined
@@ -3676,6 +3645,17 @@ mod tests {
                 .map(|m| (m.model_id.clone(), (m.enabled, m.is_favorite)))
                 .collect::<std::collections::HashMap<_, _>>()
         };
+
+        let openai = db
+            .list_models_for_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
+            .await
+            .unwrap();
+        let embedding = openai
+            .iter()
+            .find(|model| model.model_id == "text-embedding-3-small")
+            .expect("default embedding model must be catalogued");
+        assert!(embedding.enabled);
+        assert_eq!(embedding.capabilities, serde_json::json!(["embeddings"]));
 
         let anthropic = db
             .list_models_for_provider(DEFAULT_ORG_ID, seed_ids::ANTHROPIC_PROVIDER)

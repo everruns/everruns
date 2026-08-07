@@ -9,7 +9,7 @@
 //! deterministic token overlap — no extra model call, no text rewrite — so it is
 //! model- and provider-agnostic and never changes the streamed answer.
 //!
-//! See `specs/citations.md`. This is the retrieval *feed*; verification is a
+//! See `knowledge/runtime-resources/citations.md`. This is the retrieval *feed*; verification is a
 //! separate `citation_verification` capability.
 
 use std::collections::HashMap;

@@ -16,7 +16,7 @@ categories = ["api-bindings", "asynchronous"]
 [features]
 default = []
 # Local-process MCP transport (stdio). Intentionally NOT enabled by the hosted
-# server/worker builds — see specs/runtime-mcp.md (D2). Runtime and CLI hosts
+# server/worker builds — see knowledge/integrations/runtime-mcp.md (D2). Runtime and CLI hosts
 # opt in.
 stdio = []
 

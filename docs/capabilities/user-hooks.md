@@ -12,7 +12,7 @@ sidebar:
 | **Features** | None |
 | **Dependencies** | None |
 | **Risk** | High |
-| **Spec** | [specs/user-hooks.md](https://github.com/everruns/everruns/blob/main/specs/user-hooks.md) |
+| **Spec** | [knowledge/runtime-resources/user-hooks.md](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/user-hooks.md) |
 
 User Hooks let you inject shell commands at six well-defined points in the
 agent execution lifecycle. The runtime hands each hook a structured JSON
@@ -65,7 +65,7 @@ wire-in lands in follow-up changes (see "What's not yet wired" below).
 | `turn_end` | Turn finishes | no | none |
 | `session_end` | Session close/archive | no | none |
 
-See [`specs/user-hooks.md`](https://github.com/everruns/everruns/blob/main/specs/user-hooks.md)
+See [`knowledge/runtime-resources/user-hooks.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/user-hooks.md)
 for the per-event JSON payload shape and full block / mutate semantics.
 
 ## Configuration
@@ -244,7 +244,7 @@ Operators can mute any individual contribution via
 > Declarative-capability hook bundles (one POST to register, many agents
 > to reuse) are on the roadmap and are not yet wired into the declarative
 > capability schema. See
-> [`specs/user-hooks.md`](https://github.com/everruns/everruns/blob/main/specs/user-hooks.md)
+> [`knowledge/runtime-resources/user-hooks.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/user-hooks.md)
 > for the deferred contract.
 
 See [`examples/hook-bundles/`](https://github.com/everruns/everruns/tree/main/examples/hook-bundles)
@@ -463,7 +463,7 @@ hook's `user_message`.
 
 ## See also
 
-- [`specs/user-hooks.md`](https://github.com/everruns/everruns/blob/main/specs/user-hooks.md) — full contract
-- [`specs/capabilities.md`](https://github.com/everruns/everruns/blob/main/specs/capabilities.md) — capability framework
-- [`specs/threat-model.md`](https://github.com/everruns/everruns/blob/main/specs/threat-model.md) — TM-HOOK entries
+- [`knowledge/runtime-resources/user-hooks.md`](https://github.com/everruns/everruns/blob/main/knowledge/runtime-resources/user-hooks.md) — full contract
+- [`knowledge/execution/capabilities.md`](https://github.com/everruns/everruns/blob/main/knowledge/execution/capabilities.md) — capability framework
+- [`knowledge/security/threat-model.md`](https://github.com/everruns/everruns/blob/main/knowledge/security/threat-model.md) — TM-HOOK entries
 - [Bashkit Shell](/capabilities/bashkit-shell/) — the sandbox that runs hook commands

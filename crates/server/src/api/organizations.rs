@@ -38,7 +38,7 @@ use utoipa::ToSchema;
 /// Wrappers (e.g. the SaaS distribution) use this to gate org creation on product
 /// policy — verified email, account/resource limits — without forking the OSS
 /// create-org handler or mounting a parallel `/v1/saas/orgs` endpoint. OSS remains
-/// the owner of org creation; wrappers only supply policy. See `specs/embedding.md`.
+/// the owner of org creation; wrappers only supply policy. See `knowledge/foundations/embedding.md`.
 pub struct OrgCreateContext<'a> {
     /// The authenticated user requesting creation.
     pub user: &'a AuthUser,
