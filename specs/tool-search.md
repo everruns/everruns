@@ -186,6 +186,7 @@ Capabilities already have categories. When `collect_capabilities()` builds the t
 Some tools should never be deferred because they're called on nearly every turn:
 
 - `write_todos` — used for task tracking on most turns
+- `bash` — core execution path whose exact command schema must remain visible
 - Tools in the "always-on" set configured per-agent
 
 This maps to a `defer_loading: bool` field on `ToolDefinition`, defaulting to `true` when tool_search is active. Capabilities can override via `always_loaded_tools() -> Vec<&str>`.

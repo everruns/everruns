@@ -48,7 +48,7 @@ use crate::background::{
 };
 use crate::exec_tool_result::ExecToolResultPayload;
 use crate::session_file::SessionFile;
-use crate::tool_types::ToolHints;
+use crate::tool_types::{DeferrablePolicy, ToolHints};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionFileSystem, ToolContext};
 use crate::typed_id::SessionId;
@@ -331,6 +331,13 @@ impl Tool for BashTool {
             // starving I/O-bound tools sharing the act batch.
             .with_concurrency_class("session_workspace")
             .with_cpu_bound(true)
+    }
+
+    fn deferrable_policy(&self) -> DeferrablePolicy {
+        // Bash is a hot-path tool whose exact input contract must stay visible.
+        // Deferring it makes models more likely to substitute shell interfaces
+        // learned outside Everruns (for example `bash_run` with `command`).
+        DeferrablePolicy::Never
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -3048,6 +3055,12 @@ mod tests {
     fn test_bash_tool_display_name() {
         let tool = BashTool::default();
         assert_eq!(tool.display_name(), Some("Bash"));
+    }
+
+    #[test]
+    fn test_bash_tool_is_never_deferred() {
+        let tool = BashTool::default();
+        assert_eq!(tool.deferrable_policy(), DeferrablePolicy::Never);
     }
 
     #[test]
