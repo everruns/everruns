@@ -69,6 +69,23 @@ impl Command for CreateMessage {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Session"))?;
+        let harness = ctx
+            .db
+            .get_harness(ctx.org_id(), session.harness_id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Harness"))?;
+        // Platform Chat can mutate the control plane as its persisted owner.
+        // Only that owner may start a turn, or another org member could use the
+        // session as a confused deputy with the owner's permissions.
+        if harness.name == "platform-chat"
+            && (ctx.caller.user_id.is_none()
+                || ctx.caller.user_id != session.resolved_owner_user_id)
+        {
+            return Err(CommandError::forbidden(
+                "Only the Platform Chat session owner can create messages",
+            ));
+        }
         let responder_agent_id = resolve_responder_agent_id(
             ctx,
             session_id,
@@ -390,10 +407,11 @@ mod tests {
     };
     use async_trait::async_trait;
     use everruns_core::typed_id::{HarnessId, MessageId};
-    use everruns_core::{Caller, DEFAULT_ORG_ID, PrincipalId};
+    use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole, PrincipalId};
     use everruns_worker::AgentRunner;
     use std::sync::{Arc, Mutex};
     use tokio::time::{Duration, sleep};
+    use uuid::Uuid;
 
     #[derive(Default)]
     struct RecordingRunner {
@@ -449,12 +467,20 @@ mod tests {
     }
 
     async fn setup_routing_fixture() -> RoutingFixture {
+        setup_routing_fixture_for("routing-harness", None, Caller::internal(DEFAULT_ORG_ID)).await
+    }
+
+    async fn setup_routing_fixture_for(
+        harness_name: &str,
+        owner_user_id: Option<Uuid>,
+        caller: Caller,
+    ) -> RoutingFixture {
         let db = Arc::new(StorageBackend::in_memory());
         let harness = db
             .create_harness(
                 DEFAULT_ORG_ID,
                 CreateHarnessRow {
-                    name: "routing-harness".to_string(),
+                    name: harness_name.to_string(),
                     display_name: None,
                     description: None,
                     system_prompt: Some("You are helpful.".to_string()),
@@ -483,7 +509,7 @@ mod tests {
                 agent_config_hash: None,
                 agent_identity_id: None,
                 owner_principal_id: PrincipalId::from_seed(DEFAULT_ORG_ID as u128),
-                resolved_owner_user_id: None,
+                resolved_owner_user_id: owner_user_id,
                 title: Some("Routing session".to_string()),
                 locale: None,
                 tags: vec![],
@@ -535,7 +561,7 @@ mod tests {
             false,
             EventDelivery::in_memory(),
         ));
-        let ctx = Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db.clone(), None)
+        let ctx = Ctx::minimal_for_test(caller, db.clone(), None)
             .with_session_service(Arc::new(SessionService::new(db)))
             .with_message_service(message_service);
 
@@ -630,6 +656,61 @@ mod tests {
                     .expect("host public id")
             )]
         );
+    }
+
+    #[tokio::test]
+    async fn platform_chat_rejects_messages_from_non_owner() {
+        let owner_user_id = Uuid::new_v4();
+        let fixture = setup_routing_fixture_for(
+            "platform-chat",
+            Some(owner_user_id),
+            Caller {
+                org_id: DEFAULT_ORG_ID,
+                org_public_id: everruns_core::organization::org_public_id_from_internal(
+                    DEFAULT_ORG_ID,
+                ),
+                user_id: Some(Uuid::new_v4()),
+                role: OrgRole::Member,
+                is_platform_user: false,
+                is_internal: false,
+            },
+        )
+        .await;
+
+        let err = create_message_command(fixture.session.id, None)
+            .execute(&fixture.ctx)
+            .await
+            .expect_err("non-owner must not start a Platform Chat turn");
+
+        assert_eq!(err.status().as_u16(), 403);
+        assert!(fixture.runner.calls().is_empty());
+    }
+
+    #[tokio::test]
+    async fn platform_chat_allows_messages_from_owner() {
+        let owner_user_id = Uuid::new_v4();
+        let fixture = setup_routing_fixture_for(
+            "platform-chat",
+            Some(owner_user_id),
+            Caller {
+                org_id: DEFAULT_ORG_ID,
+                org_public_id: everruns_core::organization::org_public_id_from_internal(
+                    DEFAULT_ORG_ID,
+                ),
+                user_id: Some(owner_user_id),
+                role: OrgRole::Owner,
+                is_platform_user: false,
+                is_internal: false,
+            },
+        )
+        .await;
+
+        create_message_command(fixture.session.id, None)
+            .execute(&fixture.ctx)
+            .await
+            .expect("owner can start a Platform Chat turn");
+
+        wait_for_runner_calls(&fixture.runner, 1).await;
     }
 
     #[tokio::test]
