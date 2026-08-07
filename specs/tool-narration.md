@@ -111,6 +111,11 @@ an argument over a tool-internal name when one is available.
 
 When the relevant argument is absent, drop the value and keep the bare verb.
 
+Grouped headlines use those same bare action phrases. Repeated equivalent actions collapse to a
+localized count-aware phrase ("Searched files twice" / "Searched files 3 times") while the child
+rows retain their argument-specific narration. Mixed groups preserve the first two distinct action
+summaries, then use a localized count of remaining actions so the headline stays bounded.
+
 ## Argument display and redaction
 
 Arguments shown in narration are **display values, not faithful echoes**:
