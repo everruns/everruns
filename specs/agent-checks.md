@@ -7,10 +7,10 @@
   - Hybrid three-tier pipeline (deterministic rules → LLM checkers → health
     checks) mirrors the converged industry architecture (OpenAI prompt
     optimizer's parallel checker agents, Arbiter arXiv:2603.08993).
-  - No while-you-type linting: tier 1 runs with preview (cheap, sync); tiers
-    2-3 are explicit user actions with visible cost/time expectations. No
-    shipping product does continuous background analysis; on-demand is the
-    proven interaction model.
+  - No request-per-keystroke linting: tier 1 refreshes automatically after
+    edits settle (cheap, sync); tiers 2-3 are explicit user actions with visible
+    cost/time expectations. No shipping product does continuous background
+    analysis; on-demand is the proven interaction model.
   - Tier 2 uses the utility LLM service, not user-configured model providers
     or session secrets (see specs/utility-llm.md, "system analysis tasks").
   - Health checks are NOT part of the evals domain UI/entities. They reuse the
@@ -133,10 +133,12 @@ Decided ordering (Option A → C → B from the design review):
 
 ## UX
 
-- **Checks panel** in the agent editor (alongside Preview), not editor
-  squiggles. Findings grouped by category with severity badges; each finding
-  links to its field or highlights its prompt span. Finding counts surface as
-  a small badge on the editor tab and on agent cards.
+- **Checks panel** at the top of the default Edit tab, not hidden in Preview or
+  rendered as editor squiggles. Preview stays focused on the resolved system
+  prompt, tools, and files. Findings grouped by category with severity badges;
+  each finding links to its field or highlights its prompt span. Finding counts
+  surface as a small badge on the editor tab and on agent cards. Behavioral
+  health checks live with the advisory checks in Edit as well.
 - **Tier triggers**: tier 1 is implicit (updates with preview); tiers 2 and 3
   are buttons with cost/time expectations ("~30s", "runs N real sessions").
 - **Fix flow**: findings with a `fix` show a diff and an Apply button.
