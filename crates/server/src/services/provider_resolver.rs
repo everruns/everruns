@@ -225,7 +225,6 @@ impl ProviderResolverService {
     ///
     /// Preference order:
     /// 1. Active providers matching the requested type, newest first
-    /// 2. Other matching providers, newest first
     ///
     /// Returns None when no provider with a configured key is found.
     /// Never falls back to environment variables — callers surface a
@@ -247,16 +246,10 @@ impl ProviderResolverService {
             })
             .collect();
 
-        let iter = matching
+        for provider in matching
             .iter()
             .filter(|provider| provider.status.eq_ignore_ascii_case("active"))
-            .chain(
-                matching
-                    .iter()
-                    .filter(|provider| !provider.status.eq_ignore_ascii_case("active")),
-            );
-
-        for provider in iter {
+        {
             if let Some(api_key) = self.resolve_api_key(provider)? {
                 return Ok(Some(ResolvedProviderCredentials {
                     api_key,
@@ -1035,6 +1028,31 @@ mod tests {
             result.is_none(),
             "resolve_provider_credentials must not fall back to DEFAULT_OPENAI_API_KEY"
         );
+    }
+
+    #[tokio::test]
+    async fn resolve_provider_credentials_ignores_disabled_provider() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let encryption = test_encryption();
+        let provider = seed_active_provider(&db, &encryption, "azure_openai").await;
+        db.update_provider(
+            DEFAULT_ORG_ID,
+            provider.uuid(),
+            crate::storage::models::UpdateProvider {
+                status: Some("disabled".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        let resolver = ProviderResolverService::new(db, Some(encryption));
+
+        let result = resolver
+            .resolve_provider_credentials(DEFAULT_ORG_ID, "azure_openai")
+            .await
+            .unwrap();
+
+        assert!(result.is_none(), "disabled providers must not be resolved");
     }
 
     // =========================================================================
