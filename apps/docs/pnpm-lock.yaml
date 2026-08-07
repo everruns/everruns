@@ -14,9 +14,7 @@ overrides:
   yaml: 2.8.4
 
 patchedDependencies:
-  starlight-llms-txt@0.11.0:
-    hash: 1ca7e0e89ac905820711e0fae1f771ed4bd2e0fdf8c37a1b24a980f293905128
-    path: patches/starlight-llms-txt@0.11.0.patch
+  starlight-llms-txt@0.11.0: 1ca7e0e89ac905820711e0fae1f771ed4bd2e0fdf8c37a1b24a980f293905128
 
 importers:
 
