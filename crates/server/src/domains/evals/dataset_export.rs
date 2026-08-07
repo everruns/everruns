@@ -137,18 +137,6 @@ pub fn spawn_dataset_export(
     });
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{MAX_DATASET_EXPORT_BYTES, ensure_line_fits};
-
-    #[test]
-    fn dataset_export_size_is_bounded() {
-        assert!(ensure_line_fits(MAX_DATASET_EXPORT_BYTES - 2, 1).is_ok());
-        assert!(ensure_line_fits(MAX_DATASET_EXPORT_BYTES - 1, 1).is_err());
-        assert!(ensure_line_fits(usize::MAX, 1).is_err());
-    }
-}
-
 async fn run_dataset_export(
     db: &Arc<StorageBackend>,
     dataset_id: Uuid,
@@ -179,4 +167,16 @@ async fn run_dataset_export(
 
     tracing::info!(dataset_id = %dataset_id, records = count, "Dataset export completed");
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_DATASET_EXPORT_BYTES, ensure_line_fits};
+
+    #[test]
+    fn dataset_export_size_is_bounded() {
+        assert!(ensure_line_fits(MAX_DATASET_EXPORT_BYTES - 2, 1).is_ok());
+        assert!(ensure_line_fits(MAX_DATASET_EXPORT_BYTES - 1, 1).is_err());
+        assert!(ensure_line_fits(usize::MAX, 1).is_err());
+    }
 }
