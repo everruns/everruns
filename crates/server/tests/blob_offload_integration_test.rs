@@ -363,8 +363,8 @@ async fn offloaded_file_update_writes_immutable_blob_revision_and_hash() {
     let blob = blob_store_under_test();
     assert_eq!(
         blob.get(&old_key).await.expect("old blob get").as_deref(),
-        Some(original_body.as_slice()),
-        "superseded revisions are retained because content-addressed keys can become current again"
+        None,
+        "unique superseded revisions are reclaimed immediately"
     );
     assert_eq!(
         blob.get(&new_key).await.expect("new blob get").as_deref(),
@@ -457,8 +457,8 @@ async fn offloaded_file_cas_matches_and_rejects() {
             .await
             .expect("old CAS blob get")
             .as_deref(),
-        Some(original.as_slice()),
-        "CAS superseded revisions are retained because content-addressed keys can become current again"
+        None,
+        "unique CAS superseded revisions are reclaimed immediately"
     );
 
     backend.delete_session(TEST_ORG_ID, session_id).await.ok();
