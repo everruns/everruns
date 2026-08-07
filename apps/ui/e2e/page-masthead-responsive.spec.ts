@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 const DEFAULT_ORG_ID = "org_00000000000000000000000000000001";
 const AGENT_ID = "agent_019fd9b43fa37512b8f25226b21c2c8b";
+const HARNESS_ID = "harness_019fd9b43fa37512b8f25226b21c2c8b";
 
 async function mockAgentDetailApi(page: Page) {
   await page.route("**/api/v1/**", async (route) => {
@@ -65,6 +66,29 @@ async function mockAgentDetailApi(page: Page) {
         input_tokens: 1200,
         output_tokens: 600,
       };
+    } else if (pathname === `/api/v1/harnesses/${HARNESS_ID}`) {
+      json = {
+        id: HARNESS_ID,
+        name: "responsive-harness",
+        display_name: "Responsive Harness",
+        description: "A representative detail page using the standard masthead action cluster.",
+        system_prompt: "Help the user.",
+        default_model_id: null,
+        parent_harness_id: null,
+        tags: [],
+        capabilities: [],
+        initial_files: [],
+        is_built_in: false,
+        status: "active",
+        session_count: 4,
+        app_count: 2,
+        created_at: "2026-08-01T00:00:00Z",
+        updated_at: "2026-08-01T00:00:00Z",
+        archived_at: null,
+        deleted_at: null,
+      };
+    } else if (pathname === `/api/v1/harnesses/${HARNESS_ID}/stats`) {
+      json = { sessions: 4, messages: 8, input_tokens: 400, output_tokens: 200 };
     } else if (pathname === "/api/v1/sessions") {
       json = { data: [], has_more: false, total: 0, offset: 0, limit: 10 };
     } else if (
@@ -106,12 +130,12 @@ test.describe("Page masthead responsive layout", () => {
     const masthead = title.locator("xpath=ancestor::div[@data-slot='page-masthead'][1]");
     const identity = masthead.locator('[data-slot="page-masthead-identity"]');
     const icon = identity.locator('[data-slot="icon-tile"]');
-    const actions = page
-      .getByRole("button", { name: "New session" })
-      .locator("xpath=ancestor::div[@data-slot='page-masthead-compact-actions'][1]");
+    const actions = masthead.locator('[data-slot="page-masthead-compact-actions"]');
+    const moreActions = page.getByRole("button", { name: "More actions" });
     await expect(title).toBeVisible();
     await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "More actions" })).toBeVisible();
+    await expect(actions).toHaveCount(1);
+    await expect(moreActions).toBeVisible();
     await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeHidden();
     await expect(page.getByRole("button", { name: "Observe this agent" })).toBeHidden();
 
@@ -120,12 +144,20 @@ test.describe("Page masthead responsive layout", () => {
     await page.keyboard.press("Escape");
     await expect(page.locator('[data-slot="drawer-content"]')).toBeHidden();
 
-    await page.getByRole("button", { name: "More actions" }).click();
+    await moreActions.click({ trial: true });
+    await moreActions.click();
     await expect(page.getByRole("menuitem", { name: "Copy" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Export" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Edit" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Create app" })).toBeVisible();
     await expect(page.getByRole("menuitem", { name: "Observe this agent" })).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(moreActions).toBeFocused();
+    await moreActions.press("Enter");
+    await expect(page.getByRole("menuitem", { name: "Copy" })).toBeVisible();
+    await expect(page.getByRole("menuitem", { name: "Observe this agent" })).toBeVisible();
+    await page.keyboard.press("Escape");
 
     const mastheadBox = await masthead.boundingBox();
     const identityBox = await identity.boundingBox();
@@ -162,7 +194,7 @@ test.describe("Page masthead responsive layout", () => {
 
       const title = page.getByRole("heading", { name: "Jokes Agent" });
       const masthead = title.locator("xpath=ancestor::div[@data-slot='page-masthead'][1]");
-      const identity = masthead.locator('[data-slot="page-masthead-identity"]');
+      const icon = masthead.locator('[data-slot="icon-tile"]');
       const actions = page
         .getByRole("button", { name: "New session" })
         .locator("xpath=ancestor::div[@data-slot='page-masthead-compact-actions'][1]");
@@ -181,14 +213,14 @@ test.describe("Page masthead responsive layout", () => {
       await expect(page.getByRole("menuitem", { name: "Copy" })).toHaveCount(0);
 
       const mastheadBox = await masthead.boundingBox();
-      const identityBox = await identity.boundingBox();
+      const iconBox = await icon.boundingBox();
       const actionsBox = await actions.boundingBox();
       const stripBox = await actionStrip.boundingBox();
       expect(mastheadBox).not.toBeNull();
-      expect(identityBox).not.toBeNull();
+      expect(iconBox).not.toBeNull();
       expect(actionsBox).not.toBeNull();
       expect(stripBox).not.toBeNull();
-      expect(actionsBox!.y + actionsBox!.height).toBeLessThanOrEqual(identityBox!.y);
+      expect(actionsBox!.y + actionsBox!.height).toBeLessThanOrEqual(iconBox!.y);
       expect(stripBox!.width).toBeLessThanOrEqual(mastheadBox!.width);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
         await page.evaluate(() => document.documentElement.clientWidth),
@@ -213,5 +245,30 @@ test.describe("Page masthead responsive layout", () => {
     await expect(page.getByRole("button", { name: "Open navigation" })).toBeHidden();
     await expect(page.getByRole("button", { name: "More actions" })).toBeHidden();
     await expect(page.getByRole("button", { name: "Observe this agent" })).toBeVisible();
+  });
+
+  test("keeps a representative standard-action consumer contained on mobile", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`/harnesses/${HARNESS_ID}`);
+
+    const title = page.getByRole("heading", { name: "Responsive Harness" });
+    const masthead = title.locator("xpath=ancestor::div[@data-slot='page-masthead'][1]");
+    const edit = page.getByRole("link", { name: "Edit" });
+
+    await expect(title).toBeVisible();
+    await expect(page.getByRole("link", { name: "Create app" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Copy", exact: true })).toBeVisible();
+    await expect(edit).toBeVisible();
+    await expect(page.getByRole("button", { name: "Archive" })).toBeVisible();
+    await edit.click({ trial: true });
+
+    const mastheadBox = await masthead.boundingBox();
+    expect(mastheadBox).not.toBeNull();
+    expect(mastheadBox!.x + mastheadBox!.width).toBeLessThanOrEqual(
+      await page.evaluate(() => document.documentElement.clientWidth),
+    );
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+      await page.evaluate(() => document.documentElement.clientWidth),
+    );
   });
 });

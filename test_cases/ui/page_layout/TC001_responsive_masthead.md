@@ -28,9 +28,10 @@ when the app content area narrows.
    appear above the identity while Edit, Create app, Copy, and Export move to a second row. Open
    the overflow menu and confirm Observe this agent is available.
 4. Resize to the mobile viewport. Confirm only `New session` and `More actions` remain visible.
-   Confirm they share the icon row above the title. Open the overflow menu and confirm Copy,
-   Export, Edit, Create app, and Observe this agent are available. Open the mobile navigation
-   drawer and close it with Escape.
+   Confirm they share the icon row above the title. Click `More actions` at its visible center and
+   confirm Copy, Export, Edit, Create app, and Observe this agent are available. Close the menu,
+   focus `More actions`, open it with Enter, then close it with Escape and confirm focus returns to
+   the trigger. Open the mobile navigation drawer and close it with Escape.
 5. Repeat with a long title, a long description, expanded button labels, badges, and metadata.
 6. Inspect representative detail pages for agents, harnesses, apps, capabilities, skills, memory,
    knowledge indexes, agent identities, and sessions.
@@ -42,7 +43,9 @@ when the app content area narrows.
 - Compact desktop and tablet widths show the prioritized controls above the identity and the
   secondary action strip below it.
 - Mobile widths keep the primary action visible and expose every secondary action through the
-  keyboard-accessible overflow menu on the icon row above the title.
+  clickable, keyboard-accessible overflow menu on the icon row above the title.
+- The masthead renders one compact action tree, so browser automation and keyboard focus cannot
+  target a hidden breakpoint-specific duplicate.
 - The desktop sidebar becomes an accessible navigation drawer on mobile, leaving the page a
   readable content width.
 - Long text wraps without horizontal page overflow.
