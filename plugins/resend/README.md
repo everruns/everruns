@@ -5,7 +5,7 @@ server (`https://mcp.resend.com/mcp`) with OAuth.
 
 This plugin is the end-to-end proof for Everruns' inbound plugin support
 (`knowledge/integrations/plugins.md`): a cross-host plugin package whose MCP server requires
-OAuth, installed into Everruns as the `plugin:resend` capability.
+OAuth, installed into Everruns as a stable `plugin:{install_id}` capability.
 
 ## What It Includes
 
@@ -20,7 +20,7 @@ OAuth, installed into Everruns as the `plugin:resend` capability.
 ## Install in Everruns
 
 Install `resend` from the default `everruns` marketplace (Settings →
-Plugins), assign the `plugin:resend` capability to an agent, then connect
+Plugins), assign the Resend capability to an agent, then connect
 Resend under **Settings → Connections**. The OAuth client is registered
 dynamically against `api.resend.com`; tokens are stored encrypted and
 refreshed automatically.

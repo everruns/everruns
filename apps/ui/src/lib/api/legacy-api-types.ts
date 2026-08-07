@@ -3339,7 +3339,7 @@ export type InstalledPluginWarning = string;
 /** An installed plugin (compiled into the capability registry) */
 export interface InstalledPlugin {
   id: string;
-  /** Kebab-case plugin name; capability ref is `plugin:{name}` */
+  /** Kebab-case plugin name used for display and discovery */
   name: string;
   display_name: string | null;
   description: string | null;
@@ -3348,7 +3348,7 @@ export interface InstalledPlugin {
   pinned_sha: string | null;
   /** Name of the marketplace this was installed from */
   marketplace: string | null;
-  /** Capability reference: `plugin:{name}` */
+  /** Stable capability reference: `plugin:{install_id}` */
   capability_ref: string;
   status: InstalledPluginStatus;
   /** Install-time warnings for unsupported plugin components */

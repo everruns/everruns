@@ -237,7 +237,7 @@ impl CapabilityService {
                 definition.description = desc.to_string();
             }
             definition.status = CapabilityStatus::Available;
-            let mut info = plugin_capability_info(&row.name, definition);
+            let mut info = plugin_capability_info(&row.public_id, definition);
             info.agent_count = 0;
             info.harness_count = 0;
             capabilities.push(info);
@@ -385,14 +385,14 @@ impl CapabilityService {
             return Ok(None);
         }
 
-        // Plugin capability — look up by plugin name.
+        // Plugin capability — look up by stable installation public ID.
         if is_plugin_capability(id.as_str()) {
-            let Some(plugin_name) = parse_plugin_capability_id(id.as_str()) else {
+            let Some(plugin_public_id) = parse_plugin_capability_id(id.as_str()) else {
                 return Ok(None);
             };
             if let Some(row) = self
                 .db
-                .get_plugin_install_by_name(org_id, plugin_name)
+                .get_plugin_install_by_public_id(org_id, plugin_public_id)
                 .await?
             {
                 if row.status != "active" {
@@ -414,7 +414,7 @@ impl CapabilityService {
                     definition.description = desc.to_string();
                 }
                 definition.status = CapabilityStatus::Available;
-                return Ok(Some(plugin_capability_info(plugin_name, definition)));
+                return Ok(Some(plugin_capability_info(plugin_public_id, definition)));
             }
             return Ok(None);
         }
@@ -547,12 +547,23 @@ impl CapabilityService {
         let mut system_prompt_parts: Vec<String> = Vec::new();
         let mut tool_definitions: Vec<everruns_core::ToolDefinition> = Vec::new();
 
+        // Plugin and declarative definitions are deliberately not persisted in
+        // agent config. Resolve their current, exact definitions before the
+        // shared collector evaluates dependencies and contributions.
+        let capability_configs =
+            crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+                self.db.as_ref(),
+                org_id,
+                capability_configs.to_vec(),
+            )
+            .await?;
+
         // Separate built-in capabilities from MCP capabilities
         // Skill capabilities (skill:{uuid}) are mount-only; skip in preview.
         let mut mcp_cap_ids: Vec<uuid::Uuid> = Vec::new();
         let mut builtin_cap_configs: Vec<everruns_core::AgentCapabilityConfig> = Vec::new();
 
-        for cap_config in capability_configs {
+        for cap_config in &capability_configs {
             let cap_ref = &cap_config.capability_ref;
             if let Some(server_id) = cap_ref.mcp_server_id() {
                 mcp_cap_ids.push(server_id);

@@ -898,6 +898,13 @@ impl SessionService {
             &merge_capabilities(&effective_harness.capabilities, &agent_capabilities),
             &session_capabilities,
         );
+        let effective_capabilities =
+            crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+                self.db.as_ref(),
+                org_id,
+                effective_capabilities,
+            )
+            .await?;
 
         if let Some(service) = &self.session_sandbox_service {
             service
@@ -1958,7 +1965,20 @@ impl SessionService {
             Vec::new()
         };
         let merged = merge_capabilities(&harness_caps, &agent_caps);
-        merge_capabilities(&merged, session_caps)
+        let merged = merge_capabilities(&merged, session_caps);
+        match crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+            self.db.as_ref(),
+            org_id,
+            merged,
+        )
+        .await
+        {
+            Ok(capabilities) => capabilities,
+            Err(error) => {
+                tracing::warn!(%error, "failed to hydrate session capabilities");
+                Vec::new()
+            }
+        }
     }
 
     /// Fire session-lifecycle hooks (`session_start` / `session_end`) for a
@@ -2131,10 +2151,13 @@ impl SessionService {
             capability_configs = merge_capabilities(&capability_configs, &agent_capabilities);
         }
 
-        Ok(merge_capabilities(
-            &capability_configs,
-            session_capabilities,
-        ))
+        let capability_configs = merge_capabilities(&capability_configs, session_capabilities);
+        crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+            self.db.as_ref(),
+            org_id,
+            capability_configs,
+        )
+        .await
     }
 
     async fn collect_workspace_memory_mounts(
