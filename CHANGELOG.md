@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.17.23] - 2026-08-06
+
+### Highlights
+
+- **New model providers** - Meta Model API and Muse Spark are now available as first-class providers ([#2941](https://github.com/everruns/everruns/pull/2941)).
+- **Host-managed providers** - Org admins now see host-provisioned provider rows as read-only, making platform-managed providers visible without being editable ([#2944](https://github.com/everruns/everruns/pull/2944)).
+
+### What's Changed
+
+- feat(provider): add Meta Model API and Muse Spark ([#2941](https://github.com/everruns/everruns/pull/2941)) by [@chaliy](https://github.com/chaliy)
+- feat(providers): host-managed provider rows (read-only to org admins) ([#2944](https://github.com/everruns/everruns/pull/2944)) by [@chaliy](https://github.com/chaliy)
+- feat(embedding): org-initialization hook for embedder-provisioned org resources ([#2943](https://github.com/everruns/everruns/pull/2943)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump brace-expansion and undici to patched versions (security) ([#2945](https://github.com/everruns/everruns/pull/2945)) by [@chaliy](https://github.com/chaliy)
+- chore(ship): prompt for PR evidence in the ship skill ([#2942](https://github.com/everruns/everruns/pull/2942)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.17.22] - 2026-08-06
 
 ### Highlights
