@@ -50,13 +50,33 @@ jest.mock("@/components/ui/select", () => {
   // Find the SelectTrigger child so its id/aria-label can be lifted onto the
   // native <select> the mock renders (mirrors how the real trigger is the
   // labelable control).
-  function findTrigger(node: mockReact.ReactNode): { id?: string; ariaLabel?: string } {
-    let found: { id?: string; ariaLabel?: string } = {};
+  function findTrigger(node: mockReact.ReactNode): {
+    id?: string;
+    ariaLabel?: string;
+    ariaInvalid?: boolean;
+    ariaDescribedBy?: string;
+  } {
+    let found: {
+      id?: string;
+      ariaLabel?: string;
+      ariaInvalid?: boolean;
+      ariaDescribedBy?: string;
+    } = {};
     mockReact.Children.forEach(node, (child: mockReact.ReactNode) => {
       if (!mockReact.isValidElement(child) || found.id || found.ariaLabel) return;
       if ((child.type as { isSelectTrigger?: boolean }).isSelectTrigger) {
-        const props = child.props as { id?: string; "aria-label"?: string };
-        found = { id: props.id, ariaLabel: props["aria-label"] };
+        const props = child.props as {
+          id?: string;
+          "aria-label"?: string;
+          "aria-invalid"?: boolean;
+          "aria-describedby"?: string;
+        };
+        found = {
+          id: props.id,
+          ariaLabel: props["aria-label"],
+          ariaInvalid: props["aria-invalid"],
+          ariaDescribedBy: props["aria-describedby"],
+        };
         return;
       }
       const nested = findTrigger((child.props as { children?: mockReact.ReactNode }).children);
@@ -81,6 +101,8 @@ jest.mock("@/components/ui/select", () => {
       <select
         id={trigger.id}
         aria-label={trigger.ariaLabel ?? ariaLabel ?? "Source"}
+        aria-invalid={trigger.ariaInvalid}
+        aria-describedby={trigger.ariaDescribedBy}
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
       >
@@ -94,7 +116,13 @@ jest.mock("@/components/ui/select", () => {
   }
   SelectItem.isSelectItem = true;
 
-  function SelectTrigger(_: { children: mockReact.ReactNode; id?: string; "aria-label"?: string }) {
+  function SelectTrigger(_: {
+    children: mockReact.ReactNode;
+    id?: string;
+    "aria-label"?: string;
+    "aria-invalid"?: boolean;
+    "aria-describedby"?: string;
+  }) {
     return null;
   }
   SelectTrigger.isSelectTrigger = true;
@@ -230,8 +258,37 @@ describe("KnowledgeIndexesPage", () => {
     fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "No Model" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create Index" }));
 
-    expect(within(dialog).getByText(/embedding model is required/i)).toBeInTheDocument();
+    const nameInput = within(dialog).getByLabelText("Name");
+    const embeddingModelPicker = within(dialog).getByRole("combobox", {
+      name: "Embedding model",
+    });
+    const error = within(dialog).getByText(/embedding model is required/i);
+
+    expect(nameInput).not.toHaveAttribute("aria-invalid", "true");
+    expect(embeddingModelPicker).toHaveAttribute("aria-invalid", "true");
+    expect(embeddingModelPicker).toHaveAttribute("aria-describedby", error.id);
     expect(mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("associates multiple validation errors with their fields", () => {
+    render(<KnowledgeIndexesPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "New index" }));
+    const dialog = screen.getByRole("dialog");
+    const submitButton = within(dialog).getByRole("button", { name: "Create Index" });
+    fireEvent.submit(submitButton.closest("form")!);
+
+    const nameInput = within(dialog).getByLabelText("Name");
+    const embeddingModelPicker = within(dialog).getByRole("combobox", {
+      name: "Embedding model",
+    });
+    const nameError = within(dialog).getByText(/^name is required$/i);
+    const modelError = within(dialog).getByText(/^embedding model is required$/i);
+
+    expect(nameInput).toHaveAttribute("aria-invalid", "true");
+    expect(nameInput).toHaveAttribute("aria-describedby", nameError.id);
+    expect(embeddingModelPicker).toHaveAttribute("aria-invalid", "true");
+    expect(embeddingModelPicker).toHaveAttribute("aria-describedby", modelError.id);
   });
 
   it("archives an index after confirmation", async () => {

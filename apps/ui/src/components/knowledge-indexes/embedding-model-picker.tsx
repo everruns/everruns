@@ -18,6 +18,8 @@ interface EmbeddingModelPickerProps {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
 }
 
 // A model is treated as an embeddings model when its capabilities advertise
@@ -37,6 +39,8 @@ export function EmbeddingModelPicker({
   placeholder = "Select an embedding model",
   disabled = false,
   className,
+  "aria-invalid": ariaInvalid = false,
+  "aria-describedby": ariaDescribedBy,
 }: EmbeddingModelPickerProps) {
   const { data: models = [], isLoading } = useModels();
 
@@ -56,8 +60,14 @@ export function EmbeddingModelPicker({
   const selectedModel = models.find((m) => m.id === value);
 
   return (
-    <Select value={value || undefined} onValueChange={onChange} disabled={disabled || isLoading}>
-      <SelectTrigger id={id} className={cn("w-full", className)} aria-label="Embedding model">
+    <Select value={value} onValueChange={onChange} disabled={disabled || isLoading}>
+      <SelectTrigger
+        id={id}
+        className={cn("w-full", className)}
+        aria-label="Embedding model"
+        aria-invalid={ariaInvalid}
+        aria-describedby={ariaDescribedBy}
+      >
         <SelectValue placeholder={isLoading ? "Loading models..." : placeholder}>
           {selectedModel
             ? `${selectedModel.display_name} (${selectedModel.provider_name})`
