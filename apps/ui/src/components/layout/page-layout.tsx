@@ -154,23 +154,40 @@ export function PageMasthead({
   className,
 }: PageMastheadProps) {
   return (
-    <div className={cn("flex items-start justify-between gap-4 border-b pb-4", className)}>
-      <div className="flex min-w-0 items-start gap-4">
+    <div
+      data-slot="page-masthead"
+      className={cn("flex flex-wrap items-start gap-4 border-b pb-4", className)}
+    >
+      <div
+        data-slot="page-masthead-identity"
+        className="flex min-w-0 flex-[1_1_20rem] items-start gap-4 max-sm:flex-col"
+      >
         {icon && <IconTile icon={icon} />}
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-2xl font-semibold tracking-tight text-foreground">{title}</h1>
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2.5">
+            <h1 className="min-w-0 break-words text-2xl font-semibold tracking-tight text-foreground">
+              {title}
+            </h1>
             {badges}
           </div>
-          {description && <p className="mt-1.5 text-sm text-muted-foreground">{description}</p>}
+          {description && (
+            <p className="mt-1.5 break-words text-sm text-muted-foreground">{description}</p>
+          )}
           {meta && (
-            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted-foreground">
+            <div className="mt-2 flex min-w-0 flex-wrap gap-x-4 gap-y-1 text-[13px] text-muted-foreground [&>*]:min-w-0 [&>*]:break-words">
               {meta}
             </div>
           )}
         </div>
       </div>
-      {actions && <div className="flex flex-none items-center gap-2">{actions}</div>}
+      {actions && (
+        <div
+          data-slot="page-masthead-actions"
+          className="ml-auto flex max-w-full flex-none flex-wrap items-center justify-end gap-2 [&>a]:max-w-full [&_[data-slot=button]]:h-auto [&_[data-slot=button]]:min-h-8 [&_[data-slot=button]]:max-w-full [&_[data-slot=button]]:whitespace-normal"
+        >
+          {actions}
+        </div>
+      )}
     </div>
   );
 }
