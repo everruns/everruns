@@ -2282,7 +2282,14 @@ async fn test_organization_crud() {
         .expect("Failed to list organizations");
     assert!(orgs.iter().any(|o| o.org_id == org.org_id));
 
-    // Delete organization
+    // Org creation provisions both resources before required initializers run.
+    // They must not block rollback if a required initializer fails.
+    org_init::initialize_org_harnesses(&backend, org.org_id)
+        .await
+        .expect("Failed to initialize org harnesses");
+    org_init::seed_default_plugin_marketplace(&backend, org.org_id).await;
+
+    // Delete organization, including its provisioned resources.
     let deleted = backend
         .delete_organization(org.org_id)
         .await
