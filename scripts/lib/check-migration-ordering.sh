@@ -4,7 +4,7 @@
 # every .sql file uses the required NNN_<description>.sql naming
 # (zero-padded 3-digit prefix).
 #
-# Spec: specs/migrations.md ("Sequential Ordering Validation")
+# Spec: knowledge/operations/migrations.md ("Sequential Ordering Validation")
 # Used by: scripts/lib/pre-push.sh, scripts/lib/pre-pr.sh, /ship skill.
 #
 # Exits 0 on success, 1 on violation. Always exits non-zero (never silently
@@ -38,7 +38,7 @@ for f in "${sql_files[@]}"; do
   name=$(basename "$f")
   if ! [[ "$name" =~ ^([0-9]{3})_.+\.sql$ ]]; then
     echo "error: $name does not match required NNN_<description>.sql format"
-    echo "fix: use a zero-padded 3-digit prefix (see specs/migrations.md)"
+    echo "fix: use a zero-padded 3-digit prefix (see knowledge/operations/migrations.md)"
     exit 1
   fi
   prefix="${BASH_REMATCH[1]}"
@@ -48,7 +48,7 @@ for f in "${sql_files[@]}"; do
     if [ -n "$LAST_FILE" ]; then
       echo "previous file: $(basename "$LAST_FILE")"
     fi
-    echo "fix: renumber to the next available number (see specs/migrations.md)"
+    echo "fix: renumber to the next available number (see knowledge/operations/migrations.md)"
     exit 1
   fi
   LAST_FILE="$f"

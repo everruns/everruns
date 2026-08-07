@@ -17,6 +17,7 @@ import type {
   PreviewAgentRequest,
   RollbackAgentVersionRequest,
   ResourceStats,
+  PaginatedResponse,
   SetDefaultAgentVersionRequest,
   UpdateAgentRequest,
 } from "./types";
@@ -31,6 +32,16 @@ export const getAgent = agentsCrudApi.get;
 export const updateAgent = agentsCrudApi.update;
 export const deleteAgent = agentsCrudApi.delete;
 export const destroyAgent = agentsCrudApi.destroy;
+
+/** Lazy, server-filtered agent search used by browser-native UI integrations. */
+export async function searchAgents(
+  query: string,
+  limit: number,
+): Promise<PaginatedResponse<Agent>> {
+  const params = new URLSearchParams({ search: query, limit: String(limit) });
+  const response = await api.get<PaginatedResponse<Agent>>(`/v1/agents?${params.toString()}`);
+  return response.data;
+}
 
 export async function exportAgent(agentId: string): Promise<string> {
   // Raw fetch needed: returns text/markdown, not JSON

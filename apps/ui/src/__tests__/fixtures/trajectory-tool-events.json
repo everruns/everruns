@@ -1,0 +1,304 @@
+[
+  {
+    "id": "event_input",
+    "type": "input.message",
+    "ts": "2026-08-06T12:00:00.000Z",
+    "session_id": "session_fixture",
+    "sequence": 1,
+    "context": {},
+    "data": {
+      "message": {
+        "id": "message_input",
+        "role": "user",
+        "content": [{ "type": "text", "text": "Inspect the workspace and run the tests." }]
+      }
+    }
+  },
+  {
+    "id": "event_turn_started",
+    "type": "turn.started",
+    "ts": "2026-08-06T12:00:00.010Z",
+    "session_id": "session_fixture",
+    "sequence": 2,
+    "context": { "turn_id": "turn_fixture", "input_message_id": "message_input" },
+    "data": { "turn_id": "turn_fixture", "input_message_id": "message_input" }
+  },
+  {
+    "id": "event_reason_1",
+    "type": "reason.completed",
+    "ts": "2026-08-06T12:00:01.000Z",
+    "session_id": "session_fixture",
+    "sequence": 3,
+    "context": {
+      "turn_id": "turn_fixture",
+      "input_message_id": "message_input",
+      "exec_id": "exec_1"
+    },
+    "data": { "success": true, "has_tool_calls": true, "tool_call_count": 2, "duration_ms": 990 }
+  },
+  {
+    "id": "event_act_1",
+    "type": "act.started",
+    "ts": "2026-08-06T12:00:01.010Z",
+    "session_id": "session_fixture",
+    "sequence": 4,
+    "context": {
+      "turn_id": "turn_fixture",
+      "input_message_id": "message_input",
+      "exec_id": "exec_1"
+    },
+    "data": {
+      "headline": "Reading package metadata and source",
+      "tool_calls": [
+        {
+          "id": "call_package",
+          "name": "read_file",
+          "display_name": "Read file",
+          "narration": "Read package.json"
+        },
+        {
+          "id": "call_source",
+          "name": "read_file",
+          "display_name": "Read file",
+          "narration": "Read trajectory-utils.ts"
+        }
+      ]
+    }
+  },
+  {
+    "id": "event_tool_started_package",
+    "type": "tool.started",
+    "ts": "2026-08-06T12:00:01.020Z",
+    "session_id": "session_fixture",
+    "sequence": 5,
+    "context": {
+      "turn_id": "turn_fixture",
+      "input_message_id": "message_input",
+      "exec_id": "exec_1"
+    },
+    "data": {
+      "tool_call": {
+        "id": "call_package",
+        "name": "read_file",
+        "arguments": { "path": "apps/ui/package.json" }
+      },
+      "display_name": "Read file",
+      "narration": "Read package.json"
+    }
+  },
+  {
+    "id": "event_tool_started_source",
+    "type": "tool.started",
+    "ts": "2026-08-06T12:00:01.021Z",
+    "session_id": "session_fixture",
+    "sequence": 6,
+    "context": {
+      "turn_id": "turn_fixture",
+      "input_message_id": "message_input",
+      "exec_id": "exec_1"
+    },
+    "data": {
+      "tool_call": {
+        "id": "call_source",
+        "name": "read_file",
+        "arguments": {
+          "path": "apps/ui/src/components/trajectory/trajectory-utils.ts",
+          "api_key": "fixture-secret"
+        }
+      },
+      "display_name": "Read file",
+      "narration": "Read trajectory-utils.ts"
+    }
+  },
+  {
+    "id": "event_tool_completed_source",
+    "type": "tool.completed",
+    "ts": "2026-08-06T12:00:01.060Z",
+    "session_id": "session_fixture",
+    "sequence": 7,
+    "context": {
+      "turn_id": "turn_fixture",
+      "input_message_id": "message_input",
+      "exec_id": "exec_1"
+    },
+    "data": {
+      "tool_call_id": "call_source",
+      "tool_name": "read_file",
+      "display_name": "Read file",
+      "success": false,
+      "status": "error",
+      "error": "File not found",
+      "duration_ms": 39,
+      "narration": "Could not read trajectory-utils.ts"
+    }
+  },
+  {
+    "id": "event_tool_completed_package",
+    "type": "tool.completed",
+    "ts": "2026-08-06T12:00:01.080Z",
+    "session_id": "session_fixture",
+    "sequence": 8,
+    "context": {
+      "turn_id": "turn_fixture",
+      "input_message_id": "message_input",
+      "exec_id": "exec_1"
+    },
+    "data": {
+      "tool_call_id": "call_package",
+      "tool_name": "read_file",
+      "display_name": "Read file",
+      "success": true,
+      "status": "success",
+      "result": [{ "type": "text", "text": "{\"name\":\"everruns-ui\",\"private\":true}" }],
+      "duration_ms": 58,
+      "narration": "Read package.json"
+    }
+  },
+  {
+    "id": "event_act_1_completed",
+    "type": "act.completed",
+    "ts": "2026-08-06T12:00:01.090Z",
+    "session_id": "session_fixture",
+    "sequence": 9,
+    "context": {
+      "turn_id": "turn_fixture",
+      "input_message_id": "message_input",
+      "exec_id": "exec_1"
+    },
+    "data": { "completed": true, "success_count": 1, "error_count": 1, "duration_ms": 80 }
+  },
+  {
+    "id": "event_reason_2",
+    "type": "reason.completed",
+    "ts": "2026-08-06T12:00:02.000Z",
+    "session_id": "session_fixture",
+    "sequence": 10,
+    "context": {
+      "turn_id": "turn_fixture",
+      "input_message_id": "message_input",
+      "exec_id": "exec_2"
+    },
+    "data": { "success": true, "has_tool_calls": true, "tool_call_count": 1, "duration_ms": 910 }
+  },
+  {
+    "id": "event_act_2",
+    "type": "act.started",
+    "ts": "2026-08-06T12:00:02.010Z",
+    "session_id": "session_fixture",
+    "sequence": 11,
+    "context": {
+      "turn_id": "turn_fixture",
+      "input_message_id": "message_input",
+      "exec_id": "exec_2"
+    },
+    "data": {
+      "headline": "Running UI tests",
+      "tool_calls": [
+        { "id": "call_test", "name": "bash", "display_name": "Shell", "narration": "Run UI tests" }
+      ]
+    }
+  },
+  {
+    "id": "event_tool_started_test",
+    "type": "tool.started",
+    "ts": "2026-08-06T12:00:02.020Z",
+    "session_id": "session_fixture",
+    "sequence": 12,
+    "context": {
+      "turn_id": "turn_fixture",
+      "input_message_id": "message_input",
+      "exec_id": "exec_2"
+    },
+    "data": {
+      "tool_call": {
+        "id": "call_test",
+        "name": "bash",
+        "arguments": { "command": "pnpm test trajectory" }
+      },
+      "display_name": "Shell",
+      "narration": "Run UI tests"
+    }
+  },
+  {
+    "id": "event_tool_completed_test",
+    "type": "tool.completed",
+    "ts": "2026-08-06T12:00:03.270Z",
+    "session_id": "session_fixture",
+    "sequence": 13,
+    "context": {
+      "turn_id": "turn_fixture",
+      "input_message_id": "message_input",
+      "exec_id": "exec_2"
+    },
+    "data": {
+      "tool_call_id": "call_test",
+      "tool_name": "bash",
+      "display_name": "Shell",
+      "success": true,
+      "status": "success",
+      "result": [
+        {
+          "type": "text",
+          "text": "{\"stdout\":\"3 tests passed\",\"stderr\":\"\",\"exit_code\":0,\"success\":true}"
+        }
+      ],
+      "duration_ms": 1250,
+      "narration": "Ran UI tests"
+    }
+  },
+  {
+    "id": "event_act_2_completed",
+    "type": "act.completed",
+    "ts": "2026-08-06T12:00:03.280Z",
+    "session_id": "session_fixture",
+    "sequence": 14,
+    "context": {
+      "turn_id": "turn_fixture",
+      "input_message_id": "message_input",
+      "exec_id": "exec_2"
+    },
+    "data": { "completed": true, "success_count": 1, "error_count": 0, "duration_ms": 1270 }
+  },
+  {
+    "id": "event_reason_3",
+    "type": "reason.completed",
+    "ts": "2026-08-06T12:00:04.000Z",
+    "session_id": "session_fixture",
+    "sequence": 15,
+    "context": {
+      "turn_id": "turn_fixture",
+      "input_message_id": "message_input",
+      "exec_id": "exec_3"
+    },
+    "data": { "success": true, "has_tool_calls": false, "tool_call_count": 0, "duration_ms": 720 }
+  },
+  {
+    "id": "event_output",
+    "type": "output.message.completed",
+    "ts": "2026-08-06T12:00:04.010Z",
+    "session_id": "session_fixture",
+    "sequence": 16,
+    "context": {
+      "turn_id": "turn_fixture",
+      "input_message_id": "message_input",
+      "exec_id": "exec_3"
+    },
+    "data": {
+      "message": {
+        "id": "message_output",
+        "role": "agent",
+        "phase": "completed",
+        "content": [{ "type": "text", "text": "The tests pass." }]
+      }
+    }
+  },
+  {
+    "id": "event_turn_completed",
+    "type": "turn.completed",
+    "ts": "2026-08-06T12:00:04.020Z",
+    "session_id": "session_fixture",
+    "sequence": 17,
+    "context": { "turn_id": "turn_fixture", "input_message_id": "message_input" },
+    "data": { "turn_id": "turn_fixture", "duration_ms": 4020, "iterations": 3 }
+  }
+]

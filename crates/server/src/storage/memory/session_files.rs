@@ -294,7 +294,7 @@ impl InMemoryDatabase {
         &self,
         session_id: Uuid,
         pattern: &str,
-        path_prefix: Option<&str>,
+        path_pattern: Option<&str>,
         max_file_bytes: i64,
     ) -> Result<Vec<SessionFileInfoRow>> {
         let session_id = SessionId::from_uuid(session_id);
@@ -311,10 +311,10 @@ impl InMemoryDatabase {
                 if f.size_bytes > max_file_bytes {
                     return false;
                 }
-                if let Some(prefix) = path_prefix
-                    && !f.path.starts_with(prefix)
-                {
-                    return false;
+                // The service applies glob semantics before fetching content.
+                // Return metadata only so excluded paths are never regex-scanned.
+                if path_pattern.is_some() {
+                    return true;
                 }
                 // Content is Vec<u8>, convert to str for regex matching
                 f.content

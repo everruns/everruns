@@ -43,6 +43,11 @@ const DEFAULT_API_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_MODELS_URL: &str = "https://api.anthropic.com/v1/models";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 
+/// Message-level prompt-cache breakpoints per request. Anthropic allows four
+/// in total; the system prompt and the tool array take one each, leaving two
+/// for the transcript. See `mark_recent_text_blocks_for_cache`.
+const MESSAGE_CACHE_BREAKPOINTS: usize = 2;
+
 /// Anthropic Claude Chat Driver
 ///
 /// Implements `ChatDriver` for Anthropic's Messages API.
@@ -120,13 +125,16 @@ impl AnthropicChatDriver {
         wants_million_context: bool,
         max_tokens_from_profile: bool,
         model: &str,
+        retries_consumed: u32,
     ) -> Result<(reqwest::Response, RetryMetadata)> {
         let last_error: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
         let max_tokens_fallback_attempted = Arc::new(Mutex::new(false));
         let beta_logged = Arc::new(Mutex::new(false));
+        let mut retry_config = self.retry_config.clone();
+        retry_config.max_retries = retry_config.max_retries.saturating_sub(retries_consumed);
 
         retry_request(
-            &self.retry_config,
+            &retry_config,
             "AnthropicDriver",
             || {
                 let request = Arc::clone(&request);
@@ -384,27 +392,42 @@ impl AnthropicChatDriver {
         })
     }
 
-    /// Place the message-level prompt-cache breakpoint on the last text block,
-    /// skipping `volatile_suffix_len` trailing messages.
+    /// Place the message-level prompt-cache breakpoints on the last text
+    /// blocks, skipping `volatile_suffix_len` trailing messages.
     ///
     /// The runtime appends volatile content (a live `<facts>` block that changes
-    /// every turn) after the last stable message. Anchoring the breakpoint on
+    /// every turn) after the last stable message. Anchoring a breakpoint on
     /// that volatile tail would make the cached prefix diverge from the next
     /// turn's prefix right after the last stable message, evicting the
     /// conversation-history cache. Skipping the volatile suffix keeps the
-    /// breakpoint on the last stable block, so the trailing block rides as an
+    /// breakpoints on stable blocks, so the trailing block rides as an
     /// uncached suffix while everything before it stays cached.
-    fn mark_last_text_block_for_cache(
+    ///
+    /// Two breakpoints, not one, and the pair is what makes caching
+    /// *incremental*: the newest marks where this turn's history gets written,
+    /// the one behind it sits at a position the previous turn already wrote, so
+    /// each turn reads the cache its predecessor created instead of re-paying
+    /// for the whole transcript. With the system prompt and the tool array this
+    /// totals four, Anthropic's per-request maximum.
+    fn mark_recent_text_blocks_for_cache(
         messages: &mut [AnthropicMessage],
         volatile_suffix_len: usize,
     ) {
         let anchor_len = messages.len().saturating_sub(volatile_suffix_len);
+        let mut remaining = MESSAGE_CACHE_BREAKPOINTS;
         for msg in messages[..anchor_len].iter_mut().rev() {
+            // At most one breakpoint per message: a second marker inside the
+            // same message would spend a scarce breakpoint on a position the
+            // first one already covers.
             for block in msg.content.iter_mut().rev() {
                 if let AnthropicContentBlock::Text { cache_control, .. } = block {
                     *cache_control = Some(AnthropicCacheControl::ephemeral());
-                    return;
+                    remaining -= 1;
+                    break;
                 }
+            }
+            if remaining == 0 {
+                return;
             }
         }
     }
@@ -555,7 +578,7 @@ impl AnthropicChatDriver {
         }
 
         if prompt_cache_enabled {
-            Self::mark_last_text_block_for_cache(&mut converted, volatile_suffix_len);
+            Self::mark_recent_text_blocks_for_cache(&mut converted, volatile_suffix_len);
         }
 
         (system_prompt, converted)
@@ -620,7 +643,7 @@ impl AnthropicChatDriver {
     /// When deferral is active (above threshold), per-tool prompt-cache
     /// breakpoints are skipped: deferred tools are not part of the cached prefix,
     /// so a `cache_control` marker on them is pointless (system-prompt caching
-    /// still applies via `mark_last_text_block_for_cache`). Below threshold this
+    /// still applies via `mark_recent_text_blocks_for_cache`). Below threshold this
     /// delegates to the standard `convert_tools`, so `prompt_cache_enabled` is
     /// threaded through — hardcoding it would silently drop the tools-list cache
     /// breakpoint whenever tool_search is configured but inactive.
@@ -825,13 +848,14 @@ impl ChatDriver for AnthropicChatDriver {
         // failures, and the max_tokens fallback) are handled inside the
         // per-attempt send.
         let (event_stream, retry_metadata) =
-            connect_sse_with_reconnect(&self.retry_config, "AnthropicDriver", |_attempt| {
+            connect_sse_with_reconnect(&self.retry_config, "AnthropicDriver", |attempts| {
                 self.send_messages_request(
                     Arc::clone(&request),
                     needs_interleaved_thinking,
                     wants_million_context,
                     max_tokens_from_profile,
                     &config.model,
+                    attempts,
                 )
             })
             .await?;
@@ -1119,6 +1143,7 @@ impl ChatDriver for AnthropicChatDriver {
             .map(|m| {
                 let profile = Some(m.to_discovered_profile());
                 DiscoveredModel {
+                    capabilities: vec!["chat".to_string()],
                     model_id: m.id,
                     display_name: Some(m.display_name),
                     created_at: m
@@ -2150,7 +2175,67 @@ mod tests {
         let json = serde_json::to_value(&converted).unwrap();
         let cache_controls = json.to_string().matches("cache_control").count();
 
-        assert_eq!(cache_controls, 1);
+        // Two message-level breakpoints, one per message — never two inside the
+        // same message, and never more than the transcript's share of
+        // Anthropic's four-breakpoint budget.
+        assert_eq!(cache_controls, MESSAGE_CACHE_BREAKPOINTS);
+        assert_eq!(json[0]["content"][0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(json[1]["content"][0]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_cache_breakpoints_trail_the_conversation_incrementally() {
+        // Each turn writes a breakpoint at its own tail and leaves one at a
+        // position the previous turn already wrote, so the next request reads
+        // the cache instead of re-paying for the transcript.
+        let msg = |role: LlmMessageRole, s: &str| LlmMessage {
+            role,
+            content: LlmMessageContent::Text(s.to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            phase: None,
+            thinking: None,
+            thinking_signature: None,
+        };
+        let messages = vec![
+            msg(LlmMessageRole::User, "turn 1"),
+            msg(LlmMessageRole::Assistant, "reply 1"),
+            msg(LlmMessageRole::User, "turn 2"),
+            msg(LlmMessageRole::Assistant, "reply 2"),
+        ];
+
+        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, true, 0);
+        let json = serde_json::to_value(&converted).unwrap();
+
+        assert_eq!(
+            json.to_string().matches("cache_control").count(),
+            MESSAGE_CACHE_BREAKPOINTS
+        );
+        // The two most recent messages carry them; older history rides inside
+        // the cached prefix.
+        assert!(json[0]["content"][0].get("cache_control").is_none());
+        assert!(json[1]["content"][0].get("cache_control").is_none());
+        assert_eq!(json[2]["content"][0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(json[3]["content"][0]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_cache_breakpoints_are_capped_by_available_messages() {
+        // A single-message request cannot spend two breakpoints.
+        let messages = vec![LlmMessage {
+            role: LlmMessageRole::User,
+            content: LlmMessageContent::Text("only message".to_string()),
+            tool_calls: None,
+            tool_call_id: None,
+            phase: None,
+            thinking: None,
+            thinking_signature: None,
+        }];
+
+        let (_, converted) = AnthropicChatDriver::convert_messages(&messages, true, 0);
+        let json = serde_json::to_value(&converted).unwrap();
+
+        assert_eq!(json.to_string().matches("cache_control").count(), 1);
     }
 
     #[test]
@@ -2171,7 +2256,8 @@ mod tests {
             msg(LlmMessageRole::User, "<facts>\n- current_time: X\n</facts>"),
         ];
 
-        // With no volatile suffix, the breakpoint anchors on the last message.
+        // With no volatile suffix, the newest breakpoint anchors on the last
+        // message.
         let (_, base) = AnthropicChatDriver::convert_messages(&messages, true, 0);
         let base_json = serde_json::to_value(&base).unwrap();
         assert_eq!(
@@ -2189,7 +2275,13 @@ mod tests {
             "volatile tail must not be cache-anchored"
         );
         assert_eq!(json[1]["content"][0]["cache_control"]["type"], "ephemeral");
-        assert_eq!(json.to_string().matches("cache_control").count(), 1);
+        // The second breakpoint falls back onto the stable history behind it,
+        // never onto the volatile tail.
+        assert_eq!(json[0]["content"][0]["cache_control"]["type"], "ephemeral");
+        assert_eq!(
+            json.to_string().matches("cache_control").count(),
+            MESSAGE_CACHE_BREAKPOINTS
+        );
     }
 
     #[test]

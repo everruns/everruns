@@ -3,7 +3,7 @@
 # Decision: Separate crate from core — mirrors crates/openui/ and reusable elsewhere.
 # Decision: Static catalog definitions (no runtime validation) — we only need prompt text.
 # Decision: JSON wire format (not a DSL) — A2UI spec is JSON, enabling cross-framework renderers.
-# Ref: specs/a2ui.md
+# Ref: knowledge/ui/a2ui.md
 # Ref: https://github.com/google/a2ui
 
 [package]

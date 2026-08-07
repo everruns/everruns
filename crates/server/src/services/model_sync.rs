@@ -215,6 +215,7 @@ impl ModelSyncService {
                     let update = UpdateModel {
                         last_seen_at: Some(now),
                         provider_metadata: Some(metadata),
+                        capabilities: Some(model.capabilities.clone()),
                         ..Default::default()
                     };
                     self.db
@@ -234,7 +235,7 @@ impl ModelSyncService {
                     provider_id: provider.id,
                     model_id: model.model_id.clone(),
                     display_name,
-                    capabilities: vec![],
+                    capabilities: model.capabilities.clone(),
                     enabled: false,
                     is_favorite: false,
                     source: "discovered".to_string(),

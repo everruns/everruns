@@ -1,12 +1,12 @@
-//! Multi-era MCP protocol support (specs/mcp-servers.md "Multi-era protocol
+//! Multi-era MCP protocol support (knowledge/integrations/mcp-servers.md "Multi-era protocol
 //! support").
 //!
 //! Everruns' MCP client speaks three eras with one code path:
 //!
-//! - Legacy `2025-03-26` / current `2025-06-18` are *stateful*: the client runs
-//!   the `initialize` handshake, echoes any `Mcp-Session-Id` it receives, and
+//! - `2025-03-26` / `2025-06-18` are *stateful*: the client runs the
+//!   `initialize` handshake, echoes any `Mcp-Session-Id` it receives, and
 //!   sends `notifications/initialized`.
-//! - RC `2026-07-28` is *stateless*: no handshake, protocol version + client
+//! - `2026-07-28` is *stateless*: no handshake, protocol version + client
 //!   info ride in `_meta` on every request, and routable headers let edge
 //!   infrastructure route without parsing the body.
 //!
@@ -15,22 +15,26 @@
 //! orchestration that uses them lives in [`crate::http`].
 
 use everruns_core::{
-    MCP_PROTOCOL_VERSION_LEGACY, MCP_PROTOCOL_VERSION_RC, MCP_PROTOCOL_VERSION_STABLE,
+    MCP_PROTOCOL_VERSION_2025_03, MCP_PROTOCOL_VERSION_2025_06, MCP_PROTOCOL_VERSION_2026_07,
     McpProtocolMode,
 };
 use serde_json::{Map, Value, json};
 use std::collections::BTreeMap;
+use std::time::Duration;
 
 /// Client name advertised to MCP servers.
 pub const CLIENT_NAME: &str = "everruns";
 /// Client version advertised to MCP servers (this crate's version).
 pub const CLIENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Canonical `_meta` key carrying client info, per the 2026 spec.
+/// Canonical `_meta` keys the 2026 spec requires on every request. They replace
+/// what the `initialize` handshake used to establish once per connection.
 const CLIENT_INFO_META_KEY: &str = "io.modelcontextprotocol/clientInfo";
+const PROTOCOL_VERSION_META_KEY: &str = "io.modelcontextprotocol/protocolVersion";
+const CLIENT_CAPABILITIES_META_KEY: &str = "io.modelcontextprotocol/clientCapabilities";
 
 /// Routable headers (SEP-2243) — let gateways route/throttle without parsing
-/// the JSON body. Additive and ignored by pre-RC servers.
+/// the JSON body. Additive and ignored by 2025-era servers.
 pub const HEADER_PROTOCOL_VERSION: &str = "MCP-Protocol-Version";
 pub const HEADER_METHOD: &str = "Mcp-Method";
 pub const HEADER_NAME: &str = "Mcp-Name";
@@ -40,18 +44,38 @@ pub const HEADER_SESSION_ID: &str = "Mcp-Session-Id";
 /// Default stateful era to request when `Auto` falls back to a handshake. The
 /// server's `initialize` response decides the actual negotiated version; this
 /// is only the client's *preferred* version in the handshake.
-pub const DEFAULT_STATEFUL_VERSION: &str = MCP_PROTOCOL_VERSION_STABLE;
+pub const DEFAULT_STATEFUL_VERSION: &str = MCP_PROTOCOL_VERSION_2025_06;
 
 /// Client identity object (`{ "name", "version" }`).
 pub fn client_info() -> Value {
     json!({ "name": CLIENT_NAME, "version": CLIENT_VERSION })
 }
 
+/// Capabilities this client advertises.
+///
+/// Deliberately empty: `elicitation`, `sampling`, and `roots` all require a
+/// user or model to answer a server-initiated request mid-call, which this
+/// transport has no way to reach. Declaring them absent is load-bearing, not
+/// cosmetic — under MRTR a server **MUST NOT** ask for an input type the client
+/// did not declare, so an accurate declaration is what keeps servers from
+/// blocking on prompts nobody can answer.
+pub fn client_capabilities() -> Value {
+    json!({})
+}
+
 /// The `_meta` object carried on every request body in the stateless era.
-/// Additive for stateful servers, which ignore unknown `params._meta`.
-pub fn request_meta() -> Value {
+///
+/// Carries what the `initialize` handshake used to negotiate once: protocol
+/// version, client identity, and client capabilities. Additive for stateful
+/// servers, which ignore unknown `params._meta`.
+pub fn request_meta(version: &str) -> Value {
     let mut meta = Map::new();
+    meta.insert(PROTOCOL_VERSION_META_KEY.to_string(), json!(version));
     meta.insert(CLIENT_INFO_META_KEY.to_string(), client_info());
+    meta.insert(
+        CLIENT_CAPABILITIES_META_KEY.to_string(),
+        client_capabilities(),
+    );
     Value::Object(meta)
 }
 
@@ -69,17 +93,17 @@ pub fn routable_headers(version: &str, method: &str, name: Option<&str>) -> Vec<
 }
 
 /// `tools/list` request body, carrying `_meta`.
-pub fn tools_list_body(id: i64) -> Value {
+pub fn tools_list_body(id: i64, version: &str) -> Value {
     json!({
         "jsonrpc": "2.0",
         "id": id,
         "method": "tools/list",
-        "params": { "_meta": request_meta() }
+        "params": { "_meta": request_meta(version) }
     })
 }
 
 /// `tools/call` request body, carrying `_meta`.
-pub fn tools_call_body(id: i64, name: &str, arguments: &Value) -> Value {
+pub fn tools_call_body(id: i64, name: &str, arguments: &Value, version: &str) -> Value {
     json!({
         "jsonrpc": "2.0",
         "id": id,
@@ -87,9 +111,31 @@ pub fn tools_call_body(id: i64, name: &str, arguments: &Value) -> Value {
         "params": {
             "name": name,
             "arguments": arguments,
-            "_meta": request_meta(),
+            "_meta": request_meta(version),
         }
     })
+}
+
+/// `tools/call` retry body for a multi round-trip request.
+///
+/// Echoes `requestState` back verbatim — it is opaque server state that the
+/// client must not inspect or alter — and uses a **different** JSON-RPC id from
+/// the request that produced the `input_required` result, since MRTR treats the
+/// retry as an independent request.
+pub fn tools_call_retry_body(
+    id: i64,
+    name: &str,
+    arguments: &Value,
+    version: &str,
+    request_state: Option<&str>,
+) -> Value {
+    let mut body = tools_call_body(id, name, arguments, version);
+    if let Some(request_state) = request_state
+        && let Some(params) = body["params"].as_object_mut()
+    {
+        params.insert("requestState".to_string(), json!(request_state));
+    }
+    body
 }
 
 /// `initialize` handshake body for the given (preferred) protocol version.
@@ -121,6 +167,83 @@ pub fn protocol_version_from_initialize(body: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// A `resultType: "input_required"` result — the multi round-trip request
+/// (MRTR) pattern that replaced server-initiated requests in `2026-07-28`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InputRequired {
+    /// Server-assigned keys naming the inputs it wants (`elicitation/create`,
+    /// `sampling/createMessage`, `roots/list`). Empty when the server only
+    /// needs the round trip itself.
+    pub input_request_keys: Vec<String>,
+    /// Opaque server state to echo back on the retry, if any.
+    pub request_state: Option<String>,
+}
+
+/// Read an `input_required` result from a JSON-RPC result body, if that is what
+/// it is. Returns `None` for ordinary (`complete`) results.
+pub fn input_required_from_result(body: &str) -> Option<InputRequired> {
+    let value: Value = serde_json::from_str(body).ok()?;
+    let result = value.get("result")?;
+    if result.get("resultType")?.as_str()? != "input_required" {
+        return None;
+    }
+    let input_request_keys = result
+        .get("inputRequests")
+        .and_then(Value::as_object)
+        .map(|requests| requests.keys().cloned().collect())
+        .unwrap_or_default();
+    Some(InputRequired {
+        input_request_keys,
+        request_state: result
+            .get("requestState")
+            .and_then(Value::as_str)
+            .map(str::to_string),
+    })
+}
+
+/// Who may reuse a cached result, per the `2026-07-28` caching spec.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CacheScope {
+    /// No caller-specific data — reusable across authorization contexts.
+    Public,
+    /// Reusable only within the authorization context that fetched it.
+    Private,
+}
+
+/// Server-provided caching hints on a `2026-07-28` list/read result.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CacheHints {
+    /// How long the result may be considered fresh.
+    pub ttl: Duration,
+    /// Who may reuse it.
+    pub scope: CacheScope,
+}
+
+/// Read `ttlMs` / `cacheScope` from a JSON-RPC result body.
+///
+/// Returns `None` when the result is not cacheable, which per spec covers every
+/// case that is not an explicitly positive `ttlMs`: absent (2025-era servers),
+/// zero, or negative (which clients must treat as zero). An unrecognized or
+/// missing `cacheScope` is read as `Private` — the conservative direction, since
+/// treating caller-specific data as public would leak it across authorization
+/// contexts.
+pub fn cache_hints_from_result(body: &str) -> Option<CacheHints> {
+    let value: Value = serde_json::from_str(body).ok()?;
+    let result = value.get("result")?;
+    let ttl_ms = result.get("ttlMs")?.as_i64()?;
+    if ttl_ms <= 0 {
+        return None;
+    }
+    let scope = match result.get("cacheScope").and_then(Value::as_str) {
+        Some("public") => CacheScope::Public,
+        _ => CacheScope::Private,
+    };
+    Some(CacheHints {
+        ttl: Duration::from_millis(ttl_ms as u64),
+        scope,
+    })
+}
+
 /// Case-insensitive lookup of the `Mcp-Session-Id` response header.
 pub fn session_id_from_headers(headers: &BTreeMap<String, String>) -> Option<String> {
     headers
@@ -144,7 +267,7 @@ pub fn looks_like_handshake_required(status: u16, body: &str) -> bool {
     {
         return true;
     }
-    // Some stable servers reject the optimistic RC header before they can
+    // Some 2025-era servers reject the optimistic 2026 header before they can
     // report a session requirement. Keep this limited to explicit protocol
     // version language so unrelated validation failures do not trigger a retry.
     if status == 400
@@ -176,7 +299,7 @@ pub struct Negotiated {
 }
 
 impl Negotiated {
-    /// Stateless negotiation (RC): no handshake, no session id.
+    /// Stateless negotiation (2026-07-28): no handshake, no session id.
     pub fn stateless(version: impl Into<String>) -> Self {
         Self {
             version: version.into(),
@@ -189,16 +312,16 @@ impl Negotiated {
     /// `Auto` starts stateless and may fall back on the first failure.
     pub fn initial_for_mode(mode: McpProtocolMode) -> Self {
         match mode {
-            McpProtocolMode::Auto | McpProtocolMode::Rc => {
-                Negotiated::stateless(MCP_PROTOCOL_VERSION_RC)
+            McpProtocolMode::Auto | McpProtocolMode::V2026July => {
+                Negotiated::stateless(MCP_PROTOCOL_VERSION_2026_07)
             }
-            McpProtocolMode::Stable => Self {
-                version: MCP_PROTOCOL_VERSION_STABLE.to_string(),
+            McpProtocolMode::V2025June => Self {
+                version: MCP_PROTOCOL_VERSION_2025_06.to_string(),
                 stateful: true,
                 session_id: None,
             },
-            McpProtocolMode::Legacy => Self {
-                version: MCP_PROTOCOL_VERSION_LEGACY.to_string(),
+            McpProtocolMode::V2025March => Self {
+                version: MCP_PROTOCOL_VERSION_2025_03.to_string(),
                 stateful: true,
                 session_id: None,
             },
@@ -212,7 +335,7 @@ mod tests {
 
     #[test]
     fn request_meta_carries_client_info_under_canonical_key() {
-        let meta = request_meta();
+        let meta = request_meta(MCP_PROTOCOL_VERSION_2026_07);
         let info = meta.get(CLIENT_INFO_META_KEY).expect("client info present");
         assert_eq!(info.get("name").and_then(|v| v.as_str()), Some(CLIENT_NAME));
         assert_eq!(
@@ -223,14 +346,14 @@ mod tests {
 
     #[test]
     fn routable_headers_include_name_only_for_calls() {
-        let list = routable_headers(MCP_PROTOCOL_VERSION_RC, "tools/list", None);
+        let list = routable_headers(MCP_PROTOCOL_VERSION_2026_07, "tools/list", None);
         assert!(list.iter().all(|(k, _)| k != HEADER_NAME));
         assert!(
             list.iter()
-                .any(|(k, v)| k == HEADER_PROTOCOL_VERSION && v == MCP_PROTOCOL_VERSION_RC)
+                .any(|(k, v)| k == HEADER_PROTOCOL_VERSION && v == MCP_PROTOCOL_VERSION_2026_07)
         );
 
-        let call = routable_headers(MCP_PROTOCOL_VERSION_RC, "tools/call", Some("search"));
+        let call = routable_headers(MCP_PROTOCOL_VERSION_2026_07, "tools/call", Some("search"));
         assert!(call.iter().any(|(k, v)| k == HEADER_NAME && v == "search"));
         assert!(
             call.iter()
@@ -240,9 +363,14 @@ mod tests {
 
     #[test]
     fn bodies_carry_meta() {
-        let list = tools_list_body(1);
+        let list = tools_list_body(1, MCP_PROTOCOL_VERSION_2026_07);
         assert!(list["params"]["_meta"].is_object());
-        let call = tools_call_body(2, "search", &json!({"q": "x"}));
+        let call = tools_call_body(
+            2,
+            "search",
+            &json!({"q": "x"}),
+            MCP_PROTOCOL_VERSION_2026_07,
+        );
         assert_eq!(call["params"]["name"], "search");
         assert!(call["params"]["_meta"].is_object());
         assert_eq!(call["params"]["arguments"]["q"], "x");
@@ -292,12 +420,82 @@ mod tests {
     #[test]
     fn initial_negotiation_matches_mode() {
         assert!(!Negotiated::initial_for_mode(McpProtocolMode::Auto).stateful);
-        assert!(!Negotiated::initial_for_mode(McpProtocolMode::Rc).stateful);
-        assert!(Negotiated::initial_for_mode(McpProtocolMode::Stable).stateful);
-        assert!(Negotiated::initial_for_mode(McpProtocolMode::Legacy).stateful);
+        assert!(!Negotiated::initial_for_mode(McpProtocolMode::V2026July).stateful);
+        assert!(Negotiated::initial_for_mode(McpProtocolMode::V2025June).stateful);
+        assert!(Negotiated::initial_for_mode(McpProtocolMode::V2025March).stateful);
         assert_eq!(
-            Negotiated::initial_for_mode(McpProtocolMode::Legacy).version,
-            MCP_PROTOCOL_VERSION_LEGACY
+            Negotiated::initial_for_mode(McpProtocolMode::V2025March).version,
+            MCP_PROTOCOL_VERSION_2025_03
         );
+    }
+
+    #[test]
+    fn meta_carries_version_capabilities_and_client_info() {
+        let meta = request_meta(MCP_PROTOCOL_VERSION_2026_07);
+        assert_eq!(
+            meta.get(PROTOCOL_VERSION_META_KEY).and_then(|v| v.as_str()),
+            Some(MCP_PROTOCOL_VERSION_2026_07)
+        );
+        // An empty capabilities object is a positive declaration that this
+        // client answers no server-initiated input requests.
+        assert_eq!(meta.get(CLIENT_CAPABILITIES_META_KEY), Some(&json!({})));
+    }
+
+    #[test]
+    fn detects_input_required_results() {
+        let bare = r#"{"jsonrpc":"2.0","id":1,"result":{"resultType":"input_required","requestState":"opaque"}}"#;
+        let parsed = input_required_from_result(bare).expect("input_required");
+        assert!(parsed.input_request_keys.is_empty());
+        assert_eq!(parsed.request_state.as_deref(), Some("opaque"));
+
+        let with_requests = r#"{"jsonrpc":"2.0","id":1,"result":{"resultType":"input_required","inputRequests":{"github_login":{"method":"elicitation/create"}}}}"#;
+        let parsed = input_required_from_result(with_requests).expect("input_required");
+        assert_eq!(parsed.input_request_keys, vec!["github_login".to_string()]);
+        assert_eq!(parsed.request_state, None);
+
+        let complete =
+            r#"{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","content":[]}}"#;
+        assert!(input_required_from_result(complete).is_none());
+        // 2025-era results have no resultType at all.
+        assert!(input_required_from_result(r#"{"result":{"content":[]}}"#).is_none());
+    }
+
+    #[test]
+    fn retry_body_echoes_request_state_verbatim() {
+        let body = tools_call_retry_body(
+            2,
+            "search",
+            &json!({"q": "x"}),
+            MCP_PROTOCOL_VERSION_2026_07,
+            Some("AEAD-blob=="),
+        );
+        assert_eq!(body["id"], 2);
+        assert_eq!(body["params"]["requestState"], "AEAD-blob==");
+        assert_eq!(body["params"]["arguments"]["q"], "x");
+
+        // No state offered means none echoed back.
+        let bare =
+            tools_call_retry_body(2, "search", &json!({}), MCP_PROTOCOL_VERSION_2026_07, None);
+        assert!(bare["params"].get("requestState").is_none());
+    }
+
+    #[test]
+    fn cache_hints_parse_from_result() {
+        let public = r#"{"result":{"tools":[],"ttlMs":300000,"cacheScope":"public"}}"#;
+        let hints = cache_hints_from_result(public).expect("hints");
+        assert_eq!(hints.ttl, Duration::from_millis(300_000));
+        assert_eq!(hints.scope, CacheScope::Public);
+
+        // Missing scope is read as private — never over-share by default.
+        let unscoped = r#"{"result":{"tools":[],"ttlMs":1000}}"#;
+        assert_eq!(
+            cache_hints_from_result(unscoped).unwrap().scope,
+            CacheScope::Private
+        );
+
+        // Zero, negative, and absent all mean "immediately stale".
+        assert!(cache_hints_from_result(r#"{"result":{"ttlMs":0}}"#).is_none());
+        assert!(cache_hints_from_result(r#"{"result":{"ttlMs":-5}}"#).is_none());
+        assert!(cache_hints_from_result(r#"{"result":{"tools":[]}}"#).is_none());
     }
 }

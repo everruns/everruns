@@ -5,7 +5,7 @@
 //   side-question command explicitly instead of depending on a generic bucket.
 // - The command executes entirely through the `CommandHost` facilities so
 //   every host (server full/dev mode, in-process runtime) gets the same
-//   behavior from this one implementation (see specs/commands.md, EVE-543).
+//   behavior from this one implementation (see knowledge/project/commands.md, EVE-543).
 // - The side answer reuses the session's merged context, disables tools, and
 //   persists nothing, behaving like Claude Code's ephemeral overlay answer.
 

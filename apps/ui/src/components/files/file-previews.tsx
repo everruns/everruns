@@ -6,7 +6,7 @@
  * Uses Streamdown with @streamdown/code for Shiki-based syntax highlighting,
  * matching the styling used in chat messages.
  *
- * SVG TRUST BOUNDARY (see also `specs/threat-model.md` TM-WEB-009):
+ * SVG TRUST BOUNDARY (see also `knowledge/security/threat-model.md` TM-WEB-009):
  * SVG files are user-supplied bytes. Rendering attacker-controlled SVG via
  * `<img src="data:image/svg+xml;base64,…">` was blocked in PR #1513 because
  * `<img>`-loaded SVG can carry `<script>` and `on*` event-handler XSS in
@@ -26,7 +26,7 @@
  * The trust gate is enforced in `SVGPreview` below; `getPreviewType` routes
  * `.svg` files to that component instead of `<img>`-based `ImagePreview`.
  *
- * HTML TRUST BOUNDARY (see also `specs/threat-model.md` TM-WEB-010):
+ * HTML TRUST BOUNDARY (see also `knowledge/security/threat-model.md` TM-WEB-010):
  * `.html`/`.htm` files are user-supplied documents that may legitimately need
  * to run JavaScript to render. In every mode the document runs in an opaque
  * origin (sandbox WITHOUT `allow-same-origin`), so it cannot read everruns
@@ -53,7 +53,7 @@
  *      `<meta>` (`object-src`/`base-uri`/`form-action 'none'`) as defense in
  *      depth. This mode is safe but non-interactive.
  *
- * PDF TRUST BOUNDARY (see also `specs/threat-model.md` TM-WEB-011):
+ * PDF TRUST BOUNDARY (see also `knowledge/security/threat-model.md` TM-WEB-011):
  * PDFs render via `<iframe src="data:application/pdf;base64,…">`. Chromium
  * disables its built-in PDF viewer inside *any* sandboxed iframe (verified:
  * `sandbox=""`, `allow-scripts`, and `allow-scripts allow-same-origin` all

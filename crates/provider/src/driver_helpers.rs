@@ -3,7 +3,7 @@
 // Common utilities extracted from individual LLM driver implementations
 // (Anthropic, Gemini, OpenAI) to eliminate duplication.
 //
-// See specs/llm-drivers.md for driver requirements.
+// See knowledge/foundations/llm-drivers.md for driver requirements.
 
 use crate::driver_registry::DiscoveredModel;
 use crate::error::{AgentLoopError, Result};

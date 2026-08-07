@@ -787,7 +787,7 @@ async fn authorize_session(
 }
 
 /// Resolve the realtime-voice provider connection for an org via service-bound
-/// resolution (specs/providers.md): the provider whose driver declares
+/// resolution (knowledge/foundations/providers.md): the provider whose driver declares
 /// `ServiceKind::Realtime`, fail-closed. Replaces the previous "first active
 /// provider matching the `openai` type string" behavior — only realtime-capable
 /// drivers are eligible now.

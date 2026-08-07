@@ -27,7 +27,7 @@ The diagram below traces one deferred tool through a full round-trip — from sc
 ![Tool Search deferred-loading flow: the Agent Runtime strips parameter schemas to stubs before sending tools to the model; the model calls tool_search, which ranks visible tools in the registry and returns full schemas while recording a session-scoped reveal; on the next iteration the hook restores the revealed tool's registered schema so the model can call it with full parameters.](../images/capabilities/tool-search-flow.svg)
 
 1. **Threshold check** — deferral only activates when the total tool count meets or exceeds the threshold (default: 15). Below it, full schemas are sent unchanged.
-2. **Schema stripping** — a tool-definition hook replaces the parameter schema of every deferrable tool with a small stub (name + description survive). This runs when the runtime agent is built, so the model never receives the full schemas upfront.
+2. **Schema stripping** — a tool-definition hook replaces the parameter schema of every deferrable tool with a minimal open-object stub (name + description survive). The shared prompt carries the search instruction once instead of repeating it in every stub. This runs when the runtime agent is built, so the model never receives the full schemas upfront.
 3. **`tool_search` tool** — a real tool is added to the agent. When the model calls it with a query, the tool inspects its sibling tools and returns the full JSON parameter schemas of the matches.
 4. **Progressive disclosure** — `tool_search` also records the matched tools as *revealed*. The hook re-runs on every reasoning iteration, so on the next step the revealed tools are advertised with their full, authoritative schema on the *registered* definition. This is what lets a structured tool caller actually pass arguments to a previously deferred tool, rather than only reading its schema as text.
 5. **System-prompt guidance** — a short note instructs the model to call `tool_search` before using a tool whose parameters it has not yet loaded.
@@ -96,14 +96,14 @@ The activation threshold defaults to 15 tools (`DEFAULT_TOOL_SEARCH_THRESHOLD`).
 
 Deferral only touches how tool *parameter schemas* reach the model — names and descriptions still go out in full — so the savings scale with how many tools an agent carries and how rich their schemas are.
 
-Measured on a representative 19-tool generic-agent surface (file, shell, web-fetch, session, storage, todo, time, and subagent tools, plus `tool_search` itself), comparing the serialized tool list the driver sends to the model **with and without** deferral on the first turn:
+Measured on a representative 16-tool generic-agent surface (file, shell, web-fetch, session, storage, todo, time, and subagent tools, plus `tool_search` itself), comparing the serialized tool list the driver sends to the model **with and without** deferral on the first turn:
 
 | Metric | Full schemas | Deferred (first turn) | Saving |
 |---|---|---|---|
-| Tool list sent to model | ~11.6 KB (~2,900 tokens) | ~7.0 KB (~1,760 tokens) | **39% smaller** |
-| Parameter-schema bytes only | ~8.3 KB | ~3.7 KB | **55% smaller** |
+| Tool list sent to model | ~11.3 KB (~2,820 tokens) | ~4.0 KB (~990 tokens) | **65% smaller** |
+| Parameter-schema bytes only | ~8.2 KB | ~0.9 KB | **89% smaller** |
 
-Token figures use the ~4-chars-per-token rule of thumb for JSON. 18 of the 19 tools were deferred (`tool_search` keeps its schema). Net savings grow with tool count: an agent with dozens of MCP tools defers proportionally more.
+Token figures use the ~4-chars-per-token rule of thumb for JSON. 15 of the 16 tools were deferred (`tool_search` keeps its schema). Net savings grow with tool count: an agent with dozens of MCP tools defers proportionally more.
 
 These numbers come from the `benchmark_prompt_size_reduction` test in `crates/core/src/capabilities/tool_search.rs`, which also guards the reduction against regressions. Reproduce them with:
 

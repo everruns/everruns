@@ -3,7 +3,17 @@
 
 import { memo } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { User, Bot, Brain, Wrench, CheckCircle2, XCircle, Clock } from "lucide-react";
+import {
+  User,
+  Bot,
+  Brain,
+  Wrench,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Loader2,
+  ChevronRight,
+} from "lucide-react";
 import type {
   UserMessageNodeData,
   AgentMessageNodeData,
@@ -11,6 +21,7 @@ import type {
   ToolGroupNodeData,
   TurnGroupNodeData,
 } from "./trajectory-utils";
+import { formatToolDetail } from "./trajectory-utils";
 import { formatDurationCompact } from "@/lib/formatting";
 
 function formatDuration(ms?: number): string {
@@ -153,7 +164,8 @@ export const ToolGroupNode = memo(function ToolGroupNode({
   data,
 }: NodeProps & { data: ToolGroupNodeData }) {
   const d = data as ToolGroupNodeData;
-  const hasErrors = d.errorCount > 0;
+  const hasErrors =
+    d.errorCount > 0 || d.tools.some((tool) => tool.status !== "pending" && !tool.success);
   return (
     <div
       className={`w-[308px] border px-2.5 py-2 ${
@@ -175,24 +187,77 @@ export const ToolGroupNode = memo(function ToolGroupNode({
           <span className="ml-auto text-muted-foreground/50">{formatDuration(d.durationMs)}</span>
         )}
       </div>
-      <div className="flex flex-wrap gap-1">
-        {d.tools.map((tool) => (
-          <span
-            key={tool.id}
-            className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 ${
-              tool.status === "error" || !tool.success
-                ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
-                : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"
-            }`}
-          >
-            {tool.success ? (
-              <CheckCircle2 className="w-2.5 h-2.5" />
-            ) : (
-              <XCircle className="w-2.5 h-2.5" />
-            )}
-            {tool.displayName ?? tool.name}
-          </span>
-        ))}
+      <div className="space-y-1">
+        {d.tools.map((tool) => {
+          const failed = tool.status === "error" || tool.status === "timeout" || !tool.success;
+          const pending = tool.status === "pending";
+          const input = formatToolDetail(tool.arguments);
+          const output = formatToolDetail(tool.error ?? tool.resultText);
+          const hasDetails = input.length > 0 || output.length > 0;
+
+          return (
+            <details key={tool.id} className="group/tool relative text-[10px] open:z-20">
+              <summary
+                className={`nodrag flex min-w-0 list-none items-center gap-1 px-1.5 py-1 marker:hidden ${
+                  pending
+                    ? "bg-muted text-muted-foreground"
+                    : failed
+                      ? "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300"
+                      : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"
+                } ${hasDetails ? "cursor-pointer" : "cursor-default"}`}
+              >
+                {pending ? (
+                  <Loader2 className="h-2.5 w-2.5 shrink-0 animate-spin" />
+                ) : failed ? (
+                  <XCircle className="h-2.5 w-2.5 shrink-0" />
+                ) : (
+                  <CheckCircle2 className="h-2.5 w-2.5 shrink-0" />
+                )}
+                <span className="min-w-0 flex-1 truncate font-medium" title={tool.label}>
+                  {tool.label}
+                </span>
+                {tool.label !== tool.name && (
+                  <span className="max-w-20 truncate font-mono opacity-55">{tool.name}</span>
+                )}
+                <span className="capitalize opacity-65">{pending ? "running" : tool.status}</span>
+                {tool.durationMs != null && (
+                  <span className="tabular-nums opacity-65">{formatDuration(tool.durationMs)}</span>
+                )}
+                {hasDetails && (
+                  <ChevronRight className="h-2.5 w-2.5 shrink-0 transition-transform group-open/tool:rotate-90" />
+                )}
+              </summary>
+              {hasDetails && (
+                <div className="nodrag nowheel absolute left-0 top-full z-20 mt-1 w-full max-h-40 overflow-auto border border-border bg-popover p-2 text-popover-foreground shadow-lg">
+                  {input && (
+                    <div>
+                      <div className="mb-0.5 font-medium uppercase tracking-wide text-muted-foreground">
+                        Input
+                      </div>
+                      <pre className="whitespace-pre-wrap break-words font-mono text-[9px] leading-relaxed">
+                        {input}
+                      </pre>
+                    </div>
+                  )}
+                  {output && (
+                    <div className={input ? "mt-2" : undefined}>
+                      <div
+                        className={`mb-0.5 font-medium uppercase tracking-wide ${
+                          failed ? "text-red-600 dark:text-red-400" : "text-muted-foreground"
+                        }`}
+                      >
+                        {failed ? "Error" : "Result"}
+                      </div>
+                      <pre className="whitespace-pre-wrap break-words font-mono text-[9px] leading-relaxed">
+                        {output}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              )}
+            </details>
+          );
+        })}
       </div>
       <Handle
         type="target"

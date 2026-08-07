@@ -1613,7 +1613,7 @@ pub struct PreviewAgent {
 pub struct AgentPreview {
     pub system_prompt: String,
     pub tools: Vec<ToolDefinition>,
-    /// Advisory tier-1 findings about the previewed config (specs/agent-checks.md).
+    /// Advisory tier-1 findings about the previewed config (knowledge/evaluation/agent-checks.md).
     pub findings: Vec<super::checks::Finding>,
 }
 

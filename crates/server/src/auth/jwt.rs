@@ -240,12 +240,14 @@ impl JwtService {
     /// Rejects MCP access tokens (`token_type == "mcp_access"`): they must only
     /// be accepted by the `/mcp` endpoint via [`validate_mcp_access_token`].
     pub fn validate_access_token(&self, token: &str) -> Result<AccessTokenClaims> {
-        let mut validation = Validation::default();
-        validation.validate_exp = true;
         // The `aud` claim is only set on MCP tokens. Disable the library's
         // audience check here so a stray/legacy `aud` never gates regular
         // tokens — the `token_type` gate below is the real resource boundary.
-        validation.validate_aud = false;
+        let validation = Validation {
+            validate_exp: true,
+            validate_aud: false,
+            ..Default::default()
+        };
 
         let token_data = decode::<AccessTokenClaims>(token, &self.decoding_key, &validation)
             .context("Invalid access token")?;
@@ -267,11 +269,13 @@ impl JwtService {
         token: &str,
         expected_resource: &str,
     ) -> Result<AccessTokenClaims> {
-        let mut validation = Validation::default();
-        validation.validate_exp = true;
         // We compare `aud` explicitly below so we can return a precise error and
         // avoid depending on the library's set-membership semantics.
-        validation.validate_aud = false;
+        let validation = Validation {
+            validate_exp: true,
+            validate_aud: false,
+            ..Default::default()
+        };
 
         let token_data = decode::<AccessTokenClaims>(token, &self.decoding_key, &validation)
             .context("Invalid MCP access token")?;
@@ -315,9 +319,11 @@ impl JwtService {
     /// confirm the returned `sub` matches the authenticated session user — the
     /// signature alone only proves this server issued the token, not for whom.
     pub fn validate_oauth_consent_token(&self, token: &str) -> Result<OAuthConsentClaims> {
-        let mut validation = Validation::default();
-        validation.validate_exp = true;
-        validation.validate_aud = false;
+        let validation = Validation {
+            validate_exp: true,
+            validate_aud: false,
+            ..Default::default()
+        };
 
         let token_data = decode::<OAuthConsentClaims>(token, &self.decoding_key, &validation)
             .context("Invalid OAuth consent token")?;
@@ -331,8 +337,10 @@ impl JwtService {
 
     /// Validate and decode a refresh token
     pub fn validate_refresh_token(&self, token: &str) -> Result<RefreshTokenClaims> {
-        let mut validation = Validation::default();
-        validation.validate_exp = true;
+        let validation = Validation {
+            validate_exp: true,
+            ..Default::default()
+        };
 
         let token_data = decode::<RefreshTokenClaims>(token, &self.decoding_key, &validation)
             .context("Invalid refresh token")?;

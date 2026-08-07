@@ -53,12 +53,15 @@ export const queryKeys = {
   // Session queries (sessions are org-level, with optional agent filter)
   sessions: {
     all: () => ["sessions"] as const,
+    scoped: (org?: string) => ["session", org] as const,
     list: (org?: string, agentId?: string, offset?: number, limit?: number) =>
       ["sessions", org, agentId ?? "all", offset ?? 0, limit ?? 20] as const,
     byAgent: (agentId: string) => ["sessions", "agent", agentId] as const,
     detail: (org?: string, sessionId?: string) => ["session", org, sessionId] as const,
     contextReport: (org?: string, sessionId?: string) =>
       ["session", org, sessionId, "context-report"] as const,
+    resolvedModel: (org?: string, sessionId?: string) =>
+      ["session", org, sessionId, "resolved-model"] as const,
     participants: (org?: string, sessionId?: string) =>
       ["session", org, sessionId, "participants"] as const,
     stats: (org?: string) => ["sessions", "stats", org] as const,
@@ -286,15 +289,15 @@ export const queryKeys = {
   // Plugin marketplace queries
   pluginMarketplaces: {
     all: ["plugin-marketplaces"] as const,
-    list: () => ["plugin-marketplaces"] as const,
-    detail: (id: string) => ["plugin-marketplace", id] as const,
-    catalog: (id: string) => ["plugin-marketplace", id, "catalog"] as const,
+    list: () => ["plugin-marketplaces", "list"] as const,
+    detail: (id: string) => ["plugin-marketplaces", id] as const,
+    catalog: (id: string) => ["plugin-marketplaces", id, "catalog"] as const,
   },
 
   // Installed plugin queries
   installedPlugins: {
     all: ["installed-plugins"] as const,
-    list: () => ["installed-plugins"] as const,
-    detail: (id: string) => ["installed-plugin", id] as const,
+    list: () => ["installed-plugins", "list"] as const,
+    detail: (id: string) => ["installed-plugins", id] as const,
   },
 };

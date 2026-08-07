@@ -160,4 +160,20 @@ describe("useUpdateOrganization", () => {
       queryKey: queryKeys.organizations.detail("org-123"),
     });
   });
+
+  it("invalidates resolved session data after updating the default model", async () => {
+    const updatedOrg = { id: "org-123", name: "Updated Org" };
+    mockUpdateOrganization.mockResolvedValueOnce(updatedOrg as never);
+
+    const invalidateSpy = jest.spyOn(queryClient, "invalidateQueries");
+    const { result } = renderHook(() => useUpdateOrganization(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ default_model_id: "model-2" });
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: queryKeys.sessions.scoped("org-123"),
+    });
+  });
 });

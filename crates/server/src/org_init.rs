@@ -8,7 +8,7 @@
 //   provisioning time. No UUIDs are hardcoded anywhere (no per-org split-brain).
 // Decision: Org settings keep separate default and base harness pointers
 //
-// Default marketplace seeding (see specs/plugins.md):
+// Default marketplace seeding (see knowledge/integrations/plugins.md):
 // Decision: The default marketplace ("everruns", github source everruns/everruns) is seeded
 //   once at org creation and in the 058_backfill_default_marketplace.sql backfill migration.
 //   It is NEVER re-seeded on read or reconciliation; a user who deletes it loses it permanently.
@@ -19,12 +19,137 @@ use crate::storage::{
     models::{CreateHarnessRow, CreatePluginMarketplaceRow, UpdateOrganizationSettings},
 };
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use everruns_core::{
     BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole, HarnessId,
     PluginMarketplaceId,
 };
 use everruns_durable::UpdateField;
+use std::sync::Arc;
 use uuid::Uuid;
+
+// ============================================================================
+// Org-initialization extension point (EVE-811)
+// ============================================================================
+
+/// Context handed to an [`OrgInitializer`] after a new organization and its
+/// built-in resources have been provisioned.
+///
+/// Carries what an embedder needs to provision per-org resources — a managed
+/// provider, a default budget, an external tenant record — for the freshly
+/// created org. The storage backend is exposed so initializers can write rows
+/// directly; credentials or gateway tokens the host holds are supplied by the
+/// initializer itself, not by OSS.
+pub struct OrgInitContext<'a> {
+    /// Storage backend, for writing the initializer's per-org rows.
+    pub db: &'a StorageBackend,
+    /// The organization that was just created.
+    pub org_id: i64,
+    /// The user who created the org, when creation was user-driven. `None` for
+    /// system-created orgs (e.g. the default org seeded at startup).
+    pub created_by: Option<uuid::Uuid>,
+}
+
+/// Post-create org-initialization hook for embedder-provisioned resources.
+///
+/// `PlatformDefinition` decides *what* a platform is made of; `OrgInitializer`
+/// runs *when an organization is created*. OSS invokes every registered
+/// initializer from the shared org-init routine, after built-in harnesses and
+/// the default marketplace are provisioned, so an embedder that must set up
+/// per-org resources does not have to intercept each org-creation path itself.
+///
+/// Registered via
+/// [`ServerAppBuilder::org_initializer`](crate::ServerAppBuilder::org_initializer);
+/// zero or more may be registered. When none are registered, default OSS
+/// behavior is unchanged. See `knowledge/foundations/embedding.md`.
+#[async_trait]
+pub trait OrgInitializer: Send + Sync {
+    /// Provision resources for the newly created org. Returning `Err` is handled
+    /// per [`required`](OrgInitializer::required): a required initializer aborts
+    /// creation, an optional one is logged and skipped.
+    async fn on_org_created(&self, ctx: OrgInitContext<'_>) -> Result<()>;
+
+    /// Whether a failure aborts org creation (default `true`).
+    ///
+    /// Required initializers make provisioning part of org setup: if the
+    /// resource cannot be created, the org is not created either. Optional
+    /// initializers (`false`) are best-effort — a failure is logged and org
+    /// creation proceeds.
+    fn required(&self) -> bool {
+        true
+    }
+
+    /// Stable name used in logs and diagnostics.
+    fn name(&self) -> &str {
+        "org-initializer"
+    }
+}
+
+/// A required [`OrgInitializer`] failed, aborting org creation.
+#[derive(Debug)]
+pub struct OrgInitializerError {
+    /// Name of the initializer that failed.
+    pub initializer: String,
+    /// The underlying error.
+    pub source: anyhow::Error,
+}
+
+impl std::fmt::Display for OrgInitializerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "required org initializer `{}` failed: {}",
+            self.initializer, self.source
+        )
+    }
+}
+
+impl std::error::Error for OrgInitializerError {}
+
+/// Run every registered [`OrgInitializer`] for a freshly created org.
+///
+/// Initializers run in registration order. A required initializer that fails
+/// short-circuits and returns [`OrgInitializerError`]; an optional one that
+/// fails is logged and skipped. Returns `Ok(())` when no initializers are
+/// registered — the default OSS case.
+pub async fn run_org_initializers(
+    initializers: &[Arc<dyn OrgInitializer>],
+    db: &StorageBackend,
+    org_id: i64,
+    created_by: Option<uuid::Uuid>,
+) -> std::result::Result<(), OrgInitializerError> {
+    for initializer in initializers {
+        let ctx = OrgInitContext {
+            db,
+            org_id,
+            created_by,
+        };
+        match initializer.on_org_created(ctx).await {
+            Ok(()) => {
+                tracing::info!(
+                    org_id,
+                    initializer = initializer.name(),
+                    "Org initializer completed"
+                );
+            }
+            Err(e) if initializer.required() => {
+                return Err(OrgInitializerError {
+                    initializer: initializer.name().to_string(),
+                    source: e,
+                });
+            }
+            Err(e) => {
+                tracing::warn!(
+                    org_id,
+                    initializer = initializer.name(),
+                    error = %e,
+                    "Optional org initializer failed (non-fatal)"
+                );
+            }
+        }
+    }
+    Ok(())
+}
 
 // ============================================================================
 // Default plugin marketplace seeding
@@ -474,7 +599,7 @@ mod tests {
             .iter()
             .map(|cap| cap.capability_id.as_str())
             .collect::<Vec<_>>();
-        assert_eq!(chat_cap_ids, vec!["platform_management"]);
+        assert_eq!(chat_cap_ids, vec!["platform"]);
     }
 
     #[tokio::test]

@@ -20,7 +20,7 @@ name = "export-openapi"
 path = "src/bin/export_openapi.rs"
 
 [features]
-# Experimental sandboxed Lua execution capability (specs/lua-execution.md).
+# Experimental sandboxed Lua execution capability (knowledge/execution/lua-execution.md).
 # Off by default; `lua` compiles the mlua engine into core. Also runtime-gated
 # by FEATURE_LUA.
 lua = ["everruns-core/lua"]
@@ -83,7 +83,7 @@ futures-util.workspace = true
 flate2.workspace = true
 tar.workspace = true
 
-bashkit = { version = "0.14.3", features = ["scripted_tool", "jq"] }
+bashkit = { version = "0.16.0", features = ["scripted_tool", "jq"] }
 
 everruns-core = { path = "../core", features = ["embedded-platform-docs", "openapi", "sqlx", "tree-sitter-outlines", "ui-capabilities"] }
 # Observability exporters (Braintrust, OpenTelemetry event listeners). The OTLP

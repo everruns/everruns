@@ -1,5 +1,5 @@
 // Eval API routes
-// See specs/evals.md
+// See knowledge/evaluation/evals.md
 
 use axum::body::{Body, Bytes};
 use axum::extract::{Path, Query, State};
@@ -354,7 +354,7 @@ pub struct ImportScore {
     pub na: bool,
 }
 
-/// Result of an ATIF trajectory import (specs/atif-adoption.md): eval cases
+/// Result of an ATIF trajectory import (knowledge/evaluation/atif-adoption.md): eval cases
 /// created/updated from imported trajectories, upserted by case name.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AtifImportReport {
@@ -389,7 +389,7 @@ pub struct ListEvalsQuery {
 
 // ============================================
 // Share links (read-only public views).
-// See specs/evals.md, specs/public-endpoints.md.
+// See knowledge/evaluation/evals.md, knowledge/execution/public-endpoints.md.
 // ============================================
 
 /// A freshly minted share link. The raw `token` is returned once and never
@@ -474,7 +474,7 @@ pub fn routes(state: AppState) -> Router {
             "/v1/evals/{eval_id}",
             get(get_eval).patch(update_eval).delete(delete_eval),
         )
-        // ATIF trajectory import → eval cases (specs/atif-adoption.md).
+        // ATIF trajectory import → eval cases (knowledge/evaluation/atif-adoption.md).
         .route("/v1/evals/{eval_id}/atif_import", post(import_atif))
         // Cases
         .route(

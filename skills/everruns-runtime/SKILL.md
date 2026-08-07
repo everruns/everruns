@@ -306,7 +306,7 @@ Built **with** the runtime:
 - [Embedding Everruns](https://docs.everruns.com/advanced/embedding-everruns/) — compose your own `PlatformDefinition`, server, and worker
 - [Capabilities](https://docs.everruns.com/capabilities/) · [Harnesses](https://docs.everruns.com/features/harnesses/) · [Integrations](https://docs.everruns.com/integrations/)
 - [Everruns documentation](https://docs.everruns.com) · [GitHub](https://github.com/everruns/everruns)
-- In-repo specs: `specs/runtime.md`, `specs/embedding.md`, `specs/file-store.md`
+- In-repo specs: `knowledge/foundations/runtime.md`, `knowledge/foundations/embedding.md`, `knowledge/runtime-resources/file-store.md`
 - [`references/crates.md`](references/crates.md) — optional provider/integration/backend crate catalog
 - [`references/glossary.md`](references/glossary.md) — domain language
 

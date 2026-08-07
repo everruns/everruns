@@ -40,6 +40,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { pluralize } from "@/lib/formatting";
 import { cn } from "@/lib/utils";
 import type { ModelWithProvider } from "@/lib/api/types";
+import { isChatModel } from "@/lib/model-capabilities";
 
 // Order models by release date desc (newest first), then by created_at desc.
 // Models without a release_date in their profile fall to the bottom; this works
@@ -97,7 +98,7 @@ export default function ModelsPage() {
     return { enabledModels: enabled, availableModels: available };
   }, [filteredModels]);
   const allEnabledModels = useMemo(
-    () => models.filter((model) => model.enabled).sort(compareByRecency),
+    () => models.filter((model) => model.enabled && isChatModel(model)).sort(compareByRecency),
     [models],
   );
   const selectedDefaultModelName = org?.default_model_id
@@ -239,7 +240,7 @@ export default function ModelsPage() {
             <div className="space-y-8">
               {enabledModels.length > 0 && (
                 <div>
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-xl font-semibold">Enabled models</h2>
                     <span className="text-sm text-muted-foreground">
                       {enabledModels.length} enabled
@@ -267,7 +268,7 @@ export default function ModelsPage() {
 
               {availableModels.length > 0 && (
                 <div>
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-xl font-semibold">Available models</h2>
                     <span className="text-sm text-muted-foreground">
                       Enable a model to use it with agents
@@ -302,7 +303,7 @@ export default function ModelsPage() {
               </div>
               <Card>
                 <CardContent className="pt-6">
-                  <div className="flex items-center gap-4">
+                  <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center sm:gap-4">
                     <Label htmlFor="default-model" className="whitespace-nowrap font-medium">
                       Default Model
                     </Label>

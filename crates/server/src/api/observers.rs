@@ -1,5 +1,5 @@
 // Observer API routes — online scoring of production sessions.
-// See specs/online-evals.md. Gated behind the `observers` feature flag.
+// See knowledge/evaluation/online-evals.md. Gated behind the `observers` feature flag.
 
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;

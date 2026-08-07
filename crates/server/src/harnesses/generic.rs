@@ -54,7 +54,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
         ),
         BuiltInCapabilityDefinition::new("tool_output_persistence"),
         BuiltInCapabilityDefinition::new("tool_output_distillation"),
-        // Citations (specs/citations.md). citation_retrieval attaches
+        // Citations (knowledge/runtime-resources/citations.md). citation_retrieval attaches
         // claim-level citations to answers from any retrieval feed
         // (search_index / search_knowledge) — a no-op until a knowledge
         // capability is also enabled on the agent. citation_verification stamps

@@ -31,7 +31,7 @@ everruns-anthropic = { path = "../../crates/anthropic" }
 everruns-core = { path = "../../crates/core" }
 everruns-openai = { path = "../../crates/openai" }
 # `mcp-stdio` lets the CLI talk to local-process MCP servers; the hosted
-# server/worker never enable it (specs/runtime-mcp.md D2).
+# server/worker never enable it (knowledge/integrations/runtime-mcp.md D2).
 everruns-runtime = { path = "../../crates/runtime", features = ["mcp-stdio"] }
 everruns-integrations-duckduckgo = { path = "../../integrations/duckduckgo" }
 
