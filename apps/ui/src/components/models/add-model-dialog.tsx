@@ -23,6 +23,8 @@ import {
 import { useCreateModel } from "@/hooks/use-providers";
 import type { CreateModelRequest, Provider } from "@/lib/api/types";
 
+type ModelType = "chat" | "embeddings";
+
 export function AddModelDialog({
   providers,
   open,
@@ -35,16 +37,24 @@ export function AddModelDialog({
   const [providerId, setProviderId] = useState("");
   const [modelId, setModelId] = useState("");
   const [displayName, setDisplayName] = useState("");
+  const [modelType, setModelType] = useState<ModelType>("chat");
   const [enabled, setEnabled] = useState(true);
 
   const createModel = useCreateModel(providerId);
-  const selectedProviderName = providers.find((provider) => provider.id === providerId)?.name;
+  const selectedProvider = providers.find((provider) => provider.id === providerId);
+
+  const handleProviderChange = (nextProviderId: string) => {
+    setProviderId(nextProviderId);
+    const nextProvider = providers.find((provider) => provider.id === nextProviderId);
+    if (nextProvider?.provider_type !== "openai") setModelType("chat");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const data: CreateModelRequest = {
       model_id: modelId,
       display_name: displayName,
+      capabilities: modelType === "embeddings" ? ["embeddings"] : [],
       enabled,
     };
     await createModel.mutateAsync(data);
@@ -52,6 +62,7 @@ export function AddModelDialog({
     setProviderId("");
     setModelId("");
     setDisplayName("");
+    setModelType("chat");
     setEnabled(true);
   };
 
@@ -65,9 +76,9 @@ export function AddModelDialog({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="provider">Provider</Label>
-            <Select value={providerId} onValueChange={setProviderId}>
+            <Select value={providerId} onValueChange={handleProviderChange}>
               <SelectTrigger id="provider" className="w-full">
-                <SelectValue placeholder="Select provider">{selectedProviderName}</SelectValue>
+                <SelectValue placeholder="Select provider">{selectedProvider?.name}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {providers.map((provider) => (
@@ -79,12 +90,31 @@ export function AddModelDialog({
             </Select>
           </div>
           <div className="space-y-2">
+            <Label htmlFor="model-type">Model type</Label>
+            <Select value={modelType} onValueChange={(value) => setModelType(value as ModelType)}>
+              <SelectTrigger id="model-type" className="w-full">
+                <SelectValue>{modelType === "embeddings" ? "Embeddings" : "Chat"}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="chat">Chat</SelectItem>
+                {selectedProvider?.provider_type === "openai" && (
+                  <SelectItem value="embeddings">Embeddings</SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+            {providerId && selectedProvider?.provider_type !== "openai" && (
+              <p className="text-xs text-muted-foreground">
+                This provider does not currently support embedding models.
+              </p>
+            )}
+          </div>
+          <div className="space-y-2">
             <Label htmlFor="model-id">Model ID</Label>
             <Input
               id="model-id"
               value={modelId}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModelId(e.target.value)}
-              placeholder="gpt-5.2"
+              placeholder={modelType === "embeddings" ? "text-embedding-3-small" : "gpt-5.2"}
               required
             />
           </div>

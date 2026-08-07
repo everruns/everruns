@@ -40,6 +40,7 @@ import { queryKeys } from "@/lib/query-keys";
 import { pluralize } from "@/lib/formatting";
 import { cn } from "@/lib/utils";
 import type { ModelWithProvider } from "@/lib/api/types";
+import { isChatModel } from "@/lib/model-capabilities";
 
 // Order models by release date desc (newest first), then by created_at desc.
 // Models without a release_date in their profile fall to the bottom; this works
@@ -97,7 +98,7 @@ export default function ModelsPage() {
     return { enabledModels: enabled, availableModels: available };
   }, [filteredModels]);
   const allEnabledModels = useMemo(
-    () => models.filter((model) => model.enabled).sort(compareByRecency),
+    () => models.filter((model) => model.enabled && isChatModel(model)).sort(compareByRecency),
     [models],
   );
   const selectedDefaultModelName = org?.default_model_id

@@ -10,6 +10,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ModelWithProvider, ReasoningEffort, Verbosity } from "@/lib/api/types";
+import { isChatModel } from "@/lib/model-capabilities";
 
 // How many recently-used models to remember and surface in the picker.
 const RECENT_MODELS_LIMIT = 2;
@@ -75,7 +76,7 @@ export function useChatModelSelection({
   }, []);
 
   const selectedModel = useMemo(
-    () => models.find((model) => model.id === selectedModelId),
+    () => models.find((model) => model.id === selectedModelId && isChatModel(model)),
     [models, selectedModelId],
   );
 
@@ -83,7 +84,9 @@ export function useChatModelSelection({
   // disabled, or otherwise missing simply drops out of the picker.
   const recentModels = useMemo(() => {
     const usable = new Map(
-      models.filter((model) => model.enabled).map((model) => [model.id, model]),
+      models
+        .filter((model) => model.enabled && isChatModel(model))
+        .map((model) => [model.id, model]),
     );
     return recentModelIds
       .map((id) => usable.get(id))

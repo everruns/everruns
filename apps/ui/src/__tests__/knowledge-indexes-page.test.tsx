@@ -34,9 +34,13 @@ jest.mock("@/components/ui/select", () => {
     mockReact.Children.forEach(node, (child: mockReact.ReactNode) => {
       if (!mockReact.isValidElement(child)) return;
       if ((child.type as { isSelectItem?: boolean }).isSelectItem) {
-        const props = child.props as { value: string; children: mockReact.ReactNode };
+        const props = child.props as {
+          value: string;
+          children: mockReact.ReactNode;
+          disabled?: boolean;
+        };
         options.push(
-          <option key={props.value} value={props.value}>
+          <option key={props.value} value={props.value} disabled={props.disabled}>
             {props.children}
           </option>,
         );
@@ -297,6 +301,35 @@ describe("KnowledgeIndexesPage", () => {
     expect(nameInput).toHaveAttribute("aria-describedby", nameError.id);
     expect(embeddingModelPicker).toHaveAttribute("aria-invalid", "true");
     expect(embeddingModelPicker).toHaveAttribute("aria-describedby", modelError.id);
+  });
+
+  it("does not offer chat models when no embedding models are configured", () => {
+    mockUseModels.mockReturnValue({
+      data: [
+        {
+          id: "model_chat",
+          display_name: "GPT-5.6",
+          provider_name: "OpenAI",
+          enabled: true,
+          capabilities: ["chat", "tools"],
+        },
+      ],
+      isLoading: false,
+    });
+
+    render(<KnowledgeIndexesPage />);
+    fireEvent.click(screen.getByRole("button", { name: "New index" }));
+
+    const picker = within(screen.getByRole("dialog")).getByLabelText("Embedding model");
+    expect(within(picker).queryByRole("option", { name: "GPT-5.6 (OpenAI)" })).toBeNull();
+    expect(
+      within(picker).getByRole("option", { name: "No embedding models available" }),
+    ).toBeDisabled();
+    expect(
+      within(screen.getByRole("dialog")).getByRole("link", {
+        name: "Configure an embedding model",
+      }),
+    ).toHaveAttribute("href", "/models");
   });
 
   it("archives an index after confirmation", async () => {
