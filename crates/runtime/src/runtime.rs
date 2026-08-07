@@ -222,6 +222,8 @@ pub struct InProcessRuntimeBuilder {
     default_session_id: Option<SessionId>,
     seeded_files: Vec<(SessionId, InitialFile)>,
     mcp_auth_provider: Option<Arc<dyn everruns_mcp::McpAuthProvider>>,
+    provider_retry_config: Option<everruns_core::llm_retry::LlmRetryConfig>,
+    provider_stall_timeout: Option<std::time::Duration>,
     /// Hydrated capability configs for plugins loaded via [`Self::with_plugin_dir`].
     ///
     /// Keyed by `plugin:{name}`. Agents and harnesses reference these by the
@@ -263,13 +265,15 @@ impl InProcessRuntimeBuilder {
             default_session_id: None,
             seeded_files: Vec::new(),
             mcp_auth_provider: None,
+            provider_retry_config: None,
+            provider_stall_timeout: None,
             plugin_capability_configs: Vec::new(),
             plugin_warnings: Vec::new(),
         }
     }
 
     /// Set the auth provider used to acquire credentials for scoped MCP
-    /// servers (specs/runtime-mcp.md D3). Defaults to no credentials, suitable
+    /// servers (knowledge/integrations/runtime-mcp.md D3). Defaults to no credentials, suitable
     /// for unauthenticated servers or servers carrying literal auth headers.
     pub fn mcp_auth_provider(mut self, provider: Arc<dyn everruns_mcp::McpAuthProvider>) -> Self {
         self.mcp_auth_provider = Some(provider);
@@ -361,6 +365,21 @@ impl InProcessRuntimeBuilder {
         context: SessionFileSystemFactoryContext,
     ) -> Self {
         self.session_file_system_factory_context = context;
+        self
+    }
+
+    /// Override the bounded provider-recovery policy for this runtime.
+    pub fn provider_retry_config(
+        mut self,
+        config: everruns_core::llm_retry::LlmRetryConfig,
+    ) -> Self {
+        self.provider_retry_config = Some(config);
+        self
+    }
+
+    /// Override the no-output provider stream stall timeout.
+    pub fn provider_stall_timeout(mut self, timeout: std::time::Duration) -> Self {
+        self.provider_stall_timeout = Some(timeout);
         self
     }
 
@@ -598,6 +617,8 @@ impl InProcessRuntimeBuilder {
             mcp_auth_provider: self
                 .mcp_auth_provider
                 .unwrap_or_else(|| Arc::new(everruns_mcp::NoAuthProvider)),
+            provider_retry_config: self.provider_retry_config,
+            provider_stall_timeout: self.provider_stall_timeout,
             mcp_discovery_cache: Arc::new(crate::mcp_cache::McpDiscoveryCache::new()),
             plugin_warnings: self.plugin_warnings,
         })
@@ -646,6 +667,8 @@ pub struct InProcessRuntime {
     schedule_store_factory: Option<crate::backends::ScheduleStoreFactory>,
     platform_store_factory: Option<crate::backends::PlatformStoreFactory>,
     mcp_auth_provider: Arc<dyn everruns_mcp::McpAuthProvider>,
+    provider_retry_config: Option<everruns_core::llm_retry::LlmRetryConfig>,
+    provider_stall_timeout: Option<std::time::Duration>,
     mcp_discovery_cache: Arc<crate::mcp_cache::McpDiscoveryCache>,
     /// Non-fatal warnings collected during plugin compilation (see
     /// [`InProcessRuntimeBuilder::with_plugin_dir`]).
@@ -1259,7 +1282,7 @@ impl RuntimeHostAdapter for InProcessRuntime {
         let model = self.provider_store.get_default_model().await?;
 
         // Discover tools from the session's scoped MCP servers so they appear
-        // to the LLM alongside built-in tools (specs/runtime-mcp.md D4).
+        // to the LLM alongside built-in tools (knowledge/integrations/runtime-mcp.md D4).
         let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
         let mcp_tool_definitions = if scoped_servers.is_empty() {
             vec![]
@@ -1381,6 +1404,14 @@ impl RuntimeHostAdapter for InProcessRuntime {
 
     fn egress_service(&self) -> Option<Arc<dyn everruns_core::EgressService>> {
         Some(self.platform_definition.egress_service())
+    }
+
+    fn provider_retry_config(&self) -> Option<everruns_core::llm_retry::LlmRetryConfig> {
+        self.provider_retry_config.clone()
+    }
+
+    fn provider_stall_timeout(&self) -> Option<std::time::Duration> {
+        self.provider_stall_timeout
     }
 }
 

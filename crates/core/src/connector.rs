@@ -213,7 +213,7 @@ impl Default for ConnectorRegistryBuilder {
 // ============================================================================
 
 // Form schema types are shared with provider drivers; see
-// `crate::credential_schema` and specs/providers.md "Credentials".
+// `crate::credential_schema` and knowledge/foundations/providers.md "Credentials".
 pub use crate::credential_schema::{FieldType, FormField};
 
 /// Credential form schema for connectors.

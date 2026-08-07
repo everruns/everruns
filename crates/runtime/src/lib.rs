@@ -95,11 +95,12 @@
 //! cargo run -p everruns-runtime --example real_disk_file_system_tools
 //! ```
 //!
-//! And `specs/file-store.md` for the trait contract.
+//! And `knowledge/runtime-resources/file-store.md` for the trait contract.
 
 mod backends;
 mod builders;
 mod file_store_decorators;
+mod grep_limits;
 mod host;
 mod in_memory;
 mod mcp;

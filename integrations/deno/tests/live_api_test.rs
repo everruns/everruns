@@ -11,7 +11,7 @@
 //! Missing-credential policy: these tests fail closed. If the feature flag is
 //! set but credentials are missing or inconsistent, the tests panic rather
 //! than silently passing, so CI live jobs cannot report false-green.
-//! See `specs/integrations.md`.
+//! See `knowledge/integrations/integrations.md`.
 //!
 //! Run with:
 //!   doppler run -- cargo test -p everruns-integrations-deno \
@@ -78,7 +78,7 @@ fn sandbox_region() -> Option<String> {
 
 /// Require `DENO_DEPLOY_TOKEN` (plus `DENO_DEPLOY_ORG` for personal `ddp_...`
 /// tokens) or panic. Live tests fail closed so CI cannot silently pass when
-/// credentials are missing. See `specs/integrations.md`.
+/// credentials are missing. See `knowledge/integrations/integrations.md`.
 macro_rules! require_token {
     () => {{
         match token() {

@@ -4,9 +4,18 @@ import { useState, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronUp, ChevronDown, X, Plug, Lock, Settings, Shield } from "lucide-react";
+import {
+  AlertTriangle,
+  ChevronUp,
+  ChevronDown,
+  X,
+  Plug,
+  Lock,
+  Settings,
+  Shield,
+} from "lucide-react";
 import type { Capability, CapabilityId, AgentCapabilityConfig } from "@/lib/api/types";
-import { getCapabilityIcon } from "@/lib/capability-icons";
+import { CapabilityIcon } from "@/lib/capability-icons";
 import { localizedCapabilityName } from "@/lib/capability-localization";
 import { useLocale } from "@/providers/locale-provider";
 import { cn } from "@/lib/utils";
@@ -70,8 +79,36 @@ export function SelectedCapabilityList({
     <div className="space-y-1">
       {selected.map((capConfig, index) => {
         const cap = getCapability(capConfig.ref);
-        if (!cap) return null;
-        const IconComponent = getCapabilityIcon(cap.icon);
+        if (!cap) {
+          return (
+            <div
+              key={capConfig.ref}
+              role="alert"
+              className="border border-destructive/40 bg-destructive/5 p-3"
+            >
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-destructive" />
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-destructive">Capability unavailable</p>
+                  <p className="mt-1 break-all text-xs text-muted-foreground">{capConfig.ref}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    It may have been disabled, uninstalled, or reinstalled. Remove it, then select
+                    the current capability if available.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onRemove(capConfig.ref)}
+                  disabled={disabled}
+                  className="p-1 text-muted-foreground hover:text-foreground disabled:opacity-50"
+                  aria-label={`Remove unavailable capability ${capConfig.ref}`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          );
+        }
         const hasSettings = hasCapabilitySettings(cap);
         const isSettingsExpanded = expandedSettings.has(capConfig.ref);
         const config = capabilityConfigRecord(capConfig.config);
@@ -113,7 +150,7 @@ export function SelectedCapabilityList({
                 <span className="text-xs text-muted-foreground w-4 text-center">{index + 1}</span>
 
                 {/* Icon and name */}
-                <IconComponent className="w-4 h-4 shrink-0" />
+                <CapabilityIcon icon={cap.icon} className="w-4 h-4 shrink-0" />
                 <span className="flex-1 text-sm truncate flex items-center gap-2">
                   {localizedCapabilityName(cap, locale)}
                   {cap.is_mcp && (

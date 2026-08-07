@@ -32,6 +32,7 @@ mod runtime_builder;
 mod schedule_runner;
 mod schedule_store;
 mod task_registry;
+mod wake_routing;
 
 pub use backends::LocalBackends;
 pub use db::SqliteDb;
@@ -44,3 +45,4 @@ pub use schedule_runner::{
 };
 pub use schedule_store::LocalScheduleStore;
 pub use task_registry::LocalSessionTaskRegistry;
+pub use wake_routing::{HostRoutedRunner, WakeRoutes};

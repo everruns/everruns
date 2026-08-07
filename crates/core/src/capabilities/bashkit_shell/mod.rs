@@ -15,13 +15,13 @@
 //! - Outbound HTTP (curl/wget) is opt-in via per-capability config
 //!   `{"enable_http": true}` and only functions when the runtime provides an
 //!   `EgressService`: every request crosses the egress boundary through
-//!   `egress_transport::BashkitEgressTransport` (see `specs/egress.md`).
+//!   `egress_transport::BashkitEgressTransport` (see `knowledge/operations/egress.md`).
 //!   Without the config flag - or without an egress service in context - the
 //!   shell has no network path at all, preserving the historical default.
 //!
 //! Trust boundary (TM-AGENT-005, TM-BASH-001..016):
 //! - `risk_level()` returns `High`. Per the capability admin-only tier contract
-//!   (`specs/capabilities.md`, `specs/permissions.md`), assigning `bashkit_shell`
+//!   (`knowledge/execution/capabilities.md`, `knowledge/security/permissions.md`), assigning `bashkit_shell`
 //!   to an agent requires `OrgRole::Admin`; the canonical create/update gate is
 //!   `check_high_risk_caps` in `crates/server/src/domains/agents/commands.rs`
 //!   (invoked from `CreateAgent::execute`, `UpdateAgent::execute`, and
@@ -48,7 +48,7 @@ use crate::background::{
 };
 use crate::exec_tool_result::ExecToolResultPayload;
 use crate::session_file::SessionFile;
-use crate::tool_types::ToolHints;
+use crate::tool_types::{DeferrablePolicy, ToolHints};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionFileSystem, ToolContext};
 use crate::typed_id::SessionId;
@@ -333,6 +333,13 @@ impl Tool for BashTool {
             .with_cpu_bound(true)
     }
 
+    fn deferrable_policy(&self) -> DeferrablePolicy {
+        // Bash is a hot-path tool whose exact input contract must stay visible.
+        // Deferring it makes models more likely to substitute shell interfaces
+        // learned outside Everruns (for example `bash_run` with `command`).
+        DeferrablePolicy::Never
+    }
+
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
         ToolExecutionResult::tool_error(
             "bash requires context. This tool must be executed with session context.",
@@ -415,13 +422,14 @@ impl Tool for BashTool {
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
         let (partial_tx, partial_rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
 
-        let output_callback: OutputCallback =
-            Box::new(move |stdout_chunk: &str, stderr_chunk: &str| {
-                // Best-effort: if receiver dropped, we just ignore
-                let _ = tx.send((stdout_chunk.to_string(), stderr_chunk.to_string()));
-                // Bounded: drop if full rather than growing without bound.
-                let _ = partial_tx.try_send((stdout_chunk.to_string(), stderr_chunk.to_string()));
-            });
+        let output_callback: OutputCallback = Box::new(move |stdout_chunk, stderr_chunk| {
+            // Tool output events are text, so decode Bashkit's byte-native
+            // chunks explicitly at the event boundary.
+            // Best-effort: if receiver dropped, we just ignore
+            let _ = tx.send((stdout_chunk.to_string(), stderr_chunk.to_string()));
+            // Bounded: drop if full rather than growing without bound.
+            let _ = partial_tx.try_send((stdout_chunk.to_string(), stderr_chunk.to_string()));
+        });
 
         // Spawn a task that reads chunks from the channel and emits events
         let emit_context = context.clone();
@@ -634,16 +642,17 @@ impl BackgroundExecutableTool for BashTool {
         let sink_for_output = sink.clone();
         let dropped_chunks = Arc::new(AtomicUsize::new(0));
         let dropped_chunks_for_callback = dropped_chunks.clone();
-        let output_callback: OutputCallback =
-            Box::new(move |stdout_chunk: &str, stderr_chunk: &str| {
-                if tx
-                    .try_send((stdout_chunk.to_string(), stderr_chunk.to_string()))
-                    .is_err()
-                {
-                    dropped_chunks_for_callback.fetch_add(1, Ordering::Relaxed);
-                }
-                let _ = partial_tx.try_send((stdout_chunk.to_string(), stderr_chunk.to_string()));
-            });
+        let output_callback: OutputCallback = Box::new(move |stdout_chunk, stderr_chunk| {
+            // Background output uses the same text boundary as foreground
+            // tool events.
+            if tx
+                .try_send((stdout_chunk.to_string(), stderr_chunk.to_string()))
+                .is_err()
+            {
+                dropped_chunks_for_callback.fetch_add(1, Ordering::Relaxed);
+            }
+            let _ = partial_tx.try_send((stdout_chunk.to_string(), stderr_chunk.to_string()));
+        });
 
         let emit_task = tokio::spawn(async move {
             while let Some((stdout_chunk, stderr_chunk)) = rx.recv().await {
@@ -811,7 +820,7 @@ fn install_observability_hooks(builder: BashBuilder, session_id: SessionId) -> B
 /// Enable outbound HTTP for curl/wget when the per-capability config opted in
 /// AND the execution context provides an egress service.
 ///
-/// Design (specs/egress.md migration step 3, bashkit `specs/http-transport.md`):
+/// Design (knowledge/operations/egress.md migration step 3, bashkit `knowledge/security/http-transport.md`):
 /// bashkit keeps its full HTTP policy pipeline — `allow_all()` retains the
 /// private-IP-blocking SSRF precheck whose resolve-then-check result is
 /// forwarded as pinned addresses — while connectivity is owned by
@@ -827,7 +836,7 @@ fn install_observability_hooks(builder: BashBuilder, session_id: SessionId) -> B
 /// Bot-auth request signing mirrors web_fetch: server-wide
 /// `BOT_AUTH_SIGNING_KEY_SEED` (+ optional `BOT_AUTH_AGENT_FQDN`,
 /// `BOT_AUTH_VALIDITY_SECS`) transparently signs every outbound request
-/// before it reaches the transport (bashkit `specs/request-signing.md`).
+/// before it reaches the transport (bashkit `knowledge/security/request-signing.md`).
 fn configure_http(builder: BashBuilder, enable_http: bool, context: &ToolContext) -> BashBuilder {
     if !enable_http {
         return builder;
@@ -879,7 +888,7 @@ fn configure_http(builder: BashBuilder, enable_http: bool, context: &ToolContext
 }
 
 /// Read the server-wide bot-auth signing config once (same env contract as
-/// `web_fetch`; see `specs/fetchkit.md` "Bot-auth"). Returns a fresh clone per
+/// `web_fetch`; see `knowledge/execution/fetchkit.md` "Bot-auth"). Returns a fresh clone per
 /// call site because `BashBuilder::bot_auth` takes ownership.
 fn bot_auth_config_from_env() -> Option<bashkit::BotAuthConfig> {
     static CONFIG: LazyLock<Option<bashkit::BotAuthConfig>> = LazyLock::new(|| {
@@ -979,6 +988,18 @@ impl SessionFileSystemAdapter {
     /// address files anywhere from `/`, with `/workspace` as just its cwd.
     fn store_path(path: &Path) -> String {
         path.to_string_lossy().into_owned()
+    }
+
+    /// Whether `session_path` is an implicit directory — one with children but no row
+    /// of its own (virtual mounts, unmaterialized parents).
+    ///
+    /// Stores answer `list_directory` for an unknown path with `Ok(vec![])`, so only a
+    /// non-empty listing distinguishes a real directory from an absent path.
+    async fn directory_has_entries(&self, session_path: &str) -> bool {
+        self.store
+            .list_directory(self.session_id, session_path)
+            .await
+            .is_ok_and(|entries| !entries.is_empty())
     }
 }
 
@@ -1100,26 +1121,25 @@ impl FileSystem for SessionFileSystemAdapter {
                 })
             }
             Ok(None) => {
-                // Check if it's a directory by listing it
-                match self
-                    .store
-                    .list_directory(self.session_id, &session_path)
-                    .await
-                {
-                    Ok(_entries) => {
-                        let now = SystemTime::now();
-                        Ok(Metadata {
-                            file_type: FileType::Directory,
-                            size: 0,
-                            mode: 0o755,
-                            modified: now,
-                            created: now,
-                        })
-                    }
-                    Err(_) => Err(bashkit::Error::Io(std::io::Error::new(
+                // No row: the path can still be an implicit directory (a virtual mount,
+                // or a parent never materialized as its own row). Only a *non-empty*
+                // listing proves that. Treating any `Ok` as a directory made every
+                // absent path look like an empty directory, because stores return
+                // `Ok(vec![])` rather than an error for paths they do not know.
+                if self.directory_has_entries(&session_path).await {
+                    let now = SystemTime::now();
+                    Ok(Metadata {
+                        file_type: FileType::Directory,
+                        size: 0,
+                        mode: 0o755,
+                        modified: now,
+                        created: now,
+                    })
+                } else {
+                    Err(bashkit::Error::Io(std::io::Error::new(
                         std::io::ErrorKind::NotFound,
                         format!("Path not found: {}", path.display()),
-                    ))),
+                    )))
                 }
             }
             Err(e) => Err(bashkit::Error::Io(std::io::Error::other(e.to_string()))),
@@ -1168,22 +1188,14 @@ impl FileSystem for SessionFileSystemAdapter {
 
         let session_path = Self::store_path(path);
 
-        // Check file
+        // A row exists for both files and materialized directories.
         if let Ok(Some(_)) = self.store.read_file(self.session_id, &session_path).await {
             return Ok(true);
         }
 
-        // Check directory
-        if self
-            .store
-            .list_directory(self.session_id, &session_path)
-            .await
-            .is_ok()
-        {
-            return Ok(true);
-        }
-
-        Ok(false)
+        // Otherwise only an implicit directory counts — see `stat` for why an empty
+        // listing must not be read as existence.
+        Ok(self.directory_has_entries(&session_path).await)
     }
 
     async fn rename(&self, from: &Path, to: &Path) -> bashkit::Result<()> {
@@ -1227,6 +1239,14 @@ impl FileSystem for SessionFileSystemAdapter {
 
     async fn chmod(&self, _path: &Path, _mode: u32) -> bashkit::Result<()> {
         // chmod is a no-op - session filesystem doesn't track permissions
+        Ok(())
+    }
+
+    // THREAT[TM-BASH-017]: no-op like `chmod` (TM-BASH-014). The session store does not
+    // persist mtimes and `stat` synthesizes them, so there is nothing to spoof. The
+    // bashkit default impl errors, which made `touch` fail after it had already
+    // created the file.
+    async fn set_modified_time(&self, _path: &Path, _time: SystemTime) -> bashkit::Result<()> {
         Ok(())
     }
 
@@ -1404,6 +1424,28 @@ mod tests {
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 }))
+            } else if self
+                .directories
+                .lock()
+                .unwrap()
+                .contains_key(&(session_id, path.clone()))
+            {
+                // Production stores materialize directories as rows that `read_file`
+                // returns (see `InMemorySessionFileStore::create_directory`), so the
+                // double must too — otherwise `exists`/`stat` cannot see an empty dir.
+                Ok(Some(SessionFile {
+                    id: uuid::Uuid::new_v4(),
+                    session_id: session_id.into(),
+                    path: path.clone(),
+                    name: path.split('/').next_back().unwrap_or("").to_string(),
+                    is_directory: true,
+                    is_readonly: false,
+                    content: None,
+                    encoding: "text".to_string(),
+                    size_bytes: 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                }))
             } else {
                 Ok(None)
             }
@@ -1486,6 +1528,44 @@ mod tests {
                         updated_at: chrono::Utc::now(),
                     });
                 }
+            }
+
+            // Subdirectory entries. Production lists directory rows alongside file rows,
+            // so recursive walks (`find`, `grep -r`) can descend. Cover both explicitly
+            // created directories and ones implied by a nested file path.
+            let prefix = if is_root {
+                "/".to_string()
+            } else {
+                format!("{path}/")
+            };
+            let mut child_dirs: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
+            let descendant_paths = files
+                .keys()
+                .chain(dirs.keys())
+                .filter(|(sid, _)| *sid == session_id)
+                .map(|(_, p)| p);
+            for candidate in descendant_paths {
+                if let Some(rest) = candidate.strip_prefix(&prefix)
+                    && let Some(name) = rest.split('/').next()
+                    && rest.contains('/')
+                    && !name.is_empty()
+                {
+                    child_dirs.insert(name.to_string());
+                }
+            }
+            for name in child_dirs {
+                entries.push(FileInfo {
+                    id: uuid::Uuid::new_v4(),
+                    session_id: session_id.into(),
+                    path: format!("{prefix}{name}"),
+                    name,
+                    is_directory: true,
+                    is_readonly: false,
+                    size_bytes: 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                });
             }
 
             // Return error if directory doesn't exist (not root, not explicitly created,
@@ -1847,6 +1927,97 @@ mod tests {
             assert_eq!(output["stdout"], "test content\n");
         } else {
             panic!("Expected success result");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_bash_recursive_walk_descends_into_subdirectories() {
+        let (context, _guard) = create_context_with_mock_store();
+        let tool = BashTool::default();
+
+        let result = tool
+            .execute_with_context(
+                json!({"commands": "mkdir -p /workspace/a/b && echo needle > /workspace/a/b/c.txt \
+                     && ls /workspace/a && find /workspace/a -name '*.txt'"}),
+                &context,
+            )
+            .await;
+
+        match result {
+            ToolExecutionResult::Success(output) => {
+                let stdout = output["stdout"].as_str().unwrap_or("");
+                assert_eq!(output["exit_code"], 0, "stderr: {}", output["stderr"]);
+                assert!(
+                    stdout.contains("b\n"),
+                    "expected subdir in ls, got {stdout:?}"
+                );
+                assert!(
+                    stdout.contains("/workspace/a/b/c.txt"),
+                    "expected find to descend, got {stdout:?}"
+                );
+            }
+            other => panic!("Expected success result, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_adapter_reports_absent_paths_as_missing() {
+        let session_id = SessionId::new();
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
+        let adapter = SessionFileSystemAdapter::new(session_id, store);
+
+        // Stores answer `list_directory` for unknown paths with an empty listing, so
+        // `exists`/`stat` must not read that as "an empty directory is here". When they
+        // did, `touch` skipped creation (the file already "existed") and reported success.
+        assert!(
+            !adapter
+                .exists(Path::new("/workspace/nope.txt"))
+                .await
+                .unwrap()
+        );
+        assert!(
+            adapter
+                .stat(Path::new("/workspace/nope.txt"))
+                .await
+                .is_err()
+        );
+
+        adapter
+            .mkdir(Path::new("/workspace/realdir"), false)
+            .await
+            .unwrap();
+        assert!(
+            adapter
+                .exists(Path::new("/workspace/realdir"))
+                .await
+                .unwrap()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_bash_touch_creates_and_updates_files() {
+        let (context, _guard) = create_context_with_mock_store();
+        let tool = BashTool::default();
+
+        // `touch` writes the file and then sets its mtime; the session filesystem
+        // does not track mtimes, so the second step must not fail the command.
+        let result = tool
+            .execute_with_context(
+                json!({"commands": "touch /workspace/a.txt && touch /workspace/a.txt && ls /workspace"}),
+                &context,
+            )
+            .await;
+
+        match result {
+            ToolExecutionResult::Success(output) => {
+                assert_eq!(output["exit_code"], 0, "stderr: {}", output["stderr"]);
+                assert!(
+                    output["stdout"].as_str().unwrap_or("").contains("a.txt"),
+                    "expected a.txt in listing, got {:?}",
+                    output["stdout"]
+                );
+            }
+            other => panic!("Expected success result, got {other:?}"),
         }
     }
 
@@ -2886,6 +3057,12 @@ mod tests {
     fn test_bash_tool_display_name() {
         let tool = BashTool::default();
         assert_eq!(tool.display_name(), Some("Bash"));
+    }
+
+    #[test]
+    fn test_bash_tool_is_never_deferred() {
+        let tool = BashTool::default();
+        assert_eq!(tool.deferrable_policy(), DeferrablePolicy::Never);
     }
 
     #[test]

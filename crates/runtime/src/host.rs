@@ -259,8 +259,14 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Bounded automatic-recovery policy for provider failures.
+    /// Default: `None` (use the provider policy defaults).
+    fn provider_retry_config(&self) -> Option<everruns_core::llm_retry::LlmRetryConfig> {
+        None
+    }
+
     /// MCP executor routing `mcp_*` tool calls for this session, if the host
-    /// configures MCP (specs/runtime-mcp.md D4). Default: `None`, so hosts
+    /// configures MCP (knowledge/integrations/runtime-mcp.md D4). Default: `None`, so hosts
     /// without scoped MCP servers keep the plain tool registry unchanged.
     async fn mcp_executor(
         &self,
@@ -520,7 +526,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     // capability hooks can persist or compact it into secondary surfaces.
     post_tool_hooks.sort_by_key(|hook| hook.priority());
 
-    // User-hook contributions (see `specs/user-hooks.md`). `finalize_specs_from_configs`
+    // User-hook contributions (see `knowledge/runtime-resources/user-hooks.md`). `finalize_specs_from_configs`
     // gathers specs across every resolved capability — both the user-facing
     // `user_hooks` capability and any capability that bundles hooks — and applies
     // `finalize_hook_specs` (namespace stamping, stable ids, `disabled_contributions`
@@ -1281,7 +1287,11 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
 
     let mut reason_capability_registry = adapter.capability_registry();
     if !query_history_allowed {
-        reason_capability_registry.unregister("infinity_context");
+        // Keep Infinity Context's message filter active: persisted history may
+        // contain raw text removed by earlier prompt hooks. Replace only its
+        // model-visible prompt/tool contributions.
+        reason_capability_registry
+            .register(everruns_core::capabilities::InfinityContextFilterOnlyCapability);
     }
     let mut atom = ReasonAtom::new(
         adapter.harness_store(org_id),
@@ -1302,6 +1312,9 @@ pub async fn execute_reason_activity_with_prompt_messages<A: RuntimeHostAdapter>
     }
     if let Some(timeout) = adapter.provider_stall_timeout() {
         atom = atom.with_provider_stall_timeout(timeout);
+    }
+    if let Some(config) = adapter.provider_retry_config() {
+        atom = atom.with_provider_retry_config(config);
     }
     if let Some(store) = adapter.partial_stream_store() {
         atom = atom.with_partial_stream_store(store);
@@ -1450,10 +1463,10 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     // everything that introspects the registry (spawn_background, tool_search,
     // openai_tool_search namespaces, ...). The turn's tool definitions already
     // include the discovered MCP tools, so no re-discovery is needed; the host's
-    // MCP executor supplies execution (specs/runtime-mcp.md D5).
+    // MCP executor supplies execution (knowledge/integrations/runtime-mcp.md D5).
     // The MCP invoker is reused below for the guardrails `mcp` check, which
     // delegates a guardrail decision to an external endpoint over the same
-    // scoped-MCP client/auth (specs/guardrails.md).
+    // scoped-MCP client/auth (knowledge/execution/guardrails.md).
     let mut mcp_invoker: Option<Arc<dyn everruns_core::McpToolInvoker>> = None;
     if let Some(mcp) = adapter.mcp_executor(org_id, input.context.session_id).await {
         let invoker: Arc<dyn everruns_core::McpToolInvoker> = mcp;

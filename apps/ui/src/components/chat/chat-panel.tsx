@@ -119,6 +119,7 @@ export function ChatPanel() {
     sessionId,
     session,
     llmModel,
+    llmModelLoading,
     chatEvents,
     toolResultsMap,
     toolProgressMap,
@@ -143,7 +144,7 @@ export function ChatPanel() {
     getToolCalls,
   } = useSessionContext();
 
-  const { data: models = [] } = useModels();
+  const { data: models = [], isLoading: modelsLoading } = useModels();
   const { data: participants } = useSessionParticipants(sessionId);
   const { data: agents } = useAgents();
   const [inputValue, setInputValue] = useState("");
@@ -177,6 +178,8 @@ export function ChatPanel() {
     sessionId,
     models,
     defaultModel: llmModel,
+    defaultModelLoading: llmModelLoading,
+    modelsLoading,
     reasoningEffort,
     setReasoningEffort,
     verbosity,

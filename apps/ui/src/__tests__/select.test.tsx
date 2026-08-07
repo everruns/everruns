@@ -87,7 +87,7 @@ describe("Select wrapper auto-collects display labels", () => {
   // The bug: <SelectValue> showed the raw internal value (e.g. "shared_session")
   // because no items map was forwarded to base-ui. The wrapper now walks
   // <SelectItem> children and forwards a value→label map, so display labels
-  // are the default. See specs/code-organization.md.
+  // are the default. See knowledge/foundations/code-organization.md.
   it("forwards a value→label map collected from SelectItem children", () => {
     render(
       <Select value="webhook" onValueChange={() => {}}>

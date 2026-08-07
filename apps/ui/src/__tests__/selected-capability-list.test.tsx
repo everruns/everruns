@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { SelectedCapabilityList } from "@/components/agents/selected-capability-list";
 import type { AgentCapabilityConfig, Capability } from "@/lib/api/types";
 
@@ -38,5 +38,26 @@ describe("SelectedCapabilityList", () => {
     );
 
     expect(screen.getByText("Legacy Capability")).toBeInTheDocument();
+  });
+
+  it("keeps stale refs visible with an actionable remove control", () => {
+    const onRemove = jest.fn();
+
+    render(
+      <SelectedCapabilityList
+        selected={[{ ref: "plugin:plugin_stale", config: {} }]}
+        getCapability={() => undefined}
+        getDependents={() => []}
+        onRemove={onRemove}
+        onConfigChange={jest.fn()}
+        onMoveUp={jest.fn()}
+        onMoveDown={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("Capability unavailable");
+    expect(screen.getByRole("alert")).toHaveTextContent("plugin:plugin_stale");
+    fireEvent.click(screen.getByRole("button", { name: /remove unavailable capability/i }));
+    expect(onRemove).toHaveBeenCalledWith("plugin:plugin_stale");
   });
 });

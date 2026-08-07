@@ -83,6 +83,21 @@ describe("auth proxy", () => {
     expect(response.headers.get("location")).toBeNull();
   });
 
+  it("allows protected routes through when only the refresh token cookie exists", () => {
+    process.env.AUTH_MODE = "full";
+
+    const request = {
+      cookies: { has: (name: string) => name === "refresh_token" },
+      nextUrl: new URL("http://localhost/settings/providers?tab=models"),
+      url: "http://localhost/settings/providers?tab=models",
+    } as unknown as Parameters<typeof proxy>[0];
+
+    const response = proxy(request);
+
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.headers.get("location")).toBeNull();
+  });
+
   it("adds agent discovery Link headers to the homepage", () => {
     const request = {
       cookies: { has: () => false },

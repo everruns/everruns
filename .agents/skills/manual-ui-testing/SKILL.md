@@ -10,7 +10,7 @@ allowed-tools: Bash(npx agent-browser:*), Bash(agent-browser:*), Bash(just:*), B
 # Manual UI Testing
 
 Execute the test cases in `test_cases/ui/` against a running stack with `agent-browser`, record
-results, and file issues for failures. [`specs/test-cases.md`](../../../specs/test-cases.md) defines
+results, and file issues for failures. [`knowledge/evaluation/test-cases.md`](../../../knowledge/evaluation/test-cases.md) defines
 the test case format.
 
 ## Scope

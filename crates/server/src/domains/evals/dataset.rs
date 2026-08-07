@@ -1,5 +1,5 @@
 // Dataset export: turn a completed eval run into a reward-labeled trajectory
-// dataset (NDJSON). See `specs/dataset-export.md`.
+// dataset (NDJSON). See `knowledge/evaluation/dataset-export.md`.
 //
 // This module is pure (no IO): the command in `commands.rs` loads the run and
 // each case's model-view messages, then calls into here to filter, redact, and
@@ -27,7 +27,7 @@ pub enum DatasetFormat {
     Sft,
     /// One complete ATIF (Agent Trajectory Interchange Format) trajectory per
     /// line, folded from the case session's event log, with reward and case
-    /// identity in root `extra`. See `specs/atif-adoption.md`.
+    /// identity in root `extra`. See `knowledge/evaluation/atif-adoption.md`.
     Atif,
 }
 

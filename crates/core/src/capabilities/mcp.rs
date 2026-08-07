@@ -1,6 +1,6 @@
 // MCP Virtual Capability
 //
-// Spec: specs/mcp.md (umbrella), specs/mcp-servers.md (capabilities integration)
+// Spec: knowledge/integrations/mcp.md (umbrella), knowledge/integrations/mcp-servers.md (capabilities integration)
 //
 // This module provides a capability wrapper for MCP servers.
 // Each active MCP server becomes a virtual capability that contributes

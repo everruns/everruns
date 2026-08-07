@@ -79,9 +79,11 @@ pub async fn hydrate_declarative_capability_configs(
                 hydrate_declarative_capability_config(cap.config, &definition),
             ));
         } else if is_plugin_capability(&cap_id)
-            && let Some(plugin_name) = parse_plugin_capability_id(&cap_id)
-            && let Some(row) = db.get_plugin_install_by_name(org_id, plugin_name).await?
-            && matches!(row.status.as_str(), "active" | "disabled")
+            && let Some(plugin_public_id) = parse_plugin_capability_id(&cap_id)
+            && let Some(row) = db
+                .get_plugin_install_by_public_id(org_id, plugin_public_id)
+                .await?
+            && row.status == "active"
         {
             let definition: DeclarativeCapabilityDefinition =
                 serde_json::from_value(row.definition.clone()).unwrap_or_default();

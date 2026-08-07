@@ -425,7 +425,7 @@ pub(crate) async fn run_app_agent_stream(
     .map_err(SessionError::into_response)?;
     // EVE-415: snapshot before SSE guard / history seed / subscribe so the
     // timing field measures only the session lookup-or-create work, matching
-    // the contract documented in `specs/load-testing.md`.
+    // the contract documented in `knowledge/operations/load-testing.md`.
     let session_resolved_ms = ingress_start.elapsed().as_millis();
 
     // THREAT[TM-DOS-010]: Anonymous AG-UI streams must still respect server-wide
@@ -1363,7 +1363,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             state.finished = true;
         }
         "turn.failed" => {
-            // AG-UI is a public, app-scoped channel — see specs/public-endpoints.md.
+            // AG-UI is a public, app-scoped channel — see knowledge/execution/public-endpoints.md.
             // Sanitize via the shared `PublicError` so internal codes, provider
             // strings, model IDs, and quota state never reach the wire.
             let internal_code = parse_event_data::<TurnFailedData>(event)
@@ -1403,7 +1403,7 @@ fn agui_base_event() -> AgUiBaseEvent {
 
 /// Adapt a sanitized `PublicError` into an AG-UI `RunError` event. All public
 /// error emission on this endpoint must go through here so the contract from
-/// `specs/public-endpoints.md` is enforced in one place.
+/// `knowledge/execution/public-endpoints.md` is enforced in one place.
 fn public_run_error_event(error: PublicError) -> AgUiEvent {
     AgUiEvent::RunError(AgUiRunErrorEvent {
         base: agui_base_event(),

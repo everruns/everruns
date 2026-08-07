@@ -242,6 +242,9 @@ impl InMemoryDatabase {
                 skill.instructions = instructions;
             }
             if let Some(status) = input.status {
+                if status != "archived" {
+                    skill.archived_at = None;
+                }
                 skill.status = status;
             }
             if let Some(version) = input.version {

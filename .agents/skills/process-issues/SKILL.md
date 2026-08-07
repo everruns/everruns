@@ -12,7 +12,7 @@ Resolve open Linear issues from the **OSS** project (EVE team) by shipping one m
 The same workflow applies whether the user names one issue or asks for the backlog.
 
 `$ARGUMENTS` may carry issue IDs, a priority filter, or a project override.
-[`specs/issue-tracking.md`](../../../specs/issue-tracking.md) has project scope and prerequisites.
+[`knowledge/project/issue-tracking.md`](../../../knowledge/project/issue-tracking.md) has project scope and prerequisites.
 
 ## Rules that do not bend
 

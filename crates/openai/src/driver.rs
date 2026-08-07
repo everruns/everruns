@@ -286,12 +286,19 @@ async fn list_openai_models(
         .await
         .map_err(|e| AgentLoopError::llm(format!("Failed to parse models response: {}", e)))?;
 
-    // Filter to chat models only and convert to DiscoveredModel
+    // Keep models supported by one of this driver's concrete services. The
+    // provider supports both chat and embeddings, so filtering to chat here
+    // made legitimate embedding models impossible to discover.
     let discovered: Vec<DiscoveredModel> = models_response
         .data
         .into_iter()
-        .filter(|m| m.is_chat_model())
+        .filter(|m| m.is_chat_model() || m.is_embedding_model())
         .map(|m| DiscoveredModel {
+            capabilities: if m.is_embedding_model() {
+                vec!["embeddings".to_string()]
+            } else {
+                vec!["chat".to_string()]
+            },
             model_id: m.id,
             display_name: None, // OpenAI doesn't provide display names
             created_at: chrono::Utc.timestamp_opt(m.created, 0).single(),
@@ -334,8 +341,8 @@ fn supports_model_listing(api_url: &str) -> bool {
 /// ```
 pub fn register_driver(registry: &mut DriverRegistry) {
     // Register OpenAI with Open Responses API (recommended). OpenAI providers
-    // also power realtime voice sessions (specs/voice.md) and text embeddings
-    // (specs/providers.md phase 6), so the descriptor declares those services
+    // also power realtime voice sessions (knowledge/operations/voice.md) and text embeddings
+    // (knowledge/foundations/providers.md phase 6), so the descriptor declares those services
     // alongside Chat.
     let openai_embeddings_factory: EmbeddingsDriverFactory = std::sync::Arc::new(|config| {
         let api_key = config.api_key.as_deref().unwrap_or("");

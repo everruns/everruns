@@ -4,6 +4,7 @@ import {
   countStructuralEvents,
 } from "@/components/trajectory/trajectory-utils";
 import type { Event, EventContext } from "@/lib/api/types";
+import trajectoryToolEvents from "./fixtures/trajectory-tool-events.json";
 
 // --- Helpers ---
 
@@ -349,6 +350,76 @@ describe("trajectory-utils", () => {
   });
 
   describe("buildTrajectory", () => {
+    it("hydrates real tool lifecycle events in iteration order", () => {
+      const { nodes, edges, stats } = buildTrajectory(trajectoryToolEvents as Event[]);
+      const orderedChildren = nodes.filter((node) => node.parentId).map((node) => node.type);
+      const toolNodes = nodes.filter((node) => node.type === "toolGroup");
+
+      expect(orderedChildren).toEqual([
+        "userMessage",
+        "reasoning",
+        "toolGroup",
+        "reasoning",
+        "toolGroup",
+        "reasoning",
+        "agentMessage",
+      ]);
+      expect(toolNodes).toHaveLength(2);
+      expect(Number(toolNodes[0].zIndex)).toBeGreaterThan(Number(toolNodes[1].zIndex));
+      expect(nodes[0].type).toBe("turnGroup");
+      expect(stats.totalToolCalls).toBe(3);
+      expect(stats.totalToolErrors).toBe(1);
+
+      const firstTools = (
+        toolNodes[0].data as {
+          tools: Array<{
+            id: string;
+            label: string;
+            arguments?: Record<string, unknown>;
+            resultText?: string;
+            error?: string;
+          }>;
+        }
+      ).tools;
+      expect(firstTools.map((tool) => tool.id)).toEqual(["call_package", "call_source"]);
+      expect(firstTools[0]).toMatchObject({
+        label: "Read package.json",
+        arguments: { path: "apps/ui/package.json" },
+        resultText: '{"name":"everruns-ui","private":true}',
+      });
+      expect(firstTools[1]).toMatchObject({
+        label: "Could not read trajectory-utils.ts",
+        error: "File not found",
+      });
+
+      expect(edges).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ source: "turn-0-reason-0", target: "turn-0-tools-0" }),
+          expect.objectContaining({ source: "turn-0-tools-0", target: "turn-0-reason-1" }),
+          expect.objectContaining({ source: "turn-0-tools-1", target: "turn-0-reason-2" }),
+        ]),
+      );
+    });
+
+    it("does not fabricate a tool node when an iteration has no calls", () => {
+      const events = [
+        inputMessageEvent("msg-1", "Hello"),
+        turnStartedEvent("turn-1", "msg-1"),
+        makeEvent(
+          "reason.completed",
+          { has_tool_calls: false, tool_call_count: 0, duration_ms: 100 },
+          turnContext("turn-1", "msg-1"),
+        ),
+        outputMessageCompletedEvent("turn-1", "msg-1", "Hi there"),
+        turnCompletedEvent("turn-1", "msg-1"),
+      ];
+
+      const { nodes, stats } = buildTrajectory(events);
+
+      expect(nodes.filter((node) => node.type === "toolGroup")).toHaveLength(0);
+      expect(stats.totalToolCalls).toBe(0);
+    });
+
     it("creates correct nodes for a single turn with orphan adoption", () => {
       const events = [
         inputMessageEvent("msg-1", "Hello"),

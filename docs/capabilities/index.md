@@ -94,7 +94,8 @@ Agent self-management and platform control.
 
 | Capability | ID | Tools |
 |---|---|---|
-| [Platform Management](/capabilities/platform-management/) | `platform_management` | 14 |
+| [Platform](/capabilities/platform/) | `platform` | 3 |
+| [Platform Management (legacy)](/capabilities/platform-management/) | `platform_management` | 14 |
 
 ### Optimization
 
@@ -119,16 +120,21 @@ Streaming-output guardrails and runtime safety nets.
 |---|---|---|
 | [Prompt Canary Guardrail](/capabilities/prompt-canary-guardrail/) | `prompt_canary_guardrail` | 0 |
 | [Tool Call Repair](/capabilities/tool-call-repair/) | `tool_call_repair` | 0 |
-| Guardrails | `guardrails` | 0 |
+| [Guardrails](/capabilities/guardrails/) | `guardrails` | 0 |
 
-The `guardrails` capability runs config-driven deterministic checks (regex,
-blocklist, tool-call patterns) over model output and tool activity, blocking or
-logging per check. Configure it per agent; use advisory mode and the
-`POST /v1/capabilities/guardrails/dry-run` endpoint to tune checks against
-false positives before enforcing. For ready-made starting points, list the
-gallery at `GET /v1/capabilities/guardrails/examples` (secret detection, PII,
-profanity, dangerous-shell, prompt-injection heuristics) and drop a preset's
-`config` into the agent's `guardrails` capability config.
+The [`guardrails`](/capabilities/guardrails/) capability runs config-driven
+checks over model output and tool activity, blocking or logging per check.
+Checks can be deterministic (regex, blocklist, tool-call patterns) or
+model-backed — an `llm_judge` policy or a `moderation` classifier — plus
+delegation to an external guardrail over scoped MCP. Each check binds a rule to
+a stage (`output`, `tool_use`, `tool_output`) with an `on_fail` of `block` or
+`log`; model-backed and MCP checks send a bounded excerpt off the sync path and
+fail open. Use advisory mode and the
+`POST /v1/capabilities/guardrails/dry-run` endpoint to tune against false
+positives before enforcing. For ready-made starting points, list the gallery at
+`GET /v1/capabilities/guardrails/examples` — each preset carries a `data_egress`
+signal (`none` vs. `utility_llm`) — and drop a preset's `config` into the
+agent's `guardrails` capability config.
 
 ### Automation
 

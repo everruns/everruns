@@ -149,6 +149,7 @@ export function DevChatRuntimeScene({
     toolProgressMap: fixture.toolProgressMap,
     toolOutputMap: fixture.toolOutputMap,
     sessionLoading: false,
+    llmModelLoading: false,
     eventsLoading: false,
     effectiveStatus: session.status,
     liveUsage: { input_tokens: 1842, output_tokens: 326 },

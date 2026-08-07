@@ -1,4 +1,4 @@
-// Agent health check domain types (specs/agent-checks.md, tier-3).
+// Agent health check domain types (knowledge/evaluation/agent-checks.md, tier-3).
 //
 // These types are both the API surface and the JSONB shape persisted on the
 // `agent_health_check_runs` row (`summary` and `results` columns).
@@ -122,7 +122,7 @@ pub struct HealthCheckRun {
 /// comfortably exceeds the runner's worst-case wall-clock budget — `updated_at`
 /// is stamped when the run transitions to `running`, and a run finishes well
 /// inside this window — so an in-flight run is never misreported as failed.
-/// See specs/agent-checks.md (durability) and EVE-586.
+/// See knowledge/evaluation/agent-checks.md (durability) and EVE-586.
 const STALE_AFTER_SECS: i64 = 30 * 60;
 
 const STALE_ERROR_MESSAGE: &str =
@@ -176,7 +176,7 @@ impl HealthCheckRun {
 /// agent's current resolved config differs from the config that run was
 /// executed against. Returned by the latest-run endpoint so the agent editor
 /// can show prior results on mount without triggering a new run, and surface a
-/// "config changed since last run" hint. See specs/agent-checks.md and EVE-588.
+/// "config changed since last run" hint. See knowledge/evaluation/agent-checks.md and EVE-588.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct LatestHealthCheckRun {
     /// The latest run, or `None` if the agent has never been health-checked.

@@ -80,7 +80,7 @@ fn build_client(credential: &BedrockCredential) -> Client {
 /// Register the Bedrock driver with the given registry.
 pub fn register_driver(registry: &mut DriverRegistry) {
     // Bedrock's multi-field credential is a declared schema of discrete typed
-    // fields (specs/providers.md), not a JSON document smuggled through
+    // fields (knowledge/foundations/providers.md), not a JSON document smuggled through
     // `api_key`. The fields are assembled into the stored credential document
     // and parsed back into the typed `DriverConfig` credential map.
     registry.register_descriptor(DriverDescriptor {

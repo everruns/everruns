@@ -2406,7 +2406,11 @@ async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
     use everruns_runtime::execute_reason_activity;
 
     let mut adapter = mock_host();
-    register_driver_with_config(&mut adapter.driver_registry, LlmSimConfig::echo());
+    let provider_messages = Arc::new(std::sync::Mutex::new(Vec::new()));
+    register_driver_with_config(
+        &mut adapter.driver_registry,
+        LlmSimConfig::echo().with_message_capture(provider_messages.clone()),
+    );
     set_default_model(&adapter).await;
     adapter
         .capability_registry
@@ -2426,7 +2430,10 @@ async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
         .add_harness(Harness {
             capabilities: vec![
                 AgentCapabilityConfig::new("lifecycle_hook_test"),
-                AgentCapabilityConfig::new("infinity_context"),
+                AgentCapabilityConfig::with_config(
+                    "infinity_context",
+                    json!({ "max_recent_messages": 1 }),
+                ),
             ],
             ..harness(harness_id)
         })
@@ -2435,6 +2442,11 @@ async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
         .session_store
         .insert(session(session_id, harness_id))
         .await;
+    adapter
+        .message_store
+        .add(session_id, InputMessage::user("PAST RAW SECRET"))
+        .await
+        .unwrap();
     let user_message = adapter
         .message_store
         .add(session_id, InputMessage::user("SECRET prompt"))
@@ -2466,6 +2478,28 @@ async fn user_prompt_submit_hook_mutate_rewrites_reason_context() {
             .iter()
             .all(|definition| definition.name() != "query_history"),
         "raw persisted history must not be exposed when prompt hooks can rewrite user text"
+    );
+
+    // The provider-visible context must still respect Infinity Context's
+    // history-trimming filter (max_recent_messages: 1). Before the fix, the
+    // whole `infinity_context` capability — including its message filter — was
+    // unregistered when `query_history` was suppressed, so the older
+    // "PAST RAW SECRET" audit message leaked into the provider prompt. Assert
+    // it never reaches the driver while the current (mutated) prompt does.
+    // Scope the guard in a block (no await inside) so it is dropped before the
+    // trailing await below (clippy::await_holding_lock).
+    let sent = {
+        let calls = provider_messages.lock().unwrap();
+        assert!(!calls.is_empty(), "the driver should have been called");
+        format!("{calls:?}")
+    };
+    assert!(
+        !sent.contains("PAST RAW SECRET"),
+        "trimmed older history must not reach the provider prompt, got: {sent}"
+    );
+    assert!(
+        sent.contains("sanitized prompt"),
+        "the current mutated prompt should reach the provider, got: {sent}"
     );
 
     let stored_message = adapter

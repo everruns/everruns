@@ -1172,7 +1172,7 @@ inventory::submit! { CommandDescriptor::of::<PatchInstalledPlugin>() }
 // UninstallPlugin (delete)
 // ============================================================================
 
-/// Uninstall a plugin. Agents/harnesses referencing `plugin:{name}` will
+/// Uninstall a plugin. Agents/harnesses referencing `plugin:{install_id}` will
 /// surface a dangling-ref error (same behaviour as deleted declarative caps).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UninstallPlugin {

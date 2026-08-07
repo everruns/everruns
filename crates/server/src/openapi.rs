@@ -105,6 +105,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         api::sessions::fork_session,
         api::sessions::list_sessions,
         api::sessions::get_session,
+        api::sessions::get_session_resolved_model,
         api::sessions::list_session_participants,
         api::sessions::add_session_participant,
         api::sessions::leave_session_participant,
@@ -184,7 +185,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
         // Session filesystem routes (under /v1/sessions/{session_id}/fs)
         // are intentionally omitted from the OpenAPI doc. They remain wired
         // for backward compatibility but are deprecated; the documented
-        // surface is /v1/workspaces/{workspace_id}/fs. See specs/workspace.md.
+        // surface is /v1/workspaces/{workspace_id}/fs. See knowledge/runtime-resources/workspace.md.
         // Session Git
         api::session_git::commit,
         api::session_git::log,
@@ -456,6 +457,7 @@ fn schema_extensions_mut(schema: &mut Schema) -> Option<&mut Option<Extensions>>
             api::sessions::CreateSessionRequest, api::sessions::UpdateSessionRequest,
             api::sessions::ForkSessionRequest,
             api::sessions::CancelTurnResponse, api::sessions::CancelStatus,
+            api::sessions::SessionResolvedModelResponse,
             api::common::ResourceStatsResponse,
             api::messages::Message, api::messages::MessageRole, api::messages::ContentPart, api::messages::InputContentPart,
             api::messages::CreateMessageRequest, api::messages::InputMessage,

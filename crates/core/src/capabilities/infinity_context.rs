@@ -24,6 +24,34 @@ pub const INFINITY_CONTEXT_CAPABILITY_ID: &str = "infinity_context";
 /// Infinity context capability.
 pub struct InfinityContextCapability;
 
+/// Provider-bound Infinity Context view used when history retrieval is unsafe.
+///
+/// This preserves prompt-window filtering without advertising or exposing the
+/// `query_history` tool.
+pub struct InfinityContextFilterOnlyCapability;
+
+impl Capability for InfinityContextFilterOnlyCapability {
+    fn id(&self) -> &str {
+        INFINITY_CONTEXT_CAPABILITY_ID
+    }
+
+    fn name(&self) -> &str {
+        "Infinity Context"
+    }
+
+    fn description(&self) -> &str {
+        "Trims older conversation history out of the live provider prompt."
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+
+    fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
+        Some(Arc::new(InfinityContextFilterProvider))
+    }
+}
+
 impl Capability for InfinityContextCapability {
     fn id(&self) -> &str {
         INFINITY_CONTEXT_CAPABILITY_ID
@@ -772,6 +800,15 @@ mod tests {
     fn test_provides_message_filter() {
         let capability = InfinityContextCapability;
         assert!(capability.message_filter_provider().is_some());
+    }
+
+    #[test]
+    fn filter_only_view_preserves_filter_without_model_contributions() {
+        let capability = InfinityContextFilterOnlyCapability;
+
+        assert!(capability.message_filter_provider().is_some());
+        assert!(capability.tools().is_empty());
+        assert!(capability.system_prompt_addition().is_none());
     }
 
     #[test]

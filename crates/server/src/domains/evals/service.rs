@@ -870,7 +870,7 @@ impl EvalService {
     // Import (ATIF trajectories → eval cases)
     // ============================================
 
-    /// Create/update eval cases from ATIF trajectories (specs/atif-adoption.md).
+    /// Create/update eval cases from ATIF trajectories (knowledge/evaluation/atif-adoption.md).
     ///
     /// Idempotent: the case `name` (derived from the trajectory's
     /// `extra.case_name`/`source_key`/ids) is the natural key — re-importing
@@ -954,7 +954,7 @@ impl EvalService {
 
     /// Mint a read-only share link for a run. Revokes any prior active link so a
     /// run has at most one live share. The raw token is returned once and stored
-    /// only hashed. See specs/evals.md, specs/public-endpoints.md.
+    /// only hashed. See knowledge/evaluation/evals.md, knowledge/execution/public-endpoints.md.
     pub async fn create_run_share(
         &self,
         caller: &Caller,

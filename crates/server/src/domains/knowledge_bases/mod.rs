@@ -1,4 +1,4 @@
-// Knowledge Bases domain. See specs/knowledge-bases.md.
+// Knowledge Bases domain. See knowledge/runtime-resources/knowledge-bases.md.
 
 use everruns_core::{Permission, Policy, Rule};
 

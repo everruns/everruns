@@ -1,7 +1,7 @@
 # Turbopuffer Vector Store Backend
 # Decision: Implements everruns-core's VectorStore trait against Turbopuffer's
 # v2 HTTP API. Opt-in production backend for Knowledge Index embeddings; the
-# in-memory store stays the default. See specs/knowledge-indexes.md.
+# in-memory store stays the default. See knowledge/runtime-resources/knowledge-indexes.md.
 
 [package]
 name = "everruns-turbopuffer"

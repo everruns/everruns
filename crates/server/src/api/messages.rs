@@ -345,7 +345,7 @@ pub struct ExportSessionQuery {
 /// Default (`format=jsonl`): all materialized messages (user, agent) as
 /// newline-delimited JSON, one complete JSON object per line; delta events are
 /// excluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document
-/// folded from the session's event log (see `specs/atif-adoption.md`); image
+/// folded from the session's event log (see `knowledge/evaluation/atif-adoption.md`); image
 /// content parts are exported as ATIF multimodal ContentParts. When an image
 /// cannot be materialized (an inline image with neither a URL nor bytes) it is
 /// flattened to an `"[image]"` marker and the response carries an

@@ -33,7 +33,7 @@ export interface paths {
     put?: never;
     /**
      * POST /v1/agents/analyze - Run advisory checks against an agent shape
-     * @description Runs built-in rules plus on-demand LLM analysis (specs/agent-checks.md)
+     * @description Runs built-in rules plus on-demand LLM analysis (knowledge/evaluation/agent-checks.md)
      *     and returns merged advisory findings. Requires the system utility LLM
      *     service to be configured.
      */
@@ -1736,7 +1736,7 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** @description Export a knowledge base as an Open Knowledge Format (OKF) bundle (a gzipped tarball of markdown files with YAML frontmatter). See specs/okf-adoption.md. */
+    /** @description Export a knowledge base as an Open Knowledge Format (OKF) bundle (a gzipped tarball of markdown files with YAML frontmatter). See knowledge/runtime-resources/okf-adoption.md. */
     get: operations["export_okf"];
     put?: never;
     post?: never;
@@ -1755,7 +1755,7 @@ export interface paths {
     };
     get?: never;
     put?: never;
-    /** @description Import an Open Knowledge Format (OKF) bundle into a knowledge base. Idempotent: re-importing converges entries without duplicates. See specs/okf-adoption.md. */
+    /** @description Import an Open Knowledge Format (OKF) bundle into a knowledge base. Idempotent: re-importing converges entries without duplicates. See knowledge/runtime-resources/okf-adoption.md. */
     post: operations["import_okf"];
     delete?: never;
     options?: never;
@@ -2938,7 +2938,7 @@ export interface paths {
      * @description Default (`format=jsonl`): all materialized messages (user, agent) as
      *     newline-delimited JSON, one complete JSON object per line; delta events are
      *     excluded. `format=atif` returns a single ATIF-v1.7 trajectory JSON document
-     *     folded from the session's event log (see `specs/atif-adoption.md`); image
+     *     folded from the session's event log (see `knowledge/evaluation/atif-adoption.md`); image
      *     content parts are exported as ATIF multimodal ContentParts. When an image
      *     cannot be materialized (an inline image with neither a URL nor bytes) it is
      *     flattened to an `"[image]"` marker and the response carries an
@@ -3141,6 +3141,23 @@ export interface paths {
     post?: never;
     /** DELETE /v1/sessions/{session_id}/pin - Unpin session for current user */
     delete: operations["unpin_session"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/v1/sessions/{session_id}/resolved-model": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** GET /v1/sessions/{session_id}/resolved-model - Resolve the session's active model */
+    get: operations["get_session_resolved_model"];
+    put?: never;
+    post?: never;
+    delete?: never;
     options?: never;
     head?: never;
     patch?: never;
@@ -4148,7 +4165,7 @@ export interface components {
     };
     /** @description Response from on-demand agent analysis (built-in rules + LLM checkers) */
     AgentAnalysisResponse: {
-      /** @description Advisory findings, built-in and LLM-sourced (specs/agent-checks.md) */
+      /** @description Advisory findings, built-in and LLM-sourced (knowledge/evaluation/agent-checks.md) */
       findings: components["schemas"]["Finding"][];
     };
     /**
@@ -4169,7 +4186,7 @@ export interface components {
     };
     /** @description Response showing the final agent shape after applying capabilities */
     AgentPreviewResponse: {
-      /** @description Advisory findings from built-in checks (specs/agent-checks.md) */
+      /** @description Advisory findings from built-in checks (knowledge/evaluation/agent-checks.md) */
       findings: components["schemas"]["Finding"][];
       /** @description The full system prompt with capability additions prepended */
       system_prompt: string;
@@ -4365,7 +4382,7 @@ export interface components {
      *       prose.
      *
      *     The shape is intentionally identical across both contexts; the closed
-     *     `rel` vocabulary documented in `specs/api-conventions.md` distinguishes
+     *     `rel` vocabulary documented in `knowledge/execution/api-conventions.md` distinguishes
      *     them.
      */
     AllowedAction: {
@@ -4397,7 +4414,7 @@ export interface components {
       operation_id?: string | null;
       /**
        * @description Link relation describing the action. Closed vocabulary documented
-       *     in `specs/api-conventions.md` — examples: `self`, `cancel`, `pause`,
+       *     in `knowledge/execution/api-conventions.md` — examples: `self`, `cancel`, `pause`,
        *     `resume`, `events`, `retry`, `retry-later`, `unarchive`,
        *     `get-existing`, `delete`, `update`.
        */
@@ -6740,7 +6757,7 @@ export interface components {
       /** @description Whether the driver declares an interactive "Connect with …" OAuth flow. */
       supports_oauth: boolean;
     };
-    /** @description LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks. Any other string is treated as an embedder-defined external provider. */
+    /** @description LLM provider type. Built-in: openai, openrouter, azure_openai, openai_completions, anthropic, gemini, llmsim, bedrock, mai, fireworks, meta. Any other string is treated as an embedder-defined external provider. */
     DriverId: string;
     /** @description Options for enqueuing a standalone task */
     EnqueueTaskOptions: {
@@ -7379,7 +7396,7 @@ export interface components {
     };
     /**
      * @description Advisory severity. There is deliberately no `error`: checks never gate
-     *     save/publish (specs/agent-checks.md, Non-Goals).
+     *     save/publish (knowledge/evaluation/agent-checks.md, Non-Goals).
      * @enum {string}
      */
     FindingSeverity: "warning" | "info" | "suggestion";
@@ -7407,7 +7424,7 @@ export interface components {
       name: string;
     };
     /**
-     * @description Request to fork a session (specs/forking-sessions.md). Every field is
+     * @description Request to fork a session (knowledge/runtime-resources/forking-sessions.md). Every field is
      *     optional; omitted fields inherit the parent session's value. Title defaults
      *     to "{parent title} (fork)" when omitted.
      */
@@ -8416,6 +8433,8 @@ export interface components {
       deleted_at?: string | null;
       /** @description Human-readable description. Safe to render in user-facing messages. */
       description?: string | null;
+      /** @description Number of documents currently retained by this index. */
+      document_count: number;
       /** @description Embedding model used to embed chunks. Required. */
       embedding_model_id: string;
       /**
@@ -8456,7 +8475,7 @@ export interface components {
      *     agent's current resolved config differs from the config that run was
      *     executed against. Returned by the latest-run endpoint so the agent editor
      *     can show prior results on mount without triggering a new run, and surface a
-     *     "config changed since last run" hint. See specs/agent-checks.md and EVE-588.
+     *     "config changed since last run" hint. See knowledge/evaluation/agent-checks.md and EVE-588.
      */
     LatestHealthCheckRun: {
       /**
@@ -9372,6 +9391,8 @@ export interface components {
         deleted_at?: string | null;
         /** @description Human-readable description. Safe to render in user-facing messages. */
         description?: string | null;
+        /** @description Number of documents currently retained by this index. */
+        document_count: number;
         /** @description Embedding model used to embed chunks. Required. */
         embedding_model_id: string;
         /**
@@ -10263,6 +10284,12 @@ export interface components {
          * @description Timestamp of the most recent successful model sync from the provider's API (RFC 3339).
          */
         last_synced_at?: string | null;
+        /**
+         * @description Whether this provider is host-managed (EVE-810). A managed provider is
+         *     provisioned by the host/embedder; the OSS API rejects tenant PATCH/DELETE
+         *     on it (403). Read-only to org admins. Defaults to `false`.
+         */
+        managed: boolean;
         /** @description Human-readable provider name. Safe to render in user-facing messages. */
         name: string;
         /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
@@ -10800,7 +10827,7 @@ export interface components {
      *     error responses so the legacy `content[0].text` channel stays
      *     backward-compatible; new SDKs prefer the typed envelope.
      *
-     *     See `specs/mcp.md` for the error contract.
+     *     See `knowledge/integrations/mcp.md` for the error contract.
      */
     McpExecuteError: {
       /** @description Broad-strokes recovery category. */
@@ -10840,15 +10867,19 @@ export interface components {
      * @description Per-server policy for which MCP protocol era the client uses.
      *
      *     `Auto` (the default) probes the server and adapts — it tries the stateless
-     *     RC path first and transparently falls back to the stateful handshake when a
-     *     server demands it, so a single configuration speaks to legacy, current, and
-     *     RC servers without operator action. The pinned variants skip negotiation
-     *     when an operator knows a server's era (or to work around a server that
+     *     `2026-07-28` path first and transparently falls back to the stateful
+     *     handshake when a server demands it, so a single configuration speaks to
+     *     every era without operator action. The pinned variants skip negotiation when
+     *     an operator knows a server's era (or to work around a server that
      *     mis-signals it).
+     *
+     *     Wire values are the version dates. The pre-release names (`legacy`,
+     *     `stable`, `rc`) stay accepted as deserialization aliases so stored config
+     *     keeps loading, but they are no longer emitted.
      * @example auto
      * @enum {string}
      */
-    McpProtocolMode: "auto" | "legacy" | "stable" | "rc";
+    McpProtocolMode: "auto" | "2025-03-26" | "2025-06-18" | "2026-07-28";
     /**
      * @description MCP Server configuration.
      *     Represents a remote MCP server that can provide tools and resources.
@@ -11408,6 +11439,7 @@ export interface components {
       | "nvidia"
       | "qwen"
       | "microsoft"
+      | "meta"
       | "minimax"
       | "moonshot"
       | "xai"
@@ -12933,6 +12965,12 @@ export interface components {
        * @description Timestamp of the most recent successful model sync from the provider's API (RFC 3339).
        */
       last_synced_at?: string | null;
+      /**
+       * @description Whether this provider is host-managed (EVE-810). A managed provider is
+       *     provisioned by the host/embedder; the OSS API rejects tenant PATCH/DELETE
+       *     on it (403). Read-only to org admins. Defaults to `false`.
+       */
+      managed: boolean;
       /** @description Human-readable provider name. Safe to render in user-facing messages. */
       name: string;
       /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
@@ -14309,6 +14347,8 @@ export interface components {
        * @example agentver_01933b5a00007000800000000000001
        */
       agent_version_id?: string | null;
+      /** @description Human-readable name captured for this participant. */
+      display_name?: string | null;
       /**
        * @description Unique identifier for the participant row (format: part_{32-hex}).
        * @example part_01933b5a00007000800000000000001
@@ -14345,6 +14385,10 @@ export interface components {
       created_session?: boolean | null;
       session_id: string;
       status: string;
+    };
+    /** @description The model the runtime will use when a turn has no per-message override. */
+    SessionResolvedModelResponse: {
+      model_id?: string | null;
     };
     /** @description A resource registered in the session resource registry. */
     SessionResourceEntry: {
@@ -14932,7 +14976,7 @@ export interface components {
      *     The single shared type across every citation capability: a text span linked
      *     to a source. Producers agree only on this render contract — each capability
      *     keeps its own richer representation (e.g. `KnowledgeIndexCitation`) and maps
-     *     into this envelope at emit time. See `specs/citations.md`.
+     *     into this envelope at emit time. See `knowledge/runtime-resources/citations.md`.
      */
     TextAnnotation: {
       /**
@@ -14967,7 +15011,7 @@ export interface components {
        * @description Claim-level citations attached to spans of `text`.
        *
        *     The narrow render contract shared by all citation capabilities (see
-       *     `specs/citations.md`). Empty for non-cited text, so the wire shape of
+       *     `knowledge/runtime-resources/citations.md`). Empty for non-cited text, so the wire shape of
        *     existing messages is unchanged.
        */
       annotations?: components["schemas"]["TextAnnotation"][];
@@ -15219,6 +15263,22 @@ export interface components {
        *     Useful for clients to show progress indicators and set timeouts.
        */
       long_running?: boolean | null;
+      /**
+       * @description Host-owned annotations that core does not interpret.
+       *
+       *     The typed hints above are the vocabulary core itself reasons about. This
+       *     is the escape hatch for everything a *host* wants to carry alongside a
+       *     tool — risk tiers for an approval UI, presentation hints, an embedder's
+       *     routing keys — without adding a field to core for each one. Core reads
+       *     nothing here and no driver sends it to a provider; it travels with the
+       *     definition so a consumer sees it at the point of decision (e.g. a
+       *     `PreToolUseHook` gating on what the tool declared).
+       *
+       *     The schema belongs to whoever writes it. Never put credentials or other
+       *     sensitive payload here: like the rest of the definition, it is persisted
+       *     and surfaced to clients.
+       */
+      metadata?: unknown;
       /**
        * @description Entity noun for operation-based narration (e.g. "agent", "harness").
        *     When set, the narration system reads the `operation` argument and
@@ -17370,6 +17430,12 @@ export interface components {
        * @description Timestamp of the most recent successful model sync from the provider's API (RFC 3339).
        */
       last_synced_at?: string | null;
+      /**
+       * @description Whether this provider is host-managed (EVE-810). A managed provider is
+       *     provisioned by the host/embedder; the OSS API rejects tenant PATCH/DELETE
+       *     on it (403). Read-only to org admins. Defaults to `false`.
+       */
+      managed: boolean;
       /** @description Human-readable provider name. Safe to render in user-facing messages. */
       name: string;
       /** @description Provider implementation type (OpenAI, Anthropic, Gemini, etc.). */
@@ -28316,6 +28382,50 @@ export interface operations {
       };
     };
   };
+  get_session_resolved_model: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Session ID (prefixed, e.g., session_...) */
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Resolved model for turns without a model override */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionResolvedModelResponse"];
+        };
+      };
+      /** @description Invalid session ID */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Session not found */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Internal server error */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+    };
+  };
   list_resources: {
     parameters: {
       query?: never;
@@ -28439,7 +28549,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Server-Sent Events stream. Each SSE message has the wire shape `event: <type>\nid: <event_id>\ndata: <json>\n\n`, where `<type>` is one of the event types in the `EventData` catalog (`turn.started`, `tool.completed`, `reason.thinking.delta`, …), `<event_id>` is the event cursor (`event_{32-hex}` format, usable as `since_id` on reconnect), and `<json>` is the body schema below — a serialized `Event` whose `data` field carries the event-type-specific payload defined in `EventData`. Lifecycle framing events (`connected`, `disconnecting`) use the same SSE shape but carry a minimal JSON object in `data` rather than a full `Event`. See `specs/api-streaming.md` for the SSE convention. */
+      /** @description Server-Sent Events stream. Each SSE message has the wire shape `event: <type>\nid: <event_id>\ndata: <json>\n\n`, where `<type>` is one of the event types in the `EventData` catalog (`turn.started`, `tool.completed`, `reason.thinking.delta`, …), `<event_id>` is the event cursor (`event_{32-hex}` format, usable as `since_id` on reconnect), and `<json>` is the body schema below — a serialized `Event` whose `data` field carries the event-type-specific payload defined in `EventData`. Lifecycle framing events (`connected`, `disconnecting`) use the same SSE shape but carry a minimal JSON object in `data` rather than a full `Event`. See `knowledge/execution/api-streaming.md` for the SSE convention. */
       200: {
         headers: {
           [name: string]: unknown;

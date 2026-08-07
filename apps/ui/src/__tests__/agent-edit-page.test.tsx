@@ -39,11 +39,53 @@ jest.mock("@/components/ui/prompt-editor", () => ({
 }));
 
 jest.mock("@/components/agents/capability-selector", () => ({
-  CapabilitySelector: () => <div data-testid="capability-selector" />,
+  CapabilitySelector: ({
+    selected,
+    onChange,
+  }: {
+    selected: Array<{ ref: string; config: Record<string, unknown> }>;
+    onChange: (selected: Array<{ ref: string; config: Record<string, unknown> }>) => void;
+  }) => (
+    <div data-testid="capability-selector">
+      <span data-testid="selected-capabilities">{JSON.stringify(selected)}</span>
+      <button type="button" onClick={() => onChange([{ ref: "memory", config: {} }])}>
+        Select memory
+      </button>
+    </div>
+  ),
 }));
 
 jest.mock("@/components/agents/agent-preview", () => ({
   AgentPreview: () => <div data-testid="agent-preview" />,
+}));
+
+jest.mock("@/components/agents/agent-checks", () => ({
+  AgentChecks: ({
+    systemPrompt,
+    capabilities,
+    tools,
+    onApplyFix,
+  }: {
+    systemPrompt: string;
+    capabilities: Array<{ ref: string; config: Record<string, unknown> }>;
+    tools: Array<{ name: string }>;
+    onApplyFix: (start: number, end: number, replacement: string) => void;
+  }) => (
+    <div data-testid="agent-checks">
+      <span data-testid="checks-inputs">
+        {JSON.stringify({ systemPrompt, capabilities, tools: tools.map((tool) => tool.name) })}
+      </span>
+      <button type="button" onClick={() => onApplyFix(0, 5, "Fixed")}>
+        Apply check fix
+      </button>
+    </div>
+  ),
+  applyByteSpanReplacement: (text: string, start: number, end: number, replacement: string) =>
+    replacement + text.slice(end),
+}));
+
+jest.mock("@/components/agents/agent-health-check", () => ({
+  AgentHealthCheck: () => <div data-testid="agent-health-check" />,
 }));
 
 jest.mock("@/components/initial-files-editor", () => ({
@@ -102,6 +144,14 @@ const malformedAgent: Agent = {
   tags: null as unknown as string[],
   capabilities: [],
   initial_files: [],
+  tools: [
+    {
+      type: "builtin",
+      name: "lookup",
+      description: "Look something up",
+      parameters: { type: "object", properties: {} },
+    },
+  ],
   status: "active",
   created_at: "2026-04-19T10:00:00Z",
   updated_at: "2026-04-19T10:00:00Z",
@@ -148,6 +198,83 @@ describe("EditAgentPage", () => {
     expect(screen.getByText("Editing")).toBeInTheDocument();
     expect(screen.getByLabelText("Tags")).toHaveValue("");
     expect(screen.getByDisplayValue("test-agent")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-checks")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-health-check")).toBeInTheDocument();
+    expect(screen.queryByTestId("agent-preview")).not.toBeInTheDocument();
+  });
+
+  it("adds tags through the tag editor and submits them", async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({});
+    mockUseUpdateAgent.mockReturnValue({ mutateAsync, isPending: false });
+
+    await renderWithSuspense({ agentId: "agent_123" });
+    const tagsInput = screen.getByLabelText("Tags");
+    fireEvent.change(tagsInput, { target: { value: "support" } });
+    fireEvent.keyDown(tagsInput, { key: "Enter" });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: /Save changes/ }));
+    });
+
+    expect(mutateAsync).toHaveBeenCalledTimes(1);
+    expect(mutateAsync.mock.calls[0][0].request.tags).toEqual(["support"]);
+  });
+
+  it("keeps checks in Edit instead of Preview", async () => {
+    await renderWithSuspense({ agentId: "agent_123" });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+
+    expect(screen.getByTestId("agent-preview")).toBeInTheDocument();
+    expect(screen.queryByTestId("agent-checks")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("agent-health-check")).not.toBeInTheDocument();
+  });
+
+  it("orders diagnostics in the rail after capabilities and stacks the rail after the form", async () => {
+    await renderWithSuspense({ agentId: "agent_123" });
+
+    const capabilitiesCard = screen.getByText("Capabilities").closest('[data-slot="card"]');
+    const checks = screen.getByTestId("agent-checks");
+    const healthCheck = screen.getByTestId("agent-health-check");
+    const rail = capabilitiesCard?.parentElement;
+    const columns = rail?.parentElement;
+
+    expect(capabilitiesCard).not.toBeNull();
+    expect(rail).toBe(checks.parentElement);
+    expect(rail).toBe(healthCheck.parentElement);
+    expect(Array.from(rail?.children ?? [])).toEqual([capabilitiesCard, checks, healthCheck]);
+    expect(columns).toHaveClass("grid-cols-1", "xl:grid-cols-[minmax(0,1fr)_320px]");
+    expect(columns?.lastElementChild).toBe(rail);
+  });
+
+  it("keeps checks synced to unsaved prompt, capability, and tool inputs and applies fixes", async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({});
+    mockUseUpdateAgent.mockReturnValue({ mutateAsync, isPending: false });
+    await renderWithSuspense({ agentId: "agent_123" });
+
+    expect(screen.getByTestId("checks-inputs")).toHaveTextContent(
+      JSON.stringify({
+        systemPrompt: "You are helpful.",
+        capabilities: [],
+        tools: ["lookup"],
+      }),
+    );
+
+    fireEvent.change(screen.getByLabelText("System prompt"), {
+      target: { value: "Draft prompt" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Select memory" }));
+
+    expect(screen.getByTestId("checks-inputs")).toHaveTextContent(
+      JSON.stringify({
+        systemPrompt: "Draft prompt",
+        capabilities: [{ ref: "memory", config: {} }],
+        tools: ["lookup"],
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Apply check fix" }));
+    expect(screen.getByLabelText("System prompt")).toHaveValue("Fixed prompt");
+    expect(mutateAsync).not.toHaveBeenCalled();
   });
 
   it("omits network_access from the update when not edited", async () => {

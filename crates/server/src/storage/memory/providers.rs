@@ -30,6 +30,7 @@ impl InMemoryDatabase {
             api_key_set,
             status: "active".to_string(), // Default status for new providers
             settings: input.settings.unwrap_or(serde_json::json!({})),
+            managed: false,
             last_synced_at: None,
             created_at: now,
             updated_at: now,
@@ -77,6 +78,7 @@ impl InMemoryDatabase {
             api_key_set,
             status: "active".to_string(),
             settings: input.settings.unwrap_or(serde_json::json!({})),
+            managed: false,
             last_synced_at: None,
             created_at: now,
             updated_at: now,
@@ -165,6 +167,21 @@ impl InMemoryDatabase {
             }
         }
         Ok(self.providers.write().remove(&id).is_some())
+    }
+
+    /// Mark (or unmark) a provider as host-managed (EVE-810). Host-only write
+    /// path mirroring the SQL backend; the OSS API never sets this flag.
+    pub async fn set_provider_managed(&self, org_id: i64, id: Uuid, managed: bool) -> Result<bool> {
+        let id = ProviderId::from_uuid(id);
+        if let Some(provider) = self.providers.write().get_mut(&id) {
+            if provider.org_id != org_id {
+                return Ok(false);
+            }
+            provider.managed = managed;
+            provider.updated_at = Self::now();
+            return Ok(true);
+        }
+        Ok(false)
     }
 
     /// Update provider's last_synced_at timestamp
