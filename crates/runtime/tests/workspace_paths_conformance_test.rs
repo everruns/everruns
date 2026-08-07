@@ -8,7 +8,7 @@
 // host root (the worktree-switch scenario) moves every surface together.
 
 use everruns_core::atoms::PostToolExecHook;
-use everruns_core::capabilities::{BashTool, DistillOutputHook, PersistOutputHook};
+use everruns_core::capabilities::{BashTool, DistillOutputHook, PersistOutputHook, WriteFileTool};
 use everruns_core::tool_types::{
     BuiltinTool, DeferrablePolicy, ToolCall, ToolDefinition, ToolHints, ToolPolicy, ToolResult,
 };
@@ -302,6 +302,30 @@ fn backend_native_display_keeps_literal_workspace_segment() {
         store.resolve_path("/workspace/collide.txt"),
         canonical_root.join("collide.txt").display().to_string()
     );
+}
+
+#[tokio::test]
+async fn direct_real_disk_write_reports_workspace_alias_target() {
+    let root = TempDir::new().unwrap();
+    let store: Arc<dyn SessionFileSystem> = Arc::new(RealDiskFileStore::new(root.path()).unwrap());
+    let context = ToolContext::with_file_store(SessionId::from_seed(661), store);
+
+    let result = WriteFileTool
+        .execute_with_context(
+            json!({ "path": "/workspace/matrix/out.txt", "content": "hello" }),
+            &context,
+        )
+        .await;
+    let ToolExecutionResult::Success(output) = result else {
+        panic!("write_file did not succeed: {result:?}");
+    };
+
+    let reported = output["path"].as_str().expect("path is a string");
+    assert_eq!(
+        reported,
+        root.path().join("matrix/out.txt").to_str().unwrap()
+    );
+    assert!(std::path::Path::new(reported).is_file());
 }
 
 #[tokio::test]
