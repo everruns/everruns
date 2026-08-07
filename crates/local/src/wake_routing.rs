@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use everruns_core::error::{AgentLoopError, Result};
+use everruns_core::error::Result;
 use everruns_core::platform_store::{PlatformCreateSessionRequest, PlatformMessage};
 use everruns_core::session::Session;
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
@@ -67,20 +67,18 @@ impl WakeRoutes {
         self.routes.lock().unwrap().keys().copied().collect()
     }
 
-    fn sender(&self, session_id: SessionId) -> Option<UnboundedSender<String>> {
-        self.routes.lock().unwrap().get(&session_id).cloned()
-    }
-
-    /// Drop a route only if it is still the sender that just failed. A host
-    /// that re-registered in the meantime keeps its newer route.
-    fn prune_if_same(&self, session_id: SessionId, stale: &UnboundedSender<String>) {
+    /// Deliver to a registered host, pruning a closed route atomically with
+    /// the failed send so a concurrent registration cannot be removed.
+    fn try_send(&self, session_id: SessionId, content: &str) -> bool {
         let mut routes = self.routes.lock().unwrap();
-        if routes
-            .get(&session_id)
-            .is_some_and(|current| current.same_channel(stale))
-        {
+        let Some(sender) = routes.get(&session_id) else {
+            return false;
+        };
+        if sender.send(content.to_string()).is_err() {
             routes.remove(&session_id);
+            return false;
         }
+        true
     }
 }
 
@@ -130,20 +128,14 @@ impl<R: LocalSessionRunner> LocalSessionRunner for HostRoutedRunner<R> {
     }
 
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()> {
-        let Some(sender) = self.routes.sender(session_id) else {
-            // Nobody is driving this session; the inner runner runs the turn.
-            return self.inner.send_message(session_id, content).await;
-        };
+        if self.routes.try_send(session_id, content) {
+            return Ok(());
+        }
 
-        sender.send(content.to_string()).map_err(|_| {
-            self.routes.prune_if_same(session_id, &sender);
-            // Retryable on purpose: the wake is not lost, it is undeliverable
-            // to a host that went away. A caller that retries will now take the
-            // inner path.
-            AgentLoopError::tool(format!(
-                "session {session_id} wake receiver is closed; wake remains retryable"
-            ))
-        })
+        // Nobody is driving this session, or its host went away. Deliver this
+        // wake synchronously now because immediate background completions are
+        // not retried.
+        self.inner.send_message(session_id, content).await
     }
 
     async fn create_session(
@@ -194,6 +186,7 @@ impl<R: LocalSessionRunner> LocalSessionRunner for HostRoutedRunner<R> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::error::AgentLoopError;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[derive(Default)]
@@ -291,29 +284,26 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_closed_host_channel_prunes_the_route_and_stays_retryable() {
+    async fn a_closed_host_channel_prunes_the_route_and_delivers_synchronously() {
         let routes = WakeRoutes::new();
         let session_id = SessionId::new_random();
         let receiver = routes.register(session_id);
         drop(receiver); // the host went away
         let runner = HostRoutedRunner::new(RecordingRunner::default(), routes.clone());
 
-        let error = runner
+        runner
             .send_message(session_id, "Background run completed.")
             .await
-            .expect_err("a dead receiver must not look like delivery");
-        assert!(error.to_string().contains("retryable"));
+            .expect("a dead receiver should fall through to the inner runner");
         assert!(
             routes.live_sessions().is_empty(),
             "the dead route must be pruned"
         );
-
-        // The retry now takes the synchronous path rather than failing again.
-        runner
-            .send_message(session_id, "Background run completed.")
-            .await
-            .expect("retry should fall through");
         assert_eq!(runner.inner().turns_run.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            runner.inner().delivered.lock().unwrap().as_slice(),
+            &[(session_id, "Background run completed.".to_string())]
+        );
     }
 
     #[tokio::test]
