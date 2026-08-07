@@ -2715,6 +2715,7 @@ dependencies = [
  "rustls",
  "serde",
  "serde_json",
+ "serde_urlencoded",
  "serde_yaml",
  "sha2 0.11.0",
  "similar 3.1.2",
@@ -3097,11 +3098,13 @@ version = "0.17.22"
 dependencies = [
  "anyhow",
  "async-trait",
+ "chrono",
  "everruns-core",
  "serde",
  "serde_json",
  "tokio",
  "tracing",
+ "url",
  "wiremock",
 ]
 
