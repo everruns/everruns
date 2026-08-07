@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { CopyButton } from "@/components/ui/copy-button";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import {
   Bot,
   User,
@@ -47,8 +48,9 @@ function ToolCallContentPart({
     <div className="border p-2 bg-muted/50">
       <div className="flex items-center gap-2 mb-1">
         <Wrench className="w-3 h-3 text-muted-foreground" />
-        <span className="text-xs font-medium">{toolCall.name}</span>
-        <span className="text-xs text-muted-foreground font-mono">({toolCall.id})</span>
+        <span className="text-xs font-medium">
+          <EntityIdentity value={toolCall.id}>{toolCall.name}</EntityIdentity>
+        </span>
       </div>
       <pre className="text-xs bg-background rounded p-2 overflow-x-auto max-h-48 whitespace-pre-wrap break-all">
         {JSON.stringify(toolCall.arguments, null, 2)}
@@ -101,8 +103,9 @@ function ToolResultContentPart({
         ) : (
           <CheckCircle className="w-3 h-3 text-green-500" />
         )}
-        <span className="text-xs font-medium">Tool Result</span>
-        <span className="text-xs text-muted-foreground font-mono">({toolCallId})</span>
+        <span className="text-xs font-medium">
+          <EntityIdentity value={toolCallId}>Tool Result</EntityIdentity>
+        </span>
       </div>
       {error ? (
         <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
@@ -480,7 +483,7 @@ export function LlmHistoryViewer({
             {eventId && (
               <span className="text-xs text-muted-foreground font-mono flex items-center gap-1">
                 {eventId.slice(0, 8)}...
-                <CopyButton value={eventId} />
+                <CopyButton value={eventId} label={`Copy ID: ${eventId}`} kind="id" />
               </span>
             )}
           </div>

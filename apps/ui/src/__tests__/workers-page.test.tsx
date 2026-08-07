@@ -385,7 +385,7 @@ describe("WorkersPage", () => {
     it("shows Drain button for active workers", () => {
       render(<WorkersPage />, { wrapper });
 
-      const drainButton = screen.getByRole("button", { name: /Drain/i });
+      const drainButton = screen.getByRole("button", { name: /^Drain$/i });
       expect(drainButton).toBeInTheDocument();
     });
 
@@ -406,7 +406,7 @@ describe("WorkersPage", () => {
 
       render(<WorkersPage />, { wrapper });
 
-      fireEvent.click(screen.getByRole("button", { name: /Drain/i }));
+      fireEvent.click(screen.getByRole("button", { name: /^Drain$/i }));
       expect(mockConfirm).toHaveBeenCalled();
       expect(mockDrainMutate).toHaveBeenCalledWith("w-active-1");
     });
@@ -421,7 +421,7 @@ describe("WorkersPage", () => {
 
       render(<WorkersPage />, { wrapper });
 
-      fireEvent.click(screen.getByRole("button", { name: /Drain/i }));
+      fireEvent.click(screen.getByRole("button", { name: /^Drain$/i }));
       expect(mockConfirm).toHaveBeenCalled();
       expect(mockDrainMutate).not.toHaveBeenCalled();
     });
@@ -453,7 +453,7 @@ describe("WorkersPage", () => {
 
       render(<WorkersPage />, { wrapper });
 
-      expect(screen.queryByRole("button", { name: /Drain/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /^Drain$/i })).not.toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /Resume/i })).not.toBeInTheDocument();
     });
   });

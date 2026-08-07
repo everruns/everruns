@@ -46,7 +46,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { CopyButton } from "@/components/ui/copy-button";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import { formatDistanceToNow } from "@/lib/formatting";
 import { getWorkflowStatusBadgeVariant } from "@/lib/status-utils";
 
@@ -79,8 +79,9 @@ function WorkflowRow({
       <TableCell>
         <div className="flex items-center gap-2">
           {getStatusIcon(workflow.status)}
-          <p className="font-medium">{workflow.workflow_type}</p>
-          <CopyButton value={workflow.id} />
+          <p className="font-medium">
+            <EntityIdentity value={workflow.id}>{workflow.workflow_type}</EntityIdentity>
+          </p>
         </div>
       </TableCell>
       <TableCell>
@@ -160,7 +161,9 @@ function TaskRow({ task }: { task: DurableTask }) {
     <TableRow>
       <TableCell>
         <div>
-          <p className="font-medium">{task.activity_type}</p>
+          <p className="font-medium">
+            <EntityIdentity value={task.id}>{task.activity_type}</EntityIdentity>
+          </p>
           <p className="text-xs text-muted-foreground">{task.activity_id}</p>
         </div>
       </TableCell>
@@ -224,7 +227,9 @@ function DlqRow({ entry, onRequeue }: { entry: DlqEntry; onRequeue: (id: string)
     <TableRow>
       <TableCell>
         <div>
-          <p className="font-medium">{entry.activity_type}</p>
+          <p className="font-medium">
+            <EntityIdentity value={entry.id}>{entry.activity_type}</EntityIdentity>
+          </p>
           <p className="text-xs text-muted-foreground">{entry.activity_id}</p>
         </div>
       </TableCell>

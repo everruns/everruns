@@ -115,14 +115,15 @@ describe("OrganizationPage", () => {
     expect(screen.getByRole("heading", { name: "Organizations" })).toBeInTheDocument();
     expect(screen.getByRole("table", { name: "Organizations" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Organization" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "ID" })).toBeInTheDocument();
+    expect(screen.queryByRole("columnheader", { name: "ID" })).not.toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Role" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Actions" })).toBeInTheDocument();
     expect(screen.getAllByText("Current Org").length).toBeGreaterThan(0);
     expect(screen.getByText("Second Org")).toBeInTheDocument();
-    expect(screen.getByText("org-1")).toBeInTheDocument();
-    expect(screen.getByText("org-2")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("org-1")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Copy ID: org-1" })).not.toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Copy ID: org-2" })).toBeInTheDocument();
     expect(screen.getByText("Current")).toBeInTheDocument();
   });
 

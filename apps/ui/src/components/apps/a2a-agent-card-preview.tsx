@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { getInvocationSessionModeDisplayName } from "@/lib/app-channels";
 import type { InvocationSessionMode } from "@/lib/api/types";
 import { Bot, FileJson } from "lucide-react";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 
 type JsonObject = Record<string, unknown>;
 
@@ -177,8 +178,13 @@ export function A2aAgentCardPreview(props: A2aAgentCardPreviewProps) {
             card.skills.map((skill, index) => (
               <div key={`${skill.id ?? "skill"}-${index}`} className="rounded-md border p-2">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-medium">{skill.name || skill.id || "Skill"}</span>
-                  {skill.id && <Badge variant="outline">{skill.id}</Badge>}
+                  <span className="text-sm font-medium">
+                    {skill.id ? (
+                      <EntityIdentity value={skill.id}>{skill.name || skill.id}</EntityIdentity>
+                    ) : (
+                      skill.name || "Skill"
+                    )}
+                  </span>
                 </div>
                 {skill.description && (
                   <p className="mt-1 text-sm text-muted-foreground">{skill.description}</p>

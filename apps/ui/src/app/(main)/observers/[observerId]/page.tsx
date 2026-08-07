@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CopyButton } from "@/components/ui/copy-button";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import { Notice, NoticeDescription } from "@/components/ui/notice";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import {
@@ -322,9 +322,13 @@ export default function ObserverDetailPage({
 
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold">
-            <span className={getEntityNameClassName(observer.status)}>{observer.name}</span>
-            <CopyButton value={observer.id} />
+          <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-2xl font-bold">
+            <EntityIdentity
+              value={observer.id}
+              labelClassName={getEntityNameClassName(observer.status)}
+            >
+              {observer.name}
+            </EntityIdentity>
             <Badge variant={getEntityStatusBadgeVariant(observer.status)}>{observer.status}</Badge>
           </h1>
           {observer.description && (

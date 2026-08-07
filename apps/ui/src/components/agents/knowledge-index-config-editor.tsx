@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import { useKnowledgeIndexes } from "@/hooks/use-knowledge-indexes";
 import type { KnowledgeIndex } from "@/lib/api/types";
 
@@ -127,12 +128,13 @@ export function KnowledgeIndexConfigEditor({
                   disabled={disabled}
                   onCheckedChange={(value) => toggleIndex(index.id, value)}
                 />
-                <Label htmlFor={checkboxId} className="min-w-0 flex-1 cursor-pointer font-normal">
-                  <span className="block truncate">{index.name}</span>
-                  <span className="block truncate font-mono text-xs text-muted-foreground">
-                    {index.id}
-                  </span>
-                </Label>
+                <div className="min-w-0 flex-1">
+                  <EntityIdentity value={index.id}>
+                    <Label htmlFor={checkboxId} className="cursor-pointer font-normal">
+                      {index.name}
+                    </Label>
+                  </EntityIdentity>
+                </div>
               </div>
             );
           })}

@@ -42,6 +42,7 @@ export function ProviderCard({
       icon={<ProviderIcon providerType={provider.provider_type} size="md" />}
       title={provider.name}
       href={`/settings/providers/${provider.id}`}
+      copyValue={provider.id}
       subtitle={
         <span className="text-sm text-muted-foreground">
           {getProviderLabel(provider.provider_type)}

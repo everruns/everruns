@@ -19,7 +19,6 @@ import { queryKeys } from "@/lib/query-keys";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { CopyButton } from "@/components/ui/copy-button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { ChannelRow } from "@/components/apps/channel-row";
@@ -140,13 +139,9 @@ export function AppDetail({ appId }: { appId: string }) {
 
       <PageMasthead
         icon={<Rocket />}
+        entityId={app.id}
         title={<span className={getEntityNameClassName(app.status)}>{app.name}</span>}
-        badges={
-          <>
-            <CopyButton value={app.id} />
-            <Badge variant={getEntityStatusBadgeVariant(app.status)}>{app.status}</Badge>
-          </>
-        }
+        badges={<Badge variant={getEntityStatusBadgeVariant(app.status)}>{app.status}</Badge>}
         description={app.description || undefined}
         meta={
           <>

@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { CopyButton } from "@/components/ui/copy-button";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import { ArrowLeft, Pencil, Play, Plus, Trash2, ListChecks, BarChart3 } from "lucide-react";
 import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import type { EvalCase, EvalRun, Scorer, EvalInputMessage, EvalTarget } from "@/lib/api/types";
@@ -409,9 +409,10 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
 
       <div className="flex items-start justify-between mb-6">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <span className={getEntityNameClassName(ev.status)}>{ev.name}</span>
-            <CopyButton value={ev.id} />
+          <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-2xl font-bold">
+            <EntityIdentity value={ev.id} labelClassName={getEntityNameClassName(ev.status)}>
+              {ev.name}
+            </EntityIdentity>
             <Badge variant={getEntityStatusBadgeVariant(ev.status)}>{ev.status}</Badge>
           </h1>
           {ev.description && <p className="text-muted-foreground mt-1">{ev.description}</p>}

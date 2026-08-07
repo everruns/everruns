@@ -44,7 +44,6 @@ import {
   MoreHorizontal,
 } from "lucide-react";
 import { AgentTriggersPanel } from "@/components/agents/agent-triggers-panel";
-import { CopyButton } from "@/components/ui/copy-button";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
 import {
   PageContainer,
@@ -274,15 +273,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
       <PageMasthead
         icon={<Boxes />}
+        entityId={agent.id}
         title={
           <span className={getEntityNameClassName(agent.status)}>{getDisplayName(agent)}</span>
         }
-        badges={
-          <>
-            <CopyButton value={agent.id} />
-            <Badge variant={getEntityStatusBadgeVariant(agent.status)}>{agent.status}</Badge>
-          </>
-        }
+        badges={<Badge variant={getEntityStatusBadgeVariant(agent.status)}>{agent.status}</Badge>}
         description={agent.description || undefined}
         meta={
           <>

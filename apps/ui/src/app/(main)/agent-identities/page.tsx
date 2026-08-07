@@ -6,7 +6,7 @@ import { Plus, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/search-input";
 import { Badge } from "@/components/ui/badge";
-import { EntityCardIdentifier } from "@/components/ui/entity-card";
+import { EntityCard } from "@/components/ui/entity-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAgentIdentities } from "@/hooks/use-agent-identities";
 import { usePageTitle } from "@/hooks";
@@ -34,6 +34,30 @@ import { cn } from "@/lib/utils";
 import type { AgentIdentity } from "@/lib/api/types";
 
 type StatusTab = "all" | "active" | "archived";
+
+export function AgentIdentityCard({ identity }: { identity: AgentIdentity }) {
+  return (
+    <EntityCard
+      icon={<IconTile size="md" icon={<UserRound />} />}
+      title={identity.name}
+      href={`/agent-identities/${identity.id}`}
+      titleClassName={getEntityNameClassName(identity.status)}
+      copyValue={identity.id}
+      headerActions={
+        <Badge variant={getEntityStatusBadgeVariant(identity.status)}>{identity.status}</Badge>
+      }
+    >
+      <div className="space-y-3">
+        {identity.description && (
+          <p className="line-clamp-2 text-sm text-muted-foreground">{identity.description}</p>
+        )}
+        <p className="text-[13px] text-muted-foreground">
+          {identity.locale || "No locale"} · {identity.timezone || "No timezone"}
+        </p>
+      </div>
+    </EntityCard>
+  );
+}
 
 export default function AgentIdentitiesPage() {
   usePageTitle("Agent Identities");
@@ -175,39 +199,7 @@ export default function AgentIdentitiesPage() {
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
               {filteredIdentities.map((identity) => (
-                <Link
-                  key={identity.id}
-                  href={`/agent-identities/${identity.id}`}
-                  className="group flex flex-col gap-3 border bg-card p-4 transition-colors hover:border-accent/50"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <IconTile size="md" icon={<UserRound />} />
-                      <div className="min-w-0">
-                        <h3
-                          className={cn(
-                            "truncate text-base font-semibold",
-                            getEntityNameClassName(identity.status),
-                          )}
-                        >
-                          {identity.name}
-                        </h3>
-                        <EntityCardIdentifier value={identity.id} className="mt-0.5" />
-                      </div>
-                    </div>
-                    <Badge variant={getEntityStatusBadgeVariant(identity.status)}>
-                      {identity.status}
-                    </Badge>
-                  </div>
-                  {identity.description && (
-                    <p className="line-clamp-2 text-sm text-muted-foreground">
-                      {identity.description}
-                    </p>
-                  )}
-                  <p className="text-[13px] text-muted-foreground">
-                    {identity.locale || "No locale"} · {identity.timezone || "No timezone"}
-                  </p>
-                </Link>
+                <AgentIdentityCard key={identity.id} identity={identity} />
               ))}
             </div>
           )}

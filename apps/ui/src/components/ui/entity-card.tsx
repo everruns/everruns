@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CopyButton } from "@/components/ui/copy-button";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import { cn } from "@/lib/utils";
 
 /**
@@ -43,20 +43,6 @@ export interface EntityCardProps {
   /** Footer content (grid only). Use {@link EntityCardFooter} for the common split. */
   footer?: React.ReactNode;
   className?: string;
-}
-
-export function EntityCardIdentifier({ value, className }: { value: string; className?: string }) {
-  return (
-    <div
-      data-slot="entity-card-identifier"
-      className={cn("flex min-w-0 max-w-full items-center gap-1.5", className)}
-    >
-      <span className="min-w-0 truncate font-mono text-xs text-muted-foreground" title={value}>
-        {value}
-      </span>
-      <CopyButton value={value} className="shrink-0" />
-    </div>
-  );
 }
 
 function EntityCardTitleLink({
@@ -106,14 +92,22 @@ export function EntityCard({
         <div className="flex min-w-0 flex-1 items-start gap-3">
           {icon && <div className="mt-0.5 flex-shrink-0">{icon}</div>}
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <EntityCardTitleLink
-                href={href}
-                className={cn("truncate font-medium", titleClassName)}
-              >
-                {title}
-              </EntityCardTitleLink>
-              {copyValue && <CopyButton value={copyValue} className="shrink-0" />}
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              {copyValue ? (
+                <EntityIdentity
+                  value={copyValue}
+                  labelClassName={cn("font-medium", titleClassName)}
+                >
+                  <EntityCardTitleLink href={href}>{title}</EntityCardTitleLink>
+                </EntityIdentity>
+              ) : (
+                <EntityCardTitleLink
+                  href={href}
+                  className={cn("truncate font-medium", titleClassName)}
+                >
+                  {title}
+                </EntityCardTitleLink>
+              )}
               {inlineBadges}
             </div>
             {children}
@@ -133,10 +127,17 @@ export function EntityCard({
           {icon && <div className="flex-shrink-0">{icon}</div>}
           <div className="flex min-w-0 flex-1 flex-col gap-0.5">
             <div className="flex min-w-0 items-center gap-2">
-              <CardTitle className={cn("min-w-0 flex-1 truncate text-lg", titleClassName)}>
-                <EntityCardTitleLink href={href}>{title}</EntityCardTitleLink>
+              <CardTitle className="min-w-0 flex-1 text-lg">
+                {copyValue ? (
+                  <EntityIdentity value={copyValue} labelClassName={titleClassName}>
+                    <EntityCardTitleLink href={href}>{title}</EntityCardTitleLink>
+                  </EntityIdentity>
+                ) : (
+                  <EntityCardTitleLink href={href} className={cn("block truncate", titleClassName)}>
+                    {title}
+                  </EntityCardTitleLink>
+                )}
               </CardTitle>
-              {copyValue && <CopyButton value={copyValue} className="shrink-0" />}
             </div>
             {subtitle && <div className="min-w-0">{subtitle}</div>}
           </div>

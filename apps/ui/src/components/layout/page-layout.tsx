@@ -17,6 +17,7 @@
 import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import { cn } from "@/lib/utils";
 
 /* ─────────────────────────────── Container ─────────────────────────────── */
@@ -130,6 +131,8 @@ interface PageMastheadProps {
   /** Leading icon, wrapped in an IconTile automatically. */
   icon?: ReactNode;
   title: ReactNode;
+  /** Exact API-facing entity ID copied beside the title. */
+  entityId?: string;
   /** Status badges / counts shown inline after the title. */
   badges?: ReactNode;
   /** One-line description under the title. */
@@ -152,6 +155,7 @@ interface PageMastheadProps {
 export function PageMasthead({
   icon,
   title,
+  entityId,
   badges,
   description,
   meta,
@@ -202,8 +206,14 @@ export function PageMasthead({
           )}
         >
           <div className="flex min-w-0 flex-wrap items-center gap-2.5">
-            <h1 className="min-w-0 break-words text-2xl font-semibold tracking-tight text-foreground">
-              {title}
+            <h1 className="min-w-0 text-2xl font-semibold tracking-tight text-foreground">
+              {entityId ? (
+                <EntityIdentity value={entityId} truncate={false}>
+                  {title}
+                </EntityIdentity>
+              ) : (
+                title
+              )}
             </h1>
             {badges}
           </div>

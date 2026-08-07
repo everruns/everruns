@@ -10,7 +10,7 @@ import { KnowledgeIndexDiagnosticBadge } from "@/components/knowledge-indexes/kn
 import { KnowledgeIndexFormDialog } from "@/components/knowledge-indexes/knowledge-index-form-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CopyButton } from "@/components/ui/copy-button";
+import { EntityIdentity } from "@/components/ui/entity-identity";
 import { SearchInput } from "@/components/ui/search-input";
 import {
   Table,
@@ -351,13 +351,14 @@ function KnowledgeIndexRow({
   return (
     <TableRow>
       <TableCell>
-        <div className="flex items-start gap-2">
-          <Link
-            href={`/knowledge-indexes/${index.id}`}
-            className={cn("font-medium hover:underline", getEntityNameClassName(index.status))}
-          >
-            {index.name}
-          </Link>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <div className="font-medium">
+            <EntityIdentity value={index.id} labelClassName={getEntityNameClassName(index.status)}>
+              <Link href={`/knowledge-indexes/${index.id}`} className="hover:underline">
+                {index.name}
+              </Link>
+            </EntityIdentity>
+          </div>
           <Badge variant={getEntityStatusBadgeVariant(index.status)}>{index.status}</Badge>
         </div>
         {index.description && (
@@ -365,10 +366,6 @@ function KnowledgeIndexRow({
             {index.description}
           </div>
         )}
-        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="truncate font-mono">{index.id}</span>
-          <CopyButton value={index.id} />
-        </div>
       </TableCell>
       <TableCell>
         <span className="inline-flex items-center gap-1.5 text-muted-foreground">
