@@ -5915,7 +5915,10 @@ export interface components {
        * @example product-docs
        */
       name: string;
-      /** @description Non-secret source coordinates. Never include credentials. */
+      /**
+       * @description Non-secret source coordinates. GitHub repositories accept `owner/repo`
+       *     or canonical `https://github.com/owner/repo[.git]` URLs. Never include credentials.
+       */
       source_config?: unknown;
       /**
        * @description External source type. One of `github`, `git`. Defaults to `github`.

@@ -120,6 +120,14 @@ the same coordinates and token resolution. Example:
 { "provider": "github", "repository": "owner/repo", "branch": "main", "root_folder": "docs" }
 ```
 
+GitHub repository input accepts `owner/repo` and canonical `https://github.com`
+repository URLs with an optional trailing slash or `.git` suffix. The API
+normalizes accepted input to `owner/repo`; sync applies the same normalization
+to historical stored configs so they recover on retry. Public repositories do
+not require a GitHub connection. Private repositories use the owner's resolved
+connection at sync time. Invalid coordinates and clone failures expose
+credential-safe, actionable categories rather than raw provider errors.
+
 ### `knowledge_index_documents`
 
 | Column | Notes |

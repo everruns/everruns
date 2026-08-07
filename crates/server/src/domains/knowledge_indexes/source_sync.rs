@@ -27,6 +27,7 @@ use tokio::task;
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
+use crate::domains::git_sources::{github_clone_url, safe_git_clone_error};
 use crate::services::ProviderResolverService;
 use crate::storage::StorageBackend;
 use crate::storage::models::{
@@ -233,6 +234,9 @@ impl KnowledgeIndexSyncService {
     async fn resolve_source(&self, index: &KnowledgeIndexRow) -> Result<ResolvedGitSource> {
         let source: GithubSourceConfig = serde_json::from_value(index.source_config.clone())
             .context("invalid knowledge index source config")?;
+        // Normalize before touching connections so malformed coordinates are
+        // reported as input errors rather than misleading authentication errors.
+        let mut resolved = ResolvedGitSource::from_github(source, None)?;
 
         // THREAT[TM-API-018]: GitHub tokens must not be persisted in the index
         // source config. Mitigation: resolve the owner's short-lived connection
@@ -247,7 +251,8 @@ impl KnowledgeIndexSyncService {
                 .map_err(|_| anyhow!("failed to resolve GitHub connection"))?,
             _ => None,
         };
-        Ok(ResolvedGitSource::from_github(source, auth_token))
+        resolved.auth_token = auth_token;
+        Ok(resolved)
     }
 
     /// Build the embeddings driver from the index's embedding model and embed
@@ -458,14 +463,16 @@ struct ResolvedGitSource {
 }
 
 impl ResolvedGitSource {
-    fn from_github(source: GithubSourceConfig, auth_token: Option<String>) -> Self {
-        Self {
-            url: format!("https://github.com/{}.git", source.repository),
-            repository: source.repository,
+    fn from_github(source: GithubSourceConfig, auth_token: Option<String>) -> Result<Self> {
+        let (url, repository) =
+            github_clone_url(&source.repository).map_err(|message| anyhow!(message))?;
+        Ok(Self {
+            url,
+            repository,
             branch: source.branch,
             root_folder: source.root_folder,
             auth_token,
-        }
+        })
     }
 }
 
@@ -495,7 +502,11 @@ fn clone_repository(source: &ResolvedGitSource, checkout_dir: &Path) -> Result<(
                 git_error = %error.message(),
                 "Git clone failed during knowledge index sync"
             );
-            anyhow!("failed to clone repository")
+            anyhow!(safe_git_clone_error(
+                &error,
+                true,
+                source.auth_token.is_some()
+            ))
         })
 }
 

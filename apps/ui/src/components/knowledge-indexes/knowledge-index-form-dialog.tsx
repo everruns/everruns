@@ -28,7 +28,13 @@ import type {
   KnowledgeIndexSourceType,
   UpdateKnowledgeIndexRequest,
 } from "@/lib/api/types";
-import { getFieldErrors, knowledgeIndexFormSchema, type FieldErrors } from "@/lib/form-validation";
+import {
+  getFieldErrors,
+  INVALID_GITHUB_REPOSITORY,
+  knowledgeIndexFormSchema,
+  normalizeGitHubRepositoryInput,
+  type FieldErrors,
+} from "@/lib/form-validation";
 import { EmbeddingModelPicker } from "./embedding-model-picker";
 
 type FormMode = "create" | "edit";
@@ -90,7 +96,7 @@ export function KnowledgeIndexFormDialog({
     setFormError(null);
   }, [mode, open, index]);
 
-  function buildSourceConfig(): Record<string, unknown> {
+  function buildSourceConfig(normalizedRepository: string | null): Record<string, unknown> {
     const trimmedBranch = branch.trim();
     const trimmedRootFolder = rootFolder.trim();
     const base: Record<string, unknown> = {
@@ -99,7 +105,7 @@ export function KnowledgeIndexFormDialog({
       ...(trimmedRootFolder ? { root_folder: trimmedRootFolder } : {}),
     };
     if (sourceType === "github") {
-      return { ...base, repository: repository.trim() };
+      return { ...base, repository: normalizedRepository };
     }
     return { ...base, url: gitUrl.trim() };
   }
@@ -122,6 +128,12 @@ export function KnowledgeIndexFormDialog({
       setFieldErrors({ embedding_model_id: "Choose an enabled embedding model" });
       return;
     }
+    const normalizedRepository =
+      sourceType === "github" ? normalizeGitHubRepositoryInput(repository) : null;
+    if (sourceType === "github" && !normalizedRepository) {
+      setFieldErrors({ repository: INVALID_GITHUB_REPOSITORY });
+      return;
+    }
 
     try {
       const {
@@ -129,7 +141,7 @@ export function KnowledgeIndexFormDialog({
         description: trimmedDescription,
         embedding_model_id: parsedEmbeddingModelId,
       } = parsed.data;
-      const sourceConfig = buildSourceConfig();
+      const sourceConfig = buildSourceConfig(normalizedRepository);
       if (mode === "create") {
         await onSubmit({
           name: trimmedName,
@@ -243,9 +255,23 @@ export function KnowledgeIndexFormDialog({
                   <Input
                     id="kidx-repository"
                     value={repository}
-                    onChange={(event) => setRepository(event.target.value)}
-                    placeholder="owner/repo"
+                    onChange={(event) => {
+                      setRepository(event.target.value);
+                      setFieldErrors((previous) => ({ ...previous, repository: undefined }));
+                    }}
+                    placeholder="owner/repo or https://github.com/owner/repo"
+                    aria-invalid={!!fieldErrors.repository}
+                    aria-describedby={fieldErrors.repository ? "kidx-repository-error" : undefined}
                   />
+                  {fieldErrors.repository ? (
+                    <p id="kidx-repository-error" className="text-xs text-destructive">
+                      {fieldErrors.repository}
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Public repositories sync without a GitHub connection.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="kidx-github-connection">Connection</Label>

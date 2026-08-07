@@ -14,6 +14,7 @@ pub mod budgets;
 pub mod capabilities;
 pub mod evals;
 pub mod events;
+pub mod git_sources;
 pub mod harnesses;
 pub mod images;
 pub mod knowledge_bases;

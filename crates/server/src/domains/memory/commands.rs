@@ -5,6 +5,7 @@ use super::types::{
 };
 use super::{MEMORY_MANAGE, MEMORY_VIEW};
 use crate::domains::common::*;
+use crate::domains::git_sources::normalize_github_repository;
 use everruns_core::Policy;
 use everruns_core::typed_id::MemoryId;
 use everruns_core::url_validation::validate_safe_url;
@@ -85,33 +86,6 @@ fn validate_sync_interval(value: Option<u32>) -> Result<Option<u32>, CommandErro
     Ok(Some(value))
 }
 
-fn normalize_github_repository(repository: &str) -> Result<String, CommandError> {
-    let trimmed = repository.trim().trim_end_matches(".git");
-    let repo_path = if let Some(path) = trimmed.strip_prefix("https://github.com/") {
-        path
-    } else if let Some(path) = trimmed.strip_prefix("git@github.com:") {
-        path
-    } else {
-        trimmed
-    };
-    let repo_path = repo_path.trim_matches('/');
-    let parts: Vec<&str> = repo_path.split('/').collect();
-    if parts.len() != 2
-        || parts.iter().any(|part| {
-            part.is_empty()
-                || part.len() > 100
-                || !part
-                    .chars()
-                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.')
-        })
-    {
-        return Err(CommandError::bad_request(
-            "GitHub repository must be owner/repo or a github.com repository URL",
-        ));
-    }
-    Ok(format!("{}/{}", parts[0], parts[1]))
-}
-
 fn validate_git_url(url: &str) -> Result<String, CommandError> {
     let trimmed = url.trim();
     if trimmed.is_empty() || trimmed.len() > 2048 || trimmed.contains(char::is_whitespace) {
@@ -146,7 +120,8 @@ fn validate_git_url(url: &str) -> Result<String, CommandError> {
 }
 
 fn github_source_config(request: GitHubMemorySourceRequest) -> Result<Value, CommandError> {
-    let repository = normalize_github_repository(&request.repository)?;
+    let repository =
+        normalize_github_repository(&request.repository).map_err(CommandError::bad_request)?;
     let branch = validate_optional_ref(request.branch, "branch")?
         .unwrap_or_else(|| DEFAULT_GIT_BRANCH.to_string());
     let root_folder = normalize_root_folder(request.root_folder)?;
