@@ -28,7 +28,11 @@ use everruns_core::message_retriever::InputMessage;
 // ============================================================================
 
 #[rstest]
-#[case::anthropic_opus(ANTHROPIC_OPUS)]
+// Uses Opus 5 rather than the `claude-opus-4-7` alias: that alias now returns
+// its reasoning as public response text with an empty private `thinking` field
+// (observed 6/6 on main), which is not what this private-field assertion checks.
+// Current Opus/Sonnet models surface reasoning on the private field.
+#[case::anthropic_opus5(ANTHROPIC_OPUS5)]
 #[case::anthropic_sonnet(ANTHROPIC_SONNET)]
 #[case::openai_gpt52(OPENAI_GPT52)]
 #[case::openai_gpt54(OPENAI_GPT54)]
