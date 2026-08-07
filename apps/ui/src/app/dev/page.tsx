@@ -70,7 +70,8 @@ const devPages = [
   },
   {
     title: "MCP Cards",
-    description: "Sandboxed iframe renderer for ui:// MCP-Apps resources (knowledge/ui/mcp-cards.md)",
+    description:
+      "Sandboxed iframe renderer for ui:// MCP-Apps resources (knowledge/ui/mcp-cards.md)",
     href: "/dev/mcp-cards",
     icon: IdCard,
   },
