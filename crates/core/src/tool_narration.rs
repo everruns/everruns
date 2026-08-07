@@ -996,14 +996,13 @@ pub fn narrate_sandbox_manage(
 }
 
 /// Session SQL family narration: `sql_execute`, `sql_query`, `sql_schema`.
-/// SQL text is shown truncated (like a shell command); never the full body.
+/// SQL text is intentionally omitted because statements can contain sensitive values.
 pub fn narrate_sql(
     tool_name: &str,
-    arguments: &Value,
+    _arguments: &Value,
     phase: ToolNarrationPhase,
     locale: Option<&str>,
 ) -> Option<String> {
-    let statement = arg_str(arguments, &["sql"]).map(|sql| format!("`{}`", truncate(sql, 48)));
     let phrase = match tool_name {
         "sql_execute" => {
             let verbs = pick(
@@ -1011,7 +1010,7 @@ pub fn narrate_sql(
                 ("Running SQL", "Ran SQL", "Failed to run SQL"),
                 ("Виконую SQL", "Виконав SQL", "Не вдалося виконати SQL"),
             );
-            phrase3(verbs, statement, phase)
+            phrase3(verbs, None, phase)
         }
         "sql_query" => {
             let verbs = pick(
@@ -1023,7 +1022,7 @@ pub fn narrate_sql(
                     "Не вдалося виконати SQL-запит",
                 ),
             );
-            phrase3(verbs, statement, phase)
+            phrase3(verbs, None, phase)
         }
         "sql_schema" => {
             let verbs = pick(
@@ -1777,11 +1776,11 @@ mod tests {
     }
 
     #[test]
-    fn sql_family_truncates_statement() {
-        let a = args(json!({ "sql": "SELECT 1" }));
+    fn sql_family_omits_statement() {
+        let a = args(json!({ "sql": "SELECT * FROM users WHERE api_token = 'SECRET42'" }));
         assert_eq!(
             narrate_sql("sql_query", &a, ToolNarrationPhase::Completed, None),
-            Some("Queried SQL `SELECT 1`".to_string())
+            Some("Queried SQL".to_string())
         );
         assert_eq!(
             narrate_sql("sql_execute", &json!({}), ToolNarrationPhase::Started, None),
@@ -1790,12 +1789,6 @@ mod tests {
         assert_eq!(
             narrate_sql("sql_schema", &json!({}), ToolNarrationPhase::Started, None),
             Some("Reading database schema".to_string())
-        );
-        let long = args(json!({ "sql": "SELECT ".to_string() + &"col, ".repeat(40) }));
-        let narration = narrate_sql("sql_query", &long, ToolNarrationPhase::Started, None).unwrap();
-        assert!(
-            narration.contains("..."),
-            "expected truncation: {narration}"
         );
         assert_eq!(
             narrate_sql("other", &json!({}), ToolNarrationPhase::Started, None),
