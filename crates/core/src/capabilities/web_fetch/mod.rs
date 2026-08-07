@@ -463,6 +463,17 @@ impl WebFetchTool {
             _ => None,
         }
     }
+
+    /// Crawling can issue requests beyond the seed URL. The direct FetchKit
+    /// transport cannot apply Everruns URL policy to those discovered pages.
+    fn crawl_requires_egress(&self, request: &FetchRequest, context: Option<&ToolContext>) -> bool {
+        request.crawl == Some(true)
+            && (self.system_allowlist.is_some()
+                || context
+                    .and_then(|context| context.network_access.as_ref())
+                    .is_some_and(|acl| !acl.is_empty()))
+            && context.is_none_or(|context| context.egress_service.is_none())
+    }
 }
 
 impl Default for WebFetchTool {
@@ -612,6 +623,12 @@ impl Tool for WebFetchTool {
             return blocked;
         }
 
+        if self.crawl_requires_egress(&request, None) {
+            return ToolExecutionResult::tool_error(
+                "Crawl requires an egress service when network policy is active",
+            );
+        }
+
         match self.fetchkit_tool.execute(request).await {
             Ok(response) => {
                 ToolExecutionResult::success(serde_json::to_value(&response).unwrap_or_else(
@@ -655,6 +672,14 @@ impl Tool for WebFetchTool {
                 "URL blocked by network access policy: {}",
                 request.url
             ));
+        }
+
+        // THREAT[TM-AGENT-018]: FetchKit's direct transport cannot enforce
+        // path-scoped policy on pages discovered after the seed request.
+        if self.crawl_requires_egress(&request, Some(context)) {
+            return ToolExecutionResult::tool_error(
+                "Crawl requires an egress service when network policy is active",
+            );
         }
 
         // Egress-backed path (specs/egress.md migration step 3): when the host
@@ -2058,6 +2083,31 @@ mod tests {
             Some("Wed, 15 Jul 2026 12:00:00 GMT")
         );
         assert_eq!(serde_json::to_value(request).unwrap()["render"], "rakers");
+    }
+
+    #[tokio::test]
+    async fn crawl_with_network_policy_requires_egress_service() {
+        let tool = WebFetchTool::default();
+        let mut context = ToolContext::new(SessionId::new());
+        context.network_access = Some(crate::network_access::NetworkAccessList::allow_only([
+            "https://example.com/api/",
+        ]));
+
+        let result = tool
+            .execute_with_context(
+                serde_json::json!({
+                    "url": "https://example.com/api/index.html",
+                    "crawl": true
+                }),
+                &context,
+            )
+            .await;
+
+        assert!(matches!(
+            result,
+            ToolExecutionResult::ToolError(message)
+                if message == "Crawl requires an egress service when network policy is active"
+        ));
     }
 
     #[tokio::test]
