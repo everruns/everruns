@@ -129,6 +129,7 @@ mod openrouter_workspace;
 #[cfg(feature = "ui-capabilities")]
 mod openui;
 mod parallel_tool_calls;
+mod platform;
 mod platform_management;
 mod progress_guard;
 mod prompt_caching;
@@ -301,6 +302,12 @@ pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
 pub use parallel_tool_calls::{
     PARALLEL_TOOL_CALLS_CAPABILITY_ID, ParallelToolCallsCapability, ParallelToolCallsMode,
     parallel_tool_calls_from_config,
+};
+pub use platform::{
+    DISCOVER_DESCRIPTION as PLATFORM_DISCOVER_DESCRIPTION,
+    EXECUTE_DESCRIPTION as PLATFORM_EXECUTE_DESCRIPTION, PLATFORM_CAPABILITY_ID,
+    PlatformCapability, QUERY_DESCRIPTION as PLATFORM_QUERY_DESCRIPTION, discover_input_schema,
+    execute_input_schema, query_input_schema,
 };
 pub use platform_management::{
     ManageAgentsTool, ManageHarnessesTool, ManageSessionsTool, PLATFORM_MANAGEMENT_CAPABILITY_ID,
@@ -1437,6 +1444,7 @@ impl CapabilityRegistry {
         registry.register(ModelScoutCapability);
         registry.register(OpenRouterWorkspaceCapability);
         registry.register(OpenRouterServerToolsCapability);
+        registry.register(PlatformCapability);
         registry.register(PlatformManagementCapability);
         registry.register(FileSystemCapability);
         registry.register(MemoryCapability);
@@ -3274,6 +3282,7 @@ mod tests {
             "noop",
             "current_time",
             "research",
+            "platform",
             "platform_management",
             "session_file_system",
             "session_storage",
@@ -3435,6 +3444,7 @@ mod tests {
         assert!(registry.has("bashkit_shell"));
 
         for platform_only in [
+            "platform",
             "platform_management",
             "model_scout",
             "openrouter_workspace",
@@ -3598,6 +3608,10 @@ mod tests {
             // `narration_noun` hints; the read/query/messaging tools are a
             // low-frequency operator surface where the display-name presentation
             // ("Read Agents", "Read Sessions") is already clear.
+            (
+                "platform",
+                "operator command surface; tool display names are the intended presentation",
+            ),
             (
                 "platform_management",
                 "operator admin surface; mutations narrate via narration_noun, reads use display names",

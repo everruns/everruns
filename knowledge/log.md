@@ -2,6 +2,11 @@
 
 ## 2026-08-06
 
+* **Platform command surface**: Added the high-risk built-in `platform`
+  capability with MCP-parity `discover`, read-only `query`, and mutating
+  `execute` tools. Platform Chat now uses the shared command inventory, and the
+  worker transport re-establishes the session owner's authorization server-side.
+
 * **Main synchronization**: Migrated the newly landed Sans-IO turn-state and WebMCP
   specifications into the OKF bundle and incorporated their feature-flag and threat-model updates.
 * **Migration**: Moved the canonical `specs/` corpus into an OKF v0.2 bundle under

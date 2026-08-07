@@ -23,6 +23,7 @@ pub mod generation_reconciler;
 pub mod model_sync;
 pub mod openrouter_generation;
 pub mod org_feature_flags;
+pub mod platform_command_surface;
 pub mod principal;
 pub mod provider_resolver;
 pub mod usage_tracking;
