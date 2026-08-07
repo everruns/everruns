@@ -97,6 +97,7 @@ pub fn is_provider_quota_message(message: &str) -> bool {
     lower.contains("insufficient_quota")
         || lower.contains("insufficient quota")
         || lower.contains("exceeded your current quota")
+        || lower.contains("credit_balance_exhausted")
         || lower.contains("credit balance is too low")
 }
 
@@ -661,6 +662,21 @@ mod tests {
         );
 
         assert_eq!(error.code, codes::PROVIDER_QUOTA_EXHAUSTED);
+    }
+
+    #[test]
+    fn classify_credit_balance_exhausted_as_provider_quota_exhausted() {
+        let error = classify_runtime_error_message(
+            "LLM error: credit_balance_exhausted: You have no credits remaining. secret=hidden",
+            &UserFacingErrorContext::default(),
+        );
+
+        assert_eq!(error.code, codes::PROVIDER_QUOTA_EXHAUSTED);
+        assert_eq!(
+            error.fallback_message(),
+            "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue."
+        );
+        assert!(!error.fallback_message().contains("secret"));
     }
 
     #[test]

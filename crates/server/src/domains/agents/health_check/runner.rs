@@ -62,13 +62,14 @@ pub fn spawn_health_check_run(ctx: Arc<HealthCheckRunContext>, target: HealthChe
     tokio::spawn(async move {
         if let Err(e) = execute_run(&ctx, &target).await {
             tracing::warn!(error = %e, run_id = %target.run_id, "health check run failed");
+            let safe_error = super::super::safe_agent_check_error(&e).fallback_message();
             let _ = ctx
                 .db
                 .update_agent_health_check_run(
                     target.run_id,
                     UpdateAgentHealthCheckRunRow {
                         status: Some("failed".to_string()),
-                        error_message: Some(e),
+                        error_message: Some(safe_error),
                         ..Default::default()
                     },
                 )

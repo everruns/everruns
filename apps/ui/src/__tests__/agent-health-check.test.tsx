@@ -3,12 +3,16 @@ import { AgentHealthCheck } from "@/components/agents/agent-health-check";
 import type { HealthCheckRun, LatestHealthCheckRun } from "@/lib/api/types";
 
 const mockTrigger = jest.fn(() => ({ mutate: jest.fn(), isPending: false, error: null }));
+const mockUseHealthCheckRun = jest.fn((_agentId: string, _runId: string | null) => ({
+  data: mockRun,
+}));
 let mockRun: HealthCheckRun | undefined;
 let mockLatest: LatestHealthCheckRun | undefined;
 
 jest.mock("@/hooks/use-agents", () => ({
   useTriggerHealthCheck: () => mockTrigger(),
-  useHealthCheckRun: () => ({ data: mockRun }),
+  useHealthCheckRun: (agentId: string, runId: string | null) =>
+    mockUseHealthCheckRun(agentId, runId),
   useLatestHealthCheckRun: () => ({ data: mockLatest }),
 }));
 
@@ -57,6 +61,7 @@ const completedRun: HealthCheckRun = {
 
 describe("AgentHealthCheck", () => {
   beforeEach(() => {
+    jest.clearAllMocks();
     mockRun = undefined;
     mockLatest = undefined;
   });
@@ -147,5 +152,34 @@ describe("AgentHealthCheck", () => {
     };
     render(<AgentHealthCheck agentId="agent_1" />);
     expect(screen.getByRole("button", { name: /running/i })).toBeDisabled();
+    expect(mockUseHealthCheckRun).toHaveBeenCalledWith("agent_1", "healthcheck_3");
+  });
+
+  it("renders a polled terminal failure live and clears the running state", () => {
+    mockLatest = {
+      run: {
+        id: "healthcheck_4",
+        config_hash: "abc",
+        status: "running",
+        created_at: "2026-06-13T00:00:00Z",
+      },
+      config_changed: false,
+    };
+    const view = render(<AgentHealthCheck agentId="agent_1" />);
+    expect(screen.getByRole("button", { name: /running/i })).toBeDisabled();
+
+    mockRun = {
+      id: "healthcheck_4",
+      config_hash: "abc",
+      status: "failed",
+      created_at: "2026-06-13T00:00:00Z",
+      error_message:
+        "The AI provider account is out of credits or quota. Add credits or raise the provider account limits to continue.",
+    };
+    view.rerender(<AgentHealthCheck agentId="agent_1" />);
+
+    expect(screen.getByText(/out of credits or quota/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /run health check/i })).toBeEnabled();
+    expect(screen.queryByText(/generating and running cases/i)).not.toBeInTheDocument();
   });
 });
