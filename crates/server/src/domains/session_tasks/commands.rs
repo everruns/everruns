@@ -680,8 +680,8 @@ mod tests {
     use everruns_core::network_access::NetworkAccessList;
     use everruns_core::session_task::{
         CreateSessionTask, NewTaskMessage, SessionTaskRegistry, SessionTaskState,
-        TASK_KIND_AGENT_HANDOFF, TASK_KIND_BACKGROUND_TOOL, TASK_KIND_MONITOR, TASK_KIND_SUBAGENT,
-        TaskLinks, TaskMessagePart, TaskWakePolicy,
+        TASK_KIND_AGENT_HANDOFF, TASK_KIND_BACKGROUND_TOOL, TASK_KIND_MONITOR, TASK_KIND_SESSION,
+        TASK_KIND_SUBAGENT, TaskLinks, TaskMessagePart, TaskWakePolicy,
     };
     use everruns_core::{Caller, DEFAULT_ORG_ID, HarnessId, PrincipalId};
     use std::sync::Arc;
@@ -1133,6 +1133,44 @@ mod tests {
             !updated_schedule.enabled,
             "schedule must be disabled after monitor task cancel"
         );
+    }
+
+    /// API cancellation must not claim a detached peer was canceled when the
+    /// command context cannot deliver the cooperative stop message.
+    #[tokio::test]
+    async fn cancel_detached_session_task_without_platform_store_fails_closed() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_id = create_session(&db).await;
+        let ctx = test_ctx(db.clone());
+        let registry = q::registry_for_ctx(&ctx);
+        let task = registry
+            .create(CreateSessionTask {
+                session_id,
+                id: None,
+                kind: TASK_KIND_SESSION.to_string(),
+                display_name: "Detached peer".to_string(),
+                spec: serde_json::json!({}),
+                state: SessionTaskState::Running,
+                links: TaskLinks {
+                    child_session_id: Some(everruns_core::SessionId::new()),
+                    ..Default::default()
+                },
+                wake_policy: TaskWakePolicy::Silent,
+            })
+            .await
+            .unwrap();
+
+        let result = CancelSessionTask {
+            session_id: session_id.to_string(),
+            task_id: task.id,
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        assert_eq!(result.state, SessionTaskState::Running);
+        assert!(result.cancel_requested_at.is_some());
+        assert!(result.summary.is_none());
     }
 
     // -------------------------------------------------------------------------
