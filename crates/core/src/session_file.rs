@@ -531,7 +531,7 @@ fn truncate_block_to_serialized_size(block: &mut GrepContextBlock, max_bytes: us
         let mut high = original.len();
         while low < high {
             let mid = low + (high - low).div_ceil(2);
-            block.lines[index].line = truncate_utf8(&original, mid).to_string();
+            block.lines[index].line = truncate_utf8(original, mid).to_string();
             if serialized_entry_len(block) <= max_bytes {
                 low = mid;
             } else {
@@ -730,7 +730,7 @@ mod tests {
                 lines: (1..=41)
                     .map(|line_number| GrepContextLine {
                         line_number,
-                        line: (line_number == 21).then_some("x").unwrap_or("").to_string(),
+                        line: (if line_number == 21 { "x" } else { "" }).to_string(),
                         is_match: line_number == 21,
                     })
                     .collect(),
