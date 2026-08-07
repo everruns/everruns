@@ -133,8 +133,20 @@ fn oauth_identity_rejection_reason(
 /// Returns the audit reason when an existing same-email account must not be
 /// auto-linked to an OAuth identity. Verified OAuth proves the callback caller
 /// owns the mailbox now, but an unverified password account may have been
-/// pre-created by an attacker who never controlled that mailbox.
-fn existing_oauth_link_rejection_reason(existing: &UserRow) -> Option<&'static str> {
+/// pre-created by an attacker who never controlled that mailbox. Likewise,
+/// provider verification alone is insufficient to link two OAuth identities:
+/// stale or reassigned email claims could otherwise grant cross-provider access.
+fn existing_oauth_link_rejection_reason(
+    existing: &UserRow,
+    provider: &str,
+) -> Option<&'static str> {
+    if matches!(
+        existing.auth_provider.as_deref(),
+        Some(existing_provider) if existing_provider != "local" && existing_provider != provider
+    ) {
+        return Some("email_bound_to_different_provider");
+    }
+
     if !existing.email_verified {
         return Some("existing_email_unverified");
     }
@@ -1356,7 +1368,7 @@ async fn oauth_callback_inner(
             // verified by this service. Otherwise an attacker could pre-create
             // a local account for a victim email and retain its password/session
             // after the real mailbox owner later completes OAuth.
-            if let Some(reason) = existing_oauth_link_rejection_reason(&existing) {
+            if let Some(reason) = existing_oauth_link_rejection_reason(&existing, provider_str) {
                 tracing::warn!(
                     provider = %provider_str,
                     existing_provider = existing.auth_provider.as_deref().unwrap_or(""),
@@ -2105,7 +2117,7 @@ mod tests {
         let user = oauth_link_candidate(false, Some("local"));
 
         assert_eq!(
-            existing_oauth_link_rejection_reason(&user),
+            existing_oauth_link_rejection_reason(&user, "google"),
             Some("existing_email_unverified")
         );
     }
@@ -2114,14 +2126,24 @@ mod tests {
     fn oauth_link_allows_verified_local_account() {
         let user = oauth_link_candidate(true, Some("local"));
 
-        assert_eq!(existing_oauth_link_rejection_reason(&user), None);
+        assert_eq!(existing_oauth_link_rejection_reason(&user, "google"), None);
     }
 
     #[test]
-    fn oauth_link_allows_verified_account_from_another_provider() {
+    fn oauth_link_rejects_verified_account_from_another_provider() {
         let user = oauth_link_candidate(true, Some("github"));
 
-        assert_eq!(existing_oauth_link_rejection_reason(&user), None);
+        assert_eq!(
+            existing_oauth_link_rejection_reason(&user, "google"),
+            Some("email_bound_to_different_provider")
+        );
+    }
+
+    #[test]
+    fn oauth_link_allows_verified_account_from_same_provider() {
+        let user = oauth_link_candidate(true, Some("github"));
+
+        assert_eq!(existing_oauth_link_rejection_reason(&user, "github"), None);
     }
 
     #[test]
