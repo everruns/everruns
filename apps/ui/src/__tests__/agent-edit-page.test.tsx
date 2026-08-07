@@ -46,6 +46,15 @@ jest.mock("@/components/agents/agent-preview", () => ({
   AgentPreview: () => <div data-testid="agent-preview" />,
 }));
 
+jest.mock("@/components/agents/agent-checks", () => ({
+  AgentChecks: () => <div data-testid="agent-checks">Checks</div>,
+  applyByteSpanReplacement: (text: string) => text,
+}));
+
+jest.mock("@/components/agents/agent-health-check", () => ({
+  AgentHealthCheck: () => <div data-testid="agent-health-check" />,
+}));
+
 jest.mock("@/components/initial-files-editor", () => ({
   InitialFilesEditor: () => <div data-testid="initial-files-editor" />,
 }));
@@ -148,6 +157,19 @@ describe("EditAgentPage", () => {
     expect(screen.getByText("Editing")).toBeInTheDocument();
     expect(screen.getByLabelText("Tags")).toHaveValue("");
     expect(screen.getByDisplayValue("test-agent")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-checks")).toBeInTheDocument();
+    expect(screen.getByTestId("agent-health-check")).toBeInTheDocument();
+    expect(screen.queryByTestId("agent-preview")).not.toBeInTheDocument();
+  });
+
+  it("keeps checks in Edit instead of Preview", async () => {
+    await renderWithSuspense({ agentId: "agent_123" });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+
+    expect(screen.getByTestId("agent-preview")).toBeInTheDocument();
+    expect(screen.queryByTestId("agent-checks")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("agent-health-check")).not.toBeInTheDocument();
   });
 
   it("omits network_access from the update when not edited", async () => {

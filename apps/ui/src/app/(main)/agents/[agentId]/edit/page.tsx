@@ -43,7 +43,8 @@ import {
 } from "@/components/ui/dialog";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { normalizeCapabilityConfigs } from "@/components/agents/capability-config";
-import { AgentPreview, applyByteSpanReplacement } from "@/components/agents/agent-preview";
+import { AgentPreview } from "@/components/agents/agent-preview";
+import { AgentChecks, applyByteSpanReplacement } from "@/components/agents/agent-checks";
 import { AgentHealthCheck } from "@/components/agents/agent-health-check";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
@@ -319,6 +320,20 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
           <PageColumns>
             {/* Main form */}
             <PageMain>
+              <AgentChecks
+                systemPrompt={formData.system_prompt}
+                capabilities={selectedCapabilities}
+                tools={agent.tools ?? []}
+                onApplyFix={(start, end, replacement) =>
+                  handleFormChange(
+                    "system_prompt",
+                    applyByteSpanReplacement(formData.system_prompt, start, end, replacement),
+                  )
+                }
+              />
+
+              <AgentHealthCheck agentId={agent.id} />
+
               <Card>
                 <CardHeader>
                   <CardTitle>Agent Details</CardTitle>
@@ -557,16 +572,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
               capabilities={selectedCapabilities}
               initialFiles={selectedInitialFiles}
               tools={agent.tools ?? []}
-              onApplyFix={(start, end, replacement) =>
-                handleFormChange(
-                  "system_prompt",
-                  applyByteSpanReplacement(formData.system_prompt, start, end, replacement),
-                )
-              }
             />
-            <div className="mt-6">
-              <AgentHealthCheck agentId={agent.id} />
-            </div>
           </div>
 
           {/* Summary sidebar */}
