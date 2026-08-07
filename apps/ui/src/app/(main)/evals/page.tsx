@@ -8,7 +8,6 @@ import { EntityCard } from "@/components/ui/entity-card";
 import { Badge } from "@/components/ui/badge";
 import { Plus } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
-import { ExperimentalPageBadge } from "@/components/ui/experimental-badge";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import type { Eval, EvalTarget } from "@/lib/api/types";
 import { getDisplayName } from "@/lib/entity-lifecycle";
@@ -108,10 +107,7 @@ export default function EvalsPage() {
     <div className="container mx-auto p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold flex items-center gap-3">
-          Evals
-          <ExperimentalPageBadge />
-        </h1>
+        <h1 className="text-2xl font-bold">Evals</h1>
         <Link href="/evals/new">
           <Button variant="accent">
             <Plus className="w-4 h-4 mr-2" />

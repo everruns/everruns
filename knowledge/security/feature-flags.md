@@ -111,12 +111,12 @@ passed via gRPC turn context.
 
 ## UI Indication
 
-Features gated behind experimental flags display visual badges to signal their status:
+Features gated behind experimental flags display a visual marker to signal their status:
 
 - **Sidebar**: Flask icon (`FlaskConical`) next to the nav item name, with tooltip on hover
-- **Page header**: Handwritten-style "experimental" label (Caveat font) with hand-drawn circle border, placed inline next to the page title
 
-Both are driven by `experimental: true` on the `NavItem` type in the sidebar, and `<ExperimentalPageBadge />` on individual pages. See `apps/ui/src/components/ui/experimental-badge.tsx`.
+The marker is driven by `experimental: true` on the `NavItem` type in the sidebar. See
+`apps/ui/src/components/ui/experimental-badge.tsx`.
 
 ## Future Extensions
 

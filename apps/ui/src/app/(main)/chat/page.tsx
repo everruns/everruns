@@ -6,7 +6,6 @@ import { SessionProvider } from "@/app/(main)/sessions/[sessionId]/session-conte
 import { useGlobalChat } from "@/hooks/use-global-chat";
 import { usePageTitle } from "@/hooks";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
-import { ExperimentalPageBadge } from "@/components/ui/experimental-badge";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 
 function GlobalChatEnabledContent() {
@@ -33,10 +32,7 @@ function GlobalChatEnabledContent() {
   return (
     <div className="flex h-full flex-col bg-background bg-brand-dots">
       <div className="flex items-center justify-between border-b border-border/70 bg-background/70 px-6 py-3.5 backdrop-blur-[1px]">
-        <h1 className="flex items-center gap-3 text-xl font-semibold tracking-tight">
-          Chat
-          <ExperimentalPageBadge />
-        </h1>
+        <h1 className="text-xl font-semibold tracking-tight">Chat</h1>
       </div>
       <SessionProvider sessionId={sessionId}>
         <ChatPanel />

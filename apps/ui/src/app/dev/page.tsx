@@ -13,12 +13,27 @@ import {
   FileCode,
   Sparkles,
   IdCard,
+  Blocks,
+  Palette,
 } from "lucide-react";
 
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
 
 const devPages = [
+  {
+    title: "Slate Reference",
+    description:
+      "Pinned design-export rules, visual foundations, hierarchy, and conformance checks",
+    href: "/dev/design-reference",
+    icon: Palette,
+  },
+  {
+    title: "Core UI Components",
+    description: "Layouts, cards, buttons, identifiers, menus, forms, and feedback primitives",
+    href: "/dev/ui-components",
+    icon: Blocks,
+  },
   {
     title: "Chat UI",
     description: "Real chat runtime scenes plus empty-state and composer showcases",

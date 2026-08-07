@@ -20,10 +20,6 @@ jest.mock("@/app/(main)/sessions/[sessionId]/session-context", () => ({
   SessionProvider: ({ children }: { children: ReactNode }) => <div>{children}</div>,
 }));
 
-jest.mock("@/components/ui/experimental-badge", () => ({
-  ExperimentalPageBadge: () => <div>badge</div>,
-}));
-
 const mockUseFeatureFlag = jest.mocked(useFeatureFlag);
 const mockUseGlobalChat = jest.mocked(useGlobalChat);
 

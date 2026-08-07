@@ -7,7 +7,6 @@ import { Button } from "@/components/ui/button";
 import { EntityCard } from "@/components/ui/entity-card";
 import { Badge } from "@/components/ui/badge";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
-import { ExperimentalPageBadge } from "@/components/ui/experimental-badge";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import { pluralize } from "@/lib/formatting";
@@ -65,10 +64,7 @@ export default function ObserversPageClient() {
   return (
     <div className="container mx-auto space-y-6 p-6">
       <div className="flex items-center justify-between">
-        <h1 className="flex items-center gap-3 text-2xl font-bold">
-          Observers
-          <ExperimentalPageBadge />
-        </h1>
+        <h1 className="text-2xl font-bold">Observers</h1>
         <Link href="/observers/new">
           <Button variant="accent">
             <Plus className="mr-2 h-4 w-4" />
