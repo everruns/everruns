@@ -2289,7 +2289,7 @@ async fn test_organization_crud() {
         .expect("Failed to initialize org harnesses");
     org_init::seed_default_plugin_marketplace(&backend, org.org_id).await;
 
-    // Delete organization, including its provisioned resources.
+    // Delete organization, including its settings and provisioned resources.
     let deleted = backend
         .delete_organization(org.org_id)
         .await
