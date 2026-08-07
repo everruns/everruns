@@ -145,14 +145,17 @@ const SENSITIVE_DETAIL_KEY =
   /(?:^|_)(?:api_?key|authorization|cookie|credential|password|private_?key|secret|token)(?:$|_)/i;
 const TOOL_DETAIL_LIMIT = 1_200;
 
-function redactSensitiveDetails(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(redactSensitiveDetails);
+function redactSensitiveDetails(value: unknown, redactValue = false): unknown {
+  if (Array.isArray(value))
+    return value.map((nested) => redactSensitiveDetails(nested, redactValue));
   if (value === null || typeof value !== "object") return value;
 
   return Object.fromEntries(
     Object.entries(value as Record<string, unknown>).map(([key, nested]) => [
       key,
-      SENSITIVE_DETAIL_KEY.test(key) ? "[redacted]" : redactSensitiveDetails(nested),
+      SENSITIVE_DETAIL_KEY.test(key) || (redactValue && key === "value")
+        ? "[redacted]"
+        : redactSensitiveDetails(nested, redactValue),
     ]),
   );
 }
@@ -172,7 +175,7 @@ function redactSensitiveText(text: string): string {
 }
 
 /** Format bounded, secret-aware content for an expandable trajectory detail. */
-export function formatToolDetail(value: unknown): string {
+export function formatToolDetail(value: unknown, toolName?: string): string {
   if (value == null || value === "") return "";
   let structured = value;
   if (typeof value === "string") {
@@ -183,7 +186,9 @@ export function formatToolDetail(value: unknown): string {
     }
   }
 
-  return limitToolDetail(JSON.stringify(redactSensitiveDetails(structured), null, 2));
+  return limitToolDetail(
+    JSON.stringify(redactSensitiveDetails(structured, toolName === "secret_store"), null, 2),
+  );
 }
 
 // --- Build trajectory from events ---
