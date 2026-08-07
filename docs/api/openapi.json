@@ -23394,6 +23394,7 @@
           "source_type",
           "source_config",
           "embedding_model_id",
+          "document_count",
           "status",
           "sync_status",
           "created_at",
@@ -23427,6 +23428,11 @@
               "null"
             ],
             "description": "Human-readable description. Safe to render in user-facing messages."
+          },
+          "document_count": {
+            "type": "integer",
+            "description": "Number of documents currently retained by this index.",
+            "minimum": 0
           },
           "embedding_model_id": {
             "type": "string",
@@ -24953,6 +24959,7 @@
                 "source_type",
                 "source_config",
                 "embedding_model_id",
+                "document_count",
                 "status",
                 "sync_status",
                 "created_at",
@@ -24986,6 +24993,11 @@
                     "null"
                   ],
                   "description": "Human-readable description. Safe to render in user-facing messages."
+                },
+                "document_count": {
+                  "type": "integer",
+                  "description": "Number of documents currently retained by this index.",
+                  "minimum": 0
                 },
                 "embedding_model_id": {
                   "type": "string",

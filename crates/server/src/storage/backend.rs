@@ -1575,6 +1575,13 @@ impl StorageBackend {
         dispatch!(self, list_knowledge_index_documents, index_id)
     }
 
+    pub async fn count_knowledge_index_documents(
+        &self,
+        index_ids: &[Uuid],
+    ) -> Result<std::collections::HashMap<Uuid, usize>> {
+        dispatch!(self, count_knowledge_index_documents, index_ids)
+    }
+
     pub async fn list_knowledge_index_chunks(
         &self,
         index_id: Uuid,

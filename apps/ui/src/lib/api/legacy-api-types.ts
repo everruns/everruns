@@ -2755,6 +2755,7 @@ export interface KnowledgeIndex {
   source_config: Record<string, unknown>;
   embedding_model_id: string;
   vector_dim?: number | null;
+  document_count: number;
   status: KnowledgeIndexStatus;
   sync_status: KnowledgeIndexSyncStatus;
   last_synced_at?: string | null;

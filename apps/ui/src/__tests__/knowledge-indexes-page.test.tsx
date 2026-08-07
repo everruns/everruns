@@ -145,6 +145,7 @@ const indexes: KnowledgeIndex[] = [
     source_config: { provider: "github", repository: "everruns/everruns", branch: "main" },
     embedding_model_id: "model_001",
     vector_dim: 1536,
+    document_count: 1,
     status: "active",
     sync_status: "synced",
     last_synced_at: "2026-05-06T03:37:51.552849Z",
@@ -173,13 +174,20 @@ describe("KnowledgeIndexesPage", () => {
       mutateAsync: jest.fn().mockResolvedValue({}),
       isPending: false,
     });
-    mockUseUserConnections.mockReturnValue({ data: [], isLoading: false });
+    mockUseUserConnections.mockReturnValue({
+      data: [{ provider: "github", connected_at: "2026-05-01T00:00:00Z" }],
+      isLoading: false,
+      error: null,
+    });
     mockUseModels.mockReturnValue({
       data: [
         {
           id: "model_001",
           display_name: "text-embedding-3-small",
           provider_name: "OpenAI",
+          provider_id: "provider_001",
+          provider_type: "openai_completions",
+          healthy: true,
           enabled: true,
           capabilities: ["embeddings"],
         },
@@ -310,5 +318,103 @@ describe("KnowledgeIndexesPage", () => {
     mockUseKnowledgeIndexes.mockReturnValue({ data: [], isLoading: false, error: null });
     render(<KnowledgeIndexesPage />);
     expect(screen.getByText(/No knowledge indexes/)).toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      "not synced yet",
+      { sync_status: "idle", last_synced_at: null, document_count: 0 },
+      "Not synced yet",
+      "Start initial sync",
+    ],
+    ["queued", { sync_status: "pending" }, "Sync queued", null],
+    ["syncing", { sync_status: "syncing" }, "Syncing", null],
+    ["synced empty", { document_count: 0 }, "Synced — no documents", "Sync again"],
+    ["stale", { updated_at: "2026-05-06T04:37:51.552849Z" }, "Sync out of date", "Sync changes"],
+    [
+      "failed",
+      { sync_status: "failed", last_sync_error: "Repository access was denied" },
+      "Sync failed",
+      "Retry sync",
+    ],
+  ])("shows the %s diagnostic and action", (_name, overrides, label, action) => {
+    mockUseKnowledgeIndexes.mockReturnValue({
+      data: [{ ...indexes[0], ...overrides }],
+      isLoading: false,
+      error: null,
+    });
+    render(<KnowledgeIndexesPage />);
+
+    expect(screen.getByRole("status", { name: `Index status: ${label}` })).toBeInTheDocument();
+    if (action) expect(screen.getByRole("button", { name: action })).toBeInTheDocument();
+  });
+
+  it("flags a generation-only model and directs the user to configure embeddings", () => {
+    mockUseModels.mockReturnValue({
+      data: [
+        {
+          id: "model_001",
+          display_name: "Claude Opus 4.7 (1M)",
+          provider_name: "Anthropic",
+          provider_id: "provider_anthropic",
+          provider_type: "anthropic",
+          enabled: true,
+          healthy: true,
+          capabilities: ["text"],
+        },
+      ],
+      isLoading: false,
+      error: null,
+    });
+    render(<KnowledgeIndexesPage />);
+
+    expect(
+      screen.getByRole("status", { name: "Index status: Embedding model invalid" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/does not support embeddings/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Configure embedding model" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sync" })).not.toBeInTheDocument();
+  });
+
+  it("links to provider setup when the embedding provider is unavailable", () => {
+    mockUseModels.mockReturnValue({
+      data: [
+        {
+          id: "model_001",
+          display_name: "text-embedding-3-small",
+          provider_name: "OpenAI",
+          provider_id: "provider_001",
+          provider_type: "openai_completions",
+          enabled: true,
+          healthy: false,
+          capabilities: ["embeddings"],
+        },
+      ],
+      isLoading: false,
+      error: null,
+    });
+    render(<KnowledgeIndexesPage />);
+
+    expect(
+      screen.getByRole("status", { name: "Index status: Provider setup needed" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Configure provider" })).toHaveAttribute(
+      "href",
+      "/settings/providers/provider_001",
+    );
+  });
+
+  it("updates the diagnostic when polled index data changes", () => {
+    mockUseKnowledgeIndexes.mockReturnValue({
+      data: [{ ...indexes[0], sync_status: "pending" }],
+      isLoading: false,
+      error: null,
+    });
+    const view = render(<KnowledgeIndexesPage />);
+    expect(screen.getByRole("status", { name: "Index status: Sync queued" })).toBeInTheDocument();
+
+    mockUseKnowledgeIndexes.mockReturnValue({ data: indexes, isLoading: false, error: null });
+    view.rerender(<KnowledgeIndexesPage />);
+    expect(screen.getByRole("status", { name: "Index status: Up to date" })).toBeInTheDocument();
   });
 });

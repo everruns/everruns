@@ -41,6 +41,7 @@ const index: KnowledgeIndex = {
   },
   embedding_model_id: "model_001",
   vector_dim: 1536,
+  document_count: 1,
   status: "active",
   sync_status: "synced",
   last_synced_at: "2026-05-06T03:37:51.552849Z",
@@ -97,8 +98,27 @@ describe("KnowledgeIndexDetailPage", () => {
       mutateAsync: jest.fn().mockResolvedValue({}),
       isPending: false,
     });
-    mockUseUserConnections.mockReturnValue({ data: [], isLoading: false });
-    mockUseModels.mockReturnValue({ data: [], isLoading: false });
+    mockUseUserConnections.mockReturnValue({
+      data: [{ provider: "github", connected_at: "2026-05-01T00:00:00Z" }],
+      isLoading: false,
+      error: null,
+    });
+    mockUseModels.mockReturnValue({
+      data: [
+        {
+          id: "model_001",
+          display_name: "text-embedding-3-small",
+          provider_name: "OpenAI",
+          provider_id: "provider_001",
+          provider_type: "openai_completions",
+          enabled: true,
+          healthy: true,
+          capabilities: ["embeddings"],
+        },
+      ],
+      isLoading: false,
+      error: null,
+    });
   });
 
   it("renders index metadata, source, and documents", async () => {
@@ -134,7 +154,7 @@ describe("KnowledgeIndexDetailPage", () => {
       error: null,
     });
     await renderWithSuspense();
-    expect(screen.getByText("auth failed")).toBeInTheDocument();
+    expect(screen.getByText(/auth failed/)).toBeInTheDocument();
   });
 
   it("renders an empty documents state", async () => {
@@ -164,5 +184,63 @@ describe("KnowledgeIndexDetailPage", () => {
     await renderWithSuspense("kidx_missing");
     expect(screen.getByText("Knowledge index not found")).toBeInTheDocument();
     expect(screen.getByText("kidx_missing")).toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      "not synced yet",
+      { sync_status: "idle", last_synced_at: null, document_count: 0 },
+      "Not synced yet",
+      "Start initial sync",
+    ],
+    ["queued", { sync_status: "pending" }, "Sync queued", null],
+    ["syncing", { sync_status: "syncing" }, "Syncing", null],
+    ["synced empty", { document_count: 0 }, "Synced — no documents", "Sync again"],
+    ["stale", { updated_at: "2026-05-06T04:37:51.552849Z" }, "Sync out of date", "Sync changes"],
+    [
+      "failed",
+      { sync_status: "failed", last_sync_error: "Repository access was denied" },
+      "Sync failed",
+      "Retry sync",
+    ],
+  ])("shows the %s diagnostic and action", async (_name, overrides, label, action) => {
+    mockUseKnowledgeIndex.mockReturnValue({
+      data: { ...index, ...overrides },
+      isLoading: false,
+      error: null,
+    });
+    await renderWithSuspense();
+
+    expect(
+      screen.getAllByRole("status", { name: `Index status: ${label}` }).length,
+    ).toBeGreaterThan(0);
+    if (action) expect(screen.getAllByRole("button", { name: action }).length).toBeGreaterThan(0);
+  });
+
+  it("blocks sync for a generation-only embedding model", async () => {
+    mockUseModels.mockReturnValue({
+      data: [
+        {
+          id: "model_001",
+          display_name: "Claude Opus 4.7 (1M)",
+          provider_name: "Anthropic",
+          provider_id: "provider_anthropic",
+          provider_type: "anthropic",
+          enabled: true,
+          healthy: true,
+          capabilities: ["text"],
+        },
+      ],
+      isLoading: false,
+      error: null,
+    });
+    await renderWithSuspense();
+
+    expect(
+      screen.getAllByRole("status", { name: "Index status: Embedding model invalid" }).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText(/does not support embeddings/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Configure embedding model" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Sync now/i })).not.toBeInTheDocument();
   });
 });

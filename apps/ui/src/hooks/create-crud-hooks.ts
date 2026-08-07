@@ -5,6 +5,7 @@ import {
   useQuery,
   useQueryClient,
   type QueryClient,
+  type UseQueryOptions,
   type UseMutationResult,
   type UseQueryResult,
 } from "@tanstack/react-query";
@@ -31,6 +32,7 @@ interface UseOrgScopedQueryOptions<TData> {
   queryFn: () => Promise<TData>;
   enabled?: boolean;
   staleTime?: number;
+  refetchInterval?: UseQueryOptions<TData>["refetchInterval"];
 }
 
 export function useOrgScopedQuery<TData>({
@@ -38,6 +40,7 @@ export function useOrgScopedQuery<TData>({
   queryFn,
   enabled = true,
   staleTime,
+  refetchInterval,
 }: UseOrgScopedQueryOptions<TData>): UseQueryResult<TData> & { isLoading: boolean } {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
@@ -56,6 +59,7 @@ export function useOrgScopedQuery<TData>({
     queryFn,
     enabled: enabled && !!org,
     ...(staleTime !== undefined ? { staleTime } : {}),
+    ...(refetchInterval !== undefined ? { refetchInterval } : {}),
   });
 
   return {
