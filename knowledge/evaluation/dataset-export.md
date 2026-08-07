@@ -97,6 +97,10 @@ via `ON DELETE SET NULL`, matching the "datasets are derived artifacts" rule
 below). The sibling artifacts export (`GET …/runs/{run_id}/artifacts`) remains
 synchronous.
 
+Identical requests for the same run reuse the existing handle. At most four
+dataset exports run concurrently in a server process, and an export fails rather
+than storing a body larger than the shared 50 MiB artifact-export limit.
+
 ### Output schema
 
 - `trajectory` (generic, canonical):

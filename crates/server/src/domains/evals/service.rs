@@ -511,9 +511,19 @@ impl EvalService {
             );
         }
 
+        // THREAT[TM-DOS-033]: reject excess work before creating durable rows;
+        // the permit lives for the complete background export.
+        let Some(permit) = crate::domains::evals::dataset_export::try_acquire_export_permit()
+        else {
+            return Err(BadRequestError::new(
+                "Too many dataset exports are already running; retry later",
+            )
+            .into());
+        };
+
         let public_id = everruns_core::typed_id::EvalDatasetId::from_uuid(Uuid::now_v7());
         let request_json = serde_json::to_value(&req)?;
-        let row = self
+        let (row, created) = self
             .db
             .create_eval_run_dataset(
                 caller.org_id,
@@ -525,12 +535,15 @@ impl EvalService {
             )
             .await?;
 
-        crate::domains::evals::dataset_export::spawn_dataset_export(
-            self.db.clone(),
-            row.id,
-            run,
-            req,
-        );
+        if created {
+            crate::domains::evals::dataset_export::spawn_dataset_export(
+                self.db.clone(),
+                row.id,
+                run,
+                req,
+                permit,
+            );
+        }
 
         Ok(Some(dataset_row_to_dataset(row, false)))
     }

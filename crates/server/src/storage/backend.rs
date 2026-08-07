@@ -4463,7 +4463,7 @@ impl StorageBackend {
         &self,
         org_id: i64,
         input: CreateEvalRunDatasetRow,
-    ) -> Result<EvalRunDatasetRow> {
+    ) -> Result<(EvalRunDatasetRow, bool)> {
         dispatch!(self, create_eval_run_dataset, org_id, input)
     }
 
